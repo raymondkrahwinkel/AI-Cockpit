@@ -379,6 +379,17 @@ public partial class CockpitView : UserControl
         PanelsRoot.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
     }
 
+    // A click on a rail tab's count rather than the tab: handled here so the tab's own toggle does not run as well.
+    private void OnDockTabBadgeClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration { Badge: { } badge } })
+        {
+            badge.Activate();
+        }
+
+        e.Handled = true;
+    }
+
     private void OnPanelsRootSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (DataContext is CockpitViewModel cockpit)

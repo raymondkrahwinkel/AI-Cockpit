@@ -2266,6 +2266,17 @@
                                             <TextBlock Text="{Binding Title}" FontSize="10.5"/>
                                         </LayoutTransformControl>
                                     </StackPanel>
+                                    <!-- Assistant threads (§ 7.3): what in the panel waits on the operator. The
+                                         count is its own click target: it opens the panel on what it counts,
+                                         where the tab opens it where it was. -->
+                                    <Button x:Name="DockTabBadge" Classes="Subtle" Padding="0" Margin="0,2,2,0"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            IsVisible="{Binding Badge.HasCount, FallbackValue=False}"
+                                            Click="OnDockTabBadgeClick" ToolTip.Tip="Open what waits for you">
+                                        <Border Classes="waitingCount" Padding="3,0" MinWidth="13">
+                                            <TextBlock Text="{Binding Badge.Count, FallbackValue=0}" FontSize="9"/>
+                                        </Border>
+                                    </Button>
                                 </Grid>
                             </Button>
                         </DataTemplate>
@@ -2277,6 +2288,31 @@
                 <ContentControl x:Name="DockPanelContent"
                                 IsVisible="{Binding EffectiveOpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
             </DockPanel>
+        </Border>
+
+        <!-- Assistant threads (§ 7.2): something for the operator arrived while the docked assistant is not open,
+             so a floating card says so beside the strip instead of a count alone. A status line never raises one. -->
+        <Border x:Name="AssistantFloatingCard" Grid.Column="2" ZIndex="20" Margin="0,8,8,0" MaxWidth="300"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,10"
+                Background="{DynamicResource CockpitFloatingCardBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitPanelRadius}"
+                IsVisible="{Binding AssistantFloatingCard, Converter={x:Static avconv:ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"/>
+                    <TextBlock Text="{Binding AssistantFloatingCard.Title, FallbackValue=''}" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="{Binding AssistantFloatingCard.Body, FallbackValue=''}" TextWrapping="Wrap" MaxLines="3"
+                           TextTrimming="CharacterEllipsis" FontSize="12"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Classes="Accent Compact" Content="Open" Command="{Binding OpenAssistantFloatingCardCommand}"/>
+                    <Button Classes="Ghost Compact" Content="Dismiss" Command="{Binding DismissAssistantFloatingCardCommand}"/>
+                </StackPanel>
+            </StackPanel>
         </Border>
 
         </Grid>

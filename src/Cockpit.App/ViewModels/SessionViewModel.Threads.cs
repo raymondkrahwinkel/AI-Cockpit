@@ -72,6 +72,9 @@ public partial class SessionViewModel
     };
 
     private bool _IsShown(TranscriptEntryViewModel entry) => entry.IsRowVisible && _InShownThread(entry);
+    // A restart repaints the earlier conversation row by row; nothing in it is news to announce.
+    public bool IsReplayingTranscript => _replayingRecordedTranscript;
+
 
     // The projects a prompt typed or spoken now is put in: the open thread's, or none in All.
     // ponytail: the thread open when the turn starts, not when it was queued; carry it on QueuedPrompt if that bites.

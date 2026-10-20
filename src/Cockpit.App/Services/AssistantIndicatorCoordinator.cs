@@ -94,7 +94,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // overlay coordinator, so no extra filtering is needed here.
         _overlay.LevelSampled += _OnLevelSampled;
 
-        Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
+        // Assistant threads (§ 7.3): with questions open, the chip and the tab's count both open them.
+        Indicator.Clicked += (_, _) => _ = Indicator.ShowsQuestions ? _OpenQuestionsAsync() : _OpenChatAsync();
+        _questionsBadge.Activated += (_, _) => _ = _OpenQuestionsAsync();
+        _cockpit.AssistantFloatingCardOpened += row => _ = _OpenRowAsync(row);
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
         // AC-953: dock-panel registration follows the dock stand rather than standing permanently, driven off
@@ -188,6 +191,102 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
                 paneId => _PaneOf(paneId)?.ProjectId,
                 paneId => _PaneOf(paneId)?.Title);
         }
+
+        _WatchQuestions(_assistant.View());
+    }
+
+    // The tab's count and the chip's, read off the one list of open questions the session keeps.
+    private readonly DockPanelBadge _questionsBadge = new();
+
+    private SessionViewModel? _questionsSession;
+
+    private void _WatchQuestions(SessionViewModel? session)
+    {
+        if (ReferenceEquals(session, _questionsSession))
+        {
+            return;
+        }
+
+        if (_questionsSession is not null)
+        {
+            _questionsSession.ThreadsChanged -= _OnQuestionsChanged;
+            _questionsSession.Transcript.CollectionChanged -= _OnAssistantRowsAdded;
+        }
+
+        _questionsSession = session;
+        if (session is not null)
+        {
+            session.ThreadsChanged += _OnQuestionsChanged;
+            session.Transcript.CollectionChanged += _OnAssistantRowsAdded;
+        }
+
+        _OnQuestionsChanged();
+    }
+
+    private void _OnQuestionsChanged()
+    {
+        var count = _questionsSession?.OpenQuestionCount ?? 0;
+        if (count > _questionsBadge.Count && _questionsSession?.OpenQuestions is [.., var newest])
+        {
+            _ShowFloatingCard(newest, newest.IsGeneral ? "Question" : $"Question from {newest.ThreadTags[0].Name}");
+        }
+
+        Indicator.OpenQuestionCount = count;
+        _questionsBadge.Count = count;
+    }
+
+    // A message from another session is news too; a status line is not (§ 7.2, open question 5).
+    private void _OnAssistantRowsAdded(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add || e.NewItems is null
+            || _questionsSession is { IsReplayingTranscript: true })
+        {
+            return;
+        }
+
+        foreach (TranscriptEntryViewModel row in e.NewItems)
+        {
+            if (row.IsInboxRow)
+            {
+                _ShowFloatingCard(row, $"Message from {row.SenderLabel}");
+            }
+        }
+    }
+
+    // ponytail: one card at a time, the newest wins; a queue if several in a row turn out to get lost.
+    private DispatcherTimer? _floatingCardTimer;
+
+    private void _ShowFloatingCard(TranscriptEntryViewModel row, string title)
+    {
+        // Only where nothing else would say it: docked, outside the Simple stand, with the assistant's panel shut.
+        if (!_cockpit.AssistantDocked || _cockpit.SimpleView || _cockpit.EffectiveOpenDockPanelId == DockPanelId)
+        {
+            return;
+        }
+
+        var body = row.Text.ReplaceLineEndings(" ").Trim();
+        _cockpit.AssistantFloatingCard = new AssistantFloatingCardContent(title, body, row);
+
+        _floatingCardTimer?.Stop();
+        _floatingCardTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        _floatingCardTimer.Tick += (_, _) =>
+        {
+            _floatingCardTimer?.Stop();
+            _cockpit.AssistantFloatingCard = null;
+        };
+        _floatingCardTimer.Start();
+    }
+
+    private async Task _OpenRowAsync(TranscriptEntryViewModel row)
+    {
+        await _OpenChatAsync().ConfigureAwait(true);
+        _chatViewModel?.ShowInThreadCommand.Execute(row);
+    }
+
+    private async Task _OpenQuestionsAsync()
+    {
+        await _OpenChatAsync().ConfigureAwait(true);
+        _chatViewModel?.OpenQuestionsCommand.Execute(null);
     }
 
     private SessionPanelViewModel? _PaneOf(string paneId) =>
@@ -277,7 +376,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
                 DockPanelId,
                 "Assistant",
                 MaterialIconKind.Creation,
-                _CreateDockedChatView));
+                _CreateDockedChatView)
+            {
+                Badge = _questionsBadge,
+            });
 
             return;
         }

@@ -1800,7 +1800,8 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusDoneBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusDoneChipTintBrush}"/>
     </Style>
-    <Style Selector="Button.assistantIndicatorChip.dictating">
+    <!-- Assistant threads: questions waiting on the operator read amber, the waiting colour (DESIGN.md). -->
+    <Style Selector="Button.assistantIndicatorChip.dictating, Button.assistantIndicatorChip.questions">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingChipTintBrush}"/>
     </Style>
@@ -1899,11 +1900,11 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusErrorBrush}"/>
     </Style>
     <!-- F9 dictating: amber, deliberately never the assistant's cyan — the hard half of criterion 6. -->
-    <Style Selector="Border.assistantIndicatorRing.dictating">
+    <Style Selector="Border.assistantIndicatorRing.dictating, Border.assistantIndicatorRing.questions">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRingTintBrush}"/>
     </Style>
-    <Style Selector="Border.assistantIndicatorRing.dictating materialIcons|MaterialIcon">
+    <Style Selector="Border.assistantIndicatorRing.dictating materialIcons|MaterialIcon, Border.assistantIndicatorRing.questions materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
     </Style>
     <!-- Unavailable dims further than the resting ring, and its icon turns error-red (vormgeving pass, criterion

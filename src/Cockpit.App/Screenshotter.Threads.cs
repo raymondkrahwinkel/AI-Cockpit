@@ -35,7 +35,8 @@ internal static partial class Screenshotter
         return window;
     }
 
-    // Docked in the rail at a given width: 600 has labels, 400 icons, 280 the picker. Null leaves the rail collapsed.
+    // Docked in the rail at a given width: 600 has labels, 400 icons, 280 the picker. Null leaves the rail collapsed,
+    // and then the tab's count, the chip's and the floating card are what say a question is waiting (§ 7.2).
     private static Window _AssistantThreadsDocked(double? railWidth)
     {
         var conversation = _AssistantThreadsConversation();
@@ -49,14 +50,28 @@ internal static partial class Screenshotter
                 var chat = _AssistantChatViewModel(conversation);
                 chat.IsDocked = true;
                 return new AssistantChatView { DataContext = chat };
-            }));
+            })
+        {
+            Badge = new Cockpit.Plugins.Abstractions.Docking.DockPanelBadge { Count = conversation.OpenQuestionCount },
+        });
 
         var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
         {
             OpenDockPanelId = railWidth is null ? null : Services.AssistantIndicatorCoordinator.DockPanelId,
             AssistantDocked = true,
             DockRailWidth = railWidth ?? Cockpit.Core.Layout.LayoutSettings.DefaultDockRailWidth,
+            AssistantIndicator = new AssistantIndicatorViewModel
+            {
+                Activity = Cockpit.Core.Assistant.AssistantActivity.Ready,
+                OpenQuestionCount = conversation.OpenQuestionCount,
+            },
         };
+
+        if (railWidth is null && conversation.OpenQuestions is [.., var newest])
+        {
+            cockpit.AssistantFloatingCard = new AssistantFloatingCardContent(
+                "Question from Cockpit", newest.Text, newest);
+        }
 
         return new MainWindow { DataContext = cockpit };
     }

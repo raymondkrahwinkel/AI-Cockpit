@@ -31,6 +31,8 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ShowsLevel))]
     [NotifyPropertyChangedFor(nameof(ShowsListeningSwitch))]
     [NotifyPropertyChangedFor(nameof(ShowsKeyHint))]
+    [NotifyPropertyChangedFor(nameof(ShowsQuestions))]
+    [NotifyPropertyChangedFor(nameof(ShowsAwaitingOperator))]
     private AssistantActivity _activity = AssistantActivity.Unavailable;
 
     // Defaults to `true` so the component renders on its own — in a scene, a test, or AC-238's companion window —
@@ -88,6 +90,23 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isConsentBypassActive;
 
+    // Assistant threads (§ 7.3): how many questions and Allow/Deny rows wait in the conversation. While the assistant
+    // rests, the chip says that instead of its name, in amber — waiting on you, not a failure.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Label))]
+    [NotifyPropertyChangedFor(nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(ShowsQuestions))]
+    [NotifyPropertyChangedFor(nameof(ShowsAwaitingOperator))]
+    [NotifyPropertyChangedFor(nameof(IsMicIcon))]
+    [NotifyPropertyChangedFor(nameof(KeyHint))]
+    [NotifyPropertyChangedFor(nameof(ShowsKeyHint))]
+    private int _openQuestionCount;
+
+    public bool ShowsQuestions => OpenQuestionCount > 0 && Activity is AssistantActivity.Ready or AssistantActivity.AwaitingOperator;
+
+    // DESIGN.md: amber is for what waits on the operator, so open questions take the "needs you" state's place.
+    public bool ShowsAwaitingOperator => IsAwaitingOperator && !ShowsQuestions;
+
     // The host decides what that means; this view model only reports the click.
     public event EventHandler? Clicked;
 
@@ -97,7 +116,9 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     public event EventHandler<AssistantListeningMode>? ListeningModeSelected;
 
     // The primary line — what to call this state out loud.
-    public string Label => Activity switch
+    public string Label => ShowsQuestions
+        ? OpenQuestionCount == 1 ? "1 question for you" : $"{OpenQuestionCount} questions for you"
+        : Activity switch
     {
         AssistantActivity.Ready => "Assistant",
         AssistantActivity.Listening => "Listening",
@@ -119,7 +140,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
 
     // Every other assistant-side state names the assistant, so the chip still reads "the assistant" rather than only a
     // colour.
-    public string? Detail => Activity switch
+    public string? Detail => ShowsQuestions ? "Open to answer" : Activity switch
     {
         AssistantActivity.Listening => "Assistant",
         AssistantActivity.ListeningContinuously => "Assistant",
@@ -139,7 +160,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
 
     // The key hint shown at the right of the chip (mockup's `.key` badge) — only for the states that actually have a
     // key bound to them right now; `null` hides it rather than showing an empty badge.
-    public string? KeyHint => Activity switch
+    public string? KeyHint => ShowsQuestions ? null : Activity switch
     {
         AssistantActivity.Ready => "F10",
         AssistantActivity.Listening => "F10",
@@ -192,7 +213,7 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
 
     // Whether the mic glyph is the badge's icon — every state except Thinking, Speaking and Unavailable, which draw
     // their own (a thought bubble, a speaker, an alert triangle).
-    public bool IsMicIcon => Activity is AssistantActivity.Ready or AssistantActivity.Listening
+    public bool IsMicIcon => !ShowsQuestions && Activity is AssistantActivity.Ready or AssistantActivity.Listening
         or AssistantActivity.ListeningContinuously or AssistantActivity.Dictating;
 
     public bool IsListeningModeOff => ListeningMode == AssistantListeningMode.Off;

@@ -620,6 +620,7 @@ internal static partial class Screenshotter
         ["assistant-threads-docked-600"] = (_, _) => _AssistantThreadsDocked(600),
         ["assistant-threads-docked-400"] = (_, _) => _AssistantThreadsDocked(400),
         ["assistant-threads-docked-280"] = (_, _) => _AssistantThreadsDocked(280),
+        ["assistant-threads-docked-collapsed"] = (_, _) => _AssistantThreadsDocked(null),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
