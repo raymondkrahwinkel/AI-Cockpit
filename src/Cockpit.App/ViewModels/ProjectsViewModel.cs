@@ -39,6 +39,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // same run `LoadAsync` kicked off instead of racing it with a second, independent call.
     internal Task SharedProjectsLoadTask { get; private set; } = Task.CompletedTask;
 
+    [ObservableProperty]
+    private bool _isRefreshingSharedProjects;
+
     // Design-time constructor for the Avalonia previewer: projects kept in memory and no dialog service, so a rendered
     // surface can reach neither the operator's config nor a window that does not exist there. The commands are inert
     // in that context — see `_dialogs`.
@@ -366,6 +369,20 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
         await _catalog.RefreshSharedProjectsAsync(cancellationToken).ConfigureAwait(true);
         _ApplyCurrent();
+    }
+
+    [RelayCommand]
+    private async Task RefreshSharedProjectsAsync()
+    {
+        IsRefreshingSharedProjects = true;
+        try
+        {
+            await LoadSharedProjectsAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsRefreshingSharedProjects = false;
+        }
     }
 
     private void _RepublishSharedProjectGroups()

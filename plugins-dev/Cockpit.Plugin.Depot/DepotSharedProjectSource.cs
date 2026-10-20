@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
@@ -16,6 +17,10 @@ internal sealed class DepotSharedProjectSource(
     : ISharedProjectSource
 {
     private readonly DepotProjectAddressing _addressing = DepotProjectAddressing.For(host, connection, scheme);
+
+    internal static TimeSpan DefinitionReadTimeout = TimeSpan.FromSeconds(10);
+
+    private const int DefinitionReadConcurrency = 6;
 
     public string Key => scheme;
 
@@ -48,46 +53,70 @@ internal sealed class DepotSharedProjectSource(
 
         await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
 
-        var shared = new List<SharedProject>(listed.Count);
-        var unreadable = new List<UnreadableSharedProject>();
-        foreach (var project in listed)
+        var order = listed
+            .Select((project, index) => new { Id = $"{scheme}:{project.Key}", index })
+            .ToDictionary(item => item.Id, item => item.index, StringComparer.Ordinal);
+        var shared = new ConcurrentBag<SharedProject>();
+        var unreadable = new ConcurrentBag<UnreadableSharedProject>();
+        var states = new ConcurrentBag<SharedProjectReadStatus>();
+        await Parallel.ForEachAsync(listed, new ParallelOptions
+        {
+            MaxDegreeOfParallelism = DefinitionReadConcurrency,
+            CancellationToken = cancellationToken,
+        }, async (project, token) =>
         {
             // DEP-159's list_projects mixes "Project" and "Brain" kinds together; a Brain is not something a
             // Cockpit project ever binds to.
             if (string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
             {
-                continue;
+                return;
             }
 
-            cancellationToken.ThrowIfCancellationRequested();
+            token.ThrowIfCancellationRequested();
 
             var role = DepotProjectRoleParser.Parse(project.Role);
+            var id = $"{scheme}:{project.Key}";
+            var name = project.Name is { Length: > 0 } ? project.Name : project.Slug;
 
             // Until Depot lets a Viewer get MCP read rights (DEP-side fix, not shipped), Depot's access guard
             // makes every Viewer's read of .cockpit/project.json fail regardless of whether it exists — report
             // that as visible-but-unreadable rather than silently dropped; Editor/Owner failure still means "not shared this way".
-            var definitionResult = await CockpitProjectDefinitionStore.ReadAsync(
-                host, connection.McpServerName, project.Key, cancellationToken).ConfigureAwait(false);
+            using var readCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var definitionTask = CockpitProjectDefinitionStore.ReadAsync(
+                host, connection.McpServerName, project.Key, readCts.Token);
+            var completed = await Task.WhenAny(definitionTask, Task.Delay(DefinitionReadTimeout, token)).ConfigureAwait(false);
+            if (completed != definitionTask)
+            {
+                token.ThrowIfCancellationRequested();
+                readCts.Cancel();
+                _ = definitionTask.ContinueWith(static task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+                states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), SharedProjectReadState.Timeout));
+                return;
+            }
+
+            var definitionResult = await definitionTask.ConfigureAwait(false);
 
             if (definitionResult.Outcome != PluginMcpToolCallOutcome.Success || definitionResult.Definition is not { } definition)
             {
                 if (!role.CanWrite())
                 {
                     unreadable.Add(new UnreadableSharedProject(
-                        $"{scheme}:{project.Key}", project.Name is { Length: > 0 } ? project.Name : project.Slug, role.ToDisplayString()));
+                        id, name, role.ToDisplayString()));
+                    states.Add(new SharedProjectReadStatus(
+                        id, name, role.ToDisplayString(), SharedProjectReadState.Unreadable));
                 }
 
                 // Otherwise: no .cockpit/project.json at all (the ordinary case for a project that never opted into
                 // Cockpit sharing) or a definition this build cannot parse — leave this one project out. One bad or
                 // unshared project must never cost every other project on this connection.
-                continue;
+                return;
             }
 
-            var name = definition.Name is { Length: > 0 }
+            name = definition.Name is { Length: > 0 }
                 ? definition.Name
-                : project.Name is { Length: > 0 } ? project.Name : project.Slug;
+                : name;
 
-            shared.Add(new SharedProject($"{scheme}:{project.Key}", name)
+            shared.Add(new SharedProject(id, name)
             {
                 Description = definition.Description,
                 Role = role.ToDisplayString(),
@@ -96,9 +125,16 @@ internal sealed class DepotSharedProjectSource(
                 CanWriteBack = role.CanWrite(),
                 HasRepository = !string.IsNullOrWhiteSpace(definition.GitUrl),
             });
-        }
+            states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), SharedProjectReadState.Ok));
+        }).ConfigureAwait(false);
 
-        return SharedProjectListResult.Success(shared) with { VisibleButUnreadable = unreadable };
+        var timeoutCount = states.Count(state => state.State == SharedProjectReadState.Timeout);
+        var statusMessage = timeoutCount == 0 ? null : $"{states.Count - timeoutCount} of {states.Count} project definitions read; {timeoutCount} timed out.";
+        return new SharedProjectListResult(true, shared.OrderBy(project => order[project.Id]).ToList(), statusMessage)
+        {
+            VisibleButUnreadable = unreadable.OrderBy(project => order[project.Id]).ToList(),
+            ProjectReadStates = states.OrderBy(state => order[state.Id]).ToList(),
+        };
     }
 
     // Reads `.cockpit/project.json` a second time (AC-246): `ListAsync`'s read only kept Name/Description,

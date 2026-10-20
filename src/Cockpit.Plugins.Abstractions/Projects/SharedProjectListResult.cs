@@ -21,7 +21,23 @@ public sealed record SharedProjectListResult(bool Succeeded, IReadOnlyList<Share
     /// one of these. Empty by default; how the Projects workspace surfaces it is undecided.
     /// </remarks>
     public IReadOnlyList<UnreadableSharedProject> VisibleButUnreadable { get; init; } = [];
+
+    /// <summary>
+    /// The final result for each project the source attempted to read. Sources may use this to retain partial
+    /// progress when one remote project does not answer.
+    /// </summary>
+    public IReadOnlyList<SharedProjectReadStatus> ProjectReadStates { get; init; } = [];
 }
+
+public enum SharedProjectReadState
+{
+    Pending,
+    Ok,
+    Timeout,
+    Unreadable,
+}
+
+public sealed record SharedProjectReadStatus(string Id, string Name, string? Role, SharedProjectReadState State);
 
 /// <summary>
 /// See <see cref="SharedProjectListResult.VisibleButUnreadable"/>.

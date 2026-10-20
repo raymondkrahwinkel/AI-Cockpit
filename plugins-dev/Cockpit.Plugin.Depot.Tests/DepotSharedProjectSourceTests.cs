@@ -23,9 +23,20 @@ public class DepotSharedProjectSourceTests
     private static void _StubRead(ICockpitHost host, string slug, PluginMcpToolCallResult result) =>
         host.CallMcpToolAsync(
             Arg.Any<string>(), "read",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && (string)args["project"]! == slug),
+            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && Equals(args["project"], slug)),
             Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(result));
+
+    private static void _StubReads(ICockpitHost host, Func<string, CancellationToken, Task<PluginMcpToolCallResult>> read) =>
+        host.CallMcpToolAsync(
+            Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var arguments = (IReadOnlyDictionary<string, object?>)call[2];
+                var project = arguments["project"] as string
+                    ?? throw new InvalidOperationException("The read request did not name a project.");
+                return read(project, (CancellationToken)call[4]);
+            });
 
     private static PluginMcpToolCallResult _DefinitionEnvelope(string definitionJson, string checksum = "chk") =>
         PluginMcpToolCallResult.Success(
@@ -123,5 +134,87 @@ public class DepotSharedProjectSourceTests
 
         Assert.Empty(result.Projects);
         Assert.Single(result.VisibleButUnreadable);
+    }
+
+    [Fact]
+    public async Task ListAsync_AProjectThatTimesOut_DoesNotHideTheProjectsThatWereRead()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var originalTimeout = DepotSharedProjectSource.DefinitionReadTimeout;
+        var definitions = Enumerable.Range(1, 24).ToDictionary(
+            index => $"project-{index}",
+            _ => Task.FromResult(_DefinitionEnvelope("""{"schemaVersion":1,"name":"Shared"}""")));
+        var never = new TaskCompletionSource<PluginMcpToolCallResult>();
+        definitions.Add("never", never.Task);
+        var projects = string.Join(',', Enumerable.Range(1, 24).Select(index => $$"""{"slug":"project-{{index}}","name":"Project {{index}}","role":"Editor","kind":"Project"}"""));
+        _StubListProjects(host, $$"""{"projects":[{{projects}},{"slug":"never","name":"Never","role":"Editor","kind":"Project"}]}""");
+        _StubReads(host, (slug, _) => definitions[slug]);
+
+        DepotSharedProjectSource.DefinitionReadTimeout = TimeSpan.FromMilliseconds(30);
+        try
+        {
+            var result = await SourceFor(host).ListAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.True(result.Succeeded);
+            Assert.Equal(24, result.Projects.Count);
+            var timeout = Assert.Single(result.ProjectReadStates, state => state.Id.EndsWith(":never", StringComparison.Ordinal));
+            Assert.Equal(SharedProjectReadState.Timeout, timeout.State);
+            Assert.Equal("24 of 25 project definitions read; 1 timed out.", result.Error);
+        }
+        finally
+        {
+            DepotSharedProjectSource.DefinitionReadTimeout = originalTimeout;
+            never.TrySetResult(_DefinitionEnvelope("""{"schemaVersion":1,"name":"Never"}"""));
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_ReadingDefinitions_NeverExceedsTheConcurrencyLimit()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        var started = new SemaphoreSlim(0);
+        var gate = new TaskCompletionSource<PluginMcpToolCallResult>();
+        var sync = new object();
+        var active = 0;
+        var maximum = 0;
+        var projects = string.Join(',', Enumerable.Range(1, 7).Select(index => $$"""{"slug":"project-{{index}}","name":"Project {{index}}","role":"Editor","kind":"Project"}"""));
+        _StubListProjects(host, $$"""{"projects":[{{projects}}]}""");
+        _StubReads(host, async (_, _) =>
+        {
+            var running = Interlocked.Increment(ref active);
+            lock (sync)
+            {
+                maximum = Math.Max(maximum, running);
+            }
+
+            started.Release();
+            try
+            {
+                return await gate.Task;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
+        });
+
+        var listing = SourceFor(host).ListAsync(CancellationToken.None);
+        try
+        {
+            var firstReads = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => started.WaitAsync(TimeSpan.FromSeconds(1))));
+
+            Assert.All(firstReads, Assert.True);
+            Assert.Equal(6, maximum);
+            gate.TrySetResult(_DefinitionEnvelope("""{"schemaVersion":1,"name":"Shared"}"""));
+            var result = await listing;
+            Assert.Equal(7, result.Projects.Count);
+            Assert.Equal(
+                Enumerable.Range(1, 7).Select(index => $"project-{index}"),
+                result.Projects.Select(project => project.Id.Split(':').Last()));
+        }
+        finally
+        {
+            gate.TrySetResult(_DefinitionEnvelope("""{"schemaVersion":1,"name":"Shared"}"""));
+        }
     }
 }
