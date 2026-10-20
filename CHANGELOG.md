@@ -208,6 +208,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a Kimi or opencode session started on a model the agent does not offer, or refuses, now fails to start
+  and says why, instead of quietly running on the agent's own default model. This also applies to a model chosen in
+  the profile's launch options; a stale "Default model" in the provider's own settings is still skipped quietly.
 - changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
   made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
   as before, and a link that matches no single project is left alone with a warning. Needs Cockpit 0.91.0; Depot 0.11.11.
