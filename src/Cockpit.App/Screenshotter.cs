@@ -616,6 +616,13 @@ internal static class Screenshotter
         ["screenshot-preview-wide"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(1600, 500), "personal - webshop"),
         ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
 
+        // The file preview a clickable path opens, once per body that draws its own inset: rendered markdown, source
+        // text and an image have to sit the same distance from the dialog's edges.
+        ["file-preview-markdown"] = (_, _) => _FilePreview("notes.md", System.Text.Encoding.UTF8.GetBytes(
+            "# Release notes\n\nThe first paragraph runs long enough to wrap against the right edge of the dialog, so the gap on that side can be read as well as the one on the left.\n\n- first item\n- second item\n\n```\nvar x = 1;\n```\n\n| name | size |\n|---|---|\n| a.txt | 1 KB |\n")),
+        ["file-preview-text"] = (_, _) => _FilePreview("Foo.cs", System.Text.Encoding.UTF8.GetBytes("namespace Demo;\n\npublic sealed class Foo\n{\n    public int Bar => 1;\n}\n")),
+        ["file-preview-image"] = (_, _) => _FilePreview("pic.png", _StandInPng(300, 200)),
+
         // AC-509: the first-run wizard shell on its first step, wired the way both production call sites build it
         // — the epic's own five-slot plan, so this baseline is what "Step 1 of 5" and the Depot placeholder
         // actually render as, not just the shell in isolation. Iron Law #9.
@@ -1776,6 +1783,24 @@ internal static class Screenshotter
         cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // The preview reads its file off-thread, so the scene pumps the dispatcher until the navigation has landed.
+    private static Window _FilePreview(string fileName, byte[] content)
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("cockpit-scene-").FullName, fileName);
+        File.WriteAllBytes(path, content);
+
+        var window = Views.FilePreviewWindow.Build(path, null);
+        var navigation = window.WaitForIdleAsync();
+        while (!navigation.IsCompleted)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+
+        navigation.GetAwaiter().GetResult();
+        return window;
     }
 
     // A screenshot-shaped PNG at whatever aspect ratio a preview scene needs, from the same stand-in drawing the

@@ -27,6 +27,9 @@ public partial class FilePreviewWindow : Window
     private const int MaxListedRows = 500;
     private const float SvgRasterSize = 1600f;
 
+    // The inset every body keeps from the dialog's edges: the header's own 16 horizontal, so text lines up with it.
+    private static readonly Thickness BodyPadding = new(16, 12);
+
     // AC-730: Ctrl+scroll zoom range for image/SVG (later PDF) previews, own 10-800% range.
     private const double MinZoom = 0.10;
     private const double MaxZoom = 8.0;
@@ -431,7 +434,7 @@ public partial class FilePreviewWindow : Window
         return loaded.Kind switch
         {
             FilePreviewKind.Image or FilePreviewKind.Svg or FilePreviewKind.Pdf => _ImageBody(loaded.Bitmap!),
-            FilePreviewKind.Markdown or FilePreviewKind.Csv => new MarkdownView { Markdown = loaded.Text },
+            FilePreviewKind.Markdown or FilePreviewKind.Csv => new Border { Padding = BodyPadding, Child = new MarkdownView { Markdown = loaded.Text } },
             FilePreviewKind.Json or FilePreviewKind.Text => _CodeBody(loaded.Text ?? string.Empty, line),
             FilePreviewKind.Directory => _DirectoryBody(loaded.Entries ?? []),
             FilePreviewKind.Missing => _MissingBody(),
@@ -457,7 +460,7 @@ public partial class FilePreviewWindow : Window
         return new Border
         {
             Background = CheckerboardBrush(),
-            Padding = new Thickness(16),
+            Padding = BodyPadding,
             Child = image,
         };
     }
@@ -507,7 +510,7 @@ public partial class FilePreviewWindow : Window
             gutter.Append(i).Append('\n');
         }
 
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(12) };
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = BodyPadding };
 
         var gutterText = new SelectableTextBlock
         {
