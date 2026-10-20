@@ -1243,14 +1243,6 @@
                         <TextBlock Text="{Binding Security.ShellAccessManagedLabel}" Classes="optionsHint"
                                    IsVisible="{Binding Security.ShellAccessManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
-                        <!-- AC-1593: an organisation's neverSend, honest about what it is (AC-494): a promise in
-                             every session's instructions, which a connector outside the cockpit does not see. -->
-                        <StackPanel IsVisible="{Binding Security.NeverSendManaged}">
-                            <CheckBox Content="Drafts only, never send" IsChecked="True" IsEnabled="False"
-                                      ToolTip.Tip="Every session is told never to send, submit, book or pay anything: it prepares, and a person decides and sends. This is an instruction to the assistant, not a technical block. A connector the assistant reaches outside the cockpit, such as a claude.ai mail connector, can still send if the assistant does not follow it."/>
-                            <TextBlock Text="{Binding Security.NeverSendManagedLabel}" Classes="optionsHint"/>
-                        </StackPanel>
-
                         <!-- AC-575: the assistant may skip the Cockpit consent card, per source. Two
                              checkboxes per row rather than one three-state picker, and the rows come from
                              sources the host has stamped — there is no field to type a source name into,
@@ -1310,6 +1302,16 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- AC-1593: an organisation's neverSend, honest about what it is (AC-494): a promise in
+                             every session's instructions, which a connector outside the cockpit does not see. Last,
+                             so the numbering above holds whether it shows or not. -->
+                        <TextBlock Classes="optionsSectionHeader" Text="5. SENDING" IsVisible="{Binding Security.NeverSendManaged}"/>
+                        <StackPanel IsVisible="{Binding Security.NeverSendManaged}">
+                            <CheckBox Content="Drafts only, never send" IsChecked="True" IsEnabled="False"
+                                      ToolTip.Tip="Every session is told never to send, submit, book or pay anything: it prepares, and a person decides and sends. This is an instruction to the assistant, not a technical block. A connector the assistant reaches outside the cockpit, such as a claude.ai mail connector, can still send if the assistant does not follow it."/>
+                            <TextBlock Text="{Binding Security.NeverSendManagedLabel}" Classes="optionsHint"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 
