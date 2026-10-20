@@ -494,7 +494,6 @@ public static class ProvisionManifestApplier
         Say(manifest.Projects?.Shared is { Count: > 0 }, "projects.shared", "shared projects arrive with their connection's plugin");
         var policy = manifest.Policy;
         Say(policy?.Providers is not null, "policy.providers", "allowed providers are not enforced yet");
-        Say(policy?.Permissions is { TerminalAccess: not null } or { ShellAccess: not null }, "policy.permissions", "terminal and shell access are not enforced yet");
         Say(policy?.Permissions?.NeverSend is not null, "policy.permissions.neverSend", "never-send is not enforced yet");
         Say(policy?.Backup is not null, "policy.backup", "the backup floor is not enforced yet");
         Say(manifest.Backup is { Target: not null } or { Schedule: not null }, "backup", "the backup target and schedule are set on this machine for now");

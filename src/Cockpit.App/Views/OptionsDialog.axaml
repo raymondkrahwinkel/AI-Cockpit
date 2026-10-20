@@ -1223,7 +1223,10 @@
                                 ToolTip.Tip="When on, an agent can ask to read a terminal pane you have open — you approve each pane, watch every line live, and it reads only from the moment you approve (never the earlier scrollback). It cannot type into a terminal yet. Off by default: while off the feature is not offered to any agent at all."/>
                         </StackPanel>
                         <CheckBox Content="Allow agents to read my open terminals (with per-pane approval)"
-                                  IsChecked="{Binding Security.TerminalAccessEnabled}"/>
+                                  IsChecked="{Binding Security.TerminalAccessEnabled}"
+                                  IsEnabled="{Binding Security.TerminalAccessEditable}"/>
+                        <TextBlock Text="{Binding Security.TerminalAccessManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding Security.TerminalAccessManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <!-- AC-1066: a session on a provider with no built-in shell (every non-Claude, non-ACP
                              provider) otherwise cannot run rg/git/dotnet/python3 at all. Off by default, like
@@ -1235,7 +1238,10 @@
                                 ToolTip.Tip="When on, any session — including a delegated one on a provider with no built-in shell (Bash is a Claude Code CLI feature, not something the cockpit supplies) — can run a command such as rg, git, dotnet or python3 and read its exit code, stdout and stderr. There is no command allow-list: what runs is decided by the session's permission mode, exactly as for any other write/destructive tool. Off by default: while off the feature is not offered to any agent at all."/>
                         </StackPanel>
                         <CheckBox Content="Allow agents to run shell commands"
-                                  IsChecked="{Binding Security.ShellAccessEnabled}"/>
+                                  IsChecked="{Binding Security.ShellAccessEnabled}"
+                                  IsEnabled="{Binding Security.ShellAccessEditable}"/>
+                        <TextBlock Text="{Binding Security.ShellAccessManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding Security.ShellAccessManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <!-- AC-575: the assistant may skip the Cockpit consent card, per source. Two
                              checkboxes per row rather than one three-state picker, and the rows come from

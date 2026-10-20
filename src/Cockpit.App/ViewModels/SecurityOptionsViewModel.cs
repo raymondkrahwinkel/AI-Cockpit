@@ -19,6 +19,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Shell;
 using Cockpit.Core.Terminal;
+using Cockpit.Core.Provisioning;
 
 namespace Cockpit.App.ViewModels;
 
@@ -53,8 +54,18 @@ public sealed partial class SecurityOptionsViewModel(
     // design-time/unit-test graph like the relays above.
     IBehaviourMemorySync? behaviourSync = null,
     // AC-1456: the connect servers the session list shows as groups; their cards follow those instead of polling.
-    IRemoteServers? remoteServers = null) : ObservableObject
+    IRemoteServers? remoteServers = null,
+    // AC-1593: what the organisation's policy forbids; absent in the design-time/unit-test graph, where nothing is.
+    IOrgPolicy? orgPolicy = null) : ObservableObject
 {
+    public bool TerminalAccessEditable => !OrgPolicyCeilings.TerminalForbidden(orgPolicy?.Current);
+
+    public string? TerminalAccessManagedLabel => TerminalAccessEditable ? null : $"Managed by {orgPolicy?.Current?.By}: off for every agent";
+
+    public bool ShellAccessEditable => !OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current);
+
+    public string? ShellAccessManagedLabel => ShellAccessEditable ? null : $"Managed by {orgPolicy?.Current?.By}: off for every agent";
+
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
     public bool SuspendPersistence { get; set; }

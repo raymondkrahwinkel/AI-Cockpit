@@ -3235,7 +3235,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginProviderConfigViews? providerConfigViews = null,
         IManagedSettings? managedSettings = null,
         IBackupScheduleStore? backupScheduleStore = null,
-        IRegisteredBackupTargets? backupTargets = null)
+        IRegisteredBackupTargets? backupTargets = null,
+        IOrgPolicy? orgPolicy = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3275,7 +3276,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
             nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
             behaviourSync,
-            remoteServers);
+            remoteServers,
+            orgPolicy);
         _ = Security.RefreshAsync();
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with

@@ -4,6 +4,8 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -126,6 +128,29 @@ public class OrgPolicyCeilingTests
         await driver.Received(1).SetDelegatedToolGateAsync("acceptEdits", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
         await driver.DidNotReceive().SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
     }
+
+    // The switch the operator flipped is kept, so lifting the ban gives back exactly what they chose.
+    [Theory]
+    [InlineData("terminal")]
+    [InlineData("shell")]
+    public void AForbiddenAgentSwitch_StaysOff_UntilTheBanIsLifted(string which)
+    {
+        var org = Substitute.For<IOrgPolicy>();
+        org.Current.Returns(new ProvisionPolicy("Acme", Permissions: new ProvisionPermissionPolicy(TerminalAccess: OrgPolicyCeilings.Forbidden, ShellAccess: OrgPolicyCeilings.Forbidden)));
+        var (read, write) = which == "terminal"
+            ? _Switch(new Cockpit.Infrastructure.Terminal.TerminalAccessState(org))
+            : _Switch(new Cockpit.Infrastructure.Shell.ShellAccessState(org));
+
+        write(true);
+        Assert.False(read());
+
+        org.Current.Returns((ProvisionPolicy?)null);
+        Assert.True(read());
+    }
+
+    private static (Func<bool> Read, Action<bool> Write) _Switch(ITerminalAccessSwitch terminal) => (() => terminal.Enabled, value => terminal.Enabled = value);
+
+    private static (Func<bool> Read, Action<bool> Write) _Switch(IShellAccessSwitch shell) => (() => shell.Enabled, value => shell.Enabled = value);
 
     private static IOrgPolicy _Org()
     {
