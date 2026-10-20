@@ -121,7 +121,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
         _policy = await _ReadPolicyAsync(cancellationToken);
-        if (false && OrgProviderPolicy.Refusal(_policy, profile, LaunchPermissionClamp.ModelOf(launchOptions) ?? model ?? OrgProviderPolicy.ModelOf(profile)) is { } refusal)
+        if (OrgProviderPolicy.Refusal(_policy, profile, LaunchPermissionClamp.ModelOf(launchOptions) ?? model ?? OrgProviderPolicy.ModelOf(profile)) is { } refusal)
         {
             throw new OrgPolicyRefusedException(refusal);
         }
