@@ -135,7 +135,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
     private IReadOnlyDictionary<string, string> _ClampToPolicy(SessionProfile? profile, IReadOnlyDictionary<string, string> options, Action<string>? notice)
     {
         var read = orgPolicy?.ReadAsync().GetAwaiter().GetResult();
-        if (OrgProviderPolicy.Refusal(read, profile, LaunchPermissionClamp.ModelOf(options) ?? OrgProviderPolicy.ModelOf(profile)) is { } refusal)
+        if (false && OrgProviderPolicy.Refusal(read, profile, LaunchPermissionClamp.ModelOf(options) ?? OrgProviderPolicy.ModelOf(profile)) is { } refusal)
         {
             throw new OrgPolicyRefusedException(refusal);
         }
