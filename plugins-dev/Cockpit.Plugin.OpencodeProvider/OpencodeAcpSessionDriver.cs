@@ -265,12 +265,14 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             ? """{"permission":{"*":"allow"}}"""
             : """{"permission":{"*":"ask"}}""";
 
-    // The snapshot's own spelling of `model`, matched case-insensitively; the model itself when the snapshot has no
-    // "model" dimension (no evidence either way), and null when the snapshot positively excludes it.
+    // The snapshot's own spelling of `model`, matched case-insensitively; the model itself when there is no snapshot
+    // (no evidence either way), and null when a snapshot excludes it or has no "model" dimension, which
+    // SetLiveOptionAsync would skip without a word.
     private string? _ModelChoice(string model) =>
-        _liveOptions.FirstOrDefault(option => option.Key == "model") is not { } modelOption
+        _liveOptions.Count == 0
             ? model
-            : modelOption.Choices.FirstOrDefault(choice => string.Equals(choice, model, StringComparison.OrdinalIgnoreCase));
+            : _liveOptions.FirstOrDefault(option => option.Key == "model")?.Choices
+                .FirstOrDefault(choice => string.Equals(choice, model, StringComparison.OrdinalIgnoreCase));
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
@@ -424,7 +426,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     {
         // AC-783: validate against the live configOptions snapshot rather than a hardcoded id list (Kimi's own
         // protocol has a fixed three; opencode's is not fixed). Only rejects when the snapshot is non-empty
-        // and positively excludes the key — an empty snapshot is not evidence either way (see _ShouldAttemptModelSwitch).
+        // and positively excludes the key — an empty snapshot is not evidence either way (see _ModelChoice).
         if (_sessionId is not { Length: > 0 } sessionId
             || (_liveOptions.Count > 0 && _liveOptions.All(option => option.Key != key)))
         {

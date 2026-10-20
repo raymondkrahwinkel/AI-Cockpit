@@ -163,7 +163,7 @@ public class KimiAcpSessionDriverTests
         var setConfig = await _WaitForRequestAsync(fake, "session/set_config_option");
         await fake.PushStdoutAsync($$$"""{"id":{{{setConfig.GetProperty("id").GetInt64()}}},"error":{"code":-32602,"message":"model unavailable"}}""");
 
-        var refused = await Assert.ThrowsAnyAsync<Exception>(() => startTask);
+        var refused = await Assert.ThrowsAsync<KimiAcpException>(() => startTask);
         Assert.Equal("kimi-k2", setConfig.GetProperty("params").GetProperty("value").GetString());
         Assert.Contains("does not start", refused.Message);
     }
