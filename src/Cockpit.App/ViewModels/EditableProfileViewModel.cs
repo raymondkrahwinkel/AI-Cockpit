@@ -132,7 +132,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     public IReadOnlyList<SelectableChoice> PermissionCeilingChoiceItems =>
         [.. PermissionCeilingChoices.Select(value => new SelectableChoice(value, value, OrgPolicyCeilings.Allows(OrgPolicyCeilings.DelegationCeiling(_orgPolicy), value)))];
 
-    public string? PermissionCeilingManagedLabel => OrgPolicyCeilings.DelegationCeiling(_orgPolicy) is null ? null : OrgPolicyMarking.ManagedBy(_orgPolicy);
+    public string? PermissionCeilingManagedLabel => OrgPolicyMarking.AtMost(_orgPolicy, OrgPolicyCeilings.DelegationCeiling(_orgPolicy));
 
     // AC-1593: an organisation that forbids auto-approve locks the checkbox; the stored value stays as it is.
     public bool AutoApproveToolsEditable => !OrgPolicyCeilings.AutoApproveForbidden(_orgPolicy);

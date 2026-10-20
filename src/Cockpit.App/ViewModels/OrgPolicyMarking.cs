@@ -12,13 +12,16 @@ public static class OrgPolicyMarking
             ? [.. items.Select(item => item with { IsEnabled = OrgPolicyCeilings.Allows(ceiling, item.Value) })]
             : items;
 
-    public static string? Label(string key, ProvisionPolicy? policy) => _Ceiling(key, policy) is null ? null : ManagedBy(policy);
+    public static string? Label(string key, ProvisionPolicy? policy) => AtMost(policy, _Ceiling(key, policy));
+
+    public static string? AtMost(ProvisionPolicy? policy, string? ceiling) => ceiling is null ? null : $"{ManagedBy(policy)}: at most {ceiling}";
 
     // The ceiling itself when `value` is above it, so a launch choice opens on what will actually run.
     public static string? Snapped(string key, string? value, ProvisionPolicy? policy) =>
         _Ceiling(key, policy) is { } ceiling ? OrgPolicyCeilings.Clamp(ceiling, value) : null;
 
-    public static string? AutoApproveLabel(ProvisionPolicy? policy) => OrgPolicyCeilings.AutoApproveForbidden(policy) ? ManagedBy(policy) : null;
+    public static string? AutoApproveLabel(ProvisionPolicy? policy) =>
+        OrgPolicyCeilings.AutoApproveForbidden(policy) ? $"{ManagedBy(policy)}: off in every session" : null;
 
     public static string? ManagedBy(ProvisionPolicy? policy) => policy is null ? null : $"Managed by {policy.By}";
 
