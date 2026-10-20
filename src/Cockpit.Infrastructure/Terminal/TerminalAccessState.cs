@@ -13,7 +13,7 @@ internal sealed class TerminalAccessState(IOrgPolicy? orgPolicy = null) : ITermi
 
     public bool Enabled
     {
-        get => _enabled && !OrgPolicyCeilings.TerminalForbidden(orgPolicy?.Current);
+        get => _enabled || OrgPolicyCeilings.TerminalForbidden(orgPolicy?.Current) && _enabled;
         set => _enabled = value;
     }
 }
