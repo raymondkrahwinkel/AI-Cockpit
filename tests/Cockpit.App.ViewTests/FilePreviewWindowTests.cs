@@ -60,6 +60,27 @@ public sealed class FilePreviewWindowTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkdownAndTextBodies_KeepTheSameInsetFromTheDialogEdges()
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var markdownPath = Path.Combine(_dir, "notes.md");
+            await File.WriteAllTextAsync(markdownPath, "# Title\n\nbody");
+            var textPath = Path.Combine(_dir, "Foo.cs");
+            await File.WriteAllTextAsync(textPath, "class Foo { }");
+
+            var markdown = FilePreviewWindow.Build(markdownPath, null);
+            await markdown.WaitForIdleAsync();
+            var text = FilePreviewWindow.Build(textPath, null);
+            await text.WaitForIdleAsync();
+
+            var markdownInset = Assert.IsType<Border>(_Body(markdown)).Padding;
+            Assert.Equal(new Thickness(16, 12), markdownInset);
+            Assert.Equal(markdownInset, Assert.IsType<Grid>(_Body(text)).Margin);
+        });
+    }
+
+    [Fact]
     public async Task ImageFile_RendersAnImageOnACheckerboard()
     {
         await HeadlessAvalonia.RunAsync(async () =>

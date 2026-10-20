@@ -94,6 +94,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the file preview dialog now keeps rendered markdown, source text and images the same distance from the
+  dialog's edges as its header, instead of drawing markdown flush against the left edge.
 - fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of
   the wrong type) is now refused as an invalid request instead of being reported as a plugin failure.
 - fixed: Proxmox's **Show fingerprint** now reads the certificate where the plugin connects from. For a server's
