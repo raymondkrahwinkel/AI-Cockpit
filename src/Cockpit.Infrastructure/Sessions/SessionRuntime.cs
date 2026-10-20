@@ -326,6 +326,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
 
         launchOptions = clamped;
+        permissionMode = ceiling;
         return ceiling;
     }
 

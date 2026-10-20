@@ -287,7 +287,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         await runtime.StartAsync(
             start.Profile, start.PermissionMode, start.Model, start.EnabledMcpServerNames, start.WorkingDirectory, start.Resume,
             launchOptions, start.ProjectId);
-        _liveState.SetPermissionMode(start.PermissionMode);
+        _liveState.SetPermissionMode(OrgPolicyCeilings.Clamp(OrgPolicyCeilings.MaxPermissionMode(runtime.Policy), start.PermissionMode) ?? start.PermissionMode);
         _RaiseLiveStateIfChanged();
         StartUsageCatchUp();
         return new SessionLaunched(runtime.IsRunning, runtime.ProcessId, runtime.Capabilities, runtime.LiveOptions, runtime.Policy);

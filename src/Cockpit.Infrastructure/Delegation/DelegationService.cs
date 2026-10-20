@@ -702,10 +702,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
                 // lookup: this runs where the driver may resolve synchronously.
                 projectId: entry.ProjectId);
 
-            // A local-model session treats permissionMode as a no-op and gates every MCP call through the
-            // interactive PermissionRequested flow; with no human to answer it would hang until timeout (AC-78).
-            // So it decides for itself: AutoApproveTools allows everything, otherwise each call is gated (AC-79).
-            // AC-1593: an organisation that forbids auto-approve gets the gate instead, or the ceiling would not be installed at all.
+            // A local-model session gates every MCP call through a prompt nobody answers (AC-78), so it decides itself:
+            // AutoApproveTools allows everything, otherwise each call is gated (AC-79). AC-1593: an organisation that
+            // forbids auto-approve gets the gate, or no ceiling would be installed at all.
             if (entry.Profile.Defaults?.AutoApproveTools == true && !OrgPolicyCeilings.AutoApproveForbidden(policy))
             {
                 await runtime.SetAutoApproveToolsAsync(true);
@@ -732,11 +731,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         }
     }
 
-    // The permission ceiling this task's session actually runs under (AC-117). A request within the profile's
-    // ceiling is honoured outright; one ABOVE it goes to the operator's Approve/Deny gate (#AC-47) as a one-time
-    // `ConsentRisk.Dangerous` consent, never remembered — a prompt-injected agent must never make it standing.
-    // AC-1593: the organisation's ceiling clamps the request first, so no consent is asked above it and nothing
-    // consented can exceed it. A request for nothing runs read-only, which no ceiling is below.
+    // The ceiling this task runs under (AC-117): within the profile's, honoured; above it, a one-time Dangerous consent
+    // (#AC-47), never remembered. AC-1593: the organisation's ceiling clamps the request first, so no consent is asked
+    // above it and nothing consented exceeds it; a request for nothing runs read-only, which no ceiling is below.
     private async Task<string> _EffectiveCeilingAsync(DelegatedTaskEntry entry, ProvisionPolicy? policy)
     {
         var requested = entry.RequestedPermission;

@@ -1901,6 +1901,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // The provider's generic live controls (#45 D4) settle at the same moment as capabilities — the driver
             // lists them once its session is up (Codex resolves its model list on start) — so read them here too.
             OrgPolicy = launched.Policy;
+            _ShowClampedPermissionMode();
             _PopulateLiveControls(launched.LiveOptions);
 
             OnPropertyChanged(nameof(CanPasteImages));
@@ -1954,7 +1955,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Live-switches the running session's permission mode. No-op before the session has started.
     partial void OnSelectedPermissionModeChanged(PermissionModeOption value)
     {
-        if (!_control.IsRunning)
+        if (!_control.IsRunning || _showingClampedMode)
         {
             return;
         }
@@ -2115,6 +2116,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Rebuilds the generic live-control panel from the running driver's declared options (#45 D4).
+    // AC-1593: a start the policy clamped runs at the ceiling, so the dropdown shows that rather than the mode asked for.
+    // The session already runs in it, so showing it must not send a switch.
+    private void _ShowClampedPermissionMode()
+    {
+        if (OrgPolicyCeilings.Clamp(OrgPolicyCeilings.MaxPermissionMode(OrgPolicy), SelectedPermissionMode.Value) is { } ceiling)
+        {
+            _showingClampedMode = true;
+            IsPermissionModeLocked = false;
+            SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(ceiling);
+            _showingClampedMode = false;
+        }
+    }
+
+    private bool _showingClampedMode;
+
     private void _PopulateLiveControls(IReadOnlyList<SessionLiveOption> options)
     {
         LiveControls.Clear();
