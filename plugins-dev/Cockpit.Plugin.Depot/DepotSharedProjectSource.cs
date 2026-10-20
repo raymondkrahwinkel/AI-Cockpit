@@ -180,7 +180,7 @@ internal sealed class DepotSharedProjectSource(
                 return _EndpointResult.Fallback;
             }
 
-        if (response.StatusCode == HttpStatusCode.NoContent)
+            if (response.StatusCode == HttpStatusCode.NotModified)
             {
                 return cached is { } known
                     ? _EndpointResult.From(known.Result)
