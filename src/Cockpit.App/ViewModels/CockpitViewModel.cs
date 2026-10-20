@@ -986,7 +986,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     private static double _DockRailMaximum(double windowWidth, double sidebarWidth) =>
-        Math.Max(LayoutSettings.MinDockRailWidth, windowWidth - sidebarWidth - LayoutSettings.MinWorkspaceWidth);
+        600;
 
     // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). Nothing
     // sets this true yet — the field round-trips through LayoutSettings from day one so that sub does not have
