@@ -160,6 +160,25 @@ public sealed class ScheduledBackupTests : IDisposable
         Assert.Equal(72, (await _store.LoadAsync()).IntervalHours);
     }
 
+    /// <summary>
+    /// AC-1593: an organisation that allows only Depot, on a machine with no Depot connection, gets no backup in the
+    /// local folder: the run says why, on screen and on disk, and the clock stays put for the next tick.
+    /// </summary>
+    [Fact]
+    public async Task NoTargetTheOrganisationAllows_IsSaid_AndNothingIsWritten()
+    {
+        var org = Substitute.For<IOrgPolicy>();
+        org.ReadAsync(Arg.Any<CancellationToken>()).Returns(new ProvisionPolicy("Acme", Backup: new ProvisionBackupPolicy(AllowedTargets: ["depot"])));
+        using var scheduled = new ScheduledBackup(_service, _store, _toasts, null, _clock, org) { TargetFor = _ => _target };
+        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24));
+
+        await scheduled.RunOnceAsync();
+
+        Assert.Empty(_target.Entries);
+        Assert.Contains("Acme allows it only to depot", Assert.Single(_toasts.Messages));
+        Assert.Equal(Assert.Single(_toasts.Messages), (await _store.LoadStateAsync()).LastFailure);
+    }
+
     private sealed class _Target : IBackupTarget
     {
         public Dictionary<string, DateTimeOffset> Entries { get; } = [];

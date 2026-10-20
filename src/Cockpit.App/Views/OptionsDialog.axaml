@@ -1857,6 +1857,7 @@
                                    IsVisible="{Binding Security.BackupCredentialsManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
+                                  IsEnabled="{Binding Security.BackupCredentialsEditable}"
                                   ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside the cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>
 
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">

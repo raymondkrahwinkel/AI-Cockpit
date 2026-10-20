@@ -98,11 +98,12 @@ internal sealed class BackupService(
         BackupOptions options,
         CancellationToken cancellationToken)
     {
-        // AC-1593: one guard where every backup is written, so a forbidden key ring stays out whatever the checkbox said.
-        if (options.IncludeCredentials && OrgPolicyCeilings.CredentialsForbidden(orgPolicy?.Current))
+        // AC-1593: one guard where every backup is written, so a forbidden key ring stays out whatever the checkboxes said;
+        // the profiles' own config directories hold the agents' logins, so they stay out with it.
+        if ((options.IncludeCredentials || options.IncludeProfileConfigs) && OrgPolicyCeilings.CredentialsForbidden(orgPolicy?.Current))
         {
-            logger.LogInformation("Keys and tokens are left out of this backup: {By} forbids them", orgPolicy?.Current?.By);
-            options = options with { IncludeCredentials = false };
+            logger.LogInformation("Keys, tokens and agent logins are left out of this backup: {By} forbids them", orgPolicy?.Current?.By);
+            options = options with { IncludeCredentials = false, IncludeProfileConfigs = false };
         }
 
         if (!Directory.Exists(root))
