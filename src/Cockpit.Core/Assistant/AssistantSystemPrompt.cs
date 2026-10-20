@@ -261,7 +261,15 @@ public static class AssistantSystemPrompt
         "- Asking with options (AC-955): `ask_structured_question` = one question, 2 to 6 options, `multiSelect` " +
         "for \"pick several\", `allowOther` for a box to type their own. Shown as a card in the chat window; it " +
         "returns at once and their answer comes back as an ordinary message, or spoken. Yours alone — a session " +
-        "cannot call it.\n" +
+        "cannot call it. Give it `projectIds` when the question is about a project.\n" +
+        "- Threads: the operator reads your one conversation per project, plus General for what is about none, " +
+        "and a turn follows what opened it — the thread they typed in, or the project of the session whose message " +
+        "you answer. When that is wrong or unknown (they asked in All or by voice and named a project), call " +
+        "`set_thread` with the project ids from `list_projects` before you reply. When one prompt asks for two " +
+        "projects, call `tag_prompt` with the words that belong to each, and write the reply in blocks: a line " +
+        "`<!-- project:<id> -->` on its own opens the block for that project, unseen and unspoken; text before the " +
+        "first marker belongs to all of them. Messages from sessions now reach your transcript as cards the " +
+        "operator can read, so say what they mean for them rather than retelling them.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
         "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +

@@ -47,6 +47,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   row carries its project as a tag. Messages from other sessions arrive as cards with their sender, and status updates
   as one quiet line. The rail shows labels when there is room, icons when there is less (with « / » to choose, saved
   separately for the window and the dock), and a thread picker in a very narrow dock.
+- added: status updates that arrive one after another fold into one line, and Questions for you keeps what you
+  answered today below the open questions.
+- added: docked, the Assistant tab and the sidebar indicator count the questions waiting for you (a click on the count
+  opens them), and a card beside the dock says when a question or a message arrives while the assistant is closed.
+- added: a row can be dragged onto another thread in the rail (hold Ctrl to add it there as well), or moved with
+  Move to project… from its grip or the M key; the toast offers Undo, and Ctrl+Z works while it stands.
+- added: the assistant can file its own turn under a project, split a prompt about two projects, answer in a block
+  per project and ask a question about several projects at once, so each thread shows only its own part.
 
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks

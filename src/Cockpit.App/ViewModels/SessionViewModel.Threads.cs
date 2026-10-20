@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Agents;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -158,6 +159,86 @@ public partial class SessionViewModel
         }
 
         _FoldStatus(entry, previous);
+    }
+
+    // --- The assistant's own filing (§ 9.4) --------------------------------------------------------------------------
+
+    // ask_structured_question with projectIds: the card waits in each of their threads, or follows its turn without.
+    public TranscriptEntryViewModel AddQuestion(string question, string inputJson, IReadOnlyList<string> projectIds)
+    {
+        var (known, _) = _KnownProjects(projectIds);
+        var row = new TranscriptEntryViewModel(TranscriptEntryKind.Question, question)
+        {
+            InputJson = inputJson,
+            QuestionPrompts = AskUserQuestionViewModel.Parse(inputJson),
+            IsPendingBrokerAnswer = true,
+            ProjectIds = known.Count == 0 ? null : known,
+            ProjectSources = known.Count == 0 ? null : known.ToDictionary(id => id, _ => ProjectSource.AssistantTag),
+        };
+
+        Transcript.Add(row);
+        return row;
+    }
+
+    // set_thread: the rest of the turn follows these projects, the prompt itself stays where the operator put it.
+    public AssistantThreadResult SetTurnThreads(IReadOnlyList<string> projectIds)
+    {
+        if (Transcript.LastOrDefault(row => row.StartsTurn) is not { } opening)
+        {
+            return new AssistantThreadResult(false, "There is no prompt or message yet that this turn could belong to.");
+        }
+
+        var (known, note) = _KnownProjects(projectIds);
+        opening.TurnProjectIds = known;
+        return new AssistantThreadResult(true, note);
+    }
+
+    // tag_prompt: each quote is looked up in the operator's last prompt; the prompt is then in every project named, and
+    // knows which span is whose. A quote that is not in it is no reason to refuse: the prompt still gets that project.
+    public AssistantThreadResult TagLastPrompt(IReadOnlyList<(string ProjectId, string Quote)> parts)
+    {
+        if (Transcript.LastOrDefault(row => row.IsUserRow) is not { } prompt)
+        {
+            return new AssistantThreadResult(false, "The operator has not said anything yet in this conversation.");
+        }
+
+        var (known, note) = _KnownProjects([.. parts.Select(part => part.ProjectId)]);
+        var spans = new List<TranscriptProjectPart>();
+        var missing = new List<string>();
+        foreach (var (projectId, quote) in parts.Where(part => known.Contains(part.ProjectId)))
+        {
+            var start = string.IsNullOrWhiteSpace(quote) ? -1 : prompt.Text.IndexOf(quote.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                missing.Add(quote);
+                continue;
+            }
+
+            spans.Add(new TranscriptProjectPart(projectId, start, quote.Trim().Length));
+        }
+
+        prompt.ProjectSources = known.ToDictionary(id => id, _ => ProjectSource.AssistantTag);
+        prompt.ProjectParts = spans.Count > 0 ? spans : null;
+        prompt.ProjectIds = known;
+
+        if (missing.Count > 0)
+        {
+            note = (note is null ? string.Empty : note + " ")
+                + $"Not found in the prompt, so the whole prompt carries those projects: {string.Join(", ", missing.Select(quote => $"\"{quote}\""))}.";
+        }
+
+        return new AssistantThreadResult(true, note);
+    }
+
+    // An id no project has would file a row under a thread nobody can open; it is dropped and said back instead.
+    private (IReadOnlyList<string> Known, string? Note) _KnownProjects(IReadOnlyList<string> projectIds)
+    {
+        var ids = projectIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        var unknown = ids.Where(id => Threads is not null && Threads.ProjectName(id) is null).ToList();
+        IReadOnlyList<string> known = [.. ids.Except(unknown)];
+        return (known, unknown.Count == 0
+            ? null
+            : $"No project has the id {string.Join(", ", unknown)}; take the ids from list_projects. That part went to General.");
     }
 
     // --- Moving a row to another thread (§ 9.6)---------------------------------------------------------------------

@@ -1087,7 +1087,8 @@ internal sealed class AssistantAgentMcpTools(
         [Description("2 to 6 choices, each a short label (what comes back as the answer) and an optional one-line description.")] List<AskStructuredQuestionOptionArg> options,
         [Description("false (default): radio buttons, one pick, exclusive. true: checkboxes, several picks at once.")] bool multiSelect = false,
         [Description("true (default): adds an \"Other, namely…\" row with a box for their own words. false: leaves it off, for a question where nothing outside the list is a sensible answer.")] bool allowOther = true,
-        [Description("A short chip shown above the question, 12 characters or fewer. Leave it out for none.")] string? header = null)
+        [Description("A short chip shown above the question, 12 characters or fewer. Leave it out for none.")] string? header = null,
+        [Description("The projects this question is about, by id from list_projects. It waits once in Questions for you and in each of their threads. Leave it out and it follows the turn it was asked in.")] string[]? projectIds = null)
     {
         try
         {
@@ -1116,7 +1117,7 @@ internal sealed class AssistantAgentMcpTools(
             }
 
             var result = await gateway.AskStructuredQuestionAsync(
-                question.Trim(), trimmedOptions, multiSelect, allowOther, header?.Trim()).ConfigureAwait(false);
+                question.Trim(), trimmedOptions, multiSelect, allowOther, header?.Trim(), projectIds ?? []).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new
@@ -1126,6 +1127,53 @@ internal sealed class AssistantAgentMcpTools(
                     note = "The card is in the chat window now. Their answer, if they click it, arrives as their own next message — this call does not wait for one.",
                 })
                 : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "set_thread", ReadOnly = false, Destructive = false)]
+    [Description("Files the rest of this turn — your reply, your tool calls, your questions — under the project threads it is about. Your conversation is one, but the operator reads it per project: a thread for each, plus General for what is about none. WITHOUT THIS CALL a turn follows what opened it: the thread the operator typed in, or the project of the session whose message you are answering. CALL IT WHEN THAT IS WRONG OR UNKNOWN: they asked in All or by voice and named a project (\"hoe staat Depot ervoor?\"), or the turn is about two projects at once. Ids come from list_projects; an empty list is General. Once per turn, early, before you write the reply. It never moves the operator's own prompt — tag_prompt does that.")]
+    public async Task<string> SetThreadAsync(
+        [Description("The project ids this turn is about, from list_projects. Empty for General.")] string[] projectIds)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.SetThreadAsync(projectIds ?? []).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "tag_prompt", ReadOnly = false, Destructive = false)]
+    [Description("Splits the operator's last prompt over the projects it is about, when one prompt asks for two things in two projects (\"voor Depot dit, voor WayMark dat\"). For each project, quote the words of the prompt that belong to it, exactly as they were said; the prompt then shows in each thread, with its own part in front. A quote that is not in the prompt still gives the prompt that project, and the reply says so. Pair it with set_thread for the same projects, and write your reply in blocks: a line `<!-- project:<id> -->` on its own opens the block for that project, so each thread shows only its own part. Text before the first marker belongs to all of them. Ids come from list_projects.")]
+    public async Task<string> TagPromptAsync(
+        [Description("One entry per project: its id from list_projects and the words of the prompt that belong to it.")] List<TagPromptPartArg> parts)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (parts is not { Count: > 0 })
+            {
+                return _Serialize(new { ok = false, error = "tag_prompt takes at least one part." });
+            }
+
+            var result = await gateway.TagPromptAsync([.. parts.Select(part => (part.ProjectId, part.Quote))]).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
         }
         catch (Exception exception)
         {
@@ -1481,3 +1529,8 @@ internal sealed class AssistantAgentMcpTools(
 public sealed record AskStructuredQuestionOptionArg(
     [property: Description("The choice's label — shown on the chip, and what comes back as the answer.")] string Label,
     [property: Description("An optional one-line explanation shown beside the label.")] string? Description = null);
+
+// One project's part of a prompt for `tag_prompt`: the project and the words of the prompt that belong to it.
+public sealed record TagPromptPartArg(
+    [property: Description("The project's id, from list_projects.")] string ProjectId,
+    [property: Description("The words of the prompt that belong to this project, quoted as they were said.")] string Quote);

@@ -176,6 +176,33 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same card, filed under <paramref name="projectIds"/> in the assistant's threads (voorstel § 9.4): it waits
+    /// once in Questions for you and in each of their threads. A gateway without threads shows it unfiled.
+    /// </summary>
+    Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+        string question,
+        IReadOnlyList<(string Label, string? Description)> options,
+        bool multiSelect,
+        bool allowOther,
+        string? header,
+        IReadOnlyList<string> projectIds,
+        CancellationToken cancellationToken = default) =>
+        AskStructuredQuestionAsync(question, options, multiSelect, allowOther, header, cancellationToken);
+
+    /// <summary>
+    /// Files the rest of the current turn under <paramref name="projectIds"/> (set_thread, § 9.4); empty is General.
+    /// </summary>
+    Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Splits the operator's last prompt over projects by quoting each part (tag_prompt, § 9.4).
+    /// </summary>
+    Task<AssistantThreadResult> TagPromptAsync(
+        IReadOnlyList<(string ProjectId, string Quote)> parts, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
     /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — exists only because
     /// <c>Cockpit.Infrastructure</c>, where <c>open_url</c> lives, cannot reference <c>Cockpit.App</c> to reach
     /// <c>ExternalLink</c>. Refuses a non-absolute <c>http</c>/<c>https</c> address, same rule as <c>ExternalLink.TryParseWebAddress</c>.
@@ -272,6 +299,13 @@ public sealed record AssistantProjectUpdateResult(bool Ok, string? ProjectId, st
 
 // What came of raising a structured question card (AC-955). Same shape and same reason as `AgentStopResult` — a
 // refusal is a sentence the assistant says, not an exception it fails on.
+// What came of set_thread or tag_prompt. A note is said back to the assistant even when it worked: a quote that was not
+// found, an id no project has.
+public sealed record AssistantThreadResult(bool Ok, string? Note)
+{
+    public static AssistantThreadResult Unavailable { get; } = new(false, "The threads are not available here.");
+}
+
 public sealed record AskStructuredQuestionResult(bool Ok, string? Error)
 {
     public static AskStructuredQuestionResult Shown() => new(true, null);

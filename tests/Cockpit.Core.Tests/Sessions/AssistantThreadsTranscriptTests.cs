@@ -180,6 +180,38 @@ public class AssistantThreadsTranscriptTests : IDisposable
         Assert.DoesNotContain(Cockpit.Core.Voice.TtsProseExtractor.Extract(depot.Text), sentence => sentence.Contains("project", StringComparison.Ordinal));
     }
 
+    // § 9.4: the assistant files its own turn, splits a prompt by quoting it and asks per project; an id no project has
+    // and a quote that is not in the prompt are said back, never a reason to refuse.
+    [Fact]
+    public void TheAssistantsOwnFiling_SetThreadTagPromptAndAQuestionsProjects()
+    {
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>());
+        vm.Threads = new ThreadLookup(id => id is "depot" or "waymark" ? id : null, _ => null, _ => null);
+        var prompt = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "Voor Depot de route, voor WayMark het token");
+        vm.Transcript.Add(prompt);
+        var reply = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Doe ik.");
+        vm.Transcript.Add(reply);
+
+        var thread = vm.SetTurnThreads(["depot", "nergens"]);
+        Assert.True(thread.Ok);
+        Assert.Contains("nergens", thread.Note, StringComparison.Ordinal);
+        Assert.Equal(["depot"], reply.ThreadProjectIds);
+        Assert.True(prompt.IsGeneral);
+
+        var tagged = vm.TagLastPrompt([("depot", "de route"), ("waymark", "het token"), ("waymark", "iets anders")]);
+        Assert.True(tagged.Ok);
+        Assert.Contains("iets anders", tagged.Note, StringComparison.Ordinal);
+        Assert.Equal(["depot", "waymark"], prompt.ThreadProjectIds);
+        Assert.Equal(ProjectSource.AssistantTag, prompt.SourceFor("waymark"));
+        Assert.Equal(new TranscriptProjectPart("depot", 11, 8), prompt.ProjectParts![0]);
+
+        var question = vm.AddQuestion("Welke?", """{"questions":[{"question":"Welke?","options":[{"label":"A"},{"label":"B"}]}]}""", ["depot", "waymark"]);
+        Assert.Equal(1, vm.OpenQuestionCount);
+        Assert.Equal(1, vm.OpenQuestionCountIn("depot"));
+        Assert.Equal(1, vm.OpenQuestionCountIn("waymark"));
+        Assert.Equal(ProjectSource.AssistantTag, question.SourceFor("depot"));
+    }
+
     // § 9.6: the grip sits on a reply's last row, so moving it moves the whole reply, and Undo takes all of it back.
     [Fact]
     public void MovingAReply_MovesEveryRowOfIt_AndUndoPutsThemAllBack()
