@@ -52,7 +52,7 @@ internal sealed class OrgPolicy : IOrgPolicy, ISingletonService
                 {
                     _stale = true;
                     _logger?.LogWarning(exception, "The organisation policy could not be read; terminal and shell access stay off until it can");
-                    return Unreadable;
+                    return null;
                 }
             }
 
