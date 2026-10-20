@@ -153,7 +153,7 @@ public class DepotSharedProjectSourceTests
 
             Assert.True(result.Succeeded);
             Assert.Equal(24, result.Projects.Count);
-            var timeout = Assert.Single(result.ProjectReadStates.Where(state => state.Id.EndsWith(":never", StringComparison.Ordinal)));
+            var timeout = Assert.Single(result.ProjectReadStates, state => state.Id.EndsWith(":never", StringComparison.Ordinal));
             Assert.Equal(SharedProjectReadState.Timeout, timeout.State);
             Assert.Equal("24 of 25 project definitions read; 1 timed out.", result.Error);
         }

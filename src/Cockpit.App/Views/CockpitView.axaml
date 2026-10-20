@@ -1543,8 +1543,8 @@
                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <Button Content="↻ Refresh" Classes="Subtle"
                                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.RefreshSharedProjectsCommand}"/>
-                                        <ProgressRing Width="14" Height="14"
-                                                      IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.IsRefreshingSharedProjects}"/>
+                                        <ProgressBar Width="32" Height="4" IsIndeterminate="True"
+                                                     IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.IsRefreshingSharedProjects}"/>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
                                                HorizontalAlignment="Center"

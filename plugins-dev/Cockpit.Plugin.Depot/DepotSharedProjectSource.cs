@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
@@ -126,8 +127,8 @@ internal sealed class DepotSharedProjectSource(
         }).ConfigureAwait(false);
 
         var timeoutCount = states.Count(state => state.State == SharedProjectReadState.Timeout);
-        var error = timeoutCount == 0 ? null : $"{states.Count - timeoutCount} of {states.Count} project definitions read; {timeoutCount} timed out.";
-        return new SharedProjectListResult(true, shared.ToList(), error)
+        var statusMessage = timeoutCount == 0 ? null : $"{states.Count - timeoutCount} of {states.Count} project definitions read; {timeoutCount} timed out.";
+        return new SharedProjectListResult(true, shared.ToList(), statusMessage)
         {
             VisibleButUnreadable = unreadable.ToList(),
             ProjectReadStates = states.ToList(),
