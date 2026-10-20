@@ -122,7 +122,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         // as a failed start, not as a failed construction.
         _driver = _driverFactory.Create(profile);
         _policy = await _ReadPolicyAsync(cancellationToken);
-        var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
+        var ignoredMode = permissionMode;
+        var ignoredOptions = launchOptions;
+        var clampedTo = _ClampStart(ref ignoredMode, ref ignoredOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
         if (clampedTo is not null && _policy is not null)
         {

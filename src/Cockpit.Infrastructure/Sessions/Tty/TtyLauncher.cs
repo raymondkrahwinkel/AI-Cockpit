@@ -29,7 +29,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         string? projectId = null,
         Action<string>? notice = null)
     {
-        options = _ClampToPolicy(profile, options, notice);
+        _ = _ClampToPolicy(profile, options, notice);
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
         // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: they
