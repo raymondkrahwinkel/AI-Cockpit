@@ -1,9 +1,12 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
@@ -126,6 +129,67 @@ public class OrgPolicyCeilingTests
         await driver.Received(1).SetDelegatedToolGateAsync("acceptEdits", Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
         await driver.DidNotReceive().SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
     }
+
+    // The switch the operator flipped is kept, so lifting the ban gives back exactly what they chose. The session
+    // tools that run a command answer to the shell ban too, though they never answered to the switch.
+    [Theory]
+    [InlineData("terminal")]
+    [InlineData("shell")]
+    [InlineData("start-run")]
+    [InlineData("run-elevated")]
+    [InlineData("unreadable")]
+    public async Task AForbiddenAgentSwitch_StaysOff_UntilTheBanIsLifted(string which)
+    {
+        if (which == "unreadable")
+        {
+            // Neither the settings nor their backup parse: the switch reads as off rather than throwing into the fan-out.
+            var directory = Directory.CreateTempSubdirectory("ac1593-").FullName;
+            try
+            {
+                var path = Path.Combine(directory, "cockpit.json");
+                await File.WriteAllTextAsync(path, "{ not json");
+                await File.WriteAllTextAsync(path + ".bak", "{ not json");
+                var terminal = new Cockpit.Infrastructure.Terminal.TerminalAccessState(new Cockpit.Infrastructure.Provisioning.OrgPolicy(path)) { Enabled = true };
+
+                Assert.False(terminal.Enabled);
+            }
+            finally
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+
+            return;
+        }
+
+        var org = Substitute.For<IOrgPolicy>();
+        org.Current.Returns(new ProvisionPolicy("Acme", Permissions: new ProvisionPermissionPolicy(TerminalAccess: OrgPolicyCeilings.Forbidden, ShellAccess: OrgPolicyCeilings.Forbidden)));
+        if (which is "start-run" or "run-elevated")
+        {
+            var runner = Substitute.For<ITrackedCommandRunner>();
+            var tools = new SessionStatusTools(Substitute.For<ISessionLabelSink>(), runner, new RunTracker(), Substitute.For<IWorkspaceAgentGateway>(),
+                Substitute.For<IWorkspaceAgentCoordinator>(), Substitute.For<IAgentMessageInbox>(), orgPolicy: org);
+            var reply = which == "start-run"
+                ? await tools.StartRunAsync(".", "dotnet", session: "pane")
+                : await tools.RunElevatedAsync("Get-Date", ".", "test", session: "pane");
+
+            Assert.Contains("Acme does not allow agents to run commands", reply);
+            return;
+        }
+
+        var (read, write) = which == "terminal"
+            ? _Switch(new Cockpit.Infrastructure.Terminal.TerminalAccessState(org))
+            : _Switch(new Cockpit.Infrastructure.Shell.ShellAccessState(org));
+
+        write(true);
+        Assert.False(read());
+
+        org.Current.Returns((ProvisionPolicy?)null);
+        Assert.True(read());
+    }
+
+    private static (Func<bool> Read, Action<bool> Write) _Switch(ITerminalAccessSwitch terminal) => (() => terminal.Enabled, value => terminal.Enabled = value);
+
+    private static (Func<bool> Read, Action<bool> Write) _Switch(IShellAccessSwitch shell) => (() => shell.Enabled, value => shell.Enabled = value);
 
     private static IOrgPolicy _Org()
     {
