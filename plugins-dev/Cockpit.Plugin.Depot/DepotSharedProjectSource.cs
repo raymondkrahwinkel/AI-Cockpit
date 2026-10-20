@@ -1,4 +1,8 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
@@ -22,11 +26,30 @@ internal sealed class DepotSharedProjectSource(
 
     private const int DefinitionReadConcurrency = 6;
 
+    private string CacheKey => $"shared-projects:{connection.Id}";
+
     public string Key => scheme;
 
     public string SourceName => $"Depot — {connection.Name}";
 
     public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
+    {
+        var endpoint = await _ListEndpointAsync(cancellationToken).ConfigureAwait(false);
+        if (!endpoint.UseMcp)
+        {
+            return endpoint.Result;
+        }
+
+        var result = await _ListFromMcpAsync(cancellationToken).ConfigureAwait(false);
+        if (result.Succeeded)
+        {
+            host.Cache.Set(CacheKey, new _CachedProjects(null, DateTimeOffset.UtcNow, result));
+        }
+
+        return result;
+    }
+
+    private async Task<SharedProjectListResult> _ListFromMcpAsync(CancellationToken cancellationToken)
     {
         var listResult = await host.CallMcpToolAsync(
             connection.McpServerName,
@@ -124,6 +147,7 @@ internal sealed class DepotSharedProjectSource(
                 // minimum DepotProjectRoleParser's own remarks already earmarked this enum for.
                 CanWriteBack = role.CanWrite(),
                 HasRepository = !string.IsNullOrWhiteSpace(definition.GitUrl),
+                Organization = _OrganizationFromAddress(project.Address),
             });
             states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), SharedProjectReadState.Ok));
         }).ConfigureAwait(false);
@@ -135,6 +159,190 @@ internal sealed class DepotSharedProjectSource(
             VisibleButUnreadable = unreadable.OrderBy(project => order[project.Id]).ToList(),
             ProjectReadStates = states.OrderBy(state => order[state.Id]).ToList(),
         };
+    }
+
+    private async Task<_EndpointResult> _ListEndpointAsync(CancellationToken cancellationToken)
+    {
+        var cached = host.Cache.Get<_CachedProjects>(CacheKey);
+        HttpClient? ownedClient = null;
+        try
+        {
+            var client = httpClient ?? (ownedClient = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName)));
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{connection.Url.TrimEnd('/')}/cockpit/projects");
+            if (cached?.Etag is { Length: > 0 } etag)
+            {
+                request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag));
+            }
+
+            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return _EndpointResult.Fallback;
+            }
+
+            if (response.StatusCode == HttpStatusCode.NotModified)
+            {
+                return cached is { } known
+                    ? _EndpointResult.From(known.Result)
+                    : _EndpointResult.From(SharedProjectListResult.Failed("Depot confirmed an unchanged project list, but no local list is available."));
+            }
+
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                return _EndpointResult.From(SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects."));
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return _Unavailable(cached);
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<_ProjectsPayload>(_Json, cancellationToken).ConfigureAwait(false);
+            if (payload?.Projects is not { } projects)
+            {
+                return _EndpointResult.From(SharedProjectListResult.Failed("Depot's project list came back in an unexpected shape."));
+            }
+
+            var result = _FromEndpoint(projects);
+            host.Cache.Set(CacheKey, new _CachedProjects(response.Headers.ETag?.Tag, DateTimeOffset.UtcNow, result));
+            return _EndpointResult.From(result);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return _Unavailable(cached);
+        }
+        finally
+        {
+            ownedClient?.Dispose();
+        }
+    }
+
+    private static _EndpointResult _Unavailable(_CachedProjects? cached) =>
+        cached is { } known
+            ? _EndpointResult.From(known.Result with { Error = $"Depot is unavailable; last known list · {known.CachedAt.ToLocalTime():g}." })
+            : _EndpointResult.From(SharedProjectListResult.Failed("Depot did not return a list of projects."));
+
+    private SharedProjectListResult _FromEndpoint(IReadOnlyList<_EndpointProject> projects)
+    {
+        var shared = new List<SharedProject>();
+        var unreadable = new List<UnreadableSharedProject>();
+        var states = new List<SharedProjectReadStatus>();
+
+        foreach (var project in projects)
+        {
+            if (string.IsNullOrWhiteSpace(project.Slug) || string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var id = $"{scheme}:{project.Address ?? project.Slug}";
+            var name = project.Name is { Length: > 0 } value ? value : project.Slug;
+            var role = DepotProjectRoleParser.Parse(project.Role);
+            var organization = project.Organization is { Slug: { Length: > 0 } organizationSlug }
+                ? new SharedProjectOrganization(organizationSlug, project.Organization.Name, project.Organization.Role)
+                : null;
+            var cockpit = project.Cockpit;
+            var state = _StateFor(cockpit?.State);
+            if (state != SharedProjectReadState.Ok || cockpit?.Definition is not { } definition)
+            {
+                states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), state == SharedProjectReadState.Ok ? SharedProjectReadState.Invalid : state));
+                if (!role.CanWrite())
+                {
+                    unreadable.Add(new UnreadableSharedProject(id, name, role.ToDisplayString()));
+                }
+
+                continue;
+            }
+
+            name = definition.Name is { Length: > 0 } definedName ? definedName : name;
+            shared.Add(new SharedProject(id, name)
+            {
+                Description = definition.Description,
+                Role = role.ToDisplayString(),
+                CanWriteBack = role.CanWrite(),
+                HasRepository = !string.IsNullOrWhiteSpace(definition.GitUrl),
+                Organization = organization,
+            });
+            states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), SharedProjectReadState.Ok));
+        }
+
+        return new SharedProjectListResult(true, shared, null)
+        {
+            VisibleButUnreadable = unreadable,
+            ProjectReadStates = states,
+        };
+    }
+
+    private static SharedProjectReadState _StateFor(string? state) => state switch
+    {
+        "ok" => SharedProjectReadState.Ok,
+        "absent" => SharedProjectReadState.Absent,
+        "tooLarge" => SharedProjectReadState.TooLarge,
+        _ => SharedProjectReadState.Invalid,
+    };
+
+    private static SharedProjectOrganization? _OrganizationFromAddress(string? address)
+    {
+        if (address is null)
+        {
+            return null;
+        }
+
+        var separator = address.IndexOf('/');
+        return separator > 0 ? new SharedProjectOrganization(address[..separator], null, null) : null;
+    }
+
+    private static readonly JsonSerializerOptions _Json = new(JsonSerializerDefaults.Web);
+
+    private sealed record _CachedProjects(string? Etag, DateTimeOffset CachedAt, SharedProjectListResult Result);
+
+    private sealed record _EndpointResult(bool UseMcp, SharedProjectListResult Result)
+    {
+        public static readonly _EndpointResult Fallback = new(true, SharedProjectListResult.Failed("Depot's projects endpoint is unavailable."));
+
+        public static _EndpointResult From(SharedProjectListResult result) => new(false, result);
+    }
+
+    private sealed class _ProjectsPayload
+    {
+        public List<_EndpointProject>? Projects { get; set; }
+    }
+
+    private sealed class _EndpointProject
+    {
+        public string? Address { get; set; }
+
+        public string? Slug { get; set; }
+
+        public string? Name { get; set; }
+
+        public string? Role { get; set; }
+
+        public string? Kind { get; set; }
+
+        public _EndpointOrganization? Organization { get; set; }
+
+        public _EndpointCockpit? Cockpit { get; set; }
+    }
+
+    private sealed class _EndpointOrganization
+    {
+        public string? Slug { get; set; }
+
+        public string? Name { get; set; }
+
+        public string? Role { get; set; }
+    }
+
+    private sealed class _EndpointCockpit
+    {
+        public string? State { get; set; }
+
+        public string? Checksum { get; set; }
+
+        public DateTimeOffset? UpdatedAt { get; set; }
+
+        public CockpitProjectDefinition? Definition { get; set; }
     }
 
     // Reads `.cockpit/project.json` a second time (AC-246): `ListAsync`'s read only kept Name/Description,

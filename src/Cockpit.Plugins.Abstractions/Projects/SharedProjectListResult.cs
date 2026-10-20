@@ -35,6 +35,9 @@ public enum SharedProjectReadState
     Ok,
     Timeout,
     Unreadable,
+    Absent,
+    Invalid,
+    TooLarge,
 }
 
 public sealed record SharedProjectReadStatus(string Id, string Name, string? Role, SharedProjectReadState State);
