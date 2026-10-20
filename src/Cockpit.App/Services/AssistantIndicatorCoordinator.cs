@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Material.Icons;
 using Microsoft.Extensions.Logging;
@@ -189,7 +190,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             session.Threads = new ThreadLookup(
                 projectId => _cockpit.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.Name,
                 paneId => _PaneOf(paneId)?.ProjectId,
-                paneId => _PaneOf(paneId)?.Title);
+                paneId => _PaneOf(paneId)?.Title)
+            {
+                Infer = text => ProjectInference.Infer(
+                    text,
+                    [.. _cockpit.Projects.Projects.Select(project => new ProjectHint(project.Id, project.Name, project.EffectiveTicketPrefixes))],
+                    [.. _cockpit.AllSessions()
+                        .Where(pane => pane.PaneId != AssistantIdentity.PaneId)
+                        .Select(pane => new SessionHint(pane.PaneId, pane.Title ?? string.Empty, pane.ProjectId))]),
+            };
         }
 
         _WatchQuestions(_assistant.View());

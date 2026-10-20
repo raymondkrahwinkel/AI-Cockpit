@@ -171,10 +171,11 @@ public sealed record ThreadTagViewModel(string? ProjectId, string Name, ProjectS
     public string Tooltip => Source switch
     {
         ProjectSource.Explicit => $"{Name} · you put this here",
-        ProjectSource.Session => $"{Name} · from a {Name} session",
-        ProjectSource.TicketPrefix => $"{Name} · from its ticket prefix",
+        ProjectSource.Session => $"{Name} · from a {Name} session it names or that sent it",
+        ProjectSource.TicketPrefix => $"{Name} · from a ticket key",
         ProjectSource.AssistantTag => $"{Name} · tagged by the assistant",
         ProjectSource.Inherited => $"{Name} · follows the prompt of its turn",
+        ProjectSource.Mentioned => $"{Name} · named in the prompt",
         _ => ProjectId is null ? "General · not about one project" : Name,
     };
 }

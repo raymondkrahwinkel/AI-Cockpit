@@ -2342,7 +2342,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-778: the images ride along on the row itself (not just a "[+N image]" suffix baked into the text)
         // so the row's own chip can reopen them later in this same running session.
-        var (projectIds, projectSources) = _ComposerProjects();
+        var (projectIds, projectSources) = _ComposerProjects(text);
         var row = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text)
         {
             Images = images.Count == 0 ? null : images,

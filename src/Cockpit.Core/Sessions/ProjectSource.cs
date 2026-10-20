@@ -19,6 +19,9 @@ public enum ProjectSource
 
     // The row carries no project of its own and follows the prompt of its turn. Never written to the log.
     Inherited,
+
+    // The prompt names the project, which the host read before the turn ran (ProjectInference).
+    Mentioned,
 }
 
 // One project's share of a row that spans several (assistant threads § 9.1): a span of a prompt, or a block of a reply.

@@ -11,7 +11,11 @@ namespace Cockpit.App.ViewModels;
 public sealed record ThreadLookup(
     Func<string, string?> ProjectName,
     Func<string, string?> ProjectOfPane,
-    Func<string, string?> PaneTitle);
+    Func<string, string?> PaneTitle)
+{
+    // The projects a prompt names, read before its turn; none when the host knows no projects.
+    public Func<string, IReadOnlyList<(string ProjectId, ProjectSource Source)>> Infer { get; init; } = _ => [];
+}
 
 // One move of a row between threads, with everything needed to take it back. `Target` null is General.
 public sealed record ThreadMove(
@@ -120,6 +124,22 @@ public partial class SessionViewModel
 
     private bool _IsShown(TranscriptEntryViewModel entry) =>
         entry.IsRowVisible && _InShownThread(entry) && !entry.IsStatusFolded;
+
+    // Internal so the rule a prompt is filed by can be asserted without a running host.
+    internal (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) ProjectsForPrompt(string text) =>
+        _ComposerProjects(text);
+
+    // A prompt put nowhere (All, or spoken) is filed by what it names: the session or pane, a ticket key, a project's
+    // name. Both projects when it names two. What the operator chose and what the assistant tags later win over it.
+    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _InferredProjects(string text)
+    {
+        if (Threads?.Infer(text) is not { Count: > 0 } inferred)
+        {
+            return (null, null);
+        }
+
+        return ([.. inferred.Select(hit => hit.ProjectId)], inferred.ToDictionary(hit => hit.ProjectId, hit => hit.Source));
+    }
 
     // --- Runs of status lines (§ 2: one foldable line) -------------------------------------------------------------
     // A run is consecutive status rows as the open thread shows them, so it is worked out per thread: in All the
@@ -329,9 +349,9 @@ public partial class SessionViewModel
 
     // The projects a prompt typed or spoken now is put in: the open thread's, or none in All.
     // ponytail: the thread open when the turn starts, not when it was queued; carry it on QueuedPrompt if that bites.
-    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _ComposerProjects() => ShownThread switch
+    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _ComposerProjects(string text) => ShownThread switch
     {
-        null => (null, null),
+        null => _InferredProjects(text),
         GeneralThread => ([], null),
         var project => ([project], new Dictionary<string, ProjectSource> { [project] = ProjectSource.Explicit }),
     };
@@ -497,6 +517,11 @@ public partial class SessionViewModel
         {
             var projectId = message.SenderProjectId
                 ?? (message.SubjectPaneId is { } subject ? Threads?.ProjectOfPane(subject) : null);
+
+            // A sender with no project of its own (a plain pane, a watch report on a pane that is gone) still says
+            // what it is about; the first project its message names files it.
+            var named = projectId is null ? Threads?.Infer(message.Body).FirstOrDefault() : null;
+            projectId ??= named?.ProjectId;
             var senderTitle = message.SubjectPaneId is { } watched
                 ? Threads?.PaneTitle(watched) ?? watched
                 : Threads?.PaneTitle(message.FromPaneId);
@@ -510,7 +535,7 @@ public partial class SessionViewModel
                 MessageKind = message.Kind,
                 SubjectPaneId = message.SubjectPaneId,
                 ProjectIds = projectId is null ? null : [projectId],
-                ProjectSources = projectId is null ? null : new Dictionary<string, ProjectSource> { [projectId] = ProjectSource.Session },
+                ProjectSources = projectId is null ? null : new Dictionary<string, ProjectSource> { [projectId] = named?.Source ?? ProjectSource.Session },
             });
         }
     }
