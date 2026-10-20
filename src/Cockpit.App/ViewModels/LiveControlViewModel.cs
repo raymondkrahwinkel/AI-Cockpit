@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -35,13 +36,20 @@ public partial class LiveControlViewModel : ViewModelBase
     // skip echoing the latter back as a live switch.
     private bool _seeding;
 
-    public LiveControlViewModel(SessionLiveOption option, Func<string, string, Task> apply)
+    private readonly ProvisionPolicy? _policy;
+
+    // AC-1593: "Managed by …" when the organisation's policy rules out some of the choices.
+    public string? ManagedLabel { get; }
+
+    public LiveControlViewModel(SessionLiveOption option, Func<string, string, Task> apply, ProvisionPolicy? policy = null)
     {
         Key = option.Key;
         Label = option.Label;
+        _policy = policy;
         _choiceLabels = option.ChoiceLabels;
         _choices = option.Choices;
-        _choiceItems = [.. option.Choices.Select(value => new SelectableChoice(value, _choiceLabels?.GetValueOrDefault(value) ?? value))];
+        _choiceItems = OrgPolicyMarking.Choices(Key, [.. option.Choices.Select(value => new SelectableChoice(value, _choiceLabels?.GetValueOrDefault(value) ?? value))], policy);
+        ManagedLabel = OrgPolicyMarking.Label(Key, policy);
         _apply = apply;
 
         // Seed through the field, not the property: setting the current value must not fire a live switch back to
@@ -66,7 +74,7 @@ public partial class LiveControlViewModel : ViewModelBase
             if (!Choices.Contains(value))
             {
                 Choices = [value, .. Choices];
-                ChoiceItems = [new SelectableChoice(value, _choiceLabels?.GetValueOrDefault(value) ?? value), .. ChoiceItems];
+                ChoiceItems = OrgPolicyMarking.Choices(Key, [new SelectableChoice(value, _choiceLabels?.GetValueOrDefault(value) ?? value), .. ChoiceItems], _policy);
             }
 
             _seeding = true;

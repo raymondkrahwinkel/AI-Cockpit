@@ -1,6 +1,7 @@
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
@@ -53,9 +54,9 @@ public interface ISessionRuntime : IAsyncDisposable
     bool IsRunning { get; }
 
     /// <summary>
-    /// AC-1593: true when the organisation's policy, as read at the last start or switch, forbids approving tool calls wholesale.
+    /// AC-1593: the organisation's policy as read at the last start or switch; null when none applies.
     /// </summary>
-    bool AutoApproveForbidden => false;
+    ProvisionPolicy? Policy => null;
 
     /// <summary>
     /// The assistant text of the most recently completed turn — a delegated task's result (#67).

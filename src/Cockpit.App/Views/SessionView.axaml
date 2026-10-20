@@ -102,8 +102,9 @@
                                                     <ComboBox ItemsSource="{Binding ChoiceItems}"
                                                               SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
                                                               DisplayMemberBinding="{Binding Label}"
-                                                              PlaceholderText="{Binding Label}" Classes="Compact"
+                                                              PlaceholderText="{Binding Label}" Classes="Compact policyChoices"
                                                               HorizontalAlignment="Stretch"/>
+                                                    <TextBlock Text="{Binding ManagedLabel}" IsVisible="{Binding ManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="optionsHint"/>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -130,7 +131,8 @@
                     <ToggleButton Content="Allow all tools" IsChecked="{Binding AutoApproveTools}" Classes="Compact"
                                   VerticalAlignment="Center"
                                   IsVisible="{Binding ShowToolAutoApprove}"
-                                  ToolTip.Tip="Run this local model's tool calls without an Allow prompt each time (they still show as tool rows)"/>
+                                  IsEnabled="{Binding AutoApproveToolsEditable}" ToolTip.ShowOnDisabled="True"
+                                  ToolTip.Tip="{Binding AutoApproveToolsTip}"/>
                 </StackPanel>
 
                 <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · token

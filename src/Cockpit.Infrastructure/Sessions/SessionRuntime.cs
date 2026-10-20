@@ -83,7 +83,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     // AC-693: the pump ends when the driver's stream does, so a death out of band shows here, not only at DisposeAsync.
     public bool IsRunning => _pump is { IsCompleted: false };
 
-    public bool AutoApproveForbidden => OrgPolicyCeilings.AutoApproveForbidden(_policy);
+    public ProvisionPolicy? Policy => _policy;
 
     public string? LastAssistantText { get; private set; }
 

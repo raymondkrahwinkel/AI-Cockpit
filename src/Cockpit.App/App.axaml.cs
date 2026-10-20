@@ -38,6 +38,7 @@ using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -483,7 +484,8 @@ public partial class App : Application
             Program.Services.GetService<IMcpToolTokenEstimator>(),
             Program.Services.GetService<ITtySessionProviderResolver>(),
             Program.Services.GetService<ISessionLoginFlows>(),
-            Program.Services.GetService<IPluginProviderConfigViews>());
+            Program.Services.GetService<IPluginProviderConfigViews>(),
+            Program.Services.GetService<IOrgPolicy>());
 
         // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.

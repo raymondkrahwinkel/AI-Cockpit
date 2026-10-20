@@ -190,9 +190,12 @@
 
                     <!-- Shown for every provider that gates tool calls through the per-call approval prompt (#26,
                          AC-1219) — local and plugin alike; hidden where a permission mode decides instead. -->
-                    <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
-                              IsVisible="{Binding ShowAutoApproveTools}"
-                              ToolTip.Tip="New sessions under this profile start with 'Allow all tools' already on"/>
+                    <StackPanel Spacing="2" IsVisible="{Binding ShowAutoApproveTools}">
+                        <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
+                                  IsEnabled="{Binding AutoApproveToolsEditable}"
+                                  ToolTip.Tip="New sessions under this profile start with 'Allow all tools' already on"/>
+                        <TextBlock Text="{Binding AutoApproveToolsManagedLabel}" IsVisible="{Binding AutoApproveToolsManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="optionsHint"/>
+                    </StackPanel>
 
                     <StackPanel Spacing="4">
                         <TextBlock Text="Purpose" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
@@ -288,10 +291,12 @@
                                  profile's "Auto-Approve tool calls" is on, which already allows everything. -->
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Tool permission ceiling (delegated, local models)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox ItemsSource="{Binding PermissionCeilingChoices}"
-                                          SelectedItem="{Binding PermissionCeiling}"
+                                <ComboBox ItemsSource="{Binding PermissionCeilingChoiceItems}" Classes="policyChoices"
+                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding PermissionCeiling, Mode=TwoWay}"
+                                          DisplayMemberBinding="{Binding Label}"
                                           HorizontalAlignment="Left" MinWidth="200"
                                           ToolTip.Tip="How far a delegated local-model session may go without a human: plan/default = read-only tools only, acceptEdits = also non-destructive writes, bypassPermissions = everything. Ignored when 'Auto-Approve tool calls' is on."/>
+                                <TextBlock Text="{Binding PermissionCeilingManagedLabel}" IsVisible="{Binding PermissionCeilingManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="optionsHint"/>
                                 <TextBlock Text="plan / default = read-only only · acceptEdits = also writes · bypassPermissions = everything"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                             </StackPanel>
@@ -435,11 +440,14 @@
                                     <Grid ColumnDefinitions="120,*" Margin="0,0,0,6">
                                         <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                        <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
-                                                  SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
-                                                  DisplayMemberBinding="{Binding Label}"
-                                                  IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                                  PlaceholderText="Not set — provider default"/>
+                                        <StackPanel Grid.Column="1" Spacing="2" IsVisible="{Binding !IsFreeText}">
+                                            <ComboBox ItemsSource="{Binding ChoiceItems}" Classes="policyChoices"
+                                                      SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                      DisplayMemberBinding="{Binding Label}"
+                                                      IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                                      PlaceholderText="Not set — provider default"/>
+                                            <TextBlock Text="{Binding ManagedLabel}" IsVisible="{Binding ManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="optionsHint"/>
+                                        </StackPanel>
                                         <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
                                                  PlaceholderText="Not set — provider default"/>
                                     </Grid>

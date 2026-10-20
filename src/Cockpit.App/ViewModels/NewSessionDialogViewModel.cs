@@ -15,6 +15,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.Core.Worktrees;
@@ -40,6 +41,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IShellAccessSwitch? _shellAccessSwitch;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly IProjectStore? _projectStore;
+    private readonly IOrgPolicy? _orgPolicyReader;
+
+    // AC-1593: read once per dialog, before the option rows are built from the selected profile.
+    private ProvisionPolicy? _orgPolicy;
 
     // The registered memory sources (AC-165/166), mapped once at construction to the plain Core type
     // `SessionStartDefaults.Resolve` reads, rather than per call — the registry's contents do not
@@ -551,8 +556,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IProjectStore? projectStore = null,
         IMcpOAuthCoordinator? oauthCoordinator = null,
         ISessionLoginFlows? loginFlows = null,
-        IShellAccessSwitch? shellAccessSwitch = null)
+        IShellAccessSwitch? shellAccessSwitch = null,
+        IOrgPolicy? orgPolicy = null)
     {
+        _orgPolicyReader = orgPolicy;
         _shellAccessSwitch = shellAccessSwitch;
         _projectStore = projectStore;
         _memorySources = plugins?.MemorySources;
@@ -584,6 +591,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
+        _orgPolicy = _orgPolicyReader is null ? null : await _orgPolicyReader.ReadAsync();
         var profiles = await _profileStore.LoadAsync();
         Profiles.Clear();
         foreach (var profile in profiles)
@@ -1139,7 +1147,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             foreach (var option in registration.Options)
             {
                 var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
-                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels, _orgPolicy, snapToCeiling: true));
             }
         }
 
@@ -1162,7 +1170,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             foreach (var option in registration.Options)
             {
                 var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
-                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels, _orgPolicy, snapToCeiling: true));
             }
         }
 
@@ -1250,7 +1258,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         {
             var picked = pickedByKey.GetValueOrDefault(spec.Key);
             var value = string.IsNullOrWhiteSpace(picked) ? spec.DefaultValue : picked;
-            target.Add(new PluginTtyOptionSelectionViewModel(spec.Key, spec.Label, spec.Choices, value, spec.ChoiceLabels));
+            target.Add(new PluginTtyOptionSelectionViewModel(spec.Key, spec.Label, spec.Choices, value, spec.ChoiceLabels, _orgPolicy, snapToCeiling: true));
         }
 
         // The target is one of the two option collections; raise both pairs rather than thread which through.
@@ -1417,12 +1425,17 @@ public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
     [ObservableProperty]
     private string? _value;
 
-    public PluginTtyOptionSelectionViewModel(string key, string label, IReadOnlyList<string> choices, string? defaultValue, IReadOnlyDictionary<string, string>? choiceLabels = null)
+    // AC-1593: "Managed by …" when the organisation's policy rules out some of the choices; null otherwise.
+    public string? ManagedLabel { get; }
+
+    // `snapToCeiling` is for a launch choice, which should open on what will run; a stored profile default is only marked, never rewritten.
+    public PluginTtyOptionSelectionViewModel(string key, string label, IReadOnlyList<string> choices, string? defaultValue, IReadOnlyDictionary<string, string>? choiceLabels = null, ProvisionPolicy? policy = null, bool snapToCeiling = false)
     {
         Key = key;
         Label = label;
         Choices = choices;
-        ChoiceItems = [.. choices.Select(value => new SelectableChoice(value, choiceLabels?.GetValueOrDefault(value) ?? value))];
-        _value = defaultValue;
+        ChoiceItems = OrgPolicyMarking.Choices(key, [.. choices.Select(value => new SelectableChoice(value, choiceLabels?.GetValueOrDefault(value) ?? value))], policy);
+        ManagedLabel = OrgPolicyMarking.Label(key, policy);
+        _value = snapToCeiling ? OrgPolicyMarking.Snapped(key, defaultValue, policy) ?? defaultValue : defaultValue;
     }
 }
