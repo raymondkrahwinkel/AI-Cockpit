@@ -30,6 +30,12 @@ public enum TranscriptEntryKind
 
     // AC-1530: the files a turn made or changed, shown at the Simple level only and never written to the log.
     TurnResult,
+
+    // Assistant threads: a message another session sent, as a card of its own rather than a bracketed notice.
+    Inbox,
+
+    // A message that only reports a state (merged, closed, idle, gate), drawn as one quiet line runs fold into.
+    Status,
 }
 
 // A single row in the transcript view. Assistant text entries are mutated in place
@@ -55,7 +61,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     public bool IsDivider => Kind == TranscriptEntryKind.Divider;
 
     // Rows not rendered as a tool-use, a standalone tool result, a thinking section or a divider — assistant/user text, questions, errors.
-    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider && TurnResult is null;
+    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider && TurnResult is null && !IsInboxRow && !IsStatusRow;
 
     // Assistant prose renders as markdown (T9).
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;

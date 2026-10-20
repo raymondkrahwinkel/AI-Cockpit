@@ -702,9 +702,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             if (e.Action is NotifyCollectionChangedAction.Add && e.NewStartingIndex >= 0)
             {
                 _RegroupAround(e.NewStartingIndex, e.NewStartingIndex + e.NewItems.Count - 1);
+
+                // An insert above the end (a resync) can change the turn of every row under it.
+                _StampThreadsFrom(e.NewStartingIndex);
                 foreach (TranscriptEntryViewModel entry in e.NewItems)
                 {
                     _SyncVisibleRow(entry);
+                    _SyncOpenQuestion(entry);
                 }
 
                 return;
@@ -723,7 +727,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _suspendVisibleSync = false;
         }
 
+        _StampThreadsFrom(0);
         _RebuildVisibleTranscript();
+        _RebuildOpenQuestions();
     }
 
     // AC-1377: the host forms the rows and this draws them. An upsert lands on the row of its id or adds that row — at
@@ -810,6 +816,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ToolUseId = entry.ToolUseId,
             IsFailedTurnRow = entry.IsFailedTurnRow,
             IsExpanded = kind == TranscriptEntryKind.Thinking,
+            SenderPaneId = entry.SenderPaneId,
+            SenderTitle = entry.SenderTitle,
+            MessageKind = entry.MessageKind,
+            SubjectPaneId = entry.SubjectPaneId,
         };
 
         if (entry.StartsReply)
@@ -866,6 +876,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         row.EndsInsideTable = entry.EndsInsideTable;
         row.TableSpanRevision = entry.TableSpanRevision;
 
+        // A version the host formed before it adopted this pane's projects carries none, and must not wipe them.
+        if (entry.ProjectIds is not null)
+        {
+            row.ProjectIds = entry.ProjectIds;
+            row.ProjectSources = entry.ProjectSources;
+            row.ProjectParts = entry.ProjectParts;
+        }
+
+        row.TurnProjectIds = entry.TurnProjectIds ?? row.TurnProjectIds;
+
         if (entry.EndsInsideCodeBlock && row.CodeSpanRows is null)
         {
             _codeSpanRows = [row];
@@ -892,12 +912,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Puts one row in or out of `VisibleTranscript` when — and only when — its visibility actually moved.
     private void _SyncVisibleRow(TranscriptEntryViewModel entry)
     {
-        if (_suspendVisibleSync || entry.IsRowVisible == _shown.Contains(entry))
+        var shown = _IsShown(entry);
+        if (_suspendVisibleSync || shown == _shown.Contains(entry))
         {
             return;
         }
 
-        if (entry.IsRowVisible)
+        if (shown)
         {
             _shown.Add(entry);
             VisibleTranscript.Insert(_VisibleInsertionPoint(entry), entry);
@@ -940,7 +961,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         VisibleTranscript.Clear();
         foreach (var entry in Transcript)
         {
-            if (entry.IsRowVisible)
+            if (_IsShown(entry))
             {
                 _shown.Add(entry);
                 VisibleTranscript.Add(entry);
@@ -973,6 +994,18 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             OnPropertyChanged(nameof(HasPendingPermission));
         }
+
+        if (sender is TranscriptEntryViewModel threaded)
+        {
+            if (e.PropertyName is nameof(TranscriptEntryViewModel.ProjectIds) or nameof(TranscriptEntryViewModel.TurnProjectIds))
+            {
+                _OnRowProjectsChanged(threaded);
+            }
+            else if (e.PropertyName is nameof(TranscriptEntryViewModel.IsAwaitingAnswer))
+            {
+                _SyncOpenQuestion(threaded);
+            }
+        }
     }
 
     // AC-1090: the row properties the transcript log carries. Named rather than "any change", because a
@@ -991,6 +1024,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         nameof(TranscriptEntryViewModel.ErrorKind),
         nameof(TranscriptEntryViewModel.RetryAfter),
         nameof(TranscriptEntryViewModel.SubAgentRowsForDisplay),
+        nameof(TranscriptEntryViewModel.ProjectIds),
+        nameof(TranscriptEntryViewModel.ProjectSources),
+        nameof(TranscriptEntryViewModel.ProjectParts),
+        nameof(TranscriptEntryViewModel.TurnProjectIds),
     ];
 
     // AC-1377: a row this pane formed or changed itself goes to the host, which holds the transcript and writes it.
@@ -1352,7 +1389,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _InOrder(() => _OnTurnStarting(prompt));
         };
         host.TurnFailedToStart += (prompt, exception) => _InOrder(() => _OnTurnFailedToStart(prompt, exception));
-        host.MailDelivered += notice => _InOrder(() => _NoteDeliveredMail(notice));
+        host.MailDelivered += notice => _InOrder(() => NoteDeliveredMail(notice));
         host.LoginChecked += loggedIn => _OnUiThread(() => _WhilePolling(() => ReportLoginStatus(loggedIn)));
         host.UsageCatchUpDue += () => _OnUiThread(() => _WhilePolling(_RefreshLimits));
         host.SignOfLifeDue += arm => _OnUiThread(() => _OnSignOfLife(arm));
@@ -2290,10 +2327,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         // AC-778: the images ride along on the row itself (not just a "[+N image]" suffix baked into the text)
         // so the row's own chip can reopen them later in this same running session.
+        var (projectIds, projectSources) = _ComposerProjects();
         var row = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, text)
         {
             Images = images.Count == 0 ? null : images,
             ReplyTo = replyTo,
+            ProjectIds = projectIds,
+            ProjectSources = projectSources,
         };
         Transcript.Add(row);
 
@@ -2320,7 +2360,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-935: the only difference between the wire text and the row is this prefix — same "model sees ≠ row
-    // shows" split `_NoteDeliveredMail`'s inbox notice already relies on. Unchanged with no reply target, so an
+    // shows" split `NoteDeliveredMail`'s inbox rows already rely on. Unchanged with no reply target, so an
     // ordinary message costs no extra tokens. Internal so the format can be asserted directly.
     internal static string BuildOutgoingText(string text, TranscriptEntryViewModel? replyTo) =>
         replyTo is null
@@ -2333,23 +2373,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         exception is IOException || !runtimeIsRunning
             ? "This session's process has stopped, so the message was not sent."
             : $"Send failed: {exception.Message}";
-
-    // It exists because this is the first text that enters a session's context which the operator neither typed nor can
-    // see (AC-394).
-    private void _NoteDeliveredMail(AgentInboxTurnNotice notice)
-    {
-        var senders = notice.Messages
-            .Select(message => message.FromPaneId)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
-
-        var from = senders.Count == 1 ? senders[0] : $"{senders.Count} other sessions";
-        var count = notice.Messages.Count == 1 ? "1 message" : $"{notice.Messages.Count} messages";
-
-        Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.UserText,
-            $"[{count} from {from} delivered with this turn]"));
-    }
 
     // Records the message's images as the current turn's images (AC-116), provider-agnostic, for the read/observe
     // surface to hand to a plugin that reacts to a tool call this turn. A no-op with no images.

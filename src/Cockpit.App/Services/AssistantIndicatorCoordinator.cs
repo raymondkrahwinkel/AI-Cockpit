@@ -179,7 +179,19 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // Derived, not stored: what "always on" means is that the microphone is open, and that is already one
         // persisted flag on the open-mic coordinator. A second copy here would be a second thing to keep in step.
         Indicator.ListeningMode = _openMic.IsListening ? AssistantListeningMode.AlwaysOn : AssistantListeningMode.Off;
+
+        // Assistant threads: the session files its rows by project, and only the cockpit knows the projects.
+        if (_assistant.View() is { Threads: null } session)
+        {
+            session.Threads = new ThreadLookup(
+                projectId => _cockpit.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.Name,
+                paneId => _PaneOf(paneId)?.ProjectId,
+                paneId => _PaneOf(paneId)?.Title);
+        }
     }
+
+    private SessionPanelViewModel? _PaneOf(string paneId) =>
+        _cockpit.AllSessions().FirstOrDefault(session => session.PaneId == paneId);
 
     // What the chip shows, in priority order. Dictation first — see the remarks on this class for why the one
     // state that is not about the assistant is the one that wins.
