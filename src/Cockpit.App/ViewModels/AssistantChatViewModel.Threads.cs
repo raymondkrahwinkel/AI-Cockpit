@@ -380,8 +380,48 @@ public sealed partial class AssistantChatViewModel
     private string? _ProjectName(string projectId) =>
         _cockpit?.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.Name;
 
+    // Questions answered today, newest first, folded under the open ones (§ 2). By the day they were asked: the
+    // transcript keeps no answer time.
+    public ObservableCollection<TranscriptEntryViewModel> AnsweredToday { get; } = [];
+
+    public bool HasAnsweredToday => AnsweredToday.Count > 0;
+
+    public string AnsweredTodayLabel => $"Answered today ({AnsweredToday.Count})";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AnsweredTodayIconKind))]
+    private bool _isAnsweredTodayExpanded;
+
+    public MaterialIconKind AnsweredTodayIconKind => IsAnsweredTodayExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
+
+    [RelayCommand]
+    private void ToggleAnsweredToday() => IsAnsweredTodayExpanded = !IsAnsweredTodayExpanded;
+
+    private void _RefreshAnsweredToday()
+    {
+        var today = DateTimeOffset.Now.Date;
+        var answered = (Session?.Transcript ?? [])
+            .Where(row => (row.HasQuestionPrompts || row.RequiredApproval) && !row.IsAwaitingAnswer && row.Timestamp.Date == today)
+            .Reverse()
+            .ToList();
+        if (answered.SequenceEqual(AnsweredToday))
+        {
+            return;
+        }
+
+        AnsweredToday.Clear();
+        foreach (var row in answered)
+        {
+            AnsweredToday.Add(row);
+        }
+
+        OnPropertyChanged(nameof(HasAnsweredToday));
+        OnPropertyChanged(nameof(AnsweredTodayLabel));
+    }
+
     private void _RefreshThreadCounts()
     {
+        _RefreshAnsweredToday();
         _questionsItem.WaitingCount = OpenQuestionCount;
         foreach (var item in ThreadItems.Where(item => item.IsThread))
         {

@@ -87,7 +87,59 @@ public partial class SessionViewModel
         _ => entry.IsInThread(thread),
     };
 
-    private bool _IsShown(TranscriptEntryViewModel entry) => entry.IsRowVisible && _InShownThread(entry);
+    private bool _IsShown(TranscriptEntryViewModel entry) =>
+        entry.IsRowVisible && _InShownThread(entry) && !entry.IsStatusFolded;
+
+    // --- Runs of status lines (§ 2: one foldable line) -------------------------------------------------------------
+    // A run is consecutive status rows as the open thread shows them, so it is worked out per thread: in All the
+    // statuses of two projects can be one run, while in each thread they are not.
+
+    private void _FoldStatus(TranscriptEntryViewModel entry, TranscriptEntryViewModel? previousCandidate)
+    {
+        if (!entry.IsStatusRow || previousCandidate is not { IsStatusRow: true })
+        {
+            entry.StatusRunCount = 1;
+            return;
+        }
+
+        var anchor = previousCandidate.StatusRunAnchor ?? previousCandidate;
+        anchor.StatusRunCount++;
+        entry.StatusRunAnchor = anchor;
+        entry.IsStatusFolded = !anchor.IsStatusRunExpanded;
+    }
+
+    private void _FoldAppendedStatus(TranscriptEntryViewModel entry)
+    {
+        entry.StatusRunAnchor = null;
+        entry.IsStatusFolded = false;
+        if (!entry.IsRowVisible || !_InShownThread(entry))
+        {
+            return;
+        }
+
+        TranscriptEntryViewModel? previous = null;
+        for (var index = _IndexOfLast(entry) - 1; index >= 0; index--)
+        {
+            if (Transcript[index] is var above && above.IsRowVisible && _InShownThread(above))
+            {
+                previous = above;
+                break;
+            }
+        }
+
+        _FoldStatus(entry, previous);
+    }
+
+    // The fold line's own click: the members of the run come out or go back in under it.
+    internal void ToggleStatusRun(TranscriptEntryViewModel anchor)
+    {
+        anchor.IsStatusRunExpanded = !anchor.IsStatusRunExpanded;
+        foreach (var member in Transcript.Where(row => ReferenceEquals(row.StatusRunAnchor, anchor)))
+        {
+            member.IsStatusFolded = !anchor.IsStatusRunExpanded;
+            _SyncVisibleRow(member);
+        }
+    }
 
     // The projects a prompt typed or spoken now is put in: the open thread's, or none in All.
     // ponytail: the thread open when the turn starts, not when it was queued; carry it on QueuedPrompt if that bites.

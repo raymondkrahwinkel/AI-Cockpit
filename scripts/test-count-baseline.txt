@@ -32,9 +32,9 @@ plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	8
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	50
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
-tests/Cockpit.App.ViewTests	1537
+tests/Cockpit.App.ViewTests	1538
 tests/Cockpit.Backend.Tests	78
-tests/Cockpit.Core.Tests	1329
+tests/Cockpit.Core.Tests	1330
 tests/Cockpit.Infrastructure.Tests	795
 tests/Cockpit.Journeys	29
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

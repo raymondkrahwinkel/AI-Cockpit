@@ -73,6 +73,32 @@ public partial class TranscriptEntryViewModel
     // For a watch report: the pane it is about, since the watcher is not a pane itself.
     public string? SubjectPaneId { get; init; }
 
+    // A run of status lines folds under its first: that row carries the count, the rest stay out until it is opened.
+    internal TranscriptEntryViewModel? StatusRunAnchor { get; set; }
+
+    internal bool IsStatusFolded { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusRun))]
+    [NotifyPropertyChangedFor(nameof(StatusRunLabel))]
+    private int _statusRunCount = 1;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusRunLabel))]
+    [NotifyPropertyChangedFor(nameof(StatusRunIconKind))]
+    private bool _isStatusRunExpanded;
+
+    public bool HasStatusRun => StatusRunCount > 1;
+
+    public string StatusRunLabel => IsStatusRunExpanded
+        ? "Show fewer"
+        : StatusRunCount == 2 ? "1 more update" : $"{StatusRunCount - 1} more updates";
+
+    public MaterialIconKind StatusRunIconKind => IsStatusRunExpanded ? MaterialIconKind.ChevronUp : MaterialIconKind.ChevronDown;
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void ToggleStatusRun() => Session?.ToggleStatusRun(this);
+
     // Only what is finished reads green; a closed session or an idle one asks nothing and stays faint.
     public bool IsDoneStatus => MessageKind?.Trim().ToLowerInvariant() is "done" or "merged";
 

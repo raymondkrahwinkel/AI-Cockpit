@@ -1000,7 +1000,7 @@
                                 <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
                                     <StackPanel Spacing="4">
                                         <controls:TranscriptRowView Compact="True"/>
-                                        <Button Classes="Subtle Compact" HorizontalAlignment="Left"
+                                        <Button Classes="Subtle" HorizontalAlignment="Left"
                                                 Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).ShowInThreadCommand}"
                                                 CommandParameter="{Binding}">
                                             <StackPanel Orientation="Horizontal" Spacing="5">
@@ -1013,6 +1013,29 @@
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- What was answered today, folded so the open questions keep the page. -->
+                        <Button x:Name="AnsweredTodayToggle" Classes="Subtle" HorizontalAlignment="Left"
+                                IsVisible="{Binding HasAnsweredToday}" Command="{Binding ToggleAnsweredTodayCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <materialIcons:MaterialIcon Kind="{Binding AnsweredTodayIconKind}" Width="13" Height="13" VerticalAlignment="Center"
+                                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <TextBlock Text="{Binding AnsweredTodayLabel}" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <ItemsControl ItemsSource="{Binding AnsweredToday}" IsVisible="{Binding IsAnsweredTodayExpanded}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="12"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                                    <controls:TranscriptRowView Compact="True"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

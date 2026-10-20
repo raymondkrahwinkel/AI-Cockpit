@@ -180,6 +180,32 @@ public class AssistantThreadsTranscriptTests : IDisposable
         Assert.DoesNotContain(Cockpit.Core.Voice.TtsProseExtractor.Extract(depot.Text), sentence => sentence.Contains("project", StringComparison.Ordinal));
     }
 
+    // § 2: status lines that follow each other fold under the first, per thread — in All a Depot status between two
+    // Cockpit ones is part of the run, in the Cockpit thread it is not there at all.
+    [Fact]
+    public void StatusLinesInARow_FoldUnderTheFirst_WorkedOutPerThread()
+    {
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>());
+        TranscriptEntryViewModel Status(string project) => new(TranscriptEntryKind.Status, "merged") { ProjectIds = [project], MessageKind = "merged" };
+        var first = Status("cockpit");
+        var depot = Status("depot");
+        var last = Status("cockpit");
+        foreach (var row in new[] { first, depot, last })
+        {
+            vm.Transcript.Add(row);
+        }
+
+        Assert.Equal(3, first.StatusRunCount);
+        Assert.Equal([first], vm.VisibleTranscript);
+
+        first.ToggleStatusRunCommand.Execute(null);
+        Assert.Equal([first, depot, last], vm.VisibleTranscript);
+
+        vm.ShownThread = "depot";
+        Assert.Equal(1, depot.StatusRunCount);
+        Assert.Equal([depot], vm.VisibleTranscript);
+    }
+
     [Fact]
     public void DeliveredMail_IsARowPerMessage_FiledUnderTheSendersProject_OrTheWatchedPanes()
     {

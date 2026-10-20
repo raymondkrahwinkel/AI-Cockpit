@@ -15,7 +15,8 @@ internal static partial class Screenshotter
         ["waymark"] = "WayMark",
     };
 
-    private static AssistantChatWindow _AssistantThreads(double width, string? thread = null, bool questions = false, bool overlay = false)
+    private static AssistantChatWindow _AssistantThreads(
+        double width, string? thread = null, bool questions = false, bool overlay = false, bool answered = false)
     {
         var chat = _AssistantChatViewModel(_AssistantThreadsConversation());
         var window = new AssistantChatWindow
@@ -24,7 +25,7 @@ internal static partial class Screenshotter
             Topmost = false,
             WindowStartupLocation = WindowStartupLocation.Manual,
             Width = width,
-            Height = 720,
+            Height = answered ? 1300 : 720,
         };
 
         chat.ViewWidth = width;
@@ -32,6 +33,7 @@ internal static partial class Screenshotter
             ? chat.ThreadItems[0]
             : chat.ThreadItems.FirstOrDefault(item => item.ThreadKey == thread && item.Kind != AssistantThreadItemKind.Questions);
         chat.IsRailOverlayOpen = overlay;
+        chat.IsAnsweredTodayExpanded = answered;
         return window;
     }
 
@@ -87,9 +89,13 @@ internal static partial class Screenshotter
         session.Transcript.Add(_Prompt("Waarom synct Strava niet meer?", "waymark"));
         session.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "Het token van Strava is verlopen sinds zaterdag. Opnieuw koppelen lost het op."));
+        var answered = _Question("Zal ik een ticket maken voor de misleidende melding bij een 401?", ["Ja, maak het ticket", "Nee, laat maar"], "waymark");
+        answered.IsPendingBrokerAnswer = false;
+        session.Transcript.Add(answered);
 
         session.Transcript.Add(_Message(TranscriptEntryKind.Status, "AC-1593 org policy", "done", "local gate green (89/92, 3 known)", "cockpit"));
         session.Transcript.Add(_Message(TranscriptEntryKind.Status, "AC-1588", "closed", "session closed", "cockpit"));
+        session.Transcript.Add(_Message(TranscriptEntryKind.Status, "AC-1601", "merged", "PR #1342 merged into main", "cockpit"));
         session.Transcript.Add(_Message(TranscriptEntryKind.Inbox, "DEP-422", "heads-up",
             "De route staat en ik schrijf nu de test voor de ETag. Nog geen PR.", "depot"));
         session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Ik draai de Depot-tests even."));

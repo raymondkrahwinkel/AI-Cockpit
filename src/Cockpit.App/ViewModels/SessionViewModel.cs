@@ -707,6 +707,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _StampThreadsFrom(e.NewStartingIndex);
                 foreach (TranscriptEntryViewModel entry in e.NewItems)
                 {
+                    _FoldAppendedStatus(entry);
                     _SyncVisibleRow(entry);
                     _SyncOpenQuestion(entry);
                 }
@@ -959,8 +960,18 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         _shown.Clear();
         VisibleTranscript.Clear();
+        TranscriptEntryViewModel? previousCandidate = null;
         foreach (var entry in Transcript)
         {
+            entry.StatusRunAnchor = null;
+            entry.IsStatusFolded = false;
+            if (!entry.IsRowVisible || !_InShownThread(entry))
+            {
+                continue;
+            }
+
+            _FoldStatus(entry, previousCandidate);
+            previousCandidate = entry;
             if (_IsShown(entry))
             {
                 _shown.Add(entry);

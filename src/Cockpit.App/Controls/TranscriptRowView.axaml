@@ -129,6 +129,16 @@
                                             Kind="{Binding StatusIconKind}" Width="13" Height="13" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding StatusLine}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <!-- The run's fold, the "N steps run" line's way: a quiet toggle, never a second card. -->
+                <Button Classes="Subtle" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasStatusRun}"
+                        Command="{Binding ToggleStatusRunCommand}" ToolTip.Tip="Status updates that came in one after another">
+                    <StackPanel Orientation="Horizontal" Spacing="3">
+                        <TextBlock Text="{Binding StatusRunLabel}" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <materialIcons:MaterialIcon Kind="{Binding StatusRunIconKind}" Width="12" Height="12" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
                 </DataTemplate>
               </ContentControl.DataTemplates>

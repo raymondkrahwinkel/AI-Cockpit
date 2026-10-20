@@ -85,4 +85,18 @@ public sealed class AssistantThreadRailTests
         chat.SelectedThreadItem = chat.ThreadItems.First(item => item.ProjectId == "depot");
         Assert.All(chat.Session!.VisibleTranscript, row => Assert.True(row.IsInThread("depot")));
     }
+
+    [Fact]
+    public void AnAnsweredQuestion_LeavesQuestionsForYou_ForAnsweredToday()
+    {
+        var (chat, _) = _Chat();
+        var open = chat.Session!.OpenQuestions[^1];
+        var answeredBefore = chat.AnsweredToday.Count;
+
+        open.IsPendingBrokerAnswer = false;
+
+        Assert.Equal(2, chat.OpenQuestionCount);
+        Assert.Equal(answeredBefore + 1, chat.AnsweredToday.Count);
+        Assert.Same(open, chat.AnsweredToday[0]);
+    }
 }

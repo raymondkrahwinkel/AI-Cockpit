@@ -615,6 +615,8 @@ internal static partial class Screenshotter
         ["assistant-threads-all"] = (_, _) => _AssistantThreads(960),
         ["assistant-threads-depot"] = (_, _) => _AssistantThreads(960, thread: "depot"),
         ["assistant-threads-questions"] = (_, _) => _AssistantThreads(960, questions: true),
+        ["assistant-threads-questions-answered"] = (_, _) => _AssistantThreads(960, questions: true, answered: true),
+        ["assistant-threads-cockpit"] = (_, _) => _AssistantThreads(960, thread: "cockpit"),
         ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
         ["assistant-threads-overlay"] = (_, _) => _AssistantThreads(520, overlay: true),
         ["assistant-threads-docked-600"] = (_, _) => _AssistantThreadsDocked(600),
