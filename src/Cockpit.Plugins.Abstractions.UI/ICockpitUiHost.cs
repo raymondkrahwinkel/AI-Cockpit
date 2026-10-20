@@ -224,6 +224,21 @@ public interface ICockpitUiHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null);
 
     /// <summary>
+    /// Shows a silent operating-system notification for when the operator is not looking at the cockpit (AC-1588). A
+    /// click brings the cockpit to the front and then runs <paramref name="onClick"/> on the UI thread, for opening
+    /// the place the notification is about.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is shown while the cockpit window is active (use <see cref="ShowToast"/> then), nor when the operator
+    /// turned local notifications off or muted this plugin's notifications. The UI part always runs on the
+    /// operator's own desktop, so a backend part on a server raises one by telling its UI part over
+    /// <see cref="Channel"/>. Fire-and-forget. Default: a no-op, for a host that predates this member.
+    /// </remarks>
+    void ShowSystemNotification(string title, string body, Action? onClick = null)
+    {
+    }
+
+    /// <summary>
     /// Asks the host's consent gate — see <see cref="ICockpitHost.RequestConsentAsync(ConsentRequest)"/>.
     /// </summary>
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request);

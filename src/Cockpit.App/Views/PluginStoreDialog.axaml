@@ -213,6 +213,11 @@
                                                         ToolTip.Tip="{Binding PinToggleTip}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginPinnedCommand}"
                                                         CommandParameter="{Binding}"/>
+                                                <!-- AC-1588: per plugin, whether it may raise a desktop notification. -->
+                                                <Button Content="{Binding NotificationsToggleLabel}" Classes="Compact Subtle"
+                                                        ToolTip.Tip="{Binding NotificationsToggleTip}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginNotificationsCommand}"
+                                                        CommandParameter="{Binding}"/>
                                                 <Button Content="{Binding MenuVisibilityLabel}" Classes="Compact Subtle"
                                                         ToolTip.Tip="{Binding MenuVisibilityTip}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginMenuVisibilityCommand}"
