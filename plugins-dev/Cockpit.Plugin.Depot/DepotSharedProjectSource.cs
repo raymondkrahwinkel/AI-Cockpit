@@ -20,7 +20,7 @@ internal sealed class DepotSharedProjectSource(
 
     internal static TimeSpan DefinitionReadTimeout = TimeSpan.FromSeconds(10);
 
-    private const int DefinitionReadConcurrency = 6;
+    private const int DefinitionReadConcurrency = 1;
 
     public string Key => scheme;
 
@@ -53,13 +53,15 @@ internal sealed class DepotSharedProjectSource(
 
         await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
 
+        using var sourceTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        sourceTimeout.CancelAfter(DefinitionReadTimeout);
         var shared = new ConcurrentBag<SharedProject>();
         var unreadable = new ConcurrentBag<UnreadableSharedProject>();
         var states = new ConcurrentBag<SharedProjectReadStatus>();
         await Parallel.ForEachAsync(listed, new ParallelOptions
         {
             MaxDegreeOfParallelism = DefinitionReadConcurrency,
-            CancellationToken = cancellationToken,
+            CancellationToken = sourceTimeout.Token,
         }, async (project, token) =>
         {
             // DEP-159's list_projects mixes "Project" and "Brain" kinds together; a Brain is not something a
