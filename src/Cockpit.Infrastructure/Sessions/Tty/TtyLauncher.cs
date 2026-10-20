@@ -138,7 +138,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         var read = orgPolicy?.ReadAsync().GetAwaiter().GetResult();
 
         // The operator's own shell terminal runs no provider, so providers.allowed has nothing to say about it.
-        if (provider.ProviderId != ShellTtySessionProvider.ProviderKey)
+        if (provider is not ShellTtySessionProvider)
         {
             options = LaunchPermissionClamp.PinModel(read, profile, options, model: null).Options ?? options;
         }

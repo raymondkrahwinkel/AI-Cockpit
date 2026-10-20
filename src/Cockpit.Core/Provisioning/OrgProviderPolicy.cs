@@ -52,7 +52,10 @@ public static class OrgProviderPolicy
             return (null, null);
         }
 
-        return (candidates.FirstOrDefault() ?? _Listed(entry.Models).FirstOrDefault()) is { } pinned
+        // The listed spelling is pinned, as the model APIs behind it may compare case-sensitively.
+        var listed = _Listed(entry.Models).ToList();
+        return (candidates.Select(model => listed.First(item => string.Equals(item, model, StringComparison.OrdinalIgnoreCase))).FirstOrDefault()
+            ?? listed.FirstOrDefault()) is { } pinned
             ? (null, pinned)
             : ($"{label} does not start: {policy.By} allows no model for its provider.", null);
     }
@@ -76,25 +79,64 @@ public static class OrgProviderPolicy
         _ => [profile?.Defaults?.OptionDefaults?.GetValueOrDefault("model")],
     };
 
-    // OpenRouter, Gemini, Grok, GitHub Models and Codex keep `model`, Kimi and opencode `defaultModel`.
+    // OpenRouter, Gemini, Grok, GitHub Models and Codex keep `model`, Kimi and opencode `defaultModel`; a CLI's
+    // `extraArgs` come after the host's own flags and win, so a model or profile named there counts too.
     private static IEnumerable<string?> _ConfigModelsOf(string configJson)
     {
         try
         {
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(configJson) ? "{}" : configJson);
-            return document.RootElement.ValueKind is JsonValueKind.Object
-                ? [.. document.RootElement.EnumerateObject()
-                    .Where(property => property.Value.ValueKind is JsonValueKind.String
-                        && (string.Equals(property.Name, "model", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(property.Name, "defaultModel", StringComparison.OrdinalIgnoreCase)))
-                    .Select(property => property.Value.GetString())]
-                : [];
+            if (document.RootElement.ValueKind is not JsonValueKind.Object)
+            {
+                return [];
+            }
+
+            var properties = document.RootElement.EnumerateObject().ToList();
+            var models = properties
+                .Where(property => property.Value.ValueKind is JsonValueKind.String
+                    && (_Named(property, "model") || _Named(property, "defaultModel")))
+                .Select(property => property.Value.GetString());
+            var args = properties
+                .Where(property => _Named(property, "extraArgs") && property.Value.ValueKind is JsonValueKind.Array)
+                .SelectMany(property => property.Value.EnumerateArray())
+                .Select(item => item.ValueKind is JsonValueKind.String ? item.GetString() ?? string.Empty : string.Empty)
+                .ToList();
+            return [.. models, .. _ArgModelsOf(args)];
         }
         catch (JsonException)
         {
             return [];
         }
     }
+
+    // `-m o3`, `--model=o3` and `-c model="o3"` name a model; a CLI profile picks one the host cannot see, so it is
+    // named as itself and is never on a list.
+    private static IEnumerable<string?> _ArgModelsOf(IReadOnlyList<string> args)
+    {
+        for (var index = 0; index < args.Count; index++)
+        {
+            var arg = args[index];
+            var next = index + 1 < args.Count ? args[index + 1] : string.Empty;
+            if (arg is "-m" or "--model")
+            {
+                yield return next;
+            }
+            else if (arg.StartsWith("--model=", StringComparison.Ordinal))
+            {
+                yield return arg["--model=".Length..];
+            }
+            else if (arg is "-c" or "--config" && next.Replace(" ", string.Empty).StartsWith("model=", StringComparison.Ordinal))
+            {
+                yield return next[(next.IndexOf('=') + 1)..].Trim().Trim('"', '\'');
+            }
+            else if (arg is "-p" or "--profile" || arg.StartsWith("--profile=", StringComparison.Ordinal))
+            {
+                yield return $"{arg} {next}".Trim();
+            }
+        }
+    }
+
+    private static bool _Named(JsonProperty property, string name) => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<string> _Listed(JsonElement models) =>
         models.EnumerateArray().Select(item => item.ValueKind is JsonValueKind.String ? item.GetString() : null)

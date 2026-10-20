@@ -64,7 +64,8 @@ internal static class LaunchPermissionClamp
             return (options, model);
         }
 
-        var result = source.Where(option => !_IsModelKey(option.Key)).ToDictionary(option => option.Key, option => option.Value, StringComparer.Ordinal);
+        var comparer = (source as Dictionary<string, string>)?.Comparer ?? StringComparer.Ordinal;
+        var result = source.Where(option => !_IsModelKey(option.Key)).ToDictionary(option => option.Key, option => option.Value, comparer);
         result[WellKnownPluginSessionOptions.Model] = pinned;
         return (result, pinned);
     }
