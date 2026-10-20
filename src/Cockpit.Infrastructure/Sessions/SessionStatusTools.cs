@@ -33,7 +33,7 @@ internal sealed class SessionStatusTools(
     // AC-1593: an organisation's shell ban covers these tools too; the shell switch alone does not, as it never did.
     IOrgPolicy? orgPolicy = null)
 {
-    private string? _ShellRefusal() => false && OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
+    private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
         ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
         : null;
 
