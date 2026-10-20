@@ -738,7 +738,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     {
         var requested = entry.RequestedPermission;
         if (policy is not null && OrgPolicyCeilings.DelegationCeiling(policy) is { } orgCeiling
-            && false)
+            && !string.IsNullOrWhiteSpace(requested) && DelegatedToolPermissionPolicy.IsAboveCeiling(orgCeiling, requested))
         {
             requested = orgCeiling;
             await _Audit(DelegationAuditAction.PermissionElevationDenied, entry.Profile.Label, entry.TaskId, request: null,
