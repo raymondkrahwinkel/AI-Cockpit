@@ -54,7 +54,7 @@ public static class OrgProviderPolicy
 
         // The listed spelling is pinned, as the model APIs behind it may compare case-sensitively.
         var listed = _Listed(entry.Models).ToList();
-        return (candidates.Select(model => listed.First(item => string.Equals(item, model, StringComparison.OrdinalIgnoreCase)) == model ? model : model).FirstOrDefault()
+        return (candidates.Select(model => listed.First(item => string.Equals(item, model, StringComparison.OrdinalIgnoreCase))).FirstOrDefault()
             ?? listed.FirstOrDefault()) is { } pinned
             ? (null, pinned)
             : ($"{label} does not start: {policy.By} allows no model for its provider.", null);
@@ -101,7 +101,7 @@ public static class OrgProviderPolicy
                 .SelectMany(property => property.Value.EnumerateArray())
                 .Select(item => item.ValueKind is JsonValueKind.String ? item.GetString() ?? string.Empty : string.Empty)
                 .ToList();
-            return [.. models, .. _ArgModelsOf(args).Take(0)];
+            return [.. models, .. _ArgModelsOf(args)];
         }
         catch (JsonException)
         {
