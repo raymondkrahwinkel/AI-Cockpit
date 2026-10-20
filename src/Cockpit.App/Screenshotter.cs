@@ -364,6 +364,9 @@ internal static class Screenshotter
         // AC-488: the same workspace with nothing staged, which is the only state the starting-point gallery is
         // drawn in. Its own scene rather than a fourth layout: what differs is what there is, not how it is laid out.
         ["projects-workspace-empty"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, withProjects: false),
+        ["projects-workspace-team-partial"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StagePartialTeamProjects),
+        ["projects-workspace-unreachable"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageUnreachableTeamProjects),
+        ["projects-workspace-long-text"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageLongProjectText),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -1910,7 +1913,10 @@ internal static class Screenshotter
 
     // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
     // each holds together and that all three carry the "From your team" section.
-    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout, bool withProjects = true)
+    private static MainWindow _ProjectsWorkspace(
+        Cockpit.Core.Projects.ProjectsLayoutMode layout,
+        Action<ViewModels.CockpitViewModel>? stage = null,
+        bool withProjects = true)
     {
         var cockpit = new ViewModels.CockpitViewModel();
 
@@ -1930,6 +1936,7 @@ internal static class Screenshotter
         {
             cockpit.Projects.StageDesignSample();
             cockpit.Projects.StageDesignSharedProjects();
+            stage?.Invoke(cockpit);
         }
 
         cockpit.Projects.LayoutMode = layout;
@@ -1937,6 +1944,84 @@ internal static class Screenshotter
         cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static void _StagePartialTeamProjects(ViewModels.CockpitViewModel cockpit)
+    {
+        cockpit.Projects.SharedProjectGroups.Clear();
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Work",
+            [
+                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
+                new SharedProjectOffer("depot:workspace-move", "Workspace migration (pending)", "Waiting for its project definition.", "Pending"),
+                new SharedProjectOffer("depot:reports", "Quarterly reports (timed out)", "Its project definition did not answer in time.", "Timeout"),
+            ],
+            "1 project is still loading; 1 project timed out."));
+    }
+
+    private static void _StageUnreachableTeamProjects(ViewModels.CockpitViewModel cockpit)
+    {
+        cockpit.Projects.SharedProjectGroups.Clear();
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Work",
+            [
+                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
+                new SharedProjectOffer("depot:runbook", "Operations runbook", "Last known team project.", "Viewer"),
+            ],
+            "Depot is unreachable — showing the last known list."));
+    }
+
+    private static void _StageLongProjectText(ViewModels.CockpitViewModel cockpit)
+    {
+        var noProfile = Project.Create("Research and discovery notes for the next workspace migration") with
+        {
+            Description = "A deliberately long project name and description that must wrap instead of hiding the next action on a narrow workspace.",
+        };
+        var job = new ProjectJob("Check every migration dependency before release", "Reads configuration and writes a release report.")
+        {
+            Id = "scene-migration-check",
+        };
+        var running = Project.Create("Release train") with
+        {
+            DefaultProfileLabel = "personal",
+            Description = "A project with an active session and a scheduled job.",
+            Jobs = [job],
+        };
+        var actions = cockpit.Projects.CardActions;
+        var runAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
+        var run = new ProjectJobRun("scene-release", running.Id, job.Id, runAt, runAt, "Checking the release notes.");
+
+        if (cockpit.Workspaces.Active is not { } activeWorkspace)
+        {
+            throw new InvalidOperationException("The Projects workspace scene has no active workspace.");
+        }
+
+        cockpit.Projects.Projects.Clear();
+        cockpit.Projects.Projects.Add(noProfile);
+        cockpit.Projects.Projects.Add(running);
+        cockpit.Projects.ProjectCategoryGroups.Clear();
+        cockpit.Projects.ProjectCategoryGroups.Add(new ViewModels.ProjectCategoryGroupViewModel(
+            null,
+            [
+                new ViewModels.ProjectCardViewModel(noProfile, "● This machine", actions),
+                new ViewModels.ProjectCardViewModel(running, "● This machine", actions, jobRuns: [run]),
+            ]));
+        cockpit.Sessions.Add(new ViewModels.SessionViewModel
+        {
+            Title = "Release validation",
+            ProjectId = running.Id,
+            WorkspaceId = activeWorkspace.Id,
+            SessionStatus = SessionStatus.Busy,
+        });
+        cockpit.Projects.SharedProjectGroups.Clear();
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Research",
+            [new SharedProjectOffer(
+                "depot:research",
+                "A very long shared-project name that needs to stay legible on a narrow workspace",
+                "A deliberately long description checks that a shared project card wraps the text without pushing its action out of view.",
+                "Viewer")],
+            Error: null));
     }
 
     // A screenshot-shaped PNG at whatever aspect ratio a preview scene needs, from the same stand-in drawing the
