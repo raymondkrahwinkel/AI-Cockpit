@@ -191,6 +191,129 @@ public class OrgPolicyCeilingTests
 
     private static (Func<bool> Read, Action<bool> Write) _Switch(IShellAccessSwitch shell) => (() => shell.Enabled, value => shell.Enabled = value);
 
+    // Ollama and OpenRouter on listed models only: a start outside that does not run on either route, whichever of the
+    // option, the typed model or the plugin's own config names the model, and a live switch away from the list is refused.
+    [Theory]
+    [InlineData("sdk-provider")]
+    [InlineData("sdk-option-model")]
+    [InlineData("sdk-config-model")]
+    [InlineData("sdk-typed-model")]
+    [InlineData("sdk-extra-args")]
+    [InlineData("tty-provider")]
+    [InlineData("tty-config-model")]
+    [InlineData("live-model")]
+    [InlineData("live-clear")]
+    public async Task AProfileOutsideTheAllowedProviders_DoesNotStart(string route)
+    {
+        var rig = new ProviderRig();
+        var acts = new Dictionary<string, Func<Task>>
+        {
+            ["sdk-provider"] = () => rig.Runtime.StartAsync(ProviderRig.Claude),
+            ["sdk-option-model"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"), launchOptions: ProviderRig.Model("o3")),
+            ["sdk-config-model"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("""{ "Model": "o3" }""")),
+            ["sdk-typed-model"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"), model: "o3", launchOptions: ProviderRig.Model("gpt-5")),
+            ["sdk-extra-args"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("""{ "extraArgs": ["-c", "model=\"o3\""] }""")),
+            ["tty-provider"] = () => Task.FromResult(rig.Launch(rig.Provider("claude"), ProviderRig.Claude)),
+            ["tty-config-model"] = () => Task.FromResult(rig.Launch(rig.Provider(ProviderRig.OpenRouterId), ProviderRig.OpenRouter("""{ "model": "o3" }"""))),
+            ["live-model"] = async () =>
+            {
+                await rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"));
+                await rig.Runtime.SetModelAsync("o3");
+            },
+            ["live-clear"] = async () =>
+            {
+                await rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"));
+                await rig.Runtime.SetModelAsync(null);
+            },
+        };
+
+        var refused = await Assert.ThrowsAsync<OrgPolicyRefusedException>(acts[route]);
+
+        Assert.Contains("Acme", refused.Message);
+        Assert.All(rig.StartedModels, model => Assert.Equal("gpt-5", model));
+        await rig.Driver.DidNotReceive().SetModelAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        rig.Pty.DidNotReceive().Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>());
+    }
+
+    // A start that names no model runs on the first listed one rather than the provider's own default, on both routes and
+    // in the listed spelling. The operator's own shell terminal runs no provider, so the provider list leaves it alone.
+    [Theory]
+    [InlineData("sdk", "gpt-5")]
+    [InlineData("sdk-spelling", "gpt-5-mini")]
+    [InlineData("tty", "gpt-5")]
+    [InlineData("shell", null)]
+    public async Task AStartWithinTheAllowedProviders_RunsOnAListedModel(string route, string? expected)
+    {
+        var rig = new ProviderRig();
+        var acts = new Dictionary<string, Func<Task>>
+        {
+            ["sdk"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}")),
+            ["sdk-spelling"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"), launchOptions: ProviderRig.Model("GPT-5-Mini")),
+            ["tty"] = () => Task.FromResult(rig.Launch(rig.Provider(ProviderRig.OpenRouterId), ProviderRig.OpenRouter("{}"))),
+            ["shell"] = () => Task.FromResult(rig.Launch(new Cockpit.Core.Terminal.ShellTtySessionProvider(new("bash", "Bash", "/bin/bash", [])), profile: null)),
+        };
+
+        await acts[route]();
+
+        Assert.Equal(expected, rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.Model));
+        Assert.All(rig.StartedModels, model => Assert.Equal(expected, model));
+    }
+
+    private sealed class ProviderRig
+    {
+        public const string OpenRouterId = "openrouter-provider.openrouter";
+
+        public static readonly SessionProfile Claude = new("claude", ClaudePluginProfile.Create(string.Empty, null));
+
+        private readonly TtyLauncher _launcher;
+
+        public ProviderRig()
+        {
+            var org = Substitute.For<IOrgPolicy>();
+            org.ReadAsync(Arg.Any<CancellationToken>()).Returns(new ProvisionPolicy("Acme", Providers: new ProvisionProviderPolicy(
+            [
+                new ProvisionAllowedProvider("ollama", System.Text.Json.JsonSerializer.SerializeToElement(new[] { "qwen3" })),
+                new ProvisionAllowedProvider(OpenRouterId, System.Text.Json.JsonSerializer.SerializeToElement(new[] { "gpt-5", "gpt-5-mini" })),
+            ])));
+            Driver.Events.Returns(_EmptyStream());
+            Driver.StartAsync(Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Do<string?>(model => StartedModels.Add(model)), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
+                    Arg.Any<SessionResume?>(), Arg.Do<IReadOnlyDictionary<string, string>?>(options => LaunchedOptions = options), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(Task.CompletedTask);
+            var factory = Substitute.For<ISessionDriverFactory>();
+            factory.Create(Arg.Any<SessionProfile?>()).Returns(Driver);
+            Runtime = new SessionRuntime(factory, profile: null, orgPolicy: org);
+            Pty.Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
+                .Returns(Substitute.For<IConPtyProcess>());
+            _launcher = new TtyLauncher(Pty, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: org);
+        }
+
+        public ISessionDriver Driver { get; } = Substitute.For<ISessionDriver>();
+
+        public IPtyHostFactory Pty { get; } = Substitute.For<IPtyHostFactory>();
+
+        public SessionRuntime Runtime { get; }
+
+        public List<string?> StartedModels { get; } = [];
+
+        public IReadOnlyDictionary<string, string>? LaunchedOptions { get; private set; }
+
+        public static SessionProfile OpenRouter(string configJson) => new("router", new PluginProviderConfig(OpenRouterId, configJson));
+
+        public static Dictionary<string, string> Model(string model) => new() { [WellKnownPluginSessionOptions.Model] = model };
+
+        public ITtySessionProvider Provider(string providerId)
+        {
+            var provider = Substitute.For<ITtySessionProvider>();
+            provider.ProviderId.Returns(providerId);
+            provider.BuildLaunch(Arg.Do<TtyLaunchContext>(context => LaunchedOptions = context.Options))
+                .Returns(new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []));
+            return provider;
+        }
+
+        public IConPtyProcess Launch(ITtySessionProvider provider, SessionProfile? profile) =>
+            _launcher.Launch(provider, profile, new Dictionary<string, string>(), 80, 24);
+    }
+
     private static IOrgPolicy _Org()
     {
         var org = Substitute.For<IOrgPolicy>();

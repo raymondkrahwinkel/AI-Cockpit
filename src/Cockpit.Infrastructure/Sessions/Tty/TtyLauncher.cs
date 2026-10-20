@@ -5,6 +5,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Tty;
+using Cockpit.Core.Terminal;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -29,7 +30,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         string? projectId = null,
         Action<string>? notice = null)
     {
-        options = _ClampToPolicy(profile, options, notice);
+        options = _ClampToPolicy(provider, profile, options, notice);
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
         // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: they
@@ -132,9 +133,17 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
 
     // AC-1593: launch-time, so the TTY route meets the same mode ceiling as the SDK start (AC-294). Launch already runs
     // off the UI thread and may block (AC-779), so the policy read is waited for here.
-    private IReadOnlyDictionary<string, string> _ClampToPolicy(SessionProfile? profile, IReadOnlyDictionary<string, string> options, Action<string>? notice)
+    private IReadOnlyDictionary<string, string> _ClampToPolicy(ITtySessionProvider provider, SessionProfile? profile, IReadOnlyDictionary<string, string> options, Action<string>? notice)
     {
-        if (orgPolicy?.ReadAsync().GetAwaiter().GetResult() is not { } policy
+        var read = orgPolicy?.ReadAsync().GetAwaiter().GetResult();
+
+        // The operator's own shell terminal runs no provider, so providers.allowed has nothing to say about it.
+        if (provider is not ShellTtySessionProvider)
+        {
+            options = LaunchPermissionClamp.PinModel(read, profile, options, model: null).Options ?? options;
+        }
+
+        if (read is not { } policy
             || OrgPolicyCeilings.MaxPermissionMode(policy) is not { } ceiling
             || LaunchPermissionClamp.Clamp(ceiling, options, profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode)) is not { Options: { } clamped } result)
         {

@@ -120,8 +120,9 @@ internal sealed class SessionRuntime : ISessionRuntime
         // Picking the driver is deferred to here rather than to the constructor: it depends on the profile's
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
-        _driver = _driverFactory.Create(profile);
         _policy = await _ReadPolicyAsync(cancellationToken);
+        (launchOptions, model) = LaunchPermissionClamp.PinModel(_policy, profile, launchOptions, model);
+        _driver = _driverFactory.Create(profile);
         var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
         if (clampedTo is not null && _policy is not null)
@@ -162,8 +163,14 @@ internal sealed class SessionRuntime : ISessionRuntime
         }
     }
 
-    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
-        _driver?.SetModelAsync(model, cancellationToken) ?? Task.CompletedTask;
+    public async Task SetModelAsync(string? model, CancellationToken cancellationToken = default)
+    {
+        if (_driver is not null)
+        {
+            await _EnsureModelAllowedAsync(model, cancellationToken);
+            await _driver.SetModelAsync(model, cancellationToken);
+        }
+    }
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) =>
         _driver?.SetMaxThinkingTokensAsync(maxThinkingTokens, cancellationToken) ?? Task.CompletedTask;
@@ -179,6 +186,11 @@ internal sealed class SessionRuntime : ISessionRuntime
         if (string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase) || OrgPolicyCeilings.IsUnsupervisedKey(key))
         {
             await _EnsureOptionAllowedAsync(key, value, cancellationToken);
+        }
+
+        if (string.Equals(key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            await _EnsureModelAllowedAsync(value, cancellationToken);
         }
 
         await _driver.SetLiveOptionAsync(key, value, cancellationToken);
@@ -329,6 +341,15 @@ internal sealed class SessionRuntime : ISessionRuntime
         launchOptions = clamped;
         permissionMode = clamped.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode) ?? permissionMode;
         return lowered ? ceiling : null;
+    }
+
+    private async Task _EnsureModelAllowedAsync(string? model, CancellationToken cancellationToken)
+    {
+        _policy = await _ReadPolicyAsync(cancellationToken);
+        if (OrgProviderPolicy.SwitchRefusal(_policy, Profile, model) is { } refusal)
+        {
+            throw new OrgPolicyRefusedException(refusal);
+        }
     }
 
     // Refused rather than ignored, so no caller records a switch that never happened.

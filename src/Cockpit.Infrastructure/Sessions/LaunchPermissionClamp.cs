@@ -1,3 +1,4 @@
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -44,6 +45,32 @@ internal static class LaunchPermissionClamp
 
         return (clamped, lowered || unsupervised);
     }
+
+    // AC-1593: refuses a start outside providers.allowed, or pins it to an allowed model on both the option and the typed
+    // model, since drivers differ in which of the two wins. Shared by the SDK start and the TTY launch.
+    public static (IReadOnlyDictionary<string, string>? Options, string? Model) PinModel(
+        ProvisionPolicy? policy, SessionProfile? profile, IReadOnlyDictionary<string, string>? options, string? model)
+    {
+        var source = options ?? new Dictionary<string, string>();
+        var stated = source.Where(option => _IsModelKey(option.Key)).Select(option => (string?)option.Value).Append(model).ToArray();
+        var (refusal, pinned) = OrgProviderPolicy.Check(policy, profile, stated);
+        if (refusal is not null)
+        {
+            throw new OrgPolicyRefusedException(refusal);
+        }
+
+        if (pinned is null)
+        {
+            return (options, model);
+        }
+
+        var comparer = (source as Dictionary<string, string>)?.Comparer ?? StringComparer.Ordinal;
+        var result = source.Where(option => !_IsModelKey(option.Key)).ToDictionary(option => option.Key, option => option.Value, comparer);
+        result[WellKnownPluginSessionOptions.Model] = pinned;
+        return (result, pinned);
+    }
+
+    private static bool _IsModelKey(string key) => string.Equals(key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase);
 
     private static bool _IsModeKey(string key) => string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase);
 }
