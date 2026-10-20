@@ -32,6 +32,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private readonly List<IDisposable> _handlers = [];
 
     private Inbox.DepotInbox? _inbox;
+    private Events.DepotEvents? _events;
     private ILogger? _logger;
 
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
@@ -43,6 +44,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private const string DepotClientId = "depot";
 
     internal const string InvalidInstallTokenMessage = "That installation token is not valid any more. Make a new one in Depot under Account.";
+
+    internal Events.DepotEvents Events => _events ?? throw new InvalidOperationException("Depot events are not initialized.");
 
     public PluginMetadata Metadata { get; } = new(
         Id: "depot",
@@ -104,6 +107,13 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             JsonSerializer.SerializeToElement(await inbox.UnreadAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json)));
         _HandleInbox(host, DepotInboxChannel.List, inbox.ListAsync);
         _HandleInbox(host, DepotInboxChannel.MarkRead, inbox.MarkReadAsync);
+
+        _events = new Events.DepotEvents(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName),
+            (connection, userId, onEvent, onReconnected, onClosed) => new Events.SignalRDepotEventHub(
+                connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onEvent, onReconnected, onClosed),
+            _logger);
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -481,7 +491,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
         // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
         _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
-            closing => _logger?.LogWarning(closing.Exception!.GetBaseException(), "Closing the Depot inbox failed."),
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the Depot inbox failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+        _ = _events?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot events failed."),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);
