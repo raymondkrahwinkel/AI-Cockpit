@@ -14,9 +14,13 @@ public sealed record ProjectStartingPoint(
     // reason this audience can be handed an assistant at all: nothing leaves the machine and nothing is booked
     // without a person pressing the button.
     public const string SharedBehavior =
-        "Never send, submit, book or pay anything. You prepare, compare, explain and put things ready for review " +
-        "— a person decides and a person sends. Never change a source file; write your results into the project's " +
+        NeverSendBehavior + " Never change a source file; write your results into the project's " +
         "own folder. When you cannot match something, stop and list it rather than guess.";
+
+    // AC-1593: the never-send half on its own, which an organisation's `neverSend` puts in every session (AC-494).
+    public const string NeverSendBehavior =
+        "Never send, submit, book or pay anything. You prepare, compare, explain and put things ready for review " +
+        "— a person decides and a person sends.";
 
     // Where a starting point writes, relative to the chosen folder. Everything a session produces lands under one
     // subfolder of the source, which is what keeps the folder the only question: without it every card would have

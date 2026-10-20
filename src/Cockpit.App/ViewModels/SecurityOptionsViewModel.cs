@@ -66,6 +66,11 @@ public sealed partial class SecurityOptionsViewModel(
 
     public string? ShellAccessManagedLabel => ShellAccessEditable ? null : $"Managed by {orgPolicy?.Current?.By}: off for every agent";
 
+    // AC-1593: shown only when the organisation sets `neverSend`; nothing on this machine turns it off.
+    public bool NeverSendManaged => OrgPolicyCeilings.NeverSend(orgPolicy?.Current);
+
+    public string? NeverSendManagedLabel => NeverSendManaged ? $"Managed by {orgPolicy?.Current?.By}: an instruction to every assistant, not a block" : null;
+
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
     public bool SuspendPersistence { get; set; }
