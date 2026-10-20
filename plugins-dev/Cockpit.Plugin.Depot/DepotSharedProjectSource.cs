@@ -175,7 +175,7 @@ internal sealed class DepotSharedProjectSource(
             }
 
             using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            if (response.StatusCode == HttpStatusCode.Gone)
             {
                 return _EndpointResult.Fallback;
             }
