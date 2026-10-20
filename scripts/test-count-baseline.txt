@@ -18,7 +18,7 @@ plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	6
 plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests	8
 plugins-dev/Cockpit.Plugin.GitStatus.Tests	7
 plugins-dev/Cockpit.Plugin.GrokProvider.Tests	6
-plugins-dev/Cockpit.Plugin.KimiProvider.Tests	48
+plugins-dev/Cockpit.Plugin.KimiProvider.Tests	49
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
 plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
