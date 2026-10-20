@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -127,6 +128,17 @@ public partial class EditableProfileViewModel : ViewModelBase
     // The permission-ceiling values offered in the delegation dropdown (AC-79), least- to most-permissive.
     public IReadOnlyList<string> PermissionCeilingChoices { get; } = ["plan", "default", "acceptEdits", "bypassPermissions"];
 
+    // AC-1593: the same values for the dropdown, with the ones above the organisation's delegation ceiling ruled out.
+    public IReadOnlyList<SelectableChoice> PermissionCeilingChoiceItems =>
+        [.. PermissionCeilingChoices.Select(value => new SelectableChoice(value, value, OrgPolicyCeilings.Allows(OrgPolicyCeilings.DelegationCeiling(_orgPolicy), value)))];
+
+    public string? PermissionCeilingManagedLabel => OrgPolicyMarking.AtMost(_orgPolicy, OrgPolicyCeilings.DelegationCeiling(_orgPolicy));
+
+    // AC-1593: an organisation that forbids auto-approve locks the checkbox; the stored value stays as it is.
+    public bool AutoApproveToolsEditable => !OrgPolicyCeilings.AutoApproveForbidden(_orgPolicy);
+
+    public string? AutoApproveToolsManagedLabel => OrgPolicyMarking.AutoApproveLabel(_orgPolicy);
+
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
@@ -164,6 +176,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     private IPluginProviderConfigView? _pluginConfigView;
 
     private readonly IPluginRegistrations? _pluginProviderRegistry;
+    private readonly ProvisionPolicy? _orgPolicy;
     private readonly IPluginProviderConfigViews? _pluginConfigViews;
 
     // Resolves whether the selected provider has a TTY route at all (AC-139), the same question
@@ -483,7 +496,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 // AC-1102: a key the profile does not store stays blank, never borrowing the option's declared
                 // default — Apply would persist that as the operator's own choice and pin a value nobody picked.
                 var value = storedDefaults?.GetValueOrDefault(option.Key);
-                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels, _orgPolicy));
             }
         }
 
@@ -531,8 +544,10 @@ public partial class EditableProfileViewModel : ViewModelBase
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
         ISessionLoginFlows? loginStarter = null,
-        IPluginProviderConfigViews? pluginConfigViews = null)
+        IPluginProviderConfigViews? pluginConfigViews = null,
+        ProvisionPolicy? orgPolicy = null)
     {
+        _orgPolicy = orgPolicy;
         _pluginConfigViews = pluginConfigViews;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;

@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -286,10 +287,10 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         await runtime.StartAsync(
             start.Profile, start.PermissionMode, start.Model, start.EnabledMcpServerNames, start.WorkingDirectory, start.Resume,
             launchOptions, start.ProjectId);
-        _liveState.SetPermissionMode(start.PermissionMode);
+        _liveState.SetPermissionMode(OrgPolicyCeilings.Clamp(OrgPolicyCeilings.MaxPermissionMode(runtime.Policy), start.PermissionMode) ?? start.PermissionMode);
         _RaiseLiveStateIfChanged();
         StartUsageCatchUp();
-        return new SessionLaunched(runtime.IsRunning, runtime.ProcessId, runtime.Capabilities, runtime.LiveOptions);
+        return new SessionLaunched(runtime.IsRunning, runtime.ProcessId, runtime.Capabilities, runtime.LiveOptions, runtime.Policy);
     }
 
     // AC-13: the pane's own id rides along, which the provider's plugin turns into COCKPIT_PANE_ID for `set_status`.
@@ -712,7 +713,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // AC-215: allows a pre-authorized tool on the wire; false when the operator has to be asked.
     public bool TryAutoAllow(PermissionRequested permission)
     {
-        if (!(PreApprovesAllTools || _preApprovedTools.Contains(permission.ToolName)) || Runtime is not { } runtime)
+        if (Runtime is not { } runtime || !(PreApprovesAllTools && !OrgPolicyCeilings.AutoApproveForbidden(runtime.Policy) || _preApprovedTools.Contains(permission.ToolName)))
         {
             return false;
         }

@@ -19,6 +19,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Usage;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
@@ -607,6 +608,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // When on, this session runs tool calls without prompting (still shown as tool rows). Applied live to the driver.
     [ObservableProperty]
     private bool _autoApproveTools;
+
+    // AC-1593: the organisation's policy as this session's start read it, so the live controls mark what it rules out.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutoApproveToolsEditable), nameof(AutoApproveToolsTip))]
+    private ProvisionPolicy? _orgPolicy;
+
+    public bool AutoApproveToolsEditable => !OrgPolicyCeilings.AutoApproveForbidden(OrgPolicy);
+
+    public string AutoApproveToolsTip => OrgPolicyMarking.AutoApproveLabel(OrgPolicy)
+        ?? "Run this local model's tool calls without an Allow prompt each time (they still show as tool rows)";
 
     // Carries messages other agents left for this pane out with its next turn (AC-394). Optional: a pane built
     // without it — every design-time and most test constructions — simply sends what it was given, which is the
@@ -1889,6 +1900,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             // The provider's generic live controls (#45 D4) settle at the same moment as capabilities — the driver
             // lists them once its session is up (Codex resolves its model list on start) — so read them here too.
+            OrgPolicy = launched.Policy;
+            _ShowClampedPermissionMode();
             _PopulateLiveControls(launched.LiveOptions);
 
             OnPropertyChanged(nameof(CanPasteImages));
@@ -1900,7 +1913,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // A profile marked "auto-approve tools" (#26) seeds the toggle for a fresh local tool session, so it starts
             // already on instead of needing the operator to flip it every time for a profile they trust.
             var wasAlreadyOn = AutoApproveTools;
-            AutoApproveTools = AutoApproveTools || (isLocalToolSession && profile?.Defaults?.AutoApproveTools == true);
+            AutoApproveTools = AutoApproveToolsEditable && (AutoApproveTools || (isLocalToolSession && profile?.Defaults?.AutoApproveTools == true));
 
             if (AutoApproveTools && wasAlreadyOn)
             {
@@ -1942,7 +1955,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Live-switches the running session's permission mode. No-op before the session has started.
     partial void OnSelectedPermissionModeChanged(PermissionModeOption value)
     {
-        if (!_control.IsRunning)
+        if (!_control.IsRunning || _showingClampedMode)
         {
             return;
         }
@@ -2103,12 +2116,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     // Rebuilds the generic live-control panel from the running driver's declared options (#45 D4).
+    // AC-1593: a start the policy clamped runs at the ceiling, so the dropdown shows that rather than the mode asked for.
+    // The session already runs in it, so showing it must not send a switch.
+    private void _ShowClampedPermissionMode()
+    {
+        if (OrgPolicyCeilings.Clamp(OrgPolicyCeilings.MaxPermissionMode(OrgPolicy), SelectedPermissionMode.Value) is { } ceiling)
+        {
+            _showingClampedMode = true;
+            IsPermissionModeLocked = false;
+            SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(ceiling);
+            _showingClampedMode = false;
+        }
+    }
+
+    private bool _showingClampedMode;
+
     private void _PopulateLiveControls(IReadOnlyList<SessionLiveOption> options)
     {
         LiveControls.Clear();
         foreach (var option in options)
         {
-            LiveControls.Add(new LiveControlViewModel(option, _SetLiveOptionSafeAsync));
+            LiveControls.Add(new LiveControlViewModel(option, _SetLiveOptionSafeAsync, OrgPolicy));
         }
     }
 

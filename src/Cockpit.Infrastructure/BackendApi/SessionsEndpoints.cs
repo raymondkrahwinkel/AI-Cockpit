@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
@@ -250,9 +251,16 @@ internal static class SessionsEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", NodeSessionMcpTools.PermissionsRefusal);
             }
 
-            if (!await handle.UseControlAsync(control => control.SetPermissionModeAsync(body.Mode)).ConfigureAwait(false))
+            try
             {
-                return Results.NotFound();
+                if (!await handle.UseControlAsync(control => control.SetPermissionModeAsync(body.Mode)).ConfigureAwait(false))
+                {
+                    return Results.NotFound();
+                }
+            }
+            catch (OrgPolicyRefusedException refused)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status403Forbidden, "forbidden", refused.Message);
             }
 
             return Results.Json(new { paneId, mode = body.Mode });

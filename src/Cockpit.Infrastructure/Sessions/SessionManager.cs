@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -12,6 +13,7 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
     private readonly ISessionDriverFactory _driverFactory;
     private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly ISessionProcessAnchor? _processAnchor;
+    private readonly IOrgPolicy? _orgPolicy;
     private readonly List<ISessionRuntime> _sessions = [];
     private readonly Lock _sessionsLock = new();
 
@@ -20,11 +22,13 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
     public SessionManager(
         ISessionDriverFactory driverFactory,
         ISessionMemoryLimiter? memoryLimiter = null,
-        ISessionProcessAnchor? processAnchor = null)
+        ISessionProcessAnchor? processAnchor = null,
+        IOrgPolicy? orgPolicy = null)
     {
         _driverFactory = driverFactory;
         _memoryLimiter = memoryLimiter;
         _processAnchor = processAnchor;
+        _orgPolicy = orgPolicy;
     }
 
     public IReadOnlyList<ISessionRuntime> Sessions
@@ -42,7 +46,7 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
 
     public ISessionRuntime Create(SessionProfile? profile)
     {
-            var runtime = new SessionRuntime(_driverFactory, profile, _memoryLimiter, _processAnchor);
+        var runtime = new SessionRuntime(_driverFactory, profile, _memoryLimiter, _processAnchor, _orgPolicy);
         lock (_sessionsLock)
         {
             _sessions.Add(runtime);
