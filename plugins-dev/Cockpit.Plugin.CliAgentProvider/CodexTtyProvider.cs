@@ -105,7 +105,8 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
             }
         }
 
-        var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, config.SandboxMode);
+        var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, null)
+            ?? CodexSandbox.WithinCeiling(config.SandboxMode, CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, null));
         if (!string.IsNullOrWhiteSpace(sandbox))
         {
             arguments.Add("--sandbox");

@@ -3,28 +3,39 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
-// AC-1593: the launch-time half of the mode ceiling, shared by the SDK start and the TTY launch so both routes clamp alike.
+// AC-1593: the launch-time half of the ceilings, shared by the SDK start and the TTY launch so both routes clamp alike.
 internal static class LaunchPermissionClamp
 {
-    // The options the driver reads its mode from, clamped: every spelling of the key goes, the ceiling takes its place.
-    // `fallback` is the mode that runs when no option is there. Null when nothing needed clamping.
-    public static IReadOnlyDictionary<string, string>? Clamp(string? ceiling, IReadOnlyDictionary<string, string>? options, string? fallback)
+    // The options clamped under `ceiling`, or null when nothing needed it. `fallback` is the mode that runs when no option
+    // names one; with neither, a mode is stated, since a provider's own default may be its most permissive one.
+    // `Lowered` says something the operator chose was brought down, which they are told.
+    public static (IReadOnlyDictionary<string, string>? Options, bool Lowered) Clamp(string? ceiling, IReadOnlyDictionary<string, string>? options, string? fallback)
     {
-        var given = (options ?? new Dictionary<string, string>())
-            .Where(option => _IsModeKey(option.Key) && option.Value.Length > 0)
-            .Select(string? (option) => option.Value)
-            .ToList();
-        var effective = given.Count > 0 ? given : [fallback];
-        if (ceiling is null || effective.All(mode => OrgPolicyCeilings.Clamp(ceiling, mode) is null))
+        if (ceiling is null)
         {
-            return null;
+            return (null, false);
         }
 
-        var clamped = (options ?? new Dictionary<string, string>())
-            .Where(option => !_IsModeKey(option.Key))
-            .ToDictionary(option => option.Key, option => option.Value, StringComparer.Ordinal);
-        clamped[WellKnownPluginSessionOptions.PermissionMode] = ceiling;
-        return clamped;
+        var source = options ?? new Dictionary<string, string>();
+        var given = source.Where(option => _IsModeKey(option.Key) && !string.IsNullOrWhiteSpace(option.Value)).Select(option => option.Value).ToList();
+        var effective = given.Count > 0 ? given : string.IsNullOrWhiteSpace(fallback) ? [] : [fallback];
+        var lowered = effective.Any(mode => OrgPolicyCeilings.Clamp(ceiling, mode) is not null);
+        var stated = effective.Count == 0;
+        var unsupervised = source.Any(option => OrgPolicyCeilings.SafeOption(ceiling, option.Key, option.Value) is not null);
+        if (!lowered && !stated && !unsupervised)
+        {
+            return (null, false);
+        }
+
+        var clamped = source
+            .Where(option => !(lowered || stated) || !_IsModeKey(option.Key))
+            .ToDictionary(option => option.Key, option => OrgPolicyCeilings.SafeOption(ceiling, option.Key, option.Value) ?? option.Value, StringComparer.Ordinal);
+        if (lowered || stated)
+        {
+            clamped[WellKnownPluginSessionOptions.PermissionMode] = lowered ? ceiling : OrgPolicyCeilings.Lower("default", ceiling) ?? ceiling;
+        }
+
+        return (clamped, lowered || unsupervised);
     }
 
     private static bool _IsModeKey(string key) => string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase);

@@ -8,23 +8,31 @@ namespace Cockpit.App.ViewModels;
 public static class OrgPolicyMarking
 {
     public static IReadOnlyList<SelectableChoice> Choices(string key, IReadOnlyList<SelectableChoice> items, ProvisionPolicy? policy) =>
-        _Ceiling(key, policy) is { } ceiling
-            ? [.. items.Select(item => item with { IsEnabled = OrgPolicyCeilings.Allows(ceiling, item.Value) })]
+        _Governs(key, policy) is { } ceiling
+            ? [.. items.Select(item => item with { IsEnabled = _Replacement(key, item.Value, ceiling) is null })]
             : items;
 
-    public static string? Label(string key, ProvisionPolicy? policy) => AtMost(policy, _Ceiling(key, policy));
+    public static string? Label(string key, ProvisionPolicy? policy) => AtMost(policy, _Governs(key, policy));
 
     public static string? AtMost(ProvisionPolicy? policy, string? ceiling) => ceiling is null ? null : $"{ManagedBy(policy)}: at most {ceiling}";
 
-    // The ceiling itself when `value` is above it, so a launch choice opens on what will actually run.
+    // What a launch choice should open on, so it shows what will actually run; null when `value` is fine.
     public static string? Snapped(string key, string? value, ProvisionPolicy? policy) =>
-        _Ceiling(key, policy) is { } ceiling ? OrgPolicyCeilings.Clamp(ceiling, value) : null;
+        _Governs(key, policy) is { } ceiling && value is not null ? _Replacement(key, value, ceiling) : null;
 
     public static string? AutoApproveLabel(ProvisionPolicy? policy) =>
         OrgPolicyCeilings.AutoApproveForbidden(policy) ? $"{ManagedBy(policy)}: off in every session" : null;
 
     public static string? ManagedBy(ProvisionPolicy? policy) => policy is null ? null : $"Managed by {policy.By}";
 
-    private static string? _Ceiling(string key, ProvisionPolicy? policy) =>
-        string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase) ? OrgPolicyCeilings.MaxPermissionMode(policy) : null;
+    // The ceiling when this key is one the mode ceiling reaches: the mode itself, or a provider's "ask nothing" option.
+    private static string? _Governs(string key, ProvisionPolicy? policy) =>
+        OrgPolicyCeilings.MaxPermissionMode(policy) is { } ceiling && (_IsMode(key) || OrgPolicyCeilings.IsUnsupervisedKey(key) && ceiling != OrgPolicyCeilings.Bypass)
+            ? ceiling
+            : null;
+
+    private static string? _Replacement(string key, string value, string ceiling) =>
+        _IsMode(key) ? OrgPolicyCeilings.Clamp(ceiling, value) : OrgPolicyCeilings.SafeOption(ceiling, key, value);
+
+    private static bool _IsMode(string key) => string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase);
 }

@@ -705,7 +705,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // A local-model session gates every MCP call through a prompt nobody answers (AC-78), so it decides itself:
             // AutoApproveTools allows everything, otherwise each call is gated (AC-79). AC-1593: an organisation that
             // forbids auto-approve gets the gate, or no ceiling would be installed at all.
-            if (entry.Profile.Defaults?.AutoApproveTools == true && !OrgPolicyCeilings.AutoApproveForbidden(policy))
+            if (entry.Profile.Defaults?.AutoApproveTools == true && !OrgPolicyCeilings.DelegatedAutoApproveForbidden(policy))
             {
                 await runtime.SetAutoApproveToolsAsync(true);
             }
@@ -737,8 +737,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     private async Task<string> _EffectiveCeilingAsync(DelegatedTaskEntry entry, ProvisionPolicy? policy)
     {
         var requested = entry.RequestedPermission;
-        if (policy is not null && OrgPolicyCeilings.DelegationCeiling(policy) is { } orgCeiling
-            && !string.IsNullOrWhiteSpace(requested) && DelegatedToolPermissionPolicy.IsAboveCeiling(orgCeiling, requested))
+        if (policy is not null && OrgPolicyCeilings.Clamp(OrgPolicyCeilings.DelegationCeiling(policy), requested) is { } orgCeiling)
         {
             requested = orgCeiling;
             await _Audit(DelegationAuditAction.PermissionElevationDenied, entry.Profile.Label, entry.TaskId, request: null,

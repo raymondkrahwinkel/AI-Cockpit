@@ -30,9 +30,12 @@ public class OrgPolicyCeilingTests
 
     [Theory]
     [InlineData("sdk-start")]
+    [InlineData("sdk-start-sandbox")]
+    [InlineData("sdk-start-blank")]
     [InlineData("tty-start")]
     [InlineData("switch")]
     [InlineData("live-option")]
+    [InlineData("live-mode")]
     [InlineData("auto-approve")]
     public async Task NothingAboveTheCeilingRuns_OnAnyRoute(string route)
     {
@@ -59,13 +62,21 @@ public class OrgPolicyCeilingTests
         var factory = Substitute.For<ISessionDriverFactory>();
         factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
         var runtime = new SessionRuntime(factory, profile: null, orgPolicy: _Org());
-        await runtime.StartAsync(profile: null, launchOptions: route == "sdk-start" ? bypass : null);
+        var starts = new Dictionary<string, (Dictionary<string, string>? Options, string Key, string Expected)>
+        {
+            ["sdk-start"] = (bypass, WellKnownPluginSessionOptions.PermissionMode, "acceptEdits"),
+            // Codex's "ask nothing" is its sandbox, not a mode; and no mode at all leaves the provider's own default.
+            ["sdk-start-sandbox"] = (new() { ["sandbox"] = "danger-full-access" }, "sandbox", "workspace-write"),
+            ["sdk-start-blank"] = (null, WellKnownPluginSessionOptions.PermissionMode, "default"),
+        };
+        await runtime.StartAsync(profile: null, launchOptions: starts.GetValueOrDefault(route).Options);
 
         switch (route)
         {
-            case "sdk-start":
-                await driver.Received(1).StartAsync(null, "acceptEdits", null, null, null, null,
-                    Arg.Is<IReadOnlyDictionary<string, string>>(options => options[WellKnownPluginSessionOptions.PermissionMode] == "acceptEdits"), null, Arg.Any<CancellationToken>());
+            case "sdk-start" or "sdk-start-sandbox" or "sdk-start-blank":
+                var (_, key, expected) = starts[route];
+                await driver.Received(1).StartAsync(null, Arg.Any<string>(), null, null, null, null,
+                    Arg.Is<IReadOnlyDictionary<string, string>>(options => options[key] == expected), null, Arg.Any<CancellationToken>());
                 break;
             case "switch":
                 await Assert.ThrowsAsync<OrgPolicyRefusedException>(() => runtime.SetPermissionModeAsync("bypassPermissions"));
@@ -73,6 +84,10 @@ public class OrgPolicyCeilingTests
                 break;
             case "live-option":
                 await Assert.ThrowsAsync<OrgPolicyRefusedException>(() => runtime.SetLiveOptionAsync("Permission-Mode", "bypassPermissions"));
+                await driver.DidNotReceive().SetLiveOptionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+                break;
+            case "live-mode":
+                await Assert.ThrowsAsync<OrgPolicyRefusedException>(() => runtime.SetLiveOptionAsync("mode", "yolo"));
                 await driver.DidNotReceive().SetLiveOptionAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
                 break;
             case "auto-approve":

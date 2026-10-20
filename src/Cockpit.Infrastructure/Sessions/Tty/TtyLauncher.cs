@@ -136,14 +136,18 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
     {
         if (orgPolicy?.ReadAsync().GetAwaiter().GetResult() is not { } policy
             || OrgPolicyCeilings.MaxPermissionMode(policy) is not { } ceiling
-            || LaunchPermissionClamp.Clamp(ceiling, options, profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode)) is not { } clamped)
+            || LaunchPermissionClamp.Clamp(ceiling, options, profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode)) is not { Options: { } clamped } result)
         {
             return options;
         }
 
-        var message = OrgPolicyCeilings.StartedClamped(policy, ceiling);
-        logger.LogInformation("TTY launch clamped by policy: {Message}", message);
-        notice?.Invoke(message);
+        if (result.Lowered)
+        {
+            var message = OrgPolicyCeilings.StartedClamped(policy, ceiling);
+            logger.LogInformation("TTY launch clamped by policy: {Message}", message);
+            notice?.Invoke(message);
+        }
+
         return clamped;
     }
 

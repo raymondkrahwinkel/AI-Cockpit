@@ -157,7 +157,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     {
         if (_driver is not null)
         {
-            await _EnsureModeAllowedAsync(mode, cancellationToken);
+            await _EnsureOptionAllowedAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
             await _driver.SetPermissionModeAsync(mode, cancellationToken);
         }
     }
@@ -176,9 +176,9 @@ internal sealed class SessionRuntime : ISessionRuntime
             return;
         }
 
-        if (string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase) || OrgPolicyCeilings.IsUnsupervisedKey(key))
         {
-            await _EnsureModeAllowedAsync(value, cancellationToken);
+            await _EnsureOptionAllowedAsync(key, value, cancellationToken);
         }
 
         await _driver.SetLiveOptionAsync(key, value, cancellationToken);
@@ -320,23 +320,28 @@ internal sealed class SessionRuntime : ISessionRuntime
         var ceiling = OrgPolicyCeilings.MaxPermissionMode(_policy);
         var fallback = permissionMode ?? Profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode);
         permissionMode = OrgPolicyCeilings.Clamp(ceiling, permissionMode) ?? permissionMode;
-        if (LaunchPermissionClamp.Clamp(ceiling, launchOptions, fallback) is not { } clamped)
+        var (clamped, lowered) = LaunchPermissionClamp.Clamp(ceiling, launchOptions, fallback);
+        if (clamped is null)
         {
             return null;
         }
 
         launchOptions = clamped;
-        permissionMode = ceiling;
-        return ceiling;
+        permissionMode = clamped.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode) ?? permissionMode;
+        return lowered ? ceiling : null;
     }
 
     // Refused rather than ignored, so no caller records a switch that never happened.
-    private async Task _EnsureModeAllowedAsync(string mode, CancellationToken cancellationToken)
+    private async Task _EnsureOptionAllowedAsync(string key, string value, CancellationToken cancellationToken)
     {
         _policy = await _ReadPolicyAsync(cancellationToken);
-        if (_policy is not null && OrgPolicyCeilings.Clamp(OrgPolicyCeilings.MaxPermissionMode(_policy), mode) is { } ceiling)
+        var ceiling = OrgPolicyCeilings.MaxPermissionMode(_policy);
+        var refused = string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase)
+            ? OrgPolicyCeilings.Clamp(ceiling, value) is not null
+            : OrgPolicyCeilings.SafeOption(ceiling, key, value) is not null;
+        if (_policy is not null && ceiling is not null && refused)
         {
-            throw new OrgPolicyRefusedException(OrgPolicyCeilings.SwitchRefused(_policy, mode, ceiling));
+            throw new OrgPolicyRefusedException(OrgPolicyCeilings.SwitchRefused(_policy, value, ceiling));
         }
     }
 

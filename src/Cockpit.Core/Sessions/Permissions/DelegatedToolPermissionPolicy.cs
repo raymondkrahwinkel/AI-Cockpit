@@ -126,9 +126,6 @@ public static class DelegatedToolPermissionPolicy
     // comparison would misprompt for a request that asks no more than the profile already allows.
     public static bool IsAboveCeiling(string? ceiling, string? requested) => _CeilingRank(requested) > _CeilingRank(ceiling);
 
-    // AC-1593: a mode this ordering knows; an unknown name is not provably within any ceiling.
-    public static bool IsKnownCeiling(string? ceiling) => _CeilingRank(ceiling) > 0;
-
     private static int _CeilingRank(string? ceiling) => ceiling switch
     {
         BypassPermissionsCeiling => 3,
