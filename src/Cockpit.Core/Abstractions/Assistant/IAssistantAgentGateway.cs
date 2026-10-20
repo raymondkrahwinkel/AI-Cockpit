@@ -297,8 +297,6 @@ public sealed record AssistantProjectUpdateResult(bool Ok, string? ProjectId, st
     public static AssistantProjectUpdateResult Refused(string error) => new(false, null, null, error);
 }
 
-// What came of raising a structured question card (AC-955). Same shape and same reason as `AgentStopResult` — a
-// refusal is a sentence the assistant says, not an exception it fails on.
 // What came of set_thread or tag_prompt. A note is said back to the assistant even when it worked: a quote that was not
 // found, an id no project has.
 public sealed record AssistantThreadResult(bool Ok, string? Note)
@@ -306,6 +304,8 @@ public sealed record AssistantThreadResult(bool Ok, string? Note)
     public static AssistantThreadResult Unavailable { get; } = new(false, "The threads are not available here.");
 }
 
+// What came of raising a structured question card (AC-955). Same shape and same reason as `AgentStopResult` — a
+// refusal is a sentence the assistant says, not an exception it fails on.
 public sealed record AskStructuredQuestionResult(bool Ok, string? Error)
 {
     public static AskStructuredQuestionResult Shown() => new(true, null);
