@@ -38,8 +38,9 @@ public static class OrgProviderPolicy
         }
 
         var candidates = stated.Concat(_ModelsOf(profile))
+            .OfType<string>()
             .Where(model => !string.IsNullOrWhiteSpace(model))
-            .Select(model => model!.Trim())
+            .Select(model => model.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (candidates.FirstOrDefault(model => !_AllowsModel(entry.Models, model)) is { } refused)
@@ -140,7 +141,7 @@ public static class OrgProviderPolicy
 
     private static IEnumerable<string> _Listed(JsonElement models) =>
         models.EnumerateArray().Select(item => item.ValueKind is JsonValueKind.String ? item.GetString() : null)
-            .Where(model => !string.IsNullOrWhiteSpace(model)).Select(model => model!.Trim());
+            .OfType<string>().Where(model => !string.IsNullOrWhiteSpace(model)).Select(model => model.Trim());
 
     private static bool _AllowsModel(JsonElement models, string model) => models.ValueKind switch
     {
