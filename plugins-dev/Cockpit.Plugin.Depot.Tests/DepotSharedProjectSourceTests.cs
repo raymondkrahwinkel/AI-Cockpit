@@ -67,6 +67,7 @@ public class DepotSharedProjectSourceTests
         Assert.Equal(1, handler.RequestCount);
         var project = Assert.Single(result.Projects);
         Assert.Equal("Endpoint project", project.Name);
+        Assert.Equal("depot:cockpit", project.Id);
         Assert.Equal("acme", project.Organization?.Slug);
         Assert.Equal("Member", project.Organization?.Role);
         await host.DidNotReceive().CallMcpToolAsync(Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());

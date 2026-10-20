@@ -207,7 +207,7 @@ internal sealed class DepotSharedProjectSource(
             host.Cache.Set(CacheKey, new _CachedProjects(response.Headers.ETag?.Tag, DateTimeOffset.UtcNow, result));
             return _EndpointResult.From(result);
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             return _Unavailable(cached);
         }
@@ -235,7 +235,7 @@ internal sealed class DepotSharedProjectSource(
                 continue;
             }
 
-            var id = $"{scheme}:{project.Address ?? project.Slug}";
+            var id = $"{scheme}:{project.Slug}";
             var name = project.Name is { Length: > 0 } value ? value : project.Slug;
             var role = DepotProjectRoleParser.Parse(project.Role);
             var organization = project.Organization is { Slug: { Length: > 0 } organizationSlug }
@@ -277,6 +277,7 @@ internal sealed class DepotSharedProjectSource(
     {
         "ok" => SharedProjectReadState.Ok,
         "absent" => SharedProjectReadState.Absent,
+        "invalid" => SharedProjectReadState.Invalid,
         "tooLarge" => SharedProjectReadState.TooLarge,
         _ => SharedProjectReadState.Invalid,
     };
