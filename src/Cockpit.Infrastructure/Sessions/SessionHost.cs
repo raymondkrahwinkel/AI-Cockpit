@@ -712,7 +712,7 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
     // AC-215: allows a pre-authorized tool on the wire; false when the operator has to be asked.
     public bool TryAutoAllow(PermissionRequested permission)
     {
-        if (!(PreApprovesAllTools || _preApprovedTools.Contains(permission.ToolName)) || Runtime is not { } runtime)
+        if (Runtime is not { } runtime || !(PreApprovesAllTools && !runtime.AutoApproveForbidden || _preApprovedTools.Contains(permission.ToolName)))
         {
             return false;
         }

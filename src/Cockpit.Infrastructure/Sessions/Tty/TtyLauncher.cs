@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Infrastructure.Mcp;
@@ -12,7 +13,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -25,8 +26,10 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         string? paneId = null,
         IReadOnlySet<string>? enabledMcpServerNames = null,
         SessionResources? contributed = null,
-        string? projectId = null)
+        string? projectId = null,
+        Action<string>? notice = null)
     {
+        options = _ClampToPolicy(profile, options, notice);
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
         // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: they
@@ -125,6 +128,23 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
             ? process
             : new TtyProcessOwningSessionFiles(
                 process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap, anchor);
+    }
+
+    // AC-1593: launch-time, so the TTY route meets the same mode ceiling as the SDK start (AC-294). Launch already runs
+    // off the UI thread and may block (AC-779), so the policy read is waited for here.
+    private IReadOnlyDictionary<string, string> _ClampToPolicy(SessionProfile? profile, IReadOnlyDictionary<string, string> options, Action<string>? notice)
+    {
+        if (orgPolicy?.ReadAsync().GetAwaiter().GetResult() is not { } policy
+            || OrgPolicyCeilings.MaxPermissionMode(policy) is not { } ceiling
+            || LaunchPermissionClamp.Clamp(ceiling, options, profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode)) is not { } clamped)
+        {
+            return options;
+        }
+
+        var message = OrgPolicyCeilings.StartedClamped(policy, ceiling);
+        logger.LogInformation("TTY launch clamped by policy: {Message}", message);
+        notice?.Invoke(message);
+        return clamped;
     }
 
     // Snapshots the cockpit process's own environment as the base the pty child inherits from — a ConPTY child

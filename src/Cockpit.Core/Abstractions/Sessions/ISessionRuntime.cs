@@ -53,6 +53,11 @@ public interface ISessionRuntime : IAsyncDisposable
     bool IsRunning { get; }
 
     /// <summary>
+    /// AC-1593: true when the organisation's policy, as read at the last start or switch, forbids approving tool calls wholesale.
+    /// </summary>
+    bool AutoApproveForbidden => false;
+
+    /// <summary>
     /// The assistant text of the most recently completed turn — a delegated task's result (#67).
     /// </summary>
     string? LastAssistantText { get; }

@@ -1,3 +1,5 @@
+using Cockpit.Core.Provisioning;
+
 namespace Cockpit.Infrastructure.Configuration;
 
 // AC-1507 (manifest-v1 §4.2): what the applier remembers between two applies, keyed by `ManagedConfigKeys` paths.
@@ -21,6 +23,9 @@ internal sealed class ProvisioningStateEntry
     public Dictionary<string, string> Displaced { get; set; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ManagedKeyEntry> Managed { get; set; } = new(StringComparer.Ordinal);
+
+    // AC-1593: the policy as last applied, `By` already the organisation's name. Clamped at use, never written into the settings.
+    public ProvisionPolicy? Policy { get; set; }
 }
 
 internal sealed class ManagedKeyEntry

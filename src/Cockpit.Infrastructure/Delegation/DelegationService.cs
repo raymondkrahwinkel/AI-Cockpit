@@ -8,6 +8,7 @@ using Cockpit.Core.Consent;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Consent;
@@ -65,6 +66,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // exceeds the profile's ceiling (AC-117). Absent in a test graph or an off-path caller with no UI listening — that
     // degrades to the old behaviour, a silent clamp to the ceiling, never a widen nobody was there to approve.
     private readonly IConsentBroker? _consent;
+    private readonly IOrgPolicy? _orgPolicy;
     private readonly ISessionStateStore? _sessionState;
 
     private readonly Func<int, TimeSpan> _timeout;
@@ -84,8 +86,9 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IWorktreeManager? worktrees = null,
         IConsentBroker? consent = null,
         Func<IMcpServerCatalog?>? mcpServerCatalog = null,
-        ISessionStateStore? sessionState = null)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState)
+        ISessionStateStore? sessionState = null,
+        IOrgPolicy? orgPolicy = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry, projects, worktrees, idleWindow: null, consent, mcpServerCatalog: mcpServerCatalog, sessionState: sessionState, orgPolicy: orgPolicy)
     {
     }
 
@@ -105,7 +108,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         IConsentBroker? consent = null,
         TimeSpan? taskRetention = null,
         Func<IMcpServerCatalog?>? mcpServerCatalog = null,
-        ISessionStateStore? sessionState = null)
+        ISessionStateStore? sessionState = null,
+        IOrgPolicy? orgPolicy = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
@@ -120,6 +124,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
         _idleWindow = idleWindow ?? IdleSessionWindow;
         _consent = consent;
         _sessionState = sessionState;
+        _orgPolicy = orgPolicy;
         _taskRetention = taskRetention ?? TaskRetention;
     }
 
@@ -655,7 +660,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // A delegated session has no human to answer a prompt, so it runs under the profile's ceiling by
             // default — never bypass. A request ABOVE the ceiling may be asked instead (see _EffectiveCeilingAsync).
             // Resolved before Running is set, so a task awaiting that answer never occupies a concurrency slot.
-            var effectiveCeiling = await _EffectiveCeilingAsync(entry);
+            var policy = _orgPolicy is null ? null : await _orgPolicy.ReadAsync();
+            var effectiveCeiling = await _EffectiveCeilingAsync(entry, policy);
             entry.EffectiveCeiling = effectiveCeiling;
 
             // AC-971: what the working directory already had lying around, so the report at the end names what this
@@ -699,7 +705,8 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // A local-model session treats permissionMode as a no-op and gates every MCP call through the
             // interactive PermissionRequested flow; with no human to answer it would hang until timeout (AC-78).
             // So it decides for itself: AutoApproveTools allows everything, otherwise each call is gated (AC-79).
-            if (entry.Profile.Defaults?.AutoApproveTools == true)
+            // AC-1593: an organisation that forbids auto-approve gets the gate instead, or the ceiling would not be installed at all.
+            if (entry.Profile.Defaults?.AutoApproveTools == true && !OrgPolicyCeilings.AutoApproveForbidden(policy))
             {
                 await runtime.SetAutoApproveToolsAsync(true);
             }
@@ -728,9 +735,19 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
     // The permission ceiling this task's session actually runs under (AC-117). A request within the profile's
     // ceiling is honoured outright; one ABOVE it goes to the operator's Approve/Deny gate (#AC-47) as a one-time
     // `ConsentRisk.Dangerous` consent, never remembered — a prompt-injected agent must never make it standing.
-    private async Task<string> _EffectiveCeilingAsync(DelegatedTaskEntry entry)
+    // AC-1593: the organisation's ceiling clamps the request first, so no consent is asked above it and nothing
+    // consented can exceed it. A request for nothing runs read-only, which no ceiling is below.
+    private async Task<string> _EffectiveCeilingAsync(DelegatedTaskEntry entry, ProvisionPolicy? policy)
     {
         var requested = entry.RequestedPermission;
+        if (policy is not null && OrgPolicyCeilings.DelegationCeiling(policy) is { } orgCeiling
+            && !string.IsNullOrWhiteSpace(requested) && DelegatedToolPermissionPolicy.IsAboveCeiling(orgCeiling, requested))
+        {
+            requested = orgCeiling;
+            await _Audit(DelegationAuditAction.PermissionElevationDenied, entry.Profile.Label, entry.TaskId, request: null,
+                $"{policy.By} allows delegated tasks at most '{orgCeiling}'; '{entry.RequestedPermission}' was clamped to it.", entry);
+        }
+
         var profileCeiling = entry.Profile.DelegationPolicy.PermissionCeiling;
 
         // AC-971: a task whose caller asked for nothing runs READ-ONLY, not at whatever the profile allows — which
