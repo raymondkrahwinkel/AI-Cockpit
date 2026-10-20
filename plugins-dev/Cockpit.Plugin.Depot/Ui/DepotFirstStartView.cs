@@ -18,9 +18,11 @@ internal sealed class DepotFirstStartView : UserControl
     private readonly TextBox _url = new() { Name = "DepotFirstStartUrl", PlaceholderText = "https://depot.example.com" };
     private readonly Button _signIn = new() { Name = "DepotFirstStartSignIn", Content = "Sign in", VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _status = new() { Name = "DepotFirstStartStatus", FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
+    private readonly StackPanel _connection;
     private readonly StackPanel _choices = new() { Spacing = 8, IsVisible = false };
     private readonly Button _restore = new() { Name = "DepotFirstStartRestore", HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
     private readonly Button _setUp = new() { Name = "DepotFirstStartSetUp", HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+    private readonly StackPanel _organizations = new() { Spacing = 8, IsVisible = false };
     private readonly StackPanel _consent = new() { Spacing = 4, IsVisible = false };
     private readonly TextBlock _outcome = new() { Name = "DepotFirstStartOutcome", FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private DepotFirstStartAnswer? _answer;
@@ -33,10 +35,22 @@ internal sealed class DepotFirstStartView : UserControl
         _restore.Click += async (_, _) => await _RestoreAsync().ConfigureAwait(true);
         _setUp.Click += async (_, _) => await _SetUpAsync().ConfigureAwait(true);
 
-        _choices.Children.AddRange([_Hint("What next?"), _restore, _setUp, _consent, _outcome]);
+        _choices.Children.AddRange([_Hint("What next?"), _restore, _setUp, _organizations, _consent, _outcome]);
 
         var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { _signIn, _status } };
         Grid.SetColumn(_status, 1);
+
+        _connection = new StackPanel
+        {
+            Spacing = 6,
+            Children =
+            {
+                _Hint("Your Depot's address"),
+                _url,
+                _Hint("Signing in opens Depot's sign-in page in your browser."),
+                signInRow,
+            },
+        };
 
         Content = new StackPanel
         {
@@ -44,10 +58,7 @@ internal sealed class DepotFirstStartView : UserControl
             Margin = new Thickness(4, 0),
             Children =
             {
-                _Hint("Your Depot's address"),
-                _url,
-                _Hint("Signing in opens Depot's sign-in page in your browser."),
-                signInRow,
+                _connection,
                 _choices,
             },
         };
@@ -82,6 +93,7 @@ internal sealed class DepotFirstStartView : UserControl
         _signIn.Content = answer.State == DepotFirstStartState.Offline ? "Try again" : "Sign in";
         if (answer.State != DepotFirstStartState.SignedIn)
         {
+            _connection.IsVisible = true;
             _choices.IsVisible = false;
             return;
         }
@@ -93,6 +105,23 @@ internal sealed class DepotFirstStartView : UserControl
         _restore.IsEnabled = latest is not null;
         _setUp.Content = _Choice("Set up from my profile and organisation", "Installs what your organisation chose for you, after you have seen what that is.");
         _setUp.IsVisible = answer.Manifest is not null;
+        _organizations.Children.Clear();
+        foreach (var organization in answer.Candidates ?? [])
+        {
+            var candidate = organization;
+            var setUp = new Button
+            {
+                Name = "DepotFirstStartSetUpOrganization",
+                Content = _Choice($"Set up from my profile and {candidate.Name}", "Installs what this organization chose for you, after you have seen what that is."),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+            };
+            setUp.Click += async (_, _) => await _SetUpAsync(candidate).ConfigureAwait(true);
+            _organizations.Children.Add(setUp);
+        }
+
+        _organizations.IsVisible = _organizations.Children.Count > 0;
+        _connection.IsVisible = !_organizations.IsVisible;
         _consent.IsVisible = false;
         _outcome.Text = string.Join("\n", answer.Notes ?? []);
 
@@ -114,9 +143,37 @@ internal sealed class DepotFirstStartView : UserControl
         _setUp.IsEnabled = true;
     }
 
-    private async Task _SetUpAsync()
+    private async Task _SetUpAsync(DepotFirstStartCandidate? organization = null)
     {
-        if (_answer?.Manifest is not { } manifest)
+        var manifest = _answer?.Manifest;
+        if (organization is not null && _answer?.TargetId is { } targetId)
+        {
+            _restore.IsEnabled = false;
+            _setUp.IsEnabled = false;
+            _organizations.IsEnabled = false;
+            _outcome.Text = string.Empty;
+            try
+            {
+                var payload = JsonSerializer.SerializeToElement(new DepotFirstStartManifestRequest(targetId, organization.Slug), DepotChannel.Json);
+                var answer = (await _host.Channel.InvokeAsync(DepotChannel.FirstStartManifest, payload).ConfigureAwait(true)).Deserialize<DepotFirstStartManifestAnswer>(DepotChannel.Json);
+                manifest = answer?.Manifest;
+                if (manifest is null)
+                {
+                    _outcome.Text = answer?.Notes is { Count: > 0 } notes
+                        ? string.Join("\n", notes)
+                        : "The selected organization is no longer available.";
+                    return;
+                }
+            }
+            finally
+            {
+                _restore.IsEnabled = _answer?.Backups is { Count: > 0 };
+                _setUp.IsEnabled = true;
+                _organizations.IsEnabled = true;
+            }
+        }
+
+        if (manifest is null)
         {
             return;
         }

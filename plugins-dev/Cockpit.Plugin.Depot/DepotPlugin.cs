@@ -165,6 +165,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 ?? throw new ArgumentException("The request names no Depot.", nameof(payload));
             return JsonSerializer.SerializeToElement(await firstStart.SignInAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
+        _handlers.Add(host.Channel.Handle(DepotChannel.FirstStartManifest, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotFirstStartManifestRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no organization.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await firstStart.ReadManifestAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
     }
 
     private void _HandleBrowser<T>(

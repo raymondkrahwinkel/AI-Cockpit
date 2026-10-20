@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Backup;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
@@ -61,8 +62,21 @@ internal sealed class DepotFirstStart(
         var notes = new List<string>();
         var target = new DepotBackupTarget(host, () => settings.Connections, connection.Id);
         var backups = await _BackupsAsync(target, notes, cancellationToken).ConfigureAwait(false);
-        var manifest = await _ManifestAsync(connection, notes, cancellationToken).ConfigureAwait(false);
-        return new(DepotFirstStartState.SignedIn, $"Signed in to {connection.Name}.", target.Id, backups, manifest, notes);
+        var manifest = await _ManifestAsync(connection, null, notes, cancellationToken).ConfigureAwait(false);
+        return new(DepotFirstStartState.SignedIn, $"Signed in to {connection.Name}.", target.Id, backups, manifest.Manifest, notes, manifest.Candidates);
+    }
+
+    public async Task<DepotFirstStartManifestAnswer> ReadManifestAsync(DepotFirstStartManifestRequest request, CancellationToken cancellationToken)
+    {
+        var connection = settings.Connections.FirstOrDefault(candidate => string.Equals(DepotBackupTarget.IdFor(candidate.Id), request.TargetId, StringComparison.Ordinal));
+        if (connection is null)
+        {
+            return new(null, ["The Depot connection is no longer available. Sign in again and choose an organization."]);
+        }
+
+        var notes = new List<string>();
+        var manifest = await _ManifestAsync(connection, request.Organization, notes, cancellationToken).ConfigureAwait(false);
+        return new(manifest.Manifest, notes);
     }
 
     private async Task _KeepAsync(IReadOnlyList<DepotConnectionRegistration> after, DepotConnectionRegistration added, CancellationToken cancellationToken)
@@ -92,30 +106,47 @@ internal sealed class DepotFirstStart(
         }
     }
 
-    // DEP-266. A 404 means this Depot sets nothing up for an account, so C2 is simply not offered; that is no error.
-    private async Task<string?> _ManifestAsync(DepotConnectionRegistration connection, List<string> notes, CancellationToken cancellationToken)
+    // DEP-416. A 404 means this Depot sets nothing up for an account, so C2 is simply not offered; that is no error.
+    private async Task<_ManifestResult> _ManifestAsync(DepotConnectionRegistration connection, string? organization, List<string> notes, CancellationToken cancellationToken)
     {
         try
         {
             using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName), disposeHandler: true);
-            using var response = await http.GetAsync($"{connection.Url.TrimEnd('/')}/cockpit/manifest", cancellationToken).ConfigureAwait(false);
+            var query = organization is null ? string.Empty : $"?org={Uri.EscapeDataString(organization)}";
+            using var response = await http.GetAsync($"{connection.Url.TrimEnd('/')}/cockpit/manifest{query}", cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
-                return null;
+                return new(null);
+            }
+
+            if (response.StatusCode == HttpStatusCode.MultipleChoices)
+            {
+                var choice = JsonSerializer.Deserialize<_ChoiceDocument>(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+                if (choice is { Format: "cockpit.provision.choice", FormatVersion: 1, Organizations: { Count: > 1 } })
+                {
+                    return new(null, choice.Organizations);
+                }
+
+                notes.Add("Your profile could not be read because Depot returned an invalid organization choice.");
+                return new(null);
             }
 
             if (!response.IsSuccessStatusCode)
             {
                 notes.Add($"Your profile could not be read (HTTP {(int)response.StatusCode}).");
-                return null;
+                return new(null);
             }
 
-            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return new(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             notes.Add($"Your profile could not be read: {exception.Message}");
-            return null;
+            return new(null);
         }
     }
+
+    private sealed record _ManifestResult(string? Manifest, IReadOnlyList<DepotFirstStartCandidate>? Candidates = null);
+
+    private sealed record _ChoiceDocument(string? Format, int? FormatVersion, IReadOnlyList<DepotFirstStartCandidate>? Organizations);
 }

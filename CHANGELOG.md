@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: When a Depot profile belongs to more than one organization during first-run setup, the cockpit now asks which organization to use before it applies any settings.
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks
   and consent, and then asks to restart the cockpit so its screens load. Nothing is ever loaded from the server.

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Web;
@@ -116,6 +117,11 @@ public static class ProvisioningEntry
             if (!_Trusted(response.RequestMessage?.RequestUri ?? uri))
             {
                 return _Failed(logger, $"{source} redirected away from https, so the manifest was not read.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.MultipleChoices && response.Content.Headers.ContentType?.MediaType == "application/vnd.cockpit.provision-choice+json")
+            {
+                return _Failed(logger, $"{source} did not choose an organization, so no manifest was applied.");
             }
 
             if (!response.IsSuccessStatusCode)
