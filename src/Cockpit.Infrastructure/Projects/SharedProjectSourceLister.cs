@@ -8,8 +8,9 @@ namespace Cockpit.Infrastructure.Projects;
 // copy of it"; this is what keeps that true once the assistant's read gateway lives outside App).
 public static class SharedProjectSourceLister
 {
-    // Mutable test seam: a source reports partial progress, but a hung source must still release the workspace.
-    public static TimeSpan Timeout = TimeSpan.FromSeconds(30);
+    // Depot reads six definitions in parallel with a 10-second per-project timeout, so 90 seconds leaves room for five batches.
+    // Keep this whole-source bound for a source that hangs before it can report partial progress.
+    public static TimeSpan Timeout = TimeSpan.FromSeconds(90);
 
     public static async Task<SharedProjectListResult> ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
     {
