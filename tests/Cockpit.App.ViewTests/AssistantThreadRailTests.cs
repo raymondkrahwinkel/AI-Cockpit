@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Sessions;
 using Cockpit.Tests.Shared;
 using NSubstitute;
 
@@ -84,6 +85,37 @@ public sealed class AssistantThreadRailTests
 
         chat.SelectedThreadItem = chat.ThreadItems.First(item => item.ProjectId == "depot");
         Assert.All(chat.Session!.VisibleTranscript, row => Assert.True(row.IsInThread("depot")));
+    }
+
+    // § 9.6: a drop moves the prompt and what only followed it; the toast can turn it into an add, and Undo puts the
+    // projects and their sources back exactly, so the reply follows its prompt again.
+    [Fact]
+    public void MovingAPrompt_TakesItsTurnAlong_AndUndoPutsBackItsSource()
+    {
+        var (chat, _) = _Chat();
+        var session = chat.Session!;
+        var prompt = session.Transcript.First(row => row.Text.StartsWith("Waarom synct", StringComparison.Ordinal));
+        var reply = session.Transcript[session.Transcript.IndexOf(prompt) + 1];
+
+        chat.DraggingRow = prompt;
+        Assert.False(chat.CanDropOn(chat.ThreadItems.First(item => item.ProjectId == "waymark")));
+        chat.Drop(chat.ThreadItems.First(item => item.ProjectId == "depot"), add: false);
+        chat.DraggingRow = null;
+
+        Assert.Equal(["depot"], reply.ThreadProjectIds);
+        Assert.Equal(ProjectSource.Explicit, prompt.SourceFor("depot"));
+        Assert.Equal("Moved to Depot, with 1 row of its turn", chat.MoveToastText);
+        Assert.True(chat.CanKeepAlso);
+        Assert.Equal("Keep in WayMark too", chat.KeepAlsoLabel);
+
+        chat.KeepAlsoCommand.Execute(null);
+        Assert.Equal(["depot", "waymark"], prompt.ThreadProjectIds.Order());
+
+        chat.UndoMoveCommand.Execute(null);
+        Assert.Equal(["waymark"], prompt.ThreadProjectIds);
+        Assert.Equal(["waymark"], reply.ThreadProjectIds);
+        Assert.Equal(ProjectSource.Inherited, reply.ThreadProjectSource);
+        Assert.False(chat.HasMoveToast);
     }
 
     [Fact]

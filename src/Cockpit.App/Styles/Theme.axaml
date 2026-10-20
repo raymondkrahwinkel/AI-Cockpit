@@ -1348,6 +1348,18 @@
     <Style Selector="Border.threadItem.attention">
         <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRowTintBrush}"/>
     </Style>
+    <!-- While a row is dragged (§ 9.6): the threads that take it in the focus hairline, the one under the pointer in
+         the selection's own accent — the existing selection tokens, no new colour. -->
+    <Style Selector="Border.threadItem.dropCandidate">
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitFocusHairlineBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentRingTintBrush}"/>
+    </Style>
+    <Style Selector="Border.threadItem.dropHover">
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+    </Style>
 
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
     <Style Selector=":is(TextBlock).transcript">

@@ -124,10 +124,74 @@ public partial class AssistantChatView : UserControl
         // The overlay closes on Esc and on a click outside it, handing focus back to the button that opened it.
         AddHandler(InputElement.KeyDownEvent, _OnThreadOverlayKeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.PointerPressedEvent, _OnThreadOverlayPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        // A row dragged onto a thread in any of the three rails (§ 9.6). The view-wide one only notes that a drag
+        // really travelled, which is what tells a drag let go nowhere from a click on the grip.
+        AddHandler(DragDrop.DragOverEvent, _OnRowDragTravelled, RoutingStrategies.Tunnel, handledEventsToo: true);
+        foreach (var list in new[] { ThreadList, ThreadIconList, ThreadOverlayList })
+        {
+            list.AddHandler(DragDrop.DragOverEvent, _OnThreadDragOver);
+            list.AddHandler(DragDrop.DragLeaveEvent, _OnThreadDragLeave);
+            list.AddHandler(DragDrop.DropEvent, _OnThreadDrop);
+        }
+    }
+
+    private void _OnRowDragTravelled(object? sender, DragEventArgs e)
+    {
+        if (e.DataTransfer.Contains(TranscriptRowView.RowDragFormat) && DataContext is AssistantChatViewModel vm)
+        {
+            vm.RowDragTravelled = true;
+        }
+    }
+
+    private static AssistantThreadItemViewModel? _ThreadUnder(DragEventArgs e) =>
+        (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext as AssistantThreadItemViewModel;
+
+    // Ctrl (Option on macOS) adds instead of moves, the OS's own "copy while dragging".
+    private static bool _Adds(DragEventArgs e) => e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+
+    private void _OnThreadDragOver(object? sender, DragEventArgs e)
+    {
+        if (!e.DataTransfer.Contains(TranscriptRowView.RowDragFormat) || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        var target = _ThreadUnder(e) is { } item && vm.CanDropOn(item) ? item : null;
+        vm.HoverDrop(target, _Adds(e));
+        e.DragEffects = target is null ? DragDropEffects.None : _Adds(e) ? DragDropEffects.Copy : DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void _OnThreadDragLeave(object? sender, DragEventArgs e)
+    {
+        if (DataContext is AssistantChatViewModel vm)
+        {
+            vm.HoverDrop(null, add: false);
+        }
+    }
+
+    private void _OnThreadDrop(object? sender, DragEventArgs e)
+    {
+        if (e.DataTransfer.Contains(TranscriptRowView.RowDragFormat)
+            && DataContext is AssistantChatViewModel vm && _ThreadUnder(e) is { } target)
+        {
+            vm.Drop(target, _Adds(e));
+            e.Handled = true;
+        }
     }
 
     private void _OnThreadOverlayKeyDown(object? sender, KeyEventArgs e)
     {
+        // Ctrl+Z takes a move back while its toast stands — not in the composer, where it is the text's own undo.
+        if (e.Key == Key.Z && e.KeyModifiers == KeyModifiers.Control && e.Source is not TextBox
+            && DataContext is AssistantChatViewModel { HasMoveToast: true } moved)
+        {
+            moved.UndoMoveCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && DataContext is AssistantChatViewModel { IsRailOverlayOpen: true } vm)
         {
             vm.IsRailOverlayOpen = false;

@@ -56,7 +56,9 @@
         <!-- One thread in the labelled rail, shared by the rail and its overlay. The item is as wide as the rail's
              content (184 − 2×10) and reaches under the item's own padding, so Questions' waiting tint fills it. -->
         <DataTemplate x:Key="ThreadLabelItem" x:DataType="vm:AssistantThreadItemViewModel">
-            <Border Classes="threadItem" Classes.attention="{Binding IsAttention}" Width="164" Margin="-11,-8" Padding="11,8"
+            <Border Classes="threadItem" Classes.attention="{Binding IsAttention}"
+                    Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}"
+                    Width="164" Margin="-11,-8" Padding="11,8"
                     CornerRadius="7" ToolTip.Tip="{Binding Tooltip}" AutomationProperties.Name="{Binding Tooltip}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <Panel Width="20" Height="20" Margin="0,0,10,0">
@@ -585,7 +587,7 @@
                                 <TextBlock Text="{Binding RailToggleText}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
-                        <ListBox x:Name="ThreadList" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                        <ListBox x:Name="ThreadList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
                                  SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
                                  ItemTemplate="{StaticResource ThreadLabelItem}"/>
                     </DockPanel>
@@ -597,10 +599,12 @@
                                 AutomationProperties.Name="{Binding RailToggleTip}">
                             <materialIcons:MaterialIcon Kind="ChevronDoubleRight" Width="14" Height="14"/>
                         </Button>
-                        <ListBox x:Name="ThreadIconList" Classes="subnav iconRail" ItemsSource="{Binding ThreadItems}"
+                        <ListBox x:Name="ThreadIconList" DragDrop.AllowDrop="True" Classes="subnav iconRail" ItemsSource="{Binding ThreadItems}"
                                  SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                                    <Border Classes="threadItem" Margin="-12,-8" Padding="12,8" CornerRadius="7"
+                                            Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}">
                                     <Panel Width="20" Height="20" ToolTip.Tip="{Binding Tooltip}"
                                            AutomationProperties.Name="{Binding Tooltip}">
                                         <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
@@ -613,6 +617,7 @@
                                             <TextBlock Text="{Binding WaitingCount}" FontSize="9"/>
                                         </Border>
                                     </Panel>
+                                    </Border>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -1086,12 +1091,29 @@
             </Grid>
             </DockPanel>
 
+            <!-- Assistant threads (§ 9.6): what a move did, with the way back. Polite, so a screen reader hears it
+                 without being interrupted; Ctrl+Z undoes it too while it stands. -->
+            <Border x:Name="MoveToast" ZIndex="20" Margin="10" Padding="12,8" MaxWidth="440"
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Background="{DynamicResource CockpitFloatingCardBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}" IsVisible="{Binding HasMoveToast}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding MoveToastText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <Button Classes="Compact" Content="Undo" Command="{Binding UndoMoveCommand}"/>
+                    <Button Classes="Ghost Compact" Content="{Binding KeepAlsoLabel}" IsVisible="{Binding CanKeepAlso}"
+                            Command="{Binding KeepAlsoCommand}"/>
+                </StackPanel>
+            </Border>
+            <TextBlock x:Name="MoveAnnouncement" Text="{Binding MoveAnnouncement}" IsVisible="False"
+                       AutomationProperties.LiveSetting="Polite"/>
+
             <!-- Assistant threads: the labelled rail over the chat where labels do not fit beside it (§ 8.1), so
                  the conversation, its scroll position and the composer stay where they are. Picking a thread, a
                  click on the chat or Esc closes it. -->
             <Border x:Name="ThreadRailOverlay" Classes="subnavRail" HorizontalAlignment="Left" ZIndex="10"
                     BorderThickness="0,0,1,0" IsVisible="{Binding IsRailOverlayOpen}">
-                <ListBox x:Name="ThreadOverlayList" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                <ListBox x:Name="ThreadOverlayList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
                          SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
                          ItemTemplate="{StaticResource ThreadLabelItem}"/>
             </Border>

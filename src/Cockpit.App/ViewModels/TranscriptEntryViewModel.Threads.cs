@@ -28,6 +28,10 @@ public partial class TranscriptEntryViewModel
 
     public bool HasOwnProjects => ProjectIds is not null;
 
+    // Dimmed in place while the operator drags it to another thread.
+    [ObservableProperty]
+    private bool _isBeingDragged;
+
     // What the threads actually file this row under: its own projects, or its turn's. Set by the owning session,
     // which is the one that can see the row's turn; never recorded, because it follows from what is.
     [ObservableProperty]
@@ -154,9 +158,11 @@ public partial class TranscriptEntryViewModel
     partial void OnThreadProjectSourceChanged(ProjectSource value) => OnPropertyChanged(nameof(ThreadTags));
 
     // The tags "All" draws on the row: one per project, or General. Names come from the session's project lookup.
+    // An array, not a collection expression: a one-element expression is a list whose IList.Contains throws on an
+    // item of another type, and an ItemsControl asks exactly that.
     public IReadOnlyList<ThreadTagViewModel> ThreadTags => ThreadProjectIds.Count == 0
-        ? [new ThreadTagViewModel(null, "General", ProjectSource.None)]
-        : [.. ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? id, SourceFor(id)))];
+        ? new[] { new ThreadTagViewModel(null, "General", ProjectSource.None) }
+        : ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? id, SourceFor(id))).ToArray();
 }
 
 // One project tag on a row, with the tooltip saying how the row got there.

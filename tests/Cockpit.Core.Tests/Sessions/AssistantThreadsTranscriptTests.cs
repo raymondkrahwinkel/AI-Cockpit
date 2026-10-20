@@ -180,6 +180,31 @@ public class AssistantThreadsTranscriptTests : IDisposable
         Assert.DoesNotContain(Cockpit.Core.Voice.TtsProseExtractor.Extract(depot.Text), sentence => sentence.Contains("project", StringComparison.Ordinal));
     }
 
+    // § 9.6: the grip sits on a reply's last row, so moving it moves the whole reply, and Undo takes all of it back.
+    [Fact]
+    public void MovingAReply_MovesEveryRowOfIt_AndUndoPutsThemAllBack()
+    {
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>());
+        vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "hoe staat Depot ervoor?") { ProjectIds = ["depot"] });
+        var first = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Groen.");
+        var tail = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Verder niets.") { IsReplyContinuation = true };
+        IReadOnlyList<TranscriptEntryViewModel> reply = [first, tail];
+        first.ReplyRows = reply;
+        tail.ReplyRows = reply;
+        vm.Transcript.Add(first);
+        vm.Transcript.Add(tail);
+
+        var move = vm.MoveToThread(tail, "waymark", add: false);
+
+        Assert.Equal(["waymark"], first.ThreadProjectIds);
+        Assert.Equal(["waymark"], tail.ThreadProjectIds);
+
+        vm.UndoMove(move);
+        Assert.Null(first.ProjectIds);
+        Assert.Equal(["depot"], tail.ThreadProjectIds);
+        Assert.Equal(ProjectSource.Inherited, first.ThreadProjectSource);
+    }
+
     // § 2: status lines that follow each other fold under the first, per thread — in All a Depot status between two
     // Cockpit ones is part of the run, in the Cockpit thread it is not there at all.
     [Fact]

@@ -64,6 +64,13 @@ public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind
     public bool IsAttention => Kind == AssistantThreadItemKind.Questions && HasWaiting;
 
     public string Tooltip => HasWaiting ? $"{Name} · {WaitingCount} waiting for you" : Name;
+
+    // While a row is dragged: a thread it can go to, and the one under the pointer (§ 9.6).
+    [ObservableProperty]
+    private bool _isDropCandidate;
+
+    [ObservableProperty]
+    private bool _isDropHover;
 }
 
 // Assistant threads: the rail beside the conversation (variant B), its width ladder and the operator's choice of it.
@@ -125,7 +132,9 @@ public sealed partial class AssistantChatViewModel
         _ => SelectedThreadItem.Name,
     };
 
-    public string ThreadSubtitle => SelectedThreadItem?.Kind switch
+    public string ThreadSubtitle => DropHint ?? (IsDraggingRow ? "Drop on a thread to move it there · hold Ctrl to add" : _ThreadSubtitle);
+
+    private string _ThreadSubtitle => SelectedThreadItem?.Kind switch
     {
         AssistantThreadItemKind.Questions => "A question stays here until you answer it.",
         AssistantThreadItemKind.All or null => "Every project in one stream. The tag shows where a row belongs.",
@@ -292,11 +301,13 @@ public sealed partial class AssistantChatViewModel
         if (previous is not null)
         {
             previous.ThreadsChanged -= _OnThreadsChanged;
+            previous.RowMoved -= _OnRowMoved;
         }
 
         if (next is not null)
         {
             next.ThreadsChanged += _OnThreadsChanged;
+            next.RowMoved += _OnRowMoved;
             next.ShownThread = SelectedThreadItem?.ThreadKey;
         }
 
@@ -372,6 +383,11 @@ public sealed partial class AssistantChatViewModel
             }
 
             SelectedThreadItem = items.FirstOrDefault(item => (item.Kind, item.ProjectId) == selectedKey) ?? _allItem;
+        }
+
+        if (Session is { } targets)
+        {
+            targets.ThreadTargets = [.. projectIds.Select(project => (project.Id, project.Name))];
         }
 
         _RefreshThreadCounts();

@@ -35,6 +35,10 @@
         <Style Selector="ItemsControl.threadTags.user">
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
+        <!-- The row being dragged stays where it is, dimmed, so the drop reads as moving it (§ 9.6). -->
+        <Style Selector="Border.rowRoot.threadDragging">
+            <Setter Property="Opacity" Value="0.45"/>
+        </Style>
         <Style Selector="materialIcons|MaterialIcon.statusIcon">
             <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
         </Style>
@@ -57,6 +61,7 @@
             Classes.codeJoinedAbove="{Binding StartsInsideCodeBlock}"
             Classes.codeJoinedBelow="{Binding EndsInsideCodeBlock}"
             Classes.plainStep="{Binding ShowPlainStep}"
+            Classes.threadDragging="{Binding IsBeingDragged}"
             CornerRadius="{StaticResource CockpitControlRadius}"
             IsVisible="{Binding IsRowVisible}">
         <StackPanel Spacing="{Binding RowContentSpacing}">
@@ -110,6 +115,17 @@
                         <TextBlock Text="{Binding SenderLabel, StringFormat='from {0}'}" FontSize="11.5" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <StackPanel Classes="rowActions" Orientation="Horizontal">
+                            <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                            <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                                    Click="_OnGripClick"
+                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                    ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                                    AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                                    AutomationProperties.AcceleratorKey="M">
+                                <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                     <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
                                         BasePath="{Binding Session.WorkingDirectory}"/>
@@ -129,6 +145,17 @@
                                             Kind="{Binding StatusIconKind}" Width="13" Height="13" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding StatusLine}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Classes="rowActions" Orientation="Horizontal">
+                    <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                    <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                            Click="_OnGripClick"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.AcceleratorKey="M">
+                        <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                    </Button>
+                </StackPanel>
                 <!-- The run's fold, the "N steps run" line's way: a quiet toggle, never a second card. -->
                 <Button Classes="Subtle" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasStatusRun}"
                         Command="{Binding ToggleStatusRunCommand}" ToolTip.Tip="Status updates that came in one after another">
@@ -200,6 +227,15 @@
                 </Border>
                 <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                             HorizontalAlignment="Right">
+                    <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                    <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                            Click="_OnGripClick"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.AcceleratorKey="M">
+                        <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                    </Button>
                     <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                     <Button Classes="Subtle Compact"
                             IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
@@ -360,6 +396,15 @@
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left"
                                 IsVisible="{Binding IsReplyTail}">
+                        <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                        <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                                Click="_OnGripClick"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                                AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                                AutomationProperties.AcceleratorKey="M">
+                            <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                        </Button>
                         <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                         <Button Classes="Subtle Compact"
                                 IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"

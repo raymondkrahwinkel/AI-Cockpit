@@ -12,6 +12,35 @@ public sealed record ThreadLookup(
     Func<string, string?> ProjectOfPane,
     Func<string, string?> PaneTitle);
 
+// One move of a row between threads, with everything needed to take it back. `Target` null is General.
+public sealed record ThreadMove(
+    TranscriptEntryViewModel Row,
+    IReadOnlyList<RowProjects> Previous,
+    string? Target,
+    bool Added,
+    IReadOnlyList<string> PreviousThreads);
+
+// What one row said about its projects before a move.
+public sealed record RowProjects(
+    TranscriptEntryViewModel Row,
+    IReadOnlyList<string>? Ids,
+    IReadOnlyDictionary<string, ProjectSource>? Sources,
+    IReadOnlyList<TranscriptProjectPart>? Parts,
+    IReadOnlyList<string>? TurnProjectIds)
+{
+    public static RowProjects Of(TranscriptEntryViewModel row) =>
+        new(row, row.ProjectIds, row.ProjectSources, row.ProjectParts, row.TurnProjectIds);
+
+    // Ids last: that is the change the session refiles the row on.
+    public void Restore()
+    {
+        Row.ProjectSources = Sources;
+        Row.ProjectParts = Parts;
+        Row.TurnProjectIds = TurnProjectIds;
+        Row.ProjectIds = Ids;
+    }
+}
+
 // Assistant threads (voorstel § 4, § 9): one conversation, shown per project. The session owns the rows, so it is the
 // one place that can see a row's turn and say which threads it is in; the views only pick which thread they show.
 public partial class SessionViewModel
@@ -33,6 +62,7 @@ public partial class SessionViewModel
         {
             _threads = value;
             OnPropertyChanged(nameof(ShowsThreadTags));
+            OnPropertyChanged(nameof(ShowsThreadTools));
             _RaiseThreadTags();
         }
     }
@@ -128,6 +158,81 @@ public partial class SessionViewModel
         }
 
         _FoldStatus(entry, previous);
+    }
+
+    // --- Moving a row to another thread (§ 9.6)---------------------------------------------------------------------
+
+    // The assistant's thread rail is what turns these on; a pane without threads has nothing to move a row to.
+    public bool ShowsThreadTools => Threads is not null;
+
+    // The projects a row can be moved to, as the rail lists them; set by whoever draws the rail.
+    public IReadOnlyList<(string Id, string Name)> ThreadTargets { get; set; } = [];
+
+    // A move or an add the operator made, for the toast that offers to take it back.
+    public event Action<ThreadMove>? RowMoved;
+
+    // Moves the row into one project (null: General), or adds the project to the ones it is in. The operator's choice
+    // wins over anything derived, so every project of the row becomes Explicit; a prompt's split into parts and the
+    // assistant's set_thread for its turn give way to it as well. Rows that only followed it move along by themselves.
+    public ThreadMove MoveToThread(TranscriptEntryViewModel row, string? projectId, bool add, bool announce = true)
+    {
+        var rows = _RowsMovedWith(row);
+        var move = new ThreadMove(row, [.. rows.Select(RowProjects.Of)], projectId, add && projectId is not null, row.ThreadProjectIds);
+
+        foreach (var moved in rows)
+        {
+            IReadOnlyList<string> ids = projectId is null
+                ? []
+                : move.Added ? [.. moved.ThreadProjectIds.Append(projectId).Distinct(StringComparer.Ordinal)] : [projectId];
+            moved.ProjectSources = ids.ToDictionary(id => id, _ => ProjectSource.Explicit);
+            moved.ProjectParts = ids.Count > 1 ? moved.ProjectParts : null;
+            moved.TurnProjectIds = null;
+            moved.ProjectIds = ids;
+        }
+
+        if (announce)
+        {
+            RowMoved?.Invoke(move);
+        }
+
+        return move;
+    }
+
+    // Puts back the projects and their sources exactly as they were, so a derived row is derived again.
+    public void UndoMove(ThreadMove move)
+    {
+        foreach (var previous in move.Previous)
+        {
+            previous.Restore();
+        }
+    }
+
+    // A reply streams in as several rows and carries its actions on the last, so the grip there moves the reply: the
+    // whole of it, or in a reply in blocks only the block it is in.
+    private static IReadOnlyList<TranscriptEntryViewModel> _RowsMovedWith(TranscriptEntryViewModel row) =>
+        row is { IsAssistantMarkdown: true, ReplyRows: { } reply }
+            ? [.. reply.Where(part => ReferenceEquals(part.BlockProjects, row.BlockProjects))]
+            : [row];
+
+    // How many rows of the moved prompt's turn went with it: the ones that only followed it.
+    public int RowsThatFollowed(TranscriptEntryViewModel row)
+    {
+        var index = _IndexOfLast(row);
+        if (index < 0 || !row.StartsTurn)
+        {
+            return 0;
+        }
+
+        var count = 0;
+        for (var i = index + 1; i < Transcript.Count && !Transcript[i].StartsTurn; i++)
+        {
+            if (Transcript[i] is { HasOwnProjects: false, BlockProjects: null, IsRowVisible: true })
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     // The fold line's own click: the members of the run come out or go back in under it.
