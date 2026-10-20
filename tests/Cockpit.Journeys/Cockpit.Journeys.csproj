@@ -42,6 +42,7 @@
                       ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
     <AssemblyMetadata Include="CockpitServerDirectory" Value="$(MSBuildThisFileDirectory)..\..\src\Cockpit.Server\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="EchoProviderDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.Plugin.EchoProvider\bin\$(Configuration)\$(TargetFramework)\" />
+    <AssemblyMetadata Include="GitStatusDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="WorkflowsDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Workflows\bin\$(Configuration)\$(TargetFramework)\" />
   </ItemGroup>
 

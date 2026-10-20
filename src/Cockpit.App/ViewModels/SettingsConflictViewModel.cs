@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.Infrastructure.Plugins;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.ViewModels;
 

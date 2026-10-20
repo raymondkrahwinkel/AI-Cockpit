@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Plugins.Abstractions.Settings;
@@ -10,10 +11,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Plugins;
-
-// One setting both machines changed since they last agreed: this machine's value and the carrier's, as JSON text. Null
-// is a removed profile or project.
-public sealed record SettingsConflict(string Key, string? Mine, string? Theirs);
 
 // AC-1510: keeps the white-listed settings (AC-540) in step with the carrier a plugin registered, per key against the
 // base both sides last agreed on. A change on one side is taken over; a change on both is the operator's choice, never

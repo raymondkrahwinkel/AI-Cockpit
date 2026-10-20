@@ -219,7 +219,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, plain credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false, bool withEchoPlugin = true)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false, bool withEchoPlugin = true, bool withGitStatus = false)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -253,7 +253,12 @@ public sealed class ServerJourney
             }
 
             // AC-1525: without the echo plugin, a journey installs it from its store.
-            foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory") }.Where(plugin => withEchoPlugin || plugin.Item1 != "echo-provider"))
+            // The app no longer ships git-status, so a journey that wants its settings view on the server asks for it.
+            var serverPlugins = new[] { ("echo-provider", "EchoProviderDirectory", withEchoPlugin), ("git-status", "GitStatusDirectory", withGitStatus), ("workflows", "WorkflowsDirectory", true) }
+                .Where(plugin => plugin.Item3)
+                .Select(plugin => (plugin.Item1, plugin.Item2))
+                .ToArray();
+            foreach (var (id, directory) in serverPlugins)
             {
                 var plugin = Directory.CreateDirectory(Path.Combine(root, "bundled", id)).FullName;
                 foreach (var file in Directory.EnumerateFiles(_Metadata(directory)))
@@ -262,7 +267,7 @@ public sealed class ServerJourney
                 }
             }
 
-            Assert.Equal(withEchoPlugin ? ["echo-provider", "workflows"] : ["workflows"], (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
+            Assert.Equal(serverPlugins.Select(plugin => plugin.Item1).Order(), (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
             await services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync(
                 "workflows",
                 new Dictionary<string, string> { ["workflows"] = JsonSerializer.Serialize(_ScheduledWorkflowJson()) });
