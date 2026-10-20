@@ -23,16 +23,20 @@ public class DepotSharedProjectSourceTests
     private static void _StubRead(ICockpitHost host, string slug, PluginMcpToolCallResult result) =>
         host.CallMcpToolAsync(
             Arg.Any<string>(), "read",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && (string)args["project"]! == slug),
+            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && Equals(args["project"], slug)),
             Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(result));
 
     private static void _StubReads(ICockpitHost host, Func<string, CancellationToken, Task<PluginMcpToolCallResult>> read) =>
         host.CallMcpToolAsync(
             Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(call => read(
-                (string)((IReadOnlyDictionary<string, object?>)call[2])["project"]!,
-                (CancellationToken)call[4]));
+            .Returns(call =>
+            {
+                var arguments = (IReadOnlyDictionary<string, object?>)call[2];
+                var project = arguments["project"] as string
+                    ?? throw new InvalidOperationException("The read request did not name a project.");
+                return read(project, (CancellationToken)call[4]);
+            });
 
     private static PluginMcpToolCallResult _DefinitionEnvelope(string definitionJson, string checksum = "chk") =>
         PluginMcpToolCallResult.Success(
@@ -204,6 +208,9 @@ public class DepotSharedProjectSourceTests
             gate.TrySetResult(_DefinitionEnvelope("""{"schemaVersion":1,"name":"Shared"}"""));
             var result = await listing;
             Assert.Equal(7, result.Projects.Count);
+            Assert.Equal(
+                Enumerable.Range(1, 7).Select(index => $"project-{index}"),
+                result.Projects.Select(project => project.Id.Split(':').Last()));
         }
         finally
         {

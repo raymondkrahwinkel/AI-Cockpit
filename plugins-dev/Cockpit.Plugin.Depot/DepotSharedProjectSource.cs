@@ -53,6 +53,9 @@ internal sealed class DepotSharedProjectSource(
 
         await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
 
+        var order = listed
+            .Select((project, index) => new { Id = $"{scheme}:{project.Key}", index })
+            .ToDictionary(item => item.Id, item => item.index, StringComparer.Ordinal);
         var shared = new ConcurrentBag<SharedProject>();
         var unreadable = new ConcurrentBag<UnreadableSharedProject>();
         var states = new ConcurrentBag<SharedProjectReadStatus>();
@@ -99,10 +102,9 @@ internal sealed class DepotSharedProjectSource(
                 {
                     unreadable.Add(new UnreadableSharedProject(
                         id, name, role.ToDisplayString()));
+                    states.Add(new SharedProjectReadStatus(
+                        id, name, role.ToDisplayString(), SharedProjectReadState.Unreadable));
                 }
-
-                states.Add(new SharedProjectReadStatus(
-                    id, name, role.ToDisplayString(), !role.CanWrite() ? SharedProjectReadState.Unreadable : SharedProjectReadState.Ok));
 
                 // Otherwise: no .cockpit/project.json at all (the ordinary case for a project that never opted into
                 // Cockpit sharing) or a definition this build cannot parse — leave this one project out. One bad or
@@ -128,10 +130,10 @@ internal sealed class DepotSharedProjectSource(
 
         var timeoutCount = states.Count(state => state.State == SharedProjectReadState.Timeout);
         var statusMessage = timeoutCount == 0 ? null : $"{states.Count - timeoutCount} of {states.Count} project definitions read; {timeoutCount} timed out.";
-        return new SharedProjectListResult(true, shared.ToList(), statusMessage)
+        return new SharedProjectListResult(true, shared.OrderBy(project => order[project.Id]).ToList(), statusMessage)
         {
-            VisibleButUnreadable = unreadable.ToList(),
-            ProjectReadStates = states.ToList(),
+            VisibleButUnreadable = unreadable.OrderBy(project => order[project.Id]).ToList(),
+            ProjectReadStates = states.OrderBy(state => order[state.Id]).ToList(),
         };
     }
 

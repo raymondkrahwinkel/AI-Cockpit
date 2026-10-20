@@ -8,12 +8,23 @@ namespace Cockpit.Infrastructure.Projects;
 // copy of it"; this is what keeps that true once the assistant's read gateway lives outside App).
 public static class SharedProjectSourceLister
 {
-    // A source reports its own partial progress; this wrapper only isolates a source-wide exception.
+    // Mutable test seam: a source reports partial progress, but a hung source must still release the workspace.
+    public static TimeSpan Timeout = TimeSpan.FromSeconds(30);
+
     public static async Task<SharedProjectListResult> ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
     {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
-            return await source.ListAsync(cancellationToken).ConfigureAwait(false);
+            var listTask = source.ListAsync(timeoutCts.Token);
+            var completed = await Task.WhenAny(listTask, Task.Delay(Timeout, cancellationToken)).ConfigureAwait(false);
+            if (completed != listTask)
+            {
+                timeoutCts.Cancel();
+                return SharedProjectListResult.Failed("Timed out waiting for a response.");
+            }
+
+            return await listTask.ConfigureAwait(false);
         }
         catch (Exception exception)
         {
