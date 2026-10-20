@@ -235,7 +235,7 @@ internal sealed class DepotSharedProjectSource(
                 continue;
             }
 
-            var id = $"{scheme}:{project.Slug}";
+            var id = $"{scheme}:{DepotMemorySource.ListedProject.KeyFor(project.Slug, project.Address)}";
             var name = project.Name is { Length: > 0 } value ? value : project.Slug;
             var role = DepotProjectRoleParser.Parse(project.Role);
             var organization = project.Organization is { Slug: { Length: > 0 } organizationSlug }

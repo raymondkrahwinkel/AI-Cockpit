@@ -214,7 +214,9 @@ internal static class DepotMemorySource
     internal readonly record struct ListedProject(string Slug, string? Name, string? Role, string? Kind, string? Address = null)
     {
         // What a stored reference holds for this project: its address where Depot gives one, its slug otherwise.
-        public string Key => Address ?? Slug;
+        public string Key => KeyFor(Slug, Address);
+
+        public static string KeyFor(string slug, string? address) => address ?? slug;
     }
 
     private static readonly JsonSerializerOptions _SerializerOptions = new(JsonSerializerDefaults.Web);
