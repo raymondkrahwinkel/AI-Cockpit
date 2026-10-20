@@ -311,7 +311,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 {
                     await SetLiveOptionAsync("model", choice, cancellationToken).ConfigureAwait(false);
                 }
-                catch (KimiAcpException exception) when (stated && !stated)
+                catch (KimiAcpException exception) when (stated)
                 {
                     throw new KimiAcpException($"Kimi could not switch to the model {effectiveModel}, so the session does not start: {exception.Message}");
                 }
@@ -332,7 +332,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     private string? _ModelChoice(string model) =>
         _liveOptions.FirstOrDefault(option => option.Key == "model") is not { } modelOption
             ? model
-            : modelOption.Choices.FirstOrDefault(choice => string.Equals(choice, model, StringComparison.Ordinal));
+            : modelOption.Choices.FirstOrDefault(choice => string.Equals(choice, model, StringComparison.OrdinalIgnoreCase));
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
