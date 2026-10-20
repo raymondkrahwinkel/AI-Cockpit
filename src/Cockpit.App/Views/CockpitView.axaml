@@ -95,11 +95,25 @@
                         Classes.active="{Binding IsSelectedInSimpleStand}"
                         Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}">
                     <StackPanel Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Ellipse Width="8" Height="8"
-                                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                        </StackPanel>
+                        <DockPanel>
+                            <!-- Assistant threads: the open questions, the dock tab's count for the stand that has no
+                                 dock tab. Its own click target: it opens Questions for you in this column. -->
+                            <Button x:Name="SimpleAssistantQuestions" DockPanel.Dock="Right" Classes="Subtle" Padding="0"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).AssistantIndicator.HasOpenQuestions, FallbackValue=False}"
+                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenAssistantQuestionsCommand}"
+                                    CommandParameter="{Binding}"
+                                    ToolTip.Tip="Questions for you">
+                                <Border Classes="waitingCount">
+                                    <TextBlock Text="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).AssistantIndicator.OpenQuestionCount, FallbackValue=0}"/>
+                                </Border>
+                            </Button>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Ellipse Width="8" Height="8"
+                                         Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </DockPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="Your steady helper" FontSize="11"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>

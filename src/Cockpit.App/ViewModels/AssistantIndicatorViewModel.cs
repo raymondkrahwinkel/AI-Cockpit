@@ -100,7 +100,10 @@ public partial class AssistantIndicatorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsMicIcon))]
     [NotifyPropertyChangedFor(nameof(KeyHint))]
     [NotifyPropertyChangedFor(nameof(ShowsKeyHint))]
+    [NotifyPropertyChangedFor(nameof(HasOpenQuestions))]
     private int _openQuestionCount;
+
+    public bool HasOpenQuestions => OpenQuestionCount > 0;
 
     public bool ShowsQuestions => OpenQuestionCount > 0 && Activity is AssistantActivity.Ready or AssistantActivity.AwaitingOperator;
 

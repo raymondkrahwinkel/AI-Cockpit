@@ -659,11 +659,24 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
-                                    IsVisible="{Binding IsAwaitingAnswer}"
-                                    IsEnabled="{Binding CanSubmitAnswers}"
-                                    Command="{Binding Session.SubmitQuestionAnswersCommand}"
-                                    CommandParameter="{Binding}"/>
+                            <DockPanel>
+                                <!-- Assistant threads (§ 9.6): a question card moves between threads like any row. -->
+                                <StackPanel DockPanel.Dock="Left" Classes="rowActions" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                                            Click="_OnGripClick"
+                                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                            ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                                            AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                                            AutomationProperties.AcceleratorKey="M">
+                                        <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                                    </Button>
+                                </StackPanel>
+                                <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
+                                        IsVisible="{Binding IsAwaitingAnswer}"
+                                        IsEnabled="{Binding CanSubmitAnswers}"
+                                        Command="{Binding Session.SubmitQuestionAnswersCommand}"
+                                        CommandParameter="{Binding}"/>
+                            </DockPanel>
                         </StackPanel>
                     </DockPanel>
                 </Border>

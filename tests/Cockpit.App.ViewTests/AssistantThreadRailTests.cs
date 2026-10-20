@@ -78,7 +78,7 @@ public sealed class AssistantThreadRailTests
     {
         var (chat, _) = _Chat();
 
-        Assert.Equal(["Questions", "All", "General", "cockpit", "depot", "waymark"],
+        Assert.Equal(["Questions", "All", "General", "cockpit", "depot", "waymark", "Overview"],
             chat.ThreadItems.Select(item => item.ProjectId ?? item.Name));
         Assert.Equal(3, chat.OpenQuestionCount);
         Assert.Equal(2, chat.ThreadItems.First(item => item.ProjectId == "depot").WaitingCount);
@@ -116,6 +116,68 @@ public sealed class AssistantThreadRailTests
         Assert.Equal(["waymark"], reply.ThreadProjectIds);
         Assert.Equal(ProjectSource.Inherited, reply.ThreadProjectSource);
         Assert.False(chat.HasMoveToast);
+    }
+
+    // § 9.6: a row that leaves the open thread hands the keyboard to the next row the thread still shows.
+    [Fact]
+    public void AfterAMoveOutOfTheThread_TheFocusGoesToTheNextRowItShows()
+    {
+        var (chat, _) = _Chat();
+        chat.SelectedThreadItem = chat.ThreadItems.First(item => item.ProjectId == "depot");
+        var session = chat.Session!;
+        var inbox = session.VisibleTranscript.First(row => row.IsInboxRow);
+        TranscriptEntryViewModel? focused = null;
+        chat.RowFocusRequested += row => focused = row;
+
+        // The inbox card takes the rows that followed it along, so the focus lands on the first row Depot still has.
+        session.MoveToThread(inbox, "cockpit", add: false);
+
+        Assert.Contains(focused!, session.VisibleTranscript);
+        Assert.Same(session.Transcript.Skip(session.Transcript.IndexOf(inbox) + 1).First(session.VisibleTranscript.Contains), focused);
+        chat.UndoMoveCommand.Execute(null);
+        Assert.Same(inbox, focused);
+    }
+
+    [Fact]
+    public void TheOverview_HasACardPerProject_WithWhatWaitsThere()
+    {
+        var (chat, _) = _Chat();
+
+        chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.Overview);
+
+        Assert.True(chat.IsOverviewPage);
+        Assert.False(chat.IsTranscriptPage);
+        Assert.Equal([("cockpit", 1), ("depot", 2), ("waymark", 0)], chat.OverviewCards.Select(card => (card.ProjectId, card.Waiting)));
+    }
+
+    // To: follows the open thread, and picking another sends the next prompt there without leaving the thread.
+    [Fact]
+    public void TheComposersTo_FollowsTheThread_AndCanSendElsewhere()
+    {
+        var (chat, _) = _Chat();
+        var session = chat.Session!;
+        chat.SelectedThreadItem = chat.ThreadItems.First(item => item.ProjectId == "depot");
+        Assert.Equal("depot", chat.SelectedComposerTarget!.ProjectId);
+
+        chat.SelectedComposerTarget = chat.ComposerTargets.First(target => target.ProjectId == "waymark");
+
+        Assert.Equal("depot", session.ShownThread);
+        Assert.Equal(["waymark"], session.ProjectsForPrompt("iets").Ids);
+
+        chat.SelectedThreadItem = chat.ThreadItems.First(item => item.Kind == AssistantThreadItemKind.All);
+        Assert.Equal("Auto (the assistant picks)", chat.SelectedComposerTarget!.Name);
+        Assert.Null(session.ProjectsForPrompt("iets").Ids);
+    }
+
+    // The Simple stand's count opens Questions for you in the assistant's own column.
+    [Fact]
+    public void TheSimpleStandsCount_OpensQuestionsForYou()
+    {
+        var (chat, cockpit) = _Chat();
+
+        cockpit.OpenAssistantQuestionsCommand.Execute(null);
+
+        Assert.True(chat.IsQuestionsPage);
     }
 
     [Fact]

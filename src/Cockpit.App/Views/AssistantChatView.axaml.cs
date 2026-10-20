@@ -211,6 +211,15 @@ public partial class AssistantChatView : UserControl
         }
     }
 
+    // After a move: the row it lands on is brought into view, then its grip takes the focus once the row is realised.
+    private void _OnRowFocusRequested(TranscriptEntryViewModel row)
+    {
+        ScrollToMessage(row);
+        Dispatcher.UIThread.Post(() => this.GetVisualDescendants().OfType<TranscriptRowView>()
+            .FirstOrDefault(view => ReferenceEquals(view.DataContext, row) && view.IsEffectivelyVisible)?.FocusGrip(),
+            DispatcherPriority.Background);
+    }
+
     // A row picked from Questions for you: its thread is open by now, so the row is there to scroll to once laid out.
     private void _OnRowRevealRequested(TranscriptEntryViewModel row) =>
         Dispatcher.UIThread.Post(() => ScrollToMessage(row), DispatcherPriority.Background);
@@ -226,6 +235,7 @@ public partial class AssistantChatView : UserControl
             _attachedViewModel = vm;
             vm.PropertyChanged += _OnViewModelPropertyChanged;
             vm.RowRevealRequested += _OnRowRevealRequested;
+            vm.RowFocusRequested += _OnRowFocusRequested;
             if (Bounds.Width > 0)
             {
                 vm.ViewWidth = Bounds.Width;
@@ -291,6 +301,7 @@ public partial class AssistantChatView : UserControl
         {
             vm.PropertyChanged -= _OnViewModelPropertyChanged;
             vm.RowRevealRequested -= _OnRowRevealRequested;
+            vm.RowFocusRequested -= _OnRowFocusRequested;
             _attachedViewModel = null;
         }
 

@@ -212,6 +212,28 @@ public class AssistantThreadsTranscriptTests : IDisposable
         Assert.Equal(ProjectSource.AssistantTag, question.SourceFor("depot"));
     }
 
+    // § 4.10: a question landing in another thread than the open one is said in one line; in All it is not.
+    [Fact]
+    public void AQuestionInAnotherThread_IsSaidInOneLine_ButNotInAll()
+    {
+        var queue = Substitute.For<Cockpit.Core.Abstractions.Voice.IVoicePlaybackQueue>();
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>(), voicePlaybackQueue: queue);
+        vm.AdoptPaneId(Cockpit.Core.Assistant.AssistantIdentity.PaneId);
+        vm.ReadResponsesAloud = true;
+        vm.ReadAloudLanguage = "nl";
+        vm.Threads = new ThreadLookup(id => id == "depot" ? "Depot" : null, _ => null, _ => null);
+        const string Input = """{"questions":[{"question":"Welke?","options":[{"label":"A"},{"label":"B"}]}]}""";
+
+        vm.AddQuestion("Welke?", Input, ["depot"]);
+        Assert.DoesNotContain(queue.ReceivedCalls(), call => call.GetMethodInfo().Name == "Enqueue");
+
+        vm.ShownThread = "cockpit";
+        vm.AddQuestion("Welke nu?", Input, ["depot"]);
+
+        var spoken = Assert.Single(queue.ReceivedCalls(), call => call.GetMethodInfo().Name == "Enqueue");
+        Assert.Contains("Vraag uit Depot.", (IReadOnlyList<string>)spoken.GetArguments()[0]!);
+    }
+
     // § 9.6: the grip sits on a reply's last row, so moving it moves the whole reply, and Undo takes all of it back.
     [Fact]
     public void MovingAReply_MovesEveryRowOfIt_AndUndoPutsThemAllBack()

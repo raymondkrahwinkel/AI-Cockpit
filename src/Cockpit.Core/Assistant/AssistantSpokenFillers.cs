@@ -32,6 +32,15 @@ public static class AssistantSpokenFillers
         return TimeSpan.FromSeconds(Math.Min(seconds, 180));
     }
 
+    // Assistant threads (§ 4.10): one short line when something for the operator lands in a thread other than the open
+    // one — "Question from Depot". Empty for a language we have no words in, like the fillers above.
+    public static string ArrivedElsewhere(string? language, bool isQuestion, string from) => language?.ToLowerInvariant() switch
+    {
+        "nl" => isQuestion ? $"Vraag uit {from}." : $"Bericht uit {from}.",
+        "en" => isQuestion ? $"Question from {from}." : $"Message from {from}.",
+        _ => string.Empty,
+    };
+
     // Rotated rather than random: the same words twice in a row is what makes a filler grating, and a rotation
     // gives that guarantee where a draw only makes it likely — and can be asserted.
     private static string _Pick(IReadOnlyDictionary<string, string[]> lines, string? language, int index)

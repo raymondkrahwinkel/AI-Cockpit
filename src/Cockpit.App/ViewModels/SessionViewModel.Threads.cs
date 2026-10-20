@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -85,8 +86,14 @@ public partial class SessionViewModel
     // All draws a project tag on rows; inside a thread the tag would only repeat where you are.
     public bool ShowsThreadTags => Threads is not null && ShownThread is null;
 
+    // Where what the operator types or says now goes: the open thread by default, or what the composer's To: picks.
+    // Null is Auto — the host files it by what it names, then the assistant may tag it.
+    [ObservableProperty]
+    private string? _composerThread;
+
     partial void OnShownThreadChanged(string? value)
     {
+        ComposerThread = value;
         _RebuildVisibleTranscript();
         _RaiseThreadTags();
     }
@@ -361,7 +368,7 @@ public partial class SessionViewModel
 
     // The projects a prompt typed or spoken now is put in: the open thread's, or none in All.
     // ponytail: the thread open when the turn starts, not when it was queued; carry it on QueuedPrompt if that bites.
-    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _ComposerProjects(string text) => ShownThread switch
+    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _ComposerProjects(string text) => ComposerThread switch
     {
         null => _InferredProjects(text),
         GeneralThread => ([], null),
@@ -481,6 +488,7 @@ public partial class SessionViewModel
         if (open)
         {
             OpenQuestions.Add(entry);
+            _SayWhereItArrived(entry, isQuestion: true);
         }
         else
         {
@@ -521,6 +529,23 @@ public partial class SessionViewModel
         ThreadsChanged?.Invoke();
     }
 
+    // Something for the operator landed in a thread they are not looking at: one short line says where (§ 4.10). Not
+    // in All, where it is on screen anyway; not for a status line; not while a restart repaints the conversation.
+    private void _SayWhereItArrived(TranscriptEntryViewModel row, bool isQuestion)
+    {
+        if (!ReadResponsesAloud || !IsTheVoiceAssistant || IsReplayingTranscript || ShownThread is null || _InThread(row, ShownThread))
+        {
+            return;
+        }
+
+        var from = row.IsGeneral ? "General" : row.ThreadTags[0].Name;
+        var line = AssistantSpokenFillers.ArrivedElsewhere(ReadAloudLanguage, isQuestion, from);
+        if (line.Length > 0)
+        {
+            _ = EnqueueReadAloudAsync(line);
+        }
+    }
+
     // AC-394 put a notice here because the text entering the context could not be seen. Now each message is a row of
     // its own, with its sender and its project, so the assistant no longer has to retell it (§ 4 point 3).
     internal void NoteDeliveredMail(AgentInboxTurnNotice notice)
@@ -538,7 +563,7 @@ public partial class SessionViewModel
                 ? Threads?.PaneTitle(watched) ?? watched
                 : Threads?.PaneTitle(message.FromPaneId);
 
-            Transcript.Add(new TranscriptEntryViewModel(
+            var row = new TranscriptEntryViewModel(
                 StatusKinds.Contains(message.Kind.Trim()) ? TranscriptEntryKind.Status : TranscriptEntryKind.Inbox,
                 message.Body)
             {
@@ -548,7 +573,12 @@ public partial class SessionViewModel
                 SubjectPaneId = message.SubjectPaneId,
                 ProjectIds = projectId is null ? null : [projectId],
                 ProjectSources = projectId is null ? null : new Dictionary<string, ProjectSource> { [projectId] = named?.Source ?? ProjectSource.Session },
-            });
+            };
+            Transcript.Add(row);
+            if (row.IsInboxRow)
+            {
+                _SayWhereItArrived(row, isQuestion: false);
+            }
         }
     }
 }

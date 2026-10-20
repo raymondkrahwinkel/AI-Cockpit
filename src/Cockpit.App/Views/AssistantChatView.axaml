@@ -825,6 +825,22 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
+                    <!-- Assistant threads: where what you type or say goes — the open thread, or Auto, where the
+                         prompt is filed by what it names. Hidden until there is a thread to send to. -->
+                    <StackPanel x:Name="ComposerTarget" Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}">
+                        <TextBlock Text="To:" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <ComboBox x:Name="ComposerTargetPicker" Classes="pill" ItemsSource="{Binding ComposerTargets}"
+                                  SelectedItem="{Binding SelectedComposerTarget}" AutomationProperties.Name="Send to">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                                    <TextBlock Text="{Binding Name}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
                     <!-- The same row SessionComposerAlignmentTests measure. -->
                     <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                         <!-- The placeholder comes from the styles above: typing stays on while the assistant is
@@ -1041,6 +1057,55 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
                                     <controls:TranscriptRowView Compact="True"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Assistant threads: the Overview — a card per project with its sessions, what waits and the
+                     latest word from it; a card opens its thread. -->
+                <ScrollViewer x:Name="OverviewPage" IsVisible="{Binding IsOverviewPage}">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="No projects in this conversation yet." IsVisible="{Binding !HasOverviewCards}"
+                                   HorizontalAlignment="Center" Margin="0,24,0,0" FontSize="12.5"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding OverviewCards}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectOverviewCard">
+                                    <Border Width="260" Margin="0,0,10,10" Padding="12,10"
+                                            Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                            CornerRadius="{StaticResource CockpitControlRadius}">
+                                        <StackPanel Spacing="6">
+                                            <DockPanel>
+                                                <Border DockPanel.Dock="Right" Classes="waitingCount" IsVisible="{Binding HasWaiting}">
+                                                    <TextBlock Text="{Binding Waiting}"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding SessionsLabel}" FontSize="11.5"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding HasSessions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="x:String">
+                                                        <TextBlock Text="{Binding}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding Latest}" IsVisible="{Binding HasLatest}" FontSize="12"
+                                                       TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"/>
+                                            <Button Classes="Compact" Content="Open thread" HorizontalAlignment="Left"
+                                                    Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).OpenThreadCommand}"
+                                                    CommandParameter="{Binding ProjectId}"/>
+                                        </StackPanel>
+                                    </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

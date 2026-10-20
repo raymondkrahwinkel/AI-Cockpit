@@ -375,6 +375,8 @@ internal static partial class Screenshotter
         // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
         // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
+        // Assistant threads: the stand with no dock tab and no chip counts open questions on its assistant row.
+        ["simple-view-assistant-questions"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithQuestions() },
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
@@ -618,6 +620,7 @@ internal static partial class Screenshotter
         ["assistant-threads-questions-answered"] = (_, _) => _AssistantThreads(960, questions: true, answered: true),
         ["assistant-threads-cockpit"] = (_, _) => _AssistantThreads(960, thread: "cockpit"),
         ["assistant-threads-waymark"] = (_, _) => _AssistantThreads(960, thread: "waymark"),
+        ["assistant-threads-overview"] = (_, _) => _AssistantThreads(960, overview: true),
         ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
         ["assistant-threads-drag"] = (_, _) => _AssistantThreads(960, dragging: true),
         ["assistant-threads-drag-narrow"] = (_, _) => _AssistantThreads(520, dragging: true),

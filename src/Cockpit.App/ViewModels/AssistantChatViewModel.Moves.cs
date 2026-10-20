@@ -128,8 +128,30 @@ public sealed partial class AssistantChatViewModel
         ? "General"
         : ThreadItems.FirstOrDefault(item => item.ProjectId == projectId)?.Name ?? projectId;
 
+    // Where the keyboard goes after a move: the row itself while it is still in this thread, else the next row that
+    // is, so a keyboard user is not dropped at the top of the list (§ 9.6). Undo brings it back to the row.
+    public event Action<TranscriptEntryViewModel>? RowFocusRequested;
+
+    // The row the focus belongs on once `moved` left the open thread, or the row itself while it is still shown.
+    internal TranscriptEntryViewModel? FocusAfterMove(TranscriptEntryViewModel moved)
+    {
+        if (Session is not { } session || session.VisibleTranscript.Contains(moved))
+        {
+            return moved;
+        }
+
+        var index = session.Transcript.IndexOf(moved);
+        return session.Transcript.Skip(index + 1).FirstOrDefault(session.VisibleTranscript.Contains)
+            ?? session.VisibleTranscript.LastOrDefault();
+    }
+
     private void _OnRowMoved(ThreadMove move)
     {
+        if (FocusAfterMove(move.Row) is { } focus)
+        {
+            RowFocusRequested?.Invoke(focus);
+        }
+
         LastMove = move;
         MoveAnnouncement = $"{MoveToastText}. Press Ctrl+Z to undo.";
 
@@ -147,6 +169,7 @@ public sealed partial class AssistantChatViewModel
             session.UndoMove(move);
             MoveAnnouncement = "Move undone.";
             RowRevealRequested?.Invoke(move.Row);
+            RowFocusRequested?.Invoke(move.Row);
         }
 
         DismissMoveToast();

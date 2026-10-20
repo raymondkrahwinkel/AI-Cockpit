@@ -17,7 +17,7 @@ internal static partial class Screenshotter
 
     private static AssistantChatWindow _AssistantThreads(
         double width, string? thread = null, bool questions = false, bool overlay = false, bool answered = false,
-        bool dragging = false, bool moved = false)
+        bool dragging = false, bool moved = false, bool overview = false)
     {
         var chat = _AssistantChatViewModel(_AssistantThreadsConversation());
         var window = new AssistantChatWindow
@@ -35,6 +35,10 @@ internal static partial class Screenshotter
             : chat.ThreadItems.FirstOrDefault(item => item.ThreadKey == thread && item.Kind != AssistantThreadItemKind.Questions);
         chat.IsRailOverlayOpen = overlay;
         chat.IsAnsweredTodayExpanded = answered;
+        if (overview)
+        {
+            chat.SelectedThreadItem = chat.ThreadItems.First(item => item.Kind == AssistantThreadItemKind.Overview);
+        }
 
         // § 9.6: the WayMark prompt on its way to Depot, held over it; or just dropped there, with the toast.
         var prompt = chat.Session!.Transcript.First(row => row.Text.StartsWith("Waarom synct", StringComparison.Ordinal));
@@ -90,6 +94,14 @@ internal static partial class Screenshotter
         }
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static CockpitViewModel _SimpleStandWithQuestions()
+    {
+        var cockpit = _SimpleStand(withAssistant: true);
+        cockpit.AssistantIndicator ??= new AssistantIndicatorViewModel { Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
+        cockpit.AssistantIndicator.OpenQuestionCount = 3;
+        return cockpit;
     }
 
     internal static SessionViewModel _AssistantThreadsConversation()

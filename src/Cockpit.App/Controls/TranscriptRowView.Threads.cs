@@ -29,6 +29,9 @@ public partial class TranscriptRowView
         }
     }
 
+    // The keyboard's way back onto this row after a move: its grip, the one control every movable row has.
+    internal bool FocusGrip() => _Grip()?.Focus(NavigationMethod.Tab) == true;
+
     private Button? _Grip() => this.GetVisualDescendants().OfType<Button>()
         .FirstOrDefault(button => button.Classes.Contains("threadGrip") && button.IsEffectivelyVisible);
 

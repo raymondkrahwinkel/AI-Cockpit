@@ -22,6 +22,9 @@ public enum AssistantThreadItemKind
     All,
     General,
     Project,
+
+    // Every project on one page: its sessions, what waits and the latest word from it.
+    Overview,
 }
 
 // One entry of the thread rail: Questions for you, All, General or a project.
@@ -48,9 +51,12 @@ public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind
 
     public bool HasIcon => !IsThread;
 
-    public MaterialIconKind IconKind => Kind == AssistantThreadItemKind.Questions
-        ? MaterialIconKind.HelpCircleOutline
-        : MaterialIconKind.FormatListBulleted;
+    public MaterialIconKind IconKind => Kind switch
+    {
+        AssistantThreadItemKind.Questions => MaterialIconKind.HelpCircleOutline,
+        AssistantThreadItemKind.Overview => MaterialIconKind.ViewGridOutline,
+        _ => MaterialIconKind.FormatListBulleted,
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWaiting))]
@@ -84,6 +90,7 @@ public sealed partial class AssistantChatViewModel
     private readonly AssistantThreadItemViewModel _questionsItem = new(AssistantThreadItemKind.Questions, "Questions");
     private readonly AssistantThreadItemViewModel _allItem = new(AssistantThreadItemKind.All, "All");
     private readonly AssistantThreadItemViewModel _generalItem = new(AssistantThreadItemKind.General, "General");
+    private readonly AssistantThreadItemViewModel _overviewItem = new(AssistantThreadItemKind.Overview, "Overview");
 
     // Every project a row of the conversation is in, gathered as rows arrive so an append costs nothing.
     private readonly HashSet<string> _projectsWithRows = new(StringComparer.Ordinal);
@@ -99,6 +106,7 @@ public sealed partial class AssistantChatViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsQuestionsPage))]
     [NotifyPropertyChangedFor(nameof(IsTranscriptPage))]
+    [NotifyPropertyChangedFor(nameof(IsOverviewPage))]
     [NotifyPropertyChangedFor(nameof(ThreadTitle))]
     [NotifyPropertyChangedFor(nameof(ThreadSubtitle))]
     [NotifyPropertyChangedFor(nameof(SelectedThreadChoice))]
@@ -106,7 +114,9 @@ public sealed partial class AssistantChatViewModel
 
     public bool IsQuestionsPage => SelectedThreadItem?.Kind == AssistantThreadItemKind.Questions;
 
-    public bool IsTranscriptPage => !IsQuestionsPage;
+    public bool IsOverviewPage => SelectedThreadItem?.Kind == AssistantThreadItemKind.Overview;
+
+    public bool IsTranscriptPage => !IsQuestionsPage && !IsOverviewPage;
 
     // The picker's own selection, which never holds Questions.
     public AssistantThreadItemViewModel? SelectedThreadChoice
@@ -128,6 +138,7 @@ public sealed partial class AssistantChatViewModel
     public string ThreadTitle => SelectedThreadItem?.Kind switch
     {
         AssistantThreadItemKind.Questions => "Questions for you",
+        AssistantThreadItemKind.Overview => "Overview",
         AssistantThreadItemKind.All or null => "All threads",
         _ => SelectedThreadItem.Name,
     };
@@ -137,6 +148,7 @@ public sealed partial class AssistantChatViewModel
     private string _ThreadSubtitle => SelectedThreadItem?.Kind switch
     {
         AssistantThreadItemKind.Questions => "A question stays here until you answer it.",
+        AssistantThreadItemKind.Overview => "Every project: its sessions, what waits and the latest word.",
         AssistantThreadItemKind.All or null => "Every project in one stream. The tag shows where a row belongs.",
         AssistantThreadItemKind.General => "What is not about one project.",
         _ => SelectedThreadItem.WaitingCount switch
@@ -154,6 +166,12 @@ public sealed partial class AssistantChatViewModel
         if (value is not null && Session is { } session)
         {
             session.ShownThread = value.ThreadKey;
+        }
+
+        _FollowOpenThreadInTheComposer();
+        if (IsOverviewPage)
+        {
+            _RebuildOverview();
         }
     }
 
@@ -378,6 +396,7 @@ public sealed partial class AssistantChatViewModel
         items.AddRange(projectIds.Select(project => existing.TryGetValue(project.Id, out var kept) && kept.Name == project.Name
             ? kept
             : new AssistantThreadItemViewModel(AssistantThreadItemKind.Project, project.Name, project.Id)));
+        items.Add(_overviewItem);
 
         if (!items.SequenceEqual(ThreadItems))
         {
@@ -395,6 +414,7 @@ public sealed partial class AssistantChatViewModel
             SelectedThreadItem = items.FirstOrDefault(item => (item.Kind, item.ProjectId) == selectedKey) ?? _allItem;
         }
 
+        _RebuildComposerTargets(projectIds);
         if (Session is { } targets)
         {
             targets.ThreadTargets = [.. projectIds.Select(project => (project.Id, project.Name))];
@@ -448,6 +468,11 @@ public sealed partial class AssistantChatViewModel
     private void _RefreshThreadCounts()
     {
         _RefreshAnsweredToday();
+        if (IsOverviewPage)
+        {
+            _RebuildOverview();
+        }
+
         _questionsItem.WaitingCount = OpenQuestionCount;
         foreach (var item in ThreadItems.Where(item => item.IsThread))
         {

@@ -27,4 +27,17 @@ public partial class CockpitViewModel
 
     [RelayCommand]
     private void DismissAssistantFloatingCard() => AssistantFloatingCard = null;
+
+    // The Simple stand has no dock tab and no sidebar chip, so its rail row carries the count; a click on it picks the
+    // assistant there, in its own column, and opens Questions for you rather than moving the conversation anywhere.
+    [RelayCommand]
+    private void OpenAssistantQuestions(SessionPanelViewModel? assistant)
+    {
+        if (assistant is not null)
+        {
+            SelectSimpleSession(assistant);
+        }
+
+        AssistantChat?.OpenQuestionsCommand.Execute(null);
+    }
 }
