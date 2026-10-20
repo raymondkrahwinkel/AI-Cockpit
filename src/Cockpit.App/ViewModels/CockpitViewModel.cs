@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Backup;
-using Cockpit.Infrastructure.Backup;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -150,7 +149,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly IShortcutSettingsStore? _shortcutSettingsStore;
     private readonly IBackupService? _backupService;
-    private readonly BackupTargets? _backupTargets;
+    private readonly IRegisteredBackupTargets? _backupTargets;
     // The assistant's own memory files, loose from the rest of the cockpit backup (AC-657) — same service the
     // assistant's remember/note_state MCP tools write through.
     private readonly IAssistantMemory? _assistantMemory;
@@ -3236,7 +3235,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginProviderConfigViews? providerConfigViews = null,
         IManagedSettings? managedSettings = null,
         IBackupScheduleStore? backupScheduleStore = null,
-        BackupTargets? backupTargets = null)
+        IRegisteredBackupTargets? backupTargets = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;

@@ -76,7 +76,7 @@ public sealed class RemoteAdminJourney
         // above the pairing port, so that is the port found free.
         var checksumFile = Path.Combine(root, "echo-checksum.txt");
         var port = _FreeDoorPort();
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false);
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false, withGitStatus: true);
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile,

@@ -11,6 +11,7 @@ public partial class SettingsConflictDialog : Window
     public SettingsConflictDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this);
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -22,10 +23,6 @@ public partial class SettingsConflictDialog : Window
         {
             return;
         }
-
-        const string title = "Settings changed on two machines";
-        Title = title;
-        CockpitWindowChrome.Apply(this, title);
 
         viewModel.CloseRequested += answers => Close(answers);
     }

@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Cockpit.Infrastructure.Plugins;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.App.ViewModels;
 
