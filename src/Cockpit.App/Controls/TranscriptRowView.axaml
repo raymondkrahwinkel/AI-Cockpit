@@ -77,13 +77,8 @@
             </TextBlock>
 
             <!-- Assistant threads: in All, the project a row is in; the tooltip says how it got there. -->
-            <ItemsControl Classes="threadTags" Classes.user="{Binding IsUserRow}" ItemsSource="{Binding ThreadTags}">
-                <ItemsControl.IsVisible>
-                    <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding Path="Session.ShowsThreadTags" FallbackValue="False"/>
-                        <Binding Path="CarriesThreadTag"/>
-                    </MultiBinding>
-                </ItemsControl.IsVisible>
+            <ItemsControl Classes="threadTags" Classes.user="{Binding IsUserRow}" ItemsSource="{Binding ThreadTags}"
+                          IsVisible="{Binding ShowsThreadTagsHere}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Horizontal" Spacing="4"/>

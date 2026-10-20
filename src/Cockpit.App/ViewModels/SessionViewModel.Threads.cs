@@ -33,6 +33,7 @@ public partial class SessionViewModel
         {
             _threads = value;
             OnPropertyChanged(nameof(ShowsThreadTags));
+            _RaiseThreadTags();
         }
     }
 
@@ -49,7 +50,19 @@ public partial class SessionViewModel
     // All draws a project tag on rows; inside a thread the tag would only repeat where you are.
     public bool ShowsThreadTags => Threads is not null && ShownThread is null;
 
-    partial void OnShownThreadChanged(string? value) => _RebuildVisibleTranscript();
+    partial void OnShownThreadChanged(string? value)
+    {
+        _RebuildVisibleTranscript();
+        _RaiseThreadTags();
+    }
+
+    private void _RaiseThreadTags()
+    {
+        foreach (var row in Transcript)
+        {
+            row.RaiseThreadTags();
+        }
+    }
 
     // Everything waiting on the operator, oldest first: the question cards and the Allow/Deny rows.
     public ObservableCollection<TranscriptEntryViewModel> OpenQuestions { get; } = [];
@@ -58,6 +71,9 @@ public partial class SessionViewModel
 
     // A question in two projects counts once in the total and once in each of its threads (§ 9.5).
     public int OpenQuestionCountIn(string? thread) => OpenQuestions.Count(row => _InThread(row, thread));
+
+    // A restart repaints the earlier conversation row by row; nothing in it is news to announce.
+    public bool IsReplayingTranscript => _replayingRecordedTranscript;
 
     // Raised when a row's threads or the open questions change, for whatever counts per thread.
     public event Action? ThreadsChanged;
@@ -72,9 +88,6 @@ public partial class SessionViewModel
     };
 
     private bool _IsShown(TranscriptEntryViewModel entry) => entry.IsRowVisible && _InShownThread(entry);
-    // A restart repaints the earlier conversation row by row; nothing in it is news to announce.
-    public bool IsReplayingTranscript => _replayingRecordedTranscript;
-
 
     // The projects a prompt typed or spoken now is put in: the open thread's, or none in All.
     // ponytail: the thread open when the turn starts, not when it was queued; carry it on QueuedPrompt if that bites.
@@ -92,14 +105,52 @@ public partial class SessionViewModel
         var row = Transcript[index];
         if (row.StartsTurn || row.ProjectIds is not null)
         {
+            row.TurnProjectsCache = row.StartsTurn ? null : _TurnProjects(index);
             row.ThreadProjectIds = row.ProjectIds ?? [];
             row.ThreadProjectSource = row.ProjectIds is { Count: > 0 } ids ? row.SourceFor(ids[0]) : ProjectSource.None;
             return;
         }
 
         var turn = _TurnProjects(index);
+        row.TurnProjectsCache = turn;
+        row.StartsProjectBlock = false;
+        row.BlockProjects = null;
+
+        // A reply in blocks per project (§ 9.4): a marker opens a block, and the rows of the reply after it stay in
+        // that block until the next. An id no project has is General; text before the first marker follows the turn.
+        if (row.IsAssistantMarkdown)
+        {
+            var markers = ProjectMarkers.In(row.Text);
+            if (markers.Count > 0)
+            {
+                row.StartsProjectBlock = true;
+                row.BlockProjects = [.. markers.Where(id => Threads is null || Threads.ProjectName(id) is not null)];
+            }
+            else if (row.IsReplyContinuation && index > 0 && Transcript[index - 1] is { BlockProjects: { } block })
+            {
+                row.BlockProjects = block;
+            }
+        }
+
+        if (row.BlockProjects is { } blockProjects)
+        {
+            row.ThreadProjectIds = blockProjects;
+            row.ThreadProjectSource = ProjectSource.AssistantTag;
+            return;
+        }
+
         row.ThreadProjectIds = turn;
         row.ThreadProjectSource = turn.Count == 0 ? ProjectSource.None : ProjectSource.Inherited;
+    }
+
+    // A streamed reply row is filed again once its text holds a marker, which can arrive several deltas in.
+    private void _OnRowTextChanged(TranscriptEntryViewModel entry)
+    {
+        if (entry.IsAssistantMarkdown && entry.ProjectIds is null
+            && (entry.StartsProjectBlock || entry.Text.Contains("<!--", StringComparison.Ordinal)))
+        {
+            _OnRowProjectsChanged(entry);
+        }
     }
 
     private void _StampThreadsFrom(int index)
@@ -114,9 +165,9 @@ public partial class SessionViewModel
     // run of rows that opened it, else the messages that did.
     private IReadOnlyList<string> _TurnProjects(int index)
     {
-        if (index > 0 && Transcript[index - 1] is { StartsTurn: false, HasOwnProjects: false } above)
+        if (index > 0 && Transcript[index - 1] is { StartsTurn: false, TurnProjectsCache: { } aboveTurn })
         {
-            return above.ThreadProjectIds;
+            return aboveTurn;
         }
 
         var end = index - 1;

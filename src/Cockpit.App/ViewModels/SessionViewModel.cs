@@ -1001,6 +1001,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 _OnRowProjectsChanged(threaded);
             }
+            else if (e.PropertyName is nameof(TranscriptEntryViewModel.Text))
+            {
+                _OnRowTextChanged(threaded);
+            }
             else if (e.PropertyName is nameof(TranscriptEntryViewModel.IsAwaitingAnswer))
             {
                 _SyncOpenQuestion(threaded);

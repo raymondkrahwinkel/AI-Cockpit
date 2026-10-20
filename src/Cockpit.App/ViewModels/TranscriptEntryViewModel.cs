@@ -111,6 +111,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     {
         OnPropertyChanged(nameof(ReplyBadgeOpacity));
         OnPropertyChanged(nameof(CarriesThreadTag));
+        OnPropertyChanged(nameof(ShowsThreadTagsHere));
     }
 
     // AC-1265: a fenced code block has no blank line to split on, so it grew as one row past the viewport --
@@ -1013,6 +1014,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
         OnPropertyChanged(nameof(PermissionBranch));
         OnPropertyChanged(nameof(IsAwaitingAnswer));
         OnPropertyChanged(nameof(CanSubmitAnswers));
+        OnPropertyChanged(nameof(ShowsThreadTagsHere));
         _RaiseStep();
     }
 

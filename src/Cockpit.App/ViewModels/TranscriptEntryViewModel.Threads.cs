@@ -12,6 +12,7 @@ public partial class TranscriptEntryViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOwnProjects))]
     [NotifyPropertyChangedFor(nameof(CarriesThreadTag))]
+    [NotifyPropertyChangedFor(nameof(ShowsThreadTagsHere))]
     private IReadOnlyList<string>? _projectIds;
 
     [ObservableProperty]
@@ -77,10 +78,27 @@ public partial class TranscriptEntryViewModel
 
     public MaterialIconKind StatusIconKind => IsDoneStatus ? MaterialIconKind.Check : MaterialIconKind.CircleSmall;
 
-    // Where All draws the tag: what opens a turn, the first row of a reply, a question, a row put somewhere of its
-    // own. Not every tool step, which would repeat its prompt's tag down the page.
-    public bool CarriesThreadTag => StartsTurn || HasOwnProjects || HasQuestionPrompts || IsPendingToolPermission
-        || (IsAssistantMarkdown && !IsReplyContinuation);
+    // Where All draws the tag: what opens a turn, the first row of a reply or of a block in it, a question or an
+    // approval, a row put somewhere of its own. Not every tool step, which would repeat its prompt's tag down the page.
+    public bool CarriesThreadTag => StartsTurn || HasOwnProjects || HasQuestionPrompts || RequiredApproval
+        || StartsProjectBlock || (IsAssistantMarkdown && !IsReplyContinuation);
+
+    // All tags every such row; a thread only the rows that are in another thread as well.
+    public bool ShowsThreadTagsHere => Session is { Threads: not null } session && CarriesThreadTag
+        && (session.ShownThread is null || ThreadProjectIds.Count > 1);
+
+    internal void RaiseThreadTags() => OnPropertyChanged(nameof(ShowsThreadTagsHere));
+
+    // The turn's projects as the session last worked them out, so the next row of the turn need not walk back to it.
+    internal IReadOnlyList<string>? TurnProjectsCache { get; set; }
+
+    // The projects of the reply block this row is in, when the reply was written in blocks per project (§ 9.4).
+    internal IReadOnlyList<string>? BlockProjects { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CarriesThreadTag))]
+    [NotifyPropertyChangedFor(nameof(ShowsThreadTagsHere))]
+    private bool _startsProjectBlock;
 
     public string ShowInLabel => ThreadProjectIds.Count == 0 ? "Show in General" : $"Show in {ThreadTags[0].Name}";
 
@@ -104,6 +122,7 @@ public partial class TranscriptEntryViewModel
     {
         OnPropertyChanged(nameof(ThreadTags));
         OnPropertyChanged(nameof(ShowInLabel));
+        OnPropertyChanged(nameof(ShowsThreadTagsHere));
     }
 
     partial void OnThreadProjectSourceChanged(ProjectSource value) => OnPropertyChanged(nameof(ThreadTags));

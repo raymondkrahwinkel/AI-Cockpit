@@ -149,6 +149,37 @@ public class AssistantThreadsTranscriptTests : IDisposable
         Assert.Equal(["depot", "waymark"], reply.ThreadProjectIds);
     }
 
+    // § 9.3 (a): one reply, a block per project. Text before the first marker is the whole turn's; a block runs on over
+    // the rows the reply streamed into; an id no project has is General; the marker itself is never drawn or read.
+    [Fact]
+    public void AReplyInBlocks_FilesEachBlockUnderItsProject()
+    {
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>());
+        vm.Threads = new ThreadLookup(id => id is "depot" or "waymark" ? id : null, _ => null, _ => null);
+        vm.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "voor Depot dit, voor WayMark dat")
+        {
+            TurnProjectIds = ["depot", "waymark"],
+        });
+        var intro = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Twee dingen.");
+        var depot = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "<!-- project:depot -->\nDe route staat.") { IsReplyContinuation = true };
+        var depotMore = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Nog een alinea.") { IsReplyContinuation = true };
+        var unknown = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "<!-- project:elders -->\nIets anders.") { IsReplyContinuation = true };
+        foreach (var row in new[] { intro, depot, depotMore, unknown })
+        {
+            vm.Transcript.Add(row);
+        }
+
+        Assert.Equal(["depot", "waymark"], intro.ThreadProjectIds);
+        Assert.Equal(["depot"], depot.ThreadProjectIds);
+        Assert.True(depot.StartsProjectBlock);
+        Assert.Equal(["depot"], depotMore.ThreadProjectIds);
+        Assert.True(unknown.IsGeneral);
+
+        var blocks = Cockpit.Core.Markdown.MarkdownParser.Parse(depot.Text);
+        Assert.Single(blocks);
+        Assert.DoesNotContain(Cockpit.Core.Voice.TtsProseExtractor.Extract(depot.Text), sentence => sentence.Contains("project", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void DeliveredMail_IsARowPerMessage_FiledUnderTheSendersProject_OrTheWatchedPanes()
     {
