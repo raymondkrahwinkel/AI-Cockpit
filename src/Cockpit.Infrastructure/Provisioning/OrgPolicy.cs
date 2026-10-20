@@ -1,22 +1,30 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Provisioning;
 
 internal sealed class OrgPolicy : IOrgPolicy, ISingletonService
 {
+    // What an unreadable policy means to a synchronous reader: the agent switches off, never an exception in the fan-out.
+    private static readonly ProvisionPolicy Unreadable = new(
+        "an organisation policy that could not be read",
+        Permissions: new ProvisionPermissionPolicy(TerminalAccess: OrgPolicyCeilings.Forbidden, ShellAccess: OrgPolicyCeilings.Forbidden));
+
     private readonly CockpitConfigFileAccess _configFile;
+    private readonly ILogger<OrgPolicy>? _logger;
     private ProvisionPolicy? _current;
     private volatile bool _stale = true;
 
-    public OrgPolicy()
-        : this(CockpitConfigPath.Default)
+    public OrgPolicy(ILogger<OrgPolicy>? logger = null)
+        : this(CockpitConfigPath.Default, logger)
     {
     }
 
-    internal OrgPolicy(string configFilePath)
+    internal OrgPolicy(string configFilePath, ILogger<OrgPolicy>? logger = null)
     {
+        _logger = logger;
         _configFile = new CockpitConfigFileAccess(configFilePath);
         CockpitConfigFileAccess.Written += path =>
         {
@@ -34,16 +42,17 @@ internal sealed class OrgPolicy : IOrgPolicy, ISingletonService
         {
             if (_stale)
             {
-                // Cleared before the read, so a save during it marks it stale again; a failed read leaves it stale and throws.
+                // Cleared before the read, so a save during it marks it stale again; a failed read stays stale and fails closed.
                 _stale = false;
                 try
                 {
                     _current = ReadAsync().GetAwaiter().GetResult();
                 }
-                catch
+                catch (Exception exception)
                 {
                     _stale = true;
-                    throw;
+                    _logger?.LogWarning(exception, "The organisation policy could not be read; terminal and shell access stay off until it can");
+                    return Unreadable;
                 }
             }
 

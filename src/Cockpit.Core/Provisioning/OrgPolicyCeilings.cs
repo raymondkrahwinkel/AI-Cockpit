@@ -25,13 +25,13 @@ public static class OrgPolicyCeilings
     // The stricter of the two permission ceilings: a delegated task never gets more than a session may start with.
     public static string? DelegationCeiling(ProvisionPolicy? policy) => Lower(policy?.Permissions?.DelegationCeiling, MaxPermissionMode(policy));
 
-    // Approving every tool call is what bypass means, so a ceiling below it forbids that as much as the explicit switch.
     public static bool TerminalForbidden(ProvisionPolicy? policy) =>
         string.Equals(policy?.Permissions?.TerminalAccess, Forbidden, StringComparison.OrdinalIgnoreCase);
 
     public static bool ShellForbidden(ProvisionPolicy? policy) =>
         string.Equals(policy?.Permissions?.ShellAccess, Forbidden, StringComparison.OrdinalIgnoreCase);
 
+    // Approving every tool call is what bypass means, so a ceiling below it forbids that as much as the explicit switch.
     public static bool AutoApproveForbidden(ProvisionPolicy? policy) => _ApproveAllForbidden(policy, MaxPermissionMode(policy));
 
     public static bool DelegatedAutoApproveForbidden(ProvisionPolicy? policy) => _ApproveAllForbidden(policy, DelegationCeiling(policy));

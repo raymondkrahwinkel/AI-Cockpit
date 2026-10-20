@@ -137,8 +137,30 @@ public class OrgPolicyCeilingTests
     [InlineData("shell")]
     [InlineData("start-run")]
     [InlineData("run-elevated")]
+    [InlineData("unreadable")]
     public async Task AForbiddenAgentSwitch_StaysOff_UntilTheBanIsLifted(string which)
     {
+        if (which == "unreadable")
+        {
+            // Neither the settings nor their backup parse: the switch reads as off rather than throwing into the fan-out.
+            var directory = Directory.CreateTempSubdirectory("ac1593-").FullName;
+            try
+            {
+                var path = Path.Combine(directory, "cockpit.json");
+                await File.WriteAllTextAsync(path, "{ not json");
+                await File.WriteAllTextAsync(path + ".bak", "{ not json");
+                var terminal = new Cockpit.Infrastructure.Terminal.TerminalAccessState(new Cockpit.Infrastructure.Provisioning.OrgPolicy(path)) { Enabled = true };
+
+                Assert.False(terminal.Enabled);
+            }
+            finally
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+
+            return;
+        }
+
         var org = Substitute.For<IOrgPolicy>();
         org.Current.Returns(new ProvisionPolicy("Acme", Permissions: new ProvisionPermissionPolicy(TerminalAccess: OrgPolicyCeilings.Forbidden, ShellAccess: OrgPolicyCeilings.Forbidden)));
         if (which is "start-run" or "run-elevated")
