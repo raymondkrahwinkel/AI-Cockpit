@@ -32,6 +32,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **the limits your organisation sets now hold.** When a provisioning manifest carries a `policy`, the cockpit
+  keeps to it in every session, without rewriting your own settings: lift the policy and your own choices apply again.
+  Sessions start at most in the permission mode it allows, delegated tasks stay under its ceiling, and approving every
+  tool call can be switched off. Terminal and shell access for agents can be turned off. A profile on a provider or
+  model the organisation does not list does not start and says why. "Drafts only, never send" can be put in every
+  session's instructions, shown in Options as an instruction rather than a block. Scheduled backups can be made at
+  least as often, kept at least as many and sent only to targets the organisation names, and keys and tokens can be
+  kept out of every backup. Each limit is marked "Managed by <organisation>" where you would change it.
 - added: When a Depot profile belongs to more than one organization during first-run setup, the cockpit now asks which organization to use before it applies any settings.
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks

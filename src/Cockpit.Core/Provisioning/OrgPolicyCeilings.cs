@@ -34,6 +34,9 @@ public static class OrgPolicyCeilings
     // Approving every tool call is what bypass means, so a ceiling below it forbids that as much as the explicit switch.
     public static bool NeverSend(ProvisionPolicy? policy) => policy?.Permissions?.NeverSend is true;
 
+    public static bool CredentialsForbidden(ProvisionPolicy? policy) =>
+        string.Equals(policy?.Backup?.IncludeCredentials, Forbidden, StringComparison.OrdinalIgnoreCase);
+
     public static bool AutoApproveForbidden(ProvisionPolicy? policy) => _ApproveAllForbidden(policy, MaxPermissionMode(policy));
 
     public static bool DelegatedAutoApproveForbidden(ProvisionPolicy? policy) => _ApproveAllForbidden(policy, DelegationCeiling(policy));

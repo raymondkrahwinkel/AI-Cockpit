@@ -1851,7 +1851,10 @@
                         </StackPanel>
 
                         <CheckBox Content="Include my keys and tokens" IsChecked="{Binding BackupIncludesCredentials}"
+                                  IsEnabled="{Binding Security.BackupCredentialsEditable}"
                                   ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."/>
+                        <TextBlock Text="{Binding Security.BackupCredentialsManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding Security.BackupCredentialsManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
                                   ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside the cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>

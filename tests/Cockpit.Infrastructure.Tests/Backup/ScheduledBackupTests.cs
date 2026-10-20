@@ -1,9 +1,11 @@
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Plugins.Abstractions.Backup;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Backup;
 
@@ -133,6 +135,29 @@ public sealed class ScheduledBackupTests : IDisposable
         public List<string> Messages { get; } = [];
 
         public void Show(string message, ToastSeverity severity, string? actionLabel = null, Action? onAction = null) => Messages.Add(message);
+    }
+
+    /// <summary>
+    /// AC-1593: a local 72 hours and 3 kept under an organisation's floor of 24 and 7. Nine days of daily ticks write
+    /// nine and keep seven; the local schedule alone would have written three and kept three. Nothing is written back.
+    /// </summary>
+    [Fact]
+    public async Task AnOrganisationsFloor_BacksUpDaily_AndKeepsSeven()
+    {
+        var org = Substitute.For<IOrgPolicy>();
+        org.ReadAsync(Arg.Any<CancellationToken>()).Returns(new ProvisionPolicy("Acme", Backup: new ProvisionBackupPolicy(MaxIntervalHours: 24, MinKeep: 7)));
+        using var scheduled = new ScheduledBackup(_service, _store, _toasts, null, _clock, org) { TargetFor = _ => _target };
+        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 72, Keep: 3));
+        await _store.SaveStateAsync(new BackupScheduleState(Start));
+
+        foreach (var _ in Enumerable.Range(0, 9))
+        {
+            _clock.Advance(TimeSpan.FromHours(24));
+            await scheduled.RunOnceAsync();
+        }
+
+        Assert.Equal(7, _target.Entries.Count);
+        Assert.Equal(72, (await _store.LoadAsync()).IntervalHours);
     }
 
     private sealed class _Target : IBackupTarget
