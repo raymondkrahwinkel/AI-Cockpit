@@ -134,7 +134,13 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
     // off the UI thread and may block (AC-779), so the policy read is waited for here.
     private IReadOnlyDictionary<string, string> _ClampToPolicy(SessionProfile? profile, IReadOnlyDictionary<string, string> options, Action<string>? notice)
     {
-        if (orgPolicy?.ReadAsync().GetAwaiter().GetResult() is not { } policy
+        var read = orgPolicy?.ReadAsync().GetAwaiter().GetResult();
+        if (OrgProviderPolicy.Refusal(read, profile, LaunchPermissionClamp.ModelOf(options) ?? OrgProviderPolicy.ModelOf(profile)) is { } refusal)
+        {
+            throw new OrgPolicyRefusedException(refusal);
+        }
+
+        if (read is not { } policy
             || OrgPolicyCeilings.MaxPermissionMode(policy) is not { } ceiling
             || LaunchPermissionClamp.Clamp(ceiling, options, profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode)) is not { Options: { } clamped } result)
         {

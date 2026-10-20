@@ -139,6 +139,9 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public string? AutoApproveToolsManagedLabel => OrgPolicyMarking.AutoApproveLabel(_orgPolicy);
 
+    // AC-1593: why sessions under this profile do not start, as stored; the profile itself is kept and stays editable.
+    public string? ProviderManagedLabel => OrgProviderPolicy.Refusal(_orgPolicy, _storedProfile, OrgProviderPolicy.ModelOf(_storedProfile));
+
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
@@ -177,6 +180,7 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     private readonly IPluginRegistrations? _pluginProviderRegistry;
     private readonly ProvisionPolicy? _orgPolicy;
+    private readonly SessionProfile _storedProfile;
     private readonly IPluginProviderConfigViews? _pluginConfigViews;
 
     // Resolves whether the selected provider has a TTY route at all (AC-139), the same question
@@ -548,6 +552,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         ProvisionPolicy? orgPolicy = null)
     {
         _orgPolicy = orgPolicy;
+        _storedProfile = profile;
         _pluginConfigViews = pluginConfigViews;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;

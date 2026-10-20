@@ -45,5 +45,10 @@ internal static class LaunchPermissionClamp
         return (clamped, lowered || unsupervised);
     }
 
+    // AC-1593: the model the launch options name, in any spelling of the key; null when they name none.
+    public static string? ModelOf(IReadOnlyDictionary<string, string>? options) =>
+        options?.FirstOrDefault(option => string.Equals(option.Key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(option.Value)).Value;
+
     private static bool _IsModeKey(string key) => string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase);
 }

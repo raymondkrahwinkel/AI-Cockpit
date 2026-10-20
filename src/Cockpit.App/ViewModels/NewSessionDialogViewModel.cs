@@ -46,6 +46,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // AC-1593: read once per dialog, before the option rows are built from the selected profile.
     private ProvisionPolicy? _orgPolicy;
 
+    // AC-1593: the policy for the profile picker's marking, and why the selected profile may not start (null when it may).
+    public ProvisionPolicy? OrgPolicy => _orgPolicy;
+
+    public string? SelectedProfileRefusal => OrgProviderPolicy.Refusal(_orgPolicy, SelectedProfile, OrgProviderPolicy.ModelOf(SelectedProfile));
+
     // The registered memory sources (AC-165/166), mapped once at construction to the plain Core type
     // `SessionStartDefaults.Resolve` reads, rather than per call — the registry's contents do not
     // change over the dialog's lifetime, and three call sites below would otherwise each repeat the mapping.
@@ -530,6 +535,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // the CLI headlessly and would just fail unauthenticated.
     public bool CanStart =>
         SelectedProfile is not null
+        && SelectedProfileRefusal is null
         && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn)
         && (ResumeMode != SessionResumeMode.BySessionId || !string.IsNullOrWhiteSpace(ResumeSessionId))
         // A project switch rebuilds the checklist off disk, and Start reads that checklist.
@@ -592,6 +598,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         _orgPolicy = _orgPolicyReader is null ? null : await _orgPolicyReader.ReadAsync();
+        OnPropertyChanged(nameof(OrgPolicy));
         var profiles = await _profileStore.LoadAsync();
         Profiles.Clear();
         foreach (var profile in profiles)
@@ -1055,6 +1062,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     partial void OnSelectedProfileChanged(SessionProfile? value)
     {
+        OnPropertyChanged(nameof(SelectedProfileRefusal));
         // The generic login checker gates whichever provider declares a login; a profile whose provider has no
         // gate (or a profile-less/local session) reports logged in, so gating never falsely blocks it.
         IsSelectedProfileLoggedIn = value is not null && (_loginChecker?.IsLoggedIn(value) ?? true);

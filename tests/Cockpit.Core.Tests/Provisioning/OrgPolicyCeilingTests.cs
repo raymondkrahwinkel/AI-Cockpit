@@ -191,6 +191,54 @@ public class OrgPolicyCeilingTests
 
     private static (Func<bool> Read, Action<bool> Write) _Switch(IShellAccessSwitch shell) => (() => shell.Enabled, value => shell.Enabled = value);
 
+    // Only Claude, and only Sonnet, are allowed: a profile on another provider or another model does not start on either
+    // route, and a live switch to a model outside the list is refused. The profile itself is never touched.
+    [Theory]
+    [InlineData("sdk-provider")]
+    [InlineData("sdk-model")]
+    [InlineData("tty-provider")]
+    [InlineData("live-model")]
+    public async Task AProfileOutsideTheAllowedProviders_DoesNotStart(string route)
+    {
+        var org = Substitute.For<IOrgPolicy>();
+        var policy = new ProvisionPolicy("Acme", Providers: new ProvisionProviderPolicy(
+            [new ProvisionAllowedProvider("claude-provider", System.Text.Json.JsonSerializer.SerializeToElement(new[] { "claude-sonnet-5-5" }))]));
+        org.ReadAsync(Arg.Any<CancellationToken>()).Returns(policy);
+        var ollama = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "qwen3", null));
+        var claude = new SessionProfile("claude", ClaudePluginProfile.Create(string.Empty, null));
+        var opus = new Dictionary<string, string> { [WellKnownPluginSessionOptions.Model] = "claude-opus-5-5" };
+
+        if (route == "tty-provider")
+        {
+            var launcher = new TtyLauncher(Substitute.For<IPtyHostFactory>(), Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance, orgPolicy: org);
+            var refused = Assert.Throws<OrgPolicyRefusedException>(() => launcher.Launch(Substitute.For<ITtySessionProvider>(), ollama, new Dictionary<string, string>(), 80, 24));
+            Assert.Contains("not allowed by Acme", refused.Message);
+            return;
+        }
+
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var runtime = new SessionRuntime(factory, profile: null, orgPolicy: org);
+        switch (route)
+        {
+            case "sdk-provider":
+                await Assert.ThrowsAsync<OrgPolicyRefusedException>(() => runtime.StartAsync(ollama));
+                factory.DidNotReceive().Create(Arg.Any<SessionProfile?>());
+                break;
+            case "sdk-model":
+                await Assert.ThrowsAsync<OrgPolicyRefusedException>(() => runtime.StartAsync(claude, launchOptions: opus));
+                factory.DidNotReceive().Create(Arg.Any<SessionProfile?>());
+                break;
+            case "live-model":
+                await runtime.StartAsync(claude);
+                await Assert.ThrowsAsync<OrgPolicyRefusedException>(() => runtime.SetModelAsync("claude-opus-5-5"));
+                await driver.DidNotReceive().SetModelAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>());
+                break;
+        }
+    }
+
     private static IOrgPolicy _Org()
     {
         var org = Substitute.For<IOrgPolicy>();

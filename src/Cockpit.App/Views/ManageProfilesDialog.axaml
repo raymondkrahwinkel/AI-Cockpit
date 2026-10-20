@@ -105,6 +105,8 @@
                         <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
                                   DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"
                                   IsEnabled="{Binding CanChooseProvider}"/>
+                        <TextBlock Text="{Binding ProviderManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding ProviderManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                     </StackPanel>
 
                     <!-- Claude-CLI provider fields. -->
