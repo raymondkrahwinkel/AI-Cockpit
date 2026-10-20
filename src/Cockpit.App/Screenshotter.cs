@@ -1954,8 +1954,9 @@ internal static class Screenshotter
             [
                 new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
                 new SharedProjectOffer("depot:workspace-move", "Workspace migration (pending)", "Waiting for its project definition.", "Pending"),
+                new SharedProjectOffer("depot:reports", "Quarterly reports (timed out)", "Its project definition did not answer in time.", "Timeout"),
             ],
-            "1 project is still loading."));
+            "1 project is still loading; 1 project timed out."));
     }
 
     private static void _StageUnreachableTeamProjects(ViewModels.CockpitViewModel cockpit)
