@@ -530,7 +530,7 @@
              changes the chrome around the one session grid: the left column, the tab strip, the toolbar and the
              dock rail each say which stand they belong to. §6 holds by those conditions, not by a hidden sibling.
              The code-behind that sizes the columns names this grid. -->
-        <Grid x:Name="PanelsRoot" Grid.Row="0">
+        <Grid x:Name="PanelsRoot" Grid.Row="0" SizeChanged="OnPanelsRootSizeChanged">
         <Grid.ColumnDefinitions>
             <!-- Width set from CockpitViewModel.SidebarWidth in code-behind (#49) — a GridLength column
                  can't compiled-bind straight to the VM's double, so CockpitView.axaml.cs applies it on
@@ -548,7 +548,7 @@
             <ColumnDefinition Width="4"/>
             <ColumnDefinition Width="40"
                                MinWidth="{x:Static layout:LayoutSettings.MinDockRailWidth}"
-                               MaxWidth="{x:Static layout:LayoutSettings.MaxDockRailWidth}"/>
+                               MaxWidth="{Binding MaxDockRailWidth}"/>
         </Grid.ColumnDefinitions>
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor.

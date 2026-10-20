@@ -32,8 +32,8 @@ public sealed record LayoutSettings
     public double FocusRailWeight { get; init; } = DefaultFocusRailWeight;
 
     // Width in pixels of the right dock rail's expanded panel (AC-951), dragged via the `GridSplitter`
-    // between it and the session content — the sidebar's mirror image. Clamped to
-    // `MinDockRailWidth`/`MaxDockRailWidth` on load and on save, same pattern as `SidebarWidth`.
+    // between it and the session content — the sidebar's mirror image. The saved value stays the preference;
+    // the visible value is clamped to the available window width.
     public double DockRailWidth { get; init; } = DefaultDockRailWidth;
 
     // Which dock panel is open, by its `DockPanelRegistration.Id` — null means the rail is collapsed to its
@@ -69,5 +69,6 @@ public sealed record LayoutSettings
     // of panel beside the tab strip.
     public const double DefaultDockRailWidth = 400;
     public const double MinDockRailWidth = 280;
-    public const double MaxDockRailWidth = 600;
+    // MainWindow MinWidth 900 - MinSidebarWidth 180 - MinDockRailWidth 280.
+    public const double MinWorkspaceWidth = 440;
 }
