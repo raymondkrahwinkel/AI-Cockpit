@@ -143,7 +143,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
 
         if (result.Lowered)
         {
-            var message = OrgPolicyCeilings.StartedClamped(policy, ceiling);
+            var message = OrgPolicyCeilings.StartedClamped(policy, clamped.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode) ?? ceiling, ceiling);
             logger.LogInformation("TTY launch clamped by policy: {Message}", message);
             notice?.Invoke(message);
         }

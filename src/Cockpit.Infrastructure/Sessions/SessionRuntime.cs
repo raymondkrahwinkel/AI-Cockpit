@@ -126,7 +126,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
         if (clampedTo is not null && _policy is not null)
         {
-            _Publish(new SessionError { SessionId = _lastSessionId, Message = OrgPolicyCeilings.StartedClamped(_policy, clampedTo) });
+            _Publish(new SessionError { SessionId = _lastSessionId, Message = OrgPolicyCeilings.StartedClamped(_policy, permissionMode ?? clampedTo, clampedTo) });
         }
 
         // AC-661: cap the driver's own child (a spawned CLI) the moment it exists, before it has run a turn and

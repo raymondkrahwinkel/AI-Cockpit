@@ -135,10 +135,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // A per-session option wins over the profile's config default; absent, derive from a delegated session's
         // permission ceiling (acceptEdits/bypass -> workspace-write) so a delegated Codex task can actually write
         // instead of stalling on an approval nobody can answer (AC-100/AC-112). danger-full-access is never derived.
-        var permissionMode = CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, null);
         var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, null)
-            ?? CodexSandbox.ForCeiling(permissionMode)
-            ?? CodexSandbox.WithinCeiling(_config.SandboxMode, permissionMode);
+            ?? CodexSandbox.ForCeiling(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, null))
+            ?? _config.SandboxMode;
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
         _model = effectiveModel;
         _sandbox = sandbox;

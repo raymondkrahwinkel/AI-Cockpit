@@ -7,7 +7,7 @@ namespace Cockpit.Infrastructure.Sessions;
 internal static class LaunchPermissionClamp
 {
     // The options clamped under `ceiling`, or null when nothing needed it. `fallback` is the mode that runs when no option
-    // names one; with neither, a mode is stated, since a provider's own default may be its most permissive one.
+    // names one; with neither, a mode (and a sandbox and approval policy) is stated, as a provider default may be permissive.
     // `Lowered` says something the operator chose was brought down, which they are told.
     public static (IReadOnlyDictionary<string, string>? Options, bool Lowered) Clamp(string? ceiling, IReadOnlyDictionary<string, string>? options, string? fallback)
     {
@@ -20,19 +20,26 @@ internal static class LaunchPermissionClamp
         var given = source.Where(option => _IsModeKey(option.Key) && !string.IsNullOrWhiteSpace(option.Value)).Select(option => option.Value).ToList();
         var effective = given.Count > 0 ? given : string.IsNullOrWhiteSpace(fallback) ? [] : [fallback];
         var lowered = effective.Any(mode => OrgPolicyCeilings.Clamp(ceiling, mode) is not null);
-        var stated = effective.Count == 0;
+        var stated = OrgPolicyCeilings.StatedOptions(ceiling)
+            .Where(option => _IsModeKey(option.Key) ? effective.Count == 0 : !source.Keys.Any(key => string.Equals(key, option.Key, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
         var unsupervised = source.Any(option => OrgPolicyCeilings.SafeOption(ceiling, option.Key, option.Value) is not null);
-        if (!lowered && !stated && !unsupervised)
+        if (!lowered && stated.Count == 0 && !unsupervised)
         {
             return (null, false);
         }
 
         var clamped = source
-            .Where(option => !(lowered || stated) || !_IsModeKey(option.Key))
+            .Where(option => !lowered || !_IsModeKey(option.Key))
             .ToDictionary(option => option.Key, option => OrgPolicyCeilings.SafeOption(ceiling, option.Key, option.Value) ?? option.Value, StringComparer.Ordinal);
-        if (lowered || stated)
+        foreach (var (key, value) in stated)
         {
-            clamped[WellKnownPluginSessionOptions.PermissionMode] = lowered ? ceiling : OrgPolicyCeilings.Lower("default", ceiling) ?? ceiling;
+            clamped[key] = value;
+        }
+
+        if (lowered)
+        {
+            clamped[WellKnownPluginSessionOptions.PermissionMode] = ceiling;
         }
 
         return (clamped, lowered || unsupervised);

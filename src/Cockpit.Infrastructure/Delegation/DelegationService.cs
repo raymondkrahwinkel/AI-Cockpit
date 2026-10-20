@@ -662,6 +662,7 @@ internal sealed class DelegationService : IDelegationService, ILiveSessionSource
             // Resolved before Running is set, so a task awaiting that answer never occupies a concurrency slot.
             var policy = _orgPolicy is null ? null : await _orgPolicy.ReadAsync();
             var effectiveCeiling = await _EffectiveCeilingAsync(entry, policy);
+            effectiveCeiling = OrgPolicyCeilings.Clamp(OrgPolicyCeilings.DelegationCeiling(policy), effectiveCeiling) ?? effectiveCeiling;
             entry.EffectiveCeiling = effectiveCeiling;
 
             // AC-971: what the working directory already had lying around, so the report at the end names what this

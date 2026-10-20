@@ -1,3 +1,5 @@
+using Cockpit.Core.Abstractions.Sessions;
+
 namespace Cockpit.Core.Provisioning;
 
 // AC-1593 (manifest-v1 §3.7): the organisation's ceilings, applied where a session uses them. cockpit.json is never
@@ -12,7 +14,7 @@ public static class OrgPolicyCeilings
     // takes their place below a bypass ceiling.
     private static readonly (string Key, string Value, Func<string, string> Instead)[] _Unsupervised =
     [
-        ("sandbox", "danger-full-access", ceiling => _Rank(ceiling) >= _Rank("acceptEdits") ? "workspace-write" : "read-only"),
+        ("sandbox", "danger-full-access", ceiling => StatedOptions(ceiling)["sandbox"]),
         ("approvalPolicy", "never", _ => "on-request"),
         ("mode", "yolo", _ => "default"),
         ("mode", "auto", _ => "default"),
@@ -46,10 +48,22 @@ public static class OrgPolicyCeilings
             : _Unsupervised.FirstOrDefault(entry => string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, value.Trim(), StringComparison.OrdinalIgnoreCase)).Instead?.Invoke(ceiling);
 
+    // The provider options stated when a start names none below a bypass ceiling, so a provider's own config file
+    // (Codex's config.toml) cannot pick its ask-nothing default. A provider that does not know a key ignores it.
+    public static IReadOnlyDictionary<string, string> StatedOptions(string? ceiling) =>
+        ceiling is null || ceiling == Bypass
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>
+            {
+                [TtyLaunchOption.PermissionMode] = Lower("default", ceiling) ?? ceiling,
+                ["sandbox"] = _Rank(ceiling) >= _Rank("acceptEdits") ? "workspace-write" : "read-only",
+                ["approvalPolicy"] = "on-request",
+            };
+
     public static bool IsUnsupervisedKey(string key) => _Unsupervised.Any(entry => string.Equals(entry.Key, key, StringComparison.OrdinalIgnoreCase));
 
-    public static string StartedClamped(ProvisionPolicy policy, string ceiling) =>
-        $"Started in {ceiling}: {policy.By} allows at most {ceiling}.";
+    public static string StartedClamped(ProvisionPolicy policy, string mode, string ceiling) =>
+        $"Started in {mode}: {policy.By} allows at most {ceiling}.";
 
     public static string SwitchRefused(ProvisionPolicy policy, string mode, string ceiling) =>
         $"Stayed out of {mode}: {policy.By} allows at most {ceiling}.";

@@ -29,10 +29,4 @@ internal static class CodexSandbox
         "acceptEdits" or "bypassPermissions" => "workspace-write",
         _ => null,
     };
-
-    // AC-1593: the profile's own sandbox, unless the host stated a mode below bypass and that sandbox is full access.
-    public static string? WithinCeiling(string? configured, string? permissionMode) =>
-        permissionMode is not null && permissionMode != "bypassPermissions" && string.Equals(configured, "danger-full-access", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : configured;
 }
