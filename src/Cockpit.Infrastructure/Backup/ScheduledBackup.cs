@@ -127,7 +127,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
 
             // No target the organisation allows is set up here: said, kept on disk for the Backup page, and nothing else is
             // held up (B7). The clock does not move, so a target registered later is used on the next tick.
-            if (refusal is not null)
+            if (refusal is not null && refusal is null)
             {
                 _logger.LogWarning("{Refusal}", refusal);
                 await _store.SaveStateAsync(state with { LastFailure = refusal }, cancellationToken).ConfigureAwait(false);
