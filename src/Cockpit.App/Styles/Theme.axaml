@@ -1311,6 +1311,44 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- Assistant threads: how many questions wait on the operator — the waiting status in its own chip tint and
+         ring, as a count pill (rail items, the dock tab, the indicator). Amber because it is work waiting on you. -->
+    <Style Selector="Border.waitingCount">
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingChipTintBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingRingTintBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="5,0"/>
+        <Setter Property="MinWidth" Value="16"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.waitingCount > TextBlock">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
+    <!-- A project in the thread rail: a neutral initial, no colour of its own (a project is not a status). -->
+    <Style Selector="Border.threadInitial">
+        <Setter Property="Width" Value="20"/>
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="CornerRadius" Value="5"/>
+        <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitInsetEdgeBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+    </Style>
+    <Style Selector="Border.threadInitial > TextBlock">
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <!-- Questions with something open carries the waiting row tint, as a session that needs you does. -->
+    <Style Selector="Border.threadItem.attention">
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRowTintBrush}"/>
+    </Style>
+
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
     <Style Selector=":is(TextBlock).transcript">
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Sessions;
+using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
@@ -10,6 +11,7 @@ public partial class TranscriptEntryViewModel
     // The projects this row was put in itself; null when it has none of its own. Recorded in the log.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOwnProjects))]
+    [NotifyPropertyChangedFor(nameof(CarriesThreadTag))]
     private IReadOnlyList<string>? _projectIds;
 
     [ObservableProperty]
@@ -70,6 +72,18 @@ public partial class TranscriptEntryViewModel
     // For a watch report: the pane it is about, since the watcher is not a pane itself.
     public string? SubjectPaneId { get; init; }
 
+    // Only what is finished reads green; a closed session or an idle one asks nothing and stays faint.
+    public bool IsDoneStatus => MessageKind?.Trim().ToLowerInvariant() is "done" or "merged";
+
+    public MaterialIconKind StatusIconKind => IsDoneStatus ? MaterialIconKind.Check : MaterialIconKind.CircleSmall;
+
+    // Where All draws the tag: what opens a turn, the first row of a reply, a question, a row put somewhere of its
+    // own. Not every tool step, which would repeat its prompt's tag down the page.
+    public bool CarriesThreadTag => StartsTurn || HasOwnProjects || HasQuestionPrompts || IsPendingToolPermission
+        || (IsAssistantMarkdown && !IsReplyContinuation);
+
+    public string ShowInLabel => ThreadProjectIds.Count == 0 ? "Show in General" : $"Show in {ThreadTags[0].Name}";
+
     public string SenderLabel => SenderTitle is { Length: > 0 } title ? title : SenderPaneId ?? string.Empty;
 
     public string InboxTitle => MessageKind is { Length: > 0 } kind
@@ -86,7 +100,11 @@ public partial class TranscriptEntryViewModel
         }
     }
 
-    partial void OnThreadProjectIdsChanged(IReadOnlyList<string> value) => OnPropertyChanged(nameof(ThreadTags));
+    partial void OnThreadProjectIdsChanged(IReadOnlyList<string> value)
+    {
+        OnPropertyChanged(nameof(ThreadTags));
+        OnPropertyChanged(nameof(ShowInLabel));
+    }
 
     partial void OnThreadProjectSourceChanged(ProjectSource value) => OnPropertyChanged(nameof(ThreadTags));
 

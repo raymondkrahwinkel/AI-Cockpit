@@ -107,7 +107,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // halfway through an answer.
     public double ReplyBadgeOpacity => IsReplyContinuation ? 0 : 1;
 
-    partial void OnIsReplyContinuationChanged(bool value) => OnPropertyChanged(nameof(ReplyBadgeOpacity));
+    partial void OnIsReplyContinuationChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ReplyBadgeOpacity));
+        OnPropertyChanged(nameof(CarriesThreadTag));
+    }
 
     // AC-1265: a fenced code block has no blank line to split on, so it grew as one row past the viewport --
     // the shape the panel re-anchors its average on. It is split on a line boundary now, and these two say so

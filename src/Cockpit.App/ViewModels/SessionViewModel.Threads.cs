@@ -26,14 +26,28 @@ public partial class SessionViewModel
         "status", "done", "merged", "closed", "idle", "gate",
     };
 
-    public ThreadLookup? Threads { get; set; }
+    public ThreadLookup? Threads
+    {
+        get => _threads;
+        set
+        {
+            _threads = value;
+            OnPropertyChanged(nameof(ShowsThreadTags));
+        }
+    }
+
+    private ThreadLookup? _threads;
 
     public string? ProjectName(string projectId) => Threads?.ProjectName(projectId);
 
     // Which thread the transcript shows: null for All, `GeneralThread`, or a project id. What the operator types
     // while one is open goes into it.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsThreadTags))]
     private string? _shownThread;
+
+    // All draws a project tag on rows; inside a thread the tag would only repeat where you are.
+    public bool ShowsThreadTags => Threads is not null && ShownThread is null;
 
     partial void OnShownThreadChanged(string? value) => _RebuildVisibleTranscript();
 
@@ -125,8 +139,11 @@ public partial class SessionViewModel
             return named;
         }
 
-        var prompts = opening.Where(row => row.IsUserRow).ToList();
-        return [.. (prompts.Count > 0 ? prompts : opening).SelectMany(row => row.ProjectIds ?? []).Distinct(StringComparer.Ordinal)];
+        // A status line rarely is what the assistant answers, so it only counts when nothing else opened the turn.
+        var leading = opening.Where(row => row.IsUserRow).ToList() is { Count: > 0 } prompts
+            ? prompts
+            : opening.Where(row => row.IsInboxRow).ToList() is { Count: > 0 } messages ? messages : opening;
+        return [.. leading.SelectMany(row => row.ProjectIds ?? []).Distinct(StringComparer.Ordinal)];
     }
 
     private void _SyncOpenQuestion(TranscriptEntryViewModel entry)

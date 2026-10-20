@@ -42,6 +42,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: closed sessions' retained worktrees are checked again after fetching, with a visible reason when work
   must stay. Cleanup also removes missing worktree entries from other machines, session temp folders, and orphaned
   testcontainers, while preserving local work and compose projects used by a live pane (AC-1537).
+- added: the assistant keeps one conversation but shows it per project. A rail beside the chat lists **Questions for
+  you** (every open question and Allow/Deny, with a count), **All**, **General** and a thread per project; in All each
+  row carries its project as a tag. Messages from other sessions arrive as cards with their sender, and status updates
+  as one quiet line. The rail shows labels when there is room, icons when there is less (with « / » to choose, saved
+  separately for the window and the dock), and a thread picker in a very narrow dock.
+
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks
   and consent, and then asks to restart the cockpit so its screens load. Nothing is ever loaded from the server.

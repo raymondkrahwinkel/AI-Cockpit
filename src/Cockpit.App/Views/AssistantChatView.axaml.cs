@@ -111,7 +111,45 @@ public partial class AssistantChatView : UserControl
         AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
+
+        // Assistant threads: the rail stands on this view's own width, the same in the window and the dock (§ 7.3).
+        SizeChanged += (_, e) =>
+        {
+            if (DataContext is AssistantChatViewModel threads)
+            {
+                threads.ViewWidth = e.NewSize.Width;
+            }
+        };
+
+        // The overlay closes on Esc and on a click outside it, handing focus back to the button that opened it.
+        AddHandler(InputElement.KeyDownEvent, _OnThreadOverlayKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(InputElement.PointerPressedEvent, _OnThreadOverlayPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
+
+    private void _OnThreadOverlayKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && DataContext is AssistantChatViewModel { IsRailOverlayOpen: true } vm)
+        {
+            vm.IsRailOverlayOpen = false;
+            ThreadIconRailToggle.Focus(NavigationMethod.Tab);
+            e.Handled = true;
+        }
+    }
+
+    private void _OnThreadOverlayPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is AssistantChatViewModel { IsRailOverlayOpen: true } vm
+            && e.Source is Visual source
+            && !ThreadRailOverlay.IsVisualAncestorOf(source) && !ReferenceEquals(source, ThreadRailOverlay)
+            && !ThreadIconRail.IsVisualAncestorOf(source))
+        {
+            vm.IsRailOverlayOpen = false;
+        }
+    }
+
+    // A row picked from Questions for you: its thread is open by now, so the row is there to scroll to once laid out.
+    private void _OnRowRevealRequested(TranscriptEntryViewModel row) =>
+        Dispatcher.UIThread.Post(() => ScrollToMessage(row), DispatcherPriority.Background);
 
     // What used to be the window's `Opened` handler. Everything wired here comes off again in
     // OnDetachedFromVisualTree, so this view survives being moved between hosts (AC-953) without leaking.
@@ -123,6 +161,12 @@ public partial class AssistantChatView : UserControl
         {
             _attachedViewModel = vm;
             vm.PropertyChanged += _OnViewModelPropertyChanged;
+            vm.RowRevealRequested += _OnRowRevealRequested;
+            if (Bounds.Width > 0)
+            {
+                vm.ViewWidth = Bounds.Width;
+            }
+
             _AttachTranscript(vm.Session);
 
             // Criterion 1: opening the chip is the "operator handling" allowed to lazily start the assistant.
@@ -182,6 +226,7 @@ public partial class AssistantChatView : UserControl
         if (_attachedViewModel is { } vm)
         {
             vm.PropertyChanged -= _OnViewModelPropertyChanged;
+            vm.RowRevealRequested -= _OnRowRevealRequested;
             _attachedViewModel = null;
         }
 
@@ -366,6 +411,11 @@ public partial class AssistantChatView : UserControl
         if (e.PropertyName == nameof(AssistantChatViewModel.Session))
         {
             _AttachTranscript(vm.Session);
+        }
+        else if (e.PropertyName == nameof(AssistantChatViewModel.IsRailOverlayOpen) && vm.IsRailOverlayOpen)
+        {
+            // Focus goes into the list it opened, on the thread that is open (§ 8.1).
+            Dispatcher.UIThread.Post(() => ThreadOverlayList.ContainerFromIndex(Math.Max(0, ThreadOverlayList.SelectedIndex))?.Focus(NavigationMethod.Tab));
         }
     }
 

@@ -29,7 +29,7 @@ using Cockpit.Core.Abstractions.Sessions;
 namespace Cockpit.App;
 
 // Lets an external caller verify the UI layout without a display attached (Iron Law #9: automated visual verification).
-internal static class Screenshotter
+internal static partial class Screenshotter
 {
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
@@ -609,6 +609,17 @@ internal static class Screenshotter
         ["assistant-chat-session-pill-list-open"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6),
         ["assistant-chat-session-pill-narrow"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6, width: 340),
         ["assistant-chat-history-dropdown-open"] = (_, _) => _AssistantChat(withConversation: true),
+
+        // Assistant threads: the rail with labels (960), icons (520), the labels over the chat, the picker below 340,
+        // a project thread and Questions for you.
+        ["assistant-threads-all"] = (_, _) => _AssistantThreads(960),
+        ["assistant-threads-depot"] = (_, _) => _AssistantThreads(960, thread: "depot"),
+        ["assistant-threads-questions"] = (_, _) => _AssistantThreads(960, questions: true),
+        ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
+        ["assistant-threads-overlay"] = (_, _) => _AssistantThreads(520, overlay: true),
+        ["assistant-threads-docked-600"] = (_, _) => _AssistantThreadsDocked(600),
+        ["assistant-threads-docked-400"] = (_, _) => _AssistantThreadsDocked(400),
+        ["assistant-threads-docked-280"] = (_, _) => _AssistantThreadsDocked(280),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a

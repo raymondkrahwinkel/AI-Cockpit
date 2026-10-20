@@ -5172,6 +5172,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantDocked = settings.AssistantDocked;
         OpenInSimpleView = settings.OpenInSimpleView;
         ThemeMode = settings.ThemeMode;
+        AssistantThreadRailWindow = settings.AssistantThreadRailWindow;
+        AssistantThreadRailDock = settings.AssistantThreadRailDock;
 
         // The stand the app opens in is the setting, never the stand last looked at (AC-1301 criterion 1) — this
         // is the only place the two are joined.
@@ -5196,7 +5198,33 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantDocked = AssistantDocked,
         OpenInSimpleView = OpenInSimpleView,
         ThemeMode = ThemeMode,
+        AssistantThreadRailWindow = AssistantThreadRailWindow,
+        AssistantThreadRailDock = AssistantThreadRailDock,
     };
+
+    // The assistant's thread rail preference per host, labels or icons only when the labels fit (voorstel § 8.2).
+    [ObservableProperty]
+    private AssistantThreadRail _assistantThreadRailWindow;
+
+    [ObservableProperty]
+    private AssistantThreadRail _assistantThreadRailDock;
+
+    public async Task SetAssistantThreadRailAsync(bool docked, AssistantThreadRail rail)
+    {
+        if (docked)
+        {
+            AssistantThreadRailDock = rail;
+        }
+        else
+        {
+            AssistantThreadRailWindow = rail;
+        }
+
+        if (_layoutSettingsStore is not null)
+        {
+            await _PersistLayoutSettingsAsync();
+        }
+    }
 
     private Task _PersistLayoutSettingsAsync()
     {

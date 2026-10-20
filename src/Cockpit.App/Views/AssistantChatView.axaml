@@ -46,7 +46,33 @@
         <Style Selector="Border#ComposerBorder.simpleColumn, ItemsControl#TranscriptItems.simpleColumn">
             <Setter Property="MaxWidth" Value="720"/>
         </Style>
+        <!-- Assistant threads: the icon rail's items centre their 20 px mark in its 44 px. -->
+        <Style Selector="ListBox.iconRail ListBoxItem">
+            <Setter Property="Padding" Value="12,8"/>
+        </Style>
     </UserControl.Styles>
+
+    <UserControl.Resources>
+        <!-- One thread in the labelled rail, shared by the rail and its overlay. The item is as wide as the rail's
+             content (184 − 2×10) and reaches under the item's own padding, so Questions' waiting tint fills it. -->
+        <DataTemplate x:Key="ThreadLabelItem" x:DataType="vm:AssistantThreadItemViewModel">
+            <Border Classes="threadItem" Classes.attention="{Binding IsAttention}" Width="164" Margin="-11,-8" Padding="11,8"
+                    CornerRadius="7" ToolTip.Tip="{Binding Tooltip}" AutomationProperties.Name="{Binding Tooltip}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Panel Width="20" Height="20" Margin="0,0,10,0">
+                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16" IsVisible="{Binding HasIcon}"/>
+                        <Border Classes="threadInitial" IsVisible="{Binding IsThread}">
+                            <TextBlock Text="{Binding Initial}"/>
+                        </Border>
+                    </Panel>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Classes="waitingCount" IsVisible="{Binding HasWaiting}" Margin="6,0,0,0">
+                        <TextBlock Text="{Binding WaitingCount}"/>
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <Grid>
         <DockPanel>
@@ -519,6 +545,81 @@
                 </StackPanel>
             </Border>
 
+            <!-- Assistant threads, below 340 px of chat: no rail at all, the thread is picked from a list and
+                 Questions for you is a button with its count (voorstel § 7.2). -->
+            <Border x:Name="ThreadPickerBar" DockPanel.Dock="Top" Padding="10,6" IsVisible="{Binding ShowsPicker}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ComboBox x:Name="ThreadPicker" ItemsSource="{Binding ThreadChoices}" SelectedItem="{Binding SelectedThreadChoice}"
+                              MinWidth="120" AutomationProperties.Name="Thread">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                                <TextBlock Text="{Binding Name}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Classes="Compact" Command="{Binding OpenQuestionsCommand}" ToolTip.Tip="Questions for you"
+                            AutomationProperties.Name="Questions for you">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="HelpCircleOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                            <Border Classes="waitingCount" IsVisible="{Binding HasOpenQuestions}">
+                                <TextBlock Text="{Binding OpenQuestionCount}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Assistant threads (variant B): Questions for you, All, General and a thread per project, on the
+                 existing sub-navigation rail. With room for labels it is that 184 px rail; with less, icons only and
+                 the labels over the chat on demand. Docked left before the composer, so the rail runs the full
+                 height beside it. -->
+            <Panel DockPanel.Dock="Left" IsVisible="{Binding !ShowsPicker}">
+                <Border x:Name="ThreadRail" Classes="subnavRail" IsVisible="{Binding ShowsLabelRail}">
+                    <DockPanel>
+                        <Button x:Name="ThreadRailToggle" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Left"
+                                Command="{Binding ToggleRailCommand}" ToolTip.Tip="{Binding RailToggleTip}"
+                                AutomationProperties.Name="{Binding RailToggleTip}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="ChevronDoubleLeft" Width="14" Height="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding RailToggleText}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <ListBox x:Name="ThreadList" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                                 SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
+                                 ItemTemplate="{StaticResource ThreadLabelItem}"/>
+                    </DockPanel>
+                </Border>
+                <Border x:Name="ThreadIconRail" Classes="subnavRail" Width="56" Padding="6,12" IsVisible="{Binding ShowsIconRail}">
+                    <DockPanel>
+                        <Button x:Name="ThreadIconRailToggle" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Center"
+                                Command="{Binding ToggleRailCommand}" ToolTip.Tip="{Binding RailToggleTip}"
+                                AutomationProperties.Name="{Binding RailToggleTip}">
+                            <materialIcons:MaterialIcon Kind="ChevronDoubleRight" Width="14" Height="14"/>
+                        </Button>
+                        <ListBox x:Name="ThreadIconList" Classes="subnav iconRail" ItemsSource="{Binding ThreadItems}"
+                                 SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                                    <Panel Width="20" Height="20" ToolTip.Tip="{Binding Tooltip}"
+                                           AutomationProperties.Name="{Binding Tooltip}">
+                                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
+                                                                    IsVisible="{Binding HasIcon}"/>
+                                        <Border Classes="threadInitial" IsVisible="{Binding IsThread}">
+                                            <TextBlock Text="{Binding Initial}"/>
+                                        </Border>
+                                        <Border Classes="waitingCount" IsVisible="{Binding HasWaiting}" Padding="3,0" MinWidth="13"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-7,-10,0">
+                                            <TextBlock Text="{Binding WaitingCount}" FontSize="9"/>
+                                        </Border>
+                                    </Panel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+            </Panel>
+
             <!-- Footer: the text field plus what a message can carry with it (AC-630 — queued chips, image
                  attachments, the screenshot button). Still no send button: Enter sends, Shift+Enter inserts a
                  newline, Ctrl+V attaches an image and Arrow-Up recalls the last queued message, so the whole
@@ -799,6 +900,24 @@
                 </StackPanel>
             </Border>
 
+            <Panel>
+            <DockPanel>
+            <!-- Assistant threads: which thread is open, and what it asks of you. -->
+            <Border x:Name="ThreadHeader" DockPanel.Dock="Top" Padding="14,8"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                        <Binding Path="HasMessages"/>
+                        <Binding Path="IsQuestionsPage"/>
+                    </MultiBinding>
+                </Border.IsVisible>
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding ThreadTitle}" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding ThreadSubtitle}" FontSize="11.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </DockPanel>
+            </Border>
             <Grid>
                 <!-- The assistant cannot be reached at all (criterion 1): says why, rather than sitting on an
                      empty transcript that looks like nothing was ever said. Not over a conversation that is still
@@ -826,6 +945,7 @@
                         <MultiBinding Converter="{x:Static BoolConverters.And}">
                             <Binding Path="!IsUnavailable"/>
                             <Binding Path="!HasMessages"/>
+                            <Binding Path="IsTranscriptPage"/>
                         </MultiBinding>
                     </StackPanel.IsVisible>
                     <Border Classes="avatarBadge" Width="44" Height="44" CornerRadius="13" HorizontalAlignment="Center">
@@ -849,8 +969,64 @@
                      viewport, not the infinite height an enclosing ScrollViewer would hand it. x:Name still reads
                      TranscriptScroll — the code-behind and the follow tests ask for the transcript's scroll owner
                      by that name. -->
+                <!-- Assistant threads: a thread nothing has been said in yet. -->
+                <TextBlock Text="Nothing in this thread yet. What you type here goes to it." TextWrapping="Wrap"
+                           TextAlignment="Center" FontSize="12.5" MaxWidth="260"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}">
+                    <TextBlock.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasMessages"/>
+                            <Binding Path="IsTranscriptPage"/>
+                            <Binding Path="!Session.VisibleTranscript.Count" FallbackValue="False"/>
+                        </MultiBinding>
+                    </TextBlock.IsVisible>
+                </TextBlock>
+
+                <!-- Assistant threads: Questions for you — every open question card and Allow/Deny, in one list
+                     until it is answered, each with the way back to where it was asked. -->
+                <ScrollViewer x:Name="QuestionsPage" IsVisible="{Binding IsQuestionsPage}">
+                    <StackPanel Margin="10,10,10,10" Spacing="12">
+                        <TextBlock Text="No questions are waiting for you." IsVisible="{Binding !HasOpenQuestions}"
+                                   HorizontalAlignment="Center" Margin="0,24,0,0" FontSize="12.5"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding Session.OpenQuestions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="12"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                                    <StackPanel Spacing="4">
+                                        <controls:TranscriptRowView Compact="True"/>
+                                        <Button Classes="Subtle Compact" HorizontalAlignment="Left"
+                                                Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).ShowInThreadCommand}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="OpenInNew" Width="12" Height="12" VerticalAlignment="Center"
+                                                                            Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                                                <TextBlock Text="{Binding ShowInLabel}" FontSize="11.5" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                                                <TextBlock Text="{Binding TimestampText, StringFormat='Asked {0}'}" FontSize="11.5"
+                                                           VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
                 <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}"
-                              Classes.simpleColumn="{Binding IsSimpleViewHost}" IsVisible="{Binding HasMessages}">
+                              Classes.simpleColumn="{Binding IsSimpleViewHost}">
+                    <ItemsControl.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasMessages"/>
+                            <Binding Path="IsTranscriptPage"/>
+                        </MultiBinding>
+                    </ItemsControl.IsVisible>
                     <ItemsControl.Template>
                         <ControlTemplate TargetType="ItemsControl">
                             <ScrollViewer x:Name="TranscriptScroll">
@@ -885,6 +1061,18 @@
                     <materialIcons:MaterialIcon Kind="ChevronDown" Width="16" Height="16"/>
                 </Button>
             </Grid>
+            </DockPanel>
+
+            <!-- Assistant threads: the labelled rail over the chat where labels do not fit beside it (§ 8.1), so
+                 the conversation, its scroll position and the composer stay where they are. Picking a thread, a
+                 click on the chat or Esc closes it. -->
+            <Border x:Name="ThreadRailOverlay" Classes="subnavRail" HorizontalAlignment="Left" ZIndex="10"
+                    BorderThickness="0,0,1,0" IsVisible="{Binding IsRailOverlayOpen}">
+                <ListBox x:Name="ThreadOverlayList" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                         SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
+                         ItemTemplate="{StaticResource ThreadLabelItem}"/>
+            </Border>
+            </Panel>
         </DockPanel>
 
         <!-- The cockpit's own consent gate (#AC-47), which is a different thing from the SDK's Allow/Deny row in
