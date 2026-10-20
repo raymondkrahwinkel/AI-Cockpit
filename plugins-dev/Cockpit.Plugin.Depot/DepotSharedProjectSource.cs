@@ -15,7 +15,7 @@ namespace Cockpit.Plugin.Depot;
 
 // One Depot connection's own `ISharedProjectSource` (AC-245): lists projects via `list_projects`, then reads
 // each one's `.cockpit/project.json` (AC-244) for name/description — one without it isn't offered here.
-// ponytail: one MCP round trip per project every workspace load, no caching; fine for a handful of projects.
+// The projects endpoint provides the full list in one request; older Depots use the MCP fallback.
 internal sealed class DepotSharedProjectSource(
     DepotConnectionRegistration connection, string scheme, ICockpitHost host, HttpClient? httpClient = null)
     : ISharedProjectSource
