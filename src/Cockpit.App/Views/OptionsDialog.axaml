@@ -1309,7 +1309,7 @@
                         <TextBlock Classes="optionsSectionHeader" Text="5. SENDING" IsVisible="{Binding Security.NeverSendManaged}"/>
                         <StackPanel IsVisible="{Binding Security.NeverSendManaged}">
                             <CheckBox Content="Drafts only, never send" IsChecked="True" IsEnabled="False"
-                                      ToolTip.Tip="Every session is told never to send, submit, book or pay anything: it prepares, and a person decides and sends. This is an instruction to the assistant, not a technical block. A connector the assistant reaches outside the cockpit, such as a claude.ai mail connector, can still send if the assistant does not follow it."/>
+                                      ToolTip.Tip="Every session whose provider takes instructions is told never to send, submit, book or pay anything: it prepares, and a person decides and sends. Kimi and opencode sessions cannot take instructions and say so when they start, and a Codex terminal pane does not receive them. This is an instruction to the assistant, not a technical block: a connector the assistant reaches outside the cockpit, such as a claude.ai mail connector, can still send if the assistant does not follow it."/>
                             <TextBlock Text="{Binding Security.NeverSendManagedLabel}" Classes="optionsHint"/>
                         </StackPanel>
                     </StackPanel>

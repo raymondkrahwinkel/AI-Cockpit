@@ -69,7 +69,7 @@ public sealed partial class SecurityOptionsViewModel(
     // AC-1593: shown only when the organisation sets `neverSend`; nothing on this machine turns it off.
     public bool NeverSendManaged => OrgPolicyCeilings.NeverSend(orgPolicy?.Current);
 
-    public string? NeverSendManagedLabel => NeverSendManaged ? $"Managed by {orgPolicy?.Current?.By}: an instruction to every assistant, not a block" : null;
+    public string? NeverSendManagedLabel => NeverSendManaged ? $"Managed by {orgPolicy?.Current?.By}: an instruction to the assistant, not a block" : null;
 
     // AC-999: while the Options dialog is staging, these three toggles are values like any other — held in the view
     // model, written only when the operator applies.
