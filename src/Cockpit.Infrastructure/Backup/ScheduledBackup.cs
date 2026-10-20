@@ -104,7 +104,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         {
             // AC-1593: the organisation's floor, applied to this run only; the operator's own schedule is not rewritten.
             var policy = _orgPolicy is null ? null : await _orgPolicy.ReadAsync(cancellationToken).ConfigureAwait(false);
-            var (schedule, refusal) = OrgBackupFloor.Apply(policy, await _store.LoadAsync(cancellationToken).ConfigureAwait(false), RegisteredTargets());
+            var (schedule, refusal) = OrgBackupFloor.Apply(policy is null ? null : null,await _store.LoadAsync(cancellationToken).ConfigureAwait(false), RegisteredTargets());
             if (!schedule.Enabled)
             {
                 return;
