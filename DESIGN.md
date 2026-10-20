@@ -79,8 +79,11 @@ use `.Compact` for the existing 28 px dense row footprint.
   action. It keeps the full button footprint but has no resting chrome.
 - Use `Classes="Subtle"` for compact chromeless icon actions, not a second text
   button hierarchy. It has 2 px padding.
-- Use `Classes="Danger"` only for destructive action. Do not simulate danger
-  with an ad-hoc red setter.
+- Destructive removal is presently neutral: existing remove controls use
+  `Subtle` (often `Compact`; see `Views/OptionsDialog.axaml` and
+  `Views/ProjectDialog.axaml`). `ManageProfilesDialog.axaml` promotes a
+  confirmed removal to ordinary `Accent`. **[open]** No shared destructive
+  style; propose a new one first.
 - Add `Compact` only where the existing dense control row needs its 28 px
   footprint. Do not set bespoke button padding, border, radius, or states.
 
@@ -152,6 +155,8 @@ use `.Compact` for the existing 28 px dense row footprint.
   without changing the shared theme and its baselines.
 - Never use accent/status colour for decoration, nor amber as a generic warning
   when the state is not waiting for the user.
+- Never introduce a `Danger` class or an ad-hoc red destructive treatment.
+  **[open]** No shared destructive style; propose a new one first.
 - Never hand-build dialog chrome, tab selection, an error card, or a managed
   setting marker when the shared implementation already exists.
 
