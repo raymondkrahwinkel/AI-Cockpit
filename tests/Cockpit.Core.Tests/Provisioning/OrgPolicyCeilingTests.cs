@@ -259,6 +259,27 @@ public class OrgPolicyCeilingTests
         Assert.All(rig.StartedModels, model => Assert.Equal(expected, model));
     }
 
+    // Never-send is a promise in the instructions (AC-494), so it has to reach every start: the sdk one and the tty one,
+    // after what the session already appends of its own.
+    [Theory]
+    [InlineData("sdk")]
+    [InlineData("tty")]
+    public async Task NeverSend_RidesEveryStartsInstructions(string route)
+    {
+        var rig = new ProviderRig(new ProvisionPolicy("Acme", Permissions: new ProvisionPermissionPolicy(NeverSend: true)));
+        var own = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = "Set your status." };
+        var acts = new Dictionary<string, Func<Task>>
+        {
+            ["sdk"] = () => rig.Runtime.StartAsync(ProviderRig.Claude, launchOptions: own),
+            ["tty"] = () => Task.FromResult(rig.Launch(rig.Provider("claude"), ProviderRig.Claude, own)),
+        };
+
+        await acts[route]();
+
+        Assert.Equal("Set your status.\n\n" + Cockpit.Core.Projects.ProjectStartingPoint.NeverSendBehavior,
+            rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt));
+    }
+
     private sealed class ProviderRig
     {
         public const string OpenRouterId = "openrouter-provider.openrouter";
@@ -268,13 +289,18 @@ public class OrgPolicyCeilingTests
         private readonly TtyLauncher _launcher;
 
         public ProviderRig()
-        {
-            var org = Substitute.For<IOrgPolicy>();
-            org.ReadAsync(Arg.Any<CancellationToken>()).Returns(new ProvisionPolicy("Acme", Providers: new ProvisionProviderPolicy(
+            : this(new ProvisionPolicy("Acme", Providers: new ProvisionProviderPolicy(
             [
                 new ProvisionAllowedProvider("ollama", System.Text.Json.JsonSerializer.SerializeToElement(new[] { "qwen3" })),
                 new ProvisionAllowedProvider(OpenRouterId, System.Text.Json.JsonSerializer.SerializeToElement(new[] { "gpt-5", "gpt-5-mini" })),
-            ])));
+            ])))
+        {
+        }
+
+        public ProviderRig(ProvisionPolicy policy)
+        {
+            var org = Substitute.For<IOrgPolicy>();
+            org.ReadAsync(Arg.Any<CancellationToken>()).Returns(policy);
             Driver.Events.Returns(_EmptyStream());
             Driver.StartAsync(Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Do<string?>(model => StartedModels.Add(model)), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(),
                     Arg.Any<SessionResume?>(), Arg.Do<IReadOnlyDictionary<string, string>?>(options => LaunchedOptions = options), Arg.Any<string?>(), Arg.Any<CancellationToken>())
@@ -311,7 +337,10 @@ public class OrgPolicyCeilingTests
         }
 
         public IConPtyProcess Launch(ITtySessionProvider provider, SessionProfile? profile) =>
-            _launcher.Launch(provider, profile, new Dictionary<string, string>(), 80, 24);
+            Launch(provider, profile, new Dictionary<string, string>());
+
+        public IConPtyProcess Launch(ITtySessionProvider provider, SessionProfile? profile, IReadOnlyDictionary<string, string> options) =>
+            _launcher.Launch(provider, profile, options, 80, 24);
     }
 
     private static IOrgPolicy _Org()

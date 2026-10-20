@@ -141,6 +141,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         if (provider is not ShellTtySessionProvider)
         {
             options = LaunchPermissionClamp.PinModel(read, profile, options, model: null).Options ?? options;
+            options = LaunchPermissionClamp.WithNeverSend(read, options) ?? options;
         }
 
         if (read is not { } policy
