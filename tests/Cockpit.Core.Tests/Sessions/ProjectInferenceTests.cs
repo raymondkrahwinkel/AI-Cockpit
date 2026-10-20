@@ -24,8 +24,7 @@ public class ProjectInferenceTests
 
     private static readonly SessionHint[] Sessions = [new("pane-9", "AC-1594 parallel depot reads", "cockpit")];
 
-    private static IReadOnlyList<(string ProjectId, ProjectSource Source)> Infer(string text) =>
-        ProjectInference.Infer(text, Projects, Sessions);
+    private static IReadOnlyList<InferredProject> Infer(string text) => ProjectInference.Infer(text, Projects, Sessions);
 
     [Theory]
     [InlineData("hoe staat Depot ervoor?", "depot")]
@@ -55,8 +54,8 @@ public class ProjectInferenceTests
     [Fact]
     public void ATicketKeyALiveSessionCarries_HasTheSessionAsItsSource()
     {
-        Assert.Equal(("cockpit", ProjectSource.Session), Assert.Single(Infer("hoe ver is AC-1594?")));
-        Assert.Equal(("cockpit", ProjectSource.Session), Assert.Single(Infer("wat doet pane-9 nu")));
+        Assert.Equal(("cockpit", ProjectSource.Session), Assert.Single(Infer("hoe ver is AC-1594?")) is var key ? (key.ProjectId, key.Source) : default);
+        Assert.Equal(("cockpit", ProjectSource.Session), Assert.Single(Infer("wat doet pane-9 nu")) is var pane ? (pane.ProjectId, pane.Source) : default);
     }
 
     [Fact]
@@ -66,6 +65,32 @@ public class ProjectInferenceTests
 
         Assert.Equal(["EWB", "AT", "EJ"], linked.EffectiveTicketPrefixes);
         Assert.Equal(["OWN"], (linked with { TicketPrefixes = ["OWN"] }).EffectiveTicketPrefixes);
+    }
+
+    // § 9.2: in Depot's thread the Depot part reads normally (with the joiner after it), WayMark's faint and named,
+    // and the row says it is also in WayMark; in All neither applies.
+    [Fact]
+    public void APromptInTwoThreads_ReadsItsOwnPartNormally_InEachOfThem()
+    {
+        var vm = TestSessions.Pane(Substitute.For<ISessionManager>());
+        IReadOnlyList<ProjectHint> hints = [new("depot", "Depot", []), new("waymark", "WayMark", [])];
+        vm.Threads = new ThreadLookup(id => hints.FirstOrDefault(hint => hint.Id == id)?.Name, _ => null, _ => null);
+        const string Both = "voor Depot de route nakijken en voor WayMark het token";
+        var named = ProjectInference.Infer(Both, hints, []);
+        var prompt = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, Both)
+        {
+            ProjectIds = [.. named.Select(hit => hit.ProjectId)],
+            ProjectParts = ProjectInference.Parts(Both, named),
+        };
+        vm.Transcript.Add(prompt);
+
+        Assert.False(prompt.ShowsPromptParts);
+        vm.ShownThread = "depot";
+
+        Assert.Equal(
+            [new PromptSegment("voor Depot de route nakijken en", null), new PromptSegment("voor WayMark het token", "WayMark")],
+            prompt.PromptSegments);
+        Assert.Equal("WayMark", Assert.Single(prompt.AlsoIn).Name);
     }
 
     // The session applies it only to a prompt put nowhere: one typed in a thread stays in that thread.
@@ -78,6 +103,10 @@ public class ProjectInferenceTests
         var (ids, sources) = vm.ProjectsForPrompt("voor DEP-422 de route en voor de cockpit de test");
         Assert.Equal(["depot", "cockpit"], ids);
         Assert.Equal(ProjectSource.Mentioned, sources!["cockpit"]);
+
+        const string Prompt = "voor DEP-422 de route en voor de cockpit de test";
+        var parts = ProjectInference.Parts(Prompt, Infer(Prompt));
+        Assert.Equal(["voor DEP-422 de route", "voor de cockpit de test"], parts.Select(part => Prompt.Substring(part.Start, part.Length).Trim()));
 
         vm.ShownThread = "vov";
         Assert.Equal(["vov"], vm.ProjectsForPrompt("voor DEP-422 de route").Ids);

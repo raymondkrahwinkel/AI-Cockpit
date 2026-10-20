@@ -14,7 +14,7 @@ public sealed record ThreadLookup(
     Func<string, string?> PaneTitle)
 {
     // The projects a prompt names, read before its turn; none when the host knows no projects.
-    public Func<string, IReadOnlyList<(string ProjectId, ProjectSource Source)>> Infer { get; init; } = _ => [];
+    public Func<string, IReadOnlyList<InferredProject>> Infer { get; init; } = _ => [];
 }
 
 // One move of a row between threads, with everything needed to take it back. `Target` null is General.
@@ -133,12 +133,24 @@ public partial class SessionViewModel
     // name. Both projects when it names two. What the operator chose and what the assistant tags later win over it.
     private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _InferredProjects(string text)
     {
+        _inferredParts = null;
         if (Threads?.Infer(text) is not { Count: > 0 } inferred)
         {
             return (null, null);
         }
 
+        _inferredParts = ProjectInference.Parts(text, inferred);
         return ([.. inferred.Select(hit => hit.ProjectId)], inferred.ToDictionary(hit => hit.ProjectId, hit => hit.Source));
+    }
+
+    // The parts of the prompt _InferredProjects last read, for the row it is about to make; null when there are none.
+    private IReadOnlyList<TranscriptProjectPart>? _inferredParts;
+
+    private IReadOnlyList<TranscriptProjectPart>? _TakeInferredParts()
+    {
+        var parts = _inferredParts;
+        _inferredParts = null;
+        return parts is { Count: > 0 } ? parts : null;
     }
 
     // --- Runs of status lines (§ 2: one foldable line) -------------------------------------------------------------

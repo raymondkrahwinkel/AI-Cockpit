@@ -36,6 +36,9 @@
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
         <!-- The row being dragged stays where it is, dimmed, so the drop reads as moving it (§ 9.6). -->
+        <Style Selector="SelectableTextBlock.otherPart">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+        </Style>
         <Style Selector="Border.rowRoot.threadDragging">
             <Setter Property="Opacity" Value="0.45"/>
         </Style>
@@ -208,8 +211,24 @@
                              instead of collapsing to CommonMark's single-space join — the only call site
                              that turns this on (assistant markdown and file previews keep the default). -->
                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                             PreserveLineBreaks="True"
+                                             PreserveLineBreaks="True" IsVisible="{Binding !ShowsPromptParts}"
                                              BasePath="{Binding Session.WorkingDirectory}"/>
+                        <!-- Assistant threads (§ 9.2): in a project's thread a prompt about two projects reads its own
+                             part normally and the other's faint, that project's name in front of it. -->
+                        <ItemsControl ItemsSource="{Binding PromptSegments}" IsVisible="{Binding ShowsPromptParts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PromptSegment">
+                                    <DockPanel Margin="0,1">
+                                        <Border DockPanel.Dock="Left" Classes="tag" Margin="0,0,6,0" VerticalAlignment="Top"
+                                                IsVisible="{Binding IsOther}">
+                                            <TextBlock Text="{Binding Other}"/>
+                                        </Border>
+                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                             Classes.otherPart="{Binding IsOther}"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <!-- AC-778: the "[+N image]" fragment as its own clickable element (not text baked into
                              the markdown string above) — opens a mini-gallery with the bytes this row still
                              holds in memory. A row without images (or, in principle, one whose bytes are no
@@ -924,6 +943,26 @@
             <Border Classes="paneChrome" Padding="8,6" IsVisible="{Binding HasLoginFlow}">
                 <controls:LoginFlowView DataContext="{Binding LoginFlow}"/>
             </Border>
+
+            <!-- Assistant threads (§ 9.2): in a project's thread, where else this same row stands — one click away. -->
+            <ItemsControl Classes="threadTags" Classes.user="{Binding IsUserRow}" ItemsSource="{Binding AlsoIn}"
+                          IsVisible="{Binding HasAlsoIn}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ThreadTagViewModel">
+                        <Button Classes="Subtle" Padding="0"
+                                Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).OpenThreadCommand, FallbackValue={x:Null}}"
+                                CommandParameter="{Binding ProjectId}">
+                            <TextBlock Text="{Binding Name, StringFormat='Also in {0}'}" FontSize="11.5"
+                                       Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </StackPanel>
     </Border>
 </UserControl>

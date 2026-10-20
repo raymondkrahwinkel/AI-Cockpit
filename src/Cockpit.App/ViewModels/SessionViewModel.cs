@@ -2349,6 +2349,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ReplyTo = replyTo,
             ProjectIds = projectIds,
             ProjectSources = projectSources,
+            ProjectParts = _TakeInferredParts(),
         };
         Transcript.Add(row);
 

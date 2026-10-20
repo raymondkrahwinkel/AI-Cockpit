@@ -117,7 +117,75 @@ public partial class TranscriptEntryViewModel
     public bool ShowsThreadTagsHere => Session is { Threads: not null } session && CarriesThreadTag
         && (session.ShownThread is null || ThreadProjectIds.Count > 1);
 
-    internal void RaiseThreadTags() => OnPropertyChanged(nameof(ShowsThreadTagsHere));
+    internal void RaiseThreadTags()
+    {
+        OnPropertyChanged(nameof(ShowsThreadTagsHere));
+        OnPropertyChanged(nameof(ShowsPromptParts));
+        OnPropertyChanged(nameof(PromptSegments));
+        OnPropertyChanged(nameof(AlsoIn));
+        OnPropertyChanged(nameof(HasAlsoIn));
+    }
+
+    // --- A prompt in two threads, read in one of them (§ 9.2) ----------------------------------------------------
+
+    private string? _ProjectThreadShown => Session?.ShownThread is { Length: > 0 } thread ? thread : null;
+
+    // In a project's thread the prompt's own part reads normally and another project's part faint, with that
+    // project's name in front — no accent bar, since DESIGN.md keeps accent off decoration.
+    public bool ShowsPromptParts => IsUserRow && _ProjectThreadShown is not null && ProjectParts is { Count: > 0 } && ThreadProjectIds.Count > 1;
+
+    public IReadOnlyList<PromptSegment> PromptSegments
+    {
+        get
+        {
+            if (!ShowsPromptParts || _ProjectThreadShown is not { } thread)
+            {
+                return [];
+            }
+
+            var segments = new List<PromptSegment>();
+            var at = 0;
+            foreach (var part in ProjectParts!.Where(part => part.Start >= 0 && part.Start + part.Length <= Text.Length).OrderBy(part => part.Start))
+            {
+                // A joiner between two parts ("en", a comma) closes the part before it rather than standing on its own.
+                if (part.Start > at)
+                {
+                    var gap = Text[at..part.Start];
+                    if (segments.Count > 0)
+                    {
+                        segments[^1] = segments[^1] with { Text = segments[^1].Text + gap };
+                    }
+                    else
+                    {
+                        segments.Add(new PromptSegment(gap, null));
+                    }
+                }
+
+                var start = Math.Max(at, part.Start);
+                if (part.Start + part.Length > start)
+                {
+                    segments.Add(new PromptSegment(Text[start..(part.Start + part.Length)],
+                        part.ProjectId == thread ? null : Session?.ProjectName(part.ProjectId) ?? part.ProjectId));
+                }
+
+                at = Math.Max(at, part.Start + part.Length);
+            }
+
+            if (at < Text.Length)
+            {
+                segments.Add(new PromptSegment(Text[at..], null));
+            }
+
+            return segments.Select(segment => segment with { Text = segment.Text.Trim() }).Where(segment => segment.Text.Length > 0).ToArray();
+        }
+    }
+
+    // "Also in WayMark" under a row in a project's thread that is in another one as well.
+    public IReadOnlyList<ThreadTagViewModel> AlsoIn => _ProjectThreadShown is { } shown && ThreadProjectIds.Count > 1
+        ? ThreadTags.Where(tag => tag.ProjectId != shown).ToArray()
+        : Array.Empty<ThreadTagViewModel>();
+
+    public bool HasAlsoIn => AlsoIn.Count > 0;
 
     // The turn's projects as the session last worked them out, so the next row of the turn need not walk back to it.
     internal IReadOnlyList<string>? TurnProjectsCache { get; set; }
@@ -152,8 +220,10 @@ public partial class TranscriptEntryViewModel
     {
         OnPropertyChanged(nameof(ThreadTags));
         OnPropertyChanged(nameof(ShowInLabel));
-        OnPropertyChanged(nameof(ShowsThreadTagsHere));
+        RaiseThreadTags();
     }
+
+    partial void OnProjectPartsChanged(IReadOnlyList<TranscriptProjectPart>? value) => RaiseThreadTags();
 
     partial void OnThreadProjectSourceChanged(ProjectSource value) => OnPropertyChanged(nameof(ThreadTags));
 
@@ -163,6 +233,12 @@ public partial class TranscriptEntryViewModel
     public IReadOnlyList<ThreadTagViewModel> ThreadTags => ThreadProjectIds.Count == 0
         ? new[] { new ThreadTagViewModel(null, "General", ProjectSource.None) }
         : ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? id, SourceFor(id))).ToArray();
+}
+
+// One stretch of a prompt as a thread reads it: its own (Other null) or another project's, which reads faint.
+public sealed record PromptSegment(string Text, string? Other)
+{
+    public bool IsOther => Other is not null;
 }
 
 // One project tag on a row, with the tooltip saying how the row got there.

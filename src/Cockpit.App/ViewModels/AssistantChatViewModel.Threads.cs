@@ -252,6 +252,16 @@ public sealed partial class AssistantChatViewModel
     [RelayCommand]
     private void OpenQuestions() => SelectedThreadItem = _questionsItem;
 
+    // "Also in WayMark" under a row: that project's thread, where the same row stands too.
+    [RelayCommand]
+    private void OpenThread(string? projectId)
+    {
+        if (ThreadItems.FirstOrDefault(item => item.Kind == AssistantThreadItemKind.Project && item.ProjectId == projectId) is { } item)
+        {
+            SelectedThreadItem = item;
+        }
+    }
+
     // Raised for the view, which owns the scroll: a row picked from Questions is shown where it lives.
     public event Action<TranscriptEntryViewModel>? RowRevealRequested;
 

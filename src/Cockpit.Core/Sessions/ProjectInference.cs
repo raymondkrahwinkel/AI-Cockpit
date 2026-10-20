@@ -7,6 +7,9 @@ public sealed record ProjectHint(string Id, string Name, IReadOnlyList<string> T
 
 public sealed record SessionHint(string PaneId, string Title, string? ProjectId);
 
+// One project a prompt names, how the host knows, and where the prompt first names it.
+public sealed record InferredProject(string ProjectId, ProjectSource Source, int At);
+
 // Files a prompt the operator did not put anywhere (typed in All, or spoken) by what it names, before the turn runs:
 // the assistant's own set_thread is a tool call it can skip, this is not. In the order the prompt names them, since
 // that is the order its tags read in.
@@ -19,7 +22,7 @@ public static partial class ProjectInference
     // A session title is only a mention when it is long enough not to occur in ordinary text by chance.
     private const int MinSessionTitleLength = 8;
 
-    public static IReadOnlyList<(string ProjectId, ProjectSource Source)> Infer(
+    public static IReadOnlyList<InferredProject> Infer(
         string text, IReadOnlyList<ProjectHint> projects, IReadOnlyList<SessionHint> sessions)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -81,7 +84,50 @@ public static partial class ProjectInference
                 _ => ProjectSource.Mentioned,
             }))
             .OrderBy(hit => hit.At)
-            .Select(hit => (hit.ProjectId, hit.Source))];
+            .Select(hit => new InferredProject(hit.ProjectId, hit.Source, hit.At))];
+    }
+
+    // A prompt naming two or more projects, split into each one's part: the clause each one is named in. A part starts
+    // after the joiner before its mention (the first from the start when there is none) and ends where the next part's
+    // joiner begins, so "en" or a comma belongs to neither.
+    public static IReadOnlyList<TranscriptProjectPart> Parts(string text, IReadOnlyList<InferredProject> named)
+    {
+        if (named.Count < 2)
+        {
+            return [];
+        }
+
+        var clauses = named.Select((hit, i) => _Clause(text, hit.At) ?? (i == 0 ? (0, 0) : (hit.At, hit.At))).ToList();
+        var parts = new List<TranscriptProjectPart>();
+        for (var i = 0; i < named.Count; i++)
+        {
+            var start = clauses[i].Start;
+            var end = i + 1 < clauses.Count ? clauses[i + 1].JoinerAt : text.Length;
+            if (end > start)
+            {
+                parts.Add(new TranscriptProjectPart(named[i].ProjectId, start, end - start));
+            }
+        }
+
+        return parts;
+    }
+
+    // ponytail: a handful of Dutch and English joiners; a parser of clauses is not worth it for where a tag starts.
+    private static readonly string[] ClauseJoiners = [", ", "; ", ". ", " en ", " and ", " maar ", " but "];
+
+    private static (int JoinerAt, int Start)? _Clause(string text, int mention)
+    {
+        (int JoinerAt, int Start)? best = null;
+        foreach (var joiner in ClauseJoiners)
+        {
+            var at = mention == 0 ? -1 : text.LastIndexOf(joiner, mention - 1, StringComparison.OrdinalIgnoreCase);
+            if (at >= 0 && at + joiner.Length <= mention && (best is null || at + joiner.Length > best.Value.Start))
+            {
+                best = (at, at + joiner.Length);
+            }
+        }
+
+        return best;
     }
 
     private static int _Rank(ProjectSource source) => source switch

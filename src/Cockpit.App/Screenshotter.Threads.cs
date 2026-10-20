@@ -129,6 +129,17 @@ internal static partial class Screenshotter
 
         session.Transcript.Add(_Question("Moet de never-send-regel ook gelden voor de shell-terminal van de operator?",
             ["Nee, alleen agents", "Ja, ook de shell"], "cockpit"));
+
+        // § 9.2: one prompt about two projects, split the way the host splits one it files itself.
+        const string Both = "voor Depot de route nakijken en voor WayMark het Strava-token vernieuwen";
+        IReadOnlyList<ProjectHint> hints = [new("depot", "Depot", []), new("waymark", "WayMark", [])];
+        var named = ProjectInference.Infer(Both, hints, []);
+        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, Both)
+        {
+            ProjectIds = [.. named.Select(hit => hit.ProjectId)],
+            ProjectSources = named.ToDictionary(hit => hit.ProjectId, hit => hit.Source),
+            ProjectParts = ProjectInference.Parts(Both, named),
+        });
         return session;
     }
 
