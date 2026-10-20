@@ -13,7 +13,7 @@ internal sealed class ShellAccessState(IOrgPolicy? orgPolicy = null) : IShellAcc
 
     public bool Enabled
     {
-        get => _enabled || OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current) && _enabled;
+        get => _enabled && !OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current);
         set => _enabled = value;
     }
 }
