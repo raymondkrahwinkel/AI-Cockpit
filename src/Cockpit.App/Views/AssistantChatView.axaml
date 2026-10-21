@@ -50,6 +50,15 @@
         <Style Selector="ListBox.iconRail ListBoxItem">
             <Setter Property="Padding" Value="12,8"/>
         </Style>
+        <!-- Assistant threads: a group's divider and heading take no selection, click or arrow key — the New session
+             dialog's folder ruler does it the same way — and none of the row's padding. -->
+        <Style Selector="ListBox.subnav ListBoxItem, ComboBox#ThreadPicker ComboBoxItem" x:DataType="vm:AssistantThreadItemViewModel">
+            <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+        </Style>
+        <Style Selector="ListBox.subnav ListBoxItem:disabled">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
         <!-- A thread's close action stays out of sight until its row is hovered or the button itself has focus. -->
         <Style Selector="Button.threadClose">
             <Setter Property="Opacity" Value="0"/>
@@ -63,7 +72,13 @@
         <!-- One thread in the labelled rail, shared by the rail and its overlay. The item is as wide as the rail's
              content (184 − 2×10) and reaches under the item's own padding, so Questions' waiting tint fills it. -->
         <DataTemplate x:Key="ThreadLabelItem" x:DataType="vm:AssistantThreadItemViewModel">
-            <Border Classes="threadItem" Classes.attention="{Binding IsAttention}"
+            <Panel>
+            <!-- The subnav's own hairline, and over the threads the Options groups' heading style. -->
+            <StackPanel Width="164" Margin="0,7,0,3" IsVisible="{Binding IsGroup}">
+                <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                <TextBlock Classes="subnavGroup" Text="{Binding Heading}" IsVisible="{Binding HasHeading}" Margin="11,12,8,1"/>
+            </StackPanel>
+            <Border Classes="threadItem" Classes.attention="{Binding IsAttention}" IsVisible="{Binding IsSelectable}"
                     Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}"
                     Width="164" Margin="-11,-8" Padding="11,8"
                     CornerRadius="7" ToolTip.Tip="{Binding Tooltip}" AutomationProperties.Name="{Binding Tooltip}">
@@ -97,6 +112,7 @@
                     </Button>
                 </Grid>
             </Border>
+            </Panel>
         </DataTemplate>
 
         <!-- Assistant threads: the closed threads, folded at the foot of the labelled rail and its overlay. A click
@@ -617,11 +633,17 @@
                               MinWidth="120" AutomationProperties.Name="Thread">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <controls:ProjectLogoBadge Size="16" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
-                                                               WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
-                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                                </StackPanel>
+                                <Panel>
+                                    <StackPanel IsVisible="{Binding IsGroup}">
+                                        <Border Height="1" Margin="0,2" Background="{DynamicResource CockpitHairlineBrush}"/>
+                                        <TextBlock Classes="subnavGroup" Text="{Binding Heading}" IsVisible="{Binding HasHeading}" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsSelectable}">
+                                        <controls:ProjectLogoBadge Size="16" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Panel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
@@ -685,7 +707,11 @@
                                  SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
-                                    <Border Classes="threadItem" Margin="-12,-8" Padding="12,8" CornerRadius="7"
+                                    <Panel>
+                                    <!-- A short divider under the 20 px marks; the heading is for the labelled rail only. -->
+                                    <Border Width="20" Height="1" Margin="12,7,0,7" IsVisible="{Binding IsGroup}"
+                                            Background="{DynamicResource CockpitHairlineBrush}"/>
+                                    <Border Classes="threadItem" Margin="-12,-8" Padding="12,8" CornerRadius="7" IsVisible="{Binding IsSelectable}"
                                             Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}">
                                     <Panel Width="20" Height="20" ToolTip.Tip="{Binding Tooltip}"
                                            AutomationProperties.Name="{Binding Tooltip}">
@@ -699,6 +725,7 @@
                                         </Border>
                                     </Panel>
                                     </Border>
+                                    </Panel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>

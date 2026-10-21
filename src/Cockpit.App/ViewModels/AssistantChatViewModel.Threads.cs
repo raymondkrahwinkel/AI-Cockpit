@@ -33,6 +33,10 @@ public enum AssistantThreadItemKind
 
     // Every project on one page: its sessions, what waits and the latest word from it.
     Overview,
+
+    // The divider between the general views, the threads and the foot of the rail, with the threads' heading where
+    // labels show. Never selected, clicked or reached by an arrow key.
+    Group,
 }
 
 // One entry of the thread rail: Questions for you, All, General or a project.
@@ -57,10 +61,19 @@ public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind
 
     public bool IsThread => Kind is AssistantThreadItemKind.General or AssistantThreadItemKind.Project;
 
+    public bool IsGroup => Kind == AssistantThreadItemKind.Group;
+
+    public bool IsSelectable => !IsGroup;
+
+    // In capitals, like the cockpit's other section headings (the sidebar's ASSISTANT, the Options groups).
+    public string Heading => Name.ToUpperInvariant();
+
+    public bool HasHeading => IsGroup && Name.Length > 0;
+
     // Only a project's thread closes; General is where everything without one lands.
     public bool IsProject => Kind == AssistantThreadItemKind.Project;
 
-    public bool HasIcon => !IsThread;
+    public bool HasIcon => !IsThread && !IsGroup;
 
     public MaterialIconKind IconKind => Kind switch
     {
@@ -102,13 +115,16 @@ public sealed partial class AssistantChatViewModel
     private readonly AssistantThreadItemViewModel _allItem = new(AssistantThreadItemKind.All, "All");
     private readonly AssistantThreadItemViewModel _generalItem = new(AssistantThreadItemKind.General, "General");
     private readonly AssistantThreadItemViewModel _overviewItem = new(AssistantThreadItemKind.Overview, "Overview");
+    private readonly AssistantThreadItemViewModel _threadsGroup = new(AssistantThreadItemKind.Group, "Threads");
+    private readonly AssistantThreadItemViewModel _footGroup = new(AssistantThreadItemKind.Group, string.Empty);
 
     // Every project a row of the conversation is in, gathered as rows arrive so an append costs nothing.
     private readonly HashSet<string> _projectsWithRows = new(StringComparer.Ordinal);
 
     private bool _threadsInitialised;
 
-    // Questions, All, General and the projects, General first and the projects by name (open question 6).
+    // Questions and All, then the threads (General first, the projects by name, open question 6), then Overview; a
+    // Group item stands between each.
     public ObservableCollection<AssistantThreadItemViewModel> ThreadItems { get; } = [];
 
     // The same without Questions, for the narrow stand's picker: Questions has its own button there.
@@ -404,11 +420,12 @@ public sealed partial class AssistantChatViewModel
 
         var selectedKey = SelectedThreadItem is { } selected ? (selected.Kind, selected.ProjectId) : (AssistantThreadItemKind.All, null);
         var existing = ThreadItems.Where(item => item.Kind == AssistantThreadItemKind.Project).ToDictionary(item => item.ProjectId!, StringComparer.Ordinal);
-        var items = new List<AssistantThreadItemViewModel> { _questionsItem, _allItem, _generalItem };
+        var items = new List<AssistantThreadItemViewModel> { _questionsItem, _allItem, _threadsGroup, _generalItem };
         items.AddRange(projectIds.Select(project => existing.TryGetValue(project.Id, out var kept) && kept.Name == project.Name
                 && kept.LogoPath == _ProjectLogo(project.Id)
             ? kept
             : new AssistantThreadItemViewModel(AssistantThreadItemKind.Project, project.Name, project.Id, _ProjectLogo(project.Id))));
+        items.Add(_footGroup);
         items.Add(_overviewItem);
 
         if (!items.SequenceEqual(ThreadItems))

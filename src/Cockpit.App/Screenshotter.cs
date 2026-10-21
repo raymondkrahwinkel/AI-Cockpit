@@ -638,6 +638,8 @@ internal static partial class Screenshotter
         ["assistant-threads-docked-280"] = (_, _) => _AssistantThreadsDocked(280),
         // The narrow stand's own way to the closed threads, its flyout staged open by the Hovers table below.
         ["assistant-threads-docked-280-closed"] = (_, _) => _AssistantThreadsDocked(280, closed: true),
+        // The narrow stand's picker opened: the rail's groups, divider and heading included, in its list.
+        ["assistant-threads-docked-280-picker"] = (_, _) => _AssistantThreadsDocked(280),
         ["assistant-threads-docked-collapsed"] = (_, _) => _AssistantThreadsDocked(null),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
@@ -820,6 +822,7 @@ internal static partial class Screenshotter
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
         ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
+        ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying

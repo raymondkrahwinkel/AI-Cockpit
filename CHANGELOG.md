@@ -46,7 +46,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   you** (every open question and Allow/Deny, with a count), **All**, **General** and a thread per project; in All each
   row carries its project as a tag. Messages from other sessions arrive as cards with their sender, and status updates
   as one quiet line. The rail shows labels when there is room, icons when there is less (with « / » to choose, saved
-  separately for the window and the dock), and a thread picker in a very narrow dock.
+  separately for the window and the dock), and a thread picker in a very narrow dock. A divider sets Questions and All
+  apart from the threads (headed THREADS where labels show) and the threads from Overview, in the picker too.
 - added: status updates that arrive one after another fold into one line, and Questions for you keeps what you
   answered today below the open questions.
 - added: docked, the Assistant tab and the sidebar indicator count the questions waiting for you (a click on the count
