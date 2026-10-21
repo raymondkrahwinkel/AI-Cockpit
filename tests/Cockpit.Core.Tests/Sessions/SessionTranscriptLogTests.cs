@@ -69,15 +69,31 @@ public class SessionTranscriptLogTests : IDisposable
             ReplyToId = "earlier",
             LatestReplyId = "later",
             BackgroundTaskId = "bg-7",
+            ProjectIds = ["depot", "waymark"],
+            ProjectSources = new Dictionary<string, ProjectSource> { ["depot"] = ProjectSource.Session, ["waymark"] = ProjectSource.Explicit },
+            ProjectParts = [new TranscriptProjectPart("depot", 0, 6)],
+            TurnProjectIds = ["depot"],
+            SenderPaneId = "pane-7",
+            SenderTitle = "DEP-422",
+            MessageKind = "heads-up",
+            SubjectPaneId = "pane-8",
         };
 
         await store.AppendAsync(Pane, row);
 
-        // Compared member by member rather than with record equality: `SubAgentRows` is a list, so `==` on the
-        // record would pass on reference identity and quietly say nothing about what came back off disk.
+        // Compared member by member rather than with record equality: the lists are compared by reference by `==`
+        // on the record, which would quietly say nothing about what came back off disk.
         var loaded = Assert.Single((await store.TryLoadAsync(Pane))!);
-        Assert.Equal(row with { SubAgentRows = null }, loaded with { SubAgentRows = null });
+        var unlisted = (TranscriptSnapshotEntry entry) => entry with
+        {
+            SubAgentRows = null, ProjectIds = null, ProjectSources = null, ProjectParts = null, TurnProjectIds = null,
+        };
+        Assert.Equal(unlisted(row), unlisted(loaded));
         Assert.Equal("reading the file", Assert.Single(loaded.SubAgentRows!).Text);
+        Assert.Equal(["depot", "waymark"], loaded.ProjectIds);
+        Assert.Equal(row.ProjectSources, loaded.ProjectSources);
+        Assert.Equal(row.ProjectParts, loaded.ProjectParts);
+        Assert.Equal(["depot"], loaded.TurnProjectIds);
     }
 
     // A log written by a build that did not know a member yet, and one that knows a member this build does not:
@@ -97,6 +113,9 @@ public class SessionTranscriptLogTests : IDisposable
         var loaded = (await store.TryLoadAsync(Pane))!;
 
         Assert.Equal(["older build", "newer build"], loaded.Select(entry => entry.Text));
+
+        // A line from before assistant threads carries no projects, which is what files it under General.
+        Assert.All(loaded, entry => Assert.Null(entry.ProjectIds));
     }
 
     [Fact]

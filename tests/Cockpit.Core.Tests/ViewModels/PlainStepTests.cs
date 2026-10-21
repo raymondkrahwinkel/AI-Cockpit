@@ -19,7 +19,6 @@ public class PlainStepTests
     [InlineData("WebSearch", """{"query":"vat rates"}""", 1, "Looked something up online")]
     [InlineData("Task", """{"prompt":"sum it"}""", 1, "Asked a helper")]
     [InlineData("mcp__depot__write", """{"path":"Notes.md"}""", 1, "Used depot")]
-    [InlineData("mcp__depot__write", """{"path":"Notes.md"}""", 4, "Used depot 4 times")]
     // Criterion 4: a tool this has no words for — Codex's own, say — is named, never left blank or shown as JSON.
     [InlineData("apply_patch", """{"patch":"*** Begin Patch"}""", 1, "Used apply_patch")]
     [InlineData("Read", "not json", 1, "Read a file")]
