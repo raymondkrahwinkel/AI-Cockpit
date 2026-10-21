@@ -1101,6 +1101,18 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
 
     private static async Task _PruneMissingAsync(string repository, CancellationToken cancellationToken)
     {
+        foreach (var missing in await _MissingWorktreesAsync(repository, cancellationToken).ConfigureAwait(false))
+        {
+            if (missing.Record.IsLocked)
+            {
+                var unlock = await GitCli.RunAsync(repository, ["worktree", "unlock", missing.AdminName], cancellationToken).ConfigureAwait(false);
+                if (unlock.ExitCode != 0)
+                {
+                    await GitCli.RunCheckedAsync(repository, ["worktree", "unlock", missing.Record.Path], cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
         if (Directory.Exists(repository))
         {
             await GitCli.RunCheckedAsync(repository, ["worktree", "prune", "--expire", "now"], cancellationToken).ConfigureAwait(false);
