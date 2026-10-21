@@ -10,10 +10,9 @@ public static class UpdateChannelName
     // The channel this build is allowed to read.
     public static string For(UpdateChannel stream) => For(Platform(), RuntimeInformation.ProcessArchitecture, stream);
 
-    // The name for a given platform. Split out so the rule can be asked for all three from one machine — the
-    // alternative is a test that only ever proves the platform it happens to run on.
+    // Process architecture keeps an x64 installation under Rosetta on its own feed; ARM retains its existing names.
     internal static string For(string platform, Architecture architecture, UpdateChannel stream) =>
-        $"{platform}-{(stream == UpdateChannel.Nightly ? "nightly" : "stable")}";
+        $"{(platform == "osx" && architecture == Architecture.X64 ? "osx-x64" : platform)}-{(stream == UpdateChannel.Nightly ? "nightly" : "stable")}";
 
     // What this machine calls itself in a channel name. The cockpit ships for three OSes and no others, so a fourth
     // platform is a build that was never published: refusing is honest, and the refusal surfaces as a failed check
