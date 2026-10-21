@@ -30,6 +30,7 @@ internal static partial class Screenshotter
             Height = answered ? 1300 : 720,
         };
 
+        var session = chat.Session ?? throw new InvalidOperationException("The threads scene builds its chat on a session.");
         chat.ViewWidth = width;
         chat.SelectedThreadItem = questions
             ? chat.ThreadItems[0]
@@ -39,14 +40,14 @@ internal static partial class Screenshotter
         // Threads management: WayMark closed and the list folded out, or the one row suggesting it be closed.
         if (closed)
         {
-            chat.Session!.CloseThread("waymark");
+            session.CloseThread("waymark");
             chat.IsClosedThreadsExpanded = true;
             chat.IsRailOverlayOpen = width < AssistantChatViewModel.LabelsMinWidth;
         }
 
         if (suggestion)
         {
-            chat.Session!.SuggestClosingThreads(["waymark"]);
+            session.SuggestClosingThreads(["waymark"]);
         }
 
         if (overview)
@@ -55,7 +56,7 @@ internal static partial class Screenshotter
         }
 
         // § 9.6: the WayMark prompt on its way to Depot, held over it; or just dropped there, with the toast.
-        var prompt = chat.Session!.Transcript.First(row => row.Text.StartsWith("Waarom synct", StringComparison.Ordinal));
+        var prompt = session.Transcript.First(row => row.Text.StartsWith("Waarom synct", StringComparison.Ordinal));
         if (dragging)
         {
             prompt.IsBeingDragged = true;

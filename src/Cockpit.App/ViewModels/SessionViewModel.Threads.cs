@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Sessions;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
 
@@ -541,9 +542,19 @@ public partial class SessionViewModel
 
         var from = row.IsGeneral ? "General" : row.ThreadTags[0].Name;
         var line = AssistantSpokenFillers.ArrivedElsewhere(ReadAloudLanguage, isQuestion, from);
-        if (line.Length > 0)
+        if (line.Length == 0)
         {
-            _ = EnqueueReadAloudAsync(line);
+            return;
+        }
+
+        // EnqueueReadAloudAsync only queues and returns a finished task, so a failure is thrown here and caught, not lost.
+        try
+        {
+            EnqueueReadAloudAsync(line).GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "The spoken line for a row in another thread could not be queued.");
         }
     }
 

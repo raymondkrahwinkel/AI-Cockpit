@@ -167,14 +167,14 @@ public partial class TranscriptEntryViewModel
     {
         get
         {
-            if (!ShowsPromptParts || _ProjectThreadShown is not { } thread)
+            if (!ShowsPromptParts || _ProjectThreadShown is not { } thread || ProjectParts is not { } parts)
             {
                 return [];
             }
 
             var segments = new List<PromptSegment>();
             var at = 0;
-            foreach (var part in ProjectParts!.Where(part => part.Start >= 0 && part.Start + part.Length <= Text.Length).OrderBy(part => part.Start))
+            foreach (var part in parts.Where(part => part.Start >= 0 && part.Start + part.Length <= Text.Length).OrderBy(part => part.Start))
             {
                 // A joiner between two parts ("en", a comma) closes the part before it rather than standing on its own.
                 if (part.Start > at)

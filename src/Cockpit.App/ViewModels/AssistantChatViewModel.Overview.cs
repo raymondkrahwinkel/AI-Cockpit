@@ -33,16 +33,21 @@ public sealed partial class AssistantChatViewModel
     private void _RebuildOverview()
     {
         OverviewCards.Clear();
-        foreach (var item in ThreadItems.Where(item => item.Kind == AssistantThreadItemKind.Project))
+        foreach (var item in ThreadItems)
         {
+            if (item is not { IsProject: true, ProjectId: { } projectId })
+            {
+                continue;
+            }
+
             var sessions = LiveSessions
-                .Where(pane => pane.ProjectId == item.ProjectId)
+                .Where(pane => pane.ProjectId == projectId)
                 .Select(pane => string.IsNullOrEmpty(pane.SessionStatusLabel) ? pane.Title : $"{pane.Title} · {pane.SessionStatusLabel}")
                 .ToList();
             var latest = Session?.Transcript.LastOrDefault(row =>
-                (row.StartsTurn || row.IsAssistantMarkdown) && row.IsInThread(item.ProjectId) && row.Text.Trim().Length > 0);
+                (row.StartsTurn || row.IsAssistantMarkdown) && row.IsInThread(projectId) && row.Text.Trim().Length > 0);
 
-            OverviewCards.Add(new ProjectOverviewCard(item.ProjectId!, item.Name, item.WaitingCount, sessions, _OneLine(latest?.Text), item.LogoPath));
+            OverviewCards.Add(new ProjectOverviewCard(projectId, item.Name, item.WaitingCount, sessions, _OneLine(latest?.Text), item.LogoPath));
         }
 
         OnPropertyChanged(nameof(HasOverviewCards));

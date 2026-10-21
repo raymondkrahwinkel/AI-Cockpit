@@ -5,6 +5,8 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Controls;
 
@@ -57,6 +59,19 @@ public partial class TranscriptRowView
         }
 
         e.Handled = true;
+        try
+        {
+            await _DragRowAsync(e, grip, row);
+        }
+        catch (Exception exception)
+        {
+            // An event handler, so async void: a failed drag is logged here rather than taking the app down.
+            Program.Services?.GetService<ILogger<TranscriptRowView>>()?.LogWarning(exception, "Dragging a row to another assistant thread failed.");
+        }
+    }
+
+    private async Task _DragRowAsync(PointerPressedEventArgs e, Button grip, TranscriptEntryViewModel row)
+    {
         var chat = this.FindAncestorOfType<AssistantChatView>()?.DataContext as AssistantChatViewModel;
         row.IsBeingDragged = true;
         if (chat is not null)

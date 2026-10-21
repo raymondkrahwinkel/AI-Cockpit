@@ -184,8 +184,12 @@ public partial class AssistantChatView : UserControl
 
     private void _OnThreadDrop(object? sender, DragEventArgs e)
     {
-        if (e.DataTransfer.Contains(TranscriptRowView.RowDragFormat)
-            && DataContext is AssistantChatViewModel vm && _ThreadUnder(e) is { } target)
+        if (!e.DataTransfer.Contains(TranscriptRowView.RowDragFormat) || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        if (_ThreadUnder(e) is { } target)
         {
             vm.Drop(target, _Adds(e));
             e.Handled = true;

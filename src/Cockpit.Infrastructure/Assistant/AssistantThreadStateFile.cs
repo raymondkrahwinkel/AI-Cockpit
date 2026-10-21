@@ -13,6 +13,8 @@ internal sealed class AssistantThreadStateFile : IAssistantThreadStateStore, ISi
 {
     private readonly string _path;
 
+    private readonly string _folder;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public AssistantThreadStateFile()
@@ -21,7 +23,12 @@ internal sealed class AssistantThreadStateFile : IAssistantThreadStateStore, ISi
     }
 
     // Test seam: point the store at an arbitrary file.
-    internal AssistantThreadStateFile(string path) => _path = path;
+    internal AssistantThreadStateFile(string path)
+    {
+        _path = Path.GetFullPath(path);
+        _folder = Path.GetDirectoryName(_path)
+            ?? throw new ArgumentException($"The threads file needs a folder to live in, and {path} is a root.", nameof(path));
+    }
 
     public async Task<IReadOnlyList<string>> LoadClosedAsync(CancellationToken cancellationToken = default)
     {
@@ -54,7 +61,7 @@ internal sealed class AssistantThreadStateFile : IAssistantThreadStateStore, ISi
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            Directory.CreateDirectory(_folder);
             var temporary = _path + ".tmp";
             await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(new SavedThreads([.. projectIds.Order(StringComparer.Ordinal)])), cancellationToken)
                 .ConfigureAwait(false);

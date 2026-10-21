@@ -34,8 +34,13 @@ public static partial class ProjectInference
         var known = projects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
 
         // A session by its pane id or its full title: it is that session's project, and the session is the source.
-        foreach (var session in sessions.Where(session => session.ProjectId is { } id && known.Contains(id)))
+        foreach (var (session, projectId) in sessions.Select(session => (session, session.ProjectId)))
         {
+            if (projectId is null || !known.Contains(projectId))
+            {
+                continue;
+            }
+
             var at = text.IndexOf(session.PaneId, StringComparison.OrdinalIgnoreCase);
             if (at < 0 && session.Title.Trim().Length >= MinSessionTitleLength)
             {
@@ -44,7 +49,7 @@ public static partial class ProjectInference
 
             if (at >= 0)
             {
-                found.Add((at, session.ProjectId!, ProjectSource.Session));
+                found.Add((at, projectId, ProjectSource.Session));
             }
         }
 

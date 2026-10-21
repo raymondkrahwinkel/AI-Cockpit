@@ -100,10 +100,11 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // overlay coordinator, so no extra filtering is needed here.
         _overlay.LevelSampled += _OnLevelSampled;
 
-        // Assistant threads (§ 7.3): with questions open, the chip and the tab's count both open them.
-        Indicator.Clicked += (_, _) => _ = Indicator.ShowsQuestions ? _OpenQuestionsAsync() : _OpenChatAsync();
-        _questionsBadge.Activated += (_, _) => _ = _OpenQuestionsAsync();
-        _cockpit.AssistantFloatingCardOpened += row => _ = _OpenRowAsync(row);
+        // Assistant threads (§ 7.3): with questions open, the chip and the tab's count both open them. Each of these
+        // catches and logs its own failure, as _OpenChatAsync does since AC-765, so a click never loses one unseen.
+        Indicator.Clicked += async (_, _) => await (Indicator.ShowsQuestions ? _OpenQuestionsAsync() : _OpenChatAsync()).ConfigureAwait(true);
+        _questionsBadge.Activated += async (_, _) => await _OpenQuestionsAsync().ConfigureAwait(true);
+        _cockpit.AssistantFloatingCardOpened += async row => await _OpenRowAsync(row).ConfigureAwait(true);
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
         // AC-953: dock-panel registration follows the dock stand rather than standing permanently, driven off
@@ -238,6 +239,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             session.ThreadsChanged += _OnQuestionsChanged;
             session.Transcript.CollectionChanged += _OnAssistantRowsAdded;
             session.ClosedThreadsChanged += _OnClosedThreadsChanged;
+            // AC-1343: left running on purpose — nothing waits on it, and it catches and logs its own failure.
             _ = _LoadClosedThreadsAsync(session);
         }
 
@@ -246,14 +248,12 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
     private async Task _LoadClosedThreadsAsync(SessionViewModel session)
     {
-        if (_threadState is null)
-        {
-            return;
-        }
-
         try
         {
-            session.LoadClosedThreads(await _threadState.LoadClosedAsync().ConfigureAwait(true));
+            if (_threadState is not null)
+            {
+                session.LoadClosedThreads(await _threadState.LoadClosedAsync().ConfigureAwait(true));
+            }
         }
         catch (Exception exception)
         {
@@ -261,16 +261,15 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
     }
 
+    // The session's event, so async void: everything sits inside the try, and a failure is logged rather than lost.
     private async void _OnClosedThreadsChanged()
     {
-        if (_threadState is null || _questionsSession is not { } session)
-        {
-            return;
-        }
-
         try
         {
-            await _threadState.SaveClosedAsync([.. session.ClosedThreads]).ConfigureAwait(true);
+            if (_threadState is not null && _questionsSession is { } session)
+            {
+                await _threadState.SaveClosedAsync([.. session.ClosedThreads]).ConfigureAwait(true);
+            }
         }
         catch (Exception exception)
         {
@@ -335,13 +334,27 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private async Task _OpenRowAsync(TranscriptEntryViewModel row)
     {
         await _OpenChatAsync().ConfigureAwait(true);
-        _chatViewModel?.ShowInThreadCommand.Execute(row);
+        try
+        {
+            _chatViewModel?.ShowInThreadCommand.Execute(row);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Showing a row in its assistant thread failed.");
+        }
     }
 
     private async Task _OpenQuestionsAsync()
     {
         await _OpenChatAsync().ConfigureAwait(true);
-        _chatViewModel?.OpenQuestionsCommand.Execute(null);
+        try
+        {
+            _chatViewModel?.OpenQuestionsCommand.Execute(null);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Opening the assistant's questions failed.");
+        }
     }
 
     // Every session but the assistant itself: what a project still has running.

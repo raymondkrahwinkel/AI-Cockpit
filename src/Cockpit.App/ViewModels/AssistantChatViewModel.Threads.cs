@@ -419,7 +419,15 @@ public sealed partial class AssistantChatViewModel
         _RebuildClosedThreadItems();
 
         var selectedKey = SelectedThreadItem is { } selected ? (selected.Kind, selected.ProjectId) : (AssistantThreadItemKind.All, null);
-        var existing = ThreadItems.Where(item => item.Kind == AssistantThreadItemKind.Project).ToDictionary(item => item.ProjectId!, StringComparer.Ordinal);
+        var existing = new Dictionary<string, AssistantThreadItemViewModel>(StringComparer.Ordinal);
+        foreach (var item in ThreadItems)
+        {
+            if (item is { IsProject: true, ProjectId: { } id })
+            {
+                existing[id] = item;
+            }
+        }
+
         var items = new List<AssistantThreadItemViewModel> { _questionsItem, _allItem, _threadsGroup, _generalItem };
         items.AddRange(projectIds.Select(project => existing.TryGetValue(project.Id, out var kept) && kept.Name == project.Name
                 && kept.LogoPath == _ProjectLogo(project.Id)
