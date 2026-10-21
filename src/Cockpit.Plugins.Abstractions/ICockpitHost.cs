@@ -409,6 +409,26 @@ public interface ICockpitHost
     Task<bool> NotifyAssistantAsync(string kind, string body) => Task.FromResult(false);
 
     /// <summary>
+    /// Asks the machine-wide queue for heavy runs (AC-1535) for a place for <paramref name="request"/>. Returns at
+    /// once; the slot's <see cref="HeavyRuns.IHeavyRunSlot.Admitted"/> completes when the run may start.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="HeavyRuns.HeavyRunKind.Light"/> run is admitted at once. The default body admits every run at once,
+    /// the honest answer of a host without a queue.
+    /// </remarks>
+    HeavyRuns.IHeavyRunSlot RequestHeavyRunSlot(HeavyRuns.HeavyRunRequest request) => HeavyRuns.AdmittedHeavyRunSlot.Instance;
+
+    /// <summary>
+    /// Puts a message in the inbox of the session named by <paramref name="paneId"/> (AC-1535), with this plugin as
+    /// the stated sender — how a plugin hands a session the verdict of work it started without holding its turn.
+    /// </summary>
+    /// <remarks>
+    /// The session's own wake consent decides whether a turn is started for it. Never throws; false when the inbox
+    /// is full or the host has none, and the default body returns false.
+    /// </remarks>
+    Task<bool> DeliverToSessionInboxAsync(string paneId, string kind, string body) => Task.FromResult(false);
+
+    /// <summary>
     /// Opens a chat channel — a Discord or Slack bot — as a second door onto the assistant's own conversation
     /// (AC-1023). Null on a host with no assistant; dispose the gateway to close the channel.
     /// </summary>

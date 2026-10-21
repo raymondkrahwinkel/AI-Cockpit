@@ -9,8 +9,10 @@ using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Formatting;
+using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.HeavyRuns;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -28,7 +30,9 @@ internal sealed class SessionStatusTools(
     IProjectJobHistory? jobHistory = null,
     // AC-1335: null only in a test graph that never runs anything as administrator; without a broker nothing runs.
     IConsentBroker? consent = null,
-    IElevatedCommandRunner? elevated = null)
+    IElevatedCommandRunner? elevated = null,
+    // AC-1535: null only in a test graph that never queues; without a queue every run starts at once.
+    HeavyRunQueue? queue = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -112,13 +116,15 @@ internal sealed class SessionStatusTools(
     }
 
     [McpServerTool(Name = "start_run", ReadOnly = false, Destructive = false)]
-    [Description("Starts a command (e.g. a `dotnet test` filter) and returns a run id right away, before the command has finished — you can end your turn immediately after. When it ends, by finishing or by its timeout, the verdict is delivered to your own inbox and, if you have wake consent, a turn is started for you to read it. It never restarts anything on your behalf. There is no lock and no queue: an unrelated concurrent run of your own or another session's is not something this waits on or refuses over. On timeout the verdict is `TimedOut`, carrying whatever the command had already printed. Every process the run's tree still holds when it ends — a compiler daemon it spawned and left running included — is ended too, whether the run finished cleanly or timed out; this does not touch anything outside that one run. `unreachable`, when present in the reply, means nothing is going to bring this run's verdict to you on its own — read it before you end your turn.")]
+    [Description("Starts a command (e.g. a `dotnet test` filter) and returns a run id right away, before the command has finished — you can end your turn immediately after. When it ends, by finishing or by its timeout, the verdict is delivered to your own inbox and, if you have wake consent, a turn is started for you to read it. It never restarts anything on your behalf. A heavy run (any `kind` but `light`) first takes its place in the machine-wide queue: it starts once the measured CPU and memory leave room for it, and the reply then says `queued` with the reason ('waiting: CPU 82%, 2 ahead of you') — put that in your statusline and end your turn; the verdict still comes to your inbox. A `pre-merge` run goes ahead of an `explore` one. The timeout counts from the start, not from the wait. On timeout the verdict is `TimedOut`, carrying whatever the command had already printed. Every process the run's tree still holds when it ends — a compiler daemon it spawned and left running included — is ended too, whether the run finished cleanly or timed out; this does not touch anything outside that one run. `unreachable`, when present in the reply, means nothing is going to bring this run's verdict to you on its own — read it before you end your turn.")]
     public async Task<string> StartRunAsync(
         [Description("The directory the command runs in.")] string workingDirectory,
         [Description("The command to run, e.g. 'dotnet'. Never parsed by a shell — pass its arguments separately in `arguments`, not appended here.")] string command,
         [Description("The command's arguments, e.g. ['test', '--filter', 'FullyQualifiedName~FooTests']. Each is passed through exactly as given, never re-parsed by a shell.")] string[]? arguments = null,
         [Description("How long the command may run before it is ended and the verdict is TimedOut, in seconds. Defaults to 900 and cannot be set higher.")] int timeoutSeconds = MaxTimeoutSeconds,
-        [Description("Optional. Your session id — the value of the COCKPIT_PANE_ID environment variable in this session. Only needed as a fallback when automatic session identification is unavailable.")] string? session = null)
+        [Description("Optional. Your session id — the value of the COCKPIT_PANE_ID environment variable in this session. Only needed as a fallback when automatic session identification is unavailable.")] string? session = null,
+        [Description("What the run is: `light` (lint, or one test class or method by `--filter`) starts at once; `build`, `unit` and `journeys` (tests with a database or a browser) wait for room in the machine-wide queue. Defaults to `journeys`, so a run that does not say waits rather than fails a gate on an overloaded machine.")] string? kind = null,
+        [Description("Why the run is wanted: `pre-merge` (the gate right before a merge) goes ahead of `explore` (anything else). Defaults to `explore`.")] string? purpose = null)
     {
         var caller = McpRequestContext.CurrentPaneId ?? session;
         if (string.IsNullOrEmpty(caller))
@@ -126,9 +132,19 @@ internal sealed class SessionStatusTools(
             return _Error("Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`.");
         }
 
-        if (string.IsNullOrWhiteSpace(command))
+        if (string.IsNullOrWhiteSpace(command) || string.IsNullOrWhiteSpace(workingDirectory))
         {
-            return _Error("`command` is required.");
+            return _Error("`command` and `workingDirectory` are both required.");
+        }
+
+        if (_ParseKind(kind) is not { } runKind)
+        {
+            return _Error("`kind` must be one of light, build, unit or journeys.");
+        }
+
+        if (_ParsePurpose(purpose) is not { } runPurpose)
+        {
+            return _Error("`purpose` must be pre-merge or explore.");
         }
 
         var effectiveArguments = arguments ?? [];
@@ -136,26 +152,30 @@ internal sealed class SessionStatusTools(
         var runId = Guid.NewGuid().ToString("N");
         var unreachable = await _UnreachableAtStartAsync(caller).ConfigureAwait(false);
 
-        var stopping = new CancellationTokenSource();
         var label = effectiveArguments.Length is 0 ? command : $"{command} {string.Join(' ', effectiveArguments)}";
-        tracker.Begin(runId, label, DateTimeOffset.UtcNow, () =>
-        {
-            stopping.Cancel();
-            return Task.CompletedTask;
-        });
+        var slot = queue?.Request(new HeavyRunRequest(runId, runKind, runPurpose, caller, label, workingDirectory))
+            ?? AdmittedHeavyRunSlot.Instance;
 
-        // Fire-and-forget by design: the whole point is that the caller does not wait on this. `stopping` is
-        // disposed by the continuation itself, once the run and its cleanup are both over.
-        _ = _RunAndDeliverAsync(caller, runId, label, workingDirectory, command, effectiveArguments, timeout, stopping);
+        // Fire-and-forget by design: the whole point is that the caller does not wait on this. The slot is given back
+        // by the continuation itself, once the run and its cleanup are both over.
+        _ = _RunAndDeliverAsync(caller, runId, label, workingDirectory, command, effectiveArguments, timeout, slot);
 
-        return JsonSerializer.Serialize(new { ok = true, runId, unreachable }, SerializerOptions);
+        return slot.Admitted.IsCompletedSuccessfully
+            ? JsonSerializer.Serialize(new { ok = true, runId, unreachable }, SerializerOptions)
+            : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable }, SerializerOptions);
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]
     [Description("Reports what a run started with start_run is doing, or what it finished with — the recovery path for when that run's inbox delivery never reached you (a wake refused, an inbox already full, a turn that ended before it arrived). Never starts or restarts anything.")]
     public string RunStatus([Description("The run id start_run returned.")] string runId)
     {
-        if (tracker.IsRunning(runId))
+        if (queue?.StatusOf(runId) is { Status: "queued" } queued)
+        {
+            return JsonSerializer.Serialize(new { ok = true, runId, status = "queued", reason = queued.Reason }, SerializerOptions);
+        }
+
+        // Admitted but not yet begun counts as running; once a verdict exists, that verdict is the answer.
+        if (tracker.IsRunning(runId) || (tracker.Get(runId) is null && queue?.StatusOf(runId) is { Status: "running" }))
         {
             return JsonSerializer.Serialize(new { ok = true, runId, status = "running" }, SerializerOptions);
         }
@@ -178,7 +198,7 @@ internal sealed class SessionStatusTools(
                 SerializerOptions);
         }
 
-        return _Error($"No run with id '{runId}' is known — either it never existed, or it finished long enough ago that its result aged out.");
+        return _Error($"No run with id '{runId}' is known — either it never existed, it finished long enough ago that its result aged out, or the cockpit restarted, which empties the queue: start it again.");
     }
 
     [McpServerTool(Name = "run_elevated", ReadOnly = false, Destructive = true)]
@@ -249,10 +269,27 @@ internal sealed class SessionStatusTools(
         string command,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationTokenSource stopping)
+        IHeavyRunSlot slot)
     {
-        using (stopping)
+        await using (slot.ConfigureAwait(false))
         {
+            try
+            {
+                await slot.Admitted.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                inbox.Deliver(RunSenderPaneId, caller, "run", $"Run {runId} ('{label}') never started: it lost its place in the queue — its session went away, or the operator removed it.");
+                return;
+            }
+
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(slot.Revoked);
+            tracker.Begin(runId, label, DateTimeOffset.UtcNow, () =>
+            {
+                stopping.Cancel();
+                return Task.CompletedTask;
+            });
+
             TrackedRunResult result;
             try
             {
@@ -267,6 +304,10 @@ internal sealed class SessionStatusTools(
 
             tracker.Complete(runId, result, DateTimeOffset.UtcNow);
             inbox.Deliver(RunSenderPaneId, caller, "run", _Verdict(runId, label, result));
+            if (result.TimedOut || result.ExitCode != 0)
+            {
+                await slot.ReportFailureAsync(result.StandardOutput + result.StandardError).ConfigureAwait(false);
+            }
         }
     }
 
@@ -301,6 +342,22 @@ internal sealed class SessionStatusTools(
             ? "Nothing is going to bring this run's verdict to you on its own: you have no turn-start delivery and have not opted in to being woken (set_wake_optin). If you end your turn now, call run_status(runId) yourself once you expect this to be done — it will not find you."
             : null;
     }
+
+    private static HeavyRunKind? _ParseKind(string? kind) => kind?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "journeys" => HeavyRunKind.Journeys,
+        "light" => HeavyRunKind.Light,
+        "build" => HeavyRunKind.Build,
+        "unit" => HeavyRunKind.Unit,
+        _ => null,
+    };
+
+    private static HeavyRunPurpose? _ParsePurpose(string? purpose) => purpose?.Trim().ToLowerInvariant() switch
+    {
+        null or "" or "explore" => HeavyRunPurpose.Explore,
+        "pre-merge" => HeavyRunPurpose.PreMerge,
+        _ => null,
+    };
 
     private static string _Error(string message) =>
         JsonSerializer.Serialize(new { ok = false, error = message }, SerializerOptions);

@@ -5,8 +5,8 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.LocalCi.Tests;
 
-// Only the two things the MCP tools actually take from the host: who called them, and what the operator said.
-// Everything else on `ICockpitHost` has a default the tools never reach.
+// Only what the MCP tools actually take from the host: who called them, what the operator said, and (AC-1535) the
+// inbox the verdict goes to. Everything else on `ICockpitHost` has a default the tools never reach.
 internal sealed class FakeCockpitHost : ICockpitHost
 {
     public string? CallerPaneId { get; set; }
@@ -16,6 +16,17 @@ internal sealed class FakeCockpitHost : ICockpitHost
     public List<ConsentRequest> Asked { get; } = [];
 
     public string? CurrentMcpCallerPaneId => CallerPaneId;
+
+    private readonly TaskCompletionSource<string> _delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // The first verdict a run delivered to a session's inbox.
+    public Task<string> Delivered => _delivered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+    public Task<bool> DeliverToSessionInboxAsync(string paneId, string kind, string body)
+    {
+        _delivered.TrySetResult(body);
+        return Task.FromResult(true);
+    }
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)
     {

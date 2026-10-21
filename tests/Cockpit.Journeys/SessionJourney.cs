@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
@@ -9,10 +10,14 @@ using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.HeavyRuns;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Worktrees;
+using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.TestSupport;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace Cockpit.Journeys;
 
@@ -21,14 +26,16 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
-    // J2: the dialog opens the pane, the composer sends, the answer is a row in that pane, busy then done (AC-1437).
-    // Stop breaks a turn off through the session control, not drawn as a failure (AC-1031, AC-1449). A failed turn
-    // offers Retry on its row (AC-728), which the pane can only do once that row came in from the event log (AC-1438).
+    // J2: the dialog opens the pane, the answer lands busy then done (AC-1437); Stop is no failure (AC-1031/1449), a
+    // failed turn offers Retry from the event log (AC-728/1438). AC-1535: four heavy runs on a busy machine: one runs,
+    // three wait with a reason, a closed session's place comes back, and the pre-merge gate starts first.
     [Fact]
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
-        await using var cockpit = JourneyHost.Desktop();
-        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        var load = new FakeMachineLoad();
+        await using var cockpit = JourneyHost.Desktop(configure: services => services.AddSingleton<IMachineResources>(load));
+        var folder = Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName;
+        var project = await cockpit.SaveProfileAndProjectAsync(folder);
         await cockpit.StartDesktopAsync();
 
         var session = await cockpit.StartSessionThroughTheDialogAsync(project);
@@ -68,6 +75,55 @@ public sealed class SessionJourney
         Assert.False(failedAfterStop);
         Assert.NotNull(failed);
         Assert.Contains(session, HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.ToList()));
+
+        var other = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var endpoint = cockpit.Services.GetServices<ICockpitInternalMcpProvider>().SelectMany(provider => provider.GetServers())
+            .Single(server => server.Name == "cockpit-session").Url ?? throw new InvalidOperationException("No session endpoint.");
+        await using var holder = await cockpit.ConnectAsPaneAsync(other.PaneId, "cockpit-session", endpoint);
+        await using var own = await cockpit.ConnectAsPaneAsync(session.PaneId, "cockpit-session", endpoint);
+        async Task<string> StartAsync(McpClient client, bool isQueued, string purpose, string command, params string[] arguments)
+        {
+            var started = await JourneyHost.CallAsync(client, "start_run", new()
+            {
+                ["workingDirectory"] = folder,
+                ["command"] = command,
+                ["arguments"] = arguments,
+                ["kind"] = "journeys",
+                ["purpose"] = purpose,
+            });
+            Assert.Equal(isQueued, started["queued"]?.GetValue<bool>() ?? false);
+            return started["runId"]?.GetValue<string>() ?? throw new InvalidOperationException("No run id.");
+        }
+
+        _ = OperatingSystem.IsWindows()
+            ? await StartAsync(holder, false, "explore", "powershell", "-NoProfile", "-Command", "Start-Sleep -Seconds 120")
+            : await StartAsync(holder, false, "explore", "sleep", "120");
+        string[] queued =
+        [
+            await StartAsync(own, true, "explore", "git", "--version"),
+            await StartAsync(own, true, "explore", "git", "--version"),
+            await StartAsync(own, true, "pre-merge", "git", "--version"),
+        ];
+        var heavy = cockpit.Services.GetServices<ISupervisedActivitySource>().Single(source => source.Label == "Heavy runs");
+        var waiting = heavy.Snapshot().Where(run => run.Details.Any(detail => detail.Label == "Waiting")).ToList();
+        Assert.Equal([queued[2], queued[0], queued[1]], waiting.Select(run => run.Id));
+        Assert.All(waiting, run => Assert.StartsWith("waiting: CPU 85%", run.Details.Single(detail => detail.Label == "Waiting").Value));
+
+        await HeadlessAvalonia.RunAsync(() => cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(other));
+        load.Set(40);
+
+        // The verdicts reach the session's inbox, attached to its next tool result in the order the runs ended.
+        List<(string RunId, string Verdict)> verdicts = [];
+        await Until.ReloadHolds(
+            async () =>
+            {
+                var result = await own.CallToolAsync("run_status", new Dictionary<string, object?> { ["runId"] = queued[0] });
+                var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+                verdicts.AddRange(Regex.Matches(text, @"Run (\w+) \('[^']*'\) finished: (\w+)").Select(match => (match.Groups[1].Value, match.Groups[2].Value)));
+            },
+            () => queued.All(runId => verdicts.Any(verdict => verdict.RunId == runId)));
+        Assert.Equal(queued[2], verdicts[0].RunId);
+        Assert.All(verdicts, verdict => Assert.Equal("Passed", verdict.Verdict));
     }
 
     // J4: a closed conversation is still in the index after a restart, and reopens as one pane resuming it with its rows;
@@ -475,6 +531,22 @@ public sealed class SessionJourney
         var words = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is null).Select(t => t.Text).ToList();
         button.Flyout.Hide();
         return words;
+    }
+
+    // The machine's load as the heavy-run queue reads it, held where the journey puts it.
+    private sealed class FakeMachineLoad : IMachineResources
+    {
+        public MachineLoad Current { get; private set; } = new(85, 8L << 30, 16L << 30);
+
+        public event Action? Sampled;
+
+        public long? FreeDiskBytes(string directory) => null;
+
+        public void Set(double cpu)
+        {
+            Current = Current with { CpuPercent = cpu };
+            Sampled?.Invoke();
+        }
     }
 
     private static void _Press(SimpleConversationHeader header, string name)

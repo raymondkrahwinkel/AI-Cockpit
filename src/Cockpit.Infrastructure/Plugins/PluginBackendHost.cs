@@ -13,6 +13,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
@@ -22,6 +23,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Health;
+using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -818,6 +820,26 @@ public class PluginBackendHost(
             ? body
             : body[..(MaxAssistantNotifyLength - AssistantNotifyTruncationMarker.Length)] + AssistantNotifyTruncationMarker;
         var delivery = inbox.Deliver($"cockpit-plugin:{pluginId}", AssistantIdentity.PaneId, kind.Trim(), bounded);
+        return Task.FromResult(delivery.Outcome != AgentMessageDeliveryOutcome.RecipientInboxFull);
+    }
+
+    // AC-1535: the same queue `start_run` uses, so a plugin's gate and a session's test run wait in one line.
+    public IHeavyRunSlot RequestHeavyRunSlot(HeavyRunRequest request) =>
+        services.GetService<HeavyRunQueue>()?.Request(request) ?? AdmittedHeavyRunSlot.Instance;
+
+    // AC-1535: a session's own inbox, with this plugin as the stated sender, bounded like the assistant's.
+    public Task<bool> DeliverToSessionInboxAsync(string paneId, string kind, string body)
+    {
+        if (string.IsNullOrWhiteSpace(paneId) || string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(body)
+            || services.GetService<IAgentMessageInbox>() is not { } inbox)
+        {
+            return Task.FromResult(false);
+        }
+
+        var bounded = body.Length <= MaxAssistantNotifyLength
+            ? body
+            : body[..(MaxAssistantNotifyLength - AssistantNotifyTruncationMarker.Length)] + AssistantNotifyTruncationMarker;
+        var delivery = inbox.Deliver($"cockpit-plugin:{pluginId}", paneId, kind.Trim(), bounded);
         return Task.FromResult(delivery.Outcome != AgentMessageDeliveryOutcome.RecipientInboxFull);
     }
 
