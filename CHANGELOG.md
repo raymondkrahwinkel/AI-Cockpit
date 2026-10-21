@@ -126,7 +126,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   profile editor kept losing that profile's provider, after which Options could neither keep track of changes nor close.
 - fixed: the assistant docked beside the sessions or in the Simple view's own column no longer draws the rounded frame
   of its floating window inside that square edge, so there is one hairline where it meets the rest of the cockpit
-  instead of two; the Simple column also starts right under the title bar instead of a strip lower.
+  instead of two; the Simple column also starts right under the title bar instead of a strip lower, and right
+  against the sidebar instead of a strip to its right.
 - fixed: in the Simple reading level a run of tool calls to one server is one step ("Used depot 4 times") instead of a
   column of identical "Used depot" lines.
 - fixed: the file preview dialog now keeps rendered markdown, source text and images the same distance from the
