@@ -1080,8 +1080,8 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
-    // Assistant threads: these three are used mid-turn or not at all, so Claude Code must not defer them behind its
-    // tool search — the assistant skipped set_thread in practice when it had to look it up first.
+    // Assistant threads: five tools the assistant reaches for mid-turn on its own, so Claude Code must not defer them
+    // behind its tool search (it skipped set_thread in practice). close_thread and reopen_thread wait for the operator's word.
     internal const string AlwaysLoadMeta = "anthropic/alwaysLoad";
 
     [McpServerTool(Name = "ask_structured_question", ReadOnly = false, Destructive = false)]
@@ -1223,7 +1223,6 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "close_thread", ReadOnly = false, Destructive = false)]
-    [McpMeta(AlwaysLoadMeta, true)]
     [Description("Closes one project thread so the rail beside the chat stays short: it leaves the rail and goes under Closed at its foot, every row of it stays (in All and on disk), and it opens again by itself when something new for that project arrives. FOR WHEN THE OPERATOR ASKS YOU TO CLOSE A THREAD. To propose closing quiet threads yourself, use suggest_closing_threads instead — that lets the operator decide with one click. Refused for General, for a thread with a question or an approval still waiting, and for a thread that is closed already, before anyone is asked. Take the project id from list_threads." + AskingCanBeSwitchedOff)]
     public async Task<string> CloseThreadAsync(
         [Description("The project id of the thread, from list_threads.")] string projectId)
@@ -1261,7 +1260,6 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "reopen_thread", ReadOnly = false, Destructive = false)]
-    [McpMeta(AlwaysLoadMeta, true)]
     [Description("Brings a closed project thread back to the rail. Needs no approval: it hides nothing and changes no row. You rarely need it — a closed thread opens again by itself when something new for its project arrives — so reach for it when the operator asks for the thread back, or when you are about to talk about a closed project at length. Take the project id from list_threads.")]
     public async Task<string> ReopenThreadAsync(
         [Description("The project id of the thread, from list_threads.")] string projectId)
@@ -1284,7 +1282,7 @@ internal sealed class AssistantAgentMcpTools(
 
     [McpServerTool(Name = "suggest_closing_threads", ReadOnly = false, Destructive = false)]
     [McpMeta(AlwaysLoadMeta, true)]
-    [Description("Puts ONE light row in the conversation asking the operator whether to close these quiet threads, with Close threads and Keep beside it — their click is the decision, so nothing else asks them. BUNDLE: name every thread you would close in one call, and a row still waiting takes in the ones you add later rather than a second row appearing. ONLY FOR A THREAD WHOSE WORK IS DONE: no session still running for the project, no question or approval waiting there, and no activity for a while (list_threads says all three). The host leaves out any thread that does not qualify and tells you which and why. Do not say the suggestion out loud as well; the row is enough.")]
+    [Description("Puts ONE light row in the conversation asking the operator whether to close these quiet threads, with Close threads and Keep beside it — their click is the decision, so nothing else asks them. BUNDLE: name every thread you would close in one call, and a row still waiting takes in the ones you add later rather than a second row appearing. ONLY FOR A THREAD WHOSE WORK IS DONE: no session still running for the project, no question or approval waiting there, and quiet for an hour or more (list_threads says all three). At a natural pause such as the end of your reply, never as its own interruption, and not again for a thread the operator chose to keep. The host leaves out any thread that does not qualify and tells you which and why. Do not say the suggestion out loud as well; the row is enough. Closing loses nothing: a closed thread keeps every row and opens again by itself when something new for its project arrives. Close or reopen one yourself (close_thread, reopen_thread) only when the operator asks.")]
     public async Task<string> SuggestClosingThreadsAsync(
         [Description("The project ids of the threads to suggest closing, from list_threads.")] string[] projectIds)
     {

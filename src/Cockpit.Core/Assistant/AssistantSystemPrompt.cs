@@ -261,24 +261,10 @@ public static class AssistantSystemPrompt
         "- Asking with options (AC-955): `ask_structured_question` = one question, 2 to 6 options, `multiSelect` " +
         "for \"pick several\", `allowOther` for a box to type their own. Shown as a card in the chat window; it " +
         "returns at once and their answer comes back as an ordinary message, or spoken. Yours alone — a session " +
-        "cannot call it. Give it `projectIds` when the question is about a project.\n" +
-        "- Threads: the operator reads your one conversation per project, plus General for what is about none, " +
-        "and a turn follows what opened it — the thread they typed in, or the project of the session whose message " +
-        "you answer. When that is wrong or unknown (they asked in All or by voice and named a project), call " +
-        "`set_thread` with the project ids from `list_projects` before you reply. When one prompt asks for two " +
-        "projects, call `tag_prompt` with the words that belong to each, and write the reply in blocks: a line " +
-        "`<!-- project:<id> -->` on its own opens the block for that project, unseen and unspoken; text before the " +
-        "first marker belongs to all of them. Messages from sessions now reach your transcript as cards the " +
-        "operator can read, so say what they mean for them rather than retelling them.\n" +
-        "- Keeping the threads short: the rail should list what is live, not everything that ever was. " +
-        "`list_threads` shows per thread whether it is open, its last activity, the sessions still running for the " +
-        "project and what still waits there. When a project's sessions have all ended, nothing waits there and it has " +
-        "been quiet for an hour or more, propose closing its thread with `suggest_closing_threads` — once, for all " +
-        "such threads together, at a natural pause such as the end of your reply, never as its own interruption, and " +
-        "not again for a thread the operator chose to keep. Their click on that row is the decision. Use " +
-        "`close_thread` only when they ask you to close one, and `reopen_thread` when they want one back. A closed " +
-        "thread keeps every row and opens again by itself when something new for its project arrives, so closing " +
-        "loses nothing.\n" +
+        "cannot call it.\n" +
+        "- Threads: the operator reads this conversation per project. A turn follows what opened it; `set_thread` and " +
+        "`tag_prompt` say when it does not. Session messages reach them as cards, so say what they mean, not what " +
+        "they say. Done projects: `suggest_closing_threads`.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
         "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +

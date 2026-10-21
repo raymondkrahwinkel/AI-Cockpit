@@ -48,6 +48,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   as one quiet line. The rail shows labels when there is room, icons when there is less (with « / » to choose, saved
   separately for the window and the dock), and a thread picker in a very narrow dock. A divider sets Questions and All
   apart from the threads (headed THREADS where labels show) and the threads from Overview, in the picker too.
+- added: for plugin authors, `AgentMessage` (`Cockpit.Core.Abstractions.Agents`) gains `SubjectPaneId`, the pane a
+  report is about when its sender is no pane, so it files under that pane's project; and `DockPanelRegistration`
+  (`Cockpit.Plugins.Abstractions.Docking`, in the UI part) takes an optional `Badge`, a count on the panel's tab in the dock rail. Both
+  default to nothing: a plugin that calls `Deliver` or registers a dock panel works unchanged.
 - added: status updates that arrive one after another fold into one line, and Questions for you keeps what you
   answered today below the open questions.
 - added: docked, the Assistant tab and the sidebar indicator count the questions waiting for you (a click on the count
