@@ -1265,6 +1265,6 @@
              panes use, so it looks and behaves identically, over this window instead of over a pane. -->
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
         <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
-                IsHitTestVisible="False"/>
+                IsHitTestVisible="False" IsVisible="{Binding DrawsOwnFrame}"/>
         </Grid>
 </UserControl>

@@ -116,6 +116,14 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
+    private static CockpitViewModel _SimpleStandWithThreads()
+    {
+        var cockpit = _SimpleStand(withAssistant: true, conversation: _AssistantThreadsConversation());
+        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
+        cockpit.SimplePage = SimplePage.Conversation;
+        return cockpit;
+    }
+
     private static CockpitViewModel _SimpleStandWithQuestions()
     {
         var cockpit = _SimpleStand(withAssistant: true);

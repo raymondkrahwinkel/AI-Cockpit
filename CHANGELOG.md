@@ -124,6 +124,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - fixed: Options no longer gets stuck when a profile uses a provider plugin that is not installed or switched off: the
   profile editor kept losing that profile's provider, after which Options could neither keep track of changes nor close.
+- fixed: the assistant docked beside the sessions or in the Simple view's own column no longer draws the rounded frame
+  of its floating window inside that square edge, so there is one hairline where it meets the rest of the cockpit
+  instead of two; the Simple column also starts right under the title bar instead of a strip lower.
 - fixed: the file preview dialog now keeps rendered markdown, source text and images the same distance from the
   dialog's edges as its header, instead of drawing markdown flush against the left edge.
 - fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of

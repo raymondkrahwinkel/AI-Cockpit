@@ -8,6 +8,14 @@ using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
+// Where the chat view stands: its own window, the Panels stand's dock rail, or the Simple stand's conversation column.
+public enum AssistantChatHost
+{
+    Floating,
+    Docked,
+    SimpleColumn,
+}
+
 // Which rail the chat can afford at its own width (voorstel § 7.2), the same ladder in the window and the dock.
 public enum AssistantRailStand
 {

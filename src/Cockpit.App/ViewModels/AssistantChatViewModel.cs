@@ -71,13 +71,23 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // AC-952: which host the chat view is sitting in — the floating window, or AC-953's dock rail. The header
     // reads it to swap Close for Undock rather than carrying two copies of its whole button row.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Host), nameof(DrawsOwnFrame))]
     private bool _isDocked;
 
     // AC-1301: whether that host is the Simple stand's conversation column — the third one, beside the floating
     // window and the dock rail. It is the only host that stand has, so the header's Dock/Undock button stands
     // down here: undocking would pop the conversation out and leave the column it fills empty.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Host), nameof(DrawsOwnFrame))]
     private bool _isSimpleViewHost;
+
+    public AssistantChatHost Host => IsSimpleViewHost ? AssistantChatHost.SimpleColumn
+        : IsDocked ? AssistantChatHost.Docked
+        : AssistantChatHost.Floating;
+
+    // Only the floating window is a card of its own. Docked and in the Simple column the view is a built-in panel: the
+    // host's edge and hairline are its frame, and a rounded one of its own would stand inside that square edge.
+    public bool DrawsOwnFrame => Host == AssistantChatHost.Floating;
 
     // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
     public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;

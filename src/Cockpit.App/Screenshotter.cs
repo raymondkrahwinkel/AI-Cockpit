@@ -377,6 +377,8 @@ internal static partial class Screenshotter
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
         // Assistant threads: the stand with no dock tab and no chip counts open questions on its assistant row.
         ["simple-view-assistant-questions"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithQuestions() },
+        // Assistant threads in the Simple stand's own column: the third host, which draws no frame of its own.
+        ["simple-view-assistant-threads"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithThreads() },
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
@@ -2637,14 +2639,18 @@ internal static partial class Screenshotter
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
-    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false, string? failedToStart = null)
+    private static ViewModels.CockpitViewModel _SimpleStand(
+        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null)
     {
-        var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
-        conversation.ActiveProfileLabel = "work";
-        conversation.Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
-        conversation.Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+        if (conversation is null)
+        {
+            conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
+            conversation.ActiveProfileLabel = "work";
+            conversation.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
+            conversation.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+        }
 
         // AC-1303: the real registry with the real registration shape, because picking a session is what hands the
         // assistant to the rail in this stand — without it the scene would draw a rail with nothing resolvable in it.

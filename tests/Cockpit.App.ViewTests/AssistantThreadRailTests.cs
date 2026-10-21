@@ -46,6 +46,22 @@ public sealed class AssistantThreadRailTests
         Assert.Equal(expected, chat.RailStand);
     }
 
+    // Only the floating window draws a frame of its own; docked and in the Simple column the host's edge is the frame.
+    [Theory]
+    [InlineData(false, false, AssistantChatHost.Floating, true)]
+    [InlineData(true, false, AssistantChatHost.Docked, false)]
+    [InlineData(true, true, AssistantChatHost.SimpleColumn, false)]
+    public void TheHost_DecidesWhetherTheViewDrawsItsOwnFrame(bool docked, bool simple, AssistantChatHost host, bool frame)
+    {
+        var (chat, _) = _Chat();
+
+        chat.IsDocked = docked;
+        chat.IsSimpleViewHost = simple;
+
+        Assert.Equal(host, chat.Host);
+        Assert.Equal(frame, chat.DrawsOwnFrame);
+    }
+
     [Fact]
     public async Task IconsOnly_IsKeptPerHost_AndWinsWhereLabelsFit()
     {
