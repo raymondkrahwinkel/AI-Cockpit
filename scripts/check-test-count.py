@@ -16,13 +16,15 @@ are ceilings:
     scripts/check-test-count.py                    # check
     scripts/check-test-count.py --update-baseline  # rewrite the ceilings to the current counts
 """
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 BASELINE_PATH = Path(__file__).parent / "test-count-baseline.txt"
-BASELINE_ON_MAIN = "origin/main:scripts/test-count-baseline.txt"
+# TEST_COUNT_MAIN points the comparison at another ref, for a local counterproof before main has case ceilings.
+BASELINE_ON_MAIN = os.environ.get("TEST_COUNT_MAIN", "origin/main") + ":scripts/test-count-baseline.txt"
 ROOTS = [Path("tests"), Path("plugins-dev")]
 UNIT = "cases"
 NEW_PROJECT_CEILING = 10
