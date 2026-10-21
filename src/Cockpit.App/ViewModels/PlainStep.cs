@@ -3,7 +3,8 @@ using System.Text.Json;
 namespace Cockpit.App.ViewModels;
 
 // AC-1530: a tool call as one step in plain words at the Simple level — what was done, what is being done, and the
-// folder it happened in, relative to the working directory. A `count` above one is a run of reads in one folder.
+// folder it happened in, relative to the working directory. A `count` above one is a run of reads in one folder, or of
+// calls to one MCP server.
 public sealed record PlainStep(string Done, string Running, string? Folder, string? FolderLabel)
 {
     public string Sentence => FolderLabel is null ? Done : $"{Done} in {FolderLabel}";
@@ -22,11 +23,16 @@ public sealed record PlainStep(string Done, string Running, string? Folder, stri
             "Bash" => new("Ran a command", "Running a command", null, null),
             "WebFetch" or "WebSearch" => new("Looked something up online", "Looking something up online", null, null),
             "Task" or "Agent" => new("Asked a helper", "Asking a helper", null, null),
-            _ when toolName?.Split("__") is ["mcp", { Length: > 0 } server, ..] => new($"Used {server}", $"Using {server}", null, null),
+            _ when ServerOf(toolName) is { } server && count > 1 => new($"Used {server} {count} times", $"Using {server}", null, null),
+            _ when ServerOf(toolName) is { } server => new($"Used {server}", $"Using {server}", null, null),
             null or "" => new("Used a tool", "Using a tool", null, null),
             _ => new($"Used {toolName}", $"Using {toolName}", null, null),
         };
     }
+
+    // The MCP server an `mcp__server__tool` call went to; null for any other call.
+    public static string? ServerOf(string? toolName) =>
+        toolName?.Split("__") is ["mcp", { Length: > 0 } server, ..] ? server : null;
 
     // The file a Read, Write or Edit-family call names, as the call wrote it; null for any other call.
     public static string? FileOf(string? toolName, string? inputJson) => toolName switch

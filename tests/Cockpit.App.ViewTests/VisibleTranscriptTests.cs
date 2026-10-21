@@ -47,6 +47,21 @@ public sealed class VisibleTranscriptTests
         Assert.Equal(vm.Transcript, vm.VisibleTranscript);
     }
 
+    // At Simple a run of calls to one MCP server is one step, so an assistant's tool calls are not a column of
+    // identical "Used <server>" lines; a call to another server starts its own.
+    [Fact]
+    public void AtSimple_ARunOfCallsToOneServer_IsOneStep()
+    {
+        var vm = _Session(ReadingLevel.Simple);
+        foreach (var tool in new[] { "mcp__agents__notify", "mcp__agents__read_inbox", "mcp__agents__notify", "mcp__depot__read" })
+        {
+            vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = $"t{Guid.NewGuid()}", ToolName = tool, InputJson = "{}" });
+        }
+
+        Assert.Equal([("mcp__agents__notify", 3), ("mcp__depot__read", 1)],
+            vm.VisibleTranscript.Select(row => (row.ToolName, row.IsInGroup ? row.GroupCount : 1)));
+    }
+
     [Fact]
     public void AtFocus_HiddenRowsAreNotItems_AndTheRestKeepTranscriptOrder()
     {

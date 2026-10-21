@@ -1249,10 +1249,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    // What a row folds with at the shown level: any auto tool call at Focus, a read from the same folder at Simple.
+    // What a row folds with at the shown level: any auto tool call at Focus; at Simple a read from the same folder, or
+    // a call to the same MCP server (an assistant's run of tool calls would otherwise stand as a column of identical lines).
     private string? _RunKey(TranscriptEntryViewModel entry) => !entry.IsAutoTool ? null
         : _ShownReadingLevel == ReadingLevel.Focus ? string.Empty
         : entry.ToolName == "Read" && PlainStep.FileOf(entry.ToolName, entry.InputJson) is { } file ? Path.GetDirectoryName(file) ?? string.Empty
+        : PlainStep.ServerOf(entry.ToolName) is { } server ? $"mcp:{server}"
         : null;
 
     private static void _ClearGroup(TranscriptEntryViewModel entry)
