@@ -175,7 +175,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         var startedAt = DateTimeOffset.UtcNow;
         var commit = await head.ReadAsync(request.ProjectRoot, cancellationToken);
 
-        // AC-1535: the operator's own run never waits in the queue, but holds a place there so agents' runs wait for it.
+        // AC-1535: the operator's own run never waits in the queue, but holds a place so agents' runs wait for it.
         var runId = Guid.NewGuid().ToString("n");
         await using var slot = host.RequestHeavyRunSlot(
             new HeavyRunRequest(runId, HeavyRunKind.Gate, HeavyRunPurpose.Operator, "operator", request.JobId, request.ProjectRoot));

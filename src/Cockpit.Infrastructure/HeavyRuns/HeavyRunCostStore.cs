@@ -14,20 +14,20 @@ public sealed class HeavyRunCostStore : ISingletonService
     private readonly SemaphoreSlim _writing = new(1, 1);
     private Dictionary<string, HeavyRunCost>? _costs;
 
-    public HeavyRunCost? Get(HeavyRunKind kind, string workingDirectory)
+    public HeavyRunCost? Get(string key)
     {
         lock (_gate)
         {
-            return _Costs().GetValueOrDefault(Key(kind, workingDirectory));
+            return _Costs().GetValueOrDefault(key);
         }
     }
 
-    public async Task RecordAsync(HeavyRunKind kind, string workingDirectory, HeavyRunCost cost)
+    public async Task RecordAsync(string key, HeavyRunCost cost)
     {
         string json;
         lock (_gate)
         {
-            _Costs()[Key(kind, workingDirectory)] = cost;
+            _Costs()[key] = cost;
             json = JsonSerializer.Serialize(_Costs());
         }
 
@@ -42,7 +42,7 @@ public sealed class HeavyRunCostStore : ISingletonService
         }
     }
 
-    // A worktree shares its repository's costs: its `.git` file points into the main checkout's `.git/worktrees/<name>`.
+    // A worktree shares its repository's costs: its `.git` file points into the checkout's `.git/worktrees/<name>`.
     public static string Key(HeavyRunKind kind, string workingDirectory)
     {
         for (var directory = new DirectoryInfo(Path.GetFullPath(workingDirectory)); directory is not null; directory = directory.Parent)
@@ -53,7 +53,7 @@ public sealed class HeavyRunCostStore : ISingletonService
                 return $"{kind}|{directory.FullName}";
             }
 
-            if (File.Exists(git) && File.ReadAllText(git).Trim() is var pointer && pointer.StartsWith("gitdir:", StringComparison.Ordinal))
+            if (File.Exists(git) && _ReadPointer(git) is { } pointer && pointer.StartsWith("gitdir:", StringComparison.Ordinal))
             {
                 var worktreeGitDir = new DirectoryInfo(pointer["gitdir:".Length..].Trim());
                 return $"{kind}|{worktreeGitDir.Parent?.Parent?.Parent?.FullName ?? directory.FullName}";
@@ -61,6 +61,18 @@ public sealed class HeavyRunCostStore : ISingletonService
         }
 
         return $"{kind}|{Path.GetFullPath(workingDirectory)}";
+    }
+
+    private static string? _ReadPointer(string gitFile)
+    {
+        try
+        {
+            return File.ReadAllText(gitFile).Trim();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private Dictionary<string, HeavyRunCost> _Costs()

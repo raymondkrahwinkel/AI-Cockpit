@@ -168,8 +168,6 @@ internal sealed class LocalCiMcpTools(
                 return;
             }
 
-            var commit = await head.ReadAsync(chosen.ProjectRoot, CancellationToken.None);
-
             // Only the Kill button and the queue (owner gone, stopped by hand) may stop the run once it started.
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(slot.Revoked);
             tracker.Begin(runId, chosen.ProjectRoot, chosen.JobId, DateTimeOffset.UtcNow, () =>
@@ -178,9 +176,11 @@ internal sealed class LocalCiMcpTools(
                 return Task.CompletedTask;
             });
 
+            string? commit = null;
             LocalRunResult result;
             try
             {
+                commit = await head.ReadAsync(chosen.ProjectRoot, CancellationToken.None);
                 result = await runner.RunAsync(
                     chosen,
                     _ => { },
@@ -197,13 +197,13 @@ internal sealed class LocalCiMcpTools(
                 result = LocalRunResult.DidNotRun(chosen.WorkflowPath, chosen.JobId, outcome, reason);
             }
 
+            // The verdict goes out before anything else may fail: a session told to end its turn waits on nothing else.
             tracker.Complete(chosen.ProjectRoot, result, commit, DateTimeOffset.UtcNow, runId);
+            await host.DeliverToSessionInboxAsync(paneId, "local-check", McpJson.Of(_Report(runId, result)));
             if (result.Outcome is LocalRunOutcome.Failed or LocalRunOutcome.TimedOut)
             {
                 await slot.ReportFailureAsync(result.LogTail);
             }
-
-            await host.DeliverToSessionInboxAsync(paneId, "local-check", McpJson.Of(_Report(runId, result)));
         }
     }
 

@@ -420,7 +420,7 @@ public interface ICockpitHost
 
     /// <summary>
     /// Puts a message in the inbox of the session named by <paramref name="paneId"/> (AC-1535), with this plugin as
-    /// the stated sender — how a plugin hands a session the verdict of work it started for it without holding its turn.
+    /// the stated sender — how a plugin hands a session the verdict of work it started without holding its turn.
     /// </summary>
     /// <remarks>
     /// The session's own wake consent decides whether a turn is started for it. Never throws; false when the inbox

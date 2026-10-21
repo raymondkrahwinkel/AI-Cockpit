@@ -169,12 +169,12 @@ internal sealed class SessionStatusTools(
     [Description("Reports what a run started with start_run is doing, or what it finished with — the recovery path for when that run's inbox delivery never reached you (a wake refused, an inbox already full, a turn that ended before it arrived). Never starts or restarts anything.")]
     public string RunStatus([Description("The run id start_run returned.")] string runId)
     {
-        if (queue?.WaitReasonFor(runId) is { } reason)
+        if (queue?.StatusOf(runId) is { Status: "queued" } queued)
         {
-            return JsonSerializer.Serialize(new { ok = true, runId, status = "queued", reason }, SerializerOptions);
+            return JsonSerializer.Serialize(new { ok = true, runId, status = "queued", reason = queued.Reason }, SerializerOptions);
         }
 
-        if (tracker.IsRunning(runId))
+        if (tracker.IsRunning(runId) || queue?.StatusOf(runId) is { Status: "running" })
         {
             return JsonSerializer.Serialize(new { ok = true, runId, status = "running" }, SerializerOptions);
         }
@@ -301,13 +301,12 @@ internal sealed class SessionStatusTools(
                 result = new TrackedRunResult(-1, string.Empty, exception.Message, TimeSpan.Zero, TimedOut: false);
             }
 
+            tracker.Complete(runId, result, DateTimeOffset.UtcNow);
+            inbox.Deliver(RunSenderPaneId, caller, "run", _Verdict(runId, label, result));
             if (result.TimedOut || result.ExitCode != 0)
             {
                 await slot.ReportFailureAsync(result.StandardOutput + result.StandardError).ConfigureAwait(false);
             }
-
-            tracker.Complete(runId, result, DateTimeOffset.UtcNow);
-            inbox.Deliver(RunSenderPaneId, caller, "run", _Verdict(runId, label, result));
         }
     }
 

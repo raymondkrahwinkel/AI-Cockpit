@@ -27,9 +27,9 @@ internal interface ILocalJobRunner
         CancellationToken cancellationToken);
 }
 
-// The order a local run is decided in: is this machine able, is this job allowed — and only then act. Whether the
-// machine has room for it is the host's heavy-run queue's call (AC-1535), asked before this runs. Each question is answered before the next is asked, so a refusal always names the first thing wrong
-// rather than whichever check happened to run last.
+// The order a local run is decided in: is this machine able, is this job allowed — and only then act, each answered
+// before the next is asked so a refusal names the first thing wrong. Whether the machine has room is the host's
+// heavy-run queue's call (AC-1535), asked before this runs.
 internal sealed class LocalJobRunner(
     ILocalCiRuntime runtime,
     IStreamingCliRunner cli,

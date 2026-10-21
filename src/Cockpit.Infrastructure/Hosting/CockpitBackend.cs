@@ -271,7 +271,7 @@ public sealed class CockpitBackend
             worktreeReconciler.Start();
         }
 
-        // AC-1535: the machine's load, sampled for the heavy-run queue from the start, so its first decision is not a guess.
+        // AC-1535: the machine's load, sampled from the start, so the heavy-run queue's first decision is no guess.
         Services.GetService<MachineResources>()?.Start();
 
         // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at

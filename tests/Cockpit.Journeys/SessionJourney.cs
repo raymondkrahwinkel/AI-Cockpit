@@ -26,9 +26,9 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
-    // J2: the dialog opens the pane, the answer lands busy then done (AC-1437); Stop is no failure (AC-1031, AC-1449), a
-    // failed turn offers Retry from the event log (AC-728, AC-1438). AC-1535: four heavy runs on a loaded machine — one
-    // runs, three wait with a reason, a closed session's place comes back, and the pre-merge gate starts first.
+    // J2: the dialog opens the pane, the answer lands busy then done (AC-1437); Stop is no failure (AC-1031/1449), a
+    // failed turn offers Retry from the event log (AC-728/1438). AC-1535: four heavy runs on a busy machine: one runs,
+    // three wait with a reason, a closed session's place comes back, and the pre-merge gate starts first.
     [Fact]
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
@@ -112,7 +112,7 @@ public sealed class SessionJourney
         await HeadlessAvalonia.RunAsync(() => cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(other));
         load.Set(40);
 
-        // The verdicts reach the session's inbox, which the cockpit attaches to its next tool result, in the order the runs ended.
+        // The verdicts reach the session's inbox, attached to its next tool result in the order the runs ended.
         List<(string RunId, string Verdict)> verdicts = [];
         await Until.ReloadHolds(
             async () =>

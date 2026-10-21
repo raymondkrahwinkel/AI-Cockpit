@@ -24,6 +24,9 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
     private bool _hasCpu;
     private bool _disposed;
 
+    // An int, not a bool: the timer can fire again while a slow tick is still running on another thread.
+    private int _sampling;
+
     public MachineResources(ILogger<MachineResources>? logger = null)
     {
         _logger = logger ?? NullLogger<MachineResources>.Instance;
@@ -65,16 +68,24 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
 
     private void _OnTick()
     {
+        if (Interlocked.CompareExchange(ref _sampling, 1, 0) != 0)
+        {
+            return;
+        }
+
         try
         {
             _Sample();
+            Sampled?.Invoke();
         }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Sampling the machine's load failed; the next sample will try again.");
         }
-
-        Sampled?.Invoke();
+        finally
+        {
+            Interlocked.Exchange(ref _sampling, 0);
+        }
     }
 
     private void _Sample()
@@ -83,7 +94,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         var (available, total) = _ReadMemory();
         var previous = Current;
 
-        // The first reading of each is taken as it is: averaging up from zero would read an idle machine for half a minute.
+        // The first reading of each is taken as is: averaging up from zero reads an idle machine for half a minute.
         var cpuPercent = cpu is not { } measured ? previous.CpuPercent
             : _hasCpu ? previous.CpuPercent + (Smoothing * (measured - previous.CpuPercent))
             : measured;

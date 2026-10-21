@@ -8,15 +8,17 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.HeavyRuns;
 
-// AC-1535: the machine-wide queue for heavy runs — `start_run` and local-ci's gate both take their place here. Who
-// gets in is `HeavyRunAdmission`'s call on the measured load; this keeps the places, gives them back (run over, owner
-// gone, stopped by hand), learns what each kind cost, and is the "Heavy runs" status item. In memory: a restart empties it.
+// AC-1535: the machine-wide queue for heavy runs; `start_run` and local-ci's gate both take their place here. Who gets
+// in is `HeavyRunAdmission`'s call; this keeps the places, gives them back (run over, owner gone, stopped by hand),
+// learns what each kind cost, and is the "Heavy runs" status item. In memory: a restart empties it.
 public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService, IDisposable
 {
-    // As long as the load average needs to show a just-admitted run: until then its expected cost is counted on top.
+    // As long as the load average needs to show a just-admitted run: until then its expected cost is counted on top,
+    // and a run shorter than this never moved the average enough to learn its cost from.
     private static readonly TimeSpan WarmUp = TimeSpan.FromSeconds(30);
 
     private readonly object _gate = new();
+    private readonly SemaphoreSlim _settingsAccess = new(1, 1);
     private readonly List<Slot> _waiting = [];
     private readonly List<Slot> _running = [];
     private readonly IMachineResources _resources;
@@ -52,12 +54,16 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             return AdmittedHeavyRunSlot.Instance;
         }
 
-        var slot = new Slot(this, request, DateTimeOffset.UtcNow);
+        // Read from disk here, outside the lock: a slow volume must not hold up the status bar or another request.
+        var slot = new Slot(this, request, DateTimeOffset.UtcNow, HeavyRunCostStore.Key(request.Kind, request.WorkingDirectory))
+        {
+            FreeDiskBytes = _resources.FreeDiskBytes(request.WorkingDirectory),
+        };
         lock (_gate)
         {
             if (request.Purpose == HeavyRunPurpose.Operator)
             {
-                slot.Admit(_resources.Current, _resources.FreeDiskBytes(request.WorkingDirectory), null, DateTimeOffset.UtcNow);
+                slot.Admit(_resources.Current, null, DateTimeOffset.UtcNow);
                 _running.Add(slot);
             }
             else
@@ -67,18 +73,22 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         }
 
         slot.Started();
-
         _Pump();
         _ = _RefreshSettingsAsync();
         return slot;
     }
 
-    // Why a queued run is still waiting, for `run_status`; null when it is not waiting (running, finished or unknown).
-    public string? WaitReasonFor(string runId)
+    // What `run_status` reports for a run the queue holds: "queued" with its reason, or "running"; null otherwise.
+    public (string Status, string? Reason)? StatusOf(string runId)
     {
         lock (_gate)
         {
-            return _waiting.FirstOrDefault(slot => slot.Request.RunId == runId)?.WaitReason;
+            if (_waiting.FirstOrDefault(slot => slot.Request.RunId == runId) is { } waiting)
+            {
+                return ("queued", waiting.WaitReason);
+            }
+
+            return _running.Any(slot => slot.Request.RunId == runId) ? ("running", null) : null;
         }
     }
 
@@ -120,14 +130,38 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
 
     private void _OnSampled()
     {
+        try
+        {
+            _Tick();
+        }
+        catch (Exception exception)
+        {
+            // Raised on the sampler's timer thread: an escape there takes the cockpit down, a skipped tick does not.
+            _logger.LogError(exception, "The heavy-run queue failed to look at its runs; the next sample will try again.");
+        }
+    }
+
+    private void _Tick()
+    {
         var load = _resources.Current;
         var live = _live?.LiveSessionIds;
+        List<Slot> held;
+        lock (_gate)
+        {
+            held = [.. _waiting, .. _running];
+        }
+
+        foreach (var slot in held)
+        {
+            slot.FreeDiskBytes = _resources.FreeDiskBytes(slot.Request.WorkingDirectory);
+        }
+
         List<Slot> gone = [];
         lock (_gate)
         {
             foreach (var slot in _running)
             {
-                slot.Observe(load, _resources.FreeDiskBytes(slot.Request.WorkingDirectory));
+                slot.Observe(load);
             }
 
             // A place belongs to the session that asked for it: once that session is gone, so is its place.
@@ -160,8 +194,8 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
                     slot.Request.Kind.ToString().ToLowerInvariant(),
                     slot.Request.Purpose == HeavyRunPurpose.PreMerge,
                     slot.EnqueuedAt,
-                    _costs.Get(slot.Request.Kind, slot.Request.WorkingDirectory),
-                    _resources.FreeDiskBytes(slot.Request.WorkingDirectory))).ToList();
+                    _costs.Get(slot.CostKey),
+                    slot.FreeDiskBytes)).ToList();
                 var decision = HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count > 0, now);
                 if (decision.Admit is not { } index)
                 {
@@ -176,7 +210,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
 
                 var slot = _waiting[index];
                 _waiting.RemoveAt(index);
-                slot.Admit(_resources.Current, _resources.FreeDiskBytes(slot.Request.WorkingDirectory), candidates[index].Cost, now);
+                slot.Admit(_resources.Current, candidates[index].Cost, now);
                 _running.Add(slot);
                 admitted.Add(slot);
             }
@@ -221,9 +255,16 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         }
 
         slot.Abandon();
-        if (wasRunning && slot.Measured() is { } cost)
+        if (wasRunning && slot.Measured(DateTimeOffset.UtcNow, WarmUp) is { } cost)
         {
-            await _costs.RecordAsync(slot.Request.Kind, slot.Request.WorkingDirectory, cost).ConfigureAwait(false);
+            try
+            {
+                await _costs.RecordAsync(slot.CostKey, cost).ConfigureAwait(false);
+            }
+            catch (IOException exception)
+            {
+                _logger.LogWarning(exception, "Saving a heavy run's measured cost failed; the next run measures it again.");
+            }
         }
 
         _Pump();
@@ -233,37 +274,56 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
     // machine was that busy, lowers the ceilings one step — never below the floor.
     private async Task _ReportFailureAsync(Slot slot, string output)
     {
-        if (!HeavyRunAdmission.LooksOverloaded(output) || slot.PeakCpuPercent <= _settings.OverloadedAbovePercent)
+        if (!HeavyRunAdmission.LooksOverloaded(output))
         {
             return;
         }
 
-        var lowered = _settings.Lowered();
-        if (lowered == _settings)
+        await _settingsAccess.WaitAsync().ConfigureAwait(false);
+        try
         {
-            return;
-        }
+            var lowered = _settings.Lowered();
+            if (slot.PeakCpuPercent <= _settings.OverloadedAbovePercent || lowered == _settings)
+            {
+                return;
+            }
 
-        _settings = lowered;
-        _logger.LogWarning(
-            "A heavy run failed like an overloaded machine at {Cpu:0}% CPU; the ceilings are now {CpuCeiling:0}% CPU and {MemoryCeiling:0}% memory.",
-            slot.PeakCpuPercent,
-            lowered.CpuCeilingPercent,
-            lowered.MemoryCeilingPercent);
-        await _settingsStore.SaveAsync(lowered).ConfigureAwait(false);
+            await _settingsStore.SaveAsync(lowered).ConfigureAwait(false);
+            _settings = lowered;
+            _logger.LogWarning(
+                "A heavy run failed like an overloaded machine at {Cpu:0}% CPU; the ceilings are now {CpuCeiling:0}% CPU and {MemoryCeiling:0}% memory.",
+                slot.PeakCpuPercent,
+                lowered.CpuCeilingPercent,
+                lowered.MemoryCeilingPercent);
+        }
+        catch (IOException exception)
+        {
+            _logger.LogWarning(exception, "Lowering the heavy-run ceilings failed; they stay where they were.");
+        }
+        finally
+        {
+            _settingsAccess.Release();
+        }
     }
 
     private async Task _RefreshSettingsAsync()
     {
+        await _settingsAccess.WaitAsync().ConfigureAwait(false);
         try
         {
             _settings = await _settingsStore.LoadAsync().ConfigureAwait(false);
-            _Pump();
         }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Reading the heavy-run settings failed; the queue keeps its current ceilings.");
+            return;
         }
+        finally
+        {
+            _settingsAccess.Release();
+        }
+
+        _Pump();
     }
 
     private static string _Since(DateTimeOffset startedAt)
@@ -272,7 +332,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         return elapsed.TotalMinutes >= 1 ? $"{(int)elapsed.TotalMinutes}m {elapsed.Seconds}s" : $"{elapsed.Seconds}s";
     }
 
-    private sealed class Slot(HeavyRunQueue queue, HeavyRunRequest request, DateTimeOffset enqueuedAt) : IHeavyRunSlot
+    private sealed class Slot(HeavyRunQueue queue, HeavyRunRequest request, DateTimeOffset enqueuedAt, string costKey) : IHeavyRunSlot
     {
         private readonly TaskCompletionSource _admitted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly CancellationTokenSource _revoked = new();
@@ -284,6 +344,10 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         public HeavyRunRequest Request { get; } = request;
 
         public DateTimeOffset EnqueuedAt { get; } = enqueuedAt;
+
+        public string CostKey { get; } = costKey;
+
+        public long? FreeDiskBytes { get; set; }
 
         public DateTimeOffset AdmittedAt { get; private set; }
 
@@ -297,10 +361,10 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
 
         public CancellationToken Revoked => _revoked.Token;
 
-        public void Admit(MachineLoad load, long? freeDisk, HeavyRunCost? expected, DateTimeOffset now)
+        public void Admit(MachineLoad load, HeavyRunCost? expected, DateTimeOffset now)
         {
-            (_baseline, _baselineFreeDisk, ExpectedCost, AdmittedAt, WaitReason) = (load, freeDisk, expected, now, null);
-            (PeakCpuPercent, _peakUsedMemory, _lowestFreeDisk) = (load.CpuPercent, load.UsedMemoryBytes, freeDisk);
+            (_baseline, _baselineFreeDisk, ExpectedCost, AdmittedAt, WaitReason) = (load, FreeDiskBytes, expected, now, null);
+            (PeakCpuPercent, _peakUsedMemory, _lowestFreeDisk) = (load.CpuPercent, load.UsedMemoryBytes, FreeDiskBytes);
         }
 
         public void Started()
@@ -311,21 +375,22 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             }
         }
 
-        public void Observe(MachineLoad load, long? freeDisk)
+        public void Observe(MachineLoad load)
         {
             PeakCpuPercent = Math.Max(PeakCpuPercent, load.CpuPercent);
             _peakUsedMemory = Math.Max(_peakUsedMemory, load.UsedMemoryBytes);
-            _lowestFreeDisk = freeDisk is { } free && (_lowestFreeDisk is null || free < _lowestFreeDisk) ? free : _lowestFreeDisk;
+            _lowestFreeDisk = FreeDiskBytes is { } free && (_lowestFreeDisk is null || free < _lowestFreeDisk) ? free : _lowestFreeDisk;
         }
 
         // What this run added at its peak over the load it was admitted at; with others running beside it this also
-        // counts them, which errs towards waiting rather than towards a failed gate.
-        public HeavyRunCost? Measured() => _baseline is { } baseline
-            ? new HeavyRunCost(
-                Math.Max(0, PeakCpuPercent - baseline.CpuPercent),
-                Math.Max(0, _peakUsedMemory - baseline.UsedMemoryBytes),
-                _baselineFreeDisk is { } before && _lowestFreeDisk is { } lowest ? Math.Max(0, before - lowest) : 0)
-            : null;
+        // counts them, which errs towards waiting. A stopped run, or one too short to show, teaches nothing.
+        public HeavyRunCost? Measured(DateTimeOffset now, TimeSpan warmUp) =>
+            _baseline is { } baseline && !_revoked.IsCancellationRequested && now - AdmittedAt >= warmUp
+                ? new HeavyRunCost(
+                    Math.Max(0, PeakCpuPercent - baseline.CpuPercent),
+                    Math.Max(0, _peakUsedMemory - baseline.UsedMemoryBytes),
+                    _baselineFreeDisk is { } before && _lowestFreeDisk is { } lowest ? Math.Max(0, before - lowest) : 0)
+                : null;
 
         public void Revoke()
         {
