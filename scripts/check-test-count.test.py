@@ -70,7 +70,9 @@ def problems(current, ceilings=ceilings, main=main):
 
 check("on the ceiling is green", problems(dict(main)), [])
 check("one more in Core is red", problems({**main, "tests/Cockpit.Core.Tests": 11}), ["tests/Cockpit.Core.Tests"])
-check("one less in Core is green", problems({**main, "tests/Cockpit.Core.Tests": 9}), [])
+check("one less in Core, ceiling kept, is red", problems({**main, "tests/Cockpit.Core.Tests": 9}), ["tests/Cockpit.Core.Tests"])
+lowered = {**main, "tests/Cockpit.Core.Tests": 9}
+check("one less in Core, ceiling lowered, is green", problems(lowered, lowered), [])
 raised = {**main, "tests/Cockpit.Core.Tests": 11}
 check("one more with the ceiling raised is red against main", problems(raised, raised), ["tests/Cockpit.Core.Tests"])
 check("the same raise before main has case ceilings is green", problems(raised, raised, None), [])

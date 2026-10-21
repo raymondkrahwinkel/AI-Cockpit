@@ -4,14 +4,15 @@
 Counts the test cases per test project under tests/ and plugins-dev/*.Tests: every `[Fact]`/`[Theory]`
 method, variants included (`WindowsFact`, `PosixFact`, `SkippableTheory` ...), counts once per
 `[InlineData]` row it carries, and once when it has none. The rows in scripts/test-count-baseline.txt
-are ceilings:
+are ceilings, and pinned:
 
     A project above its ceiling:                     red.
     A ceiling above the one on origin/main:          red. Ceilings only go down.
     A project origin/main has no ceiling for:        its ceiling is at most NEW_PROJECT_CEILING.
     A project in HARD_CEILINGS above that ceiling:   red, unless origin/main already held it at least
                                                      that high (then it may only come down).
-    A project below its ceiling:                     green; --update-baseline lowers the ceiling.
+    A project below its ceiling:                     red; lower the ceiling with it (--update-baseline),
+                                                     so the room cannot be refilled later.
 
     scripts/check-test-count.py                    # check
     scripts/check-test-count.py --update-baseline  # rewrite the ceilings to the current counts
@@ -51,7 +52,7 @@ def project_of(path: Path):
 
 def count_cases(text):
     """Test cases in one source file: per run of attribute lines holding a test attribute, its InlineData rows or 1."""
-    # ponytail: MemberData/ClassData count as one case; their rows only exist at run time (nightly TRX).
+    # MemberData/ClassData count as one case; their rows only exist at run time.
     cases, block = 0, []
     for line in text.splitlines() + [""]:
         if line.lstrip().startswith("["):
@@ -109,7 +110,7 @@ def compare(current, ceilings, main):
         if now > ceiling:
             problems.append(f"{project}: {now} test cases, ceiling {ceiling} (+{now - ceiling}). Tests only go down.")
         elif now < ceiling:
-            notes.append(f"{project}: {now} test cases, ceiling {ceiling}. Lower it: scripts/check-test-count.py --update-baseline")
+            problems.append(f"{project}: {now} test cases, ceiling {ceiling}. Lower it: scripts/check-test-count.py --update-baseline")
         if main is None:
             continue
         on_main = main.get(project)
@@ -147,7 +148,7 @@ def main():
         print(line)
     if problems:
         sys.exit(1)
-    print(f"ok: {sum(current.values())} test cases in {len(current)} projects, none above its ceiling.")
+    print(f"ok: {sum(current.values())} test cases in {len(current)} projects, all on their ceiling.")
 
 
 if __name__ == "__main__":

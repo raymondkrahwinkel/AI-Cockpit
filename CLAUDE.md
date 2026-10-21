@@ -70,8 +70,9 @@ Zie AC-294.
 
 Een ticket voegt 0 à 3 nieuwe testmethodes toe, en noemt per test de laag (journey of een categorie van
 laag 2). `scripts/test-count-baseline.txt` houdt per testproject een plafond van uitgevoerde gevallen
-(elke `InlineData`-rij telt mee). Een plafond mag alleen omlaag: een PR die er een verhoogt boven dat van
-`origin/main` is rood. Wil je een test toevoegen, haal er dan eerst een weg. Een nieuw testproject start
-met een plafond van hooguit 10; Journeys hebben een hard plafond van 20 (desktop 10, server 10).
+(elke `InlineData`-rij telt mee), en de telling moet precies op dat plafond staan. Haal je tests weg,
+verlaag de rij dan in dezelfde PR. Een PR die een rij boven die op `origin/main` zet, is rood: wil je een
+test toevoegen, haal er dan in hetzelfde project een weg. Een nieuw testproject start met een plafond van
+hooguit 10. Journeys hebben een hard plafond van 20 (desktop 10, server 10).
 
 Zie AC-1614.
