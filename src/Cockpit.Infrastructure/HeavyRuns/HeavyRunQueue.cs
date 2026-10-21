@@ -16,6 +16,8 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
     // As long as the load average needs to show a just-admitted run: until then its expected cost is counted on top.
     private static readonly TimeSpan WarmUp = TimeSpan.FromSeconds(30);
 
+    private static readonly bool KeepGonePlaces = true;
+
     private readonly object _gate = new();
     private readonly List<Slot> _waiting = [];
     private readonly List<Slot> _running = [];
@@ -131,7 +133,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             }
 
             // A place belongs to the session that asked for it: once that session is gone, so is its place.
-            if (live is not null)
+            if (live is not null && !KeepGonePlaces)
             {
                 gone = [.. _waiting.Concat(_running)
                     .Where(slot => slot.Request.Purpose != HeavyRunPurpose.Operator && !live.Contains(slot.Request.PaneId))];
