@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for scripts/check-test-count.py: the counting and the three verdicts (higher, lower, growth).
+"""Tests for scripts/check-test-count.py: the case counting and the ceiling verdicts.
 
     scripts/check-test-count.test.py
 """
@@ -38,6 +38,8 @@ SOURCE = """
     [InlineData(2)]
     public void C(int x) {}
     [SkippableTheory, Trait("a", "b")]
+    // why
+    [InlineData(3)]
     public void D(int x) {}
     // [Fact] in a comment
     var s = "[Fact]";
@@ -48,36 +50,41 @@ with tempfile.TemporaryDirectory() as tmp:
     os.chdir(tmp)
     write(Path("."), "tests/Cockpit.Core.Tests/Sub/X.cs", SOURCE)
     write(Path("."), "tests/Cockpit.Core.Tests/obj/Skipped.cs", "[Fact]")
-    write(Path("."), "plugins-dev/Cockpit.Plugin.Foo.Tests/Y.cs", "[Fact]\n[Fact]")
+    write(Path("."), "plugins-dev/Cockpit.Plugin.Foo.Tests/Y.cs", "[Fact]\nvoid A() {}\n[Fact]\nvoid B() {}")
     write(Path("."), "plugins-dev/Cockpit.Plugin.Foo/Z.cs", "[Fact]")
     counts = gate.count_tests([Path("tests"), Path("plugins-dev")])
-    # Fact, WindowsFact, Theory, SkippableTheory; not the comment, the string or obj/
+    # Fact, WindowsFact, Theory x2 InlineData, SkippableTheory x1 past a comment; not the comment, the string or obj/
     check("counts variants per project", counts, {
-        "tests/Cockpit.Core.Tests": 4,
+        "tests/Cockpit.Core.Tests": 5,
         "plugins-dev/Cockpit.Plugin.Foo.Tests": 2,
     })
     os.chdir(here)  # Windows cannot remove the current directory
 
-base = {"tests/Cockpit.Core.Tests": 10, "tests/Cockpit.Journeys": 3}
-growth = {"tests/Cockpit.Journeys"}
+main = {"tests/Cockpit.Core.Tests": 10, "tests/Cockpit.Journeys": 25}
+ceilings = dict(main)
 
 
-def problems(current):
-    return [p.split(":")[0] for p in gate.compare(current, base, growth)[0]]
+def problems(current, ceilings=ceilings, main=main):
+    return [p.split(":")[0] for p in gate.compare(current, ceilings, main)[0]]
 
 
-check("equal is green", problems(dict(base)), [])
-check("one more in Core is red", problems({**base, "tests/Cockpit.Core.Tests": 11}), ["tests/Cockpit.Core.Tests"])
-check("one less in Core, baseline kept, is red", problems({**base, "tests/Cockpit.Core.Tests": 9}), ["tests/Cockpit.Core.Tests"])
-check("one more in Journeys is green", problems({**base, "tests/Cockpit.Journeys": 4}), [])
-check("one less in Journeys is red", problems({**base, "tests/Cockpit.Journeys": 2}), ["tests/Cockpit.Journeys"])
-check("a new project is red", problems({**base, "tests/Cockpit.New.Tests": 1}), ["tests/Cockpit.New.Tests"])
-check("a vanished project is red", problems({"tests/Cockpit.Core.Tests": 10}), ["tests/Cockpit.Journeys"])
+check("on the ceiling is green", problems(dict(main)), [])
+check("one more in Core is red", problems({**main, "tests/Cockpit.Core.Tests": 11}), ["tests/Cockpit.Core.Tests"])
+check("one less in Core is green", problems({**main, "tests/Cockpit.Core.Tests": 9}), [])
+raised = {**main, "tests/Cockpit.Core.Tests": 11}
+check("one more with the ceiling raised is red against main", problems(raised, raised), ["tests/Cockpit.Core.Tests"])
+check("the same raise before main has case ceilings is green", problems(raised, raised, None), [])
+check("Journeys above the hard ceiling, held on main, is green", problems(dict(main)), [])
+check("Journeys raised above the hard ceiling is red twice",
+      problems({**main, "tests/Cockpit.Journeys": 26}, {**main, "tests/Cockpit.Journeys": 26}),
+      ["tests/Cockpit.Journeys", "tests/Cockpit.Journeys"])
+new = {**main, "tests/Cockpit.New.Tests": 11}
+check("a new project above 10 is red", problems(new, new), ["tests/Cockpit.New.Tests"])
+new10 = {**main, "tests/Cockpit.New.Tests": 10}
+check("a new project at 10 is green", problems(new10, new10), [])
 
-with tempfile.TemporaryDirectory() as tmp:
-    f = Path(tmp) / "b.txt"
-    f.write_text("# c\nallow-growth\ttests/J\ntests/A\t4\n", encoding="utf-8")
-    check("baseline parses", gate.load_baseline(f), ({"tests/A": 4}, {"tests/J"}))
+check("baseline parses", gate.parse_baseline("# c\nunit\tcases\ntests/A\t4\n"), {"tests/A": 4})
+check("a method baseline is no case baseline", gate.parse_baseline("allow-growth\ttests/J\ntests/A\t4\n"), None)
 
 if failures:
     print("\n".join(failures))
