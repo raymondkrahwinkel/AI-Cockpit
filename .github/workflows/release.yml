@@ -71,6 +71,8 @@ jobs:
             os: windows-latest
           - rid: osx-arm64
             os: macos-latest
+          - rid: osx-x64
+            os: macos-15-intel
 
     runs-on: ${{ matrix.os }}
 
@@ -111,16 +113,18 @@ jobs:
           mkdir -p artifacts
           version="${{ steps.version.outputs.version }}"
           case "${{ matrix.rid }}" in
-            osx-arm64)
-              scripts/package-macos.sh arm64 "$version"
+            osx-arm64|osx-x64)
+              arch="${{ matrix.rid }}"
+              arch="${arch#osx-}"
+              scripts/package-macos.sh "$arch" "$version"
 
               # The .dmg for a person (open, drag onto Applications), the zipped bundle for automation.
-              mv artifacts/macos/*.dmg "artifacts/ai-cockpit-$version-macos-arm64.dmg"
+              mv artifacts/macos/*.dmg "artifacts/ai-cockpit-$version-macos-$arch.dmg"
 
               # ditto, not zip: it keeps the bundle's symlinks and permissions, and a .app that lost its executable
               # bit is a .app that will not open.
               ditto -c -k --sequesterRsrc --keepParent \
-                artifacts/macos/AI-Cockpit.app "artifacts/ai-cockpit-$version-macos-arm64.app.zip"
+                artifacts/macos/AI-Cockpit.app "artifacts/ai-cockpit-$version-macos-$arch.app.zip"
               rm -rf artifacts/macos
               ;;
             linux-x64)
@@ -150,7 +154,7 @@ jobs:
       # macOS wants an .icns and the repository has none — only the .ico Windows uses and the .png everything else
       # does. Built here from the PNG rather than committed, so there is one source of truth for the icon.
       - name: Build the macOS icon
-        if: matrix.rid == 'osx-arm64'
+        if: startsWith(matrix.rid, 'osx-')
         shell: bash
         run: |
           iconset=AppIcon.iconset
@@ -174,14 +178,21 @@ jobs:
         run: |
           case "$RID" in
             win-x64)   platform=win;   main_exe=Cockpit.App.exe; icon=src/Cockpit.App/Assets/AppIcon.ico ;;
-            osx-arm64) platform=osx;   main_exe=Cockpit.App;     icon=AppIcon.icns ;;
+            osx-arm64|osx-x64) platform=osx; main_exe=Cockpit.App; icon=AppIcon.icns ;;
             linux-x64) platform=linux; main_exe=Cockpit.App;     icon=src/Cockpit.App/Assets/AppIcon.png ;;
           esac
 
           # --categories exists on the Linux packer only; it replaces a hand-written .desktop entry.
+          channel="$platform-stable"
+          if [ "$RID" = "osx-x64" ]; then
+            channel="osx-x64-stable"
+          fi
+
           EXTRA=()
           if [ "$platform" = "linux" ]; then
             EXTRA+=(--categories "Development;System")
+          elif [ "$platform" = "osx" ]; then
+            EXTRA+=(--runtime "$RID")
           fi
 
           # ${EXTRA[@]+"${EXTRA[@]}"} rather than "${EXTRA[@]}": the macOS runners are on bash 3.2, which treats
@@ -201,7 +212,7 @@ jobs:
             --packDir "publish/$RID" \
             --mainExe "$main_exe" \
             --icon "$icon" \
-            --channel "$platform-stable" \
+            --channel "$channel" \
             --outputDir artifacts-velopack
 
           # Guards the fix above: a package missing createdump is otherwise indistinguishable from a healthy one
@@ -219,7 +230,7 @@ jobs:
               rm -rf squashfs-root
               ;;
             osx)
-              found=$(unzip -l "artifacts-velopack/AI-Cockpit-osx-stable-Portable.zip" | grep -c "createdump" || true)
+              found=$(unzip -l "artifacts-velopack/AI-Cockpit-$channel-Portable.zip" | grep -c "createdump" || true)
               ;;
           esac
           if [ "$platform" != "win" ] && [ "$found" = "0" ]; then
@@ -229,7 +240,7 @@ jobs:
 
       # The plugin SDK rides along with the host it is the contract for: the release that carries a contribution
       # point is the release an out-of-repo plugin author has something to pin to. Packed on the Linux leg only —
-      # a library package is platform-independent, so building it three times would just be three identical
+      # a library package is platform-independent, so building it four times would just be four identical
       # files racing for the same asset name. Its version is the SDK's own (the .csproj's <Version>, semver on
       # the contract's members), deliberately not the tag: host and contract move on separate axes. Not pushed
       # to nuget.org — see the header of scripts/pack-sdk.sh for why the feed waits.
