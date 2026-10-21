@@ -36,6 +36,9 @@ public enum TranscriptEntryKind
 
     // A message that only reports a state (merged, closed, idle, gate), drawn as one quiet line runs fold into.
     Status,
+
+    // Assistant threads: a light suggestion to close threads that went quiet, with its own two buttons.
+    Suggestion,
 }
 
 // A single row in the transcript view. Assistant text entries are mutated in place
@@ -61,7 +64,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     public bool IsDivider => Kind == TranscriptEntryKind.Divider;
 
     // Rows not rendered as a tool-use, a standalone tool result, a thinking section or a divider — assistant/user text, questions, errors.
-    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider && TurnResult is null && !IsInboxRow && !IsStatusRow;
+    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking && !IsDivider && TurnResult is null && !IsInboxRow && !IsStatusRow && !IsSuggestionRow;
 
     // Assistant prose renders as markdown (T9).
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;
@@ -993,7 +996,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
 
     partial void OnIsPendingPermissionChanged(bool value) => _RaiseReadingLevelPresentation();
 
-    partial void OnPermissionDecisionChanged(string? value) => _RaiseReadingLevelPresentation();
+    partial void OnPermissionDecisionChanged(string? value)
+    {
+        _RaiseReadingLevelPresentation();
+        OnPropertyChanged(nameof(IsSuggestionOpen));
+        OnPropertyChanged(nameof(SuggestionText));
+    }
 
     // One place to re-announce every computed flag the reading level (or a permission/grouping change) affects, so a
     // level switch or a just-resolved consent updates the row's visibility and its plain-language line in one go.

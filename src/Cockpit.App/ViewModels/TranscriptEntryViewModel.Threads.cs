@@ -67,6 +67,35 @@ public partial class TranscriptEntryViewModel
 
     public object? StatusBranch => IsStatusRow ? this : null;
 
+    // --- The suggestion to close threads (suggest_closing_threads) ---------------------------------------------------
+
+    public bool IsSuggestionRow => Kind == TranscriptEntryKind.Suggestion;
+
+    public object? SuggestionBranch => IsSuggestionRow ? this : null;
+
+    // Still waiting for the operator's click; afterwards the row says what came of it, in PermissionDecision.
+    public bool IsSuggestionOpen => IsSuggestionRow && string.IsNullOrEmpty(PermissionDecision);
+
+    public string SuggestionText
+    {
+        get
+        {
+            var names = ThreadTags.Select(tag => tag.Name).ToList();
+            var list = names.Count <= 1 ? string.Concat(names) : $"{string.Join(", ", names.SkipLast(1))} and {names[^1]}";
+            return !IsSuggestionOpen
+                ? PermissionDecision!
+                : names.Count == 1
+                    ? $"Nothing is running for {list} any more. Close its thread?"
+                    : $"Nothing is running for {list} any more. Close their threads?";
+        }
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void AcceptSuggestion() => Session?.ResolveSuggestion(this, close: true);
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void KeepSuggestion() => Session?.ResolveSuggestion(this, close: false);
+
     public string? SenderPaneId { get; init; }
 
     // The sender's name as it was when the message came in: the pane may be long closed by the time this is read back.
@@ -220,6 +249,7 @@ public partial class TranscriptEntryViewModel
     {
         OnPropertyChanged(nameof(ThreadTags));
         OnPropertyChanged(nameof(ShowInLabel));
+        OnPropertyChanged(nameof(SuggestionText));
         RaiseThreadTags();
     }
 

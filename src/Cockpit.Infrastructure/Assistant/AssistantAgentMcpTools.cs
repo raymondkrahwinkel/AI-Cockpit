@@ -1188,6 +1188,122 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    [McpServerTool(Name = "list_threads", ReadOnly = true)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Lists the project threads of your conversation, open and closed: per thread its project id and name, whether it is closed, how many rows it has, when it last had activity, the sessions still running for that project and the questions or approvals still waiting on the operator there. The rail beside the chat shows the open ones; a closed thread keeps all its rows (in All and on disk) and opens again by itself when something new for its project arrives. READ IT BEFORE YOU CLOSE OR SUGGEST CLOSING ANYTHING.")]
+    public async Task<string> ListThreadsAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var threads = await gateway.ListThreadsAsync().ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                threads = threads.Select(thread => new
+                {
+                    projectId = thread.ProjectId,
+                    name = thread.Name,
+                    status = thread.IsClosed ? "closed" : "open",
+                    rows = thread.Rows,
+                    lastActivity = thread.LastActivity,
+                    runningSessions = thread.RunningSessions,
+                    openQuestions = thread.OpenQuestions,
+                }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "close_thread", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Closes one project thread so the rail beside the chat stays short: it leaves the rail and goes under Closed at its foot, every row of it stays (in All and on disk), and it opens again by itself when something new for that project arrives. FOR WHEN THE OPERATOR ASKS YOU TO CLOSE A THREAD. To propose closing quiet threads yourself, use suggest_closing_threads instead — that lets the operator decide with one click. Refused for General, for a thread with a question or an approval still waiting, and for a thread that is closed already, before anyone is asked. Take the project id from list_threads." + AskingCanBeSwitchedOff)]
+    public async Task<string> CloseThreadAsync(
+        [Description("The project id of the thread, from list_threads.")] string projectId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (await gateway.WhyThreadCannotCloseAsync(projectId).ConfigureAwait(false) is { } cannot)
+            {
+                return _Serialize(new { ok = false, error = cannot });
+            }
+
+            var approval = await _ApprovedAsync(
+                "The assistant wants to close a thread",
+                $"Close the thread of project {projectId}",
+                ConsentSourceCatalog.AssistantThreadClose,
+                "assistant.threads.close",
+                ConsentRisk.LowRisk).ConfigureAwait(false);
+            if (!approval.Ok)
+            {
+                return _Serialize(new { ok = false, error = approval.Error });
+            }
+
+            var result = await gateway.CloseThreadAsync(projectId).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note, approval = approval.Label });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "reopen_thread", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Brings a closed project thread back to the rail. Needs no approval: it hides nothing and changes no row. You rarely need it — a closed thread opens again by itself when something new for its project arrives — so reach for it when the operator asks for the thread back, or when you are about to talk about a closed project at length. Take the project id from list_threads.")]
+    public async Task<string> ReopenThreadAsync(
+        [Description("The project id of the thread, from list_threads.")] string projectId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.ReopenThreadAsync(projectId).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "suggest_closing_threads", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Puts ONE light row in the conversation asking the operator whether to close these quiet threads, with Close threads and Keep beside it — their click is the decision, so nothing else asks them. BUNDLE: name every thread you would close in one call, and a row still waiting takes in the ones you add later rather than a second row appearing. ONLY FOR A THREAD WHOSE WORK IS DONE: no session still running for the project, no question or approval waiting there, and no activity for a while (list_threads says all three). The host leaves out any thread that does not qualify and tells you which and why. Do not say the suggestion out loud as well; the row is enough.")]
+    public async Task<string> SuggestClosingThreadsAsync(
+        [Description("The project ids of the threads to suggest closing, from list_threads.")] string[] projectIds)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.SuggestClosingThreadsAsync(projectIds ?? []).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
     [McpServerTool(Name = "remember", ReadOnly = false, Destructive = false)]
     [Description("Writes one thing down where you will still have it in your next conversation. Everything else you know about this operator arrives with your instructions and is gone when this conversation ends — this is the only way something they said today reaches you tomorrow. USE IT WHEN THEY TELL YOU SOMETHING THAT IS MEANT TO LAST: what to call them or yourself, how they want you to answer, what a word of theirs means (\"prod is the release desk\"), a standing rule about what to do without asking. Say that you have noted it, in passing — one clause, not an announcement. WHAT DOES NOT BELONG HERE: what is happening right now (that is note_state), anything you worked out yourself rather than were told, and anything you are merely guessing they would want kept. WRITE IT AS A FACT THAT STILL READS IN A MONTH: \"the operator is called Raymond\", not \"he said his name\". One thing per call — two facts in one line cannot be pruned apart later. THIS IS RAYMOND'S OWN SPLIT (AC-1329): a rule that is not machine- or OS-specific belongs on every memory there is, so scope \"behaviour\" writes it here AND relays it to every paired node, one at a time, and waits for all of them before answering — an unreachable node is reported as not delivered, never queued for later. A fact that is true of one machine and not another belongs only there, so scope \"machine\" needs machines to say which — \"local\" for this cockpit, a paired node's name, or both — and touches nothing else. THE TWO ARE NEVER MERGED: what a node knows about itself stays there, and what you remember here stays yours, on purpose — a controller's own memory must never be scrambled by the memory of a machine it happens to be steering. This does not ask for permission and nothing shows on their screen, so it is on you not to fill it with things nobody asked you to keep: there is no tool to take a line back, and the only way to clear one is the operator opening the file themselves.")]
     public async Task<string> RememberAsync(

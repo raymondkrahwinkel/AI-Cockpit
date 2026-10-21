@@ -51,6 +51,10 @@ public static class ConsentSourceCatalog
     // `AssistantMemoryExport`.
     public const string AssistantMemoryImport = "Assistant memory import";
 
+    // Assistant threads: the assistant closing one of its own project threads. Its own label so the operator can stop
+    // being asked about this one without waving through anything else.
+    public const string AssistantThreadClose = "Assistant thread close";
+
     // Adding a colleague's shared project has its own label (AC-798), not consent for every assistant write.
     public const string AssistantProjectBinding = "Assistant project binding";
 
@@ -78,7 +82,7 @@ public static class ConsentSourceCatalog
     public static IReadOnlyList<string> HostSources { get; } =
     [
         TerminalMcp, DiagramMcp, WhiteboardMcp, WireframeMcp, WorktreesMcp, VerifyMcp, Orchestrator, AssistantMessage, AssistantPrompt,
-        AssistantMemoryExport, AssistantMemoryImport, AssistantProjectBinding, AssistantProjectCreate, AssistantProjectUpdate, AssistantOpenUrl, Debug,
+        AssistantMemoryExport, AssistantMemoryImport, AssistantThreadClose, AssistantProjectBinding, AssistantProjectCreate, AssistantProjectUpdate, AssistantOpenUrl, Debug,
     ];
 
     // The bypass key: the host-stamped `pluginId` and the caller's own `label` under a `plugin:` prefix, or the

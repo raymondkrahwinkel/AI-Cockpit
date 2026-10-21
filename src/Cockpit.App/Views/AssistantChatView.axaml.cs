@@ -133,6 +133,17 @@ public partial class AssistantChatView : UserControl
             list.AddHandler(DragDrop.DragOverEvent, _OnThreadDragOver);
             list.AddHandler(DragDrop.DragLeaveEvent, _OnThreadDragLeave);
             list.AddHandler(DragDrop.DropEvent, _OnThreadDrop);
+
+            // Delete on a project's thread closes it — the keyboard's way to the row action that shows on hover.
+            list.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Delete && list.SelectedItem is AssistantThreadItemViewModel { IsProject: true } item
+                    && DataContext is AssistantChatViewModel vm)
+                {
+                    vm.CloseThreadCommand.Execute(item);
+                    e.Handled = true;
+                }
+            };
         }
     }
 

@@ -12,6 +12,10 @@ public class AssistantThreadToolsAlwaysLoadTests
     [InlineData("set_thread")]
     [InlineData("tag_prompt")]
     [InlineData("ask_structured_question")]
+    [InlineData("list_threads")]
+    [InlineData("close_thread")]
+    [InlineData("reopen_thread")]
+    [InlineData("suggest_closing_threads")]
     public void TheThreadToolsAndTheQuestionCard_AreNeverDeferred(string toolName)
     {
         var method = typeof(AssistantAgentMcpTools).GetMethods()

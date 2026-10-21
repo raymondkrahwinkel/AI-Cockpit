@@ -138,6 +138,27 @@
               </ContentControl.DataTemplates>
             </ContentControl>
 
+            <!-- Assistant threads: the assistant's suggestion to close threads that went quiet, bundled into one light
+                 row rather than a card per thread. The operator's click decides; afterwards the row says what came of it. -->
+            <ContentControl Content="{Binding SuggestionBranch}" IsVisible="{Binding IsSuggestionRow}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Classes="rowIndent" Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="ArchiveArrowDownOutline" Width="13" Height="13" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding SuggestionText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="19,0,0,0" IsVisible="{Binding IsSuggestionOpen}">
+                    <Button x:Name="AcceptSuggestionButton" Classes="Compact" Content="Close" Command="{Binding AcceptSuggestionCommand}"/>
+                    <Button Classes="Ghost Compact" Content="Keep open" Command="{Binding KeepSuggestionCommand}"/>
+                </StackPanel>
+            </StackPanel>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
+
             <!-- Assistant threads: a message that only reports a state is one quiet line, its whole text the
                  tooltip. Green only for what is done; whatever asks nothing stays faint. -->
             <ContentControl Content="{Binding StatusBranch}" IsVisible="{Binding IsStatusRow}">

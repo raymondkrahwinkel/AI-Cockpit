@@ -16,6 +16,12 @@ public sealed record ThreadLookup(
 {
     // The projects a prompt names, read before its turn; none when the host knows no projects.
     public Func<string, IReadOnlyList<InferredProject>> Infer { get; init; } = _ => [];
+
+    // The sessions still running for a project, by name and state, and the projects that have any: what tells a
+    // thread that has gone quiet from one whose work is still going.
+    public Func<string, IReadOnlyList<string>> SessionsOf { get; init; } = _ => [];
+
+    public Func<IReadOnlyList<string>> LiveProjects { get; init; } = () => [];
 }
 
 // One move of a row between threads, with everything needed to take it back. `Target` null is General.
@@ -482,6 +488,7 @@ public partial class SessionViewModel
         if (open)
         {
             OpenQuestions.Add(entry);
+            _ReopenOnActivity(entry);
             _SayWhereItArrived(entry, isQuestion: true);
         }
         else

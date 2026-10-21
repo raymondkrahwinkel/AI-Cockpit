@@ -46,6 +46,9 @@ public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind
 
     public bool IsThread => Kind is AssistantThreadItemKind.General or AssistantThreadItemKind.Project;
 
+    // Only a project's thread closes; General is where everything without one lands.
+    public bool IsProject => Kind == AssistantThreadItemKind.Project;
+
     // A project is a neutral initial and a name: a colour per project would be status colour as decoration.
     public string Initial => Name.Length == 0 ? "?" : char.ToUpperInvariant(Name[0]).ToString();
 
@@ -385,9 +388,11 @@ public sealed partial class AssistantChatViewModel
         var projectIds = _projectsWithRows
             .Concat(LiveSessions.Select(pane => pane.ProjectId).OfType<string>())
             .Distinct(StringComparer.Ordinal)
+            .Where(id => Session?.IsThreadClosed(id) != true)
             .Select(id => (Id: id, Name: Session?.ProjectName(id) ?? _ProjectName(id) ?? id))
             .OrderBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+        _RebuildClosedThreadItems();
 
         var selectedKey = SelectedThreadItem is { } selected ? (selected.Kind, selected.ProjectId) : (AssistantThreadItemKind.All, null);
         var existing = ThreadItems.Where(item => item.Kind == AssistantThreadItemKind.Project).ToDictionary(item => item.ProjectId!, StringComparer.Ordinal);

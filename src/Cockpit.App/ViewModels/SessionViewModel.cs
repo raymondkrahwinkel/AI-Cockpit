@@ -708,6 +708,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 foreach (TranscriptEntryViewModel entry in e.NewItems)
                 {
                     _FoldAppendedStatus(entry);
+                    _ReopenOnActivity(entry);
                     _SyncVisibleRow(entry);
                     _SyncOpenQuestion(entry);
                 }

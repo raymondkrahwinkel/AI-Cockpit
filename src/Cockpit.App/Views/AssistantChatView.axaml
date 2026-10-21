@@ -50,6 +50,13 @@
         <Style Selector="ListBox.iconRail ListBoxItem">
             <Setter Property="Padding" Value="12,8"/>
         </Style>
+        <!-- A thread's close action stays out of sight until its row is hovered or the button itself has focus. -->
+        <Style Selector="Button.threadClose">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.threadItem:pointerover Button.threadClose, Button.threadClose:focus-visible">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
     </UserControl.Styles>
 
     <UserControl.Resources>
@@ -60,7 +67,15 @@
                     Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}"
                     Width="164" Margin="-11,-8" Padding="11,8"
                     CornerRadius="7" ToolTip.Tip="{Binding Tooltip}" AutomationProperties.Name="{Binding Tooltip}">
-                <Grid ColumnDefinitions="Auto,*,Auto">
+                <!-- Assistant threads: a project's thread closes from here too, for the keyboard (Menu, Shift+F10). -->
+                <Border.ContextMenu>
+                    <ContextMenu IsVisible="{Binding IsProject}">
+                        <MenuItem Header="Close thread"
+                                  Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).CloseThreadCommand, FallbackValue={x:Null}}"
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <Panel Width="20" Height="20" Margin="0,0,10,0">
                         <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16" IsVisible="{Binding HasIcon}"/>
                         <Border Classes="threadInitial" IsVisible="{Binding IsThread}">
@@ -71,8 +86,55 @@
                     <Border Grid.Column="2" Classes="waitingCount" IsVisible="{Binding HasWaiting}" Margin="6,0,0,0">
                         <TextBlock Text="{Binding WaitingCount}"/>
                     </Border>
+                    <!-- Quiet at rest: the row action shows on hover or focus, like a transcript row's. -->
+                    <Button Grid.Column="3" Classes="Subtle threadClose" Padding="2" Margin="4,0,0,0" VerticalAlignment="Center"
+                            IsVisible="{Binding IsProject}"
+                            Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).CloseThreadCommand, FallbackValue={x:Null}}"
+                            CommandParameter="{Binding}"
+                            ToolTip.Tip="Close this thread (Delete)" AutomationProperties.Name="Close this thread">
+                        <materialIcons:MaterialIcon Kind="ArchiveArrowDownOutline" Width="13" Height="13"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </Button>
                 </Grid>
             </Border>
+        </DataTemplate>
+
+        <!-- Assistant threads: the closed threads, folded at the foot of the labelled rail and its overlay. A click
+             brings one back and opens it. -->
+        <DataTemplate x:Key="ClosedThreadsSection" x:DataType="vm:AssistantChatViewModel">
+            <StackPanel Margin="0,6,0,4" IsVisible="{Binding HasClosedThreads}">
+                <Button Classes="Subtle" Padding="8,4" HorizontalAlignment="Left"
+                        Command="{Binding ToggleClosedThreadsCommand}" AutomationProperties.Name="{Binding ClosedThreadsLabel}">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <materialIcons:MaterialIcon Kind="{Binding ClosedThreadsIconKind}" Width="12" Height="12" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding ClosedThreadsLabel}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Button>
+                <ItemsControl ItemsSource="{Binding ClosedThreadItems}" IsVisible="{Binding IsClosedThreadsExpanded}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                            <Button Classes="Subtle" Padding="11,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                    Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).ReopenThreadCommand}"
+                                    CommandParameter="{Binding}" ToolTip.Tip="Reopen this thread"
+                                    AutomationProperties.Name="{Binding Name, StringFormat='Reopen {0}'}">
+                                <DockPanel>
+                                    <materialIcons:MaterialIcon DockPanel.Dock="Right" Kind="ArchiveArrowUpOutline" Width="13" Height="13"
+                                                                VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Border Classes="threadInitial">
+                                            <TextBlock Text="{Binding Initial}"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </DataTemplate>
     </UserControl.Resources>
 
@@ -587,6 +649,7 @@
                                 <TextBlock Text="{Binding RailToggleText}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
+                        <ContentControl DockPanel.Dock="Bottom" Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}"/>
                         <ListBox x:Name="ThreadList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
                                  SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
                                  ItemTemplate="{StaticResource ThreadLabelItem}"/>
@@ -598,6 +661,11 @@
                                 Command="{Binding ToggleRailCommand}" ToolTip.Tip="{Binding RailToggleTip}"
                                 AutomationProperties.Name="{Binding RailToggleTip}">
                             <materialIcons:MaterialIcon Kind="ChevronDoubleRight" Width="14" Height="14"/>
+                        </Button>
+                        <Button x:Name="ThreadIconRailClosed" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Center"
+                                IsVisible="{Binding HasClosedThreads}" Command="{Binding ShowClosedThreadsCommand}"
+                                ToolTip.Tip="{Binding ClosedThreadsLabel}" AutomationProperties.Name="{Binding ClosedThreadsLabel}">
+                            <materialIcons:MaterialIcon Kind="ArchiveOutline" Width="14" Height="14"/>
                         </Button>
                         <ListBox x:Name="ThreadIconList" DragDrop.AllowDrop="True" Classes="subnav iconRail" ItemsSource="{Binding ThreadItems}"
                                  SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads">
@@ -1162,9 +1230,12 @@
                  click on the chat or Esc closes it. -->
             <Border x:Name="ThreadRailOverlay" Classes="subnavRail" HorizontalAlignment="Left" ZIndex="10"
                     BorderThickness="0,0,1,0" IsVisible="{Binding IsRailOverlayOpen}">
-                <ListBox x:Name="ThreadOverlayList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
-                         SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
-                         ItemTemplate="{StaticResource ThreadLabelItem}"/>
+                <DockPanel>
+                    <ContentControl DockPanel.Dock="Bottom" Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}"/>
+                    <ListBox x:Name="ThreadOverlayList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                             SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
+                             ItemTemplate="{StaticResource ThreadLabelItem}"/>
+                </DockPanel>
             </Border>
             </Panel>
         </DockPanel>

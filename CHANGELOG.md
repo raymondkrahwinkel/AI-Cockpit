@@ -53,6 +53,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   opens them), and a card beside the dock says when a question or a message arrives while the assistant is closed.
 - added: a row can be dragged onto another thread in the rail (hold Ctrl to add it there as well), or moved with
   Move to project… from its grip or the M key; the toast offers Undo, and Ctrl+Z works while it stands.
+- added: a project's thread can be closed, from its row in the rail (hover, the context menu or Delete) or by the
+  assistant after you approve; it moves under Closed at the foot of the rail, keeps every row in All, and opens again by
+  itself when something new arrives for that project. When a project has gone quiet the assistant suggests closing its
+  thread in one light row you answer with Close or Keep open.
 - added: the assistant can file its own turn under a project, split a prompt about two projects, answer in a block
   per project and ask a question about several projects at once, so each thread shows only its own part.
 

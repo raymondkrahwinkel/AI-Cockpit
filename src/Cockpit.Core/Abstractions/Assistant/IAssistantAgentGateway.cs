@@ -203,6 +203,37 @@ public interface IAssistantAgentGateway
         Task.FromResult(AssistantThreadResult.Unavailable);
 
     /// <summary>
+    /// Every project thread in the assistant's conversation, open or closed, with what speaks for closing it (list_threads).
+    /// </summary>
+    Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<AssistantThreadInfo>>([]);
+
+    /// <summary>
+    /// Why the thread of <paramref name="projectId"/> cannot close right now, or null when it can — asked before the
+    /// operator is, so a close that would be refused anyway never raises a card.
+    /// </summary>
+    Task<string?> WhyThreadCannotCloseAsync(string projectId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(AssistantThreadResult.Unavailable.Note);
+
+    /// <summary>
+    /// Closes a project's thread: it leaves the rail, its rows stay (close_thread, after the operator's approval).
+    /// </summary>
+    Task<AssistantThreadResult> CloseThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Brings a closed thread back to the rail (reopen_thread).
+    /// </summary>
+    Task<AssistantThreadResult> ReopenThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Puts one row in the conversation suggesting the operator close these threads (suggest_closing_threads).
+    /// </summary>
+    Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
     /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — exists only because
     /// <c>Cockpit.Infrastructure</c>, where <c>open_url</c> lives, cannot reference <c>Cockpit.App</c> to reach
     /// <c>ExternalLink</c>. Refuses a non-absolute <c>http</c>/<c>https</c> address, same rule as <c>ExternalLink.TryParseWebAddress</c>.
@@ -296,6 +327,17 @@ public sealed record AssistantProjectUpdateResult(bool Ok, string? ProjectId, st
 
     public static AssistantProjectUpdateResult Refused(string error) => new(false, null, null, error);
 }
+
+// One project thread as list_threads reports it: open or closed, how much is in it, when it last moved, what still
+// runs for the project and what still waits on the operator there.
+public sealed record AssistantThreadInfo(
+    string ProjectId,
+    string Name,
+    bool IsClosed,
+    int Rows,
+    DateTimeOffset? LastActivity,
+    IReadOnlyList<string> RunningSessions,
+    int OpenQuestions);
 
 // What came of set_thread or tag_prompt. A note is said back to the assistant even when it worked: a quote that was not
 // found, an id no project has.

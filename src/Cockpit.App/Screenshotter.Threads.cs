@@ -17,7 +17,7 @@ internal static partial class Screenshotter
 
     private static AssistantChatWindow _AssistantThreads(
         double width, string? thread = null, bool questions = false, bool overlay = false, bool answered = false,
-        bool dragging = false, bool moved = false, bool overview = false)
+        bool dragging = false, bool moved = false, bool overview = false, bool closed = false, bool suggestion = false)
     {
         var chat = _AssistantChatViewModel(_AssistantThreadsConversation());
         var window = new AssistantChatWindow
@@ -35,6 +35,19 @@ internal static partial class Screenshotter
             : chat.ThreadItems.FirstOrDefault(item => item.ThreadKey == thread && item.Kind != AssistantThreadItemKind.Questions);
         chat.IsRailOverlayOpen = overlay;
         chat.IsAnsweredTodayExpanded = answered;
+        // Threads management: WayMark closed and the list folded out, or the one row suggesting it be closed.
+        if (closed)
+        {
+            chat.Session!.CloseThread("waymark");
+            chat.IsClosedThreadsExpanded = true;
+            chat.IsRailOverlayOpen = width < AssistantChatViewModel.LabelsMinWidth;
+        }
+
+        if (suggestion)
+        {
+            chat.Session!.SuggestClosingThreads(["waymark"]);
+        }
+
         if (overview)
         {
             chat.SelectedThreadItem = chat.ThreadItems.First(item => item.Kind == AssistantThreadItemKind.Overview);

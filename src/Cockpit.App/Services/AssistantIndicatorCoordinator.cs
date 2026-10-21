@@ -34,6 +34,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
     private readonly IDockPanelRegistry? _dockPanels;
 
+    // Where the closed threads are kept across a restart; null in a graph without one, which keeps them for the run.
+    private readonly IAssistantThreadStateStore? _threadState;
+
     // AC-953: the assistant's id in the dock rail, persisted as `LayoutSettings.OpenDockPanelId`.
     public const string DockPanelId = "assistant";
 
@@ -58,7 +61,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         IAssistantSpawnAuditLog spawnAuditLog,
         CockpitViewModel cockpit,
         IDockPanelRegistry? dockPanels = null,
-        ILogger<AssistantIndicatorCoordinator>? logger = null)
+        ILogger<AssistantIndicatorCoordinator>? logger = null,
+        IAssistantThreadStateStore? threadState = null)
     {
         _assistant = assistant;
         _openMic = openMic;
@@ -69,6 +73,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _cockpit = cockpit;
         _dockPanels = dockPanels;
         _logger = logger ?? NullLogger<AssistantIndicatorCoordinator>.Instance;
+        _threadState = threadState;
     }
 
     // The chip the sidebar binds to. One instance, fed from here.
@@ -198,6 +203,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
                     [.. _cockpit.AllSessions()
                         .Where(pane => pane.PaneId != AssistantIdentity.PaneId)
                         .Select(pane => new SessionHint(pane.PaneId, pane.Title ?? string.Empty, pane.ProjectId))]),
+                SessionsOf = projectId => [.. _RunningSessions()
+                    .Where(pane => pane.ProjectId == projectId)
+                    .Select(pane => string.IsNullOrEmpty(pane.SessionStatusLabel) ? pane.Title : $"{pane.Title} · {pane.SessionStatusLabel}")],
+                LiveProjects = () => [.. _RunningSessions().Select(pane => pane.ProjectId).OfType<string>().Distinct(StringComparer.Ordinal)],
             };
         }
 
@@ -220,6 +229,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         {
             _questionsSession.ThreadsChanged -= _OnQuestionsChanged;
             _questionsSession.Transcript.CollectionChanged -= _OnAssistantRowsAdded;
+            _questionsSession.ClosedThreadsChanged -= _OnClosedThreadsChanged;
         }
 
         _questionsSession = session;
@@ -227,9 +237,45 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         {
             session.ThreadsChanged += _OnQuestionsChanged;
             session.Transcript.CollectionChanged += _OnAssistantRowsAdded;
+            session.ClosedThreadsChanged += _OnClosedThreadsChanged;
+            _ = _LoadClosedThreadsAsync(session);
         }
 
         _OnQuestionsChanged();
+    }
+
+    private async Task _LoadClosedThreadsAsync(SessionViewModel session)
+    {
+        if (_threadState is null)
+        {
+            return;
+        }
+
+        try
+        {
+            session.LoadClosedThreads(await _threadState.LoadClosedAsync().ConfigureAwait(true));
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "The closed assistant threads could not be read back; every thread starts open.");
+        }
+    }
+
+    private async void _OnClosedThreadsChanged()
+    {
+        if (_threadState is null || _questionsSession is not { } session)
+        {
+            return;
+        }
+
+        try
+        {
+            await _threadState.SaveClosedAsync([.. session.ClosedThreads]).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "The closed assistant threads could not be saved; they stay closed for this run only.");
+        }
     }
 
     private void _OnQuestionsChanged()
@@ -297,6 +343,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         await _OpenChatAsync().ConfigureAwait(true);
         _chatViewModel?.OpenQuestionsCommand.Execute(null);
     }
+
+    // Every session but the assistant itself: what a project still has running.
+    private IEnumerable<SessionPanelViewModel> _RunningSessions() =>
+        _cockpit.AllSessions().Where(pane => pane.PaneId != AssistantIdentity.PaneId);
 
     private SessionPanelViewModel? _PaneOf(string paneId) =>
         _cockpit.AllSessions().FirstOrDefault(session => session.PaneId == paneId);

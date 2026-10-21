@@ -33,4 +33,24 @@ public interface IAssistantConversation
     /// </summary>
     Task<AssistantThreadResult> TagPromptAsync(IReadOnlyList<(string ProjectId, string Quote)> parts) =>
         Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Every project thread, open or closed (list_threads).
+    /// </summary>
+    Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync() => Task.FromResult<IReadOnlyList<AssistantThreadInfo>>([]);
+
+    /// <summary>
+    /// Why a thread cannot close right now, or null when it can.
+    /// </summary>
+    Task<string?> WhyThreadCannotCloseAsync(string projectId) => Task.FromResult<string?>(AssistantThreadResult.Unavailable.Note);
+
+    /// <summary>
+    /// Closes or reopens a project's thread.
+    /// </summary>
+    Task<AssistantThreadResult> SetThreadClosedAsync(string projectId, bool closed) => Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Puts the one suggestion row asking the operator to close these threads.
+    /// </summary>
+    Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds) => Task.FromResult(AssistantThreadResult.Unavailable);
 }

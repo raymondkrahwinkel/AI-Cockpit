@@ -1222,6 +1222,21 @@ internal sealed class AssistantAgentGateway(
         IReadOnlyList<(string ProjectId, string Quote)> parts, CancellationToken cancellationToken = default) =>
         conversation.TagPromptAsync(parts);
 
+    public Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync(CancellationToken cancellationToken = default) =>
+        conversation.ListThreadsAsync();
+
+    public Task<string?> WhyThreadCannotCloseAsync(string projectId, CancellationToken cancellationToken = default) =>
+        conversation.WhyThreadCannotCloseAsync(projectId);
+
+    public Task<AssistantThreadResult> CloseThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        conversation.SetThreadClosedAsync(projectId, closed: true);
+
+    public Task<AssistantThreadResult> ReopenThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        conversation.SetThreadClosedAsync(projectId, closed: false);
+
+    public Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        conversation.SuggestClosingThreadsAsync(projectIds);
+
     // A mirror of the native AskUserQuestion tool's own `questions` array (AC-715), one entry, so
     // `AskUserQuestionViewModel.Parse` reads it unchanged rather than needing a second parser.
     private static string _BuildAskStructuredQuestionInputJson(

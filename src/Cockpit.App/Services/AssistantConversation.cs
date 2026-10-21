@@ -33,5 +33,23 @@ internal sealed class AssistantConversation(IAssistantSessionHost host) : IAssis
     public Task<AssistantThreadResult> TagPromptAsync(IReadOnlyList<(string ProjectId, string Quote)> parts) =>
         UiThreadCall.RunAsync(() => host.View() is { } session ? session.TagLastPrompt(parts) : _NotRunning);
 
+    public Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync() =>
+        UiThreadCall.RunAsync<IReadOnlyList<AssistantThreadInfo>>(() => host.View() is { } session ? session.SummarizeThreads() : []);
+
+    public Task<string?> WhyThreadCannotCloseAsync(string projectId) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session
+            ? session.SummarizeThreads().Any(thread => thread.ProjectId == projectId)
+                ? session.IsThreadClosed(projectId) ? "That thread is closed already." : session.WhyThreadCannotClose(projectId)
+                : "There is no thread for that project id; take it from list_threads."
+            : _NotRunning.Note);
+
+    public Task<AssistantThreadResult> SetThreadClosedAsync(string projectId, bool closed) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session
+            ? closed ? session.CloseThread(projectId) : session.ReopenThread(projectId)
+            : _NotRunning);
+
+    public Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session ? session.SuggestClosingThreads(projectIds) : _NotRunning);
+
     private static readonly AssistantThreadResult _NotRunning = new(false, "My own session is not running.");
 }

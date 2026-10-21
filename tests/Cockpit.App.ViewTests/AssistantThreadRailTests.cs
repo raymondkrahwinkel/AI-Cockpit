@@ -150,6 +150,29 @@ public sealed class AssistantThreadRailTests
         Assert.Equal([("cockpit", 1), ("depot", 2), ("waymark", 0)], chat.OverviewCards.Select(card => (card.ProjectId, card.Waiting)));
     }
 
+    // A closed thread leaves the rail for Closed (n) at its foot; the open thread falls back to All; reopening brings it
+    // back and opens it. General and a thread with questions waiting refuse.
+    [Fact]
+    public void AClosedThread_MovesToClosed_AndComesBackOpened()
+    {
+        var (chat, _) = _Chat();
+        var waymark = chat.ThreadItems.First(item => item.ProjectId == "waymark");
+        chat.SelectedThreadItem = waymark;
+
+        chat.CloseThreadCommand.Execute(waymark);
+
+        Assert.DoesNotContain(chat.ThreadItems, item => item.ProjectId == "waymark");
+        Assert.Equal("Closed (1)", chat.ClosedThreadsLabel);
+        Assert.Equal(AssistantThreadItemKind.All, chat.SelectedThreadItem!.Kind);
+
+        chat.CloseThreadCommand.Execute(chat.ThreadItems.First(item => item.ProjectId == "depot"));
+        Assert.Contains(chat.ThreadItems, item => item.ProjectId == "depot");
+
+        chat.ReopenThreadCommand.Execute(chat.ClosedThreadItems.Single());
+        Assert.False(chat.HasClosedThreads);
+        Assert.Equal("waymark", chat.SelectedThreadItem!.ProjectId);
+    }
+
     // The Simple stand's count opens Questions for you in the assistant's own column.
     [Fact]
     public void TheSimpleStandsCount_OpensQuestionsForYou()

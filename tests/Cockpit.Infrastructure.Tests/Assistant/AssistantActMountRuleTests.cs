@@ -514,6 +514,34 @@ public sealed class AssistantActMountRuleTests : IDisposable
             Calls.Add("TagPromptAsync");
             return Task.FromResult(new AssistantThreadResult(true, null));
         }
+
+        public Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("ListThreadsAsync");
+            return Task.FromResult<IReadOnlyList<AssistantThreadInfo>>([]);
+        }
+
+        // The check before the operator is asked; not a call through to what close_thread is for, so not counted.
+        public Task<string?> WhyThreadCannotCloseAsync(string projectId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<AssistantThreadResult> CloseThreadAsync(string projectId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"CloseThreadAsync({projectId})");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
+        public Task<AssistantThreadResult> ReopenThreadAsync(string projectId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"ReopenThreadAsync({projectId})");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
+        public Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("SuggestClosingThreadsAsync");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
     }
 
     /// <summary>
