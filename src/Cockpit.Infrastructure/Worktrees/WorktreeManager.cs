@@ -5,6 +5,8 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Core.Sessions;
+using System.Text.Json;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
@@ -20,6 +22,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     private readonly ILogger<WorktreeManager>? _logger;
     private readonly IDockerCli? _dockerCli;
     private readonly string _leaseRoot;
+    private readonly string _sessionTempRoot;
     private readonly Dictionary<string, WorktreeLease> _leases = new(StringComparer.Ordinal);
     private readonly object _leaseGate = new();
 
@@ -31,6 +34,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         _registry = registry;
         _logger = logger;
         _leaseRoot = Path.Combine(CockpitConfigPath.Root, "worktree-leases");
+        _sessionTempRoot = SessionTempDirectory.Root;
         // Nullable like `_liveSessions`/`_consent` on WorktreeTools: production DI resolves the real IDockerCli
         // (Scrutor registers it unconditionally — docker plugin installed or not, see DockerCli's own comment),
         // tests construct this directly and simply omit it to skip the cleanup being exercised.
@@ -56,13 +60,14 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     }
 
     // Test seam: place the worktrees under an arbitrary fixed root instead of the app state directory.
-    internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot, ILogger<WorktreeManager>? logger = null, IDockerCli? dockerCli = null)
+    internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot, ILogger<WorktreeManager>? logger = null, IDockerCli? dockerCli = null, string? sessionTempRoot = null)
     {
         _registry = registry;
         _resolveRoot = _ => Task.FromResult(worktreesRoot);
         _logger = logger;
         _dockerCli = dockerCli;
         _leaseRoot = Path.Combine(worktreesRoot, ".leases");
+        _sessionTempRoot = sessionTempRoot ?? Path.Combine(worktreesRoot, ".session-temp");
     }
 
     public async Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default)
@@ -200,7 +205,18 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         // Each worktree's status is several independent git subprocesses (a porcelain status plus resolving its base
         // ref and counting unmerged commits); run them across worktrees at once so opening the panel costs the slowest
         // tree rather than the sum of all of them. Order is preserved (Task.WhenAll keeps it).
-        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        var records = (await _registry.ListAsync(cancellationToken).ConfigureAwait(false)).ToList();
+        foreach (var repository in records.Select(record => record.RepositoryRoot).Distinct(StringComparer.Ordinal).ToList())
+        {
+            foreach (var missing in await _MissingWorktreesAsync(repository, cancellationToken).ConfigureAwait(false))
+            {
+                if (records.Any(record => _SamePath(record.Path, missing.Record.Path)) == false)
+                {
+                    records.Add(missing.Record);
+                }
+            }
+        }
+
         return await Task.WhenAll(records.Select(record => _StatusOfAsync(record, cancellationToken))).ConfigureAwait(false);
     }
 
@@ -220,7 +236,10 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 record,
                 Exists: true,
                 HasUncommittedChanges: status.Length > 0,
-                StrandableCommits: strandable);
+                StrandableCommits: strandable)
+            {
+                UncommittedFileCount = status.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length,
+            };
         }
         catch (Exception)
         {
@@ -462,9 +481,25 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     // should know about — null on a plain removal, with nothing left behind to mention.
     public async Task<string?> RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default)
     {
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        var otherOwners = records.Where(other => other.SessionId != record.SessionId).Select(other => other.SessionId).ToArray();
+        return await _RemoveAsync(record, force, cancellationToken, otherOwners).ConfigureAwait(false);
+    }
+
+    private async Task<string?> _RemoveAsync(WorktreeRecord record, bool force, CancellationToken cancellationToken, IReadOnlyCollection<string>? liveSessionIds)
+    {
+        if (Directory.Exists(record.Path) == false)
+        {
+            await _PruneMissingAsync(record.RepositoryRoot, cancellationToken).ConfigureAwait(false);
+            await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
+            _ReleaseLeaseForPath(record.Path);
+            _RaiseWorktreesChanged();
+            return null;
+        }
+
         // AC-1010: every removal path converges here, so the worktree's dev stack is torn down with it.
         // Best-effort and reported, never fatal — see _CleanupContainersAsync.
-        var dockerNotice = await _CleanupContainersAsync(record, cancellationToken).ConfigureAwait(false);
+        var dockerNotice = await _CleanupContainersAsync(record, cancellationToken, liveSessionIds).ConfigureAwait(false);
 
         if (Directory.Exists(record.RepositoryRoot))
         {
@@ -547,7 +582,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     // AC-1010: tears down the docker-compose stack this worktree started, keyed on docker's own exact-path label
     // (never a name guess) so a live worktree's stack is never a candidate. Volumes go too — see PR description
     // for the full rationale.
-    private async Task<string?> _CleanupContainersAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    private async Task<string?> _CleanupContainersAsync(WorktreeRecord record, CancellationToken cancellationToken, IReadOnlyCollection<string>? liveSessionIds = null)
     {
         if (_dockerCli is null)
         {
@@ -570,6 +605,13 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(line => line.Split('\t'))
                 .ToList();
+            if (liveSessionIds is { Count: > 0 })
+            {
+                var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+                var protectedProjects = _LiveProjects(await _ContainersAsync(cancellationToken).ConfigureAwait(false), records, liveSessionIds);
+                rows = rows.Where(row => row.Length < 2 || protectedProjects.Contains(row[1].Trim()) == false).ToList();
+            }
+
             var containerIds = rows.Select(row => row[0].Trim()).Where(id => id.Length > 0).ToList();
             if (containerIds.Count == 0)
             {
@@ -908,7 +950,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
             try
             {
                 await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
-                await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+                await _ReleaseOneAsync(record, cancellationToken, liveSessionIds: records.Where(other => other.SessionId != sessionId).Select(other => other.SessionId).ToArray()).ConfigureAwait(false);
             }
             finally
             {
@@ -929,7 +971,34 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     public async Task ReconcileAsync(IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken = default)
     {
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
-        var orphans = records.Where(record => !liveSessionIds.Contains(record.SessionId)).ToList();
+        var freshRepositories = new HashSet<string>(StringComparer.Ordinal);
+        var fetchedRepositories = new Dictionary<string, bool>(StringComparer.FromComparison(PathComparison));
+        foreach (var repository in records.Select(record => record.RepositoryRoot).Distinct(StringComparer.Ordinal))
+        {
+            try
+            {
+                var common = await GitCli.RunCheckedAsync(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"], cancellationToken).ConfigureAwait(false);
+                if (fetchedRepositories.TryGetValue(common, out var fresh) == false)
+                {
+                    await _PruneMissingAsync(repository, cancellationToken).ConfigureAwait(false);
+                    var fetch = await GitCli.RunAsync(repository, ["fetch", "--prune", "--all"], cancellationToken,
+                        environment: new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0" }).ConfigureAwait(false);
+                    fresh = fetch.ExitCode == 0;
+                    fetchedRepositories.Add(common, fresh);
+                }
+
+                if (fresh)
+                {
+                    freshRepositories.Add(repository);
+                }
+            }
+            catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)
+            {
+                _logger?.LogWarning(exception, "Could not refresh repository '{Path}'; existing worktrees will be kept.", repository);
+            }
+        }
+
+        var orphans = records.Where(record => liveSessionIds.Contains(record.SessionId) == false || Directory.Exists(record.Path) == false).ToList();
         _logger?.LogInformation(
             "Reconcile sweep: {OrphanCount} of {TotalCount} registered worktrees belong to no live session.",
             orphans.Count, records.Count);
@@ -938,11 +1007,28 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         {
             try
             {
+                if (Directory.Exists(record.Path) == false)
+                {
+                    await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 var leasePath = await _AcquireLeaseAsync(record.Path, record.RepositoryRoot, cancellationToken).ConfigureAwait(false);
                 try
                 {
                     await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
-                    await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+                    var status = await _StatusOfAsync(record, cancellationToken).ConfigureAwait(false);
+                    var safe = status.HasUncommittedChanges == false && status.StrandableCommits == 0
+                        && (freshRepositories.Contains(record.RepositoryRoot)
+                            || await _IsFullyInBaseAsync(record, cancellationToken).ConfigureAwait(false));
+                    if (safe || status.NothingToKeep)
+                    {
+                        await _ReleaseOneAsync(record, cancellationToken, knownClean: safe, liveSessionIds).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await _RetainAsync(status, freshRepositories.Contains(record.RepositoryRoot), cancellationToken).ConfigureAwait(false);
+                    }
                 }
                 finally
                 {
@@ -962,20 +1048,202 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
             }
         }
 
-        // Reclaim git's own admin entries for worktrees whose folder disappeared out from under it (a manual delete),
-        // which a plain registry drop cannot — done per repository the registry still knows about.
-        foreach (var repositoryRoot in records.Select(record => record.RepositoryRoot).Distinct(StringComparer.Ordinal))
+        await _CleanupSessionResourcesAsync(records, liveSessionIds, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool _SamePath(string left, string right) =>
+        string.Equals(left.Replace('\\', '/').TrimEnd('/'), right.Replace('\\', '/').TrimEnd('/'), PathComparison);
+
+    private static async Task<List<(WorktreeRecord Record, string AdminName)>> _MissingWorktreesAsync(string repository, CancellationToken cancellationToken)
+    {
+        List<(WorktreeRecord, string)> missing = [];
+        if (Directory.Exists(repository) == false)
+        {
+            return missing;
+        }
+
+        var listing = await GitCli.RunCheckedAsync(repository, ["worktree", "list", "--porcelain", "-z"], cancellationToken).ConfigureAwait(false);
+        var common = await GitCli.RunCheckedAsync(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"], cancellationToken).ConfigureAwait(false);
+        var adminRoot = Path.Combine(common, "worktrees");
+        if (Directory.Exists(adminRoot) == false)
+        {
+            return missing;
+        }
+
+        foreach (var entry in listing.Split("\0\0", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var fields = entry.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+            var path = fields.FirstOrDefault(field => field.StartsWith("worktree ", StringComparison.Ordinal))?[9..];
+            if (path is null || Directory.Exists(path))
+            {
+                continue;
+            }
+
+            foreach (var admin in Directory.EnumerateDirectories(adminRoot))
+            {
+                var gitdir = Path.Combine(admin, "gitdir");
+                if (File.Exists(gitdir) && _SamePath((await File.ReadAllTextAsync(gitdir, cancellationToken).ConfigureAwait(false)).Trim(), $"{path}/.git"))
+                {
+                    var branch = fields.FirstOrDefault(field => field.StartsWith("branch refs/heads/", StringComparison.Ordinal))?[18..] ?? "HEAD";
+                    var head = fields.FirstOrDefault(field => field.StartsWith("HEAD ", StringComparison.Ordinal))?[5..] ?? string.Empty;
+                    var record = new WorktreeRecord(string.Empty, repository, path, branch, head, DateTimeOffset.UtcNow)
+                    {
+                        IsLocked = fields.Any(field => field == "locked" || field.StartsWith("locked ", StringComparison.Ordinal)),
+                    };
+                    missing.Add((record, Path.GetFileName(admin)));
+                    break;
+                }
+            }
+        }
+
+        return missing;
+    }
+
+    private static async Task _PruneMissingAsync(string repository, CancellationToken cancellationToken)
+    {
+        foreach (var missing in await _MissingWorktreesAsync(repository, cancellationToken).ConfigureAwait(false))
+        {
+            if (missing.Record.IsLocked)
+            {
+                var unlock = await GitCli.RunAsync(repository, ["worktree", "unlock", missing.AdminName], cancellationToken).ConfigureAwait(false);
+                if (unlock.ExitCode != 0)
+                {
+                    await GitCli.RunCheckedAsync(repository, ["worktree", "unlock", missing.Record.Path], cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        if (Directory.Exists(repository))
+        {
+            await GitCli.RunCheckedAsync(repository, ["worktree", "prune", "--expire", "now"], cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task _RetainAsync(WorktreeStatus status, bool remoteFresh, CancellationToken cancellationToken)
+    {
+        var reason = status.HasUncommittedChanges
+            ? status.UncommittedFileCount > 0 ? $"{status.UncommittedFileCount} {(status.UncommittedFileCount == 1 ? "file" : "files")} not committed" : "Worktree could not be checked"
+            : status.StrandableCommits > 0 ? $"{status.StrandableCommits} {(status.StrandableCommits == 1 ? "commit" : "commits")} not on the remote"
+            : remoteFresh == false ? "Fetch failed"
+            : "Worktree could not be checked";
+        if (remoteFresh == false && (status.HasUncommittedChanges || status.StrandableCommits > 0))
+        {
+            reason += "; fetch failed";
+        }
+
+        await _registry.AddAsync(status.Record with { IsRetained = true, RetentionReason = reason }, cancellationToken).ConfigureAwait(false);
+        _RaiseWorktreesChanged();
+    }
+
+    private async Task _CleanupSessionResourcesAsync(IReadOnlyList<WorktreeRecord> records, IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken)
+    {
+        if (_dockerCli is not null)
         {
             try
             {
-                await GitCli.RunAsync(repositoryRoot, ["worktree", "prune"], cancellationToken).ConfigureAwait(false);
+                var containers = await _ContainersAsync(cancellationToken).ConfigureAwait(false);
+                var liveProjects = _LiveProjects(containers, records, liveSessionIds);
+                var ryukSessions = containers.Where(container => container.Image.Split('/').Last().Split(':', '@')[0] == "ryuk")
+                    .Select(container => container.Label("org.testcontainers.session-id")).ToHashSet(StringComparer.Ordinal);
+                foreach (var container in containers)
+                {
+                    var project = container.Label("com.docker.compose.project");
+                    var directory = container.Label("com.docker.compose.project.working_dir");
+                    var session = container.Label("org.testcontainers.session-id");
+                    var orphan = container.Label("org.testcontainers") == "true" && session.Length > 0 && ryukSessions.Contains(session) == false;
+                    if (orphan && liveProjects.Contains(project) == false && _IsLiveDirectory(directory, records, liveSessionIds) == false)
+                    {
+                        await _dockerCli.RunAsync(["rm", "-f", container.Id], cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                foreach (var directory in containers.Select(container => container.Label("com.docker.compose.project.working_dir")).Distinct(StringComparer.Ordinal))
+                {
+                    if (directory.Length > 0 && _IsInside(directory, _sessionTempRoot) && _IsLiveDirectory(directory, records, liveSessionIds) == false)
+                    {
+                        var resource = new WorktreeRecord(string.Empty, string.Empty, directory, string.Empty, string.Empty, DateTimeOffset.UtcNow);
+                        await _CleanupContainersAsync(resource, cancellationToken, liveSessionIds).ConfigureAwait(false);
+                    }
+                }
             }
-            catch (Exception)
+            catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)
             {
-                // A repository that itself vanished cannot be pruned; the registry drop above already forgot its
-                // worktrees, so there is nothing left to leak.
+                _logger?.LogWarning(exception, "Could not clean up session containers.");
             }
         }
+
+        if (Directory.Exists(_sessionTempRoot) == false || (File.GetAttributes(_sessionTempRoot) & FileAttributes.ReparsePoint) != 0)
+        {
+            return;
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(_sessionTempRoot))
+        {
+            if (liveSessionIds.Contains(Path.GetFileName(directory)))
+            {
+                continue;
+            }
+
+            try
+            {
+                // A retained or unregistered checkout can still hold work, even inside disposable TEMP.
+                if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) == 0
+                    && Directory.EnumerateFileSystemEntries(directory, ".git", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }).Any() == false)
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+            catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)
+            {
+                _logger?.LogWarning(exception, "Could not remove session TEMP directory '{Path}'.", directory);
+            }
+        }
+    }
+
+    private bool _IsLiveDirectory(string directory, IReadOnlyList<WorktreeRecord> records, IReadOnlyCollection<string> liveSessionIds) =>
+        directory.Length > 0
+        && (records.Any(record => liveSessionIds.Contains(record.SessionId) && _IsInside(directory, record.Path))
+            || liveSessionIds.Any(pane => _IsInside(directory, Path.Combine(_sessionTempRoot, pane))));
+
+    private HashSet<string> _LiveProjects(IReadOnlyList<SessionContainer> containers, IReadOnlyList<WorktreeRecord> records, IReadOnlyCollection<string> liveSessionIds) =>
+        containers.Where(container => _IsLiveDirectory(container.Label("com.docker.compose.project.working_dir"), records, liveSessionIds))
+            .Select(container => container.Label("com.docker.compose.project")).Where(project => project.Length > 0).ToHashSet(StringComparer.Ordinal);
+
+    private async Task<IReadOnlyList<SessionContainer>> _ContainersAsync(CancellationToken cancellationToken)
+    {
+        if (_dockerCli is null)
+        {
+            return [];
+        }
+
+        var listing = await _dockerCli.RunAsync(["ps", "-aq"], cancellationToken).ConfigureAwait(false);
+        if (listing.ExitCode != 0)
+        {
+            throw new InvalidOperationException("Could not list Docker containers.");
+        }
+
+        var ids = listing.StandardOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        var inspection = await _dockerCli.RunAsync(["inspect", .. ids], cancellationToken).ConfigureAwait(false);
+        if (inspection.ExitCode != 0)
+        {
+            throw new InvalidOperationException("Could not inspect Docker containers.");
+        }
+
+        using var document = JsonDocument.Parse(inspection.StandardOutput);
+        return document.RootElement.EnumerateArray().Select(container => new SessionContainer(
+            container.GetProperty("Id").GetString() ?? string.Empty,
+            container.GetProperty("Config").GetProperty("Image").GetString() ?? string.Empty,
+            container.GetProperty("Config").GetProperty("Labels").Deserialize<Dictionary<string, string>>() ?? [])).ToArray();
+    }
+
+    private sealed record SessionContainer(string Id, string Image, IReadOnlyDictionary<string, string> Labels)
+    {
+        public string Label(string key) => Labels.GetValueOrDefault(key, string.Empty);
     }
 
     private async Task _CleanupNetworksAsync(WorktreeRecord record, CancellationToken cancellationToken)
@@ -1011,21 +1279,21 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
         }
     }
 
-    private async Task _ReleaseOneAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    private async Task _ReleaseOneAsync(WorktreeRecord record, CancellationToken cancellationToken, bool? knownClean = null, IReadOnlyCollection<string>? liveSessionIds = null)
     {
         // A worktree with no working copy left has nothing to keep, and nothing about it can be measured either:
         // the clean check below would fail and mark the record retained, leaving the unremovable row AC-342 fixes.
         // Drop it here instead; the branch is kept, as on every other removal.
         if (!await _HasWorkingCopyAsync(record.Path, cancellationToken).ConfigureAwait(false))
         {
-            await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
+            await _RemoveAsync(record, force: false, cancellationToken, liveSessionIds).ConfigureAwait(false);
             return;
         }
 
         bool clean;
         try
         {
-            clean = await IsCleanAsync(record, cancellationToken).ConfigureAwait(false);
+            clean = knownClean ?? await IsCleanAsync(record, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -1049,7 +1317,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 isWorkInTheBase = false;
             }
 
-            await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
+            await _RemoveAsync(record, force: false, cancellationToken, liveSessionIds).ConfigureAwait(false);
 
             // Best-effort: the worktree, the thing that shared the working tree, is already gone; a branch git
             // declines to delete is not worth failing on.
@@ -1058,11 +1326,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 await GitCli.RunAsync(record.RepositoryRoot, ["branch", "-d", "--", record.Branch], cancellationToken).ConfigureAwait(false);
             }
         }
-        else if (!record.IsRetained)
+        else
         {
-            // Keep the work and mark it retained, so the worktree panel shows it for review and no sweep auto-removes
-            // it (cleanup-policy A). Idempotent: an already-retained record is left as it is.
-            await _registry.AddAsync(record with { IsRetained = true }, cancellationToken).ConfigureAwait(false);
+            await _RetainAsync(await _StatusOfAsync(record, cancellationToken).ConfigureAwait(false), remoteFresh: true, cancellationToken).ConfigureAwait(false);
         }
     }
 

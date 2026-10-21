@@ -264,12 +264,15 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await using var driver = _CreateDriver(fake);
 
         await driver.StartAsync(
-            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
+            model: null, workingDirectory: _tempDir, resumeSessionId: null,
+            options: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PaneId] = "sdk-temp-under-test" }, mcpServers: null,
             environment: new Dictionary<string, string> { ["CLAUDE_CONFIG_DIR"] = "/somebody/elses/profile" },
             CancellationToken.None);
 
         Assert.NotNull(fake.EnvironmentVariables);
         Assert.Contains(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir), fake.EnvironmentVariables);
+        var temp = Path.Combine(Path.GetTempPath(), "cockpit", "sdk-temp-under-test");
+        Assert.All(new[] { "TEMP", "TMP", "TMPDIR" }, key => Assert.Contains(new KeyValuePair<string, string?>(key, temp), fake.EnvironmentVariables));
     }
 
     // The host's marker for "nobody is watching this one" — what a delegated task and a self-driving Autopilot step

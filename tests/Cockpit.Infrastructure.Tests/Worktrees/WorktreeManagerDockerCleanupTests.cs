@@ -1,4 +1,5 @@
 using Cockpit.Infrastructure.Worktrees;
+using System.Text.Json;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -124,6 +125,29 @@ public sealed class WorktreeManagerDockerCleanupTests : IDisposable
             if (_failure is { } failure)
             {
                 throw failure;
+            }
+
+            if (arguments is ["ps", "-aq"])
+            {
+                return Task.FromResult(new DockerCliResult(0, string.Join('\n', _stacks.Where(stack => _removedContainers.Contains(stack.ContainerId) == false).Select(stack => stack.ContainerId)), string.Empty));
+            }
+
+            if (arguments is ["inspect", ..])
+            {
+                var containers = _stacks.Where(stack => arguments.Contains(stack.ContainerId)).Select(stack => new
+                {
+                    Id = stack.ContainerId,
+                    Config = new
+                    {
+                        Image = "app",
+                        Labels = new Dictionary<string, string>
+                        {
+                            ["com.docker.compose.project"] = stack.Project,
+                            ["com.docker.compose.project.working_dir"] = stack.WorkingDir,
+                        },
+                    },
+                });
+                return Task.FromResult(new DockerCliResult(0, JsonSerializer.Serialize(containers), string.Empty));
             }
 
             if (arguments is ["ps", "-a", "--filter", var containerFilter, "--format", _])

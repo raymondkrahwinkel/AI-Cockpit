@@ -96,7 +96,7 @@
                                                 <TextBlock Grid.Column="2" Text="{Binding Branch}" FontWeight="SemiBold" FontSize="12"
                                                            Foreground="{DynamicResource CockpitTextPrimaryBrush}" VerticalAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"/>
-                                                <Border Grid.Column="3" Classes="tag">
+                                                <Border Grid.Column="3" Classes="tag" ToolTip.Tip="{Binding RetentionReason}">
                                                     <TextBlock Text="{Binding StatusLabel}" FontSize="10"
                                                                Foreground="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                                                 </Border>
