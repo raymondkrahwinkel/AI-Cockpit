@@ -5,6 +5,8 @@ namespace Cockpit.Core.Worktrees;
 // — not in the base branch, not on any remote, not present under a rewritten commit (AC-266); pushed work is safe.
 public sealed record WorktreeStatus(WorktreeRecord Record, bool Exists, bool HasUncommittedChanges, int StrandableCommits)
 {
+    public int UncommittedFileCount { get; init; }
+
     // True when the folder is on disk but git no longer knows it as a working tree — e.g. a removal that couldn't
     // delete the folder, or a prune after manual cleanup. Nothing can be measured, so it is not `HasUncommittedChanges` either.
     public bool WorkingCopyMissing { get; init; }

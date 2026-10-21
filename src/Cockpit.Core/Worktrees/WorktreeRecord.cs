@@ -19,8 +19,10 @@ public sealed record WorktreeRecord(
     // Whether the worktree is git-locked, which it is from creation until teardown so a stray prune cannot pull it out from under a live session.
     public bool IsLocked { get; init; } = true;
 
-    // Set when teardown kept the worktree because it held uncommitted work or unmerged commits: shown for review, never auto-removed (cleanup-policy A).
+    // Reassessed on each sweep; only work still held here prevents automatic removal.
     public bool IsRetained { get; init; }
+
+    public string? RetentionReason { get; init; }
 
     // Whether an agent made this worktree itself via `worktree_create`, as opposed to the worktree a session runs
     // in, which stays protected against its own session (AC-520 fix 5). Named for the exception, not the default:

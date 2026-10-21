@@ -54,13 +54,21 @@ Each row carries two labels. The **state** says what would be lost:
 | Clean | Exists, nothing uncommitted, no commit that lives only here. Safe to remove. |
 | Uncommitted changes | Work in the folder that is not committed anywhere. |
 | *N* commit(s) only here | Committed, but in no other branch and on no remote. |
-| Retained | Teardown kept it because it held work. Shown for review, never removed on its own. |
+| Retained | Kept because it holds work. Hover over the state for the reason; reassessed every cleanup round. |
 | Folder missing | The folder is gone. Only the register entry is left. |
 | No working copy | The folder is there but git does not know it as a working tree any more. |
 
 "Commits only here" is measured against the base branch's *current* tip, and pushed work counts as safe —
 so a branch whose commits have since been merged reads as clean instead of showing "3 commits ahead"
 forever. It is a question about losing work, not about being up to date.
+
+Every cleanup round fetches and prunes remote refs once per repository before reassessing retained worktrees.
+Clean worktrees whose commits are pushed or merged can then go. Uncommitted files and commits only held locally
+stay. Missing folders, including locked entries from another machine, are unlocked before their Git entries are pruned.
+
+Each session receives its own `TEMP`/`TMP`/`TMPDIR` under the system temp folder's `cockpit/<paneId>` directory.
+The round removes that directory after the pane is gone, keeping any checkout it still contains. Testcontainers
+without a Ryuk container for their session can go too; a compose project used by a live pane is protected.
 
 The **owner** says whether a session still holds the tree — `in use`, naming the pane where it can, or
 `session gone`.

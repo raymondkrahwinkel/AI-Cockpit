@@ -202,6 +202,16 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         if (_ResolveOption(options, WellKnownPluginSessionOptions.PaneId, defaultValue: null) is { Length: > 0 } paneId)
         {
             environment["COCKPIT_PANE_ID"] = paneId;
+            if (paneId is "." or ".." || paneId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || paneId.Contains('/') || paneId.Contains('\\'))
+            {
+                throw new ArgumentException("A pane id must be a single directory name.", nameof(options));
+            }
+
+            var temp = Path.Combine(Path.GetTempPath(), "cockpit", paneId);
+            Directory.CreateDirectory(temp);
+            environment["TEMP"] = temp;
+            environment["TMP"] = temp;
+            environment["TMPDIR"] = temp;
         }
 
         var subprocess = _subprocessFactory();

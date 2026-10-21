@@ -59,7 +59,7 @@ internal sealed class WorktreeRegistryStore : IWorktreeRegistry, ISingletonServi
                     return;
                 }
 
-                transferred = existing.ToDomain() with { SessionId = targetSessionId, IsRetained = false };
+                transferred = existing.ToDomain() with { SessionId = targetSessionId, IsRetained = false, RetentionReason = null };
                 file.Worktrees.Remove(existing);
                 file.Worktrees.Add(WorktreeRegistryEntry.FromDomain(transferred));
             },
