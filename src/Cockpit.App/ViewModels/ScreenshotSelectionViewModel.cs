@@ -546,7 +546,7 @@ public sealed partial class ScreenshotSelectionViewModel : ObservableObject
         MarkTool.Stroke => new StrokeMark([.. trail], MarkColour, _Weighed(StrokeThickness)) is { } drawn && drawn.Curve().Count > 0
             ? drawn
             : null,
-        MarkTool.Redaction => _Between(from, to) is { Width: > 0, Height: > 0 } box ? new RedactionMark(box) : null,
+        MarkTool.Redaction => null,
         MarkTool.Outline => _Between(from, to) is { Width: > 0, Height: > 0 } frame
             ? new OutlineMark(frame, MarkColour, _Weighed(OutlineThickness))
             : null,
