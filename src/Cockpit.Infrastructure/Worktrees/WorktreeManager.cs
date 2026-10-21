@@ -1018,7 +1018,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 {
                     await _CleanupNetworksAsync(record, cancellationToken).ConfigureAwait(false);
                     var status = await _StatusOfAsync(record, cancellationToken).ConfigureAwait(false);
-                    var safe = status.HasUncommittedChanges == false
+                    var safe = status.HasUncommittedChanges == false && status.StrandableCommits == 0
                         && (freshRepositories.Contains(record.RepositoryRoot)
                             || await _IsFullyInBaseAsync(record, cancellationToken).ConfigureAwait(false));
                     if (safe || status.NothingToKeep)
