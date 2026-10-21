@@ -55,8 +55,18 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         var slot = new Slot(this, request, DateTimeOffset.UtcNow);
         lock (_gate)
         {
-            _waiting.Add(slot);
+            if (request.Purpose == HeavyRunPurpose.Operator)
+            {
+                slot.Admit(_resources.Current, _resources.FreeDiskBytes(request.WorkingDirectory), null, DateTimeOffset.UtcNow);
+                _running.Add(slot);
+            }
+            else
+            {
+                _waiting.Add(slot);
+            }
         }
+
+        slot.Started();
 
         _Pump();
         _ = _RefreshSettingsAsync();
@@ -85,7 +95,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         [
             .. running.Select(slot => new SupervisedActivity(
                 slot.Request.RunId,
-                slot.Request.Label,
+                slot.Request.Purpose == HeavyRunPurpose.Operator ? $"{slot.Request.Label} (operator)" : slot.Request.Label,
                 [
                     new ActivityDetail("Session", slot.Request.PaneId),
                     new ActivityDetail("Running for", _Since(slot.AdmittedAt)),
@@ -123,7 +133,8 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             // A place belongs to the session that asked for it: once that session is gone, so is its place.
             if (live is not null)
             {
-                gone = [.. _waiting.Concat(_running).Where(slot => !live.Contains(slot.Request.PaneId))];
+                gone = [.. _waiting.Concat(_running)
+                    .Where(slot => slot.Request.Purpose != HeavyRunPurpose.Operator && !live.Contains(slot.Request.PaneId))];
                 _waiting.RemoveAll(gone.Contains);
                 _running.RemoveAll(gone.Contains);
             }
@@ -292,7 +303,13 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             (PeakCpuPercent, _peakUsedMemory, _lowestFreeDisk) = (load.CpuPercent, load.UsedMemoryBytes, freeDisk);
         }
 
-        public void Started() => _admitted.TrySetResult();
+        public void Started()
+        {
+            if (_baseline is not null)
+            {
+                _admitted.TrySetResult();
+            }
+        }
 
         public void Observe(MachineLoad load, long? freeDisk)
         {

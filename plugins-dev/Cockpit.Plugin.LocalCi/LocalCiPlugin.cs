@@ -8,6 +8,7 @@ using Cockpit.Plugin.LocalCi.Runtime;
 using Cockpit.Plugin.LocalCi.Sessions;
 using Cockpit.Plugin.LocalCi.Workflows;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -174,10 +175,14 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         var startedAt = DateTimeOffset.UtcNow;
         var commit = await head.ReadAsync(request.ProjectRoot, cancellationToken);
 
+        // AC-1535: the operator's own run never waits in the queue, but holds a place there so agents' runs wait for it.
+        var runId = Guid.NewGuid().ToString("n");
+        await using var slot = host.RequestHeavyRunSlot(
+            new HeavyRunRequest(runId, HeavyRunKind.Gate, HeavyRunPurpose.Operator, "operator", request.JobId, request.ProjectRoot));
+
         // Linked rather than passed through directly: the tracker's own stop callback (the status bar's Kill,
         // AC-82) must be able to cancel this run even when the UI part's own Stop button never fires.
-        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var runId = Guid.NewGuid().ToString("n");
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, slot.Revoked);
         tracker.Begin(runId, request.ProjectRoot, request.JobId, startedAt, () =>
         {
             stopping.Cancel();
