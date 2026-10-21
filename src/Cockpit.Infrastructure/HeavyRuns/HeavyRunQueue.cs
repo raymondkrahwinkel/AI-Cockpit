@@ -73,7 +73,16 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         }
 
         slot.Started();
-        _Pump();
+        try
+        {
+            _Pump();
+        }
+        catch (Exception exception)
+        {
+            // The place is taken already and its owner will give it back; a failed look now is retried on the next sample.
+            _logger.LogError(exception, "The heavy-run queue failed to look at its runs after a request.");
+        }
+
         _ = _RefreshSettingsAsync();
         return slot;
     }
@@ -151,14 +160,15 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             held = [.. _waiting, .. _running];
         }
 
-        foreach (var slot in held)
-        {
-            slot.FreeDiskBytes = _resources.FreeDiskBytes(slot.Request.WorkingDirectory);
-        }
-
+        var freeDisk = held.Select(slot => _resources.FreeDiskBytes(slot.Request.WorkingDirectory)).ToList();
         List<Slot> gone = [];
         lock (_gate)
         {
+            for (var index = 0; index < held.Count; index++)
+            {
+                held[index].FreeDiskBytes = freeDisk[index];
+            }
+
             foreach (var slot in _running)
             {
                 slot.Observe(load);

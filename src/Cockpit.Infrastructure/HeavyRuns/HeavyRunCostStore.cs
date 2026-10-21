@@ -7,7 +7,8 @@ using Cockpit.Plugins.Abstractions.HeavyRuns;
 namespace Cockpit.Infrastructure.HeavyRuns;
 
 // AC-1535: the peak each kind of heavy run added to the machine, per repository, kept across restarts so the queue
-// admits on a measured number instead of a guess. The latest run's measurement replaces the one before it.
+// admits on a measured number instead of a guess. The highest measurement stays: a run killed halfway cannot lower it.
+// ponytail: a cost never comes down; forget the file's row when a repository's runs got lighter for good.
 public sealed class HeavyRunCostStore : ISingletonService
 {
     private readonly object _gate = new();
@@ -27,7 +28,12 @@ public sealed class HeavyRunCostStore : ISingletonService
         string json;
         lock (_gate)
         {
-            _Costs()[key] = cost;
+            _Costs()[key] = _Costs().GetValueOrDefault(key) is { } known
+                ? new HeavyRunCost(
+                    Math.Max(known.CpuPercent, cost.CpuPercent),
+                    Math.Max(known.MemoryBytes, cost.MemoryBytes),
+                    Math.Max(known.DiskBytes, cost.DiskBytes))
+                : cost;
             json = JsonSerializer.Serialize(_Costs());
         }
 
@@ -45,7 +51,17 @@ public sealed class HeavyRunCostStore : ISingletonService
     // A worktree shares its repository's costs: its `.git` file points into the checkout's `.git/worktrees/<name>`.
     public static string Key(HeavyRunKind kind, string workingDirectory)
     {
-        for (var directory = new DirectoryInfo(Path.GetFullPath(workingDirectory)); directory is not null; directory = directory.Parent)
+        string full;
+        try
+        {
+            full = Path.GetFullPath(workingDirectory);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return $"{kind}|{workingDirectory}";
+        }
+
+        for (var directory = new DirectoryInfo(full); directory is not null; directory = directory.Parent)
         {
             var git = Path.Combine(directory.FullName, ".git");
             if (Directory.Exists(git))
@@ -60,7 +76,7 @@ public sealed class HeavyRunCostStore : ISingletonService
             }
         }
 
-        return $"{kind}|{Path.GetFullPath(workingDirectory)}";
+        return $"{kind}|{full}";
     }
 
     private static string? _ReadPointer(string gitFile)

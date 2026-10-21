@@ -132,9 +132,9 @@ internal sealed class SessionStatusTools(
             return _Error("Could not identify your session and no `session` was given — pass the COCKPIT_PANE_ID environment variable as `session`.");
         }
 
-        if (string.IsNullOrWhiteSpace(command))
+        if (string.IsNullOrWhiteSpace(command) || string.IsNullOrWhiteSpace(workingDirectory))
         {
-            return _Error("`command` is required.");
+            return _Error("`command` and `workingDirectory` are both required.");
         }
 
         if (_ParseKind(kind) is not { } runKind)
@@ -174,7 +174,8 @@ internal sealed class SessionStatusTools(
             return JsonSerializer.Serialize(new { ok = true, runId, status = "queued", reason = queued.Reason }, SerializerOptions);
         }
 
-        if (tracker.IsRunning(runId) || queue?.StatusOf(runId) is { Status: "running" })
+        // Admitted but not yet begun counts as running; once a verdict exists, that verdict is the answer.
+        if (tracker.IsRunning(runId) || (tracker.Get(runId) is null && queue?.StatusOf(runId) is { Status: "running" }))
         {
             return JsonSerializer.Serialize(new { ok = true, runId, status = "running" }, SerializerOptions);
         }
