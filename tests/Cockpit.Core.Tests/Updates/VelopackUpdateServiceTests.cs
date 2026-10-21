@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Cockpit.Core.Updates;
@@ -25,6 +26,15 @@ public class VelopackUpdateServiceTests : IDisposable
     private readonly string _packages = Directory.CreateTempSubdirectory("ac387-").FullName;
 
     public void Dispose() => Directory.Delete(_packages, recursive: true);
+
+    // Layer 2: the published update-feed contract; ARM keeps its existing channel names (AC-1618).
+    [Theory]
+    [InlineData(Architecture.Arm64, UpdateChannel.Stable, "osx-stable")]
+    [InlineData(Architecture.Arm64, UpdateChannel.Nightly, "osx-nightly")]
+    [InlineData(Architecture.X64, UpdateChannel.Stable, "osx-x64-stable")]
+    [InlineData(Architecture.X64, UpdateChannel.Nightly, "osx-x64-nightly")]
+    public void MacChannel_MatchesTheProcessArchitectureAndStream(Architecture architecture, UpdateChannel stream, string expected) =>
+        Assert.Equal(expected, UpdateChannelName.For("osx", architecture, stream));
 
     /// <summary>
     /// The name that reaches the feed carries the platform. One GitHub release holds all three platforms' packages,

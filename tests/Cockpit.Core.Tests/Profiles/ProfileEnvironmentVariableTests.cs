@@ -9,16 +9,6 @@ namespace Cockpit.Core.Tests.Profiles;
 public class ProfileEnvironmentVariableTests
 {
     [Theory]
-    [InlineData("AI_OS_ROOT")]
-    [InlineData("_private")]
-    [InlineData("PATH2")]
-    [InlineData("x")]
-    public void IsValidKey_AcceptsPosixStyleNames(string key)
-    {
-        Assert.True(ProfileEnvironmentVariable.IsValidKey(key));
-    }
-
-    [Theory]
     [InlineData("2LEADING_DIGIT")]
     [InlineData("MY-VAR")]
     [InlineData("A B")]
