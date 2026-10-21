@@ -1,40 +1,40 @@
-# Test methods per test project, pinned by scripts/check-test-count.py.
-# The count only goes down: lower the row in the same PR that removes tests.
-# Update with: scripts/check-test-count.py --update-baseline (keeps the allow-growth rules)
-# format: <project>	<count>   or   allow-growth	<project>
-allow-growth	tests/Cockpit.Journeys
-plugins-dev/Cockpit.Plugin.Autopilot.Tests	60
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	129
-plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
-plugins-dev/Cockpit.Plugin.Depot.Tests	142
-plugins-dev/Cockpit.Plugin.Diagram.Tests	106
-plugins-dev/Cockpit.Plugin.Discord.Tests	21
+# Test cases per test project: ceilings, checked by scripts/check-test-count.py against origin/main.
+# A ceiling only goes down: lower the row in the same PR that removes tests, never raise it.
+# Update with: scripts/check-test-count.py --update-baseline
+# format: <project>	<ceiling>
+unit	cases
+plugins-dev/Cockpit.Plugin.Autopilot.Tests	95
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	173
+plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
+plugins-dev/Cockpit.Plugin.Depot.Tests	225
+plugins-dev/Cockpit.Plugin.Diagram.Tests	115
+plugins-dev/Cockpit.Plugin.Discord.Tests	46
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
 plugins-dev/Cockpit.Plugin.FanOut.Tests	1
-plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	11
-plugins-dev/Cockpit.Plugin.GitHubActions.Tests	4
+plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	21
+plugins-dev/Cockpit.Plugin.GitHubActions.Tests	16
 plugins-dev/Cockpit.Plugin.GitHubIssues.Tests	13
-plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	6
+plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	14
 plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests	8
-plugins-dev/Cockpit.Plugin.GitStatus.Tests	7
-plugins-dev/Cockpit.Plugin.GrokProvider.Tests	6
-plugins-dev/Cockpit.Plugin.KimiProvider.Tests	48
+plugins-dev/Cockpit.Plugin.GitStatus.Tests	9
+plugins-dev/Cockpit.Plugin.GrokProvider.Tests	14
+plugins-dev/Cockpit.Plugin.KimiProvider.Tests	60
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
-plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
-plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
-plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	6
-plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
+plugins-dev/Cockpit.Plugin.Kubernetes.Tests	111
+plugins-dev/Cockpit.Plugin.LocalCi.Tests	84
+plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	14
+plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	31
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
-plugins-dev/Cockpit.Plugin.Schedules.Tests	23
-plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
-plugins-dev/Cockpit.Plugin.Slack.Tests	26
-plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	5
+plugins-dev/Cockpit.Plugin.Schedules.Tests	38
+plugins-dev/Cockpit.Plugin.SessionReview.Tests	16
+plugins-dev/Cockpit.Plugin.Slack.Tests	61
+plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	8
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
-plugins-dev/Cockpit.Plugin.Workflows.Tests	30
-plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
-tests/Cockpit.App.ViewTests	1480
-tests/Cockpit.Backend.Tests	71
-tests/Cockpit.Core.Tests	1004
-tests/Cockpit.Infrastructure.Tests	669
-tests/Cockpit.Journeys	13
+plugins-dev/Cockpit.Plugin.Workflows.Tests	50
+plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
+tests/Cockpit.App.ViewTests	1673
+tests/Cockpit.Backend.Tests	78
+tests/Cockpit.Core.Tests	1320
+tests/Cockpit.Infrastructure.Tests	797
+tests/Cockpit.Journeys	29
 tests/Cockpit.PluginEndpointAnnotations.Tests	2
