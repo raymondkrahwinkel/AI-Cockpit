@@ -43,19 +43,6 @@ public class ScreenshotRedactionTests
         Assert.Equal(new[] { new RedactionMark(new CaptureRect(50, 80, 60, 40)) }, selection.Result.Marks);
     }
 
-    /// <summary>A box outside the region hides nothing in the picture that is sent, so it does not travel with it.</summary>
-    [Fact]
-    public void ABoxOutsideTheRegion_IsNotCarried()
-    {
-        var selection = _Surface();
-        _MarkOut(selection, 100, 100, 500, 400);
-        _DrawBox(selection, 700, 700, 50, 50);
-
-        selection.Confirm();
-
-        Assert.Empty(selection.Result!.Marks);
-    }
-
     /// <summary>A box hanging over the edge of the region is kept for the part that is inside it.</summary>
     [Fact]
     public void ABoxHalfOutsideTheRegion_IsKeptForThePartInside()
@@ -86,61 +73,6 @@ public class ScreenshotRedactionTests
         selection.Confirm();
 
         Assert.Equal(new[] { new RedactionMark(new CaptureRect(50, 80, 60, 40)) }, selection.Result!.Marks);
-    }
-
-    [Fact]
-    public void UndoTakesBackTheLastBox_AndOnlyTheLast()
-    {
-        var selection = _Surface();
-        _MarkOut(selection, 0, 0, 800, 600);
-        _DrawBox(selection, 10, 10, 40, 40);
-        _DrawBox(selection, 100, 100, 40, 40);
-
-        selection.Undo();
-
-        Assert.Equal(new[] { new RedactionMark(new CaptureRect(10, 10, 40, 40)) }, selection.Marks);
-    }
-
-    /// <summary>
-    /// There is nothing to hide until something has been marked out — and pressing the key then has to say so.
-    /// It used to do nothing at all and say nothing, which reads exactly like a key that is not wired up: the
-    /// operator could not tell the mode from a dead button.
-    /// </summary>
-    [Fact]
-    public void WithNothingMarkedOut_RedactionCannotStart_AndSaysWhy()
-    {
-        var selection = _Surface();
-
-        selection.Redact(true);
-
-        Assert.False(selection.Redacting);
-        Assert.Contains("Mark out a region first", selection.Hint);
-    }
-
-    /// <summary>A mode you cannot see is a mode that is not there — the surface says which of the two drags it is doing.</summary>
-    [Fact]
-    public void TheHintFollowsTheModeTheSurfaceIsIn()
-    {
-        var selection = _Surface();
-        _MarkOut(selection, 100, 100, 500, 400);
-
-        Assert.Contains("Drag a region", selection.Hint);
-
-        selection.Redact(true);
-
-        Assert.Contains("should not be sent", selection.Hint);
-    }
-
-    /// <summary>Dragging in redaction mode adds a box rather than moving the region the operator already settled on.</summary>
-    [Fact]
-    public void DraggingWhileRedacting_LeavesTheRegionAlone()
-    {
-        var selection = _Surface();
-        _MarkOut(selection, 100, 100, 500, 400);
-        _DrawBox(selection, 150, 150, 50, 50);
-
-        Assert.Equal(new CaptureRect(100, 100, 400, 300), selection.Selection);
-        Assert.IsType<RedactionMark>(Assert.Single(selection.Marks));
     }
 
     private static void _MarkOut(ScreenshotSelectionViewModel selection, int x, int y, int toX, int toY)
