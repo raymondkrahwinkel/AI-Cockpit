@@ -7,8 +7,6 @@ namespace Cockpit.Core.HeavyRuns;
 // the line always gets in, whatever else loads the machine, so nothing waits forever.
 public static class HeavyRunAdmission
 {
-    private static readonly bool AlwaysAdmit = true;
-
     // Pre-merge before explore, first come first served within a rank; an explore that waited long enough ranks up.
     public static IReadOnlyList<int> Order(IReadOnlyList<HeavyRunCandidate> waiting, HeavyRunSettings settings, DateTimeOffset now) =>
         [.. Enumerable.Range(0, waiting.Count)
@@ -31,7 +29,7 @@ public static class HeavyRunAdmission
 
     public static string? WaitReason(HeavyRunCandidate candidate, MachineLoad load, HeavyRunSettings settings, bool isAnyHeavyRunning)
     {
-        if (!isAnyHeavyRunning || AlwaysAdmit)
+        if (!isAnyHeavyRunning)
         {
             return null;
         }
