@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: heavy test runs and local CI gates now wait their turn in one queue for the whole machine. A run starts
+  once the measured CPU, memory and free disk leave room for what that kind of run cost before, a gate before a
+  merge goes ahead of an exploring run, and a session that closes gives its place back. The status bar's
+  **Heavy runs** shows who runs and who waits, and why ("waiting: CPU 85%"). The ceilings are settings under
+  `heavyRuns` in `cockpit.json` (75% CPU, 85% memory by default), and they step down on their own when a run fails
+  with a database timeout on a busy machine. **Run local checks** now answers at once and delivers its verdict to
+  the session's inbox.
 - added: closed sessions' retained worktrees are checked again after fetching, with a visible reason when work
   must stay. Cleanup also removes missing worktree entries from other machines, session temp folders, and orphaned
   testcontainers, while preserving local work and compose projects used by a live pane (AC-1537).

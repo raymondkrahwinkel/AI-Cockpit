@@ -66,7 +66,7 @@ public class LocalJobRunnerTests : IDisposable
         Func<string, Task<bool>>? approve = null)
     {
         var workflow = _project.AddWorkflow("ci.yml", yaml);
-        using var runner = _RunnerFor(runtime, act, "run-1");
+        var runner = _RunnerFor(runtime, act, "run-1");
         return await runner.RunAsync(
             new LocalRunRequest(_project.Root, workflow, jobId), onLine ?? (_ => { }), approve, CancellationToken.None);
     }

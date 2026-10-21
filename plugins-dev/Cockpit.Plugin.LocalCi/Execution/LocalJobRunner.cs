@@ -10,8 +10,8 @@ internal interface ILocalJobRunner
 {
     /// <summary>
     /// Runs <paramref name="request"/>, handing each line of output to <paramref name="onLine"/> as it arrives.
-    /// Never throws for an ordinary refusal — a machine without Docker, a job that cannot run here, a run already
-    /// in progress are all outcomes on the result, because a caller that has to catch an exception to learn "not
+    /// Never throws for an ordinary refusal — a machine without Docker or a job that cannot run here are
+    /// outcomes on the result, because a caller that has to catch an exception to learn "not
     /// run" is a caller that will one day treat it as "ran".
     /// </summary>
     /// <param name="approve">
@@ -27,8 +27,8 @@ internal interface ILocalJobRunner
         CancellationToken cancellationToken);
 }
 
-// The order a local run is decided in: is this machine able, is this job allowed, is the machine free — and only
-// then act. Each question is answered before the next is asked, so a refusal always names the first thing wrong
+// The order a local run is decided in: is this machine able, is this job allowed — and only then act. Whether the
+// machine has room for it is the host's heavy-run queue's call (AC-1535), asked before this runs. Each question is answered before the next is asked, so a refusal always names the first thing wrong
 // rather than whichever check happened to run last.
 internal sealed class LocalJobRunner(
     ILocalCiRuntime runtime,
@@ -36,7 +36,7 @@ internal sealed class LocalJobRunner(
     IRunContainerCleanup cleanup,
     Func<ActRunOptions> options,
     Func<string> newRunId,
-    TimeSpan? maxRunTime = null) : ILocalJobRunner, IDisposable
+    TimeSpan? maxRunTime = null) : ILocalJobRunner
 {
     // AC-1073: measured healthy runs take 4-6 minutes. 30 minutes leaves room for a cold image pull or a slower
     // machine without becoming a new source of false reds, while still bounding a stuck run to a known window
@@ -44,11 +44,6 @@ internal sealed class LocalJobRunner(
     internal static readonly TimeSpan DefaultMaxRunTime = TimeSpan.FromMinutes(30);
 
     private readonly TimeSpan _maxRunTime = maxRunTime ?? DefaultMaxRunTime;
-
-    // One at a time, and a second request is answered rather than queued. The machine is the operator's own and
-    // several sessions are usually live; two container builds at once take the cockpit down with them. Queueing
-    // would leave the asking session waiting on something it was never told about.
-    private readonly SemaphoreSlim _oneAtATime = new(1, 1);
 
     public async Task<LocalRunResult> RunAsync(
         LocalRunRequest request,
@@ -63,7 +58,7 @@ internal sealed class LocalJobRunner(
         catch (OperationCanceledException)
         {
             // A stop that lands before the run starts is still a stop, and it has to come back as one. Everything
-            // up to here — probing the machine, reading the workflows, taking the slot — observes the token and
+            // up to here — probing the machine and reading the workflows — observes the token and
             // would otherwise throw out of a caller that was promised an answer, leaving whoever is showing the
             // run with no way to learn it ended.
             return LocalRunResult.DidNotRun(
@@ -94,31 +89,8 @@ internal sealed class LocalJobRunner(
                 request.WorkflowPath, request.JobId, LocalRunOutcome.Refused, approval.Reason);
         }
 
-        if (!await _oneAtATime.WaitAsync(0, cancellationToken))
-        {
-            // AC-1015: not "wait for it" — that sentence used to be exactly what sent three sessions into a
-            // wait-and-retry loop over one night. The other run is not stuck, so retrying this call will not help;
-            // say that plainly instead of inviting a poll.
-            return LocalRunResult.DidNotRun(
-                request.WorkflowPath,
-                request.JobId,
-                LocalRunOutcome.AlreadyRunning,
-                "another local run already has this machine right now, and it is not stuck — retrying this call "
-                + "will not help. Do not wait and retry; come back later, or ask the operator to stop it from the "
-                + "status bar.");
-        }
-
-        try
-        {
-            return await _RunApprovedAsync(request, runnerLabel, approval.SetupActions, onLine, approve, cancellationToken);
-        }
-        finally
-        {
-            _oneAtATime.Release();
-        }
+        return await _RunApprovedAsync(request, runnerLabel, approval.SetupActions, onLine, approve, cancellationToken);
     }
-
-    public void Dispose() => _oneAtATime.Dispose();
 
     private async Task<LocalRunResult> _RunApprovedAsync(
         LocalRunRequest request,

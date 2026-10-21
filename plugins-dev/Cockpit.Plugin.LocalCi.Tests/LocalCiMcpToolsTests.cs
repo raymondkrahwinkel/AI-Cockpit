@@ -54,6 +54,7 @@ public class LocalCiMcpToolsTests : IDisposable
         var act = FakeStreamingCliRunner.Exiting(0);
 
         await _Tools(act).RunLocalChecks();
+        await _host.Delivered;
 
         Assert.Equal(_caller.Root, act.Calls.Single().WorkingDirectory);
     }
@@ -69,6 +70,7 @@ public class LocalCiMcpToolsTests : IDisposable
         var act = FakeStreamingCliRunner.Exiting(0);
 
         await _Tools(act, worktrees: worktrees).RunLocalChecks(checkout: _neighbour.Root);
+        await _host.Delivered;
 
         Assert.Equal(_neighbour.Root, act.Calls.Single().WorkingDirectory);
     }
@@ -146,14 +148,15 @@ public class LocalCiMcpToolsTests : IDisposable
         _host.Answer = ConsentOutcome.Denied;
         var act = FakeStreamingCliRunner.Exiting(0);
 
-        var answer = await _Tools(act).RunLocalChecks();
+        await _Tools(act).RunLocalChecks();
+        var verdict = await _host.Delivered;
 
         var asked = Assert.Single(_host.Asked);
         Assert.StartsWith("act ", asked.Action);
         Assert.Contains(_caller.Root, asked.Action);
         Assert.Equal(ConsentRisk.Dangerous, asked.Risk);
         Assert.Empty(act.Calls);
-        Assert.Equal(nameof(LocalRunOutcome.NotApproved), _Read(answer).GetProperty("verdict").GetString());
+        Assert.Equal(nameof(LocalRunOutcome.NotApproved), _Read(verdict).GetProperty("verdict").GetString());
     }
 
     [Fact]
@@ -165,6 +168,7 @@ public class LocalCiMcpToolsTests : IDisposable
         var act = FakeStreamingCliRunner.Exiting(0);
 
         await _Tools(act, skipConsent: false).RunLocalChecks();
+        await _host.Delivered;
 
         Assert.Single(_host.Asked);
         Assert.Single(act.Calls);
@@ -177,11 +181,12 @@ public class LocalCiMcpToolsTests : IDisposable
         _host.CallerPaneId = "pane-caller";
         var act = FakeStreamingCliRunner.Exiting(0);
 
-        var answer = _Read(await _Tools(act, skipConsent: true).RunLocalChecks());
+        await _Tools(act, skipConsent: true).RunLocalChecks();
+        var verdict = _Read(await _host.Delivered);
 
         Assert.Empty(_host.Asked);
         Assert.Single(act.Calls);
-        Assert.True(answer.GetProperty("ok").GetBoolean());
+        Assert.True(verdict.GetProperty("ok").GetBoolean());
     }
 
     private LocalCiMcpTools _Tools(IStreamingCliRunner act, bool skipConsent = false, FakeWorktreeManager? worktrees = null)
