@@ -168,7 +168,6 @@ public sealed partial class AssistantChatViewModel
             session.ShownThread = value.ThreadKey;
         }
 
-        _FollowOpenThreadInTheComposer();
         if (IsOverviewPage)
         {
             _RebuildOverview();
@@ -414,7 +413,6 @@ public sealed partial class AssistantChatViewModel
             SelectedThreadItem = items.FirstOrDefault(item => (item.Kind, item.ProjectId) == selectedKey) ?? _allItem;
         }
 
-        _RebuildComposerTargets(projectIds);
         if (Session is { } targets)
         {
             targets.ThreadTargets = [.. projectIds.Select(project => (project.Id, project.Name))];

@@ -825,22 +825,6 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- Assistant threads: where what you type or say goes — the open thread, or Auto, where the
-                         prompt is filed by what it names. Hidden until there is a thread to send to. -->
-                    <StackPanel x:Name="ComposerTarget" Orientation="Horizontal" Spacing="6"
-                                IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}">
-                        <TextBlock Text="To:" FontSize="12" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        <ComboBox x:Name="ComposerTargetPicker" Classes="pill" ItemsSource="{Binding ComposerTargets}"
-                                  SelectedItem="{Binding SelectedComposerTarget}" AutomationProperties.Name="Send to">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
-                                    <TextBlock Text="{Binding Name}"/>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                    </StackPanel>
-
                     <!-- The same row SessionComposerAlignmentTests measure. -->
                     <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                         <!-- The placeholder comes from the styles above: typing stays on while the assistant is

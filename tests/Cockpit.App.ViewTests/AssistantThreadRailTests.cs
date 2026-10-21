@@ -150,25 +150,6 @@ public sealed class AssistantThreadRailTests
         Assert.Equal([("cockpit", 1), ("depot", 2), ("waymark", 0)], chat.OverviewCards.Select(card => (card.ProjectId, card.Waiting)));
     }
 
-    // To: follows the open thread, and picking another sends the next prompt there without leaving the thread.
-    [Fact]
-    public void TheComposersTo_FollowsTheThread_AndCanSendElsewhere()
-    {
-        var (chat, _) = _Chat();
-        var session = chat.Session!;
-        chat.SelectedThreadItem = chat.ThreadItems.First(item => item.ProjectId == "depot");
-        Assert.Equal("depot", chat.SelectedComposerTarget!.ProjectId);
-
-        chat.SelectedComposerTarget = chat.ComposerTargets.First(target => target.ProjectId == "waymark");
-
-        Assert.Equal("depot", session.ShownThread);
-        Assert.Equal(["waymark"], session.ProjectsForPrompt("iets").Ids);
-
-        chat.SelectedThreadItem = chat.ThreadItems.First(item => item.Kind == AssistantThreadItemKind.All);
-        Assert.Equal("Auto (the assistant picks)", chat.SelectedComposerTarget!.Name);
-        Assert.Null(session.ProjectsForPrompt("iets").Ids);
-    }
-
     // The Simple stand's count opens Questions for you in the assistant's own column.
     [Fact]
     public void TheSimpleStandsCount_OpensQuestionsForYou()

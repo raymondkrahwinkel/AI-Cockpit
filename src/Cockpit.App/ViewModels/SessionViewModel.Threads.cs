@@ -86,14 +86,8 @@ public partial class SessionViewModel
     // All draws a project tag on rows; inside a thread the tag would only repeat where you are.
     public bool ShowsThreadTags => Threads is not null && ShownThread is null;
 
-    // Where what the operator types or says now goes: the open thread by default, or what the composer's To: picks.
-    // Null is Auto — the host files it by what it names, then the assistant may tag it.
-    [ObservableProperty]
-    private string? _composerThread;
-
     partial void OnShownThreadChanged(string? value)
     {
-        ComposerThread = value;
         _RebuildVisibleTranscript();
         _RaiseThreadTags();
     }
@@ -368,7 +362,7 @@ public partial class SessionViewModel
 
     // The projects a prompt typed or spoken now is put in: the open thread's, or none in All.
     // ponytail: the thread open when the turn starts, not when it was queued; carry it on QueuedPrompt if that bites.
-    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _ComposerProjects(string text) => ComposerThread switch
+    private (IReadOnlyList<string>? Ids, IReadOnlyDictionary<string, ProjectSource>? Sources) _ComposerProjects(string text) => ShownThread switch
     {
         null => _InferredProjects(text),
         GeneralThread => ([], null),
