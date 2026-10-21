@@ -28,8 +28,11 @@ public enum AssistantThreadItemKind
 }
 
 // One entry of the thread rail: Questions for you, All, General or a project.
-public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind kind, string name, string? projectId = null) : ObservableObject
+public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind kind, string name, string? projectId = null, string? logoPath = null) : ObservableObject
 {
+    // The project's own logo, drawn by ProjectLogoBadge like every other surface that shows a project; its initial without one.
+    public string? LogoPath { get; } = logoPath;
+
     public AssistantThreadItemKind Kind { get; } = kind;
 
     public string Name { get; } = name;
@@ -48,9 +51,6 @@ public sealed partial class AssistantThreadItemViewModel(AssistantThreadItemKind
 
     // Only a project's thread closes; General is where everything without one lands.
     public bool IsProject => Kind == AssistantThreadItemKind.Project;
-
-    // A project is a neutral initial and a name: a colour per project would be status colour as decoration.
-    public string Initial => Name.Length == 0 ? "?" : char.ToUpperInvariant(Name[0]).ToString();
 
     public bool HasIcon => !IsThread;
 
@@ -398,8 +398,9 @@ public sealed partial class AssistantChatViewModel
         var existing = ThreadItems.Where(item => item.Kind == AssistantThreadItemKind.Project).ToDictionary(item => item.ProjectId!, StringComparer.Ordinal);
         var items = new List<AssistantThreadItemViewModel> { _questionsItem, _allItem, _generalItem };
         items.AddRange(projectIds.Select(project => existing.TryGetValue(project.Id, out var kept) && kept.Name == project.Name
+                && kept.LogoPath == _ProjectLogo(project.Id)
             ? kept
-            : new AssistantThreadItemViewModel(AssistantThreadItemKind.Project, project.Name, project.Id)));
+            : new AssistantThreadItemViewModel(AssistantThreadItemKind.Project, project.Name, project.Id, _ProjectLogo(project.Id))));
         items.Add(_overviewItem);
 
         if (!items.SequenceEqual(ThreadItems))
@@ -425,6 +426,9 @@ public sealed partial class AssistantChatViewModel
 
         _RefreshThreadCounts();
     }
+
+    private string? _ProjectLogo(string projectId) =>
+        _cockpit?.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.LogoPath;
 
     private string? _ProjectName(string projectId) =>
         _cockpit?.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.Name;

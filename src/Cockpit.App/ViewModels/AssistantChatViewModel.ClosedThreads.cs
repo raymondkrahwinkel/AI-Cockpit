@@ -80,7 +80,7 @@ public sealed partial class AssistantChatViewModel
     private void _RebuildClosedThreadItems()
     {
         var closed = (Session?.ClosedThreads ?? [])
-            .Select(id => new AssistantThreadItemViewModel(AssistantThreadItemKind.Project, Session?.ProjectName(id) ?? _ProjectName(id) ?? id, id))
+            .Select(id => new AssistantThreadItemViewModel(AssistantThreadItemKind.Project, Session?.ProjectName(id) ?? _ProjectName(id) ?? id, id, _ProjectLogo(id)))
             .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         if (closed.Select(item => item.ProjectId).SequenceEqual(ClosedThreadItems.Select(item => item.ProjectId)))

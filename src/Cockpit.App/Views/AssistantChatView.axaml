@@ -78,9 +78,9 @@
                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <Panel Width="20" Height="20" Margin="0,0,10,0">
                         <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16" IsVisible="{Binding HasIcon}"/>
-                        <Border Classes="threadInitial" IsVisible="{Binding IsThread}">
-                            <TextBlock Text="{Binding Initial}"/>
-                        </Border>
+                        <!-- The project's own logo where it has one, its initial where not — the one badge every surface uses. -->
+                        <controls:ProjectLogoBadge Size="20" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
                     </Panel>
                     <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                     <Border Grid.Column="2" Classes="waitingCount" IsVisible="{Binding HasWaiting}" Margin="6,0,0,0">
@@ -123,9 +123,8 @@
                                     <materialIcons:MaterialIcon DockPanel.Dock="Right" Kind="ArchiveArrowUpOutline" Width="13" Height="13"
                                                                 VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     <StackPanel Orientation="Horizontal" Spacing="10">
-                                        <Border Classes="threadInitial">
-                                            <TextBlock Text="{Binding Initial}"/>
-                                        </Border>
+                                        <controls:ProjectLogoBadge Size="20" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" Opacity="0.7"/>
                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </StackPanel>
@@ -618,10 +617,25 @@
                               MinWidth="120" AutomationProperties.Name="Thread">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
-                                <TextBlock Text="{Binding Name}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <controls:ProjectLogoBadge Size="16" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                               WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                </StackPanel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+                    <!-- The closed threads, reachable here too: the narrow stand has no rail to fold them out under. -->
+                    <Button x:Name="ThreadPickerClosed" Classes="Compact" IsVisible="{Binding HasClosedThreads}"
+                            Command="{Binding ShowClosedThreadsCommand}"
+                            ToolTip.Tip="{Binding ClosedThreadsLabel}" AutomationProperties.Name="{Binding ClosedThreadsLabel}">
+                        <materialIcons:MaterialIcon Kind="ArchiveOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}" MinWidth="180"/>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
                     <Button Classes="Compact" Command="{Binding OpenQuestionsCommand}" ToolTip.Tip="Questions for you"
                             AutomationProperties.Name="Questions for you">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -677,9 +691,8 @@
                                            AutomationProperties.Name="{Binding Tooltip}">
                                         <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
                                                                     IsVisible="{Binding HasIcon}"/>
-                                        <Border Classes="threadInitial" IsVisible="{Binding IsThread}">
-                                            <TextBlock Text="{Binding Initial}"/>
-                                        </Border>
+                                        <controls:ProjectLogoBadge Size="20" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
                                         <Border Classes="waitingCount" IsVisible="{Binding HasWaiting}" Padding="3,0" MinWidth="13"
                                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-7,-10,0">
                                             <TextBlock Text="{Binding WaitingCount}" FontSize="9"/>
@@ -1139,7 +1152,11 @@
                                                 <Border DockPanel.Dock="Right" Classes="waitingCount" IsVisible="{Binding HasWaiting}">
                                                     <TextBlock Text="{Binding Waiting}"/>
                                                 </Border>
-                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <controls:ProjectLogoBadge DockPanel.Dock="Left" Size="24" Margin="0,0,8,0"
+                                                                           LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                           WellBackground="{DynamicResource CockpitInsetBgBrush}"/>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"/>
                                             </DockPanel>
                                             <TextBlock Text="{Binding SessionsLabel}" FontSize="11.5"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>

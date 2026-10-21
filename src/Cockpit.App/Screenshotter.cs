@@ -624,6 +624,8 @@ internal static partial class Screenshotter
         ["assistant-threads-closed"] = (_, _) => _AssistantThreads(960, closed: true),
         ["assistant-threads-closed-narrow"] = (_, _) => _AssistantThreads(520, closed: true),
         ["assistant-threads-suggestion"] = (_, _) => _AssistantThreads(960, suggestion: true),
+        ["assistant-threads-logos"] = (_, _) => _AssistantThreads(960, thread: "depot", logos: true),
+        ["assistant-threads-logos-icons"] = (_, _) => _AssistantThreads(520, thread: "depot", logos: true),
         ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
         ["assistant-threads-drag"] = (_, _) => _AssistantThreads(960, dragging: true),
         ["assistant-threads-drag-narrow"] = (_, _) => _AssistantThreads(520, dragging: true),
@@ -632,6 +634,8 @@ internal static partial class Screenshotter
         ["assistant-threads-docked-600"] = (_, _) => _AssistantThreadsDocked(600),
         ["assistant-threads-docked-400"] = (_, _) => _AssistantThreadsDocked(400),
         ["assistant-threads-docked-280"] = (_, _) => _AssistantThreadsDocked(280),
+        // The narrow stand's own way to the closed threads, its flyout staged open by the Hovers table below.
+        ["assistant-threads-docked-280-closed"] = (_, _) => _AssistantThreadsDocked(280, closed: true),
         ["assistant-threads-docked-collapsed"] = (_, _) => _AssistantThreadsDocked(null),
 
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
@@ -813,6 +817,7 @@ internal static partial class Screenshotter
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
+        ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying

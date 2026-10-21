@@ -14,7 +14,7 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class AssistantThreadRailTests
 {
-    private static (AssistantChatViewModel Chat, CockpitViewModel Cockpit) _Chat()
+    private static (AssistantChatViewModel Chat, CockpitViewModel Cockpit) _Chat(string? depotLogo = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(new AssistantSettings { IsEnabled = true }));
@@ -23,6 +23,11 @@ public sealed class AssistantThreadRailTests
 
         var cockpit = new CockpitViewModel();
         cockpit.Sessions.Clear();
+        if (depotLogo is not null)
+        {
+            cockpit.Projects.Projects.Add(new Cockpit.Core.Projects.Project("depot", "Depot") { LogoPath = depotLogo });
+        }
+
         return (new AssistantChatViewModel(host, settings, Substitute.For<IVoicePlaybackQueue>(), cockpit: cockpit), cockpit);
     }
 
@@ -171,6 +176,21 @@ public sealed class AssistantThreadRailTests
         chat.ReopenThreadCommand.Execute(chat.ClosedThreadItems.Single());
         Assert.False(chat.HasClosedThreads);
         Assert.Equal("waymark", chat.SelectedThreadItem!.ProjectId);
+    }
+
+    // A project's logo is its identity in the rail, the closed list and the Overview; without one the badge falls back
+    // on the initial, and General never has one.
+    [Fact]
+    public void AProjectsLogo_ReachesItsThreadEverywhereItIsDrawn()
+    {
+        var (chat, _) = _Chat(depotLogo: "C:/logos/depot.png");
+
+        Assert.Equal("C:/logos/depot.png", chat.ThreadItems.Single(item => item.ProjectId == "depot").LogoPath);
+        Assert.Null(chat.ThreadItems.Single(item => item.ProjectId == "waymark").LogoPath);
+        Assert.Null(chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.General).LogoPath);
+
+        chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.Overview);
+        Assert.Equal("C:/logos/depot.png", chat.OverviewCards.Single(card => card.ProjectId == "depot").LogoPath);
     }
 
     // The Simple stand's count opens Questions for you in the assistant's own column.

@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 namespace Cockpit.App.ViewModels;
 
 // One project on the Overview: its live sessions with their state, what waits on the operator, the latest word.
-public sealed record ProjectOverviewCard(string ProjectId, string Name, int Waiting, IReadOnlyList<string> Sessions, string? Latest)
+public sealed record ProjectOverviewCard(string ProjectId, string Name, int Waiting, IReadOnlyList<string> Sessions, string? Latest, string? LogoPath = null)
 {
     public bool HasWaiting => Waiting > 0;
 
@@ -42,7 +42,7 @@ public sealed partial class AssistantChatViewModel
             var latest = Session?.Transcript.LastOrDefault(row =>
                 (row.StartsTurn || row.IsAssistantMarkdown) && row.IsInThread(item.ProjectId) && row.Text.Trim().Length > 0);
 
-            OverviewCards.Add(new ProjectOverviewCard(item.ProjectId!, item.Name, item.WaitingCount, sessions, _OneLine(latest?.Text)));
+            OverviewCards.Add(new ProjectOverviewCard(item.ProjectId!, item.Name, item.WaitingCount, sessions, _OneLine(latest?.Text), item.LogoPath));
         }
 
         OnPropertyChanged(nameof(HasOverviewCards));

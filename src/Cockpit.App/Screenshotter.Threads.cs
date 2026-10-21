@@ -17,9 +17,10 @@ internal static partial class Screenshotter
 
     private static AssistantChatWindow _AssistantThreads(
         double width, string? thread = null, bool questions = false, bool overlay = false, bool answered = false,
-        bool dragging = false, bool moved = false, bool overview = false, bool closed = false, bool suggestion = false)
+        bool dragging = false, bool moved = false, bool overview = false, bool closed = false, bool suggestion = false,
+        bool logos = false)
     {
-        var chat = _AssistantChatViewModel(_AssistantThreadsConversation());
+        var chat = _AssistantChatViewModel(_AssistantThreadsConversation(), cockpit: logos ? _CockpitWithALogo() : null);
         var window = new AssistantChatWindow
         {
             DataContext = chat,
@@ -70,9 +71,14 @@ internal static partial class Screenshotter
 
     // Docked in the rail at a given width: 600 has labels, 400 icons, 280 the picker. Null leaves the rail collapsed,
     // and then the tab's count, the chip's and the floating card are what say a question is waiting (§ 7.2).
-    private static Window _AssistantThreadsDocked(double? railWidth)
+    private static Window _AssistantThreadsDocked(double? railWidth, bool closed = false)
     {
         var conversation = _AssistantThreadsConversation();
+        if (closed)
+        {
+            conversation.CloseThread("waymark");
+        }
+
         var panels = new Docking.DockPanelRegistry();
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId,
@@ -82,6 +88,7 @@ internal static partial class Screenshotter
             {
                 var chat = _AssistantChatViewModel(conversation);
                 chat.IsDocked = true;
+                chat.IsClosedThreadsExpanded = closed;
                 return new AssistantChatView { DataContext = chat };
             })
         {
@@ -114,6 +121,28 @@ internal static partial class Screenshotter
         var cockpit = _SimpleStand(withAssistant: true);
         cockpit.AssistantIndicator ??= new AssistantIndicatorViewModel { Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         cockpit.AssistantIndicator.OpenQuestionCount = 3;
+        return cockpit;
+    }
+
+    // Depot with a logo and the others without: the rail draws the logo where there is one and the initial elsewhere.
+    // The logo is the app's own icon, written to a file because a project's logo is a path on disk.
+    private static CockpitViewModel _CockpitWithALogo()
+    {
+        var logo = Path.Combine(Path.GetTempPath(), "cockpit-scene-project-logo.png");
+        using (var asset = Avalonia.Platform.AssetLoader.Open(new Uri("avares://Cockpit.App/Assets/AppIcon.png")))
+        using (var file = File.Create(logo))
+        {
+            asset.CopyTo(file);
+        }
+
+        var cockpit = new CockpitViewModel();
+        cockpit.Sessions.Clear();
+        cockpit.Projects.Projects.Clear();
+        foreach (var (id, name) in ThreadSceneProjects)
+        {
+            cockpit.Projects.Projects.Add(new Cockpit.Core.Projects.Project(id, name) { LogoPath = id == "depot" ? logo : null });
+        }
+
         return cockpit;
     }
 
