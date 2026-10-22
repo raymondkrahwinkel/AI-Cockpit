@@ -369,7 +369,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             ToolName = row.ToolName,
             ResultText = row.ResultText,
             IsUpdate = upsert.Version > 1,
-            Questions = questions,
+            Questions = [],
             CorrelationId = questions.Count > 0 ? id.ToString("n") : null,
         });
     }
