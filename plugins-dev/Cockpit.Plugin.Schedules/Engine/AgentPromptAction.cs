@@ -44,7 +44,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
                 prompt,
                 directory.Length == 0 ? null : directory,
                 action.Timeout,
-                action.Permission == AgentPermission.Write ? "acceptEdits" : null,
+                null,
                 id => taskId = id);
             return delivery.Deliver(task, answer) with { DelegatedTaskId = taskId };
         }
