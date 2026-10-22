@@ -42,6 +42,10 @@ internal sealed class DiscordChannelBridge : IDisposable
     // does not register a prompt that is already gone at the head of the JA/NEE queue.
     private readonly HashSet<Guid> _postingPrompts = [];
 
+    // AC-1544: the questions posted with option buttons, by correlation id, until a click answers them — the
+    // assistant's and another plugin's in one place, so a click is one code path whoever asked.
+    private readonly Dictionary<string, _PostedQuestion> _questions = new(StringComparer.Ordinal);
+
     private bool _disposed;
 
     public DiscordChannelBridge(
@@ -182,10 +186,106 @@ internal sealed class DiscordChannelBridge : IDisposable
         return (images, refused, failures.Count == 0 ? null : string.Join("; ", failures));
     }
 
-    // An Approve/Deny button was clicked. The caller acknowledges Discord's 3-second interaction deadline
-    // before calling this — this only decides and edits.
+    // Another plugin's message (AC-1544), through the same posting as a row's question: the parts in order, the last
+    // with the option buttons. A failure is the result, never a throw, so the sender can hand it to the assistant.
+    public Task<OperatorMessageResult> SendOperatorMessageAsync(IDiscordChannelSink sink, OperatorMessage message, CancellationToken cancellationToken = default) =>
+        SendPartsAsync(sink, DiscordSendDmStep.Split(message.Text, DiscordSendDmStep.DiscordLimit), message, cancellationToken);
+
+    // The parts as the caller cut them (the DM step chooses its own length), the last carrying the message's question.
+    public async Task<OperatorMessageResult> SendPartsAsync(
+        IDiscordChannelSink sink, IReadOnlyList<string> parts, OperatorMessage message, CancellationToken cancellationToken = default)
+    {
+        if (parts.Count == 0 && message.Question is null)
+        {
+            return OperatorMessageResult.Failed("There is nothing to send.");
+        }
+
+        try
+        {
+            foreach (var part in parts.Take(parts.Count - 1))
+            {
+                await sink.PostAsync(part, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+
+            var last = parts.Count > 0 ? parts[^1] : message.Question?.Question ?? string.Empty;
+            await _PostAsync(sink, last, message.CorrelationId, message.Question, cancellationToken).ConfigureAwait(false);
+            return OperatorMessageResult.Sent();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return OperatorMessageResult.Failed(exception.Message);
+        }
+    }
+
+    // The one button mechanism (AC-1544 criterion 5): buttons where Discord can carry them, else the text fallback.
+    private async Task<ulong> _PostAsync(
+        IDiscordChannelSink sink, string text, string? correlationId, AssistantChannelQuestion? question, CancellationToken cancellationToken)
+    {
+        var labels = question?.Options.Select(option => option.Label).ToList() ?? [];
+        var buttons = question is null ? null : DiscordAnswerButtons.For(correlationId, labels);
+        var shown = question is not null && buttons is null ? $"{text}\n\n{question.FallbackPrompt()}" : text;
+        var posted = await sink.PostAsync(shown, answers: buttons, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (buttons is not null)
+        {
+            lock (_gate)
+            {
+                _questions[buttons.CorrelationId] = new _PostedQuestion(buttons.Labels, sink, posted, shown);
+            }
+        }
+
+        return posted;
+    }
+
+    // A question's option button was clicked: re-checked against the access list here, as a consent click is, and
+    // answered through the gateway, which checks again and hands the answer to whoever asked.
+    private async Task _HandleAnswerAsync(string correlationId, int index, string senderId, CancellationToken cancellationToken)
+    {
+        if (!_access.IsAllowed(senderId))
+        {
+            _logRefusal($"Discord ignored an answer button click from {senderId}: not on the access list.");
+            return;
+        }
+
+        _PostedQuestion? question;
+        lock (_gate)
+        {
+            question = _questions.GetValueOrDefault(correlationId);
+        }
+
+        if (question is null || index < 0 || index >= question.Labels.Count)
+        {
+            return;
+        }
+
+        var label = question.Labels[index];
+        var result = await _gateway.AnswerAsync(senderId, correlationId, [label], cancellationToken).ConfigureAwait(false);
+
+        // Answered or refused, the question is done here: the host takes each one once.
+        lock (_gate)
+        {
+            _questions.Remove(correlationId);
+        }
+
+        if (!result.Ok)
+        {
+            _reportError($"Discord: the answer \"{label}\" did not arrive — {result.Error ?? "refused"}");
+            return;
+        }
+
+        await question.Sink.EditAsync(question.MessageId, $"{question.Text}\n\n✅ {label}", keepButtons: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    // An Approve/Deny button, or a question's option button, was clicked. The caller acknowledges Discord's
+    // 3-second interaction deadline before calling this — this only decides and edits.
     public async Task HandleButtonAsync(string customId, string senderId, CancellationToken cancellationToken = default)
     {
+        if (DiscordAnswerButtons.TryParse(customId, out var correlationId, out var index))
+        {
+            await _HandleAnswerAsync(correlationId, index, senderId, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (!DiscordConsentButtonId.TryParse(customId, out var promptId, out var approve))
         {
             return;
@@ -234,7 +334,7 @@ internal sealed class DiscordChannelBridge : IDisposable
             }
             else
             {
-                var posted = await _sink.PostAsync(text).ConfigureAwait(false);
+                var posted = await _PostAsync(_sink, text, row.CorrelationId, row.Questions.FirstOrDefault(), CancellationToken.None).ConfigureAwait(false);
                 lock (_gate)
                 {
                     _rowMessageIds[row.Id] = posted;
@@ -296,6 +396,8 @@ internal sealed class DiscordChannelBridge : IDisposable
             _promptMessageIds.Remove(promptId);
         }
     }
+
+    private sealed record _PostedQuestion(IReadOnlyList<string> Labels, IDiscordChannelSink Sink, ulong MessageId, string Text);
 
     public void Dispose()
     {

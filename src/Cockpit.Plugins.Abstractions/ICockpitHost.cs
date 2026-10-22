@@ -435,6 +435,30 @@ public interface ICockpitHost
     IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution) => null;
 
     /// <summary>
+    /// The chat channels open right now that take a plugin's message (AC-1544), each with its targets.
+    /// </summary>
+    /// <remarks>
+    /// Empty on a host without them, the default. A plugin that reads them sets minHostVersion 0.99.0.
+    /// </remarks>
+    IReadOnlyList<OperatorMessageChannelInfo> OperatorMessageChannels => [];
+
+    /// <summary>
+    /// Sends <paramref name="message"/> through the open channel <paramref name="channelId"/> to <paramref name="targetId"/>
+    /// (AC-1544). An answer to its question goes to <paramref name="onAnswer"/>, once, from an allowed account only.
+    /// </summary>
+    /// <remarks>
+    /// Never throws: a channel that is not open, a target it does not have, or a send that fails comes back as
+    /// <see cref="OperatorMessageResult.Failed"/>. The default fails; a plugin that sends sets minHostVersion 0.99.0.
+    /// </remarks>
+    Task<OperatorMessageResult> SendOperatorMessageAsync(
+        string channelId,
+        string targetId,
+        OperatorMessage message,
+        Func<OperatorMessageAnswer, Task>? onAnswer = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(OperatorMessageResult.Failed("This cockpit cannot send a message through a channel."));
+
+    /// <summary>
     /// Binds a plugin surface — a diagram or whiteboard window (AC-832) — to the session already running behind
     /// <paramref name="paneId"/>. The binding starts nothing and ends nothing.
     /// </summary>

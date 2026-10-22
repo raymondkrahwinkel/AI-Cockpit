@@ -36,7 +36,7 @@ public sealed class SchedulesPlugin : ICockpitPlugin
                 : Task.FromResult<string?>(null),
             (task, _, cancellationToken) => task.Action.Kind == TaskActionKind.AgentPrompt
                 ? agentPrompt.RunAsync(task, cancellationToken)
-                : Task.FromResult(delivery.Deliver(task, task.Action.Text)),
+                : delivery.DeliverAsync(task, task.Action.Text, cancellationToken),
             () => settings.MaxConcurrentRuns,
             TimeProvider.System);
 

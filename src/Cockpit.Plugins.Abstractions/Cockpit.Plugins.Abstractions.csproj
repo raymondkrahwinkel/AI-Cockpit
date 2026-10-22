@@ -529,7 +529,12 @@
          ReadReply), AssistantChannelOption and AssistantChannelAttachment; IAssistantChannelGateway gains AnswerAsync
          (default refuses). A plugin that reads them or answers sets minHostVersion 0.98.0. Additive — a minor; the
          major and abstractionsVersion stay 3. -->
-    <Version>3.13.0</Version>
+    <!-- 3.14.0 (AC-1544): the delivery contract on the channel contract. AssistantChannelContribution gains Messages
+         (IOperatorMessageChannel, default null), with OperatorMessage, OperatorMessageTarget, OperatorMessageResult,
+         OperatorMessageAnswer and OperatorMessageChannelInfo; ICockpitHost gains OperatorMessageChannels (default
+         empty) and SendOperatorMessageAsync (default fails). A plugin that offers or uses them sets minHostVersion
+         0.99.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.14.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -32,6 +32,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a **Schedules** task delivers to Discord, in a direct message to you or in its channel, beside the cockpit
+  notification. When the chosen medium's plugin is missing or the send fails, the message goes to the assistant
+  instead and the run says so ("Discord: plugin not installed → handed to the assistant ✓"); only when that fails
+  too does the run fail, with the reason. Discord also shows the assistant's questions with a button per option.
+- added: for plugin authors, a chat channel can offer its sending half: `AssistantChannelContribution.Messages`
+  (`IOperatorMessageChannel`, with its targets), and any plugin sends through an open channel with
+  `ICockpitHost.SendOperatorMessageAsync`, listed in `OperatorMessageChannels`. A question sent along comes back to
+  the sender's `onAnswer` under its correlation id, by button or text reply, once, from an allowed account only.
+  Everything defaults to nothing (Plugin SDK 3.14.0, host 0.99.0).
+
 - added: for plugin authors, the assistant channel contract carries questions. A question row from the assistant now
   comes with its options (single or multiple choice, and whether an answer in the operator's own words is welcome)
   and a correlation id, and `IAssistantChannelGateway.AnswerAsync` sends the choice back as the operator's answer,
