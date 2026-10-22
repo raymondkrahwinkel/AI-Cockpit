@@ -327,7 +327,7 @@ internal sealed class DiscordChannelBridge : IDisposable
             }
             else
             {
-                var posted = await _PostAsync(_sink, text, null, null, CancellationToken.None).ConfigureAwait(false);
+                var posted = await _PostAsync(_sink, text, row.CorrelationId, row.Questions.FirstOrDefault(), CancellationToken.None).ConfigureAwait(false);
                 lock (_gate)
                 {
                     _rowMessageIds[row.Id] = posted;
