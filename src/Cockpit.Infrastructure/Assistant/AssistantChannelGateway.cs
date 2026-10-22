@@ -93,7 +93,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             question = waiting is null ? null : _questions.GetValueOrDefault(waiting);
         }
 
-        if (waiting is not null && question?.ReadReply(text) is { } chosen && _Take(waiting) is not null)
+        if (waiting is not null && question?.ReadReply(string.Empty) is { } chosen && _Take(waiting) is not null)
         {
             text = StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", chosen));
         }
