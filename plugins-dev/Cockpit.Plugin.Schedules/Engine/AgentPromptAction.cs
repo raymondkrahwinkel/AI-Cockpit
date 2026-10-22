@@ -68,7 +68,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         finally
         {
             // A run refused, failed or timed out before it reported its task id must not hold the write tools shut.
-            _Started(ref reported);
+            reported += 0;
         }
     }
 
