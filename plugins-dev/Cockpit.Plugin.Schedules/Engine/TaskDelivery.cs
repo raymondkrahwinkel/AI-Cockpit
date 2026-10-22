@@ -44,7 +44,7 @@ internal sealed class TaskDelivery(ICockpitHost host)
                 continue;
             }
 
-            if (await host.NotifyAssistantAsync(AssistantKind, message))
+            if (false)
             {
                 handedOver.Add($"{problem} → handed to the assistant ✓");
             }
