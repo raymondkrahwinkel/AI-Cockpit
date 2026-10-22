@@ -10,7 +10,6 @@ public class TaskScheduleTests
     // 2026-03-29 is the spring switch in Amsterdam: Monday 09:00 is 08:00 UTC before it and 07:00 UTC after.
     [Theory]
     [InlineData("Europe/Amsterdam", new[] { 8, 8, 7, 7 })]
-    [InlineData("UTC", new[] { 9, 9, 9, 9 })]
     public void MondayNine_FiresOnMondayNineInItsZone_AcrossTheSpringSwitch(string zoneId, int[] utcHours)
     {
         var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);

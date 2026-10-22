@@ -28,78 +28,100 @@ public class ScheduleEngineTests
     }
 
     [Fact]
-    public async Task ATaskArmedAfterItsSlot_DoesNotOweThatSlot()
+    public async Task ASlotFiresOnce_AcrossTheWintertimeNight_AndWhenTheClockJumpsBack()
     {
-        var rig = new EngineRig(Utc(10, 14, 7, 5));
-        rig.Add(EngineRig.NewTask("0 9 * * *"));
-        using var engine = rig.Start();
+        {
+            var rig = new EngineRig(Utc(10, 24, 22, 0));
+            rig.Add(EngineRig.NewTask("30 2 * * *"));
+            using var engine = rig.Start();
 
-        await engine.TickAsync();
-        await rig.WalkAsync(engine, Utc(10, 14, 8, 0));
+            await engine.TickAsync();
+            await rig.WalkAsync(engine, Utc(10, 25, 3, 0));
 
-        Assert.Empty(rig.Executed);
-        Assert.Empty(rig.History);
+            Assert.Equal([("stand-up", Utc(10, 25, 0, 30))], rig.Executed);
+        }
+
+        {
+            var rig = new EngineRig(Utc(10, 14, 6, 59, 30));
+            rig.Add(EngineRig.NewTask("0 9 * * *"));
+            using var engine = rig.Start();
+            await engine.TickAsync();
+            await rig.WalkAsync(engine, Utc(10, 14, 7, 1));
+
+            rig.Clock.Now = Utc(10, 14, 6, 1);
+            await rig.WalkAsync(engine, Utc(10, 14, 7, 30));
+
+            Assert.Single(rig.Executed);
+        }
     }
 
     [Fact]
-    public async Task TheWintertimeNight_FiresHalfPastTwoOnce()
+    public async Task TenHoursAsleep_RunOnceWhenBackGivesOneCatchUpAndNineMissed_SkipGivesTenMissedAndNoRun()
     {
-        var rig = new EngineRig(Utc(10, 24, 22, 0));
-        rig.Add(EngineRig.NewTask("30 2 * * *"));
-        using var engine = rig.Start();
+        {
+            var rig = new EngineRig(Utc(10, 14, 0, 30));
+            rig.Add(EngineRig.NewTask("0 * * * *"));
+            using var engine = rig.Start();
+            await engine.TickAsync();
 
-        await engine.TickAsync();
-        await rig.WalkAsync(engine, Utc(10, 25, 3, 0));
+            rig.Clock.Now = Utc(10, 14, 10, 30);
+            await engine.TickAsync();
 
-        Assert.Equal([("stand-up", Utc(10, 25, 0, 30))], rig.Executed);
+            Assert.Single(rig.Executed);
+            var catchUp = Assert.Single(rig.History, run => run.Trigger == RunTrigger.CatchUp);
+            Assert.Equal((RunOutcome.Succeeded, Utc(10, 14, 10, 0)), (catchUp.Outcome, catchUp.ScheduledFor));
+            Assert.Equal(9, rig.History.Count(run => run.Outcome == RunOutcome.Missed));
+        }
+
+        {
+            var rig = new EngineRig(Utc(10, 14, 0, 30));
+            rig.Add(EngineRig.NewTask("0 * * * *", MissedRunPolicy.Skip));
+            using var engine = rig.Start();
+            await engine.TickAsync();
+
+            rig.Clock.Now = Utc(10, 14, 10, 30);
+            await engine.TickAsync();
+
+            Assert.Empty(rig.Executed);
+            Assert.Equal(10, rig.History.Count(run => run.Outcome == RunOutcome.Missed));
+            Assert.Equal(10, rig.History.Count);
+        }
     }
 
     [Fact]
-    public async Task AClockThatJumpsBack_DoesNotReplayASlotThatFired()
+    public async Task ATaskArmedAfterItsSlot_OrSwitchedBackOnOrRescheduled_DoesNotOweTheTimeInBetween()
     {
-        var rig = new EngineRig(Utc(10, 14, 6, 59, 30));
-        rig.Add(EngineRig.NewTask("0 9 * * *"));
-        using var engine = rig.Start();
-        await engine.TickAsync();
-        await rig.WalkAsync(engine, Utc(10, 14, 7, 1));
+        {
+            var rig = new EngineRig(Utc(10, 14, 7, 5));
+            rig.Add(EngineRig.NewTask("0 9 * * *"));
+            using var engine = rig.Start();
 
-        rig.Clock.Now = Utc(10, 14, 6, 1);
-        await rig.WalkAsync(engine, Utc(10, 14, 7, 30));
+            await engine.TickAsync();
+            await rig.WalkAsync(engine, Utc(10, 14, 8, 0));
 
-        Assert.Single(rig.Executed);
-    }
+            Assert.Empty(rig.Executed);
+            Assert.Empty(rig.History);
+        }
 
-    [Fact]
-    public async Task TenHoursAsleep_RunOnceWhenBack_GivesOneCatchUpAndNineMissed()
-    {
-        var rig = new EngineRig(Utc(10, 14, 0, 30));
-        rig.Add(EngineRig.NewTask("0 * * * *"));
-        using var engine = rig.Start();
-        await engine.TickAsync();
+        {
+            var rig = new EngineRig(Utc(10, 14, 6, 59, 30));
+            var task = EngineRig.NewTask("0 9 * * *");
+            rig.Add(task);
+            using var engine = rig.Start();
+            await engine.TickAsync();
+            await rig.WalkAsync(engine, Utc(10, 14, 7, 1));
 
-        rig.Clock.Now = Utc(10, 14, 10, 30);
-        await engine.TickAsync();
+            rig.Replace(task with { IsEnabled = false });
+            await rig.WalkAsync(engine, Utc(10, 14, 7, 2));
+            rig.Clock.Now = Utc(10, 20, 8, 0);
+            rig.Replace(task);
+            await rig.WalkAsync(engine, Utc(10, 20, 8, 1));
+            rig.Replace(task with { Schedule = "0 * * * *" });
+            await rig.WalkAsync(engine, Utc(10, 20, 8, 2));
 
-        Assert.Single(rig.Executed);
-        var catchUp = Assert.Single(rig.History, run => run.Trigger == RunTrigger.CatchUp);
-        Assert.Equal((RunOutcome.Succeeded, Utc(10, 14, 10, 0)), (catchUp.Outcome, catchUp.ScheduledFor));
-        Assert.Equal(9, rig.History.Count(run => run.Outcome == RunOutcome.Missed));
-    }
-
-    [Fact]
-    public async Task TenHoursAsleep_Skip_GivesTenMissedAndNoRun()
-    {
-        var rig = new EngineRig(Utc(10, 14, 0, 30));
-        rig.Add(EngineRig.NewTask("0 * * * *", MissedRunPolicy.Skip));
-        using var engine = rig.Start();
-        await engine.TickAsync();
-
-        rig.Clock.Now = Utc(10, 14, 10, 30);
-        await engine.TickAsync();
-
-        Assert.Empty(rig.Executed);
-        Assert.Equal(10, rig.History.Count(run => run.Outcome == RunOutcome.Missed));
-        Assert.Equal(10, rig.History.Count);
+            Assert.Single(rig.Executed);
+            Assert.Single(rig.History);
+        }
     }
 
     [Fact]
@@ -240,27 +262,5 @@ public class ScheduleEngineTests
         await engine.TickAsync();
 
         Assert.Equal((true, false, true), (twoMissed, pastTwo, engine.Health.Read().Healthy));
-    }
-
-    [Fact]
-    public async Task ATaskSwitchedBackOnOrRescheduled_DoesNotOweTheTimeInBetween()
-    {
-        var rig = new EngineRig(Utc(10, 14, 6, 59, 30));
-        var task = EngineRig.NewTask("0 9 * * *");
-        rig.Add(task);
-        using var engine = rig.Start();
-        await engine.TickAsync();
-        await rig.WalkAsync(engine, Utc(10, 14, 7, 1));
-
-        rig.Replace(task with { IsEnabled = false });
-        await rig.WalkAsync(engine, Utc(10, 14, 7, 2));
-        rig.Clock.Now = Utc(10, 20, 8, 0);
-        rig.Replace(task);
-        await rig.WalkAsync(engine, Utc(10, 20, 8, 1));
-        rig.Replace(task with { Schedule = "0 * * * *" });
-        await rig.WalkAsync(engine, Utc(10, 20, 8, 2));
-
-        Assert.Single(rig.Executed);
-        Assert.Single(rig.History);
     }
 }

@@ -29,6 +29,9 @@ internal sealed class ScheduleEngine : IDisposable
     private readonly Lock _runGate = new();
     private readonly HashSet<string> _busy = [];
     private readonly Queue<TaskCompletionSource> _waiting = new();
+
+    // The runs nobody scheduled (RunNow), held so they are never let go unobserved; finished ones drop off.
+    private readonly List<Task> _unscheduled = [];
     private int _active;
 
     public ScheduleEngine(
@@ -142,7 +145,7 @@ internal sealed class ScheduleEngine : IDisposable
             : task.MissedRuns == MissedRunPolicy.RunOnceWhenBack ? RunTrigger.CatchUp : null;
 
         _RecordMissed(task, trigger is null ? slots : slots[..^1], now);
-        return trigger is { } fired ? _Start(task, slot, fired, now) : null;
+        return trigger is { } fired ? _Start(task, slot, fired, now).Run : null;
     }
 
     private void _RecordMissed(ScheduledTask task, List<DateTimeOffset> slots, DateTimeOffset now)
@@ -162,14 +165,45 @@ internal sealed class ScheduleEngine : IDisposable
         }
     }
 
-    private Task? _Start(ScheduledTask task, DateTimeOffset slot, RunTrigger trigger, DateTimeOffset now)
+    // A run nobody scheduled (plan §5): the operator's "Run now" or an agent's run_now (AC-1545). Returns the run as it
+    // starts, Skipped while the task still runs, or null when there is no such task. The run goes on without the caller.
+    public RunRecord? RunNow(string taskId, RunTrigger trigger)
+    {
+        if (_tasks.Load()?.FirstOrDefault(task => task.Id == taskId) is not { } task)
+        {
+            return null;
+        }
+
+        var (run, record) = _Start(task, null, trigger, _time.GetUtcNow());
+        if (run is not null)
+        {
+            lock (_runGate)
+            {
+                _unscheduled.RemoveAll(started => started.IsCompleted);
+                _unscheduled.Add(run);
+            }
+        }
+
+        return record;
+    }
+
+    public Task IdleAsync()
+    {
+        lock (_runGate)
+        {
+            return Task.WhenAll(_unscheduled);
+        }
+    }
+
+    private (Task? Run, RunRecord Record) _Start(ScheduledTask task, DateTimeOffset? slot, RunTrigger trigger, DateTimeOffset now)
     {
         lock (_runGate)
         {
             if (!_busy.Add(task.Id))
             {
-                _runs.Add(_Record(task, slot, trigger, RunOutcome.Skipped, now) with { Reason = StillRunning });
-                return null;
+                var skipped = _Record(task, slot, trigger, RunOutcome.Skipped, now) with { Reason = StillRunning };
+                _runs.Add(skipped);
+                return (null, skipped);
             }
         }
 
@@ -188,7 +222,7 @@ internal sealed class ScheduleEngine : IDisposable
             throw;
         }
 
-        return _RunAsync(task, record);
+        return (_RunAsync(task, record), record);
     }
 
     private async Task _RunAsync(ScheduledTask task, RunRecord record)
@@ -276,7 +310,7 @@ internal sealed class ScheduleEngine : IDisposable
         }
     }
 
-    private static RunRecord _Record(ScheduledTask task, DateTimeOffset slot, RunTrigger trigger, RunOutcome outcome, DateTimeOffset now) => new()
+    private static RunRecord _Record(ScheduledTask task, DateTimeOffset? slot, RunTrigger trigger, RunOutcome outcome, DateTimeOffset now) => new()
     {
         Id = Guid.NewGuid().ToString("n"),
         TaskId = task.Id,

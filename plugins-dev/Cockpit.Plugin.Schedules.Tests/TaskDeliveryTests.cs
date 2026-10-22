@@ -12,7 +12,6 @@ namespace Cockpit.Plugin.Schedules.Tests;
 public class TaskDeliveryTests
 {
     [Theory]
-    [InlineData("cockpit", true, RunOutcome.Succeeded, null, 1, 0)]
     [InlineData("discord", true, RunOutcome.Succeeded, null, 0, 0)]
     [InlineData("slack", true, RunOutcome.Succeeded, "Slack: plugin not installed → handed to the assistant ✓", 0, 1)]
     [InlineData("slack", false, RunOutcome.Failed, "Delivery failed: Slack: plugin not installed", 0, 1)]

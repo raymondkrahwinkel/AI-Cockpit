@@ -14,6 +14,12 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
     public const string NoAnswer = "no answer";
     public const string NotApproved = "not approved";
 
+    // ponytail: every task-started run of this process, never pruned; a run outlives its wait, so its id must too.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _taskRuns = new(StringComparer.Ordinal);
+
+    // The runs whose delegation has started and that have not reported their task id yet.
+    private int _starting;
+
     // Null when the run may go ahead, else why not. The engine asks this before the run takes a slot.
     public Task<string?> AdmitAsync(ScheduledTask task, RunTrigger trigger, CancellationToken cancellationToken) =>
         task.Action.Permission == AgentPermission.Write && _AsksConsent(trigger, task.RunUnattended)
@@ -37,6 +43,8 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         }
 
         string? taskId = null;
+        var reported = 0;
+        Interlocked.Increment(ref _starting);
         try
         {
             var answer = await host.Actions.DelegateAsync(
@@ -45,12 +53,35 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
                 directory.Length == 0 ? null : directory,
                 action.Timeout,
                 action.Permission == AgentPermission.Write ? "acceptEdits" : null,
-                id => taskId = id);
+                id =>
+                {
+                    taskId = id;
+                    _taskRuns[id] = 0;
+                    _Started(ref reported);
+                });
             return await delivery.DeliverAsync(task, answer, cancellationToken) with { DelegatedTaskId = taskId };
         }
         catch (Exception exception)
         {
             return new ActionResult(RunOutcome.Failed, Reason: exception.Message) { DelegatedTaskId = taskId };
+        }
+        finally
+        {
+            // A run refused, failed or timed out before it reported its task id must not hold the write tools shut.
+            _Started(ref reported);
+        }
+    }
+
+    // AC-38, fail-closed: while a run's delegation has started but its task id is not known yet, a call from that run
+    // cannot be told from any other session's, so the tools that change tasks refuse every caller until it is.
+    public bool IsRunStarting => Volatile.Read(ref _starting) > 0;
+
+    // Once per run, whichever comes first: the task id, or the end of the run.
+    private void _Started(ref int reported)
+    {
+        if (Interlocked.Exchange(ref reported, 1) == 0)
+        {
+            Interlocked.Decrement(ref _starting);
         }
     }
 
@@ -62,19 +93,32 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         _ => !unattended,
     };
 
-    // Asked outside the caller's flow, as Workflows' ApproveRunner (AC-1360): an MCP caller's pane would otherwise let
-    // that session's "allow all" answer, and a skipped card (Bypassed) is not a yes.
-    private async Task<string?> _AskAsync(ScheduledTask task, CancellationToken cancellationToken)
+    // Dangerous (plan §3): a prompt allowed to change files, the rule the MCP guard holds a task to (AC-38).
+    public static bool IsDangerous(ScheduledTask task) =>
+        task.Action.Kind == TaskActionKind.AgentPrompt && task.Action.Permission == AgentPermission.Write;
+
+    // Whether the MCP call in hand comes from a run a task started: a delegated task's verified pane id is its task id.
+    public bool IsTaskRun(string? paneId) => paneId is not null && _taskRuns.ContainsKey(paneId);
+
+    // The literal thing that runs, as a consent card shows it: profile, directory and prompt.
+    public static string Describe(ScheduledTask task)
+    {
+        var (directory, _) = _Expand(task.Action.WorkingDirectory?.Trim() ?? string.Empty);
+        return $"Delegate to {task.Action.Profile}, allowed to change files, in {(directory.Length == 0 ? "the profile's own directory" : directory)}:\n{task.Action.Text.Trim()}";
+    }
+
+    private Task<string?> _AskAsync(ScheduledTask task, CancellationToken cancellationToken) => AskAsync(
+        host,
+        new ConsentRequest($"Schedule wants to run: {task.Name}", Describe(task), new ConsentSource(null, null, "Schedules"), "schedules.agent-prompt", ConsentRisk.Dangerous),
+        consentWait,
+        cancellationToken);
+
+    // Null when approved, else why not. Asked outside the caller's flow, as Workflows' ApproveRunner (AC-1360): an MCP
+    // caller's pane would otherwise let that session's "allow all" answer, and a skipped card (Bypassed) is not a yes.
+    public static async Task<string?> AskAsync(ICockpitHost host, ConsentRequest request, TimeSpan wait, CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(consentWait);
-        var (directory, _) = _Expand(task.Action.WorkingDirectory?.Trim() ?? string.Empty);
-        var request = new ConsentRequest(
-            $"Schedule wants to run: {task.Name}",
-            $"Delegate to {task.Action.Profile}, allowed to change files, in {(directory.Length == 0 ? "the profile's own directory" : directory)}:\n{task.Action.Text.Trim()}",
-            new ConsentSource(null, null, "Schedules"),
-            "schedules.agent-prompt",
-            ConsentRisk.Dangerous);
+        deadline.CancelAfter(wait);
 
         Task<ConsentDecision> asking;
         using (ExecutionContext.SuppressFlow())

@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the MCP server **cockpit-schedules** in every Cockpit session, the assistant's and every agent's, on the desktop
+  and the server: list, create, change, delete, switch on or off and run scheduled tasks, read their runs and output,
+  and list the delivery channels. A profile leaves it out in its MCP selection. A task an agent creates or changes so
+  that it may change files arrives switched off ("Needs your approval to enable"), and switching it on or running it
+  over MCP asks you first; a run a task started may only read, and create reminders. The reminder tools answer "not
+  available yet" until reminders arrive.
+
 - added: a **Schedules** task delivers to Discord, in a direct message to you or in its channel, beside the cockpit
   notification. When the chosen medium's plugin is missing or the send fails, the message goes to the assistant
   instead and the run says so ("Discord: plugin not installed → handed to the assistant ✓"); only when that fails

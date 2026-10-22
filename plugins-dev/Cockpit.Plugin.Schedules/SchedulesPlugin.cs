@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Schedules;
 
 // Schedules (AC-1539): scheduled tasks on an engine of their own, not on Workflows (AC-885). This is the backend
 // part, so the engine runs on the desktop with the plugin window closed and on a headless server alike (plan §7).
-// MCP, delivery channels and the screen are A3–A5; they hang off the stores and the engine here.
+// The screen is A5; it hangs off the stores and the engine here, as the MCP server cockpit-schedules does (A4).
 public sealed class SchedulesPlugin : ICockpitPlugin
 {
     private ScheduleEngine? _engine;
@@ -27,10 +27,12 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         var settings = new SchedulesSettings(host.Storage);
         var delivery = new TaskDelivery(host);
         var agentPrompt = new AgentPromptAction(host, delivery, AgentPromptAction.ConsentWait);
+        var tasks = new TaskStore(host.Storage);
+        var runs = new RunStore(host.Cache, TimeProvider.System);
         _engine = new ScheduleEngine(
-            new TaskStore(host.Storage),
+            tasks,
             new MarkStore(host.Cache),
-            new RunStore(host.Cache, TimeProvider.System),
+            runs,
             (task, trigger, cancellationToken) => task.Action.Kind == TaskActionKind.AgentPrompt
                 ? agentPrompt.AdmitAsync(task, trigger, cancellationToken)
                 : Task.FromResult<string?>(null),
@@ -41,6 +43,10 @@ public sealed class SchedulesPlugin : ICockpitPlugin
             TimeProvider.System);
 
         host.AddHealthSection(_engine.Health);
+
+        // AC-1545: not internal and with no switch of its own, so every session of a profile that keeps the default
+        // MCP selection gets it, on the desktop and the server alike; a profile leaves it out in its MCP selection.
+        _ = host.AddMcpEndpoint(ScheduleMcpTools.EndpointName, new ScheduleMcpTools(host, tasks, runs, _engine, agentPrompt, delivery));
     }
 
     public void Dispose() => _engine?.Dispose();
