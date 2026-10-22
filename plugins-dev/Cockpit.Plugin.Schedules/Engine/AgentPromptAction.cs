@@ -17,6 +17,9 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
     // ponytail: every task-started run of this process, never pruned; a run outlives its wait, so its id must too.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _taskRuns = new(StringComparer.Ordinal);
 
+    // The runs whose delegation has started and that have not reported their task id yet.
+    private int _starting;
+
     // Null when the run may go ahead, else why not. The engine asks this before the run takes a slot.
     public Task<string?> AdmitAsync(ScheduledTask task, RunTrigger trigger, CancellationToken cancellationToken) =>
         task.Action.Permission == AgentPermission.Write && _AsksConsent(trigger, task.RunUnattended)
@@ -40,6 +43,8 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         }
 
         string? taskId = null;
+        var reported = 0;
+        Interlocked.Increment(ref _starting);
         try
         {
             var answer = await host.Actions.DelegateAsync(
@@ -52,12 +57,31 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
                 {
                     taskId = id;
                     _taskRuns[id] = 0;
+                    _Started(ref reported);
                 });
             return await delivery.DeliverAsync(task, answer, cancellationToken) with { DelegatedTaskId = taskId };
         }
         catch (Exception exception)
         {
             return new ActionResult(RunOutcome.Failed, Reason: exception.Message) { DelegatedTaskId = taskId };
+        }
+        finally
+        {
+            // A run refused, failed or timed out before it reported its task id must not hold the write tools shut.
+            _Started(ref reported);
+        }
+    }
+
+    // AC-38, fail-closed: while a run's delegation has started but its task id is not known yet, a call from that run
+    // cannot be told from any other session's, so the tools that change tasks refuse every caller until it is.
+    public bool IsRunStarting => Volatile.Read(ref _starting) > 0;
+
+    // Once per run, whichever comes first: the task id, or the end of the run.
+    private void _Started(ref int reported)
+    {
+        if (Interlocked.Exchange(ref reported, 1) == 0)
+        {
+            Interlocked.Decrement(ref _starting);
         }
     }
 

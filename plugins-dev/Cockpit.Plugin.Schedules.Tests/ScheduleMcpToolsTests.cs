@@ -60,6 +60,27 @@ public class ScheduleMcpToolsTests
         Assert.Single(store.Load() ?? []);
     }
 
+    // AC-38, fail-closed: while a run's delegation has started and its task id is not known yet, no caller may change a
+    // task, since none can be told apart from that run; a run that fails before it reports its id opens the tools again.
+    [Fact]
+    public async Task WhileARunIsStarting_EveryCallerIsRefused_AndARunThatFailsFirstOpensTheToolsAgain()
+    {
+        var (tools, host, store, agent) = _Tools("pane-1");
+        var delegation = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.Actions.DelegateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<TimeSpan?>(), Arg.Any<string?>(), Arg.Any<Action<string>>())
+            .Returns(_ => delegation.Task);
+        var run = agent.RunAsync(EngineRig.NewTask("0 9 * * *") with { Action = new TaskAction(TaskActionKind.AgentPrompt, "Read the news.") { Profile = "Local" } }, CancellationToken.None);
+
+        var whileStarting = _Create(tools, "read_only");
+        delegation.SetException(new InvalidOperationException("The profile refused the work."));
+        await run;
+        var afterwards = _Read(_Create(tools, "read_only"));
+
+        Assert.Contains(ScheduleMcpTools.RunStarting, whileStarting, StringComparison.Ordinal);
+        Assert.True(afterwards.GetProperty("ok").GetBoolean());
+        Assert.Single(store.Load() ?? []);
+    }
+
     private static string _Create(ScheduleMcpTools tools, string permission) =>
         tools.CreateScheduledTask("Morning news", "30 7 * * 1-5", "Europe/Amsterdam", "agent_prompt", "Summarise the news.", "Local", permission: permission);
 

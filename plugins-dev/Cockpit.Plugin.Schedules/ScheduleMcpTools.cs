@@ -19,6 +19,7 @@ internal sealed class ScheduleMcpTools(
     public const string NeedsApproval = "Needs your approval to enable: this task may change files. Ask the operator to switch it on, or call set_enabled, which asks them.";
     public const string NotAvailableYet = "Reminders are not available yet in this build of Schedules.";
     public const string TaskRunsMayNot = "A run that a scheduled task started may only read, and create reminders.";
+    public const string RunStarting = "A scheduled run is starting, try again in a moment.";
 
     private const string TimeRules =
         " Times are ISO-8601 in an IANA zone, never plain words: 'morning' is 08:00, 'afternoon' 13:00, 'evening' 19:00 unless the operator says otherwise. Read the time back to the operator in their own words.";
@@ -257,8 +258,10 @@ internal sealed class ScheduleMcpTools(
 
     // ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    // AC-38: a run a task started gets the read tools and create_reminder, nothing that changes a task.
-    private string? _RefuseTaskRun() => agent.IsTaskRun(host.CurrentMcpCallerPaneId) ? _Fail(TaskRunsMayNot) : null;
+    // AC-38: a run a task started gets the read tools and create_reminder, nothing that changes a task. While a run is
+    // starting and its task id is not known yet, no caller can be told apart from it, so every one is refused.
+    private string? _RefuseTaskRun() =>
+        agent.IsRunStarting ? _Fail(RunStarting) : agent.IsTaskRun(host.CurrentMcpCallerPaneId) ? _Fail(TaskRunsMayNot) : null;
 
     private ScheduledTask? _Find(string id) => tasks.Load()?.FirstOrDefault(task => task.Id == id);
 
