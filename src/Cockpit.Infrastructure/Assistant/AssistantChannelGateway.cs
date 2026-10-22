@@ -32,6 +32,9 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
     private readonly Dictionary<string, AssistantChannelQuestion> _questions = new(StringComparer.Ordinal);
     private string? _waiting;
 
+    // AC-1544: where this channel's sending half is offered to other plugins, and their answers matched.
+    private readonly OperatorMessageRegistry? _messages;
+
     private IAssistantSession? _observed;
     private bool _disposed;
 
@@ -39,12 +42,19 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         AssistantChannelContribution channel,
         IAssistantSessionHost host,
         IConsentBroker consent,
-        ILogger<AssistantChannelGateway> logger)
+        ILogger<AssistantChannelGateway> logger,
+        OperatorMessageRegistry? messages = null)
     {
         _channel = channel;
         _host = host;
         _consent = consent;
         _logger = logger;
+        _messages = messages;
+
+        if (channel.Messages is { } sending)
+        {
+            _messages?.Open(channel.Id, channel.Name, sending);
+        }
 
         _host.PropertyChanged += _OnHostPropertyChanged;
         _consent.PromptOpened += _OnPromptOpened;
@@ -97,6 +107,12 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         {
             text = StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", chosen));
         }
+        else if (waiting is null && _messages?.Waiting(_channel.Id) is { } sent && sent.Question.ReadReply(text) is { } picked)
+        {
+            // AC-1544: no question of the assistant's waits, so the reply answers the newest a plugin sent here.
+            return await _messages.AnswerAsync(_channel.Id, senderUserId, sent.CorrelationId, picked).ConfigureAwait(false)
+                ?? AssistantChannelSendResult.Refused("No question waits under this id.");
+        }
 
         if (await _DeliverAsync(text, accepted, cancellationToken).ConfigureAwait(false) is { } failed)
         {
@@ -131,13 +147,14 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             question = _questions.GetValueOrDefault(correlationId);
         }
 
+        // AC-1544: not one of the assistant's, so perhaps a question another plugin sent through this channel.
         if (question is null)
         {
-            return AssistantChannelSendResult.Refused("No question waits under this id.");
+            return (_messages is null ? null : await _messages.AnswerAsync(_channel.Id, senderUserId, correlationId, picks).ConfigureAwait(false))
+                ?? AssistantChannelSendResult.Refused("No question waits under this id.");
         }
 
-        var outsideTheList = !question.AllowOther && picks.Any(pick => question.Options.All(option => option.Label != pick));
-        if (picks.Count == 0 || (!question.MultiSelect && picks.Count > 1) || outsideTheList)
+        if (!OperatorMessageRegistry.Takes(question, picks))
         {
             return AssistantChannelSendResult.Refused("That is not an answer this question takes.");
         }
@@ -255,6 +272,11 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         }
 
         _disposed = true;
+        if (_channel.Messages is { } sending)
+        {
+            _messages?.Close(_channel.Id, sending);
+        }
+
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _consent.PromptOpened -= _OnPromptOpened;
         _consent.PromptClosed -= _OnPromptClosed;

@@ -12,8 +12,12 @@ namespace Cockpit.Plugin.Discord;
 // Discord plugin entry point (AC-1024, EPIC AC-669): a Discord.NET bot as a second door onto the assistant's own
 // conversation, through the AC-1023 AssistantChannelContribution seam (identity/consent filtering stay
 // host-side there). Supplies what is Discord-specific: the socket, Components-API consent buttons, relay.
-public sealed class DiscordChannelPlugin : ICockpitPlugin
+public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChannel
 {
+    // AC-1544: where another plugin's message can go — never an arbitrary id, only what the access settings allow.
+    public const string DirectMessageTarget = "dm";
+    public const string ChannelTarget = "channel";
+
     public PluginMetadata Metadata { get; } = new(
         Id: "discord",
         DisplayName: "Discord",
@@ -101,6 +105,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             Name = "Discord",
             Access = configured.Access,
             Verbosity = configured.Verbosity,
+            Messages = this,
         };
 
         // Null on a host with no assistant (a headless/test host) — nothing to connect to.
@@ -119,6 +124,30 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin
             error => host.ShowToast(error, PluginToastSeverity.Error),
             refusal => _logger?.LogInformation("{Refusal}", refusal));
     }
+
+    public IReadOnlyList<OperatorMessageTarget> Targets
+    {
+        get
+        {
+            List<OperatorMessageTarget> targets = [];
+            if (_settings?.Access?.Access is { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 })
+            {
+                targets.Add(new OperatorMessageTarget(DirectMessageTarget, "Direct message to you"));
+            }
+
+            if (_settings is { ChannelId: not 0 })
+            {
+                targets.Add(new OperatorMessageTarget(ChannelTarget, "The Discord channel"));
+            }
+
+            return targets;
+        }
+    }
+
+    public Task<OperatorMessageResult> SendAsync(string targetId, OperatorMessage message, CancellationToken cancellationToken = default) =>
+        _connection is { } connection
+            ? connection.SendOperatorMessageAsync(targetId, message, cancellationToken)
+            : Task.FromResult(OperatorMessageResult.Failed("Discord is not connected. Check the bot token in the Discord plugin's settings."));
 
     private Task _SendDirectMessageAsync(string userId, IReadOnlyList<string> parts, CancellationToken cancellationToken) =>
         _connection is { } connection

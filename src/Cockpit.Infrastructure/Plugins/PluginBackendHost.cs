@@ -108,6 +108,20 @@ public class PluginBackendHost(
             pluginId,
             message);
 
+    // AC-1544: every plugin's host reads the one registry, so a plugin reaches channels another plugin opened.
+    public IReadOnlyList<OperatorMessageChannelInfo> OperatorMessageChannels =>
+        services.GetService<OperatorMessageRegistry>()?.Channels ?? [];
+
+    public Task<OperatorMessageResult> SendOperatorMessageAsync(
+        string channelId,
+        string targetId,
+        OperatorMessage message,
+        Func<OperatorMessageAnswer, Task>? onAnswer = null,
+        CancellationToken cancellationToken = default) =>
+        services.GetService<OperatorMessageRegistry>() is { } registry
+            ? registry.SendAsync(channelId, targetId, message, onAnswer, cancellationToken)
+            : Task.FromResult(OperatorMessageResult.Failed("This cockpit cannot send a message through a channel."));
+
     public IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution)
     {
         ArgumentNullException.ThrowIfNull(contribution);
@@ -128,7 +142,8 @@ public class PluginBackendHost(
             contribution,
             AssistantHostFor(assistantHost),
             services.GetRequiredService<IConsentBroker>(),
-            services.GetRequiredService<ILogger<AssistantChannelGateway>>());
+            services.GetRequiredService<ILogger<AssistantChannelGateway>>(),
+            services.GetService<OperatorMessageRegistry>());
         _assistantChannels[contribution.Id] = gateway;
 
         return gateway;

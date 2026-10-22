@@ -98,50 +98,38 @@ public class AssistantChannelGatewayTests
         return data.ToArray();
     }
 
+    /// <summary>
+    /// An image reaches the assistant on the same message as its text. Criterion 5: what the codec says is no image is
+    /// dropped on its own while the sentence still goes, and more images than a message may carry are cut back.
+    /// </summary>
     [Fact]
-    public Task AnImageThatIsOne_ReachesTheAssistantOnTheSameMessageAsTheText() => HeadlessAvalonia.RunAsync(async () =>
+    public Task AnImage_GoesWithItsText_ANonImageIsDroppedAlone_AndTooManyAreCutBack() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (gateway, host, _, _) = _Gateway();
 
-        var result = await gateway.SendAsync(Allowed, "look at this", [_Png()]);
+        var one = await gateway.SendAsync(Allowed, "look at this", [_Png()]);
 
-        Assert.True(result.Ok);
-        Assert.Null(result.ImagesRefused);
+        Assert.True(one.Ok);
+        Assert.Null(one.ImagesRefused);
         await host.Received().SendAsync(
             "look at this",
             Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 1),
             Arg.Any<CancellationToken>());
-    });
 
-    /// <summary>
-    /// Criterion 5: the plugin said it was an image, the codec disagreed. The attachment is dropped on its own
-    /// and the sentence it came with still reaches the assistant.
-    /// </summary>
-    [Fact]
-    public Task SomethingThatIsNotAnImage_IsRefusedWhileItsTextGoesThroughAnyway() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, host, _, _) = _Gateway();
+        var notAnImage = await gateway.SendAsync(Allowed, "what do you make of this", ["not an image at all"u8.ToArray()]);
 
-        var result = await gateway.SendAsync(Allowed, "what do you make of this", ["not an image at all"u8.ToArray()]);
-
-        Assert.True(result.Ok);
-        Assert.Contains("not an image", result.ImagesRefused);
+        Assert.True(notAnImage.Ok);
+        Assert.Contains("not an image", notAnImage.ImagesRefused);
         await host.Received().SendAsync(
             "what do you make of this",
             Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == 0),
             Arg.Any<CancellationToken>());
-    });
 
-    [Fact]
-    public Task MoreImagesThanOneMessageMayCarry_AreCutBackAndTheSenderIsTold() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, host, _, _) = _Gateway();
         var tooMany = Enumerable.Range(0, AssistantChannelImageLimits.MaxPerMessage + 1).Select(_ => _Png()).ToList();
+        var lots = await gateway.SendAsync(Allowed, "lots", tooMany);
 
-        var result = await gateway.SendAsync(Allowed, "lots", tooMany);
-
-        Assert.True(result.Ok);
-        Assert.Contains($"first {AssistantChannelImageLimits.MaxPerMessage}", result.ImagesRefused);
+        Assert.True(lots.Ok);
+        Assert.Contains($"first {AssistantChannelImageLimits.MaxPerMessage}", lots.ImagesRefused);
         await host.Received().SendAsync(
             "lots",
             Arg.Is<IReadOnlyList<byte[]>>(images => images.Count == AssistantChannelImageLimits.MaxPerMessage),
@@ -198,31 +186,65 @@ public class AssistantChannelGatewayTests
     // ── questions (AC-1553) ────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// A structured question reaches the channel with its options and a correlation id, and a choice comes back as
-    /// the operator's next message, by the id (a button) or as the text fallback ("2"). A stranger's choice is nothing,
-    /// and so is a button for a question the operator already answered in the app: it takes one answer, not two.
+    /// A question reaches the channel with its options and a correlation id, and a choice comes back to whoever
+    /// asked: the assistant as the operator's next message (AC-1553), or the plugin that sent it to its handler
+    /// (AC-1544), by the id (a button) or as the text fallback ("2"). A stranger's choice is nothing, and so is a
+    /// button for a question already answered in the app. Two plugin questions wait: only the newest gets the "2".
     /// </summary>
     [Theory]
-    [InlineData(Allowed, "button", 1)]
-    [InlineData(Allowed, "text", 1)]
-    [InlineData("118", "button", 0)]
-    [InlineData(Allowed, "button after the app", 0)]
-    public Task AStructuredQuestion_ReachesTheChannelWithItsOptions_AndAChoiceComesBackAsTheAnswer(string sender, string how, int answered) =>
-        HeadlessAvalonia.RunAsync(async () =>
+    [InlineData("assistant", Allowed, "button", 1, 0)]
+    [InlineData("assistant", Allowed, "text", 1, 0)]
+    [InlineData("assistant", "118", "button", 0, 0)]
+    [InlineData("assistant", Allowed, "button after the app", 0, 0)]
+    [InlineData("plugin", Allowed, "button", 0, 1)]
+    [InlineData("plugin", Allowed, "text", 0, 1)]
+    public Task AQuestion_ReachesTheChannelWithItsOptions_AndAChoiceComesBackToWhoeverAsked(
+        string asker, string sender, string how, int toTheAssistant, int toThePlugin) => HeadlessAvalonia.RunAsync(async () =>
     {
-        var (gateway, host, session, rows) = _Gateway();
-        var json = JsonSerializer.Serialize(new
+        var session = _Session();
+        var host = Substitute.For<IAssistantSessionHost>();
+        host.Session.Returns(TestSessions.Assistant(session));
+        var rows = new List<AssistantChannelRow>();
+        var registry = new OperatorMessageRegistry(NullLogger<OperatorMessageRegistry>.Instance);
+        var channel = new _RecordingMessageChannel();
+        using var gateway = _Open(host, Substitute.For<IConsentBroker>(), rows, messages: (registry, channel));
+        var handled = new List<(string CorrelationId, string Chosen)>();
+        var asked = new AssistantChannelQuestion
         {
-            questions = new[] { new { question = "Which desk?", options = new[] { new { label = "Alpha" }, new { label = "Beta" }, new { label = "Gamma" } } } },
-        });
+            Question = "Which desk?",
+            Options = [new AssistantChannelOption("Alpha"), new AssistantChannelOption("Beta"), new AssistantChannelOption("Gamma")],
+        };
 
-        session.AddQuestion("Which desk?", json, []);
+        AssistantChannelQuestion question;
+        string correlationId;
+        if (asker == "assistant")
+        {
+            session.AddQuestion("Which desk?", JsonSerializer.Serialize(new
+            {
+                questions = new[] { new { question = "Which desk?", options = new[] { new { label = "Alpha" }, new { label = "Beta" }, new { label = "Gamma" } } } },
+            }), []);
+            var row = rows.First(candidate => candidate.Kind == AssistantChannelRowKind.Question);
+            question = Assert.Single(row.Questions);
+            correlationId = row.CorrelationId ?? throw new InvalidOperationException("The question row carries no correlation id.");
+        }
+        else
+        {
+            foreach (var text in new[] { "the older one", "the newest one" })
+            {
+                await registry.SendAsync("channel-1", "dm", new OperatorMessage { Text = text, Question = asked }, answer =>
+                {
+                    handled.Add((answer.CorrelationId, string.Join(", ", answer.Chosen)));
+                    return Task.CompletedTask;
+                }, CancellationToken.None);
+            }
 
-        var row = rows.First(candidate => candidate.Kind == AssistantChannelRowKind.Question);
-        var question = Assert.Single(row.Questions);
+            var sent = channel.Sent[^1];
+            question = sent.Question ?? throw new InvalidOperationException("The message went out without its question.");
+            correlationId = sent.CorrelationId ?? throw new InvalidOperationException("The message went out without a correlation id.");
+        }
+
         Assert.Equal(["Alpha", "Beta", "Gamma"], question.Options.Select(option => option.Label));
         Assert.Contains("Reply with 1, 2 or 3", question.FallbackPrompt(), StringComparison.Ordinal);
-        var correlationId = row.CorrelationId ?? throw new InvalidOperationException("The question row carries no correlation id.");
 
         if (how == "button after the app")
         {
@@ -231,7 +253,8 @@ public class AssistantChannelGatewayTests
 
         _ = how == "text" ? await gateway.SendAsync(sender, "2") : await gateway.AnswerAsync(sender, correlationId, ["Beta"]);
 
-        await host.Received(answered).SendAsync("\"Which desk?\" → Beta", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
+        await host.Received(toTheAssistant).SendAsync("\"Which desk?\" → Beta", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
+        Assert.Equal(Enumerable.Repeat((correlationId, "Beta"), toThePlugin), handled);
     });
 
     /// <summary>
@@ -371,15 +394,18 @@ public class AssistantChannelGatewayTests
         IAssistantSessionHost host,
         IConsentBroker broker,
         List<AssistantChannelRow> rows,
-        ILogger<AssistantChannelGateway>? logger = null)
+        ILogger<AssistantChannelGateway>? logger = null,
+        (OperatorMessageRegistry Registry, IOperatorMessageChannel Channel)? messages = null)
     {
         var channel = new AssistantChannelContribution
         {
             Id = "channel-1",
             Name = "Test channel",
             Access = AssistantChannelAccess.ForSingleUser(Allowed).Access!,
+            Messages = messages?.Channel,
         };
-        var gateway = new AssistantChannelGateway(channel, host, broker, logger ?? NullLogger<AssistantChannelGateway>.Instance);
+        var gateway = new AssistantChannelGateway(
+            channel, host, broker, logger ?? NullLogger<AssistantChannelGateway>.Instance, messages?.Registry);
         gateway.RowChanged += (_, row) => rows.Add(row);
 
         return gateway;
@@ -393,6 +419,20 @@ public class AssistantChannelGatewayTests
         var rows = new List<AssistantChannelRow>();
 
         return (_Open(host, Substitute.For<IConsentBroker>(), rows), host, session, rows);
+    }
+
+    // A channel without buttons, as far as the host can tell: it takes every message to its one target and keeps it.
+    private sealed class _RecordingMessageChannel : IOperatorMessageChannel
+    {
+        public List<OperatorMessage> Sent { get; } = [];
+
+        public IReadOnlyList<OperatorMessageTarget> Targets { get; } = [new OperatorMessageTarget("dm", "Direct message")];
+
+        public Task<OperatorMessageResult> SendAsync(string targetId, OperatorMessage message, CancellationToken cancellationToken = default)
+        {
+            Sent.Add(message);
+            return Task.FromResult(OperatorMessageResult.Sent());
+        }
     }
 
     private sealed class _RecordingLogger : ILogger<AssistantChannelGateway>

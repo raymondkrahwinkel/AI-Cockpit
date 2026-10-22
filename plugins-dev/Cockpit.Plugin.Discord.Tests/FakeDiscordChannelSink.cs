@@ -16,11 +16,14 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
 
     public List<(string Text, Guid? ConsentPromptId)> Posted { get; } = [];
 
+    // The option buttons each post carried (AC-1544), in the same order as Posted.
+    public List<DiscordAnswerButtons?> PostedAnswers { get; } = [];
+
     public List<(ulong MessageId, string Text, bool KeepButtons)> Edited { get; } = [];
 
     public List<(ulong MessageId, string Emoji)> Reactions { get; } = [];
 
-    public Task<ulong> PostAsync(string text, Guid? consentPromptId = null, CancellationToken cancellationToken = default)
+    public Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
@@ -31,6 +34,7 @@ internal sealed class FakeDiscordChannelSink : IDiscordChannelSink
             }
 
             Posted.Add((text, consentPromptId));
+            PostedAnswers.Add(answers);
             if (HoldNextPost is { } held)
             {
                 HoldNextPost = null;

@@ -9,9 +9,11 @@ internal static class DiscordVerbosityFilter
     // Whether `kind` is relayed at all under `verbosity`.
     public static bool ShouldRelay(AssistantChannelRowKind kind, AssistantChannelVerbosity verbosity) => verbosity switch
     {
-        // A — the finished answer only. An error is part of that answer, not tool traffic, so it still shows.
+        // A — the finished answer only. An error is part of that answer, not tool traffic, so it still shows, and so
+        // does a question the assistant waits on (AC-1553).
         AssistantChannelVerbosity.FinalAnswerOnly =>
-            kind is AssistantChannelRowKind.AssistantText or AssistantChannelRowKind.TurnCompleted or AssistantChannelRowKind.Error,
+            kind is AssistantChannelRowKind.AssistantText or AssistantChannelRowKind.TurnCompleted or AssistantChannelRowKind.Error
+                or AssistantChannelRowKind.Question,
         // B — everything, tool use included. C relays the same set, just rendered shorter (see Render).
         AssistantChannelVerbosity.Everything or AssistantChannelVerbosity.StatusLines => kind is not AssistantChannelRowKind.Divider,
         _ => false,

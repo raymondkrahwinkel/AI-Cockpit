@@ -206,7 +206,7 @@ public class ScheduleEngineTests
     }
 
     [Fact]
-    public async Task DisabledAndUnreadableTasks_DoNotFire_AndAnUnreadableOneTurnsHealthRed()
+    public async Task DisabledAndUnreadableTasks_DoNotFire_AndHealthIsRedForThem_ForAnUnreadableList_AndPastTwoMissedTicks()
     {
         var rig = new EngineRig(Utc(10, 14, 0, 30));
         rig.Add(
@@ -222,6 +222,24 @@ public class ScheduleEngineTests
         var health = engine.Health.Read();
         Assert.False(health.Healthy);
         Assert.Contains(health.Rows, row => row.Label == "2 enabled task(s) with an unreadable schedule or time zone");
+
+        // A stored list that cannot be read is no list of tasks, and says so.
+        rig.Storage.Set("tasks", "[{\"Id\": 1}]");
+        await engine.TickAsync();
+        health = engine.Health.Read();
+        Assert.False(health.Healthy);
+        Assert.Contains(health.Rows, row => row.Label == "The stored task list cannot be read; no task fires");
+
+        // A readable, empty list is healthy while it ticks: unhealthy past two missed ticks, healthy on the next.
+        rig.Replace();
+        await engine.TickAsync();
+        rig.Clock.Now += TimeSpan.FromSeconds(60);
+        var twoMissed = engine.Health.Read().Healthy;
+        rig.Clock.Now += TimeSpan.FromSeconds(1);
+        var pastTwo = engine.Health.Read().Healthy;
+        await engine.TickAsync();
+
+        Assert.Equal((true, false, true), (twoMissed, pastTwo, engine.Health.Read().Healthy));
     }
 
     [Fact]
@@ -244,35 +262,5 @@ public class ScheduleEngineTests
 
         Assert.Single(rig.Executed);
         Assert.Single(rig.History);
-    }
-
-    [Fact]
-    public async Task AStoredTaskListThatCannotBeRead_TurnsHealthRed()
-    {
-        var rig = new EngineRig(Utc(10, 14, 0, 0));
-        rig.Storage.Set("tasks", "[{\"Id\": 1}]");
-        using var engine = rig.Start();
-
-        await engine.TickAsync();
-
-        var health = engine.Health.Read();
-        Assert.False(health.Healthy);
-        Assert.Contains(health.Rows, row => row.Label == "The stored task list cannot be read; no task fires");
-    }
-
-    [Fact]
-    public async Task TheHealthSection_TurnsUnhealthyPastTwoMissedTicks_AndHealthyOnTheNextTick()
-    {
-        var rig = new EngineRig(Utc(10, 14, 0, 0));
-        using var engine = rig.Start();
-        await engine.TickAsync();
-
-        rig.Clock.Now += TimeSpan.FromSeconds(60);
-        var twoMissed = engine.Health.Read().Healthy;
-        rig.Clock.Now += TimeSpan.FromSeconds(1);
-        var pastTwo = engine.Health.Read().Healthy;
-        await engine.TickAsync();
-
-        Assert.Equal((true, false, true), (twoMissed, pastTwo, engine.Health.Read().Healthy));
     }
 }

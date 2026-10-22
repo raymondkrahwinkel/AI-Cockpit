@@ -72,24 +72,11 @@ public class DiscordChannelBridgeTests
         Assert.Equal(prompt.Id, posted.ConsentPromptId);
     }
 
+    // A stranger's click is not covered by the host's own SendAsync identity check (AC-1023 §3), since
+    // RespondToConsent takes no identity at all, so the plugin closes that gap: the prompt stays open, and the
+    // refused click is logged with who made it (AC-1360). The allowed account's click then answers and edits.
     [Fact]
-    public async Task ButtonClick_FromTheAllowedSender_RespondsAndEditsTheMessage()
-    {
-        var (bridge, gateway, sink) = _Build();
-        var prompt = _ConsentPrompt("do the thing");
-        gateway.RaisePromptOpened(prompt);
-
-        await bridge.HandleButtonAsync(DiscordConsentButtonId.Approve(prompt.Id), _AllowedUserId);
-
-        Assert.Contains((prompt.Id, ConsentOutcome.Approved, false), gateway.Responses);
-        Assert.Single(sink.Edited);
-    }
-
-    // Not covered by the host's own SendAsync identity check (AC-1023 §3), since RespondToConsent takes no
-    // identity at all — this is the plugin's own gap to close, and this test is what proves it does. AC-1360: the
-    // prompt stays open, and the refused click is logged with who made it.
-    [Fact]
-    public async Task ButtonClick_FromAStranger_IsIgnored()
+    public async Task ButtonClick_FromAStranger_IsIgnoredAndLogged_FromTheAllowedSender_RespondsAndEditsTheMessage()
     {
         var refusals = new List<string>();
         var (bridge, gateway, sink) = _Build(logRefusal: refusals.Add);
@@ -102,6 +89,50 @@ public class DiscordChannelBridgeTests
         Assert.Single(sink.Posted); // only the original prompt post — no edit followed.
         Assert.Empty(sink.Edited);
         Assert.Contains(_StrangerUserId, Assert.Single(refusals), StringComparison.Ordinal);
+
+        await bridge.HandleButtonAsync(DiscordConsentButtonId.Approve(prompt.Id), _AllowedUserId);
+
+        Assert.Contains((prompt.Id, ConsentOutcome.Approved, false), gateway.Responses);
+        Assert.Single(sink.Edited);
+    }
+
+    // AC-1544 criteria 2 and 5, layer 2: the assistant's question (AC-1553) and another plugin's message post the
+    // same option buttons, and a click goes back through the gateway's AnswerAsync under the correlation id, the
+    // same code whoever asked. A stranger's click reaches nothing and is logged.
+    [Theory]
+    [InlineData("assistant", _AllowedUserId, 1)]
+    [InlineData("plugin", _AllowedUserId, 1)]
+    [InlineData("plugin", _StrangerUserId, 0)]
+    public async Task AQuestion_PostsAButtonPerOption_AndAClickAnswersThroughTheGateway(string asker, string sender, int answered)
+    {
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(logRefusal: refusals.Add);
+        var question = new AssistantChannelQuestion
+        {
+            Question = "Done?",
+            Options = [new AssistantChannelOption("Done"), new AssistantChannelOption("Snooze 10 min"), new AssistantChannelOption("1 hour")],
+        };
+        if (asker == "assistant")
+        {
+            gateway.RaiseRowChanged(new AssistantChannelRow
+            {
+                Id = Guid.NewGuid(), Kind = AssistantChannelRowKind.Question, Text = "Done?", Timestamp = DateTimeOffset.UtcNow,
+                Questions = [question], CorrelationId = "reminder-1",
+            });
+        }
+        else
+        {
+            await bridge.SendOperatorMessageAsync(sink, new OperatorMessage { Text = "Done?", Question = question, CorrelationId = "reminder-1" });
+        }
+
+        var buttons = Assert.Single(sink.PostedAnswers.OfType<DiscordAnswerButtons>());
+        Assert.Equal("reminder-1", buttons.CorrelationId);
+        Assert.Equal(["Done", "Snooze 10 min", "1 hour"], buttons.Labels);
+
+        await bridge.HandleButtonAsync(buttons.Id(1), sender);
+
+        Assert.Equal(Enumerable.Repeat((sender, "reminder-1", "Snooze 10 min"), answered), gateway.Answers);
+        Assert.Equal(1 - answered, refusals.Count);
     }
 
     [Fact]

@@ -10,10 +10,10 @@ internal sealed class DiscordChannelSink(Func<Task<IMessageChannel?>> resolveCha
     // Discord's own hard cap on a message body.
     private const int _MessageLimit = 2000;
 
-    public async Task<ulong> PostAsync(string text, Guid? consentPromptId = null, CancellationToken cancellationToken = default)
+    public async Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default)
     {
         var channel = await resolveChannel().ConfigureAwait(false) ?? throw new InvalidOperationException("The configured Discord channel is not reachable.");
-        var components = consentPromptId is { } id ? _BuildConsentButtons(id) : null;
+        var components = consentPromptId is { } id ? _BuildConsentButtons(id) : answers is { } options ? _BuildAnswerButtons(options) : null;
         var message = await channel.SendMessageAsync(_Truncate(text), components: components).ConfigureAwait(false);
         return message.Id;
     }
@@ -50,6 +50,18 @@ internal sealed class DiscordChannelSink(Func<Task<IMessageChannel?>> resolveCha
             .WithButton("Approve", DiscordConsentButtonId.Approve(promptId), ButtonStyle.Success)
             .WithButton("Deny", DiscordConsentButtonId.Deny(promptId), ButtonStyle.Danger)
             .Build();
+
+    private static MessageComponent _BuildAnswerButtons(DiscordAnswerButtons answers)
+    {
+        var builder = new ComponentBuilder();
+        for (var index = 0; index < answers.Labels.Count; index++)
+        {
+            var label = answers.Labels[index];
+            builder.WithButton(label.Length > DiscordAnswerButtons.MaxLabelLength ? label[..DiscordAnswerButtons.MaxLabelLength] : label, answers.Id(index), ButtonStyle.Secondary);
+        }
+
+        return builder.Build();
+    }
 
     private static string _Truncate(string text) => text.Length > _MessageLimit ? text[.._MessageLimit] : text;
 }

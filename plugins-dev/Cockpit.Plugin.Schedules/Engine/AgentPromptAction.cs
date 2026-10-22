@@ -46,7 +46,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
                 action.Timeout,
                 action.Permission == AgentPermission.Write ? "acceptEdits" : null,
                 id => taskId = id);
-            return delivery.Deliver(task, answer) with { DelegatedTaskId = taskId };
+            return await delivery.DeliverAsync(task, answer, cancellationToken) with { DelegatedTaskId = taskId };
         }
         catch (Exception exception)
         {

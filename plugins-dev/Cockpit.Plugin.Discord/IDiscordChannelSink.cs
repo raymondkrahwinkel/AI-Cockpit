@@ -8,10 +8,10 @@ namespace Cockpit.Plugin.Discord;
 internal interface IDiscordChannelSink
 {
     /// <summary>
-    /// Posts a new message, optionally with Approve/Deny buttons for <paramref name="consentPromptId"/>.
-    /// Returns the new message's id.
+    /// Posts a new message, optionally with Approve/Deny buttons for <paramref name="consentPromptId"/> or a
+    /// question's option buttons (<paramref name="answers"/>, AC-1544). Returns the new message's id.
     /// </summary>
-    Task<ulong> PostAsync(string text, Guid? consentPromptId = null, CancellationToken cancellationToken = default);
+    Task<ulong> PostAsync(string text, Guid? consentPromptId = null, DiscordAnswerButtons? answers = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Edits a message already returned by <see cref="PostAsync"/>. <paramref name="keepButtons"/> false strips
