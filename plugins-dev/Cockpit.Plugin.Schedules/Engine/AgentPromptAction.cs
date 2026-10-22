@@ -79,7 +79,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         }
 
         var decision = await asking;
-        if (decision.IsApproved)
+        if (decision.IsApproved && !decision.Bypassed)
         {
             return null;
         }
