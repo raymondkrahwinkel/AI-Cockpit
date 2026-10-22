@@ -102,7 +102,7 @@ public sealed class OperatorMessageRegistry(ILogger<OperatorMessageRegistry> log
         lock (_gate)
         {
             return _pending.Where(pending => pending.Value.ChannelId == channelId)
-                .OrderByDescending(pending => pending.Value.Order)
+                .OrderBy(pending => pending.Value.Order)
                 .Select(pending => ((string, AssistantChannelQuestion)?)(pending.Key, pending.Value.Question))
                 .FirstOrDefault();
         }
