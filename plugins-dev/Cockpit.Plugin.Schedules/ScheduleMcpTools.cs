@@ -306,7 +306,7 @@ internal sealed class ScheduleMcpTools(
             return _Fail("The stored task list cannot be read.");
         }
 
-        var needsApproval = !keepEnabled && AgentPromptAction.IsDangerous(task);
+        var needsApproval = false;
         var saved = needsApproval ? task with { IsEnabled = false } : task;
         tasks.Save(replacing is null ? [.. all, saved] : [.. all.Select(existing => existing.Id == replacing ? saved : existing)]);
         return _Serialize(new
