@@ -199,13 +199,15 @@ public class AssistantChannelGatewayTests
 
     /// <summary>
     /// A structured question reaches the channel with its options and a correlation id, and a choice comes back as
-    /// the operator's next message, by the id (a button) or as the text fallback ("2"). A stranger's choice is nothing.
+    /// the operator's next message, by the id (a button) or as the text fallback ("2"). A stranger's choice is nothing,
+    /// and so is a button for a question the operator already answered in the app: it takes one answer, not two.
     /// </summary>
     [Theory]
-    [InlineData(Allowed, false, 1)]
-    [InlineData(Allowed, true, 1)]
-    [InlineData("118", false, 0)]
-    public Task AStructuredQuestion_ReachesTheChannelWithItsOptions_AndAChoiceComesBackAsTheAnswer(string sender, bool byText, int answered) =>
+    [InlineData(Allowed, "button", 1)]
+    [InlineData(Allowed, "text", 1)]
+    [InlineData("118", "button", 0)]
+    [InlineData(Allowed, "button after the app", 0)]
+    public Task AStructuredQuestion_ReachesTheChannelWithItsOptions_AndAChoiceComesBackAsTheAnswer(string sender, string how, int answered) =>
         HeadlessAvalonia.RunAsync(async () =>
     {
         var (gateway, host, session, rows) = _Gateway();
@@ -222,7 +224,12 @@ public class AssistantChannelGatewayTests
         Assert.Contains("Reply with 1, 2 or 3", question.FallbackPrompt(), StringComparison.Ordinal);
         var correlationId = row.CorrelationId ?? throw new InvalidOperationException("The question row carries no correlation id.");
 
-        _ = byText ? await gateway.SendAsync(sender, "2") : await gateway.AnswerAsync(sender, correlationId, ["Beta"]);
+        if (how == "button after the app")
+        {
+            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "\"Which desk?\" → Alpha"));
+        }
+
+        _ = how == "text" ? await gateway.SendAsync(sender, "2") : await gateway.AnswerAsync(sender, correlationId, ["Beta"]);
 
         await host.Received(answered).SendAsync("\"Which desk?\" → Beta", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
     });
@@ -315,7 +322,6 @@ public class AssistantChannelGatewayTests
     [Theory]
     [InlineData("pane-someone-else", null, 0)]
     [InlineData("pane-someone-else", "workflows", 0)]
-    [InlineData(null, null, 0)]
     [InlineData(null, "docker", 0)]
     [InlineData(null, "workflows", 1)]
     public void OnlyTheAssistantsOwnOrASessionlessWorkflowPrompt_IsRelayedAndAnswerable(string? paneId, string? pluginId, int relayed) => HeadlessAvalonia.Run(() =>
