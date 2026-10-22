@@ -15,6 +15,8 @@ internal sealed class EngineRig(DateTimeOffset start)
 
     public Func<ScheduledTask, Task<ActionResult>> Action { get; set; } = _ => Task.FromResult(new ActionResult(RunOutcome.Succeeded));
 
+    public Func<ScheduledTask, string?> Admit { get; set; } = _ => null;
+
     public int MaxConcurrentRuns { get; set; } = 2;
 
     public IReadOnlyList<RunRecord> History => new RunStore(Storage, Clock).Load();
@@ -42,6 +44,7 @@ internal sealed class EngineRig(DateTimeOffset start)
         new TaskStore(Storage),
         new MarkStore(Storage),
         new RunStore(Storage, Clock),
+        (task, _, _) => Task.FromResult(Admit(task)),
         (task, _, _) =>
         {
             lock (Executed)

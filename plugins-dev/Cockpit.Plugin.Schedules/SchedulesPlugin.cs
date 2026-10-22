@@ -32,7 +32,10 @@ public sealed class SchedulesPlugin : ICockpitPlugin
             new MarkStore(host.Cache),
             new RunStore(host.Cache, TimeProvider.System),
             (task, trigger, cancellationToken) => task.Action.Kind == TaskActionKind.AgentPrompt
-                ? agentPrompt.RunAsync(task, trigger, cancellationToken)
+                ? agentPrompt.AdmitAsync(task, trigger, cancellationToken)
+                : Task.FromResult<string?>(null),
+            (task, _, cancellationToken) => task.Action.Kind == TaskActionKind.AgentPrompt
+                ? agentPrompt.RunAsync(task, cancellationToken)
                 : Task.FromResult(delivery.Deliver(task, task.Action.Text)),
             () => settings.MaxConcurrentRuns,
             TimeProvider.System);

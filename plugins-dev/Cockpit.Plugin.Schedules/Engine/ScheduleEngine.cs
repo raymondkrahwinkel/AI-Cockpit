@@ -19,6 +19,7 @@ internal sealed class ScheduleEngine : IDisposable
     private readonly TaskStore _tasks;
     private readonly MarkStore _marks;
     private readonly RunStore _runs;
+    private readonly Func<ScheduledTask, RunTrigger, CancellationToken, Task<string?>> _admit;
     private readonly Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> _execute;
     private readonly Func<int> _maxConcurrentRuns;
     private readonly TimeProvider _time;
@@ -34,6 +35,7 @@ internal sealed class ScheduleEngine : IDisposable
         TaskStore tasks,
         MarkStore marks,
         RunStore runs,
+        Func<ScheduledTask, RunTrigger, CancellationToken, Task<string?>> admit,
         Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> execute,
         Func<int> maxConcurrentRuns,
         TimeProvider time)
@@ -41,6 +43,7 @@ internal sealed class ScheduleEngine : IDisposable
         _tasks = tasks;
         _marks = marks;
         _runs = runs;
+        _admit = admit;
         _execute = execute;
         _maxConcurrentRuns = maxConcurrentRuns;
         _time = time;
@@ -192,6 +195,24 @@ internal sealed class ScheduleEngine : IDisposable
     {
         try
         {
+            // Consent is asked before a slot is taken: a question waiting an hour must not hold up other tasks.
+            string? refused;
+            try
+            {
+                refused = await _admit(task, record.Trigger, CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                _runs.Replace(record with { Outcome = RunOutcome.Failed, Reason = exception.Message });
+                return;
+            }
+
+            if (refused is not null)
+            {
+                _runs.Replace(record with { Outcome = RunOutcome.Skipped, Reason = refused });
+                return;
+            }
+
             await _AcquireSlotAsync();
             var started = _time.GetUtcNow();
             RunRecord done;

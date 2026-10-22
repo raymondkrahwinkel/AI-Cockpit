@@ -9,19 +9,22 @@ public class ScheduleEngineTests
     private static DateTimeOffset Utc(int month, int day, int hour, int minute, int second = 0) =>
         new(2026, month, day, hour, minute, second, TimeSpan.Zero);
 
-    [Fact]
-    public async Task ASlotOnTime_RunsOnce_AsAScheduleRun()
+    // AC-1543: a run its action does not admit (consent refused) is Skipped with the reason, and its action never runs.
+    [Theory]
+    [InlineData(null, 1, RunOutcome.Succeeded)]
+    [InlineData("not approved", 0, RunOutcome.Skipped)]
+    public async Task ASlotOnTime_RunsOnce_AsAScheduleRun_UnlessNotAdmitted(string? refusal, int runs, RunOutcome outcome)
     {
-        var rig = new EngineRig(Utc(10, 14, 6, 59, 50));
+        var rig = new EngineRig(Utc(10, 14, 6, 59, 50)) { Admit = _ => refusal };
         rig.Add(EngineRig.NewTask("0 9 * * *"));
         using var engine = rig.Start();
 
         await engine.TickAsync();
         await rig.WalkAsync(engine, Utc(10, 14, 7, 30));
 
-        Assert.Equal([("stand-up", Utc(10, 14, 7, 0, 20))], rig.Executed);
+        Assert.Equal(Enumerable.Repeat(("stand-up", Utc(10, 14, 7, 0, 20)), runs), rig.Executed);
         var run = Assert.Single(rig.History);
-        Assert.Equal((RunTrigger.Schedule, RunOutcome.Succeeded, Utc(10, 14, 7, 0)), (run.Trigger, run.Outcome, run.ScheduledFor));
+        Assert.Equal((RunTrigger.Schedule, outcome, Utc(10, 14, 7, 0), refusal), (run.Trigger, run.Outcome, run.ScheduledFor, run.Reason));
     }
 
     [Fact]

@@ -14,7 +14,13 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
     public const string NoAnswer = "no answer";
     public const string NotApproved = "not approved";
 
-    public async Task<ActionResult> RunAsync(ScheduledTask task, RunTrigger trigger, CancellationToken cancellationToken)
+    // Null when the run may go ahead, else why not. The engine asks this before the run takes a slot.
+    public Task<string?> AdmitAsync(ScheduledTask task, RunTrigger trigger, CancellationToken cancellationToken) =>
+        task.Action.Permission == AgentPermission.Write && _AsksConsent(trigger, task.RunUnattended)
+            ? _AskAsync(task, cancellationToken)
+            : Task.FromResult<string?>(null);
+
+    public async Task<ActionResult> RunAsync(ScheduledTask task, CancellationToken cancellationToken)
     {
         var action = task.Action;
         var profile = action.Profile?.Trim() ?? string.Empty;
@@ -24,13 +30,10 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
             return new ActionResult(RunOutcome.Failed, Reason: "An agent prompt needs a profile and a prompt.");
         }
 
-        var directory = _Expand(action.WorkingDirectory?.Trim() ?? string.Empty);
-        if (action.Permission == AgentPermission.Write && _AsksConsent(trigger, task.RunUnattended))
+        var (directory, unset) = _Expand(action.WorkingDirectory?.Trim() ?? string.Empty);
+        if (unset.Count > 0)
         {
-            if (await _AskAsync(task, profile, directory, prompt, cancellationToken) is { } refused)
-            {
-                return new ActionResult(RunOutcome.Skipped, Reason: refused);
-            }
+            return new ActionResult(RunOutcome.Failed, Reason: $"The working directory names {string.Join(", ", unset)}, which is not set here.");
         }
 
         string? taskId = null;
@@ -59,15 +62,16 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         _ => !unattended,
     };
 
-    // Null when approved, else why not. Asked outside the caller's flow, as Workflows' ApproveRunner (AC-1360): an MCP
-    // caller's pane would otherwise let that session's "allow all" answer, and a skipped card (Bypassed) is not a yes.
-    private async Task<string?> _AskAsync(ScheduledTask task, string profile, string directory, string prompt, CancellationToken cancellationToken)
+    // Asked outside the caller's flow, as Workflows' ApproveRunner (AC-1360): an MCP caller's pane would otherwise let
+    // that session's "allow all" answer, and a skipped card (Bypassed) is not a yes.
+    private async Task<string?> _AskAsync(ScheduledTask task, CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(consentWait);
+        var (directory, _) = _Expand(task.Action.WorkingDirectory?.Trim() ?? string.Empty);
         var request = new ConsentRequest(
             $"Schedule wants to run: {task.Name}",
-            $"Delegate to {profile}, allowed to change files, in {(directory.Length == 0 ? "the profile's own directory" : directory)}:\n{prompt}",
+            $"Delegate to {task.Action.Profile}, allowed to change files, in {(directory.Length == 0 ? "the profile's own directory" : directory)}:\n{task.Action.Text.Trim()}",
             new ConsentSource(null, null, "Schedules"),
             "schedules.agent-prompt",
             ConsentRisk.Dangerous);
@@ -87,10 +91,24 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
         return deadline.IsCancellationRequested ? NoAnswer : NotApproved;
     }
 
-    private static string _Expand(string path) =>
-        Environment.ExpandEnvironmentVariables(Variable().Replace(path, match =>
-            Environment.GetEnvironmentVariable(match.Groups[1].Value + match.Groups[2].Value) ?? match.Value));
+    // $VAR, ${VAR} and %VAR% in one pass, so a value is never expanded twice; the names not set come back.
+    private static (string Path, List<string> Unset) _Expand(string path)
+    {
+        var unset = new List<string>();
+        var expanded = Variable().Replace(path, match =>
+        {
+            var name = match.Groups.Values.Skip(1).First(group => group.Success).Value;
+            if (Environment.GetEnvironmentVariable(name) is { } value)
+            {
+                return value;
+            }
 
-    [GeneratedRegex(@"\$(?:\{(\w+)\}|(\w+))")]
+            unset.Add(name);
+            return match.Value;
+        });
+        return (expanded, unset);
+    }
+
+    [GeneratedRegex(@"\$\{(\w+)\}|\$(\w+)|%(\w+)%")]
     private static partial Regex Variable();
 }
