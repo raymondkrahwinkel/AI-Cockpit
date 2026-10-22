@@ -127,8 +127,24 @@ public partial class EditableProfileViewModel : ViewModelBase
     // The permission-ceiling values offered in the delegation dropdown (AC-79), least- to most-permissive.
     public IReadOnlyList<string> PermissionCeilingChoices { get; } = ["plan", "default", "acceptEdits", "bypassPermissions"];
 
-    [ObservableProperty]
     private SessionProviderOption _selectedProvider;
+
+    // The provider dropdown writes null back when it cannot show the selection — a profile on a provider plugin that is
+    // not loaded has an option its list lacks. That null is the dropdown's state, not a choice: the profile keeps its
+    // provider, so IsPluginProvider and ToProfile never meet a null. Not raised again, or the dropdown would loop.
+    public SessionProviderOption SelectedProvider
+    {
+        get => _selectedProvider;
+        set
+        {
+            if (value is null || !SetProperty(ref _selectedProvider, value))
+            {
+                return;
+            }
+
+            _OnSelectedProviderChanged(value);
+        }
+    }
 
     // Only a freshly added profile may pick its provider; an existing one is fixed (#26), so the dropdown is disabled.
     [ObservableProperty]
@@ -431,7 +447,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(LoginStatusBrushKey));
     }
 
-    partial void OnSelectedProviderChanged(SessionProviderOption value)
+    private void _OnSelectedProviderChanged(SessionProviderOption value)
     {
         // Point the base URL at the newly chosen provider's default port when adding a profile — including
         // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.

@@ -104,6 +104,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Options no longer gets stuck when a profile uses a provider plugin that is not installed or switched off: the
+  profile editor kept losing that profile's provider, after which Options could neither keep track of changes nor close.
 - fixed: the file preview dialog now keeps rendered markdown, source text and images the same distance from the
   dialog's edges as its header, instead of drawing markdown flush against the left edge.
 - fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of
