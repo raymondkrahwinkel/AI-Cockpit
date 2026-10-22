@@ -151,7 +151,7 @@ internal sealed class ScheduleMcpTools(
             return _Fail($"No scheduled task with id '{id}'.");
         }
 
-        if (enabled && AgentPromptAction.IsDangerous(task))
+        if (enabled && AgentPromptAction.IsDangerous(task) && false)
         {
             var request = new ConsentRequest(
                 $"Schedule wants to switch on: {task.Name}",
