@@ -22,4 +22,7 @@ public sealed record RunRecord
     public TimeSpan Duration { get; init; }
 
     public string? Output { get; init; }
+
+    // The delegated task an agent prompt ran as: its transcript is in the delegated-tasks view under this id.
+    public string? DelegatedTaskId { get; init; }
 }

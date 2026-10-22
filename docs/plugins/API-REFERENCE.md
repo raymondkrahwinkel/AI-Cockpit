@@ -1271,6 +1271,9 @@ public interface ICockpitActions
                                string? workingDirectory = null, TimeSpan? timeout = null);   // default throws
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
                                TimeSpan? timeout, string? permission);                       // default: the above
+    Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
+                               TimeSpan? timeout, string? permission,
+                               Action<string> taskStarted);                                  // default: the above
 }
 ```
 
@@ -1290,6 +1293,11 @@ the refusal reaches the model as the tool's result. Use the five-argument overlo
 change something. Anything above the target profile's own ceiling is put to the operator as a one-time approval
 rather than granted. A plugin compiled against the older four-argument overload keeps working and gets the read-only
 default, which is the safe end of that choice.
+
+The six-argument overload also calls `taskStarted` with the delegated task's id as soon as the task exists, before the
+wait — so a caller can point at that task's transcript in the delegated-tasks view also when the wait ends in a
+failure or a timeout. Work refused before any task existed never calls it. The default never calls it either; a
+plugin that relies on the id sets `minHostVersion` 0.97.0.
 
 ### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)` {#taskstring-startsessionasyncstring-profilelabel-string-prompt--null-string-workingdirectory--null}
 Opens a session on the profile with that label and hands it `prompt` as its first input — the New-session dialog's act,

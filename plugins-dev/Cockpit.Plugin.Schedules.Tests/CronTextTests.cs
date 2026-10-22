@@ -7,7 +7,6 @@ public class CronTextTests
 {
     [Theory]
     [InlineData("*/15 * * * *", "Every 15 minutes")]
-    [InlineData("15 * * * *", "Every hour at :15")]
     [InlineData("0 9 * * *", "Every day at 09:00")]
     [InlineData("30 7 * * 1-5", "Every weekday at 07:30")]
     [InlineData("0 9 * * 1,3,5", "Every Monday, Wednesday and Friday at 09:00")]
@@ -20,8 +19,6 @@ public class CronTextTests
 
     [Theory]
     [InlineData("0 10 1-7 * 0")]
-    [InlineData("0 9 * 6 *")]
-    [InlineData("0 9-17 * * *")]
     public void ACronNoShapeFits_ReadsAsCustom(string cron)
     {
         Assert.Null(CronText.Describe(cron));

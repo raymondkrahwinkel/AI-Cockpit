@@ -1,13 +1,13 @@
 {
   "id": "schedules",
   "name": "Schedules",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "entryAssembly": "Cockpit.Plugin.Schedules.dll",
   "entryType": "Cockpit.Plugin.Schedules.SchedulesPlugin",
   "uiAssembly": "Cockpit.Plugin.Schedules.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Schedules.UI.SchedulesUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.92.0",
-  "description": "Scheduled tasks with their own engine: a cron schedule in a required time zone, a policy per task for runs missed while the machine slept, and every slot fired at most once, also across a restart or the daylight-saving switch. The first action is a fixed notification.",
+  "minHostVersion": "0.97.0",
+  "description": "Scheduled tasks with their own engine: a cron schedule in a required time zone, a policy per task for runs missed while the machine slept, and every slot fired at most once, also across a restart or the daylight-saving switch. A task delivers a fixed notification or an agent's answer to a prompt, and an agent that may change files asks first unless the task runs unattended.",
   "author": "Cockpit"
 }

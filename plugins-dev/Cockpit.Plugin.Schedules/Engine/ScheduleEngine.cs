@@ -19,7 +19,7 @@ internal sealed class ScheduleEngine : IDisposable
     private readonly TaskStore _tasks;
     private readonly MarkStore _marks;
     private readonly RunStore _runs;
-    private readonly Func<ScheduledTask, CancellationToken, Task<ActionResult>> _execute;
+    private readonly Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> _execute;
     private readonly Func<int> _maxConcurrentRuns;
     private readonly TimeProvider _time;
     private readonly ITimer _timer;
@@ -34,7 +34,7 @@ internal sealed class ScheduleEngine : IDisposable
         TaskStore tasks,
         MarkStore marks,
         RunStore runs,
-        Func<ScheduledTask, CancellationToken, Task<ActionResult>> execute,
+        Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> execute,
         Func<int> maxConcurrentRuns,
         TimeProvider time)
     {
@@ -197,8 +197,8 @@ internal sealed class ScheduleEngine : IDisposable
             RunRecord done;
             try
             {
-                var result = await _execute(task, CancellationToken.None);
-                done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason };
+                var result = await _execute(task, record.Trigger, CancellationToken.None);
+                done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason, DelegatedTaskId = result.DelegatedTaskId };
             }
             catch (Exception exception)
             {

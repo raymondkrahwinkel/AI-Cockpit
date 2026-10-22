@@ -42,7 +42,7 @@ internal sealed class EngineRig(DateTimeOffset start)
         new TaskStore(Storage),
         new MarkStore(Storage),
         new RunStore(Storage, Clock),
-        (task, _) =>
+        (task, _, _) =>
         {
             lock (Executed)
             {

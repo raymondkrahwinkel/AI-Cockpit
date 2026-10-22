@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a **Schedules** task can hand a prompt to an agent profile, in a working directory that profile allows
+  (`$VAR` and `%VAR%` expanded), and deliver its answer; an empty answer is nothing to deliver. A task that may change
+  files asks you first when its schedule fires, unless you marked it **Run unattended**, and always when an agent
+  starts it over MCP; unanswered for an hour, the run is skipped. A run you start yourself asks nothing. The run
+  history keeps the id of the delegated task, whose transcript is in the delegated-tasks view.
+- added: for plugin authors, `ICockpitActions.DelegateAsync` gains an overload with a `taskStarted` callback that
+  receives the delegated task's id as soon as the task exists (Plugin SDK 3.12.0, host 0.97.0).
 - added: heavy test runs and local CI gates now wait their turn in one queue for the whole machine. A run starts
   once the measured CPU, memory and free disk leave room for what that kind of run cost before, a gate before a
   merge goes ahead of an exploring run, and a session that closes gives its place back. The status bar's

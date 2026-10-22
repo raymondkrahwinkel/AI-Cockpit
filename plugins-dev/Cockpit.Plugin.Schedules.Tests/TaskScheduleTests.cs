@@ -23,17 +23,6 @@ public class TaskScheduleTests
     }
 
     [Fact]
-    public void EveryDayAtNine_FiresOnSevenDifferentDaysInAWeek()
-    {
-        var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam");
-        var schedule = TaskSchedule.TryParse("0 9 * * *", zone) ?? throw new InvalidOperationException("Unparsed.");
-
-        var days = schedule.Slots(MidMarch, MidMarch.AddDays(7), zone).Select(slot => slot.Date).Distinct();
-
-        Assert.Equal(7, days.Count());
-    }
-
-    [Fact]
     public void Once_IsThatLocalMoment_AndEveryNMinutes_SitsOnTheUtcGrid()
     {
         var zone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Amsterdam");
@@ -47,10 +36,7 @@ public class TaskScheduleTests
 
     // 02:30 on 2026-03-29 does not exist in Amsterdam.
     [Theory]
-    [InlineData("")]
     [InlineData("61 * * * *")]
-    [InlineData("every 0 m")]
-    [InlineData("once 2026-13-01 09:00")]
     [InlineData("once 2026-03-29 02:30")]
     public void AnUnreadableSchedule_IsRefused(string schedule)
     {

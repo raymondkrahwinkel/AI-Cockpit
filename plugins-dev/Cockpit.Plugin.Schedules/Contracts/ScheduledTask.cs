@@ -18,6 +18,9 @@ public sealed record ScheduledTask
 
     public bool IsEnabled { get; init; } = true;
 
+    // The operator's say-so that a scheduled run may change files without asking first (plan §3).
+    public bool RunUnattended { get; init; }
+
     public required TaskAction Action { get; init; }
 
     public IReadOnlyList<DeliveryTarget> Delivery { get; init; } = [];
