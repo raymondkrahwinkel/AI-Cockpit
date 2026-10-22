@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: for plugin authors, the assistant channel contract carries questions. A question row from the assistant now
+  comes with its options (single or multiple choice, and whether an answer in the operator's own words is welcome)
+  and a correlation id, and `IAssistantChannelGateway.AnswerAsync` sends the choice back as the operator's answer,
+  the same one the card in the app sends. A channel without buttons shows `FallbackPrompt()` ("Reply with 1, 2 or
+  3"), and a reply such as "2" counts as that choice while the question waits. Rows can also carry named attachments.
+  Everything defaults to nothing, so an existing channel plugin works unchanged (Plugin SDK 3.13.0, host 0.98.0).
 - added: a **Schedules** task can hand a prompt to an agent profile, in a working directory that profile allows
   (`$VAR` and `%VAR%` expanded), and deliver its answer; an empty answer is nothing to deliver. A task that may change
   files asks you first when its schedule fires, unless you marked it **Run unattended**, and always when an agent
