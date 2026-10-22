@@ -521,7 +521,10 @@
          (default returns false), with IHeavyRunSlot, HeavyRunRequest, HeavyRunKind and HeavyRunPurpose in
          Cockpit.Plugins.Abstractions.HeavyRuns. A plugin that calls either sets minHostVersion 0.96.0. Additive — a
          minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.11.0</Version>
+    <!-- 3.12.0 (AC-1543): ICockpitActions.DelegateAsync gains an overload with a taskStarted callback that receives
+         the delegated task's id once the task exists (the default never calls it). A plugin that relies on the id
+         sets minHostVersion 0.97.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.12.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

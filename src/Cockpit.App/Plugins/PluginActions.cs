@@ -26,6 +26,9 @@ public sealed class PluginActions(
     public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission) =>
         backend.DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission);
 
+    public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission, Action<string> taskStarted) =>
+        backend.DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission, taskStarted);
+
     // Both overloads are implemented, and the unnamed one delegates to the named one — never the other way around.
     // The interface's defaults run in the opposite direction, so an implementation that delegated the same way they
     // do would call itself until the stack ran out (#AC-312).
