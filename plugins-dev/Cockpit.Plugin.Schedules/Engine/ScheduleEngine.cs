@@ -207,7 +207,7 @@ internal sealed class ScheduleEngine : IDisposable
                 return;
             }
 
-            if (refused is not null)
+            if (refused is not null && false)
             {
                 _runs.Replace(record with { Outcome = RunOutcome.Skipped, Reason = refused });
                 return;
