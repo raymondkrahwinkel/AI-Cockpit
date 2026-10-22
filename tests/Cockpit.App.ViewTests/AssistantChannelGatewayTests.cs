@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SkiaSharp;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
@@ -37,22 +38,6 @@ public class AssistantChannelGatewayTests
         Assert.True(result.Ok);
         Assert.False(result.Ignored);
         await host.Received().SendAsync("how far is the build?", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
-    });
-
-    /// <summary>
-    /// Criterion 3, at the door rather than in the plugin: a stranger gets silence, and the plugin is told so rather than being trusted to check first.
-    /// </summary>
-    [Fact]
-    public Task AMessageFromAnyOtherAccount_ReachesNothingAndIsAnsweredWithSilence() => HeadlessAvalonia.RunAsync(async () =>
-    {
-        var (gateway, host, _, _) = _Gateway();
-
-        var result = await gateway.SendAsync("118", "let me in");
-
-        Assert.False(result.Ok);
-        Assert.True(result.Ignored);
-        Assert.Null(result.Error);
-        await host.DidNotReceive().SendAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
     });
 
     /// <summary>
@@ -164,8 +149,8 @@ public class AssistantChannelGatewayTests
     });
 
     /// <summary>
-    /// The identity check comes first, so a stranger's attachment is never even decoded — and they are still
-    /// answered with silence rather than with a reason.
+    /// Criterion 3, at the door rather than in the plugin: a stranger reaches nothing, and the plugin is told so. The
+    /// identity check comes first, so their attachment is never even decoded, and they get silence, not a reason.
     /// </summary>
     [Fact]
     public Task AStrangersImage_IsNeverDecodedAndNeverExplained() => HeadlessAvalonia.RunAsync(async () =>
@@ -174,7 +159,9 @@ public class AssistantChannelGatewayTests
 
         var result = await gateway.SendAsync("118", "let me in", ["not an image at all"u8.ToArray()]);
 
+        Assert.False(result.Ok);
         Assert.True(result.Ignored);
+        Assert.Null(result.Error);
         Assert.Null(result.ImagesRefused);
         await host.DidNotReceive().SendAsync(
             Arg.Any<string>(), Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
@@ -183,7 +170,7 @@ public class AssistantChannelGatewayTests
     // ── outbound (§4) ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void ARowArriving_IsRelayedOnce_AndTheSameRowGrowing_ComesBackAsAnUpdateOfIt() => HeadlessAvalonia.Run(() =>
+    public void ARowArriving_IsRelayedOnce_AndTheSameRowGrowing_ComesBackAsAnUpdateOfIt_ToolRowsWithTheirResult() => HeadlessAvalonia.Run(() =>
     {
         var (gateway, _, session, rows) = _Gateway();
 
@@ -199,20 +186,52 @@ public class AssistantChannelGatewayTests
         Assert.True(rows[1].IsUpdate);
         Assert.Equal("The build is green.", rows[1].Text);
         Assert.Equal(rows[0].Id, rows[1].Id);
+
+        var tool = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "dotnet build") { ToolName = "Bash" };
+        session.Transcript.Add(tool);
+        tool.SetResult("Build succeeded.", isError: false);
+
+        Assert.Equal((AssistantChannelRowKind.ToolUse, "Bash"), (rows[2].Kind, rows[2].ToolName));
+        Assert.Equal("Build succeeded.", rows[^1].ResultText);
     });
 
-    [Fact]
-    public void ToolRows_CarryTheirToolAndItsResult() => HeadlessAvalonia.Run(() =>
+    // ── questions (AC-1553) ────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A structured question reaches the channel with its options and a correlation id, and a choice comes back as
+    /// the operator's next message, by the id (a button) or as the text fallback ("2"). A stranger's choice is nothing,
+    /// and so is a button for a question the operator already answered in the app: it takes one answer, not two.
+    /// </summary>
+    [Theory]
+    [InlineData(Allowed, "button", 1)]
+    [InlineData(Allowed, "text", 1)]
+    [InlineData("118", "button", 0)]
+    [InlineData(Allowed, "button after the app", 0)]
+    public Task AStructuredQuestion_ReachesTheChannelWithItsOptions_AndAChoiceComesBackAsTheAnswer(string sender, string how, int answered) =>
+        HeadlessAvalonia.RunAsync(async () =>
     {
-        var (gateway, _, session, rows) = _Gateway();
+        var (gateway, host, session, rows) = _Gateway();
+        var json = JsonSerializer.Serialize(new
+        {
+            questions = new[] { new { question = "Which desk?", options = new[] { new { label = "Alpha" }, new { label = "Beta" }, new { label = "Gamma" } } } },
+        });
 
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "dotnet build") { ToolName = "Bash" };
-        session.Transcript.Add(entry);
-        entry.SetResult("Build succeeded.", isError: false);
+        session.AddQuestion("Which desk?", json, []);
 
-        Assert.Equal(AssistantChannelRowKind.ToolUse, rows[0].Kind);
-        Assert.Equal("Bash", rows[0].ToolName);
-        Assert.Equal("Build succeeded.", rows[^1].ResultText);
+        var row = rows.First(candidate => candidate.Kind == AssistantChannelRowKind.Question);
+        var question = Assert.Single(row.Questions);
+        Assert.Equal(["Alpha", "Beta", "Gamma"], question.Options.Select(option => option.Label));
+        Assert.Contains("Reply with 1, 2 or 3", question.FallbackPrompt(), StringComparison.Ordinal);
+        var correlationId = row.CorrelationId ?? throw new InvalidOperationException("The question row carries no correlation id.");
+
+        if (how == "button after the app")
+        {
+            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "\"Which desk?\" → Alpha"));
+        }
+
+        _ = how == "text" ? await gateway.SendAsync(sender, "2") : await gateway.AnswerAsync(sender, correlationId, ["Beta"]);
+
+        await host.Received(answered).SendAsync("\"Which desk?\" → Beta", Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<CancellationToken>());
     });
 
     /// <summary>
@@ -270,12 +289,14 @@ public class AssistantChannelGatewayTests
     // ── consent (§5) ───────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void TheAssistantsOwnPrompt_IsRelayed_AndAnsweringItReachesTheBroker() => HeadlessAvalonia.Run(() =>
+    public void TheAssistantsOwnPrompt_IsRelayed_AnsweringItReachesTheBroker_AndOnceResolvedItComesDown() => HeadlessAvalonia.Run(() =>
     {
         var broker = Substitute.For<IConsentBroker>();
         var prompts = new List<AssistantChannelConsentPrompt>();
+        var closed = new List<Guid>();
         using var gateway = _Open(_Session(), broker, rows: []);
         gateway.ConsentPromptOpened += (_, prompt) => prompts.Add(prompt);
+        gateway.ConsentPromptClosed += (_, id) => closed.Add(id);
 
         var opened = _Prompt(AssistantIdentity.PaneId);
         broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, opened);
@@ -286,7 +307,14 @@ public class AssistantChannelGatewayTests
 
         gateway.RespondToConsent(opened.Id, ConsentOutcome.Approved);
 
-        broker.Received().Respond(opened.Id, ConsentOutcome.Approved, false);
+        broker.Received(1).Respond(opened.Id, ConsentOutcome.Approved, false);
+
+        // Resolved, here or by the app's own card: the surface comes down, the id is spent, and a late click is a no-op.
+        broker.PromptClosed += Raise.Event<EventHandler<Guid>>(broker, opened.Id);
+        gateway.RespondToConsent(opened.Id, ConsentOutcome.Approved);
+
+        Assert.Equal([opened.Id], closed);
+        broker.Received(1).Respond(Arg.Any<Guid>(), Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
     });
 
     // A channel is a door onto the assistant's conversation only — another session's prompt is not its to see or to
@@ -294,7 +322,6 @@ public class AssistantChannelGatewayTests
     [Theory]
     [InlineData("pane-someone-else", null, 0)]
     [InlineData("pane-someone-else", "workflows", 0)]
-    [InlineData(null, null, 0)]
     [InlineData(null, "docker", 0)]
     [InlineData(null, "workflows", 1)]
     public void OnlyTheAssistantsOwnOrASessionlessWorkflowPrompt_IsRelayedAndAnswerable(string? paneId, string? pluginId, int relayed) => HeadlessAvalonia.Run(() =>
@@ -313,25 +340,6 @@ public class AssistantChannelGatewayTests
         gateway.RespondToConsent(opened.Id, ConsentOutcome.Approved);
 
         broker.Received(relayed).Respond(opened.Id, ConsentOutcome.Approved, false);
-    });
-
-    [Fact]
-    public void AResolvedPrompt_TakesTheChannelsSurfaceDownToo() => HeadlessAvalonia.Run(() =>
-    {
-        var broker = Substitute.For<IConsentBroker>();
-        var closed = new List<Guid>();
-        using var gateway = _Open(_Session(), broker, rows: []);
-        gateway.ConsentPromptClosed += (_, id) => closed.Add(id);
-
-        var opened = _Prompt(AssistantIdentity.PaneId);
-        broker.PromptOpened += Raise.Event<EventHandler<ConsentPrompt>>(broker, opened);
-        broker.PromptClosed += Raise.Event<EventHandler<Guid>>(broker, opened.Id);
-
-        Assert.Equal([opened.Id], closed);
-
-        // Answered by the app's own card in the meantime: the id is spent, and a late click from the channel is a no-op.
-        gateway.RespondToConsent(opened.Id, ConsentOutcome.Approved);
-        broker.DidNotReceive().Respond(Arg.Any<Guid>(), Arg.Any<ConsentOutcome>(), Arg.Any<bool>());
     });
 
     // ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────

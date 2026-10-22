@@ -20,6 +20,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Usage;
+using Cockpit.Infrastructure.Assistant;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 
@@ -2448,10 +2449,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await RespondToPermissionAsync(entry, allow: true, answers.ToJsonString());
     }
 
-    // The wire format for a broker question's answer: spelled out because the model never sees the card itself,
-    // and a bare label on its own could otherwise read as a fresh instruction rather than an answer to this one.
+    // The same wire format a chat channel's answer takes (AC-1553).
     private static string _BuildBrokerAnswerText(AskUserQuestionViewModel prompt) =>
-        $"\"{prompt.Question}\" → {prompt.Answer}";
+        StructuredQuestionJson.AnswerText(prompt.Question, prompt.Answer);
 
     // AC-1476: remote only, and only where the server said it keeps the rule; the button is drawn on that same test.
     [RelayCommand]

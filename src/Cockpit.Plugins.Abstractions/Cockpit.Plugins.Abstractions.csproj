@@ -524,7 +524,12 @@
     <!-- 3.12.0 (AC-1543): ICockpitActions.DelegateAsync gains an overload with a taskStarted callback that receives
          the delegated task's id once the task exists (the default never calls it). A plugin that relies on the id
          sets minHostVersion 0.97.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.12.0</Version>
+    <!-- 3.13.0 (AC-1553): the channel contract carries questions. AssistantChannelRow gains Questions, CorrelationId
+         and Attachments as init properties (default empty), with AssistantChannelQuestion (its FallbackPrompt and
+         ReadReply), AssistantChannelOption and AssistantChannelAttachment; IAssistantChannelGateway gains AnswerAsync
+         (default refuses). A plugin that reads them or answers sets minHostVersion 0.98.0. Additive — a minor; the
+         major and abstractionsVersion stay 3. -->
+    <Version>3.13.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

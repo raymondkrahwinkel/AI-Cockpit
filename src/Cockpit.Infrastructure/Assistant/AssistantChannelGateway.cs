@@ -27,6 +27,11 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
     private readonly HashSet<Guid> _relayedPrompts = [];
 
+    // AC-1553: the questions relayed, by correlation id, until answered; the newest is the one a bare text reply such
+    // as "2" answers, until the operator's next message (here or in the app) moves the conversation on.
+    private readonly Dictionary<string, AssistantChannelQuestion> _questions = new(StringComparer.Ordinal);
+    private string? _waiting;
+
     private IAssistantSession? _observed;
     private bool _disposed;
 
@@ -71,33 +76,129 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             return AssistantChannelSendResult.Refused("This channel is closed.");
         }
 
-        if (!_channel.Access.IsAllowed(senderUserId))
+        if (!_IsAllowed(senderUserId))
         {
-            // AC-1074: Information, not Debug — `FileLoggerProvider` drops everything below it, so the Debug this
-            // used to be could never reach the log an operator debugging "nothing comes in" actually reads.
-            _logger.LogInformation(
-                "Channel {ChannelId} ({ChannelName}) ignored a message from {SenderUserId}: not on the access list.",
-                _channel.Id,
-                _channel.Name,
-                senderUserId);
             return AssistantChannelSendResult.IgnoredSender();
         }
 
         // Before the send, so the decoding runs on the caller's thread rather than the host's.
         var (accepted, refusal) = _Accept(images);
 
-        try
+        // The text fallback (AC-1553): while a question waits, a reply that names its choices is that answer.
+        string? waiting;
+        AssistantChannelQuestion? question;
+        lock (_relayedRows)
         {
-            await _host.SendAsync(text, accepted, cancellationToken).ConfigureAwait(false);
+            waiting = _waiting;
+            question = waiting is null ? null : _questions.GetValueOrDefault(waiting);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+
+        if (waiting is not null && question?.ReadReply(text) is { } chosen && _Take(waiting) is not null)
         {
-            return AssistantChannelSendResult.Refused(exception.Message);
+            text = StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", chosen));
+        }
+
+        if (await _DeliverAsync(text, accepted, cancellationToken).ConfigureAwait(false) is { } failed)
+        {
+            return failed;
         }
 
         return refusal is null
             ? AssistantChannelSendResult.Sent()
             : AssistantChannelSendResult.SentWithoutImages(refusal);
+    }
+
+    public async Task<AssistantChannelSendResult> AnswerAsync(
+        string senderUserId,
+        string correlationId,
+        IReadOnlyList<string> chosen,
+        CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+        {
+            return AssistantChannelSendResult.Refused("This channel is closed.");
+        }
+
+        if (!_IsAllowed(senderUserId))
+        {
+            return AssistantChannelSendResult.IgnoredSender();
+        }
+
+        var picks = chosen.Select(pick => pick.Trim()).Where(pick => pick.Length > 0).Distinct().ToList();
+        AssistantChannelQuestion? question;
+        lock (_relayedRows)
+        {
+            question = _questions.GetValueOrDefault(correlationId);
+        }
+
+        if (question is null)
+        {
+            return AssistantChannelSendResult.Refused("No question waits under this id.");
+        }
+
+        var outsideTheList = !question.AllowOther && picks.Any(pick => question.Options.All(option => option.Label != pick));
+        if (picks.Count == 0 || (!question.MultiSelect && picks.Count > 1) || outsideTheList)
+        {
+            return AssistantChannelSendResult.Refused("That is not an answer this question takes.");
+        }
+
+        if (_Take(correlationId) is null)
+        {
+            return AssistantChannelSendResult.Refused("No question waits under this id.");
+        }
+
+        var answer = StructuredQuestionJson.AnswerText(question.Question, string.Join(", ", picks));
+        return await _DeliverAsync(answer, [], cancellationToken).ConfigureAwait(false) ?? AssistantChannelSendResult.Sent();
+    }
+
+    private bool _IsAllowed(string senderUserId)
+    {
+        if (_channel.Access.IsAllowed(senderUserId))
+        {
+            return true;
+        }
+
+        // AC-1074: Information, not Debug — `FileLoggerProvider` drops everything below it, so the Debug this
+        // used to be could never reach the log an operator debugging "nothing comes in" actually reads.
+        _logger.LogInformation(
+            "Channel {ChannelId} ({ChannelName}) ignored a message from {SenderUserId}: not on the access list.",
+            _channel.Id,
+            _channel.Name,
+            senderUserId);
+        return false;
+    }
+
+    // A question is answered once: the first answer takes it, so a second click or a late reply cannot answer again.
+    private AssistantChannelQuestion? _Take(string correlationId)
+    {
+        lock (_relayedRows)
+        {
+            if (!_questions.Remove(correlationId, out var question))
+            {
+                return null;
+            }
+
+            if (_waiting == correlationId)
+            {
+                _waiting = null;
+            }
+
+            return question;
+        }
+    }
+
+    // Null when the message reached the assistant, else the refusal to hand back.
+    private async Task<AssistantChannelSendResult?> _DeliverAsync(string text, IReadOnlyList<byte[]> images, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _host.SendAsync(text, images, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return AssistantChannelSendResult.Refused(exception.Message);
+        }
     }
 
     // The host's half of the trust boundary (AC-1049): the plugin says these are images, `InboundImage` decides.
@@ -185,6 +286,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             }
 
             _relayedRows.Clear();
+            _questions.Clear();
+            _waiting = null;
             _observed = next;
 
             if (next is null)
@@ -223,9 +326,20 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         }
 
         var row = upsert.Row;
+
+        // A Question row is only the assistant's own card (AddQuestion); a native AskUserQuestion is a permission row.
+        var questions = row.Kind == "Question" ? StructuredQuestionJson.Parse(row.InputJson) : [];
         Guid id;
+        AssistantChannelQuestion? asked;
         lock (_relayedRows)
         {
+            // The operator's own next message answers or moves past every question asked before it, here or in the app.
+            if (row.Kind == "UserText")
+            {
+                _questions.Clear();
+                _waiting = null;
+            }
+
             if (_relayedRows.TryGetValue(row.Id, out var relayed))
             {
                 if (relayed.Content == _Content(row))
@@ -241,6 +355,15 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             }
 
             _relayedRows[row.Id] = (id, _Content(row));
+
+            // Only the first question, on the row's first sight: the assistant's own card answers its first (AC-955).
+            if (questions.Count > 0 && relayed.Id == Guid.Empty && upsert.Version <= 1)
+            {
+                _questions[id.ToString("n")] = questions[0];
+                _waiting = id.ToString("n");
+            }
+
+            asked = _questions.GetValueOrDefault(id.ToString("n"));
         }
 
         RowChanged?.Invoke(this, new AssistantChannelRow
@@ -252,6 +375,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             ToolName = row.ToolName,
             ResultText = row.ResultText,
             IsUpdate = upsert.Version > 1,
+            Questions = asked is null ? [] : [asked],
+            CorrelationId = asked is null ? null : id.ToString("n"),
         });
     }
 

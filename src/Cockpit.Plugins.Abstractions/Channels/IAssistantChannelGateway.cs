@@ -94,6 +94,22 @@ public sealed record AssistantChannelRow
     /// first, edit on the rest.
     /// </summary>
     public bool IsUpdate { get; init; }
+
+    /// <summary>
+    /// The questions a <see cref="AssistantChannelRowKind.Question"/> row asks, with their choices (AC-1553); empty
+    /// elsewhere. Answer with <see cref="IAssistantChannelGateway.AnswerAsync"/> under <see cref="CorrelationId"/>.
+    /// </summary>
+    public IReadOnlyList<AssistantChannelQuestion> Questions { get; init; } = [];
+
+    /// <summary>
+    /// The key an answer to <see cref="Questions"/> comes back under. Opaque: the one who asked made it.
+    /// </summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>
+    /// Files and images that go out with this row, each under its own name (AC-1553).
+    /// </summary>
+    public IReadOnlyList<AssistantChannelAttachment> Attachments { get; init; } = [];
 }
 
 /// <summary>
@@ -188,4 +204,21 @@ public interface IAssistantChannelGateway : IDisposable
     /// about is ignored, so learning one elsewhere is not a way in.
     /// </summary>
     void RespondToConsent(Guid promptId, ConsentOutcome outcome, bool remember = false);
+
+    /// <summary>
+    /// Answers a question this channel was shown under <paramref name="correlationId"/> (AC-1553), with the labels
+    /// picked or the operator's own words in <paramref name="chosen"/> — the same answer the card in the app sends.
+    /// </summary>
+    /// <remarks>
+    /// The channel's <see cref="AssistantChannelAccess"/> is checked first, and an id it was not shown is refused, so
+    /// learning one elsewhere is not a way in. A text reply such as "2" that <see cref="SendAsync(string, string, CancellationToken)"/>
+    /// gets while a question waits is read with <see cref="AssistantChannelQuestion.ReadReply"/> the same way. The
+    /// default refuses; a plugin that answers this way sets minHostVersion 0.98.0.
+    /// </remarks>
+    Task<AssistantChannelSendResult> AnswerAsync(
+        string senderUserId,
+        string correlationId,
+        IReadOnlyList<string> chosen,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantChannelSendResult.Refused("This cockpit cannot take answers from a channel."));
 }
