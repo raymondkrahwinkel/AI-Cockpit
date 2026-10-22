@@ -56,7 +56,7 @@ internal sealed partial class AgentPromptAction(ICockpitHost host, TaskDelivery 
     {
         RunTrigger.Manual => false,
         RunTrigger.Mcp => true,
-        _ => !unattended,
+        _ => true,
     };
 
     // Null when approved, else why not. Asked outside the caller's flow, as Workflows' ApproveRunner (AC-1360): an MCP
