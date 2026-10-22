@@ -261,7 +261,7 @@ internal sealed class ScheduleMcpTools(
     // AC-38: a run a task started gets the read tools and create_reminder, nothing that changes a task. While a run is
     // starting and its task id is not known yet, no caller can be told apart from it, so every one is refused.
     private string? _RefuseTaskRun() =>
-        false ? _Fail(RunStarting) : agent.IsTaskRun(host.CurrentMcpCallerPaneId) ? _Fail(TaskRunsMayNot) : null;
+        agent.IsRunStarting ? _Fail(RunStarting) : agent.IsTaskRun(host.CurrentMcpCallerPaneId) ? _Fail(TaskRunsMayNot) : null;
 
     private ScheduledTask? _Find(string id) => tasks.Load()?.FirstOrDefault(task => task.Id == id);
 
