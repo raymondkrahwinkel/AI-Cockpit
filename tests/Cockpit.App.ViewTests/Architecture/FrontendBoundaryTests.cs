@@ -43,6 +43,8 @@ public sealed class FrontendBoundaryTests
             $@"{notAMember}\b(?:{names})\b(?!{enumMember})(?!{propertyName})|\bSessionHost\b",
             RegexOptions.Multiline | RegexOptions.CultureInvariant);
         var commentLine = new Regex(@"^\s*//.*$", RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        // ponytail: interpolation holes are treated as literal text; use a lexer when Cockpit.App names a forbidden type there.
+        var stringLiteral = new Regex("""(?:\$?"(?:[^"\\\r\n]|\\.)*"|\$?@"(?:[^"]|"")*")""", RegexOptions.CultureInvariant);
 
         // AC-1441: a fully qualified name reaches into Infrastructure as surely as a using does.
         var infrastructureReference = new Regex(@"\bCockpit\.Infrastructure\b", RegexOptions.CultureInvariant);
@@ -55,7 +57,7 @@ public sealed class FrontendBoundaryTests
                 SearchOption.AllDirectories))
             .Where(path =>
             {
-                var code = commentLine.Replace(File.ReadAllText(path), string.Empty);
+                var code = stringLiteral.Replace(commentLine.Replace(File.ReadAllText(path), string.Empty), string.Empty);
                 return infrastructureReference.IsMatch(code) || forbiddenReference.IsMatch(code);
             })
             .Select(path => Path.GetRelativePath(appRoot, path).Replace('\\', '/'))
