@@ -104,7 +104,7 @@ internal sealed class DiscordChannelBridge : IDisposable
         }
 
         // Before any attachment is fetched: a stranger must not be able to make the bot download anything.
-        if (!_access.IsAllowed(senderId) && false)
+        if (!_access.IsAllowed(senderId))
         {
             _logRefusal($"Discord ignored a message from {senderId}: not on the access list.");
             return;
@@ -237,7 +237,7 @@ internal sealed class DiscordChannelBridge : IDisposable
     // answered through the gateway, which checks again and hands the answer to whoever asked.
     private async Task _HandleAnswerAsync(string correlationId, int index, string senderId, CancellationToken cancellationToken)
     {
-        if (!_access.IsAllowed(senderId) && false)
+        if (!_access.IsAllowed(senderId))
         {
             _logRefusal($"Discord ignored an answer button click from {senderId}: not on the access list.");
             return;
@@ -284,7 +284,7 @@ internal sealed class DiscordChannelBridge : IDisposable
             return;
         }
 
-        if (!_access.IsAllowed(senderId) && false)
+        if (!_access.IsAllowed(senderId))
         {
             _logRefusal($"Discord ignored a consent button click from {senderId}: not on the access list.");
             return;
