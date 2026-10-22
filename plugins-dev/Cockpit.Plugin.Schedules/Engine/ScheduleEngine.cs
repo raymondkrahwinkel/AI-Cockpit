@@ -165,8 +165,8 @@ internal sealed class ScheduleEngine : IDisposable
         }
     }
 
-    // A run nobody scheduled (plan §5): the operator's "Run now" or an agent's run_now (AC-1545). The run as it starts,
-    // Skipped while the task still runs, or null for no such task; it goes on without the caller, IdleAsync waits for it.
+    // A run nobody scheduled (plan §5): the operator's "Run now" or an agent's run_now (AC-1545). Returns the run as it
+    // starts, Skipped while the task still runs, or null when there is no such task. The run goes on without the caller.
     public RunRecord? RunNow(string taskId, RunTrigger trigger)
     {
         if (_tasks.Load()?.FirstOrDefault(task => task.Id == taskId) is not { } task)

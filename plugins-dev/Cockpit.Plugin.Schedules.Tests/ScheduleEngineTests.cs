@@ -263,5 +263,4 @@ public class ScheduleEngineTests
 
         Assert.Equal((true, false, true), (twoMissed, pastTwo, engine.Health.Read().Healthy));
     }
-
 }

@@ -25,6 +25,9 @@ internal sealed class ScheduleMcpTools(
 
     private static readonly JsonSerializerOptions Json = new(StoreJson.Options) { WriteIndented = false };
 
+    // One read-modify-write at a time: two MCP calls must not each save a list without the other's change.
+    private readonly Lock _gate = new();
+
     // ── tasks ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "list_scheduled_tasks", ReadOnly = true)]
@@ -63,7 +66,9 @@ internal sealed class ScheduleMcpTools(
             Schedule = schedule,
             TimeZone = timeZone,
             Action = new TaskAction(TaskActionKind.Notification, text),
-        }, schedule, timeZone, action, text, profile, workingDirectory, permission, timeoutMinutes, delivery);
+        }, schedule, timeZone, action, text, profile, workingDirectory, permission,
+            timeoutMinutes is > 0 ? TimeSpan.FromMinutes(timeoutMinutes.Value) : null,
+            delivery, [new DeliveryTarget(DeliveryTarget.CockpitNotification)]);
         if (built.Error is { } error)
         {
             return _Fail(error);
@@ -106,8 +111,9 @@ internal sealed class ScheduleMcpTools(
             profile ?? current.Action.Profile,
             workingDirectory ?? current.Action.WorkingDirectory,
             permission ?? (current.Action.Permission == AgentPermission.Write ? "write" : "read_only"),
-            timeoutMinutes ?? (current.Action.Timeout is { } timeout ? (int)timeout.TotalMinutes : null),
-            delivery ?? [.. current.Delivery.Select(target => target.Target is null ? target.Channel : $"{target.Channel}:{target.Target}")]);
+            timeoutMinutes is > 0 ? TimeSpan.FromMinutes(timeoutMinutes.Value) : current.Action.Timeout,
+            delivery,
+            current.Delivery);
         return built.Error is { } error ? _Fail(error) : _Save(built.Task, replacing: id);
     }
 
@@ -120,17 +126,21 @@ internal sealed class ScheduleMcpTools(
             return refused;
         }
 
-        if (tasks.Load() is not { } all)
+        lock (_gate)
         {
-            return _Fail("The stored task list cannot be read.");
+            if (tasks.Load() is not { } all)
+            {
+                return _Fail("The stored task list cannot be read.");
+            }
+
+            if (all.All(task => task.Id != id))
+            {
+                return _Fail($"No scheduled task with id '{id}'.");
+            }
+
+            tasks.Save([.. all.Where(task => task.Id != id)]);
         }
 
-        if (all.All(task => task.Id != id))
-        {
-            return _Fail($"No scheduled task with id '{id}'.");
-        }
-
-        tasks.Save([.. all.Where(task => task.Id != id)]);
         return _Serialize(new { ok = true, deleted = id });
     }
 
@@ -151,7 +161,7 @@ internal sealed class ScheduleMcpTools(
             return _Fail($"No scheduled task with id '{id}'.");
         }
 
-        if (enabled && AgentPromptAction.IsDangerous(task))
+        if (enabled && !task.IsEnabled && AgentPromptAction.IsDangerous(task))
         {
             var request = new ConsentRequest(
                 $"Schedule wants to switch on: {task.Name}",
@@ -163,6 +173,14 @@ internal sealed class ScheduleMcpTools(
             {
                 return _Fail($"Denied: the operator did not allow it ({why}), so the task stays off.");
             }
+
+            // The operator allowed what the card showed; a task changed while they were asked is not that task.
+            if (_Find(id) is not { } now || AgentPromptAction.Describe(now) != AgentPromptAction.Describe(task) || now.Schedule != task.Schedule)
+            {
+                return _Fail("The task changed while the operator was asked, so it stays off. Ask again.");
+            }
+
+            task = now;
         }
 
         return _Save(task with { IsEnabled = enabled }, replacing: id, keepEnabled: true);
@@ -244,9 +262,11 @@ internal sealed class ScheduleMcpTools(
 
     private ScheduledTask? _Find(string id) => tasks.Load()?.FirstOrDefault(task => task.Id == id);
 
+    // `deliverTo` is checked against the open channels and their targets; left out, `unchanged` stands as it is, so a
+    // task whose channel is closed right now can still be renamed.
     private (ScheduledTask Task, string? Error) _Build(
         ScheduledTask task, string schedule, string timeZone, string action, string text, string? profile, string? workingDirectory,
-        string permission, int? timeoutMinutes, string[]? deliverTo)
+        string permission, TimeSpan? timeout, string[]? deliverTo, IReadOnlyList<DeliveryTarget> unchanged)
     {
         var normalized = _Normalize(schedule);
         if (!TimeZoneInfo.TryFindSystemTimeZoneById(timeZone, out var zone))
@@ -275,12 +295,15 @@ internal sealed class ScheduleMcpTools(
             return (task, $"'{permission}' is not a permission: use 'read_only' or 'write'.");
         }
 
-        var choices = deliverTo is { Length: > 0 } ? deliverTo : [DeliveryTarget.CockpitNotification];
-        var open = delivery.Choices();
-        var targets = choices.Select(choice => choice.Split(':', 2)).Select(parts => new DeliveryTarget(parts[0], parts.Length > 1 ? parts[1] : null)).ToList();
-        if (targets.FirstOrDefault(target => open.All(channel => channel.Id != target.Channel)) is { } unknown)
+        var targets = unchanged;
+        if (deliverTo is not null)
         {
-            return (task, $"'{unknown.Channel}' is not a delivery channel here; list_delivery_channels names the open ones.");
+            if (_Targets(deliverTo) is not { } parsed)
+            {
+                return (task, "Delivery is 'cockpit', or a channel from list_delivery_channels, optionally with one of its targets as 'discord:dm'.");
+            }
+
+            targets = parsed;
         }
 
         return (task with
@@ -292,23 +315,48 @@ internal sealed class ScheduleMcpTools(
                 Profile = actionKind == TaskActionKind.AgentPrompt ? profile?.Trim() : null,
                 WorkingDirectory = actionKind == TaskActionKind.AgentPrompt ? workingDirectory?.Trim() : null,
                 Permission = actionKind == TaskActionKind.AgentPrompt && permission == "write" ? AgentPermission.Write : AgentPermission.ReadOnly,
-                Timeout = timeoutMinutes is > 0 ? TimeSpan.FromMinutes(timeoutMinutes.Value) : null,
+                Timeout = timeout,
             },
             Delivery = targets,
         }, null);
     }
 
+    // Null when an entry names no open channel, or a target that channel does not have.
+    private IReadOnlyList<DeliveryTarget>? _Targets(string[] entries)
+    {
+        var open = delivery.Choices();
+        List<DeliveryTarget> targets = [];
+        foreach (var entry in entries)
+        {
+            var parts = (entry ?? string.Empty).Split(':', 2);
+            var channel = open.FirstOrDefault(candidate => candidate.Id == parts[0].Trim());
+            var target = parts.Length > 1 ? parts[1].Trim() : null;
+            if (channel is null || (target is not null && channel.Targets.All(candidate => candidate.Id != target)))
+            {
+                return null;
+            }
+
+            targets.Add(new DeliveryTarget(channel.Id, target));
+        }
+
+        return targets.Count == 0 ? null : targets;
+    }
+
     // A Dangerous task never comes on through a change an agent made: only set_enabled, through the operator.
     private string _Save(ScheduledTask task, string? replacing, bool keepEnabled = false)
     {
-        if (tasks.Load() is not { } all)
-        {
-            return _Fail("The stored task list cannot be read.");
-        }
-
         var needsApproval = !keepEnabled && AgentPromptAction.IsDangerous(task);
         var saved = needsApproval ? task with { IsEnabled = false } : task;
-        tasks.Save(replacing is null ? [.. all, saved] : [.. all.Select(existing => existing.Id == replacing ? saved : existing)]);
+        lock (_gate)
+        {
+            if (tasks.Load() is not { } all)
+            {
+                return _Fail("The stored task list cannot be read.");
+            }
+
+            tasks.Save(replacing is null ? [.. all, saved] : [.. all.Select(existing => existing.Id == replacing ? saved : existing)]);
+        }
+
         return _Serialize(new
         {
             ok = true,
@@ -321,12 +369,13 @@ internal sealed class ScheduleMcpTools(
         });
     }
 
-    // ISO-8601's 'T' for a one-off, in the engine's own 'once yyyy-MM-dd HH:mm'.
+    // ISO-8601 local time for a one-off, in the engine's own 'once yyyy-MM-dd HH:mm'. Only that shape: a 'Z' or an
+    // offset would put the moment in another zone than the task's, so it is left for the engine to refuse.
     private static string _Normalize(string schedule)
     {
         var text = schedule.Trim();
         return text.StartsWith("once ", StringComparison.OrdinalIgnoreCase)
-            && DateTime.TryParse(text[5..].Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
+            && DateTime.TryParseExact(text[5..].Trim(), ["yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
             ? $"once {local.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}"
             : text;
     }
