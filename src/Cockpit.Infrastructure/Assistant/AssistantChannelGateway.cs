@@ -326,13 +326,17 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
         }
 
         var row = upsert.Row;
+
+        // A Question row is only the assistant's own card (AddQuestion); a native AskUserQuestion is a permission row.
         var questions = row.Kind == "Question" ? StructuredQuestionJson.Parse(row.InputJson) : [];
         Guid id;
+        AssistantChannelQuestion? asked;
         lock (_relayedRows)
         {
-            // The operator's own next message moves the conversation on: a bare "2" after it is no longer an answer.
+            // The operator's own next message answers or moves past every question asked before it, here or in the app.
             if (row.Kind == "UserText")
             {
+                _questions.Clear();
                 _waiting = null;
             }
 
@@ -352,12 +356,14 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
 
             _relayedRows[row.Id] = (id, _Content(row));
 
-            // Only the first question: the assistant's own card sends back the answer to its first one (AC-955).
-            if (questions.Count > 0 && upsert.Version <= 1)
+            // Only the first question, on the row's first sight: the assistant's own card answers its first (AC-955).
+            if (questions.Count > 0 && relayed.Id == Guid.Empty && upsert.Version <= 1)
             {
                 _questions[id.ToString("n")] = questions[0];
                 _waiting = id.ToString("n");
             }
+
+            asked = _questions.GetValueOrDefault(id.ToString("n"));
         }
 
         RowChanged?.Invoke(this, new AssistantChannelRow
@@ -369,8 +375,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             ToolName = row.ToolName,
             ResultText = row.ResultText,
             IsUpdate = upsert.Version > 1,
-            Questions = questions,
-            CorrelationId = questions.Count > 0 ? id.ToString("n") : null,
+            Questions = asked is null ? [] : [asked],
+            CorrelationId = asked is null ? null : id.ToString("n"),
         });
     }
 

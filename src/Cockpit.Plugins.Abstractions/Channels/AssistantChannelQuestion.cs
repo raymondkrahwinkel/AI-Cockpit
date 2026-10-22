@@ -43,6 +43,11 @@ public sealed record AssistantChannelQuestion
     /// </summary>
     public string FallbackPrompt()
     {
+        if (Options.Count == 0)
+        {
+            return Question;
+        }
+
         var numbers = Enumerable.Range(1, Options.Count).Select(number => number.ToString(CultureInfo.InvariantCulture)).ToList();
         var lines = Options.Select((option, index) => option.Description is { Length: > 0 } description
             ? $"{numbers[index]}. {option.Label} — {description}"
