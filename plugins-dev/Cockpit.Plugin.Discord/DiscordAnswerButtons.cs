@@ -16,9 +16,11 @@ internal sealed record DiscordAnswerButtons(string CorrelationId, IReadOnlyList<
 
     public string Id(int index) => $"{_Prefix}:{CorrelationId}:{index.ToString(CultureInfo.InvariantCulture)}";
 
-    // Null when the question cannot be put as buttons: too many choices, or an id too long to round-trip.
+    // Null when the question cannot be put as buttons: too many choices, a blank label, or an id that does not
+    // round-trip (too long, or holding the separator).
     public static DiscordAnswerButtons? For(string? correlationId, IReadOnlyList<string> labels) =>
-        correlationId is { Length: > 0 } && labels.Count is > 0 and <= MaxButtons
+        correlationId is { Length: > 0 } && !correlationId.Contains(':') && labels.Count is > 0 and <= MaxButtons
+            && labels.All(label => !string.IsNullOrWhiteSpace(label))
             && $"{_Prefix}:{correlationId}:{MaxButtons}".Length <= MaxCustomIdLength
             ? new DiscordAnswerButtons(correlationId, labels)
             : null;

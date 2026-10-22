@@ -188,9 +188,13 @@ internal sealed class DiscordChannelBridge : IDisposable
 
     // Another plugin's message (AC-1544), through the same posting as a row's question: the parts in order, the last
     // with the option buttons. A failure is the result, never a throw, so the sender can hand it to the assistant.
-    public async Task<OperatorMessageResult> SendOperatorMessageAsync(IDiscordChannelSink sink, OperatorMessage message, CancellationToken cancellationToken = default)
+    public Task<OperatorMessageResult> SendOperatorMessageAsync(IDiscordChannelSink sink, OperatorMessage message, CancellationToken cancellationToken = default) =>
+        SendPartsAsync(sink, DiscordSendDmStep.Split(message.Text, DiscordSendDmStep.DiscordLimit), message, cancellationToken);
+
+    // The parts as the caller cut them (the DM step chooses its own length), the last carrying the message's question.
+    public async Task<OperatorMessageResult> SendPartsAsync(
+        IDiscordChannelSink sink, IReadOnlyList<string> parts, OperatorMessage message, CancellationToken cancellationToken = default)
     {
-        var parts = DiscordSendDmStep.Split(message.Text, DiscordSendDmStep.DiscordLimit);
         if (parts.Count == 0 && message.Question is null)
         {
             return OperatorMessageResult.Failed("There is nothing to send.");
@@ -256,14 +260,17 @@ internal sealed class DiscordChannelBridge : IDisposable
 
         var label = question.Labels[index];
         var result = await _gateway.AnswerAsync(senderId, correlationId, [label], cancellationToken).ConfigureAwait(false);
-        if (!result.Ok)
-        {
-            return;
-        }
 
+        // Answered or refused, the question is done here: the host takes each one once.
         lock (_gate)
         {
             _questions.Remove(correlationId);
+        }
+
+        if (!result.Ok)
+        {
+            _reportError($"Discord: the answer \"{label}\" did not arrive — {result.Error ?? "refused"}");
+            return;
         }
 
         await question.Sink.EditAsync(question.MessageId, $"{question.Text}\n\n✅ {label}", keepButtons: false, cancellationToken).ConfigureAwait(false);

@@ -75,7 +75,11 @@ public sealed class OperatorMessageRegistry(ILogger<OperatorMessageRegistry> log
             message = message with { CorrelationId = message.CorrelationId ?? Guid.NewGuid().ToString("n") };
             lock (_gate)
             {
-                _pending[message.CorrelationId] = new _Pending(channelId, question, onAnswer, ++_sent);
+                // Another sender's question under the same id keeps its handler: an id is never taken over.
+                if (!_pending.TryAdd(message.CorrelationId, new _Pending(channelId, question, onAnswer, ++_sent)))
+                {
+                    return OperatorMessageResult.Failed($"A question already waits under the correlation id '{message.CorrelationId}'.");
+                }
             }
         }
 
@@ -96,15 +100,28 @@ public sealed class OperatorMessageRegistry(ILogger<OperatorMessageRegistry> log
         }
     }
 
-    // The newest question still waiting on this channel: what a bare text reply such as "2" answers.
+    // The newest question on this channel a bare text reply such as "2" still answers.
     public (string CorrelationId, AssistantChannelQuestion Question)? Waiting(string channelId)
     {
         lock (_gate)
         {
-            return _pending.Where(pending => pending.Value.ChannelId == channelId)
+            return _pending.Where(pending => pending.Value.ChannelId == channelId && pending.Value.TakesText)
                 .OrderByDescending(pending => pending.Value.Order)
                 .Select(pending => ((string, AssistantChannelQuestion)?)(pending.Key, pending.Value.Question))
                 .FirstOrDefault();
+        }
+    }
+
+    // The operator wrote something that answers none of them, so the conversation moved on: a "2" days later is no
+    // longer an answer to these. Their buttons still are.
+    public void StopTakingText(string channelId)
+    {
+        lock (_gate)
+        {
+            foreach (var key in _pending.Where(pending => pending.Value.ChannelId == channelId).Select(pending => pending.Key).ToList())
+            {
+                _pending[key] = _pending[key] with { TakesText = false };
+            }
         }
     }
 
@@ -162,5 +179,8 @@ public sealed class OperatorMessageRegistry(ILogger<OperatorMessageRegistry> log
         }
     }
 
-    private sealed record _Pending(string ChannelId, AssistantChannelQuestion Question, Func<OperatorMessageAnswer, Task> OnAnswer, long Order);
+    private sealed record _Pending(string ChannelId, AssistantChannelQuestion Question, Func<OperatorMessageAnswer, Task> OnAnswer, long Order)
+    {
+        public bool TakesText { get; init; } = true;
+    }
 }

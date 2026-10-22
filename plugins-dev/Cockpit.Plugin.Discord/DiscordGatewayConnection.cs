@@ -115,15 +115,42 @@ internal sealed class DiscordGatewayConnection : IDisposable
             throw new InvalidOperationException($"Nothing was sent: {userId} is not the one account the Discord settings allow.");
         }
 
-        foreach (var part in parts)
+        var result = await _SendDirectAsync(userId, parts, new OperatorMessage { Text = string.Join(string.Empty, parts) }, cancellationToken)
+            .ConfigureAwait(false);
+        if (!result.Ok)
         {
-            var result = await SendOperatorMessageAsync(DiscordChannelPlugin.DirectMessageTarget, new OperatorMessage { Text = part }, cancellationToken)
-                .ConfigureAwait(false);
-            if (!result.Ok)
-            {
-                throw new InvalidOperationException($"Nothing more was sent: {result.Error}");
-            }
+            throw new InvalidOperationException(result.Error);
         }
+    }
+
+    // One send to the allowed account's DMs, counted once in health, a cancelled one as failed as before.
+    private async Task<OperatorMessageResult> _SendDirectAsync(string userId, IReadOnlyList<string> parts, OperatorMessage message, CancellationToken cancellationToken)
+    {
+        OperatorMessageResult result;
+        try
+        {
+            result = await _bridge.SendPartsAsync(
+                new DiscordChannelSink(async () => await _DirectMessageChannelAsync(userId, cancellationToken).ConfigureAwait(false)),
+                parts,
+                message,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            _health.DirectMessageFailed();
+            throw;
+        }
+
+        if (result.Ok)
+        {
+            _health.DirectMessageDelivered();
+        }
+        else
+        {
+            _health.DirectMessageFailed();
+        }
+
+        return result;
     }
 
     // AC-1544: another plugin's message, to the one allowed account's DMs or to the configured channel, posted by the
@@ -132,20 +159,8 @@ internal sealed class DiscordGatewayConnection : IDisposable
     {
         if (targetId == DiscordChannelPlugin.DirectMessageTarget && _allowedUserId is { } userId)
         {
-            var result = await _bridge.SendOperatorMessageAsync(
-                new DiscordChannelSink(async () => await _DirectMessageChannelAsync(userId, cancellationToken).ConfigureAwait(false)),
-                message,
-                cancellationToken).ConfigureAwait(false);
-            if (result.Ok)
-            {
-                _health.DirectMessageDelivered();
-            }
-            else
-            {
-                _health.DirectMessageFailed();
-            }
-
-            return result;
+            return await _SendDirectAsync(userId, DiscordSendDmStep.Split(message.Text, DiscordSendDmStep.DiscordLimit), message, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (targetId == DiscordChannelPlugin.ChannelTarget && _channelId != 0)

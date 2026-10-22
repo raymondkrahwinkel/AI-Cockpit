@@ -114,6 +114,8 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
                 ?? AssistantChannelSendResult.Refused("No question waits under this id.");
         }
 
+        // A message that answered nothing moves the conversation past every plugin question waiting here (AC-1544).
+        _messages?.StopTakingText(_channel.Id);
         if (await _DeliverAsync(text, accepted, cancellationToken).ConfigureAwait(false) is { } failed)
         {
             return failed;
