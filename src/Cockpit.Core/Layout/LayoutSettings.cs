@@ -57,6 +57,12 @@ public sealed record LayoutSettings
     // operator chooses otherwise.
     public ThemeMode ThemeMode { get; init; } = ThemeMode.Dark;
 
+    // How the assistant's thread rail stands when its labels fit, per host (voorstel § 8.2): the floating window is
+    // often wide and the dock narrow, so the two are chosen apart. Never per dock width: the threshold decides fit.
+    public AssistantThreadRail AssistantThreadRailWindow { get; init; }
+
+    public AssistantThreadRail AssistantThreadRailDock { get; init; }
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;
@@ -71,4 +77,10 @@ public sealed record LayoutSettings
     public const double MinDockRailWidth = 280;
     // MainWindow MinWidth 900 - MinSidebarWidth 180 - MinDockRailWidth 280.
     public const double MinWorkspaceWidth = 440;
+}
+
+public enum AssistantThreadRail
+{
+    Labels,
+    IconsOnly,
 }

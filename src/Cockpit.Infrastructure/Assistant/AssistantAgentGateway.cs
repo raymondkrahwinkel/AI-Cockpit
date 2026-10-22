@@ -1200,6 +1200,43 @@ internal sealed class AssistantAgentGateway(
             : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
     }
 
+    public async Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+        string question,
+        IReadOnlyList<(string Label, string? Description)> options,
+        bool multiSelect,
+        bool allowOther,
+        string? header,
+        IReadOnlyList<string> projectIds,
+        CancellationToken cancellationToken = default)
+    {
+        var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
+        return await conversation.ShowQuestionAsync(question, inputJson, projectIds).ConfigureAwait(false)
+            ? AskStructuredQuestionResult.Shown()
+            : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+    }
+
+    public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        conversation.SetThreadAsync(projectIds);
+
+    public Task<AssistantThreadResult> TagPromptAsync(
+        IReadOnlyList<(string ProjectId, string Quote)> parts, CancellationToken cancellationToken = default) =>
+        conversation.TagPromptAsync(parts);
+
+    public Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync(CancellationToken cancellationToken = default) =>
+        conversation.ListThreadsAsync();
+
+    public Task<string?> WhyThreadCannotCloseAsync(string projectId, CancellationToken cancellationToken = default) =>
+        conversation.WhyThreadCannotCloseAsync(projectId);
+
+    public Task<AssistantThreadResult> CloseThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        conversation.SetThreadClosedAsync(projectId, closed: true);
+
+    public Task<AssistantThreadResult> ReopenThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        conversation.SetThreadClosedAsync(projectId, closed: false);
+
+    public Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        conversation.SuggestClosingThreadsAsync(projectIds);
+
     // A mirror of the native AskUserQuestion tool's own `questions` array (AC-715), one entry, so
     // `AskUserQuestionViewModel.Parse` reads it unchanged rather than needing a second parser.
     private static string _BuildAskStructuredQuestionInputJson(

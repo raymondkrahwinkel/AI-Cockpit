@@ -83,6 +83,9 @@ public sealed class AssistantActMountRuleTests : IDisposable
                 // ask_structured_question genuinely requires 2-6 real options — unlike every other list/dict
                 // argument on this server, `null` is not a valid filler for it, so it gets one of its own.
                 ? new List<AskStructuredQuestionOptionArg> { new("A"), new("B") }
+            : parameter.ParameterType == typeof(List<TagPromptPartArg>)
+                // tag_prompt refuses an empty list the same way, so it gets one part.
+                ? new List<TagPromptPartArg> { new("depot", "de route") }
             : parameter.ParameterType.IsValueType ? Activator.CreateInstance(parameter.ParameterType)
             : null;
 
@@ -497,6 +500,47 @@ public sealed class AssistantActMountRuleTests : IDisposable
         {
             Calls.Add($"AskStructuredQuestionAsync({question})");
             return Task.FromResult(AskStructuredQuestionResult.Shown());
+        }
+
+        public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("SetThreadAsync");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
+        public Task<AssistantThreadResult> TagPromptAsync(
+            IReadOnlyList<(string ProjectId, string Quote)> parts, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("TagPromptAsync");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
+        public Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("ListThreadsAsync");
+            return Task.FromResult<IReadOnlyList<AssistantThreadInfo>>([]);
+        }
+
+        // The check before the operator is asked; not a call through to what close_thread is for, so not counted.
+        public Task<string?> WhyThreadCannotCloseAsync(string projectId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public Task<AssistantThreadResult> CloseThreadAsync(string projectId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"CloseThreadAsync({projectId})");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
+        public Task<AssistantThreadResult> ReopenThreadAsync(string projectId, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"ReopenThreadAsync({projectId})");
+            return Task.FromResult(new AssistantThreadResult(true, null));
+        }
+
+        public Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("SuggestClosingThreadsAsync");
+            return Task.FromResult(new AssistantThreadResult(true, null));
         }
     }
 

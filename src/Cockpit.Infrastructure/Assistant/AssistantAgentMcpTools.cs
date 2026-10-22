@@ -1080,14 +1080,20 @@ internal sealed class AssistantAgentMcpTools(
         }
     }
 
+    // Assistant threads: five tools the assistant reaches for mid-turn on its own, so Claude Code must not defer them
+    // behind its tool search (it skipped set_thread in practice). close_thread and reopen_thread wait for the operator's word.
+    internal const string AlwaysLoadMeta = "anthropic/alwaysLoad";
+
     [McpServerTool(Name = "ask_structured_question", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
     [Description("Puts a clarifying question to the operator as a card in the chat window, with its options beside it to tick or click, rather than in a sentence. USE IT WHEN AN INSTRUCTION IS GENUINELY AMBIGUOUS AND THE ANSWERS ARE A SHORT, CLOSED LIST — which desk, which profile, which of three tickets they meant, which of two ways to do a thing — where the difference is between guessing and knowing. NOT for a yes or no, not for something you could go and look up yourself, and never for something this conversation has already settled. RETURNS AT ONCE — IT DOES NOT WAIT FOR AN ANSWER: the card is shown, and that is the whole of what this call does. Their answer, if they click it, comes back as their own next message in this same conversation — an ordinary user turn, not a return value from this call — and they may just as well ignore the card entirely and answer you in words, or ask about something else altogether. So never say you are waiting on it, never treat the call's return as a decision made, and do not ask the same thing again in the meantime. SAY THE QUESTION AS WELL, IN ONE SHORT SENTENCE: the card is not read aloud and its options never are, so a listening operator hears nothing of it unless you say the question yourself, the way you would say it to someone standing next to you. ONLY YOU MAY CALL THIS — a session cannot: it has AskUserQuestion already, and that one works there.")]
     public async Task<string> AskStructuredQuestionAsync(
         [Description("The question, in the operator's own language — the same one you would say out loud.")] string question,
         [Description("2 to 6 choices, each a short label (what comes back as the answer) and an optional one-line description.")] List<AskStructuredQuestionOptionArg> options,
         [Description("false (default): radio buttons, one pick, exclusive. true: checkboxes, several picks at once.")] bool multiSelect = false,
         [Description("true (default): adds an \"Other, namely…\" row with a box for their own words. false: leaves it off, for a question where nothing outside the list is a sensible answer.")] bool allowOther = true,
-        [Description("A short chip shown above the question, 12 characters or fewer. Leave it out for none.")] string? header = null)
+        [Description("A short chip shown above the question, 12 characters or fewer. Leave it out for none.")] string? header = null,
+        [Description("The projects this question is about, by id from list_projects. It waits once in Questions for you and in each of their threads. Leave it out and it follows the turn it was asked in.")] string[]? projectIds = null)
     {
         try
         {
@@ -1116,7 +1122,7 @@ internal sealed class AssistantAgentMcpTools(
             }
 
             var result = await gateway.AskStructuredQuestionAsync(
-                question.Trim(), trimmedOptions, multiSelect, allowOther, header?.Trim()).ConfigureAwait(false);
+                question.Trim(), trimmedOptions, multiSelect, allowOther, header?.Trim(), projectIds ?? []).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new
@@ -1126,6 +1132,169 @@ internal sealed class AssistantAgentMcpTools(
                     note = "The card is in the chat window now. Their answer, if they click it, arrives as their own next message — this call does not wait for one.",
                 })
                 : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "set_thread", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Files the rest of this turn — your reply, your tool calls, your questions — under the project threads it is about. Your conversation is one, but the operator reads it per project: a thread for each, plus General for what is about none. WITHOUT THIS CALL a turn follows what opened it: the thread the operator typed in, or the project of the session whose message you are answering. CALL IT WHEN THAT IS WRONG OR UNKNOWN: they asked in All or by voice and named a project (\"hoe staat Depot ervoor?\"), or the turn is about two projects at once. Ids come from list_projects; an empty list is General. Once per turn, early, before you write the reply. It never moves the operator's own prompt — tag_prompt does that.")]
+    public async Task<string> SetThreadAsync(
+        [Description("The project ids this turn is about, from list_projects. Empty for General.")] string[] projectIds)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.SetThreadAsync(projectIds ?? []).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "tag_prompt", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Splits the operator's last prompt over the projects it is about, when one prompt asks for two things in two projects (\"voor Depot dit, voor WayMark dat\"). For each project, quote the words of the prompt that belong to it, exactly as they were said; the prompt then shows in each thread, with its own part in front. A quote that is not in the prompt still gives the prompt that project, and the reply says so. Pair it with set_thread for the same projects, and write your reply in blocks: a line `<!-- project:<id> -->` on its own opens the block for that project, so each thread shows only its own part. Text before the first marker belongs to all of them. Ids come from list_projects.")]
+    public async Task<string> TagPromptAsync(
+        [Description("One entry per project: its id from list_projects and the words of the prompt that belong to it.")] List<TagPromptPartArg> parts)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (parts is not { Count: > 0 })
+            {
+                return _Serialize(new { ok = false, error = "tag_prompt takes at least one part." });
+            }
+
+            var result = await gateway.TagPromptAsync([.. parts.Select(part => (part.ProjectId, part.Quote))]).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "list_threads", ReadOnly = true)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Lists the project threads of your conversation, open and closed: per thread its project id and name, whether it is closed, how many rows it has, when it last had activity, the sessions still running for that project and the questions or approvals still waiting on the operator there. The rail beside the chat shows the open ones; a closed thread keeps all its rows (in All and on disk) and opens again by itself when something new for its project arrives. READ IT BEFORE YOU CLOSE OR SUGGEST CLOSING ANYTHING.")]
+    public async Task<string> ListThreadsAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var threads = await gateway.ListThreadsAsync().ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                threads = threads.Select(thread => new
+                {
+                    projectId = thread.ProjectId,
+                    name = thread.Name,
+                    status = thread.IsClosed ? "closed" : "open",
+                    rows = thread.Rows,
+                    lastActivity = thread.LastActivity,
+                    runningSessions = thread.RunningSessions,
+                    openQuestions = thread.OpenQuestions,
+                }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "close_thread", ReadOnly = false, Destructive = false)]
+    [Description("Closes one project thread so the rail beside the chat stays short: it leaves the rail and goes under Closed at its foot, every row of it stays (in All and on disk), and it opens again by itself when something new for that project arrives. FOR WHEN THE OPERATOR ASKS YOU TO CLOSE A THREAD. To propose closing quiet threads yourself, use suggest_closing_threads instead — that lets the operator decide with one click. Refused for General, for a thread with a question or an approval still waiting, and for a thread that is closed already, before anyone is asked. Take the project id from list_threads." + AskingCanBeSwitchedOff)]
+    public async Task<string> CloseThreadAsync(
+        [Description("The project id of the thread, from list_threads.")] string projectId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            if (await gateway.WhyThreadCannotCloseAsync(projectId).ConfigureAwait(false) is { } cannot)
+            {
+                return _Serialize(new { ok = false, error = cannot });
+            }
+
+            var approval = await _ApprovedAsync(
+                "The assistant wants to close a thread",
+                $"Close the thread of project {projectId}",
+                ConsentSourceCatalog.AssistantThreadClose,
+                "assistant.threads.close",
+                ConsentRisk.LowRisk).ConfigureAwait(false);
+            if (!approval.Ok)
+            {
+                return _Serialize(new { ok = false, error = approval.Error });
+            }
+
+            var result = await gateway.CloseThreadAsync(projectId).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note, approval = approval.Label });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "reopen_thread", ReadOnly = false, Destructive = false)]
+    [Description("Brings a closed project thread back to the rail. Needs no approval: it hides nothing and changes no row. You rarely need it — a closed thread opens again by itself when something new for its project arrives — so reach for it when the operator asks for the thread back, or when you are about to talk about a closed project at length. Take the project id from list_threads.")]
+    public async Task<string> ReopenThreadAsync(
+        [Description("The project id of the thread, from list_threads.")] string projectId)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.ReopenThreadAsync(projectId).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "suggest_closing_threads", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Puts ONE light row in the conversation asking the operator whether to close these quiet threads, with Close threads and Keep beside it — their click is the decision, so nothing else asks them. BUNDLE: name every thread you would close in one call, and a row still waiting takes in the ones you add later rather than a second row appearing. ONLY FOR A THREAD WHOSE WORK IS DONE: no session still running for the project, no question or approval waiting there, and quiet for an hour or more (list_threads says all three). At a natural pause such as the end of your reply, never as its own interruption, and not again for a thread the operator chose to keep. The host leaves out any thread that does not qualify and tells you which and why. Do not say the suggestion out loud as well; the row is enough. Closing loses nothing: a closed thread keeps every row and opens again by itself when something new for its project arrives. Close or reopen one yourself (close_thread, reopen_thread) only when the operator asks.")]
+    public async Task<string> SuggestClosingThreadsAsync(
+        [Description("The project ids of the threads to suggest closing, from list_threads.")] string[] projectIds)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var result = await gateway.SuggestClosingThreadsAsync(projectIds ?? []).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
         }
         catch (Exception exception)
         {
@@ -1481,3 +1650,8 @@ internal sealed class AssistantAgentMcpTools(
 public sealed record AskStructuredQuestionOptionArg(
     [property: Description("The choice's label — shown on the chip, and what comes back as the answer.")] string Label,
     [property: Description("An optional one-line explanation shown beside the label.")] string? Description = null);
+
+// One project's part of a prompt for `tag_prompt`: the project and the words of the prompt that belong to it.
+public sealed record TagPromptPartArg(
+    [property: Description("The project's id, from list_projects.")] string ProjectId,
+    [property: Description("The words of the prompt that belong to this project, quoted as they were said.")] string Quote);

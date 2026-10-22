@@ -167,12 +167,12 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
-    public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false) =>
+    public AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false, string? subjectPaneId = null) =>
         _presence is null
-            ? _Deliver(null, fromPaneId, toPaneId, kind, body, senderProfile, senderProjectId, profileWide)
-            : _presence.WithHolder(holder => _Deliver(holder, fromPaneId, toPaneId, kind, body, senderProfile, senderProjectId, profileWide));
+            ? _Deliver(null, fromPaneId, toPaneId, kind, body, senderProfile, senderProjectId, profileWide, subjectPaneId)
+            : _presence.WithHolder(holder => _Deliver(holder, fromPaneId, toPaneId, kind, body, senderProfile, senderProjectId, profileWide, subjectPaneId));
 
-    private AgentMessageDelivery _Deliver(ActiveController? holder, string fromPaneId, string toPaneId, string kind, string body, string? senderProfile, string? senderProjectId, bool profileWide)
+    private AgentMessageDelivery _Deliver(ActiveController? holder, string fromPaneId, string toPaneId, string kind, string body, string? senderProfile, string? senderProjectId, bool profileWide, string? subjectPaneId)
     {
         lock (_lock)
         {
@@ -220,7 +220,8 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
                 senderProfile,
                 senderProjectId,
                 string.Equals(toPaneId, AssistantIdentity.ControllerInboxPaneId, StringComparison.Ordinal) ? _StampOf(holder) : null,
-                profileWide);
+                profileWide,
+                subjectPaneId);
             waiting.Add(delivered);
 
             // AC-1327 reviewbevinding 2, AC-1405: the controller can drop away or change between AgentsMcpTools reading it

@@ -71,13 +71,23 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // AC-952: which host the chat view is sitting in — the floating window, or AC-953's dock rail. The header
     // reads it to swap Close for Undock rather than carrying two copies of its whole button row.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Host), nameof(DrawsOwnFrame))]
     private bool _isDocked;
 
     // AC-1301: whether that host is the Simple stand's conversation column — the third one, beside the floating
     // window and the dock rail. It is the only host that stand has, so the header's Dock/Undock button stands
     // down here: undocking would pop the conversation out and leave the column it fills empty.
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Host), nameof(DrawsOwnFrame))]
     private bool _isSimpleViewHost;
+
+    public AssistantChatHost Host => IsSimpleViewHost ? AssistantChatHost.SimpleColumn
+        : IsDocked ? AssistantChatHost.Docked
+        : AssistantChatHost.Floating;
+
+    // Only the floating window is a card of its own. Docked and in the Simple column the view is a built-in panel: the
+    // host's edge and hairline are its frame, and a rounded one of its own would stand inside that square edge.
+    public bool DrawsOwnFrame => Host == AssistantChatHost.Floating;
 
     // AC-1529: the Simple stand, in its column or its dock — the header leaves rights and usage to ⋯ → Details there.
     public bool IsInSimpleStand => _cockpit?.SimpleView ?? false;
@@ -132,6 +142,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             // other route to the relation, and every construction path passes through here.
             _cockpit.AssistantChat = this;
         }
+
+        _InitThreads();
+        _WatchThreads(previous: null, _observedSession);
     }
 
     // AC-740: null source (design-time/unit-test graph) or no working directory yet (no session started, and the
@@ -279,6 +292,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
         OnPropertyChanged(nameof(HasLiveSessions));
         OnPropertyChanged(nameof(HasSessionsStartedByYou));
+        if (_threadsInitialised)
+        {
+            _RebuildThreadItems();
+        }
     }
 
     // Never called from the constructor: a view model built to seed design-time/Screenshotter data must not reach out
@@ -505,6 +522,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             if (!ReferenceEquals(_observedSession, session))
             {
                 _WatchTranscript(_observedSession, session);
+                _WatchThreads(_observedSession, session);
                 _observedSession = session;
                 OnPropertyChanged(nameof(Session));
                 OnPropertyChanged(nameof(HasSession));
@@ -541,8 +559,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     }
 
     // Only HasMessages: the rows themselves are bound straight to the collection and need no help from here.
-    private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+    private void _OnTranscriptChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
         OnPropertyChanged(nameof(HasMessages));
+        _OnThreadRowsChanged(e);
+    }
 
     // CanSend's other dependency (see `_inputText`'s own fix note) — an attachment added or removed on the
     // composer must re-enable/disable Send the same way typed text does.
@@ -555,6 +576,11 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     {
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _WatchTranscript(_observedSession, next: null);
+        _WatchThreads(_observedSession, next: null);
+        if (_cockpit is not null)
+        {
+            _cockpit.PropertyChanged -= _OnCockpitRailPreferenceChanged;
+        }
 
         // AC-776/AC-774: the one subscription this view model holds on something other than its own host — must
         // come off on close, or every reopened chat window leaves another handler chained to the live session list.

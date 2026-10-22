@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Material.Icons;
 using Microsoft.Extensions.Logging;
@@ -32,6 +33,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private readonly ILogger<AssistantIndicatorCoordinator> _logger;
 
     private readonly IDockPanelRegistry? _dockPanels;
+
+    // Where the closed threads are kept across a restart; null in a graph without one, which keeps them for the run.
+    private readonly IAssistantThreadStateStore? _threadState;
 
     // AC-953: the assistant's id in the dock rail, persisted as `LayoutSettings.OpenDockPanelId`.
     public const string DockPanelId = "assistant";
@@ -57,7 +61,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         IAssistantSpawnAuditLog spawnAuditLog,
         CockpitViewModel cockpit,
         IDockPanelRegistry? dockPanels = null,
-        ILogger<AssistantIndicatorCoordinator>? logger = null)
+        ILogger<AssistantIndicatorCoordinator>? logger = null,
+        IAssistantThreadStateStore? threadState = null)
     {
         _assistant = assistant;
         _openMic = openMic;
@@ -68,6 +73,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _cockpit = cockpit;
         _dockPanels = dockPanels;
         _logger = logger ?? NullLogger<AssistantIndicatorCoordinator>.Instance;
+        _threadState = threadState;
     }
 
     // The chip the sidebar binds to. One instance, fed from here.
@@ -94,7 +100,11 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // overlay coordinator, so no extra filtering is needed here.
         _overlay.LevelSampled += _OnLevelSampled;
 
-        Indicator.Clicked += (_, _) => _ = _OpenChatAsync();
+        // Assistant threads (§ 7.3): with questions open, the chip and the tab's count both open them. Each of these
+        // catches and logs its own failure, as _OpenChatAsync does since AC-765, so a click never loses one unseen.
+        Indicator.Clicked += async (_, _) => await (Indicator.ShowsQuestions ? _OpenQuestionsAsync() : _OpenChatAsync()).ConfigureAwait(true);
+        _questionsBadge.Activated += async (_, _) => await _OpenQuestionsAsync().ConfigureAwait(true);
+        _cockpit.AssistantFloatingCardOpened += async row => await _OpenRowAsync(row).ConfigureAwait(true);
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
         // AC-953: dock-panel registration follows the dock stand rather than standing permanently, driven off
@@ -179,7 +189,180 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         // Derived, not stored: what "always on" means is that the microphone is open, and that is already one
         // persisted flag on the open-mic coordinator. A second copy here would be a second thing to keep in step.
         Indicator.ListeningMode = _openMic.IsListening ? AssistantListeningMode.AlwaysOn : AssistantListeningMode.Off;
+
+        // Assistant threads: the session files its rows by project, and only the cockpit knows the projects.
+        if (_assistant.View() is { Threads: null } session)
+        {
+            session.Threads = new ThreadLookup(
+                projectId => _cockpit.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.Name,
+                paneId => _PaneOf(paneId)?.ProjectId,
+                paneId => _PaneOf(paneId)?.Title)
+            {
+                Infer = text => ProjectInference.Infer(
+                    text,
+                    [.. _cockpit.Projects.Projects.Select(project => new ProjectHint(project.Id, project.Name, project.EffectiveTicketPrefixes))],
+                    [.. _cockpit.AllSessions()
+                        .Where(pane => pane.PaneId != AssistantIdentity.PaneId)
+                        .Select(pane => new SessionHint(pane.PaneId, pane.Title ?? string.Empty, pane.ProjectId))]),
+                SessionsOf = projectId => [.. _RunningSessions()
+                    .Where(pane => pane.ProjectId == projectId)
+                    .Select(pane => string.IsNullOrEmpty(pane.SessionStatusLabel) ? pane.Title : $"{pane.Title} · {pane.SessionStatusLabel}")],
+                LiveProjects = () => [.. _RunningSessions().Select(pane => pane.ProjectId).OfType<string>().Distinct(StringComparer.Ordinal)],
+            };
+        }
+
+        _WatchQuestions(_assistant.View());
     }
+
+    // The tab's count and the chip's, read off the one list of open questions the session keeps.
+    private readonly DockPanelBadge _questionsBadge = new();
+
+    private SessionViewModel? _questionsSession;
+
+    private void _WatchQuestions(SessionViewModel? session)
+    {
+        if (ReferenceEquals(session, _questionsSession))
+        {
+            return;
+        }
+
+        if (_questionsSession is not null)
+        {
+            _questionsSession.ThreadsChanged -= _OnQuestionsChanged;
+            _questionsSession.Transcript.CollectionChanged -= _OnAssistantRowsAdded;
+            _questionsSession.ClosedThreadsChanged -= _OnClosedThreadsChanged;
+        }
+
+        _questionsSession = session;
+        if (session is not null)
+        {
+            session.ThreadsChanged += _OnQuestionsChanged;
+            session.Transcript.CollectionChanged += _OnAssistantRowsAdded;
+            session.ClosedThreadsChanged += _OnClosedThreadsChanged;
+            // AC-1343: left running on purpose — nothing waits on it, and it catches and logs its own failure.
+            _ = _LoadClosedThreadsAsync(session);
+        }
+
+        _OnQuestionsChanged();
+    }
+
+    private async Task _LoadClosedThreadsAsync(SessionViewModel session)
+    {
+        try
+        {
+            if (_threadState is not null)
+            {
+                session.LoadClosedThreads(await _threadState.LoadClosedAsync().ConfigureAwait(true));
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "The closed assistant threads could not be read back; every thread starts open.");
+        }
+    }
+
+    // The session's event, so async void: everything sits inside the try, and a failure is logged rather than lost.
+    private async void _OnClosedThreadsChanged()
+    {
+        try
+        {
+            if (_threadState is not null && _questionsSession is { } session)
+            {
+                await _threadState.SaveClosedAsync([.. session.ClosedThreads]).ConfigureAwait(true);
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "The closed assistant threads could not be saved; they stay closed for this run only.");
+        }
+    }
+
+    private void _OnQuestionsChanged()
+    {
+        var count = _questionsSession?.OpenQuestionCount ?? 0;
+        if (count > _questionsBadge.Count && _questionsSession?.OpenQuestions is [.., var newest])
+        {
+            _ShowFloatingCard(newest, newest.IsGeneral ? "Question" : $"Question from {newest.ThreadTags[0].Name}");
+        }
+
+        Indicator.OpenQuestionCount = count;
+        _questionsBadge.Count = count;
+    }
+
+    // A message from another session is news too; a status line is not (§ 7.2, open question 5).
+    private void _OnAssistantRowsAdded(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add || e.NewItems is null
+            || _questionsSession is { IsReplayingTranscript: true })
+        {
+            return;
+        }
+
+        foreach (TranscriptEntryViewModel row in e.NewItems)
+        {
+            if (row.IsInboxRow)
+            {
+                _ShowFloatingCard(row, $"Message from {row.SenderLabel}");
+            }
+        }
+    }
+
+    // ponytail: one card at a time, the newest wins; a queue if several in a row turn out to get lost.
+    private DispatcherTimer? _floatingCardTimer;
+
+    private void _ShowFloatingCard(TranscriptEntryViewModel row, string title)
+    {
+        // Only where nothing else would say it: docked, outside the Simple stand, with the assistant's panel shut.
+        if (!_cockpit.AssistantDocked || _cockpit.SimpleView || _cockpit.EffectiveOpenDockPanelId == DockPanelId)
+        {
+            return;
+        }
+
+        var body = row.Text.ReplaceLineEndings(" ").Trim();
+        _cockpit.AssistantFloatingCard = new AssistantFloatingCardContent(title, body, row);
+
+        _floatingCardTimer?.Stop();
+        _floatingCardTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        _floatingCardTimer.Tick += (_, _) =>
+        {
+            _floatingCardTimer?.Stop();
+            _cockpit.AssistantFloatingCard = null;
+        };
+        _floatingCardTimer.Start();
+    }
+
+    private async Task _OpenRowAsync(TranscriptEntryViewModel row)
+    {
+        await _OpenChatAsync().ConfigureAwait(true);
+        try
+        {
+            _chatViewModel?.ShowInThreadCommand.Execute(row);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Showing a row in its assistant thread failed.");
+        }
+    }
+
+    private async Task _OpenQuestionsAsync()
+    {
+        await _OpenChatAsync().ConfigureAwait(true);
+        try
+        {
+            _chatViewModel?.OpenQuestionsCommand.Execute(null);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Opening the assistant's questions failed.");
+        }
+    }
+
+    // Every session but the assistant itself: what a project still has running.
+    private IEnumerable<SessionPanelViewModel> _RunningSessions() =>
+        _cockpit.AllSessions().Where(pane => pane.PaneId != AssistantIdentity.PaneId);
+
+    private SessionPanelViewModel? _PaneOf(string paneId) =>
+        _cockpit.AllSessions().FirstOrDefault(session => session.PaneId == paneId);
 
     // What the chip shows, in priority order. Dictation first — see the remarks on this class for why the one
     // state that is not about the assistant is the one that wins.
@@ -265,7 +448,10 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
                 DockPanelId,
                 "Assistant",
                 MaterialIconKind.Creation,
-                _CreateDockedChatView));
+                _CreateDockedChatView)
+            {
+                Badge = _questionsBadge,
+            });
 
             return;
         }

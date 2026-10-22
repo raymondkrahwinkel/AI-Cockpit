@@ -40,7 +40,9 @@ public static partial class MarkdownParser
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(line))
+            // A line that is only an HTML comment is invisible, as in CommonMark — the assistant's per-project reply
+            // markers (`<!-- project:depot -->`) among them, so they are neither drawn nor read aloud.
+            if (string.IsNullOrWhiteSpace(line) || HtmlCommentLineRegex().IsMatch(line))
             {
                 i++;
                 continue;
@@ -434,6 +436,9 @@ public static partial class MarkdownParser
 
     [GeneratedRegex(@"^(#{1,6})\s+(.*)$")]
     private static partial Regex HeadingRegex();
+
+    [GeneratedRegex(@"^\s*<!--.*-->\s*$")]
+    private static partial Regex HtmlCommentLineRegex();
 
     // The explicit anchor a knowledge-base heading ends with: `## Bot token {#bot-token}`. Only ever applied
     // to a line that already parsed as a heading, so ordinary prose mentioning braces is untouched.

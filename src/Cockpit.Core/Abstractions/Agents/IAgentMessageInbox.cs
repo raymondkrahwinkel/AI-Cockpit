@@ -15,7 +15,10 @@ public sealed record AgentMessage(
     string? SenderProfile = null,
     string? SenderProjectId = null,
     string? Holder = null,
-    bool ProfileWide = false);
+    bool ProfileWide = false,
+
+    // The pane a report is about when its sender is no pane (the session watcher), so it files under that project.
+    string? SubjectPaneId = null);
 
 // What became of one `IAgentMessageInbox.Deliver` call.
 public enum AgentMessageDeliveryOutcome
@@ -52,7 +55,7 @@ public interface IAgentMessageInbox
     /// The sender's profile and project travel with the message for <see cref="ReadFor"/> to judge; a message for the
     /// controller's queue is stamped with the live holder, and any queued for a holder no longer live falls back locally.
     /// </summary>
-    AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false);
+    AgentMessageDelivery Deliver(string fromPaneId, string toPaneId, string kind, string body, string? senderProfile = null, string? senderProjectId = null, bool profileWide = false, string? subjectPaneId = null);
 
     /// <summary>
     /// Reads <paramref name="paneId"/>'s inbox for one reader with the controller held still and under the lock

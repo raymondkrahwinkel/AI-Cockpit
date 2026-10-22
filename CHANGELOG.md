@@ -42,6 +42,29 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: closed sessions' retained worktrees are checked again after fetching, with a visible reason when work
   must stay. Cleanup also removes missing worktree entries from other machines, session temp folders, and orphaned
   testcontainers, while preserving local work and compose projects used by a live pane (AC-1537).
+- added: the assistant keeps one conversation but shows it per project. A rail beside the chat lists **Questions for
+  you** (every open question and Allow/Deny, with a count), **All**, **General** and a thread per project; in All each
+  row carries its project as a tag. Messages from other sessions arrive as cards with their sender, and status updates
+  as one quiet line. The rail shows labels when there is room, icons when there is less (with « / » to choose, saved
+  separately for the window and the dock), and a thread picker in a very narrow dock. A divider sets Questions and All
+  apart from the threads (headed THREADS where labels show) and the threads from Overview, in the picker too.
+- added: for plugin authors, `AgentMessage` (`Cockpit.Core.Abstractions.Agents`) gains `SubjectPaneId`, the pane a
+  report is about when its sender is no pane, so it files under that pane's project; and `DockPanelRegistration`
+  (`Cockpit.Plugins.Abstractions.Docking`, in the UI part) takes an optional `Badge`, a count on the panel's tab in the dock rail. Both
+  default to nothing: a plugin that calls `Deliver` or registers a dock panel works unchanged.
+- added: status updates that arrive one after another fold into one line, and Questions for you keeps what you
+  answered today below the open questions.
+- added: docked, the Assistant tab and the sidebar indicator count the questions waiting for you (a click on the count
+  opens them), and a card beside the dock says when a question or a message arrives while the assistant is closed.
+- added: a row can be dragged onto another thread in the rail (hold Ctrl to add it there as well), or moved with
+  Move to project… from its grip or the M key; the toast offers Undo, and Ctrl+Z works while it stands.
+- added: a project's thread can be closed, from its row in the rail (hover, the context menu or Delete) or by the
+  assistant after you approve; it moves under Closed at the foot of the rail, keeps every row in All, and opens again by
+  itself when something new arrives for that project. When a project has gone quiet the assistant suggests closing its
+  thread in one light row you answer with Close or Keep open.
+- added: the assistant can file its own turn under a project, split a prompt about two projects, answer in a block
+  per project and ask a question about several projects at once, so each thread shows only its own part.
+
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks
   and consent, and then asks to restart the cockpit so its screens load. Nothing is ever loaded from the server.
@@ -106,6 +129,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - fixed: Options no longer gets stuck when a profile uses a provider plugin that is not installed or switched off: the
   profile editor kept losing that profile's provider, after which Options could neither keep track of changes nor close.
+- fixed: the assistant docked beside the sessions or in the Simple view's own column no longer draws the rounded frame
+  of its floating window inside that square edge, so there is one hairline where it meets the rest of the cockpit
+  instead of two; the Simple column also starts right under the title bar instead of a strip lower, and right
+  against the sidebar instead of a strip to its right.
+- fixed: in the Simple reading level a run of tool calls to one server is one step ("Used depot 4 times") instead of a
+  column of identical "Used depot" lines.
 - fixed: the file preview dialog now keeps rendered markdown, source text and images the same distance from the
   dialog's edges as its header, instead of drawing markdown flush against the left edge.
 - fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of

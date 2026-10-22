@@ -1311,6 +1311,40 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- Assistant threads: how many questions wait on the operator — the waiting status in its own chip tint and
+         ring, as a count pill (rail items, the dock tab, the indicator). Amber because it is work waiting on you. -->
+    <Style Selector="Border.waitingCount">
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingChipTintBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingRingTintBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="5,0"/>
+        <Setter Property="MinWidth" Value="16"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.waitingCount > TextBlock">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
+    <!-- Questions with something open carries the waiting row tint, as a session that needs you does. -->
+    <Style Selector="Border.threadItem.attention">
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRowTintBrush}"/>
+    </Style>
+    <!-- While a row is dragged (§ 9.6): the threads that take it in the focus hairline, the one under the pointer in
+         the selection's own accent — the existing selection tokens, no new colour. -->
+    <Style Selector="Border.threadItem.dropCandidate">
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitFocusHairlineBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentRingTintBrush}"/>
+    </Style>
+    <Style Selector="Border.threadItem.dropHover">
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitAccentSelectionBrush}"/>
+    </Style>
+
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
     <Style Selector=":is(TextBlock).transcript">
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
@@ -1762,7 +1796,8 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusDoneBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusDoneChipTintBrush}"/>
     </Style>
-    <Style Selector="Button.assistantIndicatorChip.dictating">
+    <!-- Assistant threads: questions waiting on the operator read amber, the waiting colour (DESIGN.md). -->
+    <Style Selector="Button.assistantIndicatorChip.dictating, Button.assistantIndicatorChip.questions">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingChipTintBrush}"/>
     </Style>
@@ -1861,11 +1896,11 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusErrorBrush}"/>
     </Style>
     <!-- F9 dictating: amber, deliberately never the assistant's cyan — the hard half of criterion 6. -->
-    <Style Selector="Border.assistantIndicatorRing.dictating">
+    <Style Selector="Border.assistantIndicatorRing.dictating, Border.assistantIndicatorRing.questions">
         <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
         <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRingTintBrush}"/>
     </Style>
-    <Style Selector="Border.assistantIndicatorRing.dictating materialIcons|MaterialIcon">
+    <Style Selector="Border.assistantIndicatorRing.dictating materialIcons|MaterialIcon, Border.assistantIndicatorRing.questions materialIcons|MaterialIcon">
         <Setter Property="Foreground" Value="{StaticResource CockpitStatusWaitingBrush}"/>
     </Style>
     <!-- Unavailable dims further than the resting ring, and its icon turns error-red (vormgeving pass, criterion

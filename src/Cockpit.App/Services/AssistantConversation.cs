@@ -1,4 +1,3 @@
-using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 
@@ -13,7 +12,10 @@ internal sealed class AssistantConversation(IAssistantSessionHost host) : IAssis
     public bool RequestConversationClear() => host.RequestConversationClear();
 
     // AC-955: the assistant's own session via the host, not the grid — the assistant sits outside it by design.
-    public Task<bool> ShowQuestionAsync(string question, string inputJson) =>
+    public Task<bool> ShowQuestionAsync(string question, string inputJson) => ShowQuestionAsync(question, inputJson, []);
+
+    // Assistant threads (§ 9.4): a question about one or more projects waits in each of their threads.
+    public Task<bool> ShowQuestionAsync(string question, string inputJson, IReadOnlyList<string> projectIds) =>
         UiThreadCall.RunAsync(() =>
         {
             if (host.View() is not { } session)
@@ -21,13 +23,33 @@ internal sealed class AssistantConversation(IAssistantSessionHost host) : IAssis
                 return false;
             }
 
-            session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, question)
-            {
-                InputJson = inputJson,
-                QuestionPrompts = AskUserQuestionViewModel.Parse(inputJson),
-                IsPendingBrokerAnswer = true,
-            });
-
+            session.AddQuestion(question, inputJson, projectIds);
             return true;
         });
+
+    public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session ? session.SetTurnThreads(projectIds) : _NotRunning);
+
+    public Task<AssistantThreadResult> TagPromptAsync(IReadOnlyList<(string ProjectId, string Quote)> parts) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session ? session.TagLastPrompt(parts) : _NotRunning);
+
+    public Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync() =>
+        UiThreadCall.RunAsync<IReadOnlyList<AssistantThreadInfo>>(() => host.View() is { } session ? session.SummarizeThreads() : []);
+
+    public Task<string?> WhyThreadCannotCloseAsync(string projectId) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session
+            ? session.SummarizeThreads().Any(thread => thread.ProjectId == projectId)
+                ? session.IsThreadClosed(projectId) ? "That thread is closed already." : session.WhyThreadCannotClose(projectId)
+                : "There is no thread for that project id; take it from list_threads."
+            : _NotRunning.Note);
+
+    public Task<AssistantThreadResult> SetThreadClosedAsync(string projectId, bool closed) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session
+            ? closed ? session.CloseThread(projectId) : session.ReopenThread(projectId)
+            : _NotRunning);
+
+    public Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session ? session.SuggestClosingThreads(projectIds) : _NotRunning);
+
+    private static readonly AssistantThreadResult _NotRunning = new(false, "My own session is not running.");
 }

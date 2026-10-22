@@ -49,6 +49,30 @@ public sealed record TranscriptSnapshotEntry(
     // AC-1056: a background task that outlived the crash is otherwise no longer coupled to the row that started it.
     public string? BackgroundTaskId { get; init; }
 
+    // Assistant threads: the projects this row was put in itself. Null when it has none of its own — a row of a
+    // turn follows its prompt, and a prompt or message without one is General — so a log from before this reads as
+    // General. Empty means put in General on purpose.
+    public IReadOnlyList<string>? ProjectIds { get; init; }
+
+    public IReadOnlyDictionary<string, ProjectSource>? ProjectSources { get; init; }
+
+    // Which part of a prompt about several projects belongs to which (§ 9.1). A reply carries its blocks as markers
+    // in its own text instead, so it can keep streaming.
+    public IReadOnlyList<TranscriptProjectPart>? ProjectParts { get; init; }
+
+    // The projects the rest of this prompt's turn follows when the assistant named them (set_thread); null leaves
+    // the turn on the prompt's own projects.
+    public IReadOnlyList<string>? TurnProjectIds { get; init; }
+
+    // An Inbox or Status row: who sent it, the kind they gave it, and for a watch report the pane it is about.
+    public string? SenderPaneId { get; init; }
+
+    public string? SenderTitle { get; init; }
+
+    public string? MessageKind { get; init; }
+
+    public string? SubjectPaneId { get; init; }
+
     // AC-1377: what the live view draws and a restore does not read — how a streamed reply was split over rows
     // (AC-1238/1265/1272), a waiting prompt, a clamp. Never written to the log, so it stays byte-equal to what it was.
     [TranscriptViewOnly]

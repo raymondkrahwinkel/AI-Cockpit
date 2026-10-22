@@ -334,7 +334,9 @@ public partial class CockpitView : UserControl
         var column = _SidebarColumn();
         column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
         column.Width = new GridLength(cockpit.SimpleView ? SimpleRailWidth : collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
-        PanelsRoot.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
+        // The splitter is hidden in the Simple stand (its rail does not resize), so its column would only be an empty
+        // strip of window between the rail's hairline and the assistant's column.
+        PanelsRoot.ColumnDefinitions[1].Width = new GridLength(collapsed || cockpit.SimpleView ? 0 : 4);
     }
 
     // The GridSplitter already clamps the drag itself (the column's MinWidth/MaxWidth), so the settled
@@ -377,6 +379,17 @@ public partial class CockpitView : UserControl
         column.Width = new GridLength(
             !cockpit.ShowDockRail ? 0 : collapsed ? CollapsedRailWidth : CockpitViewModel.ClampDockRailWidth(cockpit.DockRailWidth, PanelsRoot.Bounds.Width, cockpit.SidebarWidth));
         PanelsRoot.ColumnDefinitions[3].Width = new GridLength(collapsed ? 0 : 4);
+    }
+
+    // A click on a rail tab's count rather than the tab: handled here so the tab's own toggle does not run as well.
+    private void OnDockTabBadgeClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration { Badge: { } badge } })
+        {
+            badge.Activate();
+        }
+
+        e.Handled = true;
     }
 
     private void OnPanelsRootSizeChanged(object? sender, SizeChangedEventArgs e)

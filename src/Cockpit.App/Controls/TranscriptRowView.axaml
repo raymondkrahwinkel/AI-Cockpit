@@ -30,6 +30,26 @@
         </DataTemplate>
     </UserControl.Resources>
 
+    <UserControl.Styles>
+        <!-- Assistant threads: a prompt's tags sit over its bubble, on the right. -->
+        <Style Selector="ItemsControl.threadTags.user">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+        <!-- The row being dragged stays where it is, dimmed, so the drop reads as moving it (§ 9.6). -->
+        <Style Selector="SelectableTextBlock.otherPart">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="Border.rowRoot.threadDragging">
+            <Setter Property="Opacity" Value="0.45"/>
+        </Style>
+        <Style Selector="materialIcons|MaterialIcon.statusIcon">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="materialIcons|MaterialIcon.statusIcon.done">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusDoneBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
     <!-- AC-722: one transcript row, shared by SessionView and AssistantChatWindow so a feature added to the
          row (AC-715's question card) reaches both. AC-990: whatever the row needs from the session it reaches
          through its own `TranscriptEntryViewModel.Session`, never up the tree — a virtualised row is built before
@@ -44,6 +64,7 @@
             Classes.codeJoinedAbove="{Binding StartsInsideCodeBlock}"
             Classes.codeJoinedBelow="{Binding EndsInsideCodeBlock}"
             Classes.plainStep="{Binding ShowPlainStep}"
+            Classes.threadDragging="{Binding IsBeingDragged}"
             CornerRadius="{StaticResource CockpitControlRadius}"
             IsVisible="{Binding IsRowVisible}">
         <StackPanel Spacing="{Binding RowContentSpacing}">
@@ -62,6 +83,117 @@
                     </MultiBinding>
                 </TextBlock.IsVisible>
             </TextBlock>
+
+            <!-- Assistant threads: in All, the project a row is in; the tooltip says how it got there. -->
+            <ItemsControl Classes="threadTags" Classes.user="{Binding IsUserRow}" ItemsSource="{Binding ThreadTags}"
+                          IsVisible="{Binding ShowsThreadTagsHere}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="4"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ThreadTagViewModel">
+                        <Border Classes="tag" ToolTip.Tip="{Binding Tooltip}">
+                            <TextBlock Text="{Binding Name}"/>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Assistant threads: a message another session sent, as a flat card with its sender, instead of a
+                 bracketed notice the assistant then had to retell. -->
+            <ContentControl Content="{Binding InboxBranch}" IsVisible="{Binding IsInboxRow}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <Border Classes="rowIndent" Padding="11,9"
+                    Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}">
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <materialIcons:MaterialIcon Kind="EmailOutline" Width="13" Height="13" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding InboxTitle}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SenderLabel, StringFormat='from {0}'}" FontSize="11.5" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <StackPanel Classes="rowActions" Orientation="Horizontal">
+                            <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                            <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                                    Click="_OnGripClick"
+                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                    ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                                    AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                                    AutomationProperties.AcceleratorKey="M">
+                                <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                    <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
+                                        BasePath="{Binding Session.WorkingDirectory}"/>
+                </StackPanel>
+            </Border>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
+
+            <!-- Assistant threads: the assistant's suggestion to close threads that went quiet, bundled into one light
+                 row rather than a card per thread. The operator's click decides; afterwards the row says what came of it. -->
+            <ContentControl Content="{Binding SuggestionBranch}" IsVisible="{Binding IsSuggestionRow}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Classes="rowIndent" Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="ArchiveArrowDownOutline" Width="13" Height="13" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding SuggestionText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="19,0,0,0" IsVisible="{Binding IsSuggestionOpen}">
+                    <Button x:Name="AcceptSuggestionButton" Classes="Compact" Content="Close" Command="{Binding AcceptSuggestionCommand}"/>
+                    <Button Classes="Ghost Compact" Content="Keep open" Command="{Binding KeepSuggestionCommand}"/>
+                </StackPanel>
+            </StackPanel>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
+
+            <!-- Assistant threads: a message that only reports a state is one quiet line, its whole text the
+                 tooltip. Green only for what is done; whatever asks nothing stays faint. -->
+            <ContentControl Content="{Binding StatusBranch}" IsVisible="{Binding IsStatusRow}">
+              <ContentControl.DataTemplates>
+                <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel Classes="rowIndent" Orientation="Horizontal" Spacing="6" ToolTip.Tip="{Binding Text}">
+                <materialIcons:MaterialIcon Classes="statusIcon" Classes.done="{Binding IsDoneStatus}"
+                                            Kind="{Binding StatusIconKind}" Width="13" Height="13" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding StatusLine}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Classes="rowActions" Orientation="Horizontal">
+                    <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                    <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                            Click="_OnGripClick"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.AcceleratorKey="M">
+                        <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                    </Button>
+                </StackPanel>
+                <!-- The run's fold, the "N steps run" line's way: a quiet toggle, never a second card. -->
+                <Button Classes="Subtle" Padding="4,0" VerticalAlignment="Center" IsVisible="{Binding HasStatusRun}"
+                        Command="{Binding ToggleStatusRunCommand}" ToolTip.Tip="Status updates that came in one after another">
+                    <StackPanel Orientation="Horizontal" Spacing="3">
+                        <TextBlock Text="{Binding StatusRunLabel}" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <materialIcons:MaterialIcon Kind="{Binding StatusRunIconKind}" Width="12" Height="12" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+                </DataTemplate>
+              </ContentControl.DataTemplates>
+            </ContentControl>
 
             <!-- The user's own message (T2): a header line ("You" + timestamp, AC-144) over the
                  bubble this inner Border right-aligns and tints (Border.transcriptRow.userRow).
@@ -100,8 +232,24 @@
                              instead of collapsing to CommonMark's single-space join — the only call site
                              that turns this on (assistant markdown and file previews keep the default). -->
                         <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"
-                                             PreserveLineBreaks="True"
+                                             PreserveLineBreaks="True" IsVisible="{Binding !ShowsPromptParts}"
                                              BasePath="{Binding Session.WorkingDirectory}"/>
+                        <!-- Assistant threads (§ 9.2): in a project's thread a prompt about two projects reads its own
+                             part normally and the other's faint, that project's name in front of it. -->
+                        <ItemsControl ItemsSource="{Binding PromptSegments}" IsVisible="{Binding ShowsPromptParts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PromptSegment">
+                                    <DockPanel Margin="0,1">
+                                        <Border DockPanel.Dock="Left" Classes="tag" Margin="0,0,6,0" VerticalAlignment="Top"
+                                                IsVisible="{Binding IsOther}">
+                                            <TextBlock Text="{Binding Other}"/>
+                                        </Border>
+                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                             Classes.otherPart="{Binding IsOther}"/>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <!-- AC-778: the "[+N image]" fragment as its own clickable element (not text baked into
                              the markdown string above) — opens a mini-gallery with the bytes this row still
                              holds in memory. A row without images (or, in principle, one whose bytes are no
@@ -119,6 +267,15 @@
                 </Border>
                 <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                             HorizontalAlignment="Right">
+                    <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                    <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                            Click="_OnGripClick"
+                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                            AutomationProperties.AcceleratorKey="M">
+                        <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                    </Button>
                     <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                     <Button Classes="Subtle Compact"
                             IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
@@ -279,6 +436,15 @@
                     <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
                                 HorizontalAlignment="Left"
                                 IsVisible="{Binding IsReplyTail}">
+                        <!-- Assistant threads (§ 9.6): drag onto a thread, or click, Enter or M for Move to project. -->
+                        <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                                Click="_OnGripClick"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                                AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                                AutomationProperties.AcceleratorKey="M">
+                            <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                        </Button>
                         <!-- AC-935: reply is scoped to the assistant chat only — see ReplyEnabled's own remarks. -->
                         <Button Classes="Subtle Compact"
                                 IsVisible="{Binding $parent[controls:TranscriptRowView].ReplyEnabled}"
@@ -514,11 +680,24 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
-                                    IsVisible="{Binding IsAwaitingAnswer}"
-                                    IsEnabled="{Binding CanSubmitAnswers}"
-                                    Command="{Binding Session.SubmitQuestionAnswersCommand}"
-                                    CommandParameter="{Binding}"/>
+                            <DockPanel>
+                                <!-- Assistant threads (§ 9.6): a question card moves between threads like any row. -->
+                                <StackPanel DockPanel.Dock="Left" Classes="rowActions" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Classes="Subtle Compact threadGrip" IsVisible="{Binding Session.ShowsThreadTools, FallbackValue=False}"
+                                            Click="_OnGripClick"
+                                            Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                            ToolTip.Tip="Move to project. Drag onto a thread, or press M."
+                                            AutomationProperties.Name="Move to project. Drag onto a thread, or press M."
+                                            AutomationProperties.AcceleratorKey="M">
+                                        <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
+                                    </Button>
+                                </StackPanel>
+                                <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
+                                        IsVisible="{Binding IsAwaitingAnswer}"
+                                        IsEnabled="{Binding CanSubmitAnswers}"
+                                        Command="{Binding Session.SubmitQuestionAnswersCommand}"
+                                        CommandParameter="{Binding}"/>
+                            </DockPanel>
                         </StackPanel>
                     </DockPanel>
                 </Border>
@@ -798,6 +977,26 @@
             <Border Classes="paneChrome" Padding="8,6" IsVisible="{Binding HasLoginFlow}">
                 <controls:LoginFlowView DataContext="{Binding LoginFlow}"/>
             </Border>
+
+            <!-- Assistant threads (§ 9.2): in a project's thread, where else this same row stands — one click away. -->
+            <ItemsControl Classes="threadTags" Classes.user="{Binding IsUserRow}" ItemsSource="{Binding AlsoIn}"
+                          IsVisible="{Binding HasAlsoIn}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ThreadTagViewModel">
+                        <Button Classes="Subtle" Padding="0"
+                                Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).OpenThreadCommand, FallbackValue={x:Null}}"
+                                CommandParameter="{Binding ProjectId}">
+                            <TextBlock Text="{Binding Name, StringFormat='Also in {0}'}" FontSize="11.5"
+                                       Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </StackPanel>
     </Border>
 </UserControl>

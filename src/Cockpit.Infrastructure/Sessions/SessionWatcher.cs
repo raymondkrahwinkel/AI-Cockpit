@@ -400,7 +400,8 @@ public sealed class SessionWatcher : ISessionWatcher, ISingletonService, IDispos
             SenderPaneId,
             AssistantIdentity.PaneId,
             "session",
-            $"Watched session '{title}' ({paneId}) — {@event}: {what}{lines}\nNothing has been started about it.");
+            $"Watched session '{title}' ({paneId}) — {@event}: {what}{lines}\nNothing has been started about it.",
+            subjectPaneId: paneId);
     }
 
     private static string _Short(string row)

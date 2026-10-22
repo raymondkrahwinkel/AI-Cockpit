@@ -262,6 +262,9 @@ public static class AssistantSystemPrompt
         "for \"pick several\", `allowOther` for a box to type their own. Shown as a card in the chat window; it " +
         "returns at once and their answer comes back as an ordinary message, or spoken. Yours alone — a session " +
         "cannot call it.\n" +
+        "- Threads: the operator reads this conversation per project. A turn follows what opened it; `set_thread` and " +
+        "`tag_prompt` say when it does not. Session messages reach them as cards, so say what they mean, not what " +
+        "they say. Done projects: `suggest_closing_threads`.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
         "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +

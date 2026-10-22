@@ -29,7 +29,7 @@ using Cockpit.Core.Abstractions.Sessions;
 namespace Cockpit.App;
 
 // Lets an external caller verify the UI layout without a display attached (Iron Law #9: automated visual verification).
-internal static class Screenshotter
+internal static partial class Screenshotter
 {
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
@@ -375,6 +375,10 @@ internal static class Screenshotter
         // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
         // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
+        // Assistant threads: the stand with no dock tab and no chip counts open questions on its assistant row.
+        ["simple-view-assistant-questions"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithQuestions() },
+        // Assistant threads in the Simple stand's own column: the third host, which draws no frame of its own.
+        ["simple-view-assistant-threads"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithThreads() },
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
@@ -610,6 +614,34 @@ internal static class Screenshotter
         ["assistant-chat-session-pill-narrow"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6, width: 340),
         ["assistant-chat-history-dropdown-open"] = (_, _) => _AssistantChat(withConversation: true),
 
+        // Assistant threads: the rail with labels (960), icons (520), the labels over the chat, the picker below 340,
+        // a project thread and Questions for you.
+        ["assistant-threads-all"] = (_, _) => _AssistantThreads(960),
+        ["assistant-threads-depot"] = (_, _) => _AssistantThreads(960, thread: "depot"),
+        ["assistant-threads-questions"] = (_, _) => _AssistantThreads(960, questions: true),
+        ["assistant-threads-questions-answered"] = (_, _) => _AssistantThreads(960, questions: true, answered: true),
+        ["assistant-threads-cockpit"] = (_, _) => _AssistantThreads(960, thread: "cockpit"),
+        ["assistant-threads-waymark"] = (_, _) => _AssistantThreads(960, thread: "waymark"),
+        ["assistant-threads-overview"] = (_, _) => _AssistantThreads(960, overview: true),
+        ["assistant-threads-closed"] = (_, _) => _AssistantThreads(960, closed: true),
+        ["assistant-threads-closed-narrow"] = (_, _) => _AssistantThreads(520, closed: true),
+        ["assistant-threads-suggestion"] = (_, _) => _AssistantThreads(960, suggestion: true),
+        ["assistant-threads-logos"] = (_, _) => _AssistantThreads(960, thread: "depot", logos: true),
+        ["assistant-threads-logos-icons"] = (_, _) => _AssistantThreads(520, thread: "depot", logos: true),
+        ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
+        ["assistant-threads-drag"] = (_, _) => _AssistantThreads(960, dragging: true),
+        ["assistant-threads-drag-narrow"] = (_, _) => _AssistantThreads(520, dragging: true),
+        ["assistant-threads-moved"] = (_, _) => _AssistantThreads(960, moved: true),
+        ["assistant-threads-overlay"] = (_, _) => _AssistantThreads(520, overlay: true),
+        ["assistant-threads-docked-600"] = (_, _) => _AssistantThreadsDocked(600),
+        ["assistant-threads-docked-400"] = (_, _) => _AssistantThreadsDocked(400),
+        ["assistant-threads-docked-280"] = (_, _) => _AssistantThreadsDocked(280),
+        // The narrow stand's own way to the closed threads, its flyout staged open by the Hovers table below.
+        ["assistant-threads-docked-280-closed"] = (_, _) => _AssistantThreadsDocked(280, closed: true),
+        // The narrow stand's picker opened: the rail's groups, divider and heading included, in its list.
+        ["assistant-threads-docked-280-picker"] = (_, _) => _AssistantThreadsDocked(280),
+        ["assistant-threads-docked-collapsed"] = (_, _) => _AssistantThreadsDocked(null),
+
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
         // developer's own screen happens to produce.
@@ -789,6 +821,8 @@ internal static class Screenshotter
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
+        ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
+        ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
@@ -2608,14 +2642,18 @@ internal static class Screenshotter
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
-    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false, string? failedToStart = null)
+    private static ViewModels.CockpitViewModel _SimpleStand(
+        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null)
     {
-        var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
-        conversation.ActiveProfileLabel = "work";
-        conversation.Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
-        conversation.Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+        if (conversation is null)
+        {
+            conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
+            conversation.ActiveProfileLabel = "work";
+            conversation.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
+            conversation.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+        }
 
         // AC-1303: the real registry with the real registration shape, because picking a session is what hands the
         // assistant to the rail in this stand — without it the scene would draw a rail with nothing resolvable in it.

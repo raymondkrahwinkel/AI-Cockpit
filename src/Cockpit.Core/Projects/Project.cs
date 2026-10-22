@@ -158,6 +158,17 @@ public sealed record Project(string Id, string Name)
     public IReadOnlyList<string> LinkedAsAll(string key) =>
         PluginFields.TryGetValue(key, out var value) ? ProjectLinkValues.Split(value) : [];
 
+    // Assistant threads: the ticket keys this project's work goes by ("AC" for AC-1594), so a prompt or a message
+    // naming a ticket files under it. Empty falls back to the YouTrack project link, which already names them.
+    public IReadOnlyList<string> TicketPrefixes { get; init; } = [];
+
+    public IReadOnlyList<string> EffectiveTicketPrefixes => TicketPrefixes.Count > 0
+        ? TicketPrefixes
+        : [.. LinkedAsAll(YouTrackProjectKey).Select(prefix => prefix.Trim().TrimEnd('-')).Where(prefix => prefix.Length > 0)];
+
+    // The key the YouTrack plugin links a project under; read here, never written.
+    public const string YouTrackProjectKey = "youtrack.project";
+
     // A new project with a generated id, mirroring `Workspace.Create`.
     public static Project Create(string name) => new(Guid.NewGuid().ToString("n"), name);
 }
