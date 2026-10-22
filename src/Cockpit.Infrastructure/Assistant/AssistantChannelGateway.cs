@@ -336,6 +336,7 @@ public sealed class AssistantChannelGateway : IAssistantChannelGateway
             // The operator's own next message answers or moves past every question asked before it, here or in the app.
             if (row.Kind == "UserText")
             {
+                _questions.Clear();
                 _waiting = null;
             }
 
