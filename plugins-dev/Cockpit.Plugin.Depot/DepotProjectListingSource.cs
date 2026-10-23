@@ -200,14 +200,25 @@ internal sealed class DepotProjectListingSource
             throw new JsonException("Depot's project list came back in an unexpected shape.");
         }
 
-        return [.. projects.Where(project => !string.IsNullOrWhiteSpace(project.Slug)).Select(project => new DepotProjectListing(
-            project.Slug!,
-            string.IsNullOrWhiteSpace(project.Address) ? null : project.Address,
-            project.Name,
-            project.Role,
-            project.Kind,
-            project.Organization is null ? null : new(project.Organization.Slug, project.Organization.Name, project.Organization.Role),
-            project.Cockpit is null ? null : new(project.Cockpit.State, project.Cockpit.Checksum, project.Cockpit.UpdatedAt, project.Cockpit.Definition)))];
+        var listings = new List<DepotProjectListing>(projects.Count);
+        foreach (var project in projects)
+        {
+            if (string.IsNullOrWhiteSpace(project.Slug))
+            {
+                continue;
+            }
+
+            listings.Add(new(
+                project.Slug,
+                string.IsNullOrWhiteSpace(project.Address) ? null : project.Address,
+                project.Name,
+                project.Role,
+                project.Kind,
+                project.Organization is null ? null : new(project.Organization.Slug, project.Organization.Name, project.Organization.Role),
+                project.Cockpit is null ? null : new(project.Cockpit.State, project.Cockpit.Checksum, project.Cockpit.UpdatedAt, project.Cockpit.Definition)));
+        }
+
+        return listings;
     }
 
     private static List<DepotProjectListing> _Parse(string json) => _Parse(System.Text.Encoding.UTF8.GetBytes(json));

@@ -59,25 +59,34 @@ internal static class DepotMemorySource
     private static ProjectMemorySourceRegistration _RegistrationFor(
         DepotConnectionRegistration connection, string scheme, ICockpitHost? host, HttpClient? httpClient)
     {
-        var addressing = host is null ? null : DepotProjectAddressing.For(host, connection, scheme);
-        var projects = host is null
-            ? null
-            : httpClient is null
-                ? DepotProjectListingSource.For(host, connection)
-                : new DepotProjectListingSource(host, connection, httpClient);
+        var title = $"Depot project — {connection.Name}";
+        var instruction = $"This project's memory lives in Depot instance \"{connection.Name}\". Read and write it through the "
+            + "Depot MCP: look the project up by that reference before you start, and write back what you learn as "
+            + "you go. If the Depot MCP is not available in this session, say so rather than working from "
+            + "memory you cannot see.";
+        if (host is null)
+        {
+            return new(scheme, title, instruction)
+            {
+                FamilyKey = Scheme,
+                InstanceTitle = connection.Name,
+            };
+        }
+
+        var addressing = DepotProjectAddressing.For(host, connection, scheme);
+        var projects = httpClient is null
+            ? DepotProjectListingSource.For(host, connection)
+            : new DepotProjectListingSource(host, connection, httpClient);
         return new(
             scheme,
-            $"Depot project — {connection.Name}",
-            $"This project's memory lives in Depot instance \"{connection.Name}\". Read and write it through the "
-                + "Depot MCP: look the project up by that reference before you start, and write back what you learn as "
-                + "you go. If the Depot MCP is not available in this session, say so rather than working from "
-                + "memory you cannot see.")
+            title,
+            instruction)
         {
-            ListLocationsAsync = host is null ? null : cancellationToken => _ListLocationsAsync(projects!, addressing!, cancellationToken),
-            SignInAsync = host is null ? null : async cancellationToken =>
+            ListLocationsAsync = cancellationToken => _ListLocationsAsync(projects, addressing, cancellationToken),
+            SignInAsync = async cancellationToken =>
                 await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized,
-            CheckReachability = host is null ? null : (value, cancellationToken) => _CheckReachabilityAsync(host, connection, projects!, addressing!, value, cancellationToken),
-            AppendNoteAsync = host is null ? null : (value, note, cancellationToken) => _AppendNoteAsync(host, connection, addressing!, value, note, cancellationToken),
+            CheckReachability = (value, cancellationToken) => _CheckReachabilityAsync(host, connection, projects, addressing, value, cancellationToken),
+            AppendNoteAsync = (value, note, cancellationToken) => _AppendNoteAsync(host, connection, addressing, value, note, cancellationToken),
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
         };
