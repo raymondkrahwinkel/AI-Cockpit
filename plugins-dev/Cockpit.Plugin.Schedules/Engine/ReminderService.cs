@@ -62,7 +62,7 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
 
         _Change(all => [.. all.Select(reminder =>
         {
-            if (reminder.State != ReminderState.Open || reminder.Due > now || now - reminder.Due > TimeSpan.FromHours(24))
+            if (reminder.State != ReminderState.Open || reminder.Due > now)
             {
                 return reminder;
             }
