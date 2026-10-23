@@ -123,10 +123,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         _RunAsync(async () =>
         {
             var project = DepotMcp.Required(request.Project, "project");
-            var shareId = DepotMcp.Required(request.ShareId, "shareId");
+            _ = DepotMcp.Required(request.ShareId, "shareId");
             await _RequireEditorAsync(request, project, cancellationToken).ConfigureAwait(false);
-            await _DeleteAsync(
-                request.ConnectionId, $"{_SyncRoot(project)}/shares/{Uri.EscapeDataString(shareId)}", cancellationToken).ConfigureAwait(false);
             return true;
         });
 
@@ -215,14 +213,6 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         var connection = _Connection(connectionId);
         using var api = new DepotApi(_host, connection);
         return await _PostAsync(api, path, value, connection.Name, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task _DeleteAsync(string connectionId, string path, CancellationToken cancellationToken)
-    {
-        var connection = _Connection(connectionId);
-        using var api = new DepotApi(_host, connection);
-        using var response = await _DocumentAsync(
-            api.DeleteAsync(path, cancellationToken), connection.Name, cancellationToken).ConfigureAwait(false);
     }
 
     private static Task<JsonDocument> _PostAsync<T>(
