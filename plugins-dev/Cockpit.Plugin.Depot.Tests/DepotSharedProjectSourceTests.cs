@@ -100,16 +100,16 @@ public class DepotSharedProjectSourceTests
     }
 
     [Fact]
-    public async Task ListAsync_AnAdminsProject_MayWriteBackAndShowsItsRole()
+    public async Task ListAsync_AnAdminsProject_WithCanWriteFalse_IsReadOnlyAndShowsItsRole()
     {
         var host = Substitute.For<ICockpitHost>();
-        using var http = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"ok","checksum":"chk","updatedAt":"2026-10-20T10:00:00Z","definition":{"schemaVersion":1,"name":"Cockpit"}}}]}""");
+        using var http = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"ok","checksum":"chk","updatedAt":"2026-10-20T10:00:00Z","definition":{"schemaVersion":1,"name":"Cockpit"},"canWrite":false}}]}""");
 
         var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
 
         var project = Assert.Single(result.Projects);
         Assert.Equal("Admin", project.Role);
-        Assert.True(project.CanWriteBack);
+        Assert.False(project.CanWriteBack);
     }
 
     [Fact]

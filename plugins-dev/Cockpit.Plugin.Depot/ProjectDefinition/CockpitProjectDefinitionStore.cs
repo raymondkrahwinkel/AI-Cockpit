@@ -47,16 +47,31 @@ public static class CockpitProjectDefinitionStore
     }
 
     // `baseChecksum`: From a prior `ReadAsync`; an empty value sends If-None-Match: * for a project's first write.
-    // `callerRole`: The caller's `CockpitProjectRole` on this project, when already known. A role below Editor
-    // short-circuits here; Depot still enforces the real rule for every request.
+    // `callerRole`: The caller's `CockpitProjectRole` on this project, when already known. A current Depot's
+    // path-aware `cockpit.canWrite` wins; an older Depot without that field keeps the role-based guard.
     public static async Task<CockpitProjectDefinitionWriteResult> WriteAsync(
         ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress,
         CockpitProjectDefinition definition, string? baseChecksum, CockpitProjectRole? callerRole = null,
         HttpClient? httpClient = null, CancellationToken cancellationToken = default)
     {
-        if (callerRole is { } role && !role.CanWrite())
+        var listing = await (httpClient is null
+                ? DepotProjectListingSource.For(host, connection)
+                : new DepotProjectListingSource(host, connection, httpClient))
+            .ListAsync(cancellationToken).ConfigureAwait(false);
+        var listedProject = listing.Outcome == DepotProjectListingOutcome.Success
+            ? listing.Projects.SingleOrDefault(candidate =>
+                string.Equals(candidate.Key, depotProjectAddress, StringComparison.OrdinalIgnoreCase))
+            : null;
+        var listedRole = callerRole ?? CockpitProjectRoles.TryParse(listedProject?.Role);
+        if (listedProject?.Cockpit?.CanWrite is false)
         {
-            return CockpitProjectDefinitionWriteResult.PermissionDenied(role.WriteDeniedReason());
+            return CockpitProjectDefinitionWriteResult.PermissionDenied(
+                "This project's Cockpit definition is read-only for you.");
+        }
+
+        if (listedProject?.Cockpit?.CanWrite is null && listedRole is { } fallbackRole && !fallbackRole.CanWrite())
+        {
+            return CockpitProjectDefinitionWriteResult.PermissionDenied(fallbackRole.WriteDeniedReason());
         }
 
         // AC-607 decision 3: never forward a secret-shaped, unencrypted extension field. Apply the guard to a

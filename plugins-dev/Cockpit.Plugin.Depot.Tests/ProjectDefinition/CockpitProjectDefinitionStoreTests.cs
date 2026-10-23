@@ -187,7 +187,7 @@ public class CockpitProjectDefinitionStoreTests
     }
 
     [Fact]
-    public async Task WriteAsync_CallerRoleIsViewer_NeverCallsDepotAndNamesTheReason()
+    public async Task WriteAsync_CanWriteMissingAndCallerRoleIsViewer_DoesNotPutAndNamesTheReason()
     {
         var handler = new _StubHandler(HttpStatusCode.OK, """{"checksum":"c1"}""");
 
@@ -197,7 +197,7 @@ public class CockpitProjectDefinitionStoreTests
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
         Assert.NotNull(result.Error);
-        Assert.Equal(0, handler.CallCount);
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
@@ -224,6 +224,7 @@ public class CockpitProjectDefinitionStoreTests
         _StubHandler handler, CockpitProjectDefinition definition, string? baseChecksum,
         CockpitProjectRole? callerRole = null)
     {
+        handler.ProjectsContent = _Projects("""{"schemaVersion":1,"name":"probe"}""");
         using var http = new HttpClient(handler);
         return await CockpitProjectDefinitionStore.WriteAsync(
             Substitute.For<ICockpitHost>(), _Connection, "acme/cockpit", definition, baseChecksum,
@@ -242,6 +243,7 @@ public class CockpitProjectDefinitionStoreTests
         public string? IfMatch { get; private set; }
         public string? IfNoneMatch { get; private set; }
         public string? Path { get; private set; }
+        public string? ProjectsContent { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
@@ -251,6 +253,15 @@ public class CockpitProjectDefinitionStoreTests
             IfMatch = request.Headers.IfMatch.SingleOrDefault()?.Tag;
             IfNoneMatch = request.Headers.IfNoneMatch.SingleOrDefault()?.Tag;
             Path = request.RequestUri?.AbsolutePath;
+            if (request.Method == HttpMethod.Get && ProjectsContent is { } projectsContent)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(projectsContent),
+                    RequestMessage = request,
+                };
+            }
+
             return new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(content),
