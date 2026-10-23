@@ -449,7 +449,7 @@ internal sealed class TaskEditorView : UserControl
         _previewText.Text = IsScheduleValid ? $"{preview?.ReadsAs} · {_zone}" : InvalidSchedule;
         _previewText.Themed(TextBlock.ForegroundProperty, IsScheduleValid ? "CockpitTextPrimaryBrush" : "CockpitStatusErrorBrush");
         _previewNext.Text = IsScheduleValid && preview is { Next.Count: > 0 } ? "Next: " + string.Join(" · ", preview.Next.Select(next => Ui.When(next))) : string.Empty;
-        _save.IsEnabled = IsScheduleValid;
+        _save.IsEnabled = true;
     }
 
     private async Task _TestRunAsync()
