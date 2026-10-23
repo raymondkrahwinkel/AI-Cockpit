@@ -142,24 +142,29 @@ set -e
 assert_equals "once both are bumped the run is green" 0 "$status"
 assert_contains "and says so" "ok:" "$output"
 
-# The push hook must compare a feature branch with its epic upstream, not a newer main.
+# The push hook must find the feature branch's epic fork without relying on tracking configuration.
 mkdir -p hooks scripts
 cp "$hook" hooks/pre-push
 cp "$guard" scripts/check-plugin-versions.sh
 git add hooks scripts
 git commit --quiet -m hook-fixture
-upstream="$(git rev-parse HEAD)"
+common="$(git rev-parse HEAD)"
 git remote add origin "$work"
-git update-ref refs/remotes/origin/epic "$upstream"
 
-git switch --quiet -c simulated-main
+git switch --quiet -c simulated-epic
+printf 'epic base\n' >epic.txt
+git add epic.txt
+git commit --quiet -m epic
+epic="$(git rev-parse HEAD)"
+git update-ref refs/remotes/origin/epic/AC-test "$epic"
+
+git switch --quiet -c simulated-main "$common"
 manifest plugins-dev/Cockpit.Plugin.Alpha 9.0.0
 git add -A
 git commit --quiet -m newer-main
 git update-ref refs/remotes/origin/main HEAD
 
-git switch --quiet -c feature "$upstream"
-git branch --quiet --set-upstream-to=origin/epic
+git switch --quiet -c feature "$epic"
 printf 'feature docs\n' >feature.txt
 git add feature.txt
 git commit --quiet -m feature
@@ -169,7 +174,7 @@ output="$(hooks/pre-push origin unused 2>&1)"
 status=$?
 set -e
 
-assert_equals "a plugin ahead only on main does not block an epic-based push" 0 "$status"
+assert_equals "an untracked epic-based branch ignores a plugin ahead only on main" 0 "$status"
 assert_absent "the unrelated plugin is not reported" "Cockpit.Plugin.Alpha" "$output"
 
 manifest plugins-dev/Cockpit.Plugin.Alpha 0.9.0
@@ -181,7 +186,7 @@ output="$(hooks/pre-push origin unused 2>&1)"
 status=$?
 set -e
 
-assert_equals "a version lowered against the epic upstream blocks the push" 1 "$status"
+assert_equals "a version lowered against the epic fork blocks the push" 1 "$status"
 assert_contains "the lowered plugin is reported" "Cockpit.Plugin.Alpha" "$output"
 assert_contains "the lowered version is reported as not newer" "not newer" "$output"
 
