@@ -530,6 +530,7 @@ public sealed class ConnectKeyDoorTests
 
         public _Door()
         {
+            Presence = new NodeControllerPresence(Clock);
             Directory = Path.Combine(Path.GetTempPath(), $"connect-key-door-{Guid.NewGuid():N}");
             System.IO.Directory.CreateDirectory(Directory);
             _loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new _CollectingLoggerProvider(_logLines)));
@@ -558,7 +559,8 @@ public sealed class ConnectKeyDoorTests
 
         public NodeAccessAuditLog Audit { get; }
 
-        public NodeControllerPresence Presence { get; } = new();
+        // On the door's clock: a key expires by the clock that issued it, so real time would age every key by the date the suite runs.
+        public NodeControllerPresence Presence { get; }
 
         public _LoginFlow LoginFlow { get; } = new();
 
