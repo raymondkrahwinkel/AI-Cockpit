@@ -40,22 +40,29 @@ internal sealed class EngineRig(DateTimeOffset start)
 
     public void Replace(params ScheduledTask[] tasks) => new TaskStore(Storage).Save(tasks);
 
-    public ScheduleEngine Start() => new(
-        new TaskStore(Storage),
-        new MarkStore(Storage),
-        new RunStore(Storage, Clock),
-        (task, _, _) => Task.FromResult(Admit(task)),
-        (task, _, _) =>
-        {
-            lock (Executed)
+    // Each engine keeps the action it started with, as a process keeps its code: one stopped mid-run never picks up
+    // the next one's, now that a run starts off the tick's stack.
+    public ScheduleEngine Start()
+    {
+        var action = Action;
+        var admit = Admit;
+        return new(
+            new TaskStore(Storage),
+            new MarkStore(Storage),
+            new RunStore(Storage, Clock),
+            (task, _, _) => Task.FromResult(admit(task)),
+            (task, _, _) =>
             {
-                Executed.Add((task.Id, Clock.Now));
-            }
+                lock (Executed)
+                {
+                    Executed.Add((task.Id, Clock.Now));
+                }
 
-            return Action(task);
-        },
-        () => MaxConcurrentRuns,
-        Clock);
+                return action(task);
+            },
+            () => MaxConcurrentRuns,
+            Clock);
+    }
 
     // Ticks the way the timer does, every 30 seconds, until the clock reaches `until`.
     public async Task WalkAsync(ScheduleEngine engine, DateTimeOffset until)
