@@ -145,11 +145,12 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             var path = DepotMcp.Required(request.Path, "path");
             await _RequireEditorAsync(request, project, "Uploading", cancellationToken).ConfigureAwait(false);
             var syncRoot = _SyncRoot(project);
-            using var api = _Api(request.ConnectionId);
+            var connection = _Connection(request.ConnectionId);
+            using var api = new DepotApi(_host, connection);
             string? baseChecksum = null;
             if (request.Replace && DepotUploadKinds.IsText(path))
             {
-                using var current = await _PostAsync(api, $"{syncRoot}/read", new[] { path }, request.ConnectionId, cancellationToken)
+                using var current = await _PostAsync(api, $"{syncRoot}/read", new[] { path }, connection.Name, cancellationToken)
                     .ConfigureAwait(false);
                 _RejectTruncated(current.RootElement);
                 var file = _Array(current.RootElement, "files").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
@@ -157,7 +158,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             }
 
             var started = await _uploader.StartAsync(
-                api, _Connection(request.ConnectionId).Name, syncRoot, path, request.Content, request.ContentType ?? string.Empty,
+                api, connection.Name, syncRoot, path, request.Content, request.ContentType ?? string.Empty,
                 request.Size, baseChecksum, cancellationToken).ConfigureAwait(false);
             return new DepotBrowserUpload(started.UploadUrl);
         });
@@ -198,8 +199,6 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         DepotBrowserRequest request, string tool, IReadOnlyDictionary<string, object?>? arguments, CancellationToken cancellationToken) =>
         _mcp.CallAsync(request.ConnectionId, tool, arguments, cancellationToken);
 
-    private DepotApi _Api(string connectionId) => new(_host, _Connection(connectionId));
-
     private DepotConnectionRegistration _Connection(string connectionId) =>
         _connections().FirstOrDefault(candidate => candidate.Id == connectionId)
         ?? throw new DepotFailure(DepotBrowserStatus.Error, "That Depot connection is no longer configured.");
@@ -220,11 +219,11 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     }
 
     private static Task<JsonDocument> _PostAsync<T>(
-        DepotApi api, string path, T value, string connectionId, CancellationToken cancellationToken) =>
-        _DocumentAsync(api.PostJsonAsync(path, value, cancellationToken), connectionId, cancellationToken);
+        DepotApi api, string path, T value, string connectionName, CancellationToken cancellationToken) =>
+        _DocumentAsync(api.PostJsonAsync(path, value, cancellationToken), connectionName, cancellationToken);
 
     private static async Task<JsonDocument> _DocumentAsync(
-        Task<DepotApiResult> call, string connectionId, CancellationToken cancellationToken)
+        Task<DepotApiResult> call, string connectionName, CancellationToken cancellationToken)
     {
         DepotApiResult result;
         try
@@ -238,7 +237,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
 
         if (result.Outcome == DepotApiOutcome.NotSignedIn)
         {
-            throw new DepotFailure(DepotBrowserStatus.SignIn, $"Sign in to {connectionId}");
+            throw new DepotFailure(DepotBrowserStatus.SignIn, $"Sign in to {connectionName}");
         }
 
         if (result.Outcome != DepotApiOutcome.Success)
