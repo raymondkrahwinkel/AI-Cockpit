@@ -103,14 +103,23 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
         return found;
     }
 
-    // A click or a reply from any door: the toast, a channel's button, or its text.
-    public Reminder? Answer(string id, DateTimeOffset occurrence, string choice) => choice switch
+    // A click or a reply from any door: the toast, a channel's button, or its text. It answers the one time the reminder
+    // went off that it came with: after a snooze brought it back, the old Discord button is spent.
+    public Reminder? Answer(string id, DateTimeOffset occurrence, DateTimeOffset firedAt, string choice)
     {
-        DoneLabel => Complete(id, occurrence),
-        SnoozeShortLabel => Snooze(id, time.GetUtcNow() + SnoozeShort, occurrence),
-        SnoozeLongLabel => Snooze(id, time.GetUtcNow() + SnoozeLong, occurrence),
-        _ => null,
-    };
+        if (Load().FirstOrDefault(reminder => reminder.Id == id) is not { State: ReminderState.Due } current || current.FiredAt != firedAt)
+        {
+            return null;
+        }
+
+        return choice switch
+        {
+            DoneLabel => Complete(id, occurrence),
+            SnoozeShortLabel => Snooze(id, time.GetUtcNow() + SnoozeShort, occurrence),
+            SnoozeLongLabel => Snooze(id, time.GetUtcNow() + SnoozeLong, occurrence),
+            _ => null,
+        };
+    }
 
     private async Task _SayAsync(Reminder reminder, DateTimeOffset now)
     {
@@ -118,6 +127,7 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
         var was = TimeZoneInfo.ConvertTime(reminder.Due, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
         var text = now - reminder.Due > OnTime ? $"⏰ {reminder.Text} · missed, was {was}" : $"⏰ {reminder.Text} · {was}";
         var occurrence = reminder.Slot;
+        var firedAt = reminder.FiredAt ?? now;
 
         if (reminder.Delivery.Any(target => target.Channel == DeliveryTarget.CockpitNotification))
         {
@@ -126,16 +136,16 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
                 + (elsewhere.Count == 0 ? "." : $". Also sent via {string.Join(" and ", elsewhere)}.");
             host.ShowToast($"{text}\n{detail}", PluginToastSeverity.Warning,
             [
-                new PluginToastAction(DoneLabel, () => Answer(reminder.Id, occurrence, DoneLabel)),
-                new PluginToastAction(SnoozeShortLabel, () => Answer(reminder.Id, occurrence, SnoozeShortLabel)),
-                new PluginToastAction(SnoozeLongLabel, () => Answer(reminder.Id, occurrence, SnoozeLongLabel)),
+                new PluginToastAction(DoneLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, DoneLabel)),
+                new PluginToastAction(SnoozeShortLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, SnoozeShortLabel)),
+                new PluginToastAction(SnoozeLongLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, SnoozeLongLabel)),
             ], sticky: true);
         }
 
         var message = new OperatorMessage
         {
             Text = text,
-            CorrelationId = $"reminder-{reminder.Id}-{occurrence.UtcTicks}",
+            CorrelationId = $"reminder-{reminder.Id}-{firedAt.UtcTicks}",
             Question = new AssistantChannelQuestion
             {
                 Question = reminder.Text,
@@ -145,12 +155,23 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
         };
         var (notes, failed) = await delivery.SendToChannelsAsync(reminder.Delivery, message, answer =>
         {
-            Answer(reminder.Id, occurrence, answer.Chosen.FirstOrDefault() ?? string.Empty);
+            Answer(reminder.Id, occurrence, firedAt, answer.Chosen.FirstOrDefault() ?? string.Empty);
             return Task.CompletedTask;
         }, CancellationToken.None);
-        if ((failed ?? notes) is { } note)
+        // What this time came to, every time: a note from an earlier week never stands for this one.
+        _Update(reminder.Id, occurrence, current => current with { DeliveryNote = failed ?? notes });
+    }
+
+    // On the cockpit's UI thread: a failure here is said, and the toast still closes behind it.
+    private void _AnswerFromToast(string id, DateTimeOffset occurrence, DateTimeOffset firedAt, string choice)
+    {
+        try
         {
-            _Update(reminder.Id, occurrence, current => current with { DeliveryNote = note });
+            Answer(id, occurrence, firedAt, choice);
+        }
+        catch (Exception exception)
+        {
+            host.ShowToast($"The reminder could not take \"{choice}\": {exception.Message}", PluginToastSeverity.Error);
         }
     }
 

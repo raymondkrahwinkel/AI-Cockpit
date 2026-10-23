@@ -19,8 +19,14 @@ public sealed partial class ToastViewModel
         Severity = severity;
         Actions = [.. actions.Select((action, index) => new ToastActionViewModel(action.Label, index == 0, () =>
         {
-            action.OnInvoke();
-            Close();
+            try
+            {
+                action.OnInvoke();
+            }
+            finally
+            {
+                Close();
+            }
         }))];
         ActionLabel = actions.FirstOrDefault()?.Label;
         HasAction = Actions.Count > 0;

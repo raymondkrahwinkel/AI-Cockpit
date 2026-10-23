@@ -8,7 +8,7 @@ using Cockpit.Plugins.Abstractions.Notifications;
 namespace Cockpit.Plugin.Schedules.Tests;
 
 // AC-1549, layer 2 on a held clock: reminders go off in the backend part, so no screen is in these tests at all, which
-// is criterion 2 (closed or hidden, it goes off the same). Amsterdam is UTC+2 on these October days.
+// is criterion 2 (closed or hidden, it goes off the same). Amsterdam is UTC+2 until 25 October 2026 and UTC+1 after it.
 public class ReminderServiceTests
 {
     // Criteria 1, 5 and 6: "every Monday 09:00" goes off at 09:00 as a toast with Done · Snooze and as a Discord message
