@@ -40,6 +40,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   with the cockpit-schedules reminder tools.
 - added: for plugin authors, `ICockpitHost.ShowToast` takes several `PluginToastAction` buttons and a sticky flag; the
   toast in the cockpit shows each as a button, the first one primary (Plugin SDK 3.15.0, host 0.100.0).
+- added: for plugin authors, `StructuredQuestionJson.Parse` reads an AskUserQuestion payload into the channel question
+  model, and `AnswerText` formats its answer consistently for the assistant (Plugin SDK 3.16.0, host 0.100.0).
 
 - added: the **Schedules** screen, a plugin button under Plugins (Ctrl+Shift+S by default, changeable in Options →
   Shortcuts, and pinnable to the sidebar). Its tabs show the scheduled tasks with search, filters and a detail panel;

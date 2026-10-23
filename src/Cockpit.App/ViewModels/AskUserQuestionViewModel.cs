@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
-using Cockpit.Infrastructure.Assistant;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.App.ViewModels;
 

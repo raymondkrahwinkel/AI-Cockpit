@@ -1,13 +1,17 @@
 using System.Text.Json;
-using Cockpit.Plugins.Abstractions.Channels;
 
-namespace Cockpit.Infrastructure.Assistant;
+namespace Cockpit.Plugins.Abstractions.Channels;
 
-// The `questions` array of an AskUserQuestion input (AC-715), the shape ask_structured_question writes too (AC-955):
-// one reading for the card in the app and for a chat channel (AC-1553), so the two never disagree on the options.
+/// <summary>
+/// Reads the questions in an AskUserQuestion payload, using the same interpretation for the app and assistant channels.
+/// </summary>
 public static class StructuredQuestionJson
 {
-    // Empty for any other input; a question without text is dropped rather than shown blank.
+    /// <summary>
+    /// Parses the payload's questions; malformed payloads and entries without question text are ignored.
+    /// </summary>
+    /// <param name="inputJson">The AskUserQuestion input JSON.</param>
+    /// <returns>The questions in their original order, or an empty list when the payload contains none.</returns>
     public static IReadOnlyList<AssistantChannelQuestion> Parse(string? inputJson)
     {
         if (string.IsNullOrWhiteSpace(inputJson))
@@ -33,8 +37,12 @@ public static class StructuredQuestionJson
         }
     }
 
-    // A broker question's answer, as the operator's next message: spelled out because the model never sees the card,
-    // and a bare label could otherwise read as a fresh instruction rather than an answer to this one.
+    /// <summary>
+    /// Formats a question and its selected answer as the operator's next message to the assistant.
+    /// </summary>
+    /// <param name="question">The question in the words it was asked.</param>
+    /// <param name="answer">The selected answer.</param>
+    /// <returns>A message that identifies both the question and its answer.</returns>
     public static string AnswerText(string question, string answer) => $"\"{question}\" → {answer}";
 
     private static AssistantChannelQuestion? _Question(JsonElement element)
