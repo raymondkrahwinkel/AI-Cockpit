@@ -1,13 +1,18 @@
+using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
-using Cockpit.TestSupport;
 
 namespace Cockpit.Journeys;
 
@@ -19,7 +24,7 @@ public sealed class DepotProjectsJourney
     [Fact]
     public async Task ADepotWithoutTheListProjectsTool_StillFillsTheMemoryPickerAndSharedProjectList()
     {
-        await using var depot = await LoopbackHttpServer.StartAsync(_HandleAsync);
+        await using var depot = await _FakeDepot.StartAsync();
         await using var cockpit = JourneyHost.Desktop();
         var url = depot.BaseUrl.TrimEnd('/');
         var connections = JsonSerializer.Serialize(new[] { new { Id = "journey", Name = "Journey", Url = url } });
@@ -49,15 +54,51 @@ public sealed class DepotProjectsJourney
 
     private const string Bearer = "journey-depot-projects-bearer";
 
-    private static async Task _HandleAsync(HttpContext context)
+    private sealed class _NoListProjectsTools
     {
-        if (context.Request.Headers.Authorization != $"Bearer {Bearer}")
+        [McpServerTool(Name = "ping"), Description("A harmless tool; list_projects is deliberately absent.")]
+        public static string Ping() => "pong";
+    }
+
+    private sealed class _FakeDepot(WebApplication app, string baseUrl) : IAsyncDisposable
+    {
+        public string BaseUrl { get; } = baseUrl;
+
+        public static async Task<_FakeDepot> StartAsync()
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return;
+            var builder = WebApplication.CreateSlimBuilder();
+            builder.Services.AddMcpServer().WithHttpTransport().WithTools<_NoListProjectsTools>();
+            builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
+            var app = builder.Build();
+            app.Use(async (context, next) =>
+            {
+                if (context.Request.Path.StartsWithSegments("/cockpit") || context.Request.Path.StartsWithSegments("/mcp"))
+                {
+                    if (context.Request.Headers.Authorization != $"Bearer {Bearer}")
+                    {
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        return;
+                    }
+                }
+
+                await next();
+            });
+            app.MapGet("/cockpit/projects", _WriteProjectsAsync);
+            app.MapMcp("/mcp");
+            await app.StartAsync();
+
+            var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
+                ?? throw new InvalidOperationException("The fake Depot did not expose its loopback address.");
+            return new _FakeDepot(app, addresses.Addresses.Single().TrimEnd('/'));
         }
 
-        if (context.Request.Path == "/cockpit/projects")
+        public async ValueTask DisposeAsync()
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
+
+        private static async Task _WriteProjectsAsync(HttpContext context)
         {
             context.Response.Headers.ETag = "\"journey-projects-v1\"";
             await context.Response.WriteAsJsonAsync(new
@@ -82,10 +123,6 @@ public sealed class DepotProjectsJourney
                     },
                 },
             });
-            return;
         }
-
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        await context.Response.WriteAsync("tool not found");
     }
 }
