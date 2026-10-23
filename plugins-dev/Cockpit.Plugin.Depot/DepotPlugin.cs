@@ -97,7 +97,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _HandleBrowser(host, DepotBrowserChannel.Upload, browser.UploadAsync);
 
         // AC-1574: publishing a local folder or file to a Depot project, one handler per action.
-        var publisher = new Publishing.DepotPublishService(new Browser.DepotMcp(host, () => settings.Connections), settings, host.Cache, _publishHttp);
+        var publisher = new Publishing.DepotPublishService(host, () => settings.Connections, settings, host.Cache, _publishHttp);
         _HandlePublish(host, DepotPublishChannel.List, publisher.ListAsync);
         _HandlePublish(host, DepotPublishChannel.Add, publisher.AddAsync);
         _HandlePublish(host, DepotPublishChannel.Remove, publisher.RemoveAsync);
