@@ -218,7 +218,7 @@ internal sealed class DepotProjectListingSource
                 project.Organization is null ? null : new(project.Organization.Slug, project.Organization.Name, project.Organization.Role),
                 project.Cockpit is null ? null : new(
                     project.Cockpit.State, project.Cockpit.Checksum, project.Cockpit.UpdatedAt,
-                    project.Cockpit.Definition)));
+                    project.Cockpit.Definition, project.Cockpit.CanWrite)));
         }
 
         return listings;
