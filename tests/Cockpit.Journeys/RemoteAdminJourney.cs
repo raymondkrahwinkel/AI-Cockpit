@@ -367,12 +367,14 @@ public sealed class RemoteAdminJourney
             var installToken = $"journey-install-{Guid.NewGuid():N}";
             var depotDocuments = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
             var depotArtifacts = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
+            var depotShares = new System.Collections.Concurrent.ConcurrentDictionary<Guid, string>();
             var depotCalls = new System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)>();
             var depotBranding = new FakeDepotBranding(
                 "White-label Depot", "brand-v1", Convert.FromBase64String(
                     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
                 customLogo: true);
-            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken, depotDocuments, depotArtifacts, depotCalls, depotBranding));
+            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(
+                installToken, depotDocuments, depotArtifacts, depotShares, depotCalls, depotBranding));
             using var depotBrowser = new HttpClient();
             var browserVisits = new List<Task<HttpResponseMessage>>();
             foreach (var remote in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
@@ -477,6 +479,24 @@ public sealed class RemoteAdminJourney
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, depotArtifacts["pub/b.png"]);
             Assert.Equal(34, depotDocuments.Keys.Count(path => path.StartsWith("pub/", StringComparison.Ordinal)));
             Assert.Contains(depotCalls, call => call.Tool == "write-batch" && call.Path == "34");
+
+            // AC-1638: the file browser creates and revokes the public link over /sync. The copied URL works anonymously
+            // until that real DELETE reaches Depot; removing only the browser row would leave this request alive.
+            var sharedArtifact = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-share",
+                new { connectionId = depotId, project = "acme/cockpit", path = "pub/b.png", mode = "public" });
+            var shareId = sharedArtifact["data"]?["shareId"]?.GetValue<string>()
+                ?? throw new InvalidOperationException($"Depot did not return a share id: {sharedArtifact}");
+            var copiedShareUrl = sharedArtifact["data"]?["url"]?.GetValue<string>()
+                ?? throw new InvalidOperationException($"Depot did not return a share link: {sharedArtifact}");
+            using var liveShare = await depotBrowser.GetAsync(copiedShareUrl);
+            var unsharedArtifact = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-unshare",
+                new { connectionId = depotId, project = "acme/cockpit", path = "pub/b.png", shareId });
+            using var deadShare = await depotBrowser.GetAsync(copiedShareUrl);
+            Assert.Equal((HttpStatusCode.OK, "ok", HttpStatusCode.NotFound),
+                (liveShare.StatusCode, unsharedArtifact["status"]?.GetValue<string>(), deadShare.StatusCode));
+
             var truncated = await setup.SendAsync<JsonObject>(
                 HttpMethod.Post, "api/v1/plugins/depot/channel/browser-read", new { connectionId = depotId, project = "acme/cockpit", path = "pub/bulk-32.md" });
             Assert.Equal("error", truncated["status"]?.GetValue<string>());
@@ -750,6 +770,7 @@ public sealed class RemoteAdminJourney
         string installToken,
         System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
         System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, string> shares,
         System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls,
         FakeDepotBranding branding)
     {
@@ -800,7 +821,18 @@ public sealed class RemoteAdminJourney
                 case { } sync when sync.StartsWith("/sync/acme/cockpit/", StringComparison.Ordinal)
                     && context.Request.Headers.Authorization.ToString() is var syncAuthorization
                     && (syncAuthorization == "Bearer journey-access" || syncAuthorization == $"Bearer {DepotBrowserToken}"):
-                    await _FakeDepotSyncAsync(context, documents, artifacts, calls);
+                    await _FakeDepotSyncAsync(context, documents, artifacts, shares, calls);
+                    return;
+                case { } shared when shared.StartsWith("/artifact/p/", StringComparison.Ordinal):
+                    if (Guid.TryParse(shared["/artifact/p/".Length..], out var shareId)
+                        && shares.TryGetValue(shareId, out var sharedPath)
+                        && artifacts.TryGetValue(sharedPath, out var sharedContent))
+                    {
+                        await context.Response.Body.WriteAsync(sharedContent);
+                        return;
+                    }
+
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
                 case "/mcp" when context.Request.Headers.Authorization == "Bearer journey-access":
                     await _FakeDepotMcpAsync(context);
@@ -883,6 +915,7 @@ public sealed class RemoteAdminJourney
         HttpContext context,
         System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
         System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, string> shares,
         System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls)
     {
         var operation = context.Request.Path.Value?["/sync/acme/cockpit/".Length..] ?? string.Empty;
@@ -905,6 +938,45 @@ public sealed class RemoteAdminJourney
                 entries = artifacts.Where(pair => prefix.Length == 0 || pair.Key == prefix || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
                     .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Convert.ToHexStringLower(SHA256.HashData(pair.Value)) }),
             });
+            return;
+        }
+
+        if (HttpMethods.IsGet(context.Request.Method) && operation == "shares")
+        {
+            await context.Response.WriteAsJsonAsync(new
+            {
+                shares = shares.Select(pair => new
+                {
+                    shareId = pair.Key,
+                    path = pair.Value,
+                    isPublic = true,
+                    url = $"{context.Request.Scheme}://{context.Request.Host}/artifact/p/{pair.Key}",
+                }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "shares")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var path = request.RootElement.GetProperty("path").GetString() ?? string.Empty;
+            var shareId = Guid.NewGuid();
+            shares[shareId] = path;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                shareId,
+                path,
+                isPublic = request.RootElement.GetProperty("mode").GetString() == "public",
+                url = $"{context.Request.Scheme}://{context.Request.Host}/artifact/p/{shareId}",
+            });
+            return;
+        }
+
+        if (HttpMethods.IsDelete(context.Request.Method) && operation.StartsWith("shares/", StringComparison.Ordinal))
+        {
+            var shareId = Guid.Parse(operation["shares/".Length..]);
+            shares.TryRemove(shareId, out _);
+            await context.Response.WriteAsJsonAsync(new { revoked = true });
             return;
         }
 
@@ -1022,8 +1094,6 @@ public sealed class RemoteAdminJourney
             },
             "tools/call" when root.GetProperty("params").GetProperty("name").GetString() == "ping" =>
                 new { content = new[] { new { type = "text", text = "{}" } } },
-            "tools/call" when root.GetProperty("params").GetProperty("name").GetString() == "list_shares" =>
-                new { content = new[] { new { type = "text", text = "{\"shares\":[]}" } } },
             _ => new { tools = Array.Empty<object>() },
         };
 

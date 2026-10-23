@@ -5,8 +5,8 @@ using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Depot.Browser;
 
-// AC-1568/AC-1637: file operations use Depot's sync API through the host's authorized handler. Shares remain on MCP
-// until AC-1638. Nothing here logs: a pre-signed download URL is a credential for its few minutes.
+// AC-1568/AC-1637/AC-1638: file and share operations use Depot's sync API through the host's authorized handler.
+// Nothing here logs: a pre-signed download URL or share URL is a credential.
 internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<DepotConnectionRegistration>> connections)
 {
     private const int PageSize = 200;
@@ -27,7 +27,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         });
 
     // Documents (every page of `list`) and artifacts in one flat list, a share marked on an artifact by path from a
-    // single `list_shares` for the whole project.
+    // single share listing for the whole project.
     public Task<DepotBrowserAnswer<DepotBrowserTree>> TreeAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
@@ -99,21 +99,18 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         {
             var project = DepotMcp.Required(request.Project, "project");
             var path = DepotMcp.Required(request.Path, "path");
-            if (request.Mode is not ("members" or "public"))
+            if (request.Mode is not { } mode || mode is not ("members" or "public"))
             {
                 throw new DepotFailure(DepotBrowserStatus.Error, "Choose Members only or Public.");
             }
 
             await _RequireEditorAsync(request, project, cancellationToken).ConfigureAwait(false);
-            using var document = DepotMcp.Parse(await _CallMcpAsync(
-                request,
-                "share_artifact",
-                new Dictionary<string, object?> { ["project"] = project, ["path"] = path, ["mode"] = request.Mode },
-                cancellationToken).ConfigureAwait(false));
+            using var document = await _PostAsync(
+                request.ConnectionId, $"{_SyncRoot(project)}/shares", new { path, mode }, cancellationToken).ConfigureAwait(false);
             var root = document.RootElement;
             if (DepotMcp.String(root, "shareId") is { Length: > 0 } id && DepotMcp.String(root, "url") is { Length: > 0 } url)
             {
-                return new DepotBrowserShare(id, url, root.TryGetProperty("isPublic", out var isPublic) ? isPublic.ValueKind == JsonValueKind.True : request.Mode == "public");
+                return new DepotBrowserShare(id, url, root.TryGetProperty("isPublic", out var isPublic) ? isPublic.ValueKind == JsonValueKind.True : mode == "public");
             }
 
             // The answer carried no link: the project's share list is where Depot says what exists.
@@ -128,11 +125,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             var project = DepotMcp.Required(request.Project, "project");
             var shareId = DepotMcp.Required(request.ShareId, "shareId");
             await _RequireEditorAsync(request, project, cancellationToken).ConfigureAwait(false);
-            await _CallMcpAsync(
-                request,
-                "unshare_artifact",
-                new Dictionary<string, object?> { ["project"] = project, ["shareId"] = shareId },
-                cancellationToken).ConfigureAwait(false);
+            await _DeleteAsync(
+                request.ConnectionId, $"{_SyncRoot(project)}/shares/{Uri.EscapeDataString(shareId)}", cancellationToken).ConfigureAwait(false);
             return true;
         });
 
@@ -167,20 +161,29 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
 
     private async Task<IReadOnlyList<_Share>> _SharesAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken)
     {
-        using var document = DepotMcp.Parse(await _CallMcpAsync(
-            request, "list_shares", new Dictionary<string, object?> { ["project"] = project }, cancellationToken).ConfigureAwait(false));
+        using var document = await _GetAsync(
+            request.ConnectionId, $"{_SyncRoot(project)}/shares", cancellationToken).ConfigureAwait(false);
         if (!document.RootElement.TryGetProperty("shares", out var shares) || shares.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        return [.. shares.EnumerateArray()
-            .Where(share => DepotMcp.String(share, "shareId") is not null && DepotMcp.String(share, "path") is not null && DepotMcp.String(share, "url") is not null)
-            .Select(share => new _Share(
-                DepotMcp.String(share, "shareId")!,
-                DepotMcp.String(share, "path")!,
-                DepotMcp.String(share, "url")!,
-                share.TryGetProperty("isPublic", out var isPublic) && isPublic.ValueKind == JsonValueKind.True))];
+        var result = new List<_Share>();
+        foreach (var share in shares.EnumerateArray())
+        {
+            if (DepotMcp.String(share, "shareId") is not { Length: > 0 } shareId
+                || DepotMcp.String(share, "path") is not { Length: > 0 } path
+                || DepotMcp.String(share, "url") is not { Length: > 0 } url)
+            {
+                continue;
+            }
+
+            result.Add(new _Share(
+                shareId, path, url,
+                share.TryGetProperty("isPublic", out var isPublic) && isPublic.ValueKind == JsonValueKind.True));
+        }
+
+        return result;
     }
 
     private Task _RequireEditorAsync(DepotBrowserRequest request, string project, CancellationToken cancellationToken) =>
@@ -194,10 +197,6 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
 
     private Task<IReadOnlyList<DepotProjectRow>> _ListProjectsAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _mcp.ListProjectsAsync(request.ConnectionId, cancellationToken);
-
-    private Task<string> _CallMcpAsync(
-        DepotBrowserRequest request, string tool, IReadOnlyDictionary<string, object?>? arguments, CancellationToken cancellationToken) =>
-        _mcp.CallAsync(request.ConnectionId, tool, arguments, cancellationToken);
 
     private DepotConnectionRegistration _Connection(string connectionId) =>
         _connections().FirstOrDefault(candidate => candidate.Id == connectionId)
@@ -216,6 +215,14 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         var connection = _Connection(connectionId);
         using var api = new DepotApi(_host, connection);
         return await _PostAsync(api, path, value, connection.Name, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task _DeleteAsync(string connectionId, string path, CancellationToken cancellationToken)
+    {
+        var connection = _Connection(connectionId);
+        using var api = new DepotApi(_host, connection);
+        using var response = await _DocumentAsync(
+            api.DeleteAsync(path, cancellationToken), connection.Name, cancellationToken).ConfigureAwait(false);
     }
 
     private static Task<JsonDocument> _PostAsync<T>(

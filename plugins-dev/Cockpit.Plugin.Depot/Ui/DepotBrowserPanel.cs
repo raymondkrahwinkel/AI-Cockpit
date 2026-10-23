@@ -345,11 +345,17 @@ internal sealed class DepotBrowserPanel : UserControl
             block.Children.Add(_Faint("Anyone with this URL can open the file, no account needed."));
         }
 
-        block.Children.Add(new TextBox { Text = node.ShareUrl, IsReadOnly = true });
+        if (node.ShareUrl is not { Length: > 0 } shareUrl)
+        {
+            block.Children.Add(_Faint("Depot did not return the share link."));
+            return block;
+        }
+
+        block.Children.Add(new TextBox { Text = shareUrl, IsReadOnly = true });
         var copy = new Button { Content = "Copy" };
-        copy.Click += async (_, _) => await _host.SetClipboardTextAsync(node.ShareUrl!).ConfigureAwait(true);
+        copy.Click += async (_, _) => await _host.SetClipboardTextAsync(shareUrl).ConfigureAwait(true);
         var openLink = new Button { Content = "Open link" };
-        openLink.Click += async (_, _) => await _Launch(new Uri(node.ShareUrl!)).ConfigureAwait(true);
+        openLink.Click += async (_, _) => await _Launch(new Uri(shareUrl)).ConfigureAwait(true);
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { copy, openLink } };
         if (_loaded.CanShare)
         {
@@ -373,7 +379,12 @@ internal sealed class DepotBrowserPanel : UserControl
 
     private async Task ShareAsync(DepotBrowserNode node, bool isPublic, bool copyLink)
     {
-        var answer = await _model!.ShareAsync(_project!, node, isPublic, copyLink).ConfigureAwait(true);
+        if (_model is not { } model || _project is not { } project)
+        {
+            return;
+        }
+
+        var answer = await model.ShareAsync(project, node, isPublic, copyLink).ConfigureAwait(true);
         if (answer is null)
         {
             // Declined: put the picker back where the file actually is.
@@ -394,7 +405,9 @@ internal sealed class DepotBrowserPanel : UserControl
 
     private async Task UnshareAsync(DepotBrowserNode node)
     {
-        if (await _model!.UnshareAsync(_project!, node).ConfigureAwait(true) is { } answer && _Accepted(answer))
+        if (_model is { } model && _project is { } project
+            && await model.UnshareAsync(project, node).ConfigureAwait(true) is { } answer
+            && _Accepted(answer))
         {
             await LoadTreeAsync(node.Path).ConfigureAwait(true);
         }
