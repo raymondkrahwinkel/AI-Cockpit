@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
@@ -62,7 +63,7 @@ internal sealed class DepotBranding
             }
             else if (payload.Assets is { } assets
                      && (assets.LogoLight ?? assets.LogoDark ?? assets.Icon) is { Length: > 0 } assetUrl
-                     && _IsSameOrigin(connection.Url, assetUrl, out var assetUri))
+                     && _IsSameOrigin(connection.Url, assetUrl, out Uri? assetUri))
             {
                 using var asset = await _assets.GetAsync(assetUri, cancellationToken).ConfigureAwait(false);
                 if (asset.IsSuccessStatusCode)
@@ -95,9 +96,10 @@ internal sealed class DepotBranding
         }
     }
 
-    private static bool _IsSameOrigin(string baseUrl, string assetUrl, out Uri asset)
+    private static bool _IsSameOrigin(
+        string baseUrl, string assetUrl, [NotNullWhen(true)] out Uri? asset)
     {
-        asset = null!;
+        asset = null;
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var origin)
             || !Uri.TryCreate(assetUrl, UriKind.Absolute, out var candidate)
             || !string.Equals(origin.Scheme, candidate.Scheme, StringComparison.OrdinalIgnoreCase)

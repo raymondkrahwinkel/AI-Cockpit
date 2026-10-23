@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -354,8 +355,9 @@ internal sealed class DepotConnectionRowControl : UserControl
                         bitmap = new Bitmap(new MemoryStream(raster));
                     }
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
+                    Trace.TraceWarning($"Depot: decoding branding for connection '{_id}' failed: {exception}");
                     // An unsupported asset format costs the custom picture, never the connection row.
                 }
             }
@@ -368,8 +370,9 @@ internal sealed class DepotConnectionRowControl : UserControl
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Trace.TraceWarning($"Depot: loading branding for connection '{_id}' failed: {exception}");
             // Branding is decoration; auth and settings remain usable when an older backend cannot answer it.
         }
     }
