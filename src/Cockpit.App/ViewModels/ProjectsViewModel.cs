@@ -390,7 +390,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SharedProjectGroups.Clear();
         foreach (var group in _snapshot.SharedProjectGroups)
         {
-            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error));
+            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error, group.SourceLogo));
         }
 
         OnPropertyChanged(nameof(HasSharedProjects));

@@ -368,7 +368,11 @@ public sealed class RemoteAdminJourney
             var depotDocuments = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
             var depotArtifacts = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
             var depotCalls = new System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)>();
-            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken, depotDocuments, depotArtifacts, depotCalls));
+            var depotBranding = new FakeDepotBranding(
+                "White-label Depot", "brand-v1", Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+                customLogo: true);
+            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken, depotDocuments, depotArtifacts, depotCalls, depotBranding));
             using var depotBrowser = new HttpClient();
             var browserVisits = new List<Task<HttpResponseMessage>>();
             foreach (var remote in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
@@ -383,6 +387,7 @@ public sealed class RemoteAdminJourney
             var depotUrl = depot.BaseUrl.TrimEnd('/');
             var depotHasSettings = HeadlessAvalonia.Run(() => admin.Plugins.Single(plugin => plugin.Id == "depot").HasSettings);
             var (browser, signedIn, reused, reopenedDepot) = ("", "", "", "");
+            byte[] customLogo = [];
             await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
                 var work = _DepotRows(window)[0];
@@ -392,18 +397,44 @@ public sealed class RemoteAdminJourney
                 _DepotStatus(work).Text = "";
                 _Box(work, DepotTokenBox).Text = installToken;
                 signedIn = await _PressDepotAsync(work, "Sign in with token");
+                await Until.Holds(_DepotBrandName(work), () => _DepotBrandName(work).Text == "White-label Depot");
+                customLogo = _DepotLogoHash(work);
                 _Click(window, "+ Add connection");
                 var spare = _DepotRows(window)[1];
                 _FillDepotRow(spare, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
                 reused = await _PressDepotAsync(spare, "Sign in with token");
                 _Click(spare, "Remove connection");
             });
+            depotBranding.Name = "White-label Depot";
+            depotBranding.Fingerprint = "brand-v2";
+            depotBranding.Logo = Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+            byte[] changedLogo = [];
             await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
                 var rows = _DepotRows(window);
                 var status = _DepotStatus(rows[0]);
                 await Until.Holds(status, () => status.Text == "Signed in.");
+                var logo = _DepotBrandLogo(rows[0]);
+                await Until.Holds(logo, () => logo.Source is Avalonia.Media.Imaging.Bitmap);
+                await Until.Holds(logo, () => !_DepotLogoHash(rows[0]).SequenceEqual(customLogo));
+                changedLogo = _DepotLogoHash(rows[0]);
                 reopenedDepot = $"{rows.Count} {_Box(rows[0], "Name (e.g. Work, Personal)").Text}: {status.Text}";
+            });
+            depotBranding.Name = "Depot";
+            depotBranding.Fingerprint = "default";
+            depotBranding.Logo = Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+            depotBranding.CustomLogo = false;
+            byte[] defaultLogo = [];
+            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
+            {
+                var work = _DepotRows(window)[0];
+                await Until.Holds(_DepotBrandName(work), () => _DepotBrandName(work).Text == "Depot");
+                var logo = _DepotBrandLogo(work);
+                await Until.Holds(logo, () => logo.Source is Avalonia.Media.Imaging.Bitmap);
+                await Until.Holds(logo, () => !_DepotLogoHash(work).SequenceEqual(changedLogo));
+                defaultLogo = _DepotLogoHash(work);
             });
             var serverState = "";
             await Until.ReloadHolds(
@@ -677,6 +708,8 @@ public sealed class RemoteAdminJourney
             Assert.Equal(
                 ("Signed in.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
                 (browser, signedIn, reused, reopenedDepot));
+            Assert.False(customLogo.SequenceEqual(changedLogo));
+            Assert.True(customLogo.SequenceEqual(defaultLogo));
             Assert.Equal([HttpStatusCode.OK], (await Task.WhenAll(browserVisits)).Select(visit => visit.StatusCode));
             Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
@@ -707,7 +740,8 @@ public sealed class RemoteAdminJourney
         string installToken,
         System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
         System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
-        System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls)
+        System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls,
+        FakeDepotBranding branding)
     {
         var redeemed = 0;
         var challenge = "";
@@ -716,6 +750,32 @@ public sealed class RemoteAdminJourney
             var origin = $"{context.Request.Scheme}://{context.Request.Host}";
             switch (context.Request.Path.Value)
             {
+                case "/cockpit/branding" when
+                    context.Request.Headers.Authorization.ToString() is var authorization
+                    && (authorization == "Bearer journey-access" || authorization == $"Bearer {DepotBrowserToken}"):
+                    context.Response.Headers.ETag = $"\"{branding.Fingerprint}\"";
+                    if (context.Request.Headers.IfNoneMatch == $"\"{branding.Fingerprint}\"")
+                    {
+                        context.Response.StatusCode = StatusCodes.Status304NotModified;
+                        return;
+                    }
+
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        branding.Name,
+                        branding.Fingerprint,
+                        assets = new
+                        {
+                            icon = $"{origin}/branding/{branding.Fingerprint}/icon",
+                            logoLight = branding.CustomLogo ? $"{origin}/branding/{branding.Fingerprint}/logo-light" : null,
+                            logoDark = (string?)null,
+                        },
+                    });
+                    return;
+                case { } asset when asset.StartsWith($"/branding/{branding.Fingerprint}/", StringComparison.Ordinal):
+                    context.Response.ContentType = "image/png";
+                    await context.Response.Body.WriteAsync(branding.Logo);
+                    return;
                 case "/mcp" when context.Request.Headers.Authorization == "Bearer journey-access":
                     await _FakeDepotMcpAsync(context, documents, artifacts, calls);
                     return;
@@ -780,6 +840,17 @@ public sealed class RemoteAdminJourney
                     return;
             }
         };
+    }
+
+    private sealed class FakeDepotBranding(string name, string fingerprint, byte[] logo, bool customLogo)
+    {
+        public string Name { get; set; } = name;
+
+        public string Fingerprint { get; set; } = fingerprint;
+
+        public byte[] Logo { get; set; } = logo;
+
+        public bool CustomLogo { get; set; } = customLogo;
     }
 
     // Just enough of Depot's MCP (one JSON answer per POST) for the file browser: one Editor project, `write` keeping the
@@ -956,6 +1027,21 @@ public sealed class RemoteAdminJourney
     private static TextBlock _DepotStatus(Control row) =>
         row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Button>().Any(button => Equals(button.Content, "Sign in")))
             .Children.OfType<TextBlock>().Single();
+
+    private static Grid _DepotBrand(Control row) =>
+        row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Image>().Any());
+
+    private static TextBlock _DepotBrandName(Control row) => _DepotBrand(row).Children.OfType<TextBlock>().Single();
+
+    private static Image _DepotBrandLogo(Control row) => _DepotBrand(row).Children.OfType<Image>().Single();
+
+    private static byte[] _DepotLogoHash(Control row)
+    {
+        using var encoded = new MemoryStream();
+        Assert.IsType<Avalonia.Media.Imaging.Bitmap>(_DepotBrandLogo(row).Source)
+            .Save(encoded, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        return SHA256.HashData(encoded.ToArray());
+    }
 
     private const string DepotBrowserCode = "journey-browser-code";
 

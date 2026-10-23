@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+    <Compile Include="..\..\..\src\_shared\SvgRasterizer.cs" Link="SvgRasterizer.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +40,12 @@
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
       <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Svg.Skia" Version="5.1.1">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="SkiaSharp" Version="3.119.4">
+      <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
   </ItemGroup>
 

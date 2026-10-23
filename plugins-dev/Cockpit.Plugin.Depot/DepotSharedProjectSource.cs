@@ -14,6 +14,9 @@ internal sealed class DepotSharedProjectSource(
     : ISharedProjectSource
 {
     private readonly DepotProjectAddressing _addressing = DepotProjectAddressing.For(host, connection, scheme, httpClient);
+    private readonly DepotBranding _branding = DepotBranding.For(host);
+    private readonly bool _loadBranding = httpClient is null;
+    private DepotBrandingSnapshot _brand = DepotBrandingSnapshot.Default;
     private readonly DepotProjectListingSource _projects = httpClient is null
         ? DepotProjectListingSource.For(host, connection)
         : new DepotProjectListingSource(host, connection, httpClient);
@@ -60,10 +63,16 @@ internal sealed class DepotSharedProjectSource(
         }
     }
 
-    public string SourceName => $"Depot — {connection.Name}";
+    public string SourceName => $"{_brand.Name} — {connection.Name}";
+
+    public byte[]? SourceLogo => _brand.Logo;
 
     public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
     {
+        if (_loadBranding)
+        {
+            _brand = await _branding.GetAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
         var listing = await _projects.ListAsync(cancellationToken).ConfigureAwait(false);
         if (listing.Outcome != DepotProjectListingOutcome.Success)
         {

@@ -15,6 +15,10 @@ internal static class DepotChannel
     // Event, payload ignored: the backend part asks the UI part to open this plugin's settings.
     public const string OpenSettings = "open-settings";
 
+    // Payload: DepotBrandingRequest. Reads the authenticated instance branding in the backend, where DepotApi and
+    // the host-owned token live. Answers a DepotBrandingAnswer; logo bytes are null for the standard icon fallback.
+    public const string Branding = "branding";
+
     // AC-1511. Payload: DepotInstallTokenRequest. Adds the connection, or updates the one with its id or URL, through
     // the same write SaveConnections does, then signs it in by redeeming the installation token at Depot — no
     // browser, which a server does not have. A token Depot refuses changes nothing. Answers a DepotInstallTokenAnswer.
@@ -39,6 +43,10 @@ internal sealed record DepotConnectionPayload(string Id, string Name, string Url
 internal sealed record DepotSaveConnectionsRequest(IReadOnlyList<DepotConnectionPayload> Connections);
 
 internal sealed record DepotSaveConnectionsAnswer(bool Success);
+
+internal sealed record DepotBrandingRequest(string ConnectionId);
+
+internal sealed record DepotBrandingAnswer(string Name, byte[]? Logo);
 
 // The token is a credential: the generated ToString would print it into any log line or exception that names the
 // request, so it is masked here.
