@@ -546,7 +546,10 @@
          carrier holds something other than the blob the host last read. Optional and init-only, so a carrier without it
          keeps working; a positional parameter would have broken every caller. A plugin that sets it sets minHostVersion
          0.99.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.17.0</Version>
+    <!-- 3.18.0 (AC-1639): ISharedProjectSource.Changed lets a source nudge the host for one id or all its bound projects.
+         Its default no-op accessors keep existing sources source- and binary-compatible. Additive, so the major and
+         abstractionsVersion stay 3. -->
+    <Version>3.18.0</Version>
     <AssemblyVersion>1.16.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

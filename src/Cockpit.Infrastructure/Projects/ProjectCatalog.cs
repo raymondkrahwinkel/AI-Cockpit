@@ -48,13 +48,21 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
 
         // AC-762: a source that registers after the first read (plugin phase 2 runs after the window's first load)
         // gets its own read instead of leaving every card on it stuck until the operator opens Manage projects.
-        _sharedSources.Registered += source => { _ = _RefreshAfterRegistrationAsync(source); };
+        _sharedSources.Registered += source =>
+        {
+            _depotSync?.Watch(source);
+            _ = _RefreshAfterRegistrationAsync(source);
+        };
 
         // AC-894: the watcher asks which projects to poll every tick and reports each check back here.
         if (_depotSync is not null)
         {
             _depotSync.BoundProjects = DepotBoundProjectsAsync;
             _depotSync.OnChecked = SetRemoteChangeStateAsync;
+            foreach (var source in _sharedSources.Sources)
+            {
+                _depotSync.Watch(source);
+            }
         }
     }
 

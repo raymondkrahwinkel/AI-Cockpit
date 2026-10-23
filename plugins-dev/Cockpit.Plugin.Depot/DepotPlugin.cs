@@ -136,9 +136,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
         // AC-245: one shared-project source per connection, so the Projects workspace can list what this connection
         // shares beside the local projects. Same zero-connections-means-nothing rule as the memory sources above.
-        foreach (var source in DepotMemorySource.BuildSharedProjectSources(settings.Connections, host))
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
-            host.AddSharedProjectSource(source);
+            host.AddSharedProjectSource(new DepotSharedProjectSource(pair.Connection, pair.Registration.Scheme, host, _events));
         }
 
         // AC-1508: each connection's account space is a place a cockpit backup can be kept.
@@ -168,7 +168,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _settings ??= settings;
         _host ??= host;
 
-        var firstStart = new FirstStart.DepotFirstStart(host, settings, connection => _pending = connection, () => _initializedHost);
+        var firstStart = new FirstStart.DepotFirstStart(
+            host, settings, connection => _pending = connection, () => _initializedHost, () => _events);
         _handlers.Add(host.Channel.Handle(DepotChannel.FirstStartSignIn, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<DepotFirstStartSignInRequest>(DepotChannel.Json)
@@ -222,7 +223,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     // read fresh (DepotSettings.Connections' own doc) before anything writes it, so `before` is genuinely the
     // pre-save state the diff below needs — writing it from the UI first, ahead of this call, would have this
     // read see its own "after" and turn the whole diff into a no-op.
-    private static async Task<JsonElement> _SaveConnectionsAsync(
+    private async Task<JsonElement> _SaveConnectionsAsync(
         ICockpitHost host, DepotSettings settings, JsonElement payload, CancellationToken cancellationToken)
     {
         var request = payload.Deserialize<DepotSaveConnectionsRequest>(DepotChannel.Json)
@@ -232,14 +233,14 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url))],
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, _events).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
 
     // AC-1511: a connection signed in with an installation token instead of a browser — the only way on a server.
     // The connection is written first, since the host finds the server to redeem at under its registered name; a
     // token Depot refuses puts the list back as it was, so it never leaves a connection that cannot sign in.
-    private static async Task<JsonElement> _ConnectWithInstallTokenAsync(
+    private async Task<JsonElement> _ConnectWithInstallTokenAsync(
         ICockpitHost host, DepotSettings settings, JsonElement payload, CancellationToken cancellationToken)
     {
         var request = payload.Deserialize<DepotInstallTokenRequest>(DepotChannel.Json)
@@ -268,7 +269,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, _events).ConfigureAwait(false);
 
         var outcome = await host.SignInMcpServerWithGrantAsync(
             connection.McpServerName,
@@ -280,7 +281,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return _InstallTokenAnswer(true, "Signed in.");
         }
 
-        await WriteConnectionsAsync(host, settings, before, cancellationToken).ConfigureAwait(false);
+        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events).ConfigureAwait(false);
         return _InstallTokenAnswer(false, outcome switch
         {
             PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
@@ -294,7 +295,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
     // The write both channel actions share: storage first, then the registries diffed against what was there.
     internal static async Task WriteConnectionsAsync(
-        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after, CancellationToken cancellationToken)
+        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after,
+        CancellationToken cancellationToken, Events.DepotEvents? events = null)
     {
         var before = settings.Connections;
 
@@ -311,7 +313,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             .ToList();
 
         _SyncMemorySources(host, before, after);
-        _SyncSharedProjectSources(host, before, after);
+        _SyncSharedProjectSources(host, before, after, events);
         _SyncBackupTargets(host, settings, before, after);
 
         foreach (var orphanedName in orphanedNames)
@@ -395,7 +397,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     // sources instead. A separate pass rather than folded into that method: the two registries are independent
     // (ISharedProjectSourceRegistry, not IProjectMemorySourceRegistry) and keeping the diff loops apart means a
     // future change to one shape never has to reason about the other's equality rules.
-    private static void _SyncSharedProjectSources(ICockpitHost host, IReadOnlyList<DepotConnectionRegistration> before, IReadOnlyList<DepotConnectionRegistration> after)
+    private static void _SyncSharedProjectSources(
+        ICockpitHost host,
+        IReadOnlyList<DepotConnectionRegistration> before,
+        IReadOnlyList<DepotConnectionRegistration> after,
+        Events.DepotEvents? events)
     {
         // Diffed by (Key, Connection) rather than by Key alone: DepotSharedProjectSource is a plain class with no
         // value equality of its own, and the first connection's Key is always the bare "depot" scheme regardless of
@@ -433,7 +439,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 continue;
             }
 
-            host.AddSharedProjectSource(new DepotSharedProjectSource(entry.Connection, entry.Key, host));
+            host.AddSharedProjectSource(events is null
+                ? new DepotSharedProjectSource(entry.Connection, entry.Key, host)
+                : new DepotSharedProjectSource(entry.Connection, entry.Key, host, events));
         }
     }
 

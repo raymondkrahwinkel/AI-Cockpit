@@ -5,15 +5,17 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
-using Cockpit.Core.Projects;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions.Projects;
 
@@ -25,7 +27,7 @@ namespace Cockpit.Journeys;
 public sealed class DepotProjectsJourney
 {
     [Fact]
-    public async Task ProjectDiscoveryAndChecksumGuard_WorkWithoutDepotMcpFileTools()
+    public async Task ProjectDiscoveryChecksumGuardAndDefinitionEventNudge_WorkWithoutDepotMcpFileTools()
     {
         await using var depot = await _FakeDepot.StartAsync();
         await using var cockpit = JourneyHost.Desktop();
@@ -77,6 +79,20 @@ public sealed class DepotProjectsJourney
 
         Assert.Equal("Changed by a second client", conflictScreen?.Name);
         Assert.Equal("Changed by a second client", depot.DefinitionName);
+
+        const string localProjectId = "bound-depot-project";
+        await cockpit.Services.GetRequiredService<IProjectEditor>().AddNewProjectAsync(new Project(localProjectId, "Bound Depot project")
+        {
+            MemoryRef = "depot:acme/cockpit",
+            SharedSourceName = shared.SourceName,
+        });
+        await cockpit.Services.GetRequiredService<DepotSyncWatcher>().CheckNowAsync(localProjectId);
+
+        await depot.ChangeDefinitionAsync();
+        await Until.CollectionHolds(cockpit.Cockpit.Projects.RecentCards, () =>
+            cockpit.Cockpit.Projects.RecentCards.SingleOrDefault(card => card.Project.Id == localProjectId)?.HasRemoteChanges == true);
+
+        Assert.True(cockpit.Cockpit.Projects.RecentCards.Single(card => card.Project.Id == localProjectId).HasRemoteChanges);
     }
 
     private static Task<ProjectDialogViewModel> _EditorAsync(
@@ -110,6 +126,8 @@ public sealed class DepotProjectsJourney
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddMcpServer().WithHttpTransport().WithTools<_NoListProjectsTools>();
+            builder.Services.AddSignalR();
+            builder.Services.AddSingleton<_ProjectEvents>();
             builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
             var app = builder.Build();
             var state = new _DefinitionState();
@@ -128,12 +146,24 @@ public sealed class DepotProjectsJourney
             });
             app.MapGet("/cockpit/projects", state.WriteProjectsAsync);
             app.MapPut("/cockpit/projects/{org}/{slug}/definition", state.WriteDefinitionAsync);
+            app.MapGet("/cockpit/me", () => new { userId = "journey-user" });
+            app.MapHub<_ProjectsHub>("/hubs/cockpit");
             app.MapMcp("/mcp");
             await app.StartAsync();
 
             var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
                 ?? throw new InvalidOperationException("The fake Depot did not expose its loopback address.");
             return new _FakeDepot(app, addresses.Addresses.Single().TrimEnd('/'), state);
+        }
+
+        public async Task ChangeDefinitionAsync()
+        {
+            var events = app.Services.GetRequiredService<_ProjectEvents>();
+            await events.Subscribed.Task.WaitAsync(Until.Ceiling);
+            state.ChangeFromSecondClient("Changed by a Depot event");
+            await app.Services.GetRequiredService<IHubContext<_ProjectsHub>>().Clients.Group("projects").SendAsync(
+                "event",
+                new { topic = "projects", kind = "definitionChanged", address = "acme/cockpit", version = 1L });
         }
 
         public async ValueTask DisposeAsync()
@@ -201,6 +231,20 @@ public sealed class DepotProjectsJourney
             _version++;
             context.Response.Headers.ETag = $"\"{Checksum}\"";
             await context.Response.WriteAsJsonAsync(new { checksum = Checksum });
+        }
+    }
+
+    private sealed class _ProjectEvents
+    {
+        public TaskCompletionSource Subscribed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class _ProjectsHub(_ProjectEvents events) : Hub
+    {
+        public async Task Subscribe(string topic)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, topic);
+            events.Subscribed.TrySetResult();
         }
     }
 }

@@ -18,7 +18,47 @@ internal sealed class DepotSharedProjectSource(
         ? DepotProjectListingSource.For(host, connection)
         : new DepotProjectListingSource(host, connection, httpClient);
 
+    internal DepotSharedProjectSource(
+        DepotConnectionRegistration connection,
+        string scheme,
+        ICockpitHost host,
+        Events.DepotEvents events,
+        HttpClient? httpClient = null)
+        : this(connection, scheme, host, httpClient)
+    {
+        _ = _SubscribeAsync(events);
+    }
+
+    public event Action<string?>? Changed;
+
     public string Key => scheme;
+
+    private async Task _SubscribeAsync(Events.DepotEvents events)
+    {
+        try
+        {
+            await events.SubscribeAsync(connection.Id, "projects", _OnEvent, () => Changed?.Invoke(null), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot")
+                .LogWarning(exception, "Subscribing to project changes for {Connection} failed.", connection.Name);
+        }
+    }
+
+    private void _OnEvent(Events.DepotEvent cockpitEvent)
+    {
+        if (string.Equals(cockpitEvent.Kind, "definitionChanged", StringComparison.Ordinal)
+            && cockpitEvent.Address is { Length: > 0 } address)
+        {
+            Changed?.Invoke($"{scheme}:{address}");
+        }
+        else if (string.Equals(cockpitEvent.Kind, "accessChanged", StringComparison.Ordinal))
+        {
+            Changed?.Invoke(null);
+        }
+    }
 
     public string SourceName => $"Depot — {connection.Name}";
 

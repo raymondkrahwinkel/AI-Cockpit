@@ -16,7 +16,8 @@ internal sealed class DepotFirstStart(
     ICockpitHost host,
     DepotSettings settings,
     Action<DepotConnectionRegistration?> setPending,
-    Func<ICockpitHost?> initializedHost)
+    Func<ICockpitHost?> initializedHost,
+    Func<Events.DepotEvents?> events)
 {
     public async Task<DepotFirstStartAnswer> SignInAsync(DepotFirstStartSignInRequest request, CancellationToken cancellationToken)
     {
@@ -83,7 +84,7 @@ internal sealed class DepotFirstStart(
     {
         if (initializedHost() is { } initialized)
         {
-            await DepotPlugin.WriteConnectionsAsync(initialized, settings, after, cancellationToken).ConfigureAwait(false);
+            await DepotPlugin.WriteConnectionsAsync(initialized, settings, after, cancellationToken, events()).ConfigureAwait(false);
             return;
         }
 
