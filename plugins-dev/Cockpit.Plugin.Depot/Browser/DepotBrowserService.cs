@@ -72,7 +72,6 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             using var document = await _PostAsync(
                 request.ConnectionId, $"{_SyncRoot(DepotMcp.Required(request.Project, "project"))}/read", new[] { path }, cancellationToken)
                 .ConfigureAwait(false);
-            _RejectTruncated(document.RootElement);
             var file = _Array(document.RootElement, "files").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
             return file.ValueKind == JsonValueKind.Object
                 ? DepotMcp.String(file, "content") ?? string.Empty
