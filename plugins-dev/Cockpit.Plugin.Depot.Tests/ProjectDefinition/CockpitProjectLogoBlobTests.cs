@@ -12,8 +12,10 @@ public class CockpitProjectLogoBlobTests
     private static readonly DepotConnectionRegistration _Connection =
         new("synvolution", "Synvolution", "https://depot.example.com");
 
-    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    private sealed class _StubHandler(params HttpResponseMessage[] responses) : HttpMessageHandler
     {
+        private readonly Queue<HttpResponseMessage> _responses = new(responses);
+
         public HttpRequestMessage? LastRequest { get; private set; }
         public byte[]? LastRequestBody { get; private set; }
         public List<Uri> Requests { get; } = [];
@@ -23,7 +25,7 @@ public class CockpitProjectLogoBlobTests
             LastRequest = request;
             LastRequestBody = request.Content is null ? null : await request.Content.ReadAsByteArrayAsync(cancellationToken);
             Requests.Add(request.RequestUri!);
-            return respond(request);
+            return _responses.Dequeue();
         }
     }
 
@@ -31,9 +33,9 @@ public class CockpitProjectLogoBlobTests
     public async Task UploadAsync_Success_PostsForAnUploadThenPutsTheBytesToTheReturnedUrl()
     {
         var host = Substitute.For<ICockpitHost>();
-        var handler = new _StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/uploads", StringComparison.Ordinal)
-            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"uploads":[{"uploadUrl":"https://depot.example.com/blob/upload/abc"}]}""") }
-            : new HttpResponseMessage(HttpStatusCode.Created));
+        var handler = new _StubHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"uploads":[{"uploadUrl":"https://depot.example.com/blob/upload/abc"}]}""") },
+            new HttpResponseMessage(HttpStatusCode.Created));
         using var httpClient = new HttpClient(handler);
         var bytes = new byte[] { 1, 2, 3 };
 
@@ -51,9 +53,9 @@ public class CockpitProjectLogoBlobTests
     public async Task UploadAsync_PutReturnsAnErrorStatus_ReportsFailed()
     {
         var host = Substitute.For<ICockpitHost>();
-        var handler = new _StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/uploads", StringComparison.Ordinal)
-            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"uploads":[{"uploadUrl":"https://depot.example.com/blob/upload/abc"}]}""") }
-            : new HttpResponseMessage(HttpStatusCode.Forbidden));
+        var handler = new _StubHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"uploads":[{"uploadUrl":"https://depot.example.com/blob/upload/abc"}]}""") },
+            new HttpResponseMessage(HttpStatusCode.Forbidden));
         using var httpClient = new HttpClient(handler);
 
         var result = await CockpitProjectLogoBlob.UploadAsync(host, _Connection, "acme/cockpit", [1], httpClient);
@@ -67,9 +69,9 @@ public class CockpitProjectLogoBlobTests
     {
         var host = Substitute.For<ICockpitHost>();
         var expectedBytes = new byte[] { 137, 80, 78, 71 };
-        var handler = new _StubHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/downloads", StringComparison.Ordinal)
-            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"files":[{"downloadUrl":"https://depot.example.com/blob/download/xyz"}]}""") }
-            : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(expectedBytes) });
+        var handler = new _StubHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"files":[{"downloadUrl":"https://depot.example.com/blob/download/xyz"}]}""") },
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(expectedBytes) });
         using var httpClient = new HttpClient(handler);
 
         var result = await CockpitProjectLogoBlob.DownloadAsync(host, _Connection, "acme/cockpit", httpClient);
@@ -87,7 +89,7 @@ public class CockpitProjectLogoBlobTests
         // AC-763: a retried save (after an earlier attempt lost the checksum race) must not turn "already deleted"
         // into an error — see DeleteAsync's own remarks on idempotency.
         var host = Substitute.For<ICockpitHost>();
-        var handler = new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+        var handler = new _StubHandler(new HttpResponseMessage(HttpStatusCode.NotFound));
         using var httpClient = new HttpClient(handler);
 
         var result = await CockpitProjectLogoBlob.DeleteAsync(host, _Connection, "acme/cockpit", httpClient);

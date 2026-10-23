@@ -116,9 +116,8 @@ public static class CockpitProjectLogoBlob
         }
     }
 
-    // AC-763. Soft-deletes via Depot's own `delete` tool — no pre-signed URL/HTTP leg, unlike Upload/Download.
-    // Idempotent on purpose (a retry must not turn "already gone" into an error): the same `[NotFound]` prefix
-    // `DepotSharedProjectSource.PublishAsync` already reads tells that apart from a real failure.
+    // AC-763. Soft-deletes through Depot's REST route — no pre-signed URL/HTTP leg, unlike Upload/Download.
+    // Idempotent on purpose: REST's 404 means the artifact is already gone.
     public static async Task<CockpitProjectLogoDeleteResult> DeleteAsync(
         ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress,
         HttpClient? httpClient = null, CancellationToken cancellationToken = default)

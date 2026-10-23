@@ -34,7 +34,7 @@ public class DepotMemorySourceTests
                 : Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(content) });
     }
 
-    private sealed class _DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    private sealed class _AppendHandler : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
         public string? LastBody { get; private set; }
@@ -43,7 +43,12 @@ public class DepotMemorySourceTests
         {
             LastRequest = request;
             LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            return respond(request);
+            return request.RequestUri!.AbsolutePath == "/cockpit/projects"
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","kind":"Project"}]}"""),
+                }
+                : new HttpResponseMessage(HttpStatusCode.Unauthorized);
         }
     }
 
@@ -147,12 +152,7 @@ public class DepotMemorySourceTests
         // offer SignInAsync and retry with the same note.
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
-        var handler = new _DelegateHandler(request => request.RequestUri!.AbsolutePath == "/cockpit/projects"
-            ? new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","kind":"Project"}]}"""),
-            }
-            : new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        var handler = new _AppendHandler();
         host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => handler);
         var connection = Connection("c1", "Acme");
         var registration = DepotMemorySource.BuildRegistrationPairs([connection], host).Single().Registration;
