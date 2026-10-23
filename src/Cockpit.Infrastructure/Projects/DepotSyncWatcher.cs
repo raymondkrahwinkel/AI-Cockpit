@@ -175,11 +175,6 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     {
         try
         {
-            if (BoundProjects is not null)
-            {
-                return;
-            }
-
             if (_disposed)
             {
                 return;
