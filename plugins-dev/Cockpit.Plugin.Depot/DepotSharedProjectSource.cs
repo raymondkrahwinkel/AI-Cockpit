@@ -184,7 +184,7 @@ internal sealed class DepotSharedProjectSource(
         // conflict snapshot (_ToBinding's other caller), which never shows a logo and would only pay for one.
         if (definition.Logo is { Length: > 0 })
         {
-            var download = await CockpitProjectLogoBlob.DownloadAsync(host, connection.McpServerName, slug, httpClient, cancellationToken)
+            var download = await CockpitProjectLogoBlob.DownloadAsync(host, connection, slug, httpClient, cancellationToken)
                 .ConfigureAwait(false);
             if (download.Outcome == PluginMcpToolCallOutcome.Success)
             {
@@ -240,7 +240,7 @@ internal sealed class DepotSharedProjectSource(
                 break;
 
             case { PngBytes: { Length: > 0 } pngBytes }:
-                var upload = await CockpitProjectLogoBlob.UploadAsync(host, connection.McpServerName, slug, pngBytes, httpClient, cancellationToken)
+                var upload = await CockpitProjectLogoBlob.UploadAsync(host, connection, slug, pngBytes, httpClient, cancellationToken)
                     .ConfigureAwait(false);
                 if (upload.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
                 {
@@ -258,7 +258,7 @@ internal sealed class DepotSharedProjectSource(
             default: // Cleared, or Replace called with no bytes — either way, nothing to keep.
                 if (current.Logo is { Length: > 0 })
                 {
-                    var delete = await CockpitProjectLogoBlob.DeleteAsync(host, connection.McpServerName, slug, cancellationToken).ConfigureAwait(false);
+                    var delete = await CockpitProjectLogoBlob.DeleteAsync(host, connection, slug, httpClient, cancellationToken).ConfigureAwait(false);
                     if (delete.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
                     {
                         return SharedProjectWriteBackResult.PermissionDenied("Sign in to this Depot connection to save this project's logo.");
@@ -390,7 +390,7 @@ internal sealed class DepotSharedProjectSource(
         string? logoPath = null;
         if (definition.LogoBytes is { Length: > 0 } logoBytes)
         {
-            var upload = await CockpitProjectLogoBlob.UploadAsync(host, connection.McpServerName, slug, logoBytes, httpClient, cancellationToken)
+            var upload = await CockpitProjectLogoBlob.UploadAsync(host, connection, slug, logoBytes, httpClient, cancellationToken)
                 .ConfigureAwait(false);
             if (upload.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
             {

@@ -1,6 +1,5 @@
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
@@ -24,8 +23,6 @@ public class DepotProjectAddressingTests
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
         host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _Handler(listProjectsJson));
-        host.CallMcpToolAsync(Arg.Any<string>(), "append", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("{}")));
         host.RewriteProjectReferencesAsync("depot", Arg.Any<Func<string, string?>>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult(storedValues.Count(value => call.ArgAt<Func<string, string?>>(1)(value) is not null)));
         return host;
@@ -37,12 +34,9 @@ public class DepotProjectAddressingTests
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content) });
     }
 
-    private static async Task<string?> AppendedProjectAsync(ICockpitHost host, string storedValue)
-    {
-        await RegistrationFor(host).AppendNoteAsync!(storedValue, "note", CancellationToken.None);
-        var append = host.ReceivedCalls().Last(call => call.GetArguments() is [_, "append", ..]);
-        return (string?)((IReadOnlyDictionary<string, object?>)append.GetArguments()[2]!)["project"];
-    }
+    private static Task<string> ProjectArgumentAsync(ICockpitHost host, string storedValue) =>
+        DepotProjectAddressing.For(host, new DepotConnectionRegistration("c1", "Work", "https://depot.example.com"), "depot")
+            .ProjectArgumentAsync(storedValue, CancellationToken.None);
 
     [Theory]
     [InlineData("cockpit", "cockpit")]
@@ -52,7 +46,7 @@ public class DepotProjectAddressingTests
         var host = HostListing(Legacy, stored);
         await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
 
-        Assert.Equal(expectedProject, await AppendedProjectAsync(host, stored));
+        Assert.Equal(expectedProject, await ProjectArgumentAsync(host, stored));
         await host.DidNotReceive().RewriteProjectReferencesAsync(Arg.Any<string>(), Arg.Any<Func<string, string?>>(), Arg.Any<CancellationToken>());
     }
 
@@ -65,7 +59,7 @@ public class DepotProjectAddressingTests
         var locations = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
 
         Assert.Equal("wispslate/cockpit", locations.Locations.Single().Value);
-        Assert.Equal(expectedProject, await AppendedProjectAsync(host, stored));
+        Assert.Equal(expectedProject, await ProjectArgumentAsync(host, stored));
         Func<string, string?> rewrite = (Func<string, string?>)host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]!;
         Assert.Equal("wispslate/cockpit", rewrite("cockpit"));
         Assert.Null(rewrite("wispslate/cockpit"));

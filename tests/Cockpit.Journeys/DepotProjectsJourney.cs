@@ -27,7 +27,7 @@ namespace Cockpit.Journeys;
 public sealed class DepotProjectsJourney
 {
     [Fact]
-    public async Task ProjectDiscoveryChecksumGuardAndDefinitionEventNudge_WorkWithoutDepotMcpFileTools()
+    public async Task ProjectDiscoveryDefinitionLogoMemorySinkAndEventNudge_WorkWithoutDepotMcpFileTools()
     {
         await using var depot = await _FakeDepot.StartAsync();
         await using var cockpit = JourneyHost.Desktop();
@@ -93,6 +93,33 @@ public sealed class DepotProjectsJourney
             cockpit.Cockpit.Projects.RecentCards.SingleOrDefault(card => card.Project.Id == localProjectId)?.HasRemoteChanges == true);
 
         Assert.True(cockpit.Cockpit.Projects.RecentCards.Single(card => card.Project.Id == localProjectId).HasRemoteChanges);
+
+        var logoBaseline = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
+        Assert.True(logoBaseline.Succeeded, logoBaseline.Error);
+        var baseline = Assert.IsType<SharedProjectBinding>(logoBaseline.Binding);
+        Assert.NotNull(baseline.Checksum);
+        var logoBytes = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
+        var logoWrite = await shared.WriteBackAsync(
+            "depot:acme/cockpit",
+            new SharedProjectDefinitionEdit(
+                baseline.Name,
+                baseline.Description,
+                baseline.BehaviorPrompt,
+                baseline.IsolateInWorktreeByDefault,
+                baseline.EnabledMcpServerNames,
+                SharedProjectLogoEdit.Replace(logoBytes)),
+            baseline.Checksum,
+            CancellationToken.None);
+        Assert.Equal(SharedProjectWriteBackOutcome.Success, logoWrite.Outcome);
+
+        var reopened = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
+        Assert.True(reopened.Succeeded, reopened.Error);
+        Assert.Equal(logoBytes, reopened.Binding?.LogoBytes);
+
+        const string note = "remember this through REST\n";
+        var appended = await memory.AppendNoteAsync!("acme/cockpit", note, CancellationToken.None);
+        Assert.Equal(ProjectMemoryAppendOutcome.Success, appended.Outcome);
+        Assert.Equal(note, depot.Inbox);
     }
 
     private static Task<ProjectDialogViewModel> _EditorAsync(
@@ -119,6 +146,7 @@ public sealed class DepotProjectsJourney
     {
         public string BaseUrl { get; } = baseUrl;
         public string DefinitionName => state.Name;
+        public string Inbox => state.Inbox;
 
         public void ChangeFromSecondClient(string name) => state.ChangeFromSecondClient(name);
 
@@ -133,7 +161,9 @@ public sealed class DepotProjectsJourney
             var state = new _DefinitionState();
             app.Use(async (context, next) =>
             {
-                if (context.Request.Path.StartsWithSegments("/cockpit") || context.Request.Path.StartsWithSegments("/mcp"))
+                if (context.Request.Path.StartsWithSegments("/cockpit")
+                    || context.Request.Path.StartsWithSegments("/mcp")
+                    || context.Request.Path.StartsWithSegments("/sync"))
                 {
                     if (context.Request.Headers.Authorization != $"Bearer {Bearer}")
                     {
@@ -146,6 +176,12 @@ public sealed class DepotProjectsJourney
             });
             app.MapGet("/cockpit/projects", state.WriteProjectsAsync);
             app.MapPut("/cockpit/projects/{org}/{slug}/definition", state.WriteDefinitionAsync);
+            app.MapPost("/sync/{org}/{slug}/append", state.AppendAsync);
+            app.MapPost("/sync/{org}/{slug}/uploads", state.RequestUploadsAsync);
+            app.MapPost("/sync/{org}/{slug}/downloads", state.RequestDownloadsAsync);
+            app.MapPost("/sync/{org}/{slug}/delete", state.DeleteAsync);
+            app.MapPut("/blob/upload/{id}", state.UploadAsync);
+            app.MapGet("/blob/download", state.DownloadAsync);
             app.MapGet("/cockpit/me", () => new { userId = "journey-user" });
             app.MapHub<_ProjectsHub>("/hubs/cockpit");
             app.MapMcp("/mcp");
@@ -177,8 +213,11 @@ public sealed class DepotProjectsJourney
     private sealed class _DefinitionState
     {
         private int _version = 1;
+        private byte[] _logoBytes = [];
 
         public string Name { get; private set; } = "Cockpit from Depot";
+        public string? Logo { get; private set; }
+        public string Inbox { get; private set; } = string.Empty;
 
         private string Checksum => $"definition-v{_version}";
 
@@ -208,7 +247,7 @@ public sealed class DepotProjectsJourney
                             state = "ok",
                             checksum = Checksum,
                             updatedAt = DateTimeOffset.UtcNow,
-                            definition = new { schemaVersion = 1, name = Name },
+                            definition = new { schemaVersion = 1, name = Name, logo = Logo },
                         },
                     },
                 },
@@ -228,9 +267,62 @@ public sealed class DepotProjectsJourney
             var definition = await context.Request.ReadFromJsonAsync<JsonElement>();
             Name = definition.GetProperty("name").GetString()
                 ?? throw new InvalidOperationException("The journey definition has no name.");
+            Logo = definition.TryGetProperty("logo", out var logo) && logo.ValueKind == JsonValueKind.String
+                ? logo.GetString()
+                : null;
             _version++;
             context.Response.Headers.ETag = $"\"{Checksum}\"";
             await context.Response.WriteAsJsonAsync(new { checksum = Checksum });
+        }
+
+        public async Task AppendAsync(HttpContext context)
+        {
+            var request = await context.Request.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("Inbox.md", request.GetProperty("path").GetString());
+            Inbox += request.GetProperty("content").GetString();
+            await context.Response.WriteAsJsonAsync(new { path = "Inbox.md" });
+        }
+
+        public async Task RequestUploadsAsync(HttpContext context)
+        {
+            var request = await context.Request.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(".cockpit/logo.png", request.GetProperty("files")[0].GetProperty("path").GetString());
+            await context.Response.WriteAsJsonAsync(new
+            {
+                uploads = new[] { new { uploadUrl = $"{context.Request.Scheme}://{context.Request.Host}/blob/upload/logo" } },
+            });
+        }
+
+        public async Task RequestDownloadsAsync(HttpContext context)
+        {
+            var request = await context.Request.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(".cockpit/logo.png", request.GetProperty("prefix").GetString());
+            await context.Response.WriteAsJsonAsync(new
+            {
+                files = new[] { new { downloadUrl = $"{context.Request.Scheme}://{context.Request.Host}/blob/download" } },
+            });
+        }
+
+        public Task DeleteAsync(HttpContext context)
+        {
+            _logoBytes = [];
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            return Task.CompletedTask;
+        }
+
+        public async Task UploadAsync(HttpContext context)
+        {
+            Assert.False(context.Request.Headers.ContainsKey("Authorization"));
+            using var stream = new MemoryStream();
+            await context.Request.Body.CopyToAsync(stream);
+            _logoBytes = stream.ToArray();
+            context.Response.StatusCode = StatusCodes.Status201Created;
+        }
+
+        public async Task DownloadAsync(HttpContext context)
+        {
+            Assert.False(context.Request.Headers.ContainsKey("Authorization"));
+            await context.Response.Body.WriteAsync(_logoBytes);
         }
     }
 
