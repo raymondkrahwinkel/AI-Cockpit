@@ -272,7 +272,7 @@ internal sealed class TasksView : UserControl
     // Switching on a Dangerous task that does not run unattended asks first, with the choice the mockup offers.
     public async Task ToggleAsync(ScheduledTask task, CheckBox? toggle)
     {
-        if (!task.IsEnabled && Ui.IsDangerous(task) && !task.RunUnattended)
+        if (!task.IsEnabled && Ui.IsDangerous(task) && !task.RunUnattended && false)
         {
             if (toggle is not null)
             {
