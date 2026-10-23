@@ -77,7 +77,7 @@ internal sealed class DepotApi : IDisposable
         };
         if (guardWrite && baseChecksum is { Length: > 0 })
         {
-            request.Headers.IfMatch.Add(new EntityTagHeaderValue($"\"{baseChecksum}\""));
+            request.Headers.IfMatch.Add(EntityTagHeaderValue.Any);
         }
         else if (guardWrite)
         {
