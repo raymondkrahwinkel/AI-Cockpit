@@ -34,7 +34,7 @@ internal sealed class SchedulesState : IDisposable
         if (snapshot is not null)
         {
             Tasks = snapshot.Tasks;
-            Runs = snapshot.Runs;
+            Runs = [.. snapshot.Runs.Select(run => run.Outcome == RunOutcome.Running && Runs.FirstOrDefault(known => known.Id == run.Id) is { Outcome: not RunOutcome.Running } done ? done : run)];
             Channels = snapshot.Channels;
             Settings = snapshot.Settings;
         }
@@ -79,6 +79,12 @@ internal sealed class SchedulesState : IDisposable
     private void _Upsert(RunRecord run) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
         var index = Runs.FindIndex(existing => existing.Id == run.Id);
+        if (index >= 0 && run.Outcome == RunOutcome.Running && Runs[index].Outcome != RunOutcome.Running)
+        {
+            // The answer to Run now can land after the event that the run finished; the outcome stands.
+            return;
+        }
+
         if (index >= 0)
         {
             Runs[index] = run;

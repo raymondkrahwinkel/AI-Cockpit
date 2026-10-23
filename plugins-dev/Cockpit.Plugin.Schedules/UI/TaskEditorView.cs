@@ -77,7 +77,9 @@ internal sealed class TaskEditorView : UserControl
             _ReadSchedule(existing.Schedule);
         }
 
+        // Off until the first preview says the schedule reads.
         _save = Ui.AsyncButton(existing is null ? "Create task" : "Save", SaveAsync, _Report, "Accent");
+        _save.IsEnabled = false;
         _Render();
     }
 
@@ -116,14 +118,14 @@ internal sealed class TaskEditorView : UserControl
         _Render();
     }
 
+    // Back to the builder only when it can say the cron; one it cannot, such as */5, stays a cron rather than being lost.
     public void SetPlain()
     {
-        if (_cron)
+        if (!_cron || _ReadSchedule(_cronText))
         {
-            _ReadSchedule(_cronText);
+            _cron = false;
         }
 
-        _cron = false;
         _Render();
     }
 
@@ -150,8 +152,10 @@ internal sealed class TaskEditorView : UserControl
             return;
         }
 
+        // The task as it stands now, not as it stood when the editor opened: a switch flipped meanwhile is kept.
+        var current = _state.Tasks.FirstOrDefault(view => view.Task.Id == _existing?.Id)?.Task ?? _existing;
         var dangerous = _kind == TaskActionKind.AgentPrompt && _write;
-        var becameDangerous = dangerous && (_existing is null || !Ui.IsDangerous(_existing));
+        var becameDangerous = dangerous && (current is null || !Ui.IsDangerous(current));
         var task = new ScheduledTask
         {
             Id = _existing?.Id ?? string.Empty,
@@ -159,8 +163,8 @@ internal sealed class TaskEditorView : UserControl
             Schedule = Schedule,
             TimeZone = _zone.Trim(),
             MissedRuns = _missed,
-            IsEnabled = !becameDangerous && (_existing?.IsEnabled ?? true),
-            RunUnattended = !becameDangerous && (_existing?.RunUnattended ?? false),
+            IsEnabled = !becameDangerous && (current?.IsEnabled ?? true),
+            RunUnattended = !becameDangerous && (current?.RunUnattended ?? false),
             Action = new TaskAction(_kind, _text.Trim())
             {
                 Profile = _kind == TaskActionKind.AgentPrompt ? _profile : null,
@@ -466,26 +470,26 @@ internal sealed class TaskEditorView : UserControl
         _host.ShowToast(run is null ? "The test run did not answer." : $"Test run: {run.Outcome}{(run.Reason is null ? string.Empty : $" — {run.Reason}")}", run?.Outcome == RunOutcome.Failed ? PluginToastSeverity.Error : PluginToastSeverity.Information);
     }
 
-    // Back from a schedule string to the builder's fields, where one of its shapes fits; else the cron view.
-    private void _ReadSchedule(string schedule)
+    // Back from a schedule string to the builder's fields, where one of its shapes fits exactly; else the cron view.
+    private bool _ReadSchedule(string schedule)
     {
         var fields = schedule.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (fields.Length == 3 && fields[0] == "once")
         {
             (_frequency, _date, _time) = ("once", fields[1], fields[2]);
-            return;
+            return true;
         }
 
-        if (fields.Length == 3 && fields[0] == "every")
+        if (fields.Length == 3 && fields[0] == "every" && fields[2] == "m")
         {
             (_frequency, _every) = ("interval", fields[1]);
-            return;
+            return true;
         }
 
         if (fields.Length != 5 || !int.TryParse(fields[0], out var minute) || !int.TryParse(fields[1], out var hour) || fields[3] != "*")
         {
             (_cron, _cronText) = (true, schedule);
-            return;
+            return false;
         }
 
         _time = $"{hour:00}:{minute:00}";
@@ -500,7 +504,10 @@ internal sealed class TaskEditorView : UserControl
         if (_frequency == "cron")
         {
             (_frequency, _cron, _cronText) = ("weekly", true, schedule);
+            return false;
         }
+
+        return true;
     }
 
     private (int Hour, int Minute) _Time()
@@ -512,7 +519,8 @@ internal sealed class TaskEditorView : UserControl
     private string _DayField()
     {
         var days = Days.Select(day => day.Key).Where(_days.Contains).ToList();
-        return days.SequenceEqual(["1", "2", "3", "4", "5"]) ? "1-5" : days.Count == 0 ? "?" : string.Join(",", days);
+        // No day picked is no schedule: an empty field leaves four, which the preview refuses and Save with it.
+        return days.SequenceEqual(["1", "2", "3", "4", "5"]) ? "1-5" : string.Join(",", days);
     }
 
     private void _Report(Exception exception) => _host.ShowToast($"Schedules: {exception.Message}", PluginToastSeverity.Error);

@@ -19,8 +19,10 @@ internal sealed class TasksView : UserControl
     private readonly ICockpitUiHost _host;
     private readonly Overlay _overlay;
     private readonly Action<ScheduledTask?> _edit;
+    private readonly TextBox _search = new() { PlaceholderText = "Search tasks", Width = 260 };
+    private readonly ContentControl _header = new();
+    private readonly ContentControl _body = new();
     private string _filter = "all";
-    private string _search = string.Empty;
     private string? _selected;
 
     public TasksView(SchedulesState state, ICockpitUiHost host, Overlay overlay, Action<ScheduledTask?> edit)
@@ -29,17 +31,33 @@ internal sealed class TasksView : UserControl
         _host = host;
         _overlay = overlay;
         _edit = edit;
-        _state.Changed += Render;
+        _state.Changed += _RenderBody;
+        _search.TextChanged += (_, _) => _RenderBody();
         Render();
     }
 
     public void Select(string? taskId)
     {
         _selected = taskId;
-        Render();
+        _RenderBody();
     }
 
     public void Render()
+    {
+        (_search.Parent as Panel)?.Children.Remove(_search);
+        var toolbar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Margin = new Thickness(0, 0, 0, 10),
+            Children = { _search, Ui.Segments(Filters, _filter, key => { _filter = key; Render(); }) },
+        };
+        Content = new DockPanel { Children = { Ui.Docked(_header, Dock.Top), Ui.Docked(toolbar, Dock.Top), _body } };
+        _RenderBody();
+    }
+
+    // Everything but the search box, so typing in it or a run finishing never takes its focus away.
+    private void _RenderBody()
     {
         var enabled = _state.Tasks.Count(view => view.Task.IsEnabled);
         var failed = _state.Tasks.Count(view => _state.LastRun(view.Task.Id)?.Outcome == RunOutcome.Failed);
@@ -56,20 +74,7 @@ internal sealed class TasksView : UserControl
             },
         }, Dock.Right));
         header.Children.Add(new StackPanel { Children = { Ui.Title("Scheduled tasks"), Ui.Hint($"{enabled} enabled · {failed} failed last run") } });
-
-        var search = new TextBox { Text = _search, PlaceholderText = "Search tasks", Width = 260 };
-        search.TextChanged += (_, _) =>
-        {
-            _search = search.Text ?? string.Empty;
-            _RenderTable();
-        };
-        var toolbar = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            Margin = new Thickness(0, 0, 0, 10),
-            Children = { search, Ui.Segments(Filters, _filter, key => { _filter = key; Render(); }) },
-        };
+        _header.Content = header;
 
         _table = new StackPanel();
         _RenderTable();
@@ -83,7 +88,7 @@ internal sealed class TasksView : UserControl
             body.Children.Add(side);
         }
 
-        Content = new DockPanel { Children = { Ui.Docked(header, Dock.Top), Ui.Docked(toolbar, Dock.Top), body } };
+        _body.Content = body;
     }
 
     private StackPanel _table = new();
@@ -99,7 +104,7 @@ internal sealed class TasksView : UserControl
             "off" => !view.Task.IsEnabled,
             "fail" => _state.LastRun(view.Task.Id)?.Outcome == RunOutcome.Failed,
             _ => true,
-        } && (_search.Length == 0 || view.Task.Name.Contains(_search, StringComparison.OrdinalIgnoreCase))).ToList();
+        } && view.Task.Name.Contains(_search.Text ?? string.Empty, StringComparison.OrdinalIgnoreCase)).ToList();
 
         _table.Children.Add(_Row(new TextBlock { Text = "On" }, Ui.Muted("Task"), Ui.Muted("Schedule"), Ui.Muted("Next run"), Ui.Muted("Last run"), new Panel(), header: true));
         if (rows.Count == 0)
@@ -335,12 +340,13 @@ internal sealed class TasksView : UserControl
     private async Task _SetEnabledAsync(ScheduledTask task, bool enabled, bool unattended)
     {
         var result = await _state.AskAsync<SchedulesResult>(SchedulesChannel.SetEnabled, new SchedulesEnableRequest(task.Id, enabled, unattended));
-        if (result is { Ok: false })
+        await _state.RefreshAsync();
+        if (result is not { Ok: true })
         {
-            _host.ShowToast($"{task.Name}: {result.Error}", PluginToastSeverity.Error);
+            _host.ShowToast($"{task.Name}: {result?.Error ?? "the backend did not answer"}", PluginToastSeverity.Error);
+            return;
         }
 
-        await _state.RefreshAsync();
         _host.ShowToast(enabled ? $"Task enabled: {task.Name}" : $"Task disabled: {task.Name}");
     }
 }

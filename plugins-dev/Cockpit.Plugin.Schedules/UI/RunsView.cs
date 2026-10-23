@@ -17,6 +17,7 @@ internal sealed class RunsView : UserControl
     private readonly SchedulesState _state;
     private readonly ICockpitUiHost _host;
     private readonly TextBox _search = new() { PlaceholderText = "Search output", Width = 240 };
+    private readonly ContentControl _body = new();
     private string _outcome = "all";
     private string? _task;
     private string? _selected;
@@ -25,15 +26,15 @@ internal sealed class RunsView : UserControl
     {
         _state = state;
         _host = host;
-        _state.Changed += Render;
-        _search.TextChanged += (_, _) => Render();
+        _state.Changed += _RenderBody;
+        _search.TextChanged += (_, _) => _RenderBody();
         Render();
     }
 
     public void Select(string? runId)
     {
         _selected = runId;
-        Render();
+        _RenderBody();
     }
 
     public void Render()
@@ -44,7 +45,6 @@ internal sealed class RunsView : UserControl
             Children = { Ui.Title("Run history"), Ui.Hint($"Kept {_state.Settings.KeepDays} days · output up to 256 KB per run") },
         };
 
-        var search = _search.Text ?? string.Empty;
         (_search.Parent as Panel)?.Children.Remove(_search);
         var names = new List<string> { "All tasks" };
         names.AddRange(_state.Tasks.Select(view => view.Task.Name));
@@ -62,6 +62,14 @@ internal sealed class RunsView : UserControl
             Children = { _search, task, Ui.Segments(Outcomes, _outcome, key => { _outcome = key; Render(); }) },
         };
 
+        Content = new DockPanel { Children = { Ui.Docked(header, Dock.Top), Ui.Docked(toolbar, Dock.Top), _body } };
+        _RenderBody();
+    }
+
+    // The list and the detail only, so typing in the search box or a new run never takes the box's focus away.
+    private void _RenderBody()
+    {
+        var search = _search.Text ?? string.Empty;
         var runs = _state.Runs.Where(run => run.Outcome != RunOutcome.Missed
             && (_task is null || run.TaskId == _task)
             && _outcome switch
@@ -84,7 +92,7 @@ internal sealed class RunsView : UserControl
             var name = new StackPanel { Children = { new TextBlock { Text = _Name(run.TaskId), FontWeight = FontWeight.SemiBold }, Ui.Hint(Ui.Trigger(run.Trigger)) } };
             var when = new StackPanel { Children = { Ui.Muted(Ui.When(run.StartedAt)), Ui.Hint(Ui.Duration(run.Duration)) } };
             var row = _Row(name, when, Ui.Pill(run), selected: run.Id == _selected);
-            row.PointerPressed += (_, _) => { _selected = run.Id; Render(); };
+            row.PointerPressed += (_, _) => { _selected = run.Id; _RenderBody(); };
             table.Children.Add(row);
         }
 
@@ -98,12 +106,12 @@ internal sealed class RunsView : UserControl
             body.Children.Add(detail);
         }
 
-        Content = new DockPanel { Children = { Ui.Docked(header, Dock.Top), Ui.Docked(toolbar, Dock.Top), body } };
+        _body.Content = body;
     }
 
     private Control _Detail(RunRecord run)
     {
-        var close = Ui.Button("✕", () => { _selected = null; Render(); }, "Compact", "Ghost");
+        var close = Ui.Button("✕", () => { _selected = null; _RenderBody(); }, "Compact", "Ghost");
         var head = new DockPanel { Children = { Ui.Docked(close, Dock.Right), new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Title(_Name(run.TaskId)), Ui.Pill(run) } } } };
         var transcript = run.DelegatedTaskId is { } taskId
             ? (Control)new StackPanel
