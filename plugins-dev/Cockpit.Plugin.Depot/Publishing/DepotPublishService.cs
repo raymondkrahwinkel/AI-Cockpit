@@ -208,38 +208,39 @@ internal sealed class DepotPublishService(
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var item = step.Item;
+                var local = step.Local;
                 try
                 {
                     switch (item.Action)
                     {
-                        case DepotPublishAction.Unchanged:
-                            manifest[item.Path] = _Entry(step.Local!, step.Local!.Checksum!);
+                        case DepotPublishAction.Unchanged when local?.Checksum is { } checksum:
+                            manifest[item.Path] = _Entry(local, checksum);
                             unchanged++;
                             break;
-                        case DepotPublishAction.Adopt:
-                            manifest[item.Path] = _Entry(step.Local!, step.Remote!);
+                        case DepotPublishAction.Adopt when local is not null && step.Remote is { } remote:
+                            manifest[item.Path] = _Entry(local, remote);
                             adopted++;
                             break;
-                        case DepotPublishAction.New or DepotPublishAction.Changed:
+                        case DepotPublishAction.New or DepotPublishAction.Changed when local is not null:
                             if (item.Kind == DepotBrowserKind.Document)
                             {
                                 _ApplyDocumentWrite(step, documentWrites[item.Path], manifest, problems, ref written);
                             }
                             else
                             {
-                                manifest[item.Path] = await _WriteArtifactAsync(link, step, cancellationToken).ConfigureAwait(false);
+                                manifest[item.Path] = await _WriteArtifactAsync(link, local, step.Remote, cancellationToken).ConfigureAwait(false);
                                 written++;
                             }
 
                             break;
-                        case DepotPublishAction.Conflict when overwriteConflicts:
+                        case DepotPublishAction.Conflict when overwriteConflicts && local is not null:
                             if (item.Kind == DepotBrowserKind.Document)
                             {
                                 _ApplyDocumentWrite(step, documentWrites[item.Path], manifest, problems, ref written);
                             }
                             else
                             {
-                                manifest[item.Path] = await _WriteArtifactAsync(link, step, cancellationToken).ConfigureAwait(false);
+                                manifest[item.Path] = await _WriteArtifactAsync(link, local, step.Remote, cancellationToken).ConfigureAwait(false);
                                 written++;
                             }
 
@@ -317,23 +318,35 @@ internal sealed class DepotPublishService(
         }
 
         var entries = new List<object>(steps.Count);
+        var documentSteps = new List<(_Step Step, _Local Local, string Checksum)>(steps.Count);
         foreach (var step in steps)
         {
-            var bytes = await File.ReadAllBytesAsync(step.Local!.FullPath, cancellationToken).ConfigureAwait(false);
+            if (step.Local is not { Checksum: { } localChecksum } local)
+            {
+                throw new InvalidOperationException("A document write requires a readable local file.");
+            }
+
+            var bytes = await File.ReadAllBytesAsync(local.FullPath, cancellationToken).ConfigureAwait(false);
             var content = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes);
             entries.Add(new { path = _DepotPath(link, step.Item.Path), content, baseChecksum = step.Remote });
+            documentSteps.Add((step, local, localChecksum));
         }
 
         using var api = _Api(link.ConnectionId);
         using var response = await _PostJsonAsync(
             api, $"{_SyncRoot(link.Project)}/write", entries, _Connection(link.ConnectionId).Name, cancellationToken)
             .ConfigureAwait(false);
-        var results = _Array(response.RootElement, "results")
-            .Where(result => DepotMcp.String(result, "path") is not null)
-            .GroupBy(result => DepotMcp.String(result, "path")!, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var results = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var result in _Array(response.RootElement, "results"))
+        {
+            if (DepotMcp.String(result, "path") is { } path)
+            {
+                results.TryAdd(path, result);
+            }
+        }
+
         var writes = new Dictionary<string, _DocumentWrite>(StringComparer.Ordinal);
-        foreach (var step in steps)
+        foreach (var (step, local, localChecksum) in documentSteps)
         {
             var depotPath = _DepotPath(link, step.Item.Path);
             if (!results.TryGetValue(depotPath, out var result))
@@ -347,7 +360,7 @@ internal sealed class DepotPublishService(
             writes[step.Item.Path] = status switch
             {
                 "written" => new _DocumentWrite(
-                    _Entry(step.Local!, DepotMcp.String(result, "checksum") ?? step.Local!.Checksum!), null, null),
+                    _Entry(local, DepotMcp.String(result, "checksum") ?? localChecksum), null, null),
                 "conflict" => new _DocumentWrite(null, DepotPublishAction.Conflict, message ?? "Changed in Depot since the plan."),
                 _ => new _DocumentWrite(null, DepotPublishAction.Failed, message ?? "Depot did not write the file."),
             };
@@ -357,9 +370,14 @@ internal sealed class DepotPublishService(
     }
 
     // The manifest entry is returned only once Depot has the bytes, so a failed upload leaves the path out of it.
-    private async Task<PublishManifestEntry> _WriteArtifactAsync(DepotPublication link, _Step step, CancellationToken cancellationToken)
+    private async Task<PublishManifestEntry> _WriteArtifactAsync(
+        DepotPublication link, _Local local, string? remoteChecksum, CancellationToken cancellationToken)
     {
-        var local = step.Local!;
+        if (local.Checksum is not { } localChecksum)
+        {
+            throw new InvalidOperationException("An artifact write requires a readable local file.");
+        }
+
         var depotPath = _DepotPath(link, local.Relative);
         await using var stream = new FileStream(local.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
         var contentType = DepotUploadKinds.ContentType(local.Relative);
@@ -368,10 +386,10 @@ internal sealed class DepotPublishService(
         var ticket = await _uploader.StartAsync(
             api, _Connection(link.ConnectionId).Name, _SyncRoot(link.Project), depotPath, null, contentType, length, null, cancellationToken)
             .ConfigureAwait(false);
-        await _RecheckArtifactAsync(api, link, depotPath, step.Remote, cancellationToken).ConfigureAwait(false);
+        await _RecheckArtifactAsync(api, link, depotPath, remoteChecksum, cancellationToken).ConfigureAwait(false);
         var checksum = await DepotUploader.PutAsync(
             http, ticket.UploadUrl ?? throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return an upload URL."), stream, contentType, cancellationToken).ConfigureAwait(false);
-        return new PublishManifestEntry(local.Relative, local.Kind, checksum ?? local.Checksum!, length, local.Mtime);
+        return new PublishManifestEntry(local.Relative, local.Kind, checksum ?? localChecksum, length, local.Mtime);
     }
 
     // request_upload has no baseChecksum, so the plan's checksum is checked once more right before the PUT.
