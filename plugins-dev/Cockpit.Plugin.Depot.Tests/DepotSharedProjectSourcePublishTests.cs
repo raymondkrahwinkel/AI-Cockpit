@@ -14,7 +14,8 @@ public class DepotSharedProjectSourcePublishTests
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
 
     private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
-        DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
+        DepotMemorySource.BuildSharedProjectSources(
+            [Connection()], host, httpClient ?? new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("""{"projects":[]}""") }))).Single();
 
     private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
@@ -24,10 +25,6 @@ public class DepotSharedProjectSourcePublishTests
 
     private static string _Scheme(ICockpitHost host) =>
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
-
-    private static void _StubListProjects(ICockpitHost host, string json) =>
-        host.CallMcpToolAsync(Arg.Any<string>(), "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(json)));
 
     private static void _StubRead(ICockpitHost host, string slug, PluginMcpToolCallResult result) =>
         host.CallMcpToolAsync(
@@ -71,6 +68,7 @@ public class DepotSharedProjectSourcePublishTests
     public async Task PublishAsync_WritesWithNoBaseChecksum_ThisIsTheFirstWriteForThisProject()
     {
         var host = Substitute.For<ICockpitHost>();
+        host.Cache.Returns(new InMemoryPluginCache());
         var scheme = _Scheme(host);
         _StubRead(host, "new-project", _NotFound("new-project"));
         _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
@@ -157,21 +155,25 @@ public class DepotSharedProjectSourcePublishTests
     public async Task ListPublishTargetsAsync_KeepsOnlyEditorAndOwnerRoles_NotViewerOrUnknown()
     {
         var host = Substitute.For<ICockpitHost>();
+        host.Cache.Returns(new InMemoryPluginCache());
         var scheme = _Scheme(host);
-        _StubListProjects(host, """
+        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new StringContent("""
             {"projects":[
-              {"slug":"can-write","name":"Can write","role":"Editor","kind":"Project"},
+              {"slug":"can-write","address":"acme/can-write","name":"Can write","role":"Editor","kind":"Project"},
               {"slug":"also-owner","name":"Also owner","role":"Owner","kind":"Project"},
               {"slug":"read-only","name":"Read only","role":"Viewer","kind":"Project"},
               {"slug":"unknown-role","name":"Unknown role","role":"Weird","kind":"Project"}
             ]}
-            """);
+            """),
+        }));
 
-        var result = await SourceFor(host).ListPublishTargetsAsync(CancellationToken.None);
+        var result = await SourceFor(host, httpClient).ListPublishTargetsAsync(CancellationToken.None);
 
         Assert.True(result.Succeeded);
         Assert.Equal(
-            new[] { $"{scheme}:can-write", $"{scheme}:also-owner" }.OrderBy(id => id, StringComparer.Ordinal),
+            new[] { $"{scheme}:acme/can-write", $"{scheme}:also-owner" }.OrderBy(id => id, StringComparer.Ordinal),
             result.Targets.Select(target => target.Id).OrderBy(id => id, StringComparer.Ordinal));
     }
 

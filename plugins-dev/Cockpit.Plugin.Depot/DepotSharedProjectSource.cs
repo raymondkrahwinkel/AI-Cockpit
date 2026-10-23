@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
@@ -10,20 +9,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot;
 
-// One Depot connection's own `ISharedProjectSource` (AC-245): lists projects via `list_projects`, then reads
-// each one's `.cockpit/project.json` (AC-244) for name/description — one without it isn't offered here.
-// The projects endpoint provides the full list in one request; older Depots use the MCP fallback.
+// One Depot connection's own shared projects. The shared project-list source supplies the REST definitions;
+// an older Depot follows the centralized MCP fallback and reads each definition separately.
 internal sealed class DepotSharedProjectSource(
     DepotConnectionRegistration connection, string scheme, ICockpitHost host, HttpClient? httpClient = null)
     : ISharedProjectSource
 {
-    private readonly DepotProjectAddressing _addressing = DepotProjectAddressing.For(host, connection, scheme);
+    private readonly DepotProjectAddressing _addressing = DepotProjectAddressing.For(host, connection, scheme, httpClient);
+    private readonly DepotProjectListingSource _projects = httpClient is null
+        ? DepotProjectListingSource.For(host, connection)
+        : new DepotProjectListingSource(host, connection, httpClient);
 
     internal static TimeSpan DefinitionReadTimeout = TimeSpan.FromSeconds(10);
 
     private const int DefinitionReadConcurrency = 6;
-
-    private string CacheKey => $"shared-projects:{connection.Id}";
 
     public string Key => scheme;
 
@@ -31,48 +30,27 @@ internal sealed class DepotSharedProjectSource(
 
     public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
     {
-        var endpoint = await _ListEndpointAsync(cancellationToken).ConfigureAwait(false);
-        if (!endpoint.UseMcp)
+        var listing = await _projects.ListAsync(cancellationToken).ConfigureAwait(false);
+        if (listing.Outcome != DepotProjectListingOutcome.Success)
         {
-            return endpoint.Result;
+            return listing.Outcome switch
+            {
+                DepotProjectListingOutcome.NotSignedIn => SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects."),
+                DepotProjectListingOutcome.Forbidden => SharedProjectListResult.Failed("You do not have access to this Depot connection's shared projects."),
+                _ => SharedProjectListResult.Failed(listing.Error ?? "Depot did not return a list of projects."),
+            };
         }
 
-        var result = await _ListFromMcpAsync(cancellationToken).ConfigureAwait(false);
-        if (result.Succeeded)
-        {
-            host.Cache.Set(CacheKey, new _CachedProjects(null, DateTimeOffset.UtcNow, result));
-        }
+        await _addressing.ObserveAsync(listing.Projects, cancellationToken).ConfigureAwait(false);
 
-        return result;
+        return listing.IncludesCockpit
+            ? _FromEndpoint(listing.Projects, listing.Error)
+            : await _ListFromMcpAsync(listing.Projects, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<SharedProjectListResult> _ListFromMcpAsync(CancellationToken cancellationToken)
+    private async Task<SharedProjectListResult> _ListFromMcpAsync(
+        IReadOnlyList<DepotProjectListing> listed, CancellationToken cancellationToken)
     {
-        var listResult = await host.CallMcpToolAsync(
-            connection.McpServerName,
-            "list_projects",
-            new Dictionary<string, object?> { ["includeSummary"] = false },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
-
-        switch (listResult.Outcome)
-        {
-            case PluginMcpToolCallOutcome.AuthorizationRequired:
-                return SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects.");
-            case PluginMcpToolCallOutcome.Success:
-                break;
-            default:
-                return SharedProjectListResult.Failed(
-                    listResult.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
-        }
-
-        if (!DepotMemorySource.TryParseProjects(listResult.Content ?? string.Empty, out var listed, out var parseError))
-        {
-            return SharedProjectListResult.Failed(parseError ?? "Depot's project list came back in an unexpected shape.");
-        }
-
-        await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
-
         var order = listed
             .Select((project, index) => new { Id = $"{scheme}:{project.Key}", index })
             .ToDictionary(item => item.Id, item => item.index, StringComparer.Ordinal);
@@ -85,7 +63,7 @@ internal sealed class DepotSharedProjectSource(
             CancellationToken = cancellationToken,
         }, async (project, token) =>
         {
-            // DEP-159's list_projects mixes "Project" and "Brain" kinds together; a Brain is not something a
+            // Depot mixes "Project" and "Brain" kinds together; a Brain is not something a
             // Cockpit project ever binds to.
             if (string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
             {
@@ -158,62 +136,7 @@ internal sealed class DepotSharedProjectSource(
         };
     }
 
-    private async Task<_EndpointResult> _ListEndpointAsync(CancellationToken cancellationToken)
-    {
-        var cached = host.Cache.Get<_CachedProjects>(CacheKey);
-        try
-        {
-            using var api = new DepotApi(host, connection, httpClient);
-            var response = await api.GetAsync("cockpit/projects", cached?.Etag, cancellationToken).ConfigureAwait(false);
-            if (response.ShouldFallbackToMcp)
-            {
-                return _EndpointResult.Fallback;
-            }
-
-            if (response.Outcome == DepotApiOutcome.NotModified)
-            {
-                return cached is { } known
-                    ? _EndpointResult.From(known.Result)
-                    : _EndpointResult.From(SharedProjectListResult.Failed("Depot confirmed an unchanged project list, but no local list is available."));
-            }
-
-            if (response.Outcome == DepotApiOutcome.NotSignedIn)
-            {
-                return _EndpointResult.From(SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects."));
-            }
-
-            if (response.Outcome == DepotApiOutcome.Forbidden)
-            {
-                return _EndpointResult.From(SharedProjectListResult.Failed("You do not have access to this Depot connection's shared projects."));
-            }
-
-            if (response.Outcome != DepotApiOutcome.Success)
-            {
-                return _Unavailable(cached);
-            }
-
-            var payload = JsonSerializer.Deserialize<_ProjectsPayload>(response.Content.Span, _Json);
-            if (payload?.Projects is not { } projects)
-            {
-                return _EndpointResult.From(SharedProjectListResult.Failed("Depot's project list came back in an unexpected shape."));
-            }
-
-            var result = _FromEndpoint(projects);
-            host.Cache.Set(CacheKey, new _CachedProjects(response.ETag, DateTimeOffset.UtcNow, result));
-            return _EndpointResult.From(result);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
-        {
-            return _Unavailable(cached);
-        }
-    }
-
-    private static _EndpointResult _Unavailable(_CachedProjects? cached) =>
-        cached is { } known
-            ? _EndpointResult.From(known.Result with { Error = $"Depot is unavailable; last known list · {known.CachedAt.ToLocalTime():g}." })
-            : _EndpointResult.From(SharedProjectListResult.Failed("Depot did not return a list of projects."));
-
-    private SharedProjectListResult _FromEndpoint(IReadOnlyList<_EndpointProject> projects)
+    private SharedProjectListResult _FromEndpoint(IReadOnlyList<DepotProjectListing> projects, string? error)
     {
         var shared = new List<SharedProject>();
         var unreadable = new List<UnreadableSharedProject>();
@@ -226,7 +149,7 @@ internal sealed class DepotSharedProjectSource(
                 continue;
             }
 
-            var id = $"{scheme}:{DepotMemorySource.ListedProject.KeyFor(project.Slug, project.Address)}";
+            var id = $"{scheme}:{project.Key}";
             var name = project.Name is { Length: > 0 } value ? value : project.Slug;
             var role = DepotProjectRoleParser.Parse(project.Role);
             var organization = project.Organization is { Slug: { Length: > 0 } organizationSlug }
@@ -257,7 +180,7 @@ internal sealed class DepotSharedProjectSource(
             states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), SharedProjectReadState.Ok));
         }
 
-        return new SharedProjectListResult(true, shared, null)
+        return new SharedProjectListResult(true, shared, error)
         {
             VisibleButUnreadable = unreadable,
             ProjectReadStates = states,
@@ -282,59 +205,6 @@ internal sealed class DepotSharedProjectSource(
 
         var separator = address.IndexOf('/');
         return separator > 0 ? new SharedProjectOrganization(address[..separator], null, null) : null;
-    }
-
-    private static readonly JsonSerializerOptions _Json = new(JsonSerializerDefaults.Web);
-
-    private sealed record _CachedProjects(string? Etag, DateTimeOffset CachedAt, SharedProjectListResult Result);
-
-    private sealed record _EndpointResult(bool UseMcp, SharedProjectListResult Result)
-    {
-        public static readonly _EndpointResult Fallback = new(true, SharedProjectListResult.Failed("Depot's projects endpoint is unavailable."));
-
-        public static _EndpointResult From(SharedProjectListResult result) => new(false, result);
-    }
-
-    private sealed class _ProjectsPayload
-    {
-        public List<_EndpointProject>? Projects { get; set; }
-    }
-
-    private sealed class _EndpointProject
-    {
-        public string? Address { get; set; }
-
-        public string? Slug { get; set; }
-
-        public string? Name { get; set; }
-
-        public string? Role { get; set; }
-
-        public string? Kind { get; set; }
-
-        public _EndpointOrganization? Organization { get; set; }
-
-        public _EndpointCockpit? Cockpit { get; set; }
-    }
-
-    private sealed class _EndpointOrganization
-    {
-        public string? Slug { get; set; }
-
-        public string? Name { get; set; }
-
-        public string? Role { get; set; }
-    }
-
-    private sealed class _EndpointCockpit
-    {
-        public string? State { get; set; }
-
-        public string? Checksum { get; set; }
-
-        public DateTimeOffset? UpdatedAt { get; set; }
-
-        public CockpitProjectDefinition? Definition { get; set; }
     }
 
     // Reads `.cockpit/project.json` a second time (AC-246): `ListAsync`'s read only kept Name/Description,
@@ -495,46 +365,35 @@ internal sealed class DepotSharedProjectSource(
 
     public bool CanPublish => true;
 
-    // AC-620: the same list_projects call ListAsync makes, but kept unfiltered by "does it already carry a
+    // AC-620: the same project list ListAsync uses, but kept unfiltered by "does it already carry a
     // definition" — a publish target is a container to write the *first* definition into, so a project that has
     // never opted into Cockpit sharing is exactly the common case here, not the one ListAsync leaves out.
     public async Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken)
     {
-        var listResult = await host.CallMcpToolAsync(
-            connection.McpServerName,
-            "list_projects",
-            new Dictionary<string, object?> { ["includeSummary"] = false },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
-
-        switch (listResult.Outcome)
+        var listing = await _projects.ListAsync(cancellationToken).ConfigureAwait(false);
+        switch (listing.Outcome)
         {
-            case PluginMcpToolCallOutcome.AuthorizationRequired:
+            case DepotProjectListingOutcome.NotSignedIn:
                 return SharedProjectPublishTargetListResult.Failed("Sign in to this Depot connection to publish a project.");
-            case PluginMcpToolCallOutcome.Success:
+            case DepotProjectListingOutcome.Success:
                 break;
             default:
                 return SharedProjectPublishTargetListResult.Failed(
-                    listResult.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
+                    listing.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
         }
 
-        if (!DepotMemorySource.TryParseProjects(listResult.Content ?? string.Empty, out var listed, out var parseError))
-        {
-            return SharedProjectPublishTargetListResult.Failed(parseError ?? "Depot's project list came back in an unexpected shape.");
-        }
-
-        await _addressing.ObserveAsync(listed, cancellationToken).ConfigureAwait(false);
+        await _addressing.ObserveAsync(listing.Projects, cancellationToken).ConfigureAwait(false);
 
         // AC-620 decision 4: only a project the operator can already write to is offered — Depot has no
         // create_project fallback, so a Viewer's row would dead-end. AC-699: CanWrite answers that, not a
         // repeated role list — the earlier list missed "Admin" and emptied the dropdown.
-        var targets = listed
+        var targets = listing.Projects
             .Where(project => !string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
-            .Select(project => (project.Slug, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
+            .Select(project => (Key: project.Key, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
             .Where(entry => entry.Role.CanWrite())
             .Select(entry => new SharedProjectPublishTarget(
-                $"{scheme}:{entry.Slug}",
-                entry.Name is { Length: > 0 } ? entry.Name : entry.Slug,
+                $"{scheme}:{entry.Key}",
+                entry.Name is { Length: > 0 } ? entry.Name : entry.Key,
                 entry.Role.ToDisplayString()))
             .ToList();
 

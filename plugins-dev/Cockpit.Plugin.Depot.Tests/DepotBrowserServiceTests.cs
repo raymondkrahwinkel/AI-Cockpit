@@ -4,10 +4,11 @@ using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
+using System.Net;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// AC-1568: the backend half of the Depot file browser — every Depot call goes through the connection's MCP server.
+// AC-1568/AC-1634: file operations use MCP; project discovery uses the connection's REST listing.
 public class DepotBrowserServiceTests
 {
     private const string Projects = """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"{ROLE}"}]}""";
@@ -22,7 +23,8 @@ public class DepotBrowserServiceTests
 
         public _Rig(string role = "Editor")
         {
-            Tools["list_projects"] = _ => PluginMcpToolCallResult.Success(Projects.Replace("{ROLE}", role));
+            Host.Cache.Returns(new InMemoryPluginCache());
+            Host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _ProjectsHandler(Projects.Replace("{ROLE}", role)));
             Host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
                 {
@@ -35,6 +37,12 @@ public class DepotBrowserServiceTests
         }
 
         public int Count(string tool) => Calls.Count(call => call.Tool == tool);
+    }
+
+    private sealed class _ProjectsHandler(string content) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content) });
     }
 
     private static DepotBrowserRequest _Request(string? path = null, string? mode = null, string? shareId = null) =>
