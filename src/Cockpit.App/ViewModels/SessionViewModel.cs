@@ -961,7 +961,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private void _RebuildVisibleTranscript()
     {
         _shown.Clear();
-        VisibleTranscript.Clear();
+        var shown = new List<TranscriptEntryViewModel>(VisibleTranscript.Count + 1);
         TranscriptEntryViewModel? previousCandidate = null;
         foreach (var entry in Transcript)
         {
@@ -977,8 +977,38 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             if (_IsShown(entry))
             {
                 _shown.Add(entry);
-                VisibleTranscript.Add(entry);
+                shown.Add(entry);
             }
+        }
+
+        _ReconcileVisibleTranscript(shown);
+    }
+
+    // AC-1644: never Clear and refill. On a Reset the panel forgets every row height and container, which threw the
+    // reader up and redrew every row on each streamed delta in a thread. Both lists keep transcript order, so one
+    // walk turns the old into the new, and a refile that moves nothing raises nothing.
+    private void _ReconcileVisibleTranscript(List<TranscriptEntryViewModel> shown)
+    {
+        var index = 0;
+        foreach (var entry in shown)
+        {
+            while (index < VisibleTranscript.Count && !_shown.Contains(VisibleTranscript[index]))
+            {
+                VisibleTranscript.RemoveAt(index);
+            }
+
+            if (index < VisibleTranscript.Count && ReferenceEquals(VisibleTranscript[index], entry))
+            {
+                index++;
+                continue;
+            }
+
+            VisibleTranscript.Insert(index++, entry);
+        }
+
+        while (VisibleTranscript.Count > index)
+        {
+            VisibleTranscript.RemoveAt(VisibleTranscript.Count - 1);
         }
     }
 
