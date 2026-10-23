@@ -220,8 +220,9 @@ public partial class SessionViewModel
         return row;
     }
 
-    // set_thread: the rest of the turn follows these projects. With one project the prompt goes along (AC-1646), so one
-    // call files both; a prompt the operator typed in a thread, or one tag_prompt already split, stays where it is.
+    // set_thread: the rest of the turn follows these projects. Filing follows what the turn is about, not where it was
+    // typed (AC-1646): with one project the prompt goes along, so one call files both. Nothing leaves the thread it was
+    // typed in, though: the prompt and the turn keep it, General included. A prompt tag_prompt split stays split.
     public AssistantThreadResult SetTurnThreads(IReadOnlyList<string> projectIds)
     {
         if (Transcript.LastOrDefault(row => row.StartsTurn) is not { } opening)
@@ -230,17 +231,18 @@ public partial class SessionViewModel
         }
 
         var (known, note) = _KnownProjects(projectIds);
-        opening.TurnProjectIds = known;
+        var prompts = _LatestOpening().Where(row => row.IsUserRow).ToList();
         if (known is [var project])
         {
-            _FilePrompts(_LatestOpening().Where(row => row.IsUserRow && !_WasPlaced(row)), project, ProjectSource.AssistantTag);
+            _FilePrompts(prompts.Where(row => !_IsSplit(row)), project, ProjectSource.AssistantTag, _TypedIn);
         }
 
+        opening.TurnProjectIds = [.. known.Concat(prompts.SelectMany(_TypedIn)).Distinct(StringComparer.Ordinal)];
         return new AssistantThreadResult(true, note);
     }
 
-    // A turn the assistant did not file, opened by a prompt that named nothing, is filed by what the prompt and the reply
-    // name (AC-1646): one project by a session or a ticket key. A name alone is too weak to move anything.
+    // A turn the assistant did not file is filed by what the prompt and the reply name (AC-1646), wherever it was
+    // typed: one project by a session or a ticket key. A name alone is too weak to move anything.
     private void _FileUnfiledTurn()
     {
         if (Threads is null)
@@ -249,8 +251,8 @@ public partial class SessionViewModel
         }
 
         var opening = _LatestOpening();
-        var prompts = opening.Where(row => row.IsUserRow).ToList();
-        if (prompts.Count == 0 || prompts.Any(row => row.ProjectIds is not null) || opening.Any(row => row.TurnProjectIds is not null))
+        var prompts = opening.Where(row => row.IsUserRow && !_IsSplit(row)).ToList();
+        if (prompts.Count == 0 || opening.Any(row => row.TurnProjectIds is not null))
         {
             return;
         }
@@ -266,29 +268,53 @@ public partial class SessionViewModel
             .ToList();
         if (named is [var only])
         {
-            _FilePrompts(prompts, only.ProjectId, only.Source);
+            _FilePrompts(prompts, only.ProjectId, only.Source, prompt => prompt.ProjectIds is [] ? [GeneralThread] : prompt.ProjectIds ?? []);
         }
     }
 
-    // The operator chose where it goes (typed in a thread, moved it), or tag_prompt split it over projects.
-    private static bool _WasPlaced(TranscriptEntryViewModel prompt) =>
-        prompt.ProjectSources is { } sources
-        && (sources.Values.Contains(ProjectSource.Explicit) || (sources.Count > 1 && sources.Values.Contains(ProjectSource.AssistantTag)));
+    // Where the operator put the prompt, which it keeps whatever it is filed under: a thread they typed it in or moved
+    // it to, General included. None for a prompt typed in All or spoken; All shows everything anyway.
+    private static IEnumerable<string> _TypedIn(TranscriptEntryViewModel prompt) => prompt.ProjectIds switch
+    {
+        null => [],
+        [] => [GeneralThread],
+        var ids => ids.Where(id => id == GeneralThread || prompt.ProjectSources?.GetValueOrDefault(id) == ProjectSource.Explicit),
+    };
 
-    private static void _FilePrompts(IEnumerable<TranscriptEntryViewModel> prompts, string projectId, ProjectSource source)
+    // tag_prompt put it in several projects, or gave a project its own part of it (the host's own split of a prompt
+    // that names two projects does not count: the assistant's word is stronger).
+    private static bool _IsSplit(TranscriptEntryViewModel prompt) =>
+        prompt.ProjectSources?.Values.Count(source => source == ProjectSource.AssistantTag) is { } tagged
+        && (tagged > 1 || (tagged == 1 && prompt.ProjectParts is { Count: > 0 }));
+
+    // Adds the project to each prompt and keeps what `kept` says it already had, with the source it had.
+    private static void _FilePrompts(
+        IEnumerable<TranscriptEntryViewModel> prompts, string projectId, ProjectSource source,
+        Func<TranscriptEntryViewModel, IEnumerable<string>> kept)
     {
         foreach (var prompt in prompts.ToList())
         {
-            prompt.ProjectSources = new Dictionary<string, ProjectSource> { [projectId] = source };
+            IReadOnlyList<string> ids = [.. kept(prompt).Prepend(projectId).Distinct(StringComparer.Ordinal)];
+            if (prompt.ProjectIds is { } current && current.SequenceEqual(ids))
+            {
+                continue;
+            }
+
+            prompt.ProjectSources = ids.Where(id => id != GeneralThread).ToDictionary(
+                id => id,
+                id => id != projectId && prompt.ProjectSources?.GetValueOrDefault(id) is { } was and not ProjectSource.None ? was : source);
             prompt.ProjectParts = null;
-            prompt.ProjectIds = [projectId];
+            prompt.ProjectIds = ids;
         }
     }
 
-    // The run of rows that opened the latest turn: the operator's prompts, or the messages that started it.
-    private List<TranscriptEntryViewModel> _LatestOpening()
+    private List<TranscriptEntryViewModel> _LatestOpening() => _OpeningAt(Transcript.Count);
+
+    // The run of rows that opened the turn the row at `index` is in: the operator's prompts, or the messages that
+    // started it. Empty above the first of them.
+    private List<TranscriptEntryViewModel> _OpeningAt(int index)
     {
-        var end = Transcript.Count - 1;
+        var end = index - 1;
         while (end >= 0 && !Transcript[end].StartsTurn)
         {
             end--;
@@ -327,9 +353,13 @@ public partial class SessionViewModel
             spans.Add(new TranscriptProjectPart(projectId, start, quote.Trim().Length));
         }
 
-        prompt.ProjectSources = known.ToDictionary(id => id, _ => ProjectSource.AssistantTag);
+        // The thread it was typed in keeps it (AC-1646), and keeps saying the operator put it there.
+        var typedIn = _TypedIn(prompt).ToList();
+        IReadOnlyList<string> ids = [.. known.Concat(typedIn).Distinct(StringComparer.Ordinal)];
+        prompt.ProjectSources = ids.Where(id => id != GeneralThread).ToDictionary(
+            id => id, id => typedIn.Contains(id) ? ProjectSource.Explicit : ProjectSource.AssistantTag);
         prompt.ProjectParts = spans.Count > 0 ? spans : null;
-        prompt.ProjectIds = known;
+        prompt.ProjectIds = ids;
 
         if (missing.Count > 0)
         {
@@ -374,8 +404,8 @@ public partial class SessionViewModel
         {
             IReadOnlyList<string> ids = projectId is null
                 ? []
-                : move.Added ? [.. moved.ThreadProjectIds.Append(projectId).Distinct(StringComparer.Ordinal)] : [projectId];
-            moved.ProjectSources = ids.ToDictionary(id => id, _ => ProjectSource.Explicit);
+                : move.Added ? [.. moved.ThreadProjectIds.Append(projectId).Concat(moved.KeepsGeneral ? [GeneralThread] : []).Distinct(StringComparer.Ordinal)] : [projectId];
+            moved.ProjectSources = ids.Where(id => id != GeneralThread).ToDictionary(id => id, _ => ProjectSource.Explicit);
             moved.ProjectParts = ids.Count > 1 ? moved.ProjectParts : null;
             moved.TurnProjectIds = null;
             moved.ProjectIds = ids;
@@ -454,8 +484,8 @@ public partial class SessionViewModel
         if (row.StartsTurn || row.ProjectIds is not null)
         {
             row.TurnProjectsCache = row.StartsTurn ? null : _TurnProjects(index);
-            row.ThreadProjectIds = row.ProjectIds ?? [];
-            row.ThreadProjectSource = row.ProjectIds is { Count: > 0 } ids ? row.SourceFor(ids[0]) : ProjectSource.None;
+            _FileUnder(row, row.ProjectIds ?? []);
+            row.ThreadProjectSource = row.ThreadProjectIds is [var first, ..] ? row.SourceFor(first) : ProjectSource.None;
             return;
         }
 
@@ -471,8 +501,11 @@ public partial class SessionViewModel
             var markers = ProjectMarkers.In(row.Text);
             if (markers.Count > 0)
             {
+                // Every block stays where the prompt was typed as well (AC-1646): the reply does not vanish from it.
                 row.StartsProjectBlock = true;
-                row.BlockProjects = [.. markers.Where(id => Threads is null || Threads.ProjectName(id) is not null)];
+                row.BlockProjects = [.. markers.Where(id => Threads is null || Threads.ProjectName(id) is not null)
+                    .Concat(_OpeningAt(index).Where(opening => opening.IsUserRow).SelectMany(_TypedIn))
+                    .Distinct(StringComparer.Ordinal)];
             }
             else if (row.IsReplyContinuation && index > 0 && Transcript[index - 1] is { BlockProjects: { } block })
             {
@@ -482,13 +515,20 @@ public partial class SessionViewModel
 
         if (row.BlockProjects is { } blockProjects)
         {
-            row.ThreadProjectIds = blockProjects;
+            _FileUnder(row, blockProjects);
             row.ThreadProjectSource = ProjectSource.AssistantTag;
             return;
         }
 
-        row.ThreadProjectIds = turn;
-        row.ThreadProjectSource = turn.Count == 0 ? ProjectSource.None : ProjectSource.Inherited;
+        _FileUnder(row, turn);
+        row.ThreadProjectSource = row.ThreadProjectIds.Count == 0 ? ProjectSource.None : ProjectSource.Inherited;
+    }
+
+    // General travels in a row's ids as `GeneralThread`; the row itself holds only projects, and whether it kept General.
+    private static void _FileUnder(TranscriptEntryViewModel row, IReadOnlyList<string> ids)
+    {
+        row.KeepsGeneral = ids.Contains(GeneralThread, StringComparer.Ordinal);
+        row.ThreadProjectIds = row.KeepsGeneral ? [.. ids.Where(id => id != GeneralThread)] : ids;
     }
 
     // A streamed reply row is filed again once its text holds a marker, which can arrive several deltas in.
@@ -518,24 +558,7 @@ public partial class SessionViewModel
             return aboveTurn;
         }
 
-        var end = index - 1;
-        while (end >= 0 && !Transcript[end].StartsTurn)
-        {
-            end--;
-        }
-
-        if (end < 0)
-        {
-            return [];
-        }
-
-        var start = end;
-        while (start > 0 && Transcript[start - 1].StartsTurn)
-        {
-            start--;
-        }
-
-        var opening = Enumerable.Range(start, end - start + 1).Select(i => Transcript[i]).ToList();
+        var opening = _OpeningAt(index);
         if (opening.LastOrDefault(row => row.TurnProjectIds is not null) is { TurnProjectIds: { } named })
         {
             return named;
