@@ -55,6 +55,12 @@ internal sealed class DepotApi : IDisposable
     public Task<DepotApiResult> PostJsonAsync<T>(string path, T value, CancellationToken cancellationToken) =>
         _SendJsonAsync(HttpMethod.Post, path, value, baseChecksum: null, guardWrite: false, cancellationToken);
 
+    public async Task<DepotApiResult> PostAsync(string path, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, _Url(path));
+        return await _SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<DepotApiResult> PutJsonAsync<T>(
         string path, T value, string? baseChecksum, CancellationToken cancellationToken) =>
         _SendJsonAsync(HttpMethod.Put, path, value, baseChecksum, guardWrite: true, cancellationToken);

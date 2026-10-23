@@ -1,6 +1,5 @@
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -33,6 +32,19 @@ public class DepotMemorySourceTests
             throws
                 ? throw new HttpRequestException(content)
                 : Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(content) });
+    }
+
+    private sealed class _DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        public HttpRequestMessage? LastRequest { get; private set; }
+        public string? LastBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            LastRequest = request;
+            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            return respond(request);
+        }
     }
 
     private const string _TwoProjectsJson =
@@ -129,31 +141,30 @@ public class DepotMemorySourceTests
     // --- AC-499: FamilyKey / InstanceTitle -------------------------------------------------------------------
 
     [Fact]
-    public async Task AppendNoteAsync_CallsDepotsAtomicAppend_NeverWrite()
+    public async Task AppendNoteAsync_PostsToDepotsAtomicAppend_NeverCallsMcp()
     {
-        // AC-492: `append` is server-side atomic and creates the file; `write` would replace it. A sign-in demand
-        // comes back as its own outcome so the host can offer SignInAsync and retry with the same note.
+        // AC-492/AC-1636: append stays server-side atomic over REST. A 401 remains its own outcome so the host can
+        // offer SignInAsync and retry with the same note.
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
-        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _Handler(HttpStatusCode.NotFound, string.Empty));
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
+        var handler = new _DelegateHandler(request => request.RequestUri!.AbsolutePath == "/cockpit/projects"
+            ? new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","kind":"Project"}]}"""),
+            }
+            : new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => handler);
         var connection = Connection("c1", "Acme");
         var registration = DepotMemorySource.BuildRegistrationPairs([connection], host).Single().Registration;
 
-        var result = await registration.AppendNoteAsync!("cockpit", "\n## stamp\n\nnote\n", CancellationToken.None);
+        var result = await registration.AppendNoteAsync!("acme/cockpit", "\n## stamp\n\nnote\n", CancellationToken.None);
 
         Assert.Equal(ProjectMemoryAppendOutcome.AuthorizationRequired, result.Outcome);
-        await host.Received(1).CallMcpToolAsync(
-            connection.McpServerName,
-            "append",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(arguments =>
-                Equals(arguments!["project"], "cockpit")
-                && Equals(arguments["path"], DepotMemorySource.NotesPath)
-                && Equals(arguments["content"], "\n## stamp\n\nnote\n")),
-            Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
-        await host.DidNotReceive().CallMcpToolAsync(Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.Equal("https://depot.example.com/sync/acme/cockpit/append", handler.LastRequest?.RequestUri?.ToString());
+        Assert.Contains("\"path\":\"Inbox.md\"", handler.LastBody);
+        Assert.Contains("\"content\":\"\\n## stamp\\n\\nnote\\n\"", handler.LastBody);
+        await host.DidNotReceive().CallMcpToolAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         Assert.Null(DepotMemorySource.BuildRegistrationPairs([connection]).Single().Registration.AppendNoteAsync);
     }
 }

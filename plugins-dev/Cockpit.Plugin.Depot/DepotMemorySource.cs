@@ -175,19 +175,31 @@ internal static class DepotMemorySource
     private static async Task<ProjectMemoryAppendResult> _AppendNoteAsync(
         ICockpitHost host, DepotConnectionRegistration connection, DepotProjectAddressing addressing, string value, string note, CancellationToken cancellationToken)
     {
-        var result = await host.CallMcpToolAsync(
-            connection.McpServerName,
-            "append",
-            new Dictionary<string, object?> { ["project"] = await addressing.ProjectArgumentAsync(value, cancellationToken).ConfigureAwait(false), ["path"] = NotesPath, ["content"] = note },
-            // Same reasoning as _ListLocationsAsync: a Depot connection is shared, not project-scoped.
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
+        var projectAddress = await addressing.ProjectArgumentAsync(value, cancellationToken).ConfigureAwait(false);
+        var address = projectAddress.Split('/', 2);
+        if (address.Length != 2 || address.Any(string.IsNullOrWhiteSpace))
+        {
+            return ProjectMemoryAppendResult.Failed(
+                $"Depot project '{projectAddress}' has no organization-qualified address.");
+        }
+
+        DepotApiResult result;
+        try
+        {
+            using var api = new DepotApi(host, connection);
+            var path = $"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/append";
+            result = await api.PostJsonAsync(path, new { path = NotesPath, content = note }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return ProjectMemoryAppendResult.Failed(exception.Message);
+        }
 
         return result.Outcome switch
         {
-            PluginMcpToolCallOutcome.Success => ProjectMemoryAppendResult.Success,
-            PluginMcpToolCallOutcome.AuthorizationRequired => ProjectMemoryAppendResult.AuthorizationRequired,
-            _ => ProjectMemoryAppendResult.Failed(result.Error is { Length: > 0 } error ? error : "Depot did not accept the note."),
+            DepotApiOutcome.Success => ProjectMemoryAppendResult.Success,
+            DepotApiOutcome.NotSignedIn => ProjectMemoryAppendResult.AuthorizationRequired,
+            _ => ProjectMemoryAppendResult.Failed("Depot did not accept the note."),
         };
     }
 

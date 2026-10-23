@@ -1,13 +1,12 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-// Uploads/downloads `.cockpit/logo.png` (AC-244) — the pre-signed URL comes from Depot's own
-// `request_upload`/`request_download` MCP tools via `ICockpitHost.CallMcpToolAsync`, but
-// the bytes themselves go over a plain HTTP PUT/GET, per Depot's own contract for those tools.
+// Uploads/downloads `.cockpit/logo.png` (AC-244) — the pre-signed URL comes from Depot's REST API,
+// while the bytes themselves go over a plain HTTP PUT/GET without the bearer token.
 public static class CockpitProjectLogoBlob
 {
     public const string BlobPath = ".cockpit/logo.png";
@@ -15,34 +14,41 @@ public static class CockpitProjectLogoBlob
     private static readonly HttpClient _Http = new();
 
     public static async Task<CockpitProjectLogoUploadResult> UploadAsync(
-        ICockpitHost host, string mcpServerName, string depotProjectSlug, byte[] pngBytes,
+        ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress, byte[] pngBytes,
         HttpClient? httpClient = null, CancellationToken cancellationToken = default)
     {
-        var result = await host.CallMcpToolAsync(
-            mcpServerName,
-            "request_upload",
-            new Dictionary<string, object?>
-            {
-                ["project"] = depotProjectSlug,
-                ["path"] = BlobPath,
-                ["contentType"] = "image/png",
-                ["size"] = pngBytes.Length,
-            },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
+        var path = _SyncPath(depotProjectAddress, "uploads");
+        if (path is null)
+        {
+            return CockpitProjectLogoUploadResult.Failed(
+                $"Depot project '{depotProjectAddress}' has no organization-qualified address.");
+        }
 
-        if (result.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        DepotApiResult result;
+        try
+        {
+            using var api = new DepotApi(host, connection, httpClient);
+            result = await api.PostJsonAsync(path, new
+            {
+                files = new[] { new { path = BlobPath, contentType = "image/png", size = pngBytes.Length } },
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return CockpitProjectLogoUploadResult.Failed(exception.Message);
+        }
+
+        if (result.Outcome == DepotApiOutcome.NotSignedIn)
         {
             return CockpitProjectLogoUploadResult.AuthorizationRequired;
         }
 
-        if (result.Outcome != PluginMcpToolCallOutcome.Success)
+        if (result.Outcome != DepotApiOutcome.Success)
         {
-            return CockpitProjectLogoUploadResult.Failed(
-                result.Error is { Length: > 0 } error ? error : "Depot did not return an upload URL.");
+            return CockpitProjectLogoUploadResult.Failed("Depot did not return an upload URL.");
         }
 
-        if (!_TryReadUrl(result.Content ?? string.Empty, "uploadUrl", out var uploadUrl))
+        if (!_TryReadUrl(result.Content, "uploads", "uploadUrl", out var uploadUrl))
         {
             return CockpitProjectLogoUploadResult.Failed("Depot's upload response came back in an unexpected shape.");
         }
@@ -63,28 +69,38 @@ public static class CockpitProjectLogoBlob
     }
 
     public static async Task<CockpitProjectLogoDownloadResult> DownloadAsync(
-        ICockpitHost host, string mcpServerName, string depotProjectSlug,
+        ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress,
         HttpClient? httpClient = null, CancellationToken cancellationToken = default)
     {
-        var result = await host.CallMcpToolAsync(
-            mcpServerName,
-            "request_download",
-            new Dictionary<string, object?> { ["project"] = depotProjectSlug, ["path"] = BlobPath },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
+        var path = _SyncPath(depotProjectAddress, "downloads");
+        if (path is null)
+        {
+            return CockpitProjectLogoDownloadResult.Failed(
+                $"Depot project '{depotProjectAddress}' has no organization-qualified address.");
+        }
 
-        if (result.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        DepotApiResult result;
+        try
+        {
+            using var api = new DepotApi(host, connection, httpClient);
+            result = await api.PostJsonAsync(path, new { prefix = BlobPath }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return CockpitProjectLogoDownloadResult.Failed(exception.Message);
+        }
+
+        if (result.Outcome == DepotApiOutcome.NotSignedIn)
         {
             return CockpitProjectLogoDownloadResult.AuthorizationRequired;
         }
 
-        if (result.Outcome != PluginMcpToolCallOutcome.Success)
+        if (result.Outcome != DepotApiOutcome.Success)
         {
-            return CockpitProjectLogoDownloadResult.Failed(
-                result.Error is { Length: > 0 } error ? error : "Depot did not return a download URL.");
+            return CockpitProjectLogoDownloadResult.Failed("Depot did not return a download URL.");
         }
 
-        if (!_TryReadUrl(result.Content ?? string.Empty, "downloadUrl", out var downloadUrl))
+        if (!_TryReadUrl(result.Content, "files", "downloadUrl", out var downloadUrl))
         {
             return CockpitProjectLogoDownloadResult.Failed("Depot's download response came back in an unexpected shape.");
         }
@@ -104,36 +120,59 @@ public static class CockpitProjectLogoBlob
     // Idempotent on purpose (a retry must not turn "already gone" into an error): the same `[NotFound]` prefix
     // `DepotSharedProjectSource.PublishAsync` already reads tells that apart from a real failure.
     public static async Task<CockpitProjectLogoDeleteResult> DeleteAsync(
-        ICockpitHost host, string mcpServerName, string depotProjectSlug, CancellationToken cancellationToken = default)
+        ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress,
+        HttpClient? httpClient = null, CancellationToken cancellationToken = default)
     {
-        var result = await host.CallMcpToolAsync(
-            mcpServerName,
-            "delete",
-            new Dictionary<string, object?> { ["project"] = depotProjectSlug, ["path"] = BlobPath, ["kind"] = "artifact" },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
+        var path = _SyncPath(depotProjectAddress, $"delete?path={Uri.EscapeDataString(BlobPath)}&kind=artifact");
+        if (path is null)
+        {
+            return CockpitProjectLogoDeleteResult.Failed(
+                $"Depot project '{depotProjectAddress}' has no organization-qualified address.");
+        }
 
-        if (result.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
+        DepotApiResult result;
+        try
+        {
+            using var api = new DepotApi(host, connection, httpClient);
+            result = await api.PostAsync(path, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return CockpitProjectLogoDeleteResult.Failed(exception.Message);
+        }
+
+        if (result.Outcome == DepotApiOutcome.NotSignedIn)
         {
             return CockpitProjectLogoDeleteResult.AuthorizationRequired;
         }
 
-        if (result.Outcome == PluginMcpToolCallOutcome.Success
-            || (result.Error is { } error && error.StartsWith("[NotFound]", StringComparison.Ordinal)))
+        if (result.Outcome is DepotApiOutcome.Success or DepotApiOutcome.OlderDepot)
         {
             return CockpitProjectLogoDeleteResult.Success;
         }
 
-        return CockpitProjectLogoDeleteResult.Failed(result.Error is { Length: > 0 } message ? message : "Depot did not confirm the delete.");
+        return CockpitProjectLogoDeleteResult.Failed("Depot did not confirm the delete.");
     }
 
-    private static bool _TryReadUrl(string json, string propertyName, out string url)
+    private static string? _SyncPath(string projectAddress, string operation)
+    {
+        var address = projectAddress.Split('/', 2);
+        return address.Length == 2 && address.All(part => !string.IsNullOrWhiteSpace(part))
+            ? $"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/{operation}"
+            : null;
+    }
+
+    private static bool _TryReadUrl(ReadOnlyMemory<byte> json, string collectionName, string propertyName, out string url)
     {
         url = string.Empty;
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (document.RootElement.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String)
+            if (document.RootElement.TryGetProperty(collectionName, out var collection)
+                && collection.ValueKind == JsonValueKind.Array
+                && collection.GetArrayLength() > 0
+                && collection[0].TryGetProperty(propertyName, out var value)
+                && value.ValueKind == JsonValueKind.String)
             {
                 url = value.GetString() ?? string.Empty;
             }
