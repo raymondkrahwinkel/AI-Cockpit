@@ -69,7 +69,10 @@ internal sealed class DepotProjectListingSource
 
     public async Task<DepotProjectListingResult> ListAsync(CancellationToken cancellationToken)
     {
-        return await _ListFromMcpAsync(cancellationToken).ConfigureAwait(false);
+        var endpoint = await _EndpointAsync(useStale: true, cancellationToken).ConfigureAwait(false);
+        return endpoint.Outcome == DepotProjectListingOutcome.OlderDepot
+            ? await _ListFromMcpAsync(cancellationToken).ConfigureAwait(false)
+            : endpoint;
     }
 
     // Reachability is an authentication probe, not a reason to mount a plugin-owned MCP tool. An older Depot proves
