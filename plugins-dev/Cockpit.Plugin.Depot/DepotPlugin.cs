@@ -493,7 +493,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // AC-1586/AC-1647: Depot's built-in client may request the host-only inbox and Cockpit API scopes;
             // neither rides on a token handed to a session.
             OAuthClientId = DepotClientId,
-            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} depot.host offline_access",
+            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} offline_access",
             OAuthHostOnlyScopes = $"{Inbox.DepotInbox.Scope} depot.host",
         };
     }
