@@ -79,7 +79,7 @@ internal sealed class DepotApi : IDisposable
         var outcome = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized => DepotApiOutcome.NotSignedIn,
-            HttpStatusCode.Forbidden => DepotApiOutcome.NotSignedIn,
+            HttpStatusCode.Forbidden => DepotApiOutcome.Forbidden,
             HttpStatusCode.NotFound => DepotApiOutcome.OlderDepot,
             HttpStatusCode.NotModified => DepotApiOutcome.NotModified,
             _ when response.IsSuccessStatusCode => DepotApiOutcome.Success,
