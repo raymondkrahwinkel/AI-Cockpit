@@ -1,20 +1,19 @@
 using System.Diagnostics;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Cockpit.Plugin.Depot.Browser;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Publishing;
 using Cockpit.Plugin.Depot.Settings;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// AC-1574: publishing a local folder to a Depot project, against a fake Depot that keeps documents and artifacts the way
-// Depot does (SHA-256 checksums over the stored bytes, a baseChecksum that must match) and remembers every call.
+// AC-1574/AC-1637: publishing against a fake sync API that keeps documents and artifacts the way Depot does and
+// remembers every file outcome.
 public sealed class DepotPublishServiceTests : IDisposable
 {
     private sealed class _Rig : IDisposable
@@ -35,20 +34,18 @@ public sealed class DepotPublishServiceTests : IDisposable
         {
             Directory.CreateDirectory(Source);
             var host = Substitute.For<ICockpitHost>();
-            host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-                .Returns(call =>
-                {
-                    var arguments = call.ArgAt<IReadOnlyDictionary<string, object?>?>(2) ?? new Dictionary<string, object?>();
-                    Calls.Add((call.ArgAt<string>(1), arguments));
-                    return Task.FromResult(_Answer(call.ArgAt<string>(1), arguments));
-                });
+            host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _DepotHandler(this));
             var http = new HttpClient(new _PutHandler(this));
             var storage = new FakePluginStorage();
             var settings = new DepotSettings(storage);
-            Link = new DepotPublication("link-1", "c1", "cockpit", Source, target);
+            Link = new DepotPublication("link-1", "c1", "acme/cockpit", Source, target);
             settings.Publications = [Link];
             Service = new DepotPublishService(
-                new DepotMcp(host, () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]), settings, Cache, http);
+                host,
+                () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")],
+                settings,
+                Cache,
+                http);
         }
 
         public int Count(string tool) => Calls.Count(call => call.Tool == tool);
@@ -70,52 +67,6 @@ public sealed class DepotPublishServiceTests : IDisposable
 
         public List<PublishManifestEntry> Manifest => Cache.Get<List<PublishManifestEntry>>($"publish-manifest:{Link.Id}") ?? [];
 
-        private PluginMcpToolCallResult _Answer(string tool, IReadOnlyDictionary<string, object?> arguments)
-        {
-            var path = arguments.TryGetValue("path", out var given) ? given as string : null;
-            switch (tool)
-            {
-                case "list_projects":
-                    return PluginMcpToolCallResult.Success(JsonSerializer.Serialize(new { projects = new[] { new { slug = "cockpit", name = "Cockpit", role = Role } } }));
-                case "list":
-                    return PluginMcpToolCallResult.Success(JsonSerializer.Serialize(new
-                    {
-                        entries = Documents.Where(pair => path is null || pair.Key.StartsWith(path + "/", StringComparison.Ordinal))
-                            .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Sha(pair.Value) }),
-                    }));
-                case "list_artifacts":
-                    return PluginMcpToolCallResult.Success(JsonSerializer.Serialize(new
-                    {
-                        entries = Artifacts.Where(pair => path is null || pair.Key == path || pair.Key.StartsWith(path + "/", StringComparison.Ordinal))
-                            .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Sha(pair.Value) }),
-                    }));
-                case "write":
-                    var key = (string)arguments["path"]!;
-                    if (arguments.TryGetValue("baseChecksum", out var guard) && Documents.TryGetValue(key, out var existing) && Sha(existing) != (string?)guard)
-                    {
-                        return PluginMcpToolCallResult.Failed("[Conflict] the file changed since you read it");
-                    }
-
-                    Documents[key] = (string)arguments["content"]!;
-                    return PluginMcpToolCallResult.Success(JsonSerializer.Serialize(new { path = key, checksum = Sha(Documents[key]) }));
-                case "request_upload":
-                    return PluginMcpToolCallResult.Success(JsonSerializer.Serialize(new { uploadUrl = "https://storage.example.com/upload/" + Uri.EscapeDataString(path!) }));
-                case "delete":
-                    if (arguments["kind"] as string == "artifact")
-                    {
-                        Artifacts.Remove(path!);
-                    }
-                    else
-                    {
-                        Documents.Remove(path!);
-                    }
-
-                    return PluginMcpToolCallResult.Success("{}");
-                default:
-                    return PluginMcpToolCallResult.Failed($"no {tool}");
-            }
-        }
-
         public void Dispose()
         {
             // A directory link goes first and on its own, so deleting the tree never follows it.
@@ -129,6 +80,126 @@ public sealed class DepotPublishServiceTests : IDisposable
                 Directory.Delete(Root, recursive: true);
             }
         }
+    }
+
+    private sealed class _DepotHandler(_Rig rig) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/cockpit/projects")
+            {
+                return _Json(new
+                {
+                    projects = new[]
+                    {
+                        new { slug = "cockpit", address = "acme/cockpit", name = "Cockpit", role = rig.Role },
+                    },
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && path.EndsWith("/files", StringComparison.Ordinal))
+            {
+                var prefix = _Query(request.RequestUri, "path");
+                return _Json(new
+                {
+                    entries = rig.Documents.Where(pair => prefix is null || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
+                        .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Sha(pair.Value) }),
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && path.EndsWith("/artifacts", StringComparison.Ordinal))
+            {
+                var prefix = _Query(request.RequestUri, "path");
+                return _Json(new
+                {
+                    entries = rig.Artifacts.Where(pair => prefix is null || pair.Key == prefix || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
+                        .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Sha(pair.Value) }),
+                });
+            }
+
+            if (request.Method == HttpMethod.Post && path.EndsWith("/write", StringComparison.Ordinal))
+            {
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                var results = new List<object>();
+                foreach (var entry in body.RootElement.EnumerateArray())
+                {
+                    var filePath = entry.GetProperty("path").GetString() ?? string.Empty;
+                    var content = entry.GetProperty("content").GetString() ?? string.Empty;
+                    var baseChecksum = entry.TryGetProperty("baseChecksum", out var guard) && guard.ValueKind == JsonValueKind.String
+                        ? guard.GetString()
+                        : null;
+                    rig.Calls.Add(("write", new Dictionary<string, object?>
+                    {
+                        ["path"] = filePath,
+                        ["content"] = content,
+                        ["baseChecksum"] = baseChecksum,
+                    }));
+                    if (baseChecksum is not null && rig.Documents.TryGetValue(filePath, out var existing) && Sha(existing) != baseChecksum)
+                    {
+                        results.Add(new { path = filePath, status = "conflict", checksum = Sha(existing), message = "Changed in Depot." });
+                        continue;
+                    }
+
+                    rig.Documents[filePath] = content;
+                    results.Add(new { path = filePath, status = "written", checksum = Sha(content), message = (string?)null });
+                }
+
+                return _Json(new { results });
+            }
+
+            if (request.Method == HttpMethod.Post && path.EndsWith("/uploads", StringComparison.Ordinal))
+            {
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                var share = body.RootElement.GetProperty("share").GetString() ?? "none";
+                var uploads = body.RootElement.GetProperty("files").EnumerateArray().Select(file =>
+                {
+                    var filePath = file.GetProperty("path").GetString() ?? string.Empty;
+                    rig.Calls.Add(("request_upload", new Dictionary<string, object?> { ["path"] = filePath, ["share"] = share }));
+                    return new { path = filePath, uploadUrl = "https://storage.example.com/upload/" + Uri.EscapeDataString(filePath) };
+                }).ToList();
+                return _Json(new { uploads });
+            }
+
+            if (request.Method == HttpMethod.Post && path.EndsWith("/delete", StringComparison.Ordinal))
+            {
+                var filePath = _Query(request.RequestUri, "path") ?? string.Empty;
+                var kind = _Query(request.RequestUri, "kind") ?? "auto";
+                var arguments = new Dictionary<string, object?>
+                {
+                    ["path"] = filePath,
+                    ["kind"] = kind,
+                    ["hard"] = string.Equals(_Query(request.RequestUri, "hard"), "true", StringComparison.OrdinalIgnoreCase),
+                    ["baseChecksum"] = _Query(request.RequestUri, "baseChecksum"),
+                };
+                rig.Calls.Add(("delete", arguments));
+                if (kind == "artifact")
+                {
+                    rig.Artifacts.Remove(filePath);
+                }
+                else
+                {
+                    rig.Documents.Remove(filePath);
+                }
+
+                return _Json(new { path = filePath });
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
+
+        private static string? _Query(Uri uri, string name) =>
+            uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Split('=', 2))
+                .Where(part => Uri.UnescapeDataString(part[0]) == name)
+                .Select(part => part.Length == 2 ? Uri.UnescapeDataString(part[1]) : string.Empty)
+                .FirstOrDefault();
+
+        private static HttpResponseMessage _Json<T>(T value) =>
+            new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json"),
+            };
     }
 
     private sealed class _PutHandler(_Rig rig) : HttpMessageHandler

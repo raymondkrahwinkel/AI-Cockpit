@@ -447,12 +447,15 @@ public sealed class RemoteAdminJourney
             // The plugin's storage holds the connection list as an escaped JSON string; its id is a fresh guid.
             var depotId = System.Text.RegularExpressions.Regex.Match(serverState, @"Id\\u0022:\\u0022(?<id>[0-9a-f]{32})\\u0022,\\u0022Name\\u0022:\\u0022Work").Groups["id"].Value;
             var uploaded = await setup.SendAsync<JsonObject>(
-                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-upload", new { connectionId = depotId, project = "cockpit", path = "notes/journey.md", content = "# from the journey" });
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-upload", new { connectionId = depotId, project = "acme/cockpit", path = "notes/journey.md", content = "# from the journey" });
             var depotTree = await setup.SendAsync<JsonObject>(
-                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-tree", new { connectionId = depotId, project = "cockpit" });
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-tree", new { connectionId = depotId, project = "acme/cockpit" });
+            var openedDocument = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-read", new { connectionId = depotId, project = "acme/cockpit", path = "notes/journey.md" });
             Assert.True(uploaded["status"]?.GetValue<string>() == "ok", uploaded.ToJsonString());
             Assert.Equal("# from the journey", depotDocuments["notes/journey.md"]);
             Assert.Contains(depotTree["data"]?["nodes"]?.AsArray() ?? [], node => node?["path"]?.GetValue<string>() == "notes/journey.md");
+            Assert.Equal("# from the journey", openedDocument["data"]?.GetValue<string>());
 
             // AC-1574: publishing a folder of this machine to the Depot project, through the same relay. A first run puts both
             // files there, a changed document goes with exactly one write guarded by the checksum it replaces, and a file
@@ -461,8 +464,10 @@ public sealed class RemoteAdminJourney
             Directory.CreateDirectory(publishSource);
             await File.WriteAllTextAsync(Path.Combine(publishSource, "a.md"), "# first\r\n");
             await File.WriteAllBytesAsync(Path.Combine(publishSource, "b.png"), [1, 2, 3, 4]);
+            await Task.WhenAll(Enumerable.Range(0, 33).Select(index =>
+                File.WriteAllTextAsync(Path.Combine(publishSource, $"bulk-{index:00}.md"), $"# bulk {index}\r\n")));
             var linked = await setup.SendAsync<JsonObject>(
-                HttpMethod.Post, "api/v1/plugins/depot/channel/publish-add", new { connectionId = depotId, project = "cockpit", source = publishSource, targetFolder = "pub" });
+                HttpMethod.Post, "api/v1/plugins/depot/channel/publish-add", new { connectionId = depotId, project = "acme/cockpit", source = publishSource, targetFolder = "pub" });
             var linkId = linked["data"]?["id"]?.GetValue<string>() ?? "";
             async Task<string?> publishFingerprint() =>
                 (await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-plan", new { connectionId = depotId, id = linkId }))["data"]?["fingerprint"]?.GetValue<string>();
@@ -470,6 +475,11 @@ public sealed class RemoteAdminJourney
             Assert.True(firstRun["status"]?.GetValue<string>() == "ok", firstRun.ToJsonString());
             Assert.Equal("# first\r\n", depotDocuments["pub/a.md"]);
             Assert.Equal(new byte[] { 1, 2, 3, 4 }, depotArtifacts["pub/b.png"]);
+            Assert.Equal(34, depotDocuments.Keys.Count(path => path.StartsWith("pub/", StringComparison.Ordinal)));
+            Assert.Contains(depotCalls, call => call.Tool == "write-batch" && call.Path == "34");
+            var truncated = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-read", new { connectionId = depotId, project = "acme/cockpit", path = "pub/bulk-32.md" });
+            Assert.Equal("error", truncated["status"]?.GetValue<string>());
 
             var firstChecksum = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("# first\r\n")));
             var writesBefore = depotCalls.Count(call => call.Tool == "write" && call.Path == "pub/a.md");
@@ -776,8 +786,24 @@ public sealed class RemoteAdminJourney
                     context.Response.ContentType = "image/png";
                     await context.Response.Body.WriteAsync(branding.Logo);
                     return;
+                case "/cockpit/projects" when
+                    context.Request.Headers.Authorization.ToString() is var projectsAuthorization
+                    && (projectsAuthorization == "Bearer journey-access" || projectsAuthorization == $"Bearer {DepotBrowserToken}"):
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        projects = new[]
+                        {
+                            new { slug = "cockpit", address = "acme/cockpit", name = "Cockpit", role = "Editor" },
+                        },
+                    });
+                    return;
+                case { } sync when sync.StartsWith("/sync/acme/cockpit/", StringComparison.Ordinal)
+                    && context.Request.Headers.Authorization.ToString() is var syncAuthorization
+                    && (syncAuthorization == "Bearer journey-access" || syncAuthorization == $"Bearer {DepotBrowserToken}"):
+                    await _FakeDepotSyncAsync(context, documents, artifacts, calls);
+                    return;
                 case "/mcp" when context.Request.Headers.Authorization == "Bearer journey-access":
-                    await _FakeDepotMcpAsync(context, documents, artifacts, calls);
+                    await _FakeDepotMcpAsync(context);
                     return;
                 case { } upload when upload.StartsWith("/upload/", StringComparison.Ordinal) && HttpMethods.IsPut(context.Request.Method):
                     using (var body = new MemoryStream())
@@ -853,13 +879,124 @@ public sealed class RemoteAdminJourney
         public bool CustomLogo { get; set; } = customLogo;
     }
 
-    // Just enough of Depot's MCP (one JSON answer per POST) for the file browser: one Editor project, `write` keeping the
-    // document and `list` handing it back.
-    private static async Task _FakeDepotMcpAsync(
+    private static async Task _FakeDepotSyncAsync(
         HttpContext context,
         System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
         System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
         System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls)
+    {
+        var operation = context.Request.Path.Value?["/sync/acme/cockpit/".Length..] ?? string.Empty;
+        if (HttpMethods.IsGet(context.Request.Method) && operation == "files")
+        {
+            var prefix = context.Request.Query["path"].ToString();
+            await context.Response.WriteAsJsonAsync(new
+            {
+                entries = documents.Where(pair => prefix.Length == 0 || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
+                    .Select(pair => new { path = pair.Key, size = Encoding.UTF8.GetByteCount(pair.Value), checksum = _Checksum(pair.Value) }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsGet(context.Request.Method) && operation == "artifacts")
+        {
+            var prefix = context.Request.Query["path"].ToString();
+            await context.Response.WriteAsJsonAsync(new
+            {
+                entries = artifacts.Where(pair => prefix.Length == 0 || pair.Key == prefix || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
+                    .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Convert.ToHexStringLower(SHA256.HashData(pair.Value)) }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "read")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var paths = request.RootElement.EnumerateArray().Select(path => path.GetString() ?? string.Empty).ToList();
+            await context.Response.WriteAsJsonAsync(new
+            {
+                files = paths.Where(documents.ContainsKey).Select(path => new
+                {
+                    path,
+                    content = documents[path],
+                    size = Encoding.UTF8.GetByteCount(documents[path]),
+                    checksum = _Checksum(documents[path]),
+                }),
+                missing = paths.Where(path => !documents.ContainsKey(path)),
+                truncated = paths.Contains("pub/bulk-32.md", StringComparer.Ordinal),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "write")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            calls.Enqueue(("write-batch", request.RootElement.GetArrayLength().ToString(System.Globalization.CultureInfo.InvariantCulture), null, null, null));
+            var results = new List<object>();
+            foreach (var entry in request.RootElement.EnumerateArray())
+            {
+                var path = entry.GetProperty("path").GetString() ?? string.Empty;
+                var content = entry.GetProperty("content").GetString() ?? string.Empty;
+                var baseChecksum = entry.TryGetProperty("baseChecksum", out var guard) && guard.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? guard.GetString()
+                    : null;
+                calls.Enqueue(("write", path, baseChecksum, null, null));
+                if (baseChecksum is not null && documents.TryGetValue(path, out var current) && _Checksum(current) != baseChecksum)
+                {
+                    results.Add(new { path, status = "conflict", checksum = _Checksum(current), message = "Changed in Depot." });
+                    continue;
+                }
+
+                documents[path] = content;
+                results.Add(new { path, status = "written", checksum = _Checksum(content), message = (string?)null });
+            }
+
+            await context.Response.WriteAsJsonAsync(new { results });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "uploads")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var uploads = request.RootElement.GetProperty("files").EnumerateArray().Select(file =>
+            {
+                var path = file.GetProperty("path").GetString() ?? string.Empty;
+                calls.Enqueue(("request_upload", path, null, null, null));
+                return new { path, uploadUrl = $"{context.Request.Scheme}://{context.Request.Host}/upload/{Uri.EscapeDataString(path)}" };
+            }).ToList();
+            await context.Response.WriteAsJsonAsync(new { uploads });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "downloads")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var prefix = request.RootElement.GetProperty("prefix").GetString() ?? string.Empty;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                files = artifacts.Keys.Where(path => path.StartsWith(prefix, StringComparison.Ordinal)).Select(path =>
+                    new { path, downloadUrl = $"{context.Request.Scheme}://{context.Request.Host}/download/{Uri.EscapeDataString(path)}" }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "delete")
+        {
+            var path = context.Request.Query["path"].ToString();
+            var kind = context.Request.Query["kind"].ToString();
+            var hard = bool.TryParse(context.Request.Query["hard"], out var hardDelete) && hardDelete;
+            calls.Enqueue(("delete", path, context.Request.Query["baseChecksum"], kind, hard));
+            documents.TryRemove(path, out _);
+            artifacts.TryRemove(path, out _);
+            await context.Response.WriteAsJsonAsync(new { path });
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+    }
+
+    // Just enough of Depot's MCP for sign-in and the agent-facing server registration; no file tool is offered.
+    // document and `list` handing it back.
+    private static async Task _FakeDepotMcpAsync(HttpContext context)
     {
         if (!HttpMethods.IsPost(context.Request.Method))
         {
@@ -875,63 +1012,22 @@ public sealed class RemoteAdminJourney
             return;
         }
 
-        object result;
-        switch (root.GetProperty("method").GetString())
+        object result = root.GetProperty("method").GetString() switch
         {
-            case "initialize":
-                result = new
-                {
-                    protocolVersion = root.GetProperty("params").GetProperty("protocolVersion").GetString(),
-                    capabilities = new { tools = new { } },
-                    serverInfo = new { name = "fake-depot", version = "1" },
-                };
-                break;
-            case "tools/call":
-                var arguments = root.GetProperty("params").TryGetProperty("arguments", out var given) ? given : default;
-                var text = root.GetProperty("params").GetProperty("name").GetString() switch
-                {
-                    "list_projects" => """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Editor"}]}""",
-                    "write" => _Stored(documents, arguments, calls),
-                    "list" => System.Text.Json.JsonSerializer.Serialize(new { entries = documents.Keys.Select(path => new { path, size = documents[path].Length, checksum = _Checksum(documents[path]) }) }),
-                    "list_artifacts" => System.Text.Json.JsonSerializer.Serialize(new { entries = artifacts.Keys.Select(path => new { path, size = artifacts[path].Length, checksum = Convert.ToHexStringLower(SHA256.HashData(artifacts[path])) }) }),
-                    "request_upload" => System.Text.Json.JsonSerializer.Serialize(new { uploadUrl = $"{context.Request.Scheme}://{context.Request.Host}/upload/{Uri.EscapeDataString(arguments.GetProperty("path").GetString() ?? "")}" }),
-                    "delete" => _Deleted(documents, artifacts, arguments, calls),
-                    "list_shares" => """{"shares":[]}""",
-                    _ => "{}",
-                };
-                result = new { content = new[] { new { type = "text", text } } };
-                break;
-            default:
-                result = new { tools = Array.Empty<object>() };
-                break;
-        }
+            "initialize" => new
+            {
+                protocolVersion = root.GetProperty("params").GetProperty("protocolVersion").GetString(),
+                capabilities = new { tools = new { } },
+                serverInfo = new { name = "fake-depot", version = "1" },
+            },
+            "tools/call" when root.GetProperty("params").GetProperty("name").GetString() == "ping" =>
+                new { content = new[] { new { type = "text", text = "{}" } } },
+            "tools/call" when root.GetProperty("params").GetProperty("name").GetString() == "list_shares" =>
+                new { content = new[] { new { type = "text", text = "{\"shares\":[]}" } } },
+            _ => new { tools = Array.Empty<object>() },
+        };
 
         await context.Response.WriteAsJsonAsync(new { jsonrpc = "2.0", id, result });
-    }
-
-    private static string _Stored(
-        System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
-        System.Text.Json.JsonElement arguments,
-        System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls)
-    {
-        var path = arguments.GetProperty("path").GetString() ?? "";
-        calls.Enqueue(("write", path, arguments.TryGetProperty("baseChecksum", out var guard) ? guard.GetString() : null, null, null));
-        documents[path] = arguments.GetProperty("content").GetString() ?? "";
-        return System.Text.Json.JsonSerializer.Serialize(new { path, checksum = _Checksum(documents[path]) });
-    }
-
-    private static string _Deleted(
-        System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
-        System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
-        System.Text.Json.JsonElement arguments,
-        System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls)
-    {
-        var path = arguments.GetProperty("path").GetString() ?? "";
-        var kind = arguments.TryGetProperty("kind", out var given) ? given.GetString() : null;
-        calls.Enqueue(("delete", path, arguments.TryGetProperty("baseChecksum", out var guard) ? guard.GetString() : null, kind, arguments.TryGetProperty("hard", out var hard) ? hard.GetBoolean() : null));
-        documents.TryRemove(path, out _);
-        artifacts.TryRemove(path, out _);
-        return "{}";
     }
 
     private static string _Checksum(string text) => Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));

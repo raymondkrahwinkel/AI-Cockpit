@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Browser;
 using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
 using Cockpit.Plugins.Abstractions;
 
@@ -14,7 +16,12 @@ internal sealed record PublishManifestEntry(string Path, string Kind, string Che
 
 // AC-1574: one-way publishing of a local folder or file to a folder in a Depot project. Plan, then a run the operator
 // confirmed. The manifest decides what is ours to change or delete in Depot; nothing outside it is ever touched.
-internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, IPluginCache cache, HttpClient http)
+internal sealed class DepotPublishService(
+    ICockpitHost host,
+    Func<IReadOnlyList<DepotConnectionRegistration>> connections,
+    DepotSettings settings,
+    IPluginCache cache,
+    HttpClient http)
 {
     // ponytail: the most Depot's /sync/files lists in one page; page the listing when a real source needs more.
     internal const int MaxFiles = 1000;
@@ -28,7 +35,12 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
 
     private sealed record _Step(DepotPublishItem Item, _Local? Local, string? Remote);
 
-    private readonly DepotUploader _uploader = new(mcp);
+    private sealed record _DocumentWrite(PublishManifestEntry? Entry, string? Action, string? Detail);
+
+    private readonly ICockpitHost _host = host;
+    private readonly Func<IReadOnlyList<DepotConnectionRegistration>> _connections = connections;
+    private readonly DepotMcp _mcp = new(host, connections);
+    private readonly DepotUploader _uploader = new();
     private readonly ConcurrentDictionary<string, bool> _running = new(StringComparer.Ordinal);
 
     public Task<DepotBrowserAnswer<IReadOnlyList<DepotPublicationRow>>> ListAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
@@ -41,7 +53,7 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         {
             var project = DepotMcp.Required(request.Project, "project");
             var source = DepotMcp.Required(request.Source, "source");
-            await mcp.RequireEditorAsync(request.ConnectionId, project, "Publishing", cancellationToken).ConfigureAwait(false);
+            await _mcp.RequireEditorAsync(request.ConnectionId, project, "Publishing", cancellationToken).ConfigureAwait(false);
             if (!Path.IsPathRooted(source))
             {
                 throw new DepotFailure(DepotBrowserStatus.Error, "The source must be an absolute path on this machine.");
@@ -119,7 +131,7 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
     {
         var link = settings.Publications.FirstOrDefault(candidate => candidate.Id == request.Id && candidate.ConnectionId == request.ConnectionId)
             ?? throw new DepotFailure(DepotBrowserStatus.Error, "That publication no longer exists.");
-        await mcp.RequireEditorAsync(link.ConnectionId, link.Project, "Publishing", cancellationToken).ConfigureAwait(false);
+        await _mcp.RequireEditorAsync(link.ConnectionId, link.Project, "Publishing", cancellationToken).ConfigureAwait(false);
         return link;
     }
 
@@ -188,6 +200,10 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         var problems = new List<DepotPublishItem>();
         try
         {
+            var documentWrites = await _WriteDocumentsAsync(
+                link,
+                steps.Where(step => step.Local?.Kind == DepotBrowserKind.Document && _Writes(step.Item.Action, overwriteConflicts)).ToList(),
+                cancellationToken).ConfigureAwait(false);
             foreach (var step in steps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -205,12 +221,28 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
                             adopted++;
                             break;
                         case DepotPublishAction.New or DepotPublishAction.Changed:
-                            manifest[item.Path] = await _WriteAsync(link, step, cancellationToken).ConfigureAwait(false);
-                            written++;
+                            if (item.Kind == DepotBrowserKind.Document)
+                            {
+                                _ApplyDocumentWrite(step, documentWrites[item.Path], manifest, problems, ref written);
+                            }
+                            else
+                            {
+                                manifest[item.Path] = await _WriteArtifactAsync(link, step, cancellationToken).ConfigureAwait(false);
+                                written++;
+                            }
+
                             break;
                         case DepotPublishAction.Conflict when overwriteConflicts:
-                            manifest[item.Path] = await _WriteAsync(link, step, cancellationToken).ConfigureAwait(false);
-                            written++;
+                            if (item.Kind == DepotBrowserKind.Document)
+                            {
+                                _ApplyDocumentWrite(step, documentWrites[item.Path], manifest, problems, ref written);
+                            }
+                            else
+                            {
+                                manifest[item.Path] = await _WriteArtifactAsync(link, step, cancellationToken).ConfigureAwait(false);
+                                written++;
+                            }
+
                             break;
                         case DepotPublishAction.Delete:
                             if (await _DeleteAsync(link, step, cancellationToken).ConfigureAwait(false))
@@ -250,24 +282,93 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         return report;
     }
 
-    // The manifest entry is returned only once Depot has the bytes, so a failed write leaves the path out of it.
-    private async Task<PublishManifestEntry> _WriteAsync(DepotPublication link, _Step step, CancellationToken cancellationToken)
+    private static bool _Writes(string action, bool overwriteConflicts) =>
+        action is DepotPublishAction.New or DepotPublishAction.Changed
+        || action == DepotPublishAction.Conflict && overwriteConflicts;
+
+    private static void _ApplyDocumentWrite(
+        _Step step,
+        _DocumentWrite result,
+        IDictionary<string, PublishManifestEntry> manifest,
+        ICollection<DepotPublishItem> problems,
+        ref int written)
+    {
+        if (result.Entry is not null)
+        {
+            manifest[step.Item.Path] = result.Entry;
+            written++;
+            return;
+        }
+
+        problems.Add(step.Item with
+        {
+            Action = result.Action ?? DepotPublishAction.Failed,
+            Detail = result.Detail ?? "Depot did not return an outcome for the file.",
+        });
+    }
+
+    // One sync request may span several MCP-sized bundles; Depot chunks it and answers once per document.
+    private async Task<Dictionary<string, _DocumentWrite>> _WriteDocumentsAsync(
+        DepotPublication link, IReadOnlyList<_Step> steps, CancellationToken cancellationToken)
+    {
+        if (steps.Count == 0)
+        {
+            return new Dictionary<string, _DocumentWrite>(StringComparer.Ordinal);
+        }
+
+        var entries = new List<object>(steps.Count);
+        foreach (var step in steps)
+        {
+            var bytes = await File.ReadAllBytesAsync(step.Local!.FullPath, cancellationToken).ConfigureAwait(false);
+            var content = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes);
+            entries.Add(new { path = _DepotPath(link, step.Item.Path), content, baseChecksum = step.Remote });
+        }
+
+        using var api = _Api(link.ConnectionId);
+        using var response = await _PostJsonAsync(
+            api, $"{_SyncRoot(link.Project)}/write", entries, _Connection(link.ConnectionId).Name, cancellationToken)
+            .ConfigureAwait(false);
+        var results = _Array(response.RootElement, "results")
+            .Where(result => DepotMcp.String(result, "path") is not null)
+            .GroupBy(result => DepotMcp.String(result, "path")!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var writes = new Dictionary<string, _DocumentWrite>(StringComparer.Ordinal);
+        foreach (var step in steps)
+        {
+            var depotPath = _DepotPath(link, step.Item.Path);
+            if (!results.TryGetValue(depotPath, out var result))
+            {
+                writes[step.Item.Path] = new _DocumentWrite(null, DepotPublishAction.Failed, "Depot returned no outcome for this file.");
+                continue;
+            }
+
+            var status = DepotMcp.String(result, "status");
+            var message = DepotMcp.String(result, "message");
+            writes[step.Item.Path] = status switch
+            {
+                "written" => new _DocumentWrite(
+                    _Entry(step.Local!, DepotMcp.String(result, "checksum") ?? step.Local!.Checksum!), null, null),
+                "conflict" => new _DocumentWrite(null, DepotPublishAction.Conflict, message ?? "Changed in Depot since the plan."),
+                _ => new _DocumentWrite(null, DepotPublishAction.Failed, message ?? "Depot did not write the file."),
+            };
+        }
+
+        return writes;
+    }
+
+    // The manifest entry is returned only once Depot has the bytes, so a failed upload leaves the path out of it.
+    private async Task<PublishManifestEntry> _WriteArtifactAsync(DepotPublication link, _Step step, CancellationToken cancellationToken)
     {
         var local = step.Local!;
         var depotPath = _DepotPath(link, local.Relative);
-        if (local.Kind == DepotBrowserKind.Document)
-        {
-            var bytes = await File.ReadAllBytesAsync(local.FullPath, cancellationToken).ConfigureAwait(false);
-            var text = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(bytes);
-            var written = await _uploader.StartAsync(link.ConnectionId, link.Project, depotPath, text, string.Empty, bytes.Length, step.Remote is { Length: > 0 } remote ? remote : null, cancellationToken).ConfigureAwait(false);
-            return new PublishManifestEntry(local.Relative, local.Kind, written.Checksum ?? _Sha(bytes), bytes.Length, local.Mtime);
-        }
-
         await using var stream = new FileStream(local.FullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
         var contentType = DepotUploadKinds.ContentType(local.Relative);
         var length = stream.Length;
-        var ticket = await _uploader.StartAsync(link.ConnectionId, link.Project, depotPath, null, contentType, length, null, cancellationToken).ConfigureAwait(false);
-        await _RecheckArtifactAsync(link, depotPath, step.Remote, cancellationToken).ConfigureAwait(false);
+        using var api = _Api(link.ConnectionId);
+        var ticket = await _uploader.StartAsync(
+            api, _Connection(link.ConnectionId).Name, _SyncRoot(link.Project), depotPath, null, contentType, length, null, cancellationToken)
+            .ConfigureAwait(false);
+        await _RecheckArtifactAsync(api, link, depotPath, step.Remote, cancellationToken).ConfigureAwait(false);
         var checksum = await DepotUploader.PutAsync(
             http, ticket.UploadUrl ?? throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return an upload URL."), stream, contentType, cancellationToken).ConfigureAwait(false);
         return new PublishManifestEntry(local.Relative, local.Kind, checksum ?? local.Checksum!, length, local.Mtime);
@@ -275,13 +376,11 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
 
     // request_upload has no baseChecksum, so the plan's checksum is checked once more right before the PUT.
     // ponytail: a race of milliseconds remains, until Depot takes a baseChecksum on the upload.
-    private async Task _RecheckArtifactAsync(DepotPublication link, string depotPath, string? expected, CancellationToken cancellationToken)
+    private async Task _RecheckArtifactAsync(
+        DepotApi api, DepotPublication link, string depotPath, string? expected, CancellationToken cancellationToken)
     {
-        using var listing = DepotMcp.Parse(await mcp.CallAsync(
-            link.ConnectionId,
-            "list_artifacts",
-            new Dictionary<string, object?> { ["project"] = link.Project, ["path"] = depotPath, ["includeChecksums"] = true },
-            cancellationToken).ConfigureAwait(false));
+        var path = $"{_SyncRoot(link.Project)}/artifacts?path={Uri.EscapeDataString(depotPath)}&includeChecksums=true";
+        using var listing = await _GetAsync(api, path, _Connection(link.ConnectionId).Name, cancellationToken).ConfigureAwait(false);
         var current = DepotMcp.Entries(listing.RootElement)
             .Where(entry => DepotMcp.String(entry, "path") == depotPath)
             .Select(entry => DepotMcp.String(entry, "checksum") ?? string.Empty)
@@ -300,26 +399,29 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
             return false;
         }
 
+        using var api = _Api(link.ConnectionId);
+        var path = $"{_SyncRoot(link.Project)}/delete?path={Uri.EscapeDataString(_DepotPath(link, step.Item.Path))}"
+            + $"&kind={(step.Item.Kind == DepotBrowserKind.Document ? "memory" : "artifact")}"
+            + $"&baseChecksum={Uri.EscapeDataString(step.Remote)}";
+        DepotApiResult result;
         try
         {
-            await mcp.CallAsync(
-                link.ConnectionId,
-                "delete",
-                new Dictionary<string, object?>
-                {
-                    ["project"] = link.Project,
-                    ["path"] = _DepotPath(link, step.Item.Path),
-                    ["kind"] = step.Item.Kind == DepotBrowserKind.Document ? "memory" : "artifact",
-                    ["hard"] = false,
-                    ["baseChecksum"] = step.Remote,
-                },
-                cancellationToken).ConfigureAwait(false);
-            return true;
+            result = await api.PostAsync(path, cancellationToken).ConfigureAwait(false);
         }
-        catch (DepotFailure failure) when (failure.Message.StartsWith("[NotFound]", StringComparison.Ordinal))
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return false;
+            throw new DepotFailure(DepotBrowserStatus.Error, "Could not reach Depot, or it took too long.");
         }
+
+        return result.Outcome switch
+        {
+            DepotApiOutcome.Success => true,
+            DepotApiOutcome.OlderDepot => false,
+            DepotApiOutcome.NotSignedIn => throw new DepotFailure(
+                DepotBrowserStatus.SignIn, $"Sign in to {_Connection(link.ConnectionId).Name}"),
+            DepotApiOutcome.Conflict => throw new _ConflictException("Changed in Depot since the plan."),
+            _ => throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not delete the file."),
+        };
     }
 
     private async Task<(Dictionary<string, string> Documents, Dictionary<string, string> Artifacts)> _RemoteAsync(
@@ -331,18 +433,11 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
         var complete = false;
         for (var page = 0; page < MaxPages; page++)
         {
-            var arguments = new Dictionary<string, object?> { ["project"] = link.Project, ["includeChecksums"] = true, ["limit"] = PageSize };
-            if (link.TargetFolder.Length > 0)
-            {
-                arguments["path"] = link.TargetFolder;
-            }
-
-            if (cursor is not null)
-            {
-                arguments["after"] = cursor;
-            }
-
-            using var listing = DepotMcp.Parse(await mcp.CallAsync(link.ConnectionId, "list", arguments, cancellationToken).ConfigureAwait(false));
+            var path = $"{_SyncRoot(link.Project)}/files?includeChecksums=true&limit={PageSize}"
+                + (link.TargetFolder.Length == 0 ? string.Empty : $"&path={Uri.EscapeDataString(link.TargetFolder)}")
+                + (cursor is null ? string.Empty : $"&after={Uri.EscapeDataString(cursor)}");
+            using var api = _Api(link.ConnectionId);
+            using var listing = await _GetAsync(api, path, _Connection(link.ConnectionId).Name, cancellationToken).ConfigureAwait(false);
             _Collect(listing.RootElement, prefix, documents);
             var next = DepotMcp.String(listing.RootElement, "nextCursor");
             if (string.IsNullOrEmpty(next) || next == cursor)
@@ -359,17 +454,73 @@ internal sealed class DepotPublishService(DepotMcp mcp, DepotSettings settings, 
             throw new DepotFailure(DepotBrowserStatus.Error, "This Depot folder holds too many documents to compare. Publish to a smaller folder.");
         }
 
-        var artifactArguments = new Dictionary<string, object?> { ["project"] = link.Project, ["includeChecksums"] = true };
-        if (link.TargetFolder.Length > 0)
-        {
-            artifactArguments["path"] = link.TargetFolder;
-        }
-
         var artifacts = new Dictionary<string, string>(StringComparer.Ordinal);
-        using var artifactListing = DepotMcp.Parse(await mcp.CallAsync(link.ConnectionId, "list_artifacts", artifactArguments, cancellationToken).ConfigureAwait(false));
+        var artifactPath = $"{_SyncRoot(link.Project)}/artifacts?includeChecksums=true"
+            + (link.TargetFolder.Length == 0 ? string.Empty : $"&path={Uri.EscapeDataString(link.TargetFolder)}");
+        using var artifactApi = _Api(link.ConnectionId);
+        using var artifactListing = await _GetAsync(
+            artifactApi, artifactPath, _Connection(link.ConnectionId).Name, cancellationToken).ConfigureAwait(false);
         _Collect(artifactListing.RootElement, prefix, artifacts);
         return (documents, artifacts);
     }
+
+    private DepotApi _Api(string connectionId) => new(_host, _Connection(connectionId));
+
+    private DepotConnectionRegistration _Connection(string connectionId) =>
+        _connections().FirstOrDefault(candidate => candidate.Id == connectionId)
+        ?? throw new DepotFailure(DepotBrowserStatus.Error, "That Depot connection is no longer configured.");
+
+    private static string _SyncRoot(string project)
+    {
+        var address = project.Split('/', 2);
+        return address.Length == 2 && address.All(part => !string.IsNullOrWhiteSpace(part))
+            ? $"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}"
+            : throw new DepotFailure(DepotBrowserStatus.Error, $"Depot project '{project}' has no organization-qualified address.");
+    }
+
+    private static Task<JsonDocument> _GetAsync(
+        DepotApi api, string path, string connectionName, CancellationToken cancellationToken) =>
+        _DocumentAsync(api.GetAsync(path, cancellationToken), connectionName, cancellationToken);
+
+    private static Task<JsonDocument> _PostJsonAsync<T>(
+        DepotApi api, string path, T value, string connectionName, CancellationToken cancellationToken) =>
+        _DocumentAsync(api.PostJsonAsync(path, value, cancellationToken), connectionName, cancellationToken);
+
+    private static async Task<JsonDocument> _DocumentAsync(
+        Task<DepotApiResult> call, string connectionName, CancellationToken cancellationToken)
+    {
+        DepotApiResult result;
+        try
+        {
+            result = await call.ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            throw new DepotFailure(DepotBrowserStatus.Error, "Could not reach Depot, or it took too long.");
+        }
+
+        if (result.Outcome == DepotApiOutcome.NotSignedIn)
+        {
+            throw new DepotFailure(DepotBrowserStatus.SignIn, $"Sign in to {connectionName}");
+        }
+
+        if (result.Outcome != DepotApiOutcome.Success)
+        {
+            throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not accept the file operation.");
+        }
+
+        try
+        {
+            return JsonDocument.Parse(result.Content);
+        }
+        catch (JsonException)
+        {
+            throw new DepotFailure(DepotBrowserStatus.Error, "Depot's answer came back in an unexpected shape.");
+        }
+    }
+
+    private static IEnumerable<JsonElement> _Array(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var entries) && entries.ValueKind == JsonValueKind.Array ? entries.EnumerateArray() : [];
 
     // A listing without a checksum still counts as present, with one nothing equals: it can only become a conflict.
     private static void _Collect(System.Text.Json.JsonElement root, string prefix, Dictionary<string, string> into)

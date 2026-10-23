@@ -5,26 +5,32 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// AC-1568/AC-1634: file operations use MCP; project discovery uses the connection's REST listing.
+// AC-1568/AC-1637: project discovery and file operations use REST; only shares remain on MCP until AC-1638.
 public class DepotBrowserServiceTests
 {
-    private const string Projects = """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"{ROLE}"}]}""";
+    private const string Projects = """{"projects":[{"slug":"cockpit","address":"acme/cockpit","name":"Cockpit","role":"{ROLE}"}]}""";
 
     // A host whose MCP tools answer from `Tools` (tool name → answer) and which remembers every call.
     private sealed class _Rig
     {
         public Dictionary<string, Func<IReadOnlyDictionary<string, object?>, PluginMcpToolCallResult>> Tools { get; } = new();
         public List<(string Tool, IReadOnlyDictionary<string, object?> Arguments)> Calls { get; } = [];
+        public List<(HttpMethod Method, string Path, string Body)> RestCalls { get; } = [];
         public ICockpitHost Host { get; } = Substitute.For<ICockpitHost>();
         public DepotBrowserService Service { get; }
+        public Func<HttpRequestMessage, string, string>? RestResponse { get; set; }
+        public HttpStatusCode FileStatus { get; set; } = HttpStatusCode.OK;
 
         public _Rig(string role = "Editor")
         {
             Host.Cache.Returns(new InMemoryPluginCache());
-            Host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _ProjectsHandler(Projects.Replace("{ROLE}", role)));
+            Host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _DepotHandler(this, Projects.Replace("{ROLE}", role)));
             Host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
                 {
@@ -37,25 +43,79 @@ public class DepotBrowserServiceTests
         }
 
         public int Count(string tool) => Calls.Count(call => call.Tool == tool);
+
+        public int CountRest(string operation) => RestCalls.Count(call => call.Path.Contains($"/{operation}", StringComparison.Ordinal));
     }
 
-    private sealed class _ProjectsHandler(string content) : HttpMessageHandler
+    private sealed class _DepotHandler(_Rig rig, string projects) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content) });
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath == "/cockpit/projects")
+            {
+                return _Json(projects);
+            }
+
+            var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
+            rig.RestCalls.Add((request.Method, request.RequestUri.PathAndQuery, body));
+            if (rig.FileStatus != HttpStatusCode.OK)
+            {
+                return new HttpResponseMessage(rig.FileStatus);
+            }
+
+            return _Json(rig.RestResponse?.Invoke(request, body) ?? _Default(request.RequestUri.AbsolutePath, body));
+        }
+
+        private static string _Default(string path, string body)
+        {
+            if (path.EndsWith("/write", StringComparison.Ordinal))
+            {
+                using var request = JsonDocument.Parse(body);
+                var entry = request.RootElement[0];
+                var filePath = entry.GetProperty("path").GetString() ?? string.Empty;
+                var content = entry.GetProperty("content").GetString() ?? string.Empty;
+                return JsonSerializer.Serialize(new
+                {
+                    results = new[] { new { path = filePath, status = "written", checksum = _Sha(content) } },
+                });
+            }
+
+            if (path.EndsWith("/uploads", StringComparison.Ordinal))
+            {
+                using var request = JsonDocument.Parse(body);
+                var filePath = request.RootElement.GetProperty("files")[0].GetProperty("path").GetString() ?? string.Empty;
+                return JsonSerializer.Serialize(new
+                {
+                    uploads = new[] { new { path = filePath, uploadUrl = "https://d/blob/upload/abc" } },
+                });
+            }
+
+            return path.EndsWith("/read", StringComparison.Ordinal)
+                ? """{"files":[],"missing":[],"truncated":false}"""
+                : """{"entries":[]}""";
+        }
+
+        private static HttpResponseMessage _Json(string content) =>
+            new(HttpStatusCode.OK) { Content = new StringContent(content, Encoding.UTF8, "application/json") };
+
+        private static string _Sha(string content) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
     }
 
     private static DepotBrowserRequest _Request(string? path = null, string? mode = null, string? shareId = null) =>
-        new("c1", "cockpit", path, mode, shareId);
+        new("c1", "acme/cockpit", path, mode, shareId);
+
+    private static string _TreeResponse(HttpRequestMessage request, string _) =>
+        request.RequestUri!.AbsolutePath.EndsWith("/artifacts", StringComparison.Ordinal)
+            ? """{"entries":[{"path":"img/a.png","contentType":"image/png","size":10},{"path":"img/b.png","contentType":"image/png","size":11}]}"""
+            : request.RequestUri.Query.Contains("after=", StringComparison.Ordinal)
+                ? """{"entries":[{"path":"docs/page-two.md","size":9,"updatedAt":"2026-08-29T17:08:18+00:00"}]}"""
+                : """{"entries":[{"path":"docs/page-one.md","size":5}],"nextCursor":"docs/page-one.md"}""";
 
     [Fact]
     public async Task Tree_ReadsEveryPage_MergesArtifacts_AndMarksSharesFromOneListShares()
     {
         var rig = new _Rig();
-        rig.Tools["list"] = arguments => arguments.ContainsKey("after")
-            ? PluginMcpToolCallResult.Success("""{"entries":[{"path":"docs/page-two.md","size":9,"updatedAt":"2026-08-29T17:08:18+00:00"}]}""")
-            : PluginMcpToolCallResult.Success("""{"entries":[{"path":"docs/page-one.md","size":5}],"nextCursor":"docs/page-one.md"}""");
-        rig.Tools["list_artifacts"] = _ => PluginMcpToolCallResult.Success("""{"entries":[{"path":"img/a.png","contentType":"image/png","size":10},{"path":"img/b.png","contentType":"image/png","size":11}]}""");
+        rig.RestResponse = _TreeResponse;
         rig.Tools["list_shares"] = _ => PluginMcpToolCallResult.Success("""{"shares":[{"shareId":"s1","path":"img/b.png","isPublic":true,"url":"https://d/artifact/p/s1"}]}""");
 
         var answer = await rig.Service.TreeAsync(_Request(), default);
@@ -97,45 +157,56 @@ public class DepotBrowserServiceTests
     // AC-1573: a binary file asks for a ticket without a share (the default would leave one behind on a failed PUT);
     // a text file is a document, which the artifact store refuses.
     [Theory]
-    [InlineData("img/a.png", "request_upload", "write")]
-    [InlineData("docs/a.md", "write", "request_upload")]
-    public async Task Upload_RoutesByKind_AndAskedForNoShare(string path, string used, string unused)
+    [InlineData("img/a.png", "uploads", "\"share\":\"none\"", "https://d/blob/upload/abc")]
+    [InlineData("docs/a.md", "write", "\"content\":\"# hi\"", null)]
+    public async Task Upload_RoutesByKind_AndAskedForNoShare(
+        string path, string operation, string requestFragment, string? uploadUrl)
     {
         var rig = new _Rig();
-        rig.Tools["request_upload"] = _ => PluginMcpToolCallResult.Success("""{"uploadUrl":"https://d/blob/upload/abc"}""");
-        rig.Tools["write"] = _ => PluginMcpToolCallResult.Success("{}");
 
         var answer = await rig.Service.UploadAsync(_Request(path) with { Content = "# hi", ContentType = "image/png", Size = 3 }, default);
 
         Assert.Equal(DepotBrowserStatus.Ok, answer.Status);
-        Assert.Equal(1, rig.Count(used));
-        Assert.Equal(0, rig.Count(unused));
-        if (used == "request_upload")
+        var request = Assert.Single(rig.RestCalls);
+        Assert.Contains($"/{operation}", request.Path, StringComparison.Ordinal);
+        Assert.Contains(requestFragment, request.Body, StringComparison.Ordinal);
+        Assert.Equal(uploadUrl, answer.Data!.UploadUrl);
+    }
+
+    [Fact]
+    public async Task Read_RefusesATruncatedAnswer_InsteadOfShowingPartialContent()
+    {
+        var rig = new _Rig
         {
-            var arguments = rig.Calls.Single(call => call.Tool == "request_upload").Arguments;
-            Assert.Equal(("none", path), (arguments["share"], arguments["path"]));
-            Assert.Equal("https://d/blob/upload/abc", answer.Data!.UploadUrl);
-        }
+            RestResponse = (_, _) => """{"files":[{"path":"large.md","content":"partial"}],"missing":[],"truncated":true}""",
+        };
+
+        var answer = await rig.Service.ReadAsync(_Request("large.md"), default);
+
+        Assert.Equal(DepotBrowserStatus.Error, answer.Status);
+        Assert.Contains("truncated", answer.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public async Task Upload_NeedsTheEditorRole_AViewerWritesNothing()
     {
         var viewer = new _Rig("Viewer");
-        viewer.Tools["request_upload"] = _ => PluginMcpToolCallResult.Success("""{"uploadUrl":"https://d/u"}""");
-        viewer.Tools["write"] = _ => PluginMcpToolCallResult.Success("{}");
 
         var binary = await viewer.Service.UploadAsync(_Request("a.png"), default);
         var text = await viewer.Service.UploadAsync(_Request("a.md") with { Content = "x" }, default);
 
         Assert.Equal((DepotBrowserStatus.Error, DepotBrowserStatus.Error), (binary.Status, text.Status));
-        Assert.Equal(0, viewer.Count("request_upload") + viewer.Count("write"));
+        Assert.Equal(0, viewer.CountRest("uploads") + viewer.CountRest("write"));
 
         // AC-1574: publishing is a write path too, refused for a Viewer on add, plan and run alike.
         var settings = new Cockpit.Plugin.Depot.Settings.DepotSettings(new FakePluginStorage());
-        settings.Publications = [new DepotPublication("p1", "c1", "cockpit", Path.GetTempPath(), "docs")];
+        settings.Publications = [new DepotPublication("p1", "c1", "acme/cockpit", Path.GetTempPath(), "docs")];
         var publisher = new Cockpit.Plugin.Depot.Publishing.DepotPublishService(
-            new DepotMcp(viewer.Host, () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]), settings, new InMemoryPluginCache(), new HttpClient());
+            viewer.Host,
+            () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")],
+            settings,
+            new InMemoryPluginCache(),
+            new HttpClient());
         var refusals = new[]
         {
             (await publisher.AddAsync(new DepotPublishRequest("c1", "cockpit", Source: Path.GetTempPath()), default)).Status,
@@ -143,18 +214,15 @@ public class DepotBrowserServiceTests
             (await publisher.RunAsync(new DepotPublishRequest("c1", Id: "p1", Confirmed: true), default)).Status,
         };
         Assert.All(refusals, status => Assert.Equal(DepotBrowserStatus.Error, status));
-        Assert.Equal(0, viewer.Count("list") + viewer.Count("list_artifacts") + viewer.Count("delete"));
+        Assert.Equal(0, viewer.CountRest("files") + viewer.CountRest("artifacts") + viewer.CountRest("delete"));
     }
 
     [Theory]
-    [InlineData(PluginMcpToolCallOutcome.AuthorizationRequired, DepotBrowserStatus.SignIn, "Sign in to Work")]
-    [InlineData(PluginMcpToolCallOutcome.Failed, DepotBrowserStatus.Error, "[Forbidden] no access to cockpit")]
-    public async Task Tree_NotSignedInOrRefused_SaysSoWithoutSigningIn(PluginMcpToolCallOutcome outcome, string status, string message)
+    [InlineData(HttpStatusCode.Unauthorized, DepotBrowserStatus.SignIn, "Sign in to Work")]
+    [InlineData(HttpStatusCode.Forbidden, DepotBrowserStatus.Error, "Depot did not accept the file operation.")]
+    public async Task Tree_NotSignedInOrRefused_SaysSoWithoutSigningIn(HttpStatusCode response, string status, string message)
     {
-        var rig = new _Rig();
-        rig.Tools["list"] = _ => outcome == PluginMcpToolCallOutcome.AuthorizationRequired
-            ? PluginMcpToolCallResult.AuthorizationRequired
-            : PluginMcpToolCallResult.Failed("[Forbidden] no access to cockpit");
+        var rig = new _Rig { FileStatus = response };
 
         var answer = await rig.Service.TreeAsync(_Request(), default);
 
