@@ -726,9 +726,6 @@ internal static partial class Screenshotter
         };
     }
 
-    // AC-937: a CockpitViewModel with a few side-buttons registered through the sink, the same route a real plugin
-    // uses — Autopilot and Open PRs pinned (the shipped default for those two), YouTrack and Workflows collapsed,
-    // one of them (Open PRs) carrying a badge so the flyout also shows a live counter.
     // Narrower than the main window can be (its minimum is 900), the toast layer on its own, as a phone-wide frame sees it.
     private static Window _ReminderToastScene(int width)
     {
@@ -743,6 +740,9 @@ internal static partial class Screenshotter
             : new MainWindow { DataContext = cockpit };
     }
 
+    // AC-937: a CockpitViewModel with a few side-buttons registered through the sink, the same route a real plugin
+    // uses — Autopilot and Open PRs pinned (the shipped default for those two), YouTrack and Workflows collapsed,
+    // one of them (Open PRs) carrying a badge so the flyout also shows a live counter.
     private static Window _PluginsMenuScene()
     {
         var cockpit = new ViewModels.CockpitViewModel();
