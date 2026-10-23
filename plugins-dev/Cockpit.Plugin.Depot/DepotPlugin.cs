@@ -490,11 +490,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // Scheme+host+port of the stored base URL: Depot's protected-resource metadata names the origin as
             // its authorization_servers entry, not a subpath. Falls back to the base URL if unparseable (defensive only).
             OAuthAuthority = DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url,
-            // AC-1586: Depot's built-in client, the one allowed depot.inbox; the host keeps that scope off every token a
-            // session gets and spends it only behind CreateAuthorizedHandler(name, "depot.inbox").
+            // AC-1586/AC-1647: Depot's built-in client may request the host-only inbox and Cockpit API scopes;
+            // neither rides on a token handed to a session.
             OAuthClientId = DepotClientId,
-            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} offline_access",
-            OAuthHostOnlyScopes = Inbox.DepotInbox.Scope,
+            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} depot.host offline_access",
+            OAuthHostOnlyScopes = $"{Inbox.DepotInbox.Scope} depot.host",
         };
     }
 
