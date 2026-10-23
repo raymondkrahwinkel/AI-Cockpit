@@ -9,6 +9,16 @@ namespace Cockpit.Plugins.Abstractions.Projects;
 public interface ISharedProjectSource
 {
     /// <summary>
+    /// Raised when this source knows one of its own project ids changed, or with <see langword="null"/> when all
+    /// ids must be checked again. Sources without a push channel can leave the default no-op implementation alone.
+    /// </summary>
+    event Action<string?> Changed
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Stable key this source is registered and removed under
     /// (<see cref="ICockpitHost.RemoveSharedProjectSource"/>) — any string unique to this plugin's own sources.
     /// </summary>
@@ -21,7 +31,8 @@ public interface ISharedProjectSource
 
     /// <summary>
     /// This source's current projects. Called each time the Projects workspace loads — there is no
-    /// push/invalidate path.
+    /// live-listing push path. <see cref="Changed"/> rechecks existing bindings; it does not replace a later listing
+    /// refresh.
     /// </summary>
     /// <remarks>
     /// Must not throw for an ordinary failure (unreachable, not signed in): report it through

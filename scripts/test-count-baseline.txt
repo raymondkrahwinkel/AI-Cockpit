@@ -37,6 +37,7 @@ plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
 tests/Cockpit.App.ViewTests	1481
 tests/Cockpit.Backend.Tests	73
 tests/Cockpit.Core.Tests	1012
-tests/Cockpit.Infrastructure.Tests	690
+# AC-1639 proves a source event checks one bound project immediately without moving the poll clock.
+tests/Cockpit.Infrastructure.Tests	691
 tests/Cockpit.Journeys	33
 tests/Cockpit.PluginEndpointAnnotations.Tests	2
