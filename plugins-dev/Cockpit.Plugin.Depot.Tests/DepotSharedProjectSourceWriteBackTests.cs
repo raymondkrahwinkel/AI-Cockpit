@@ -15,7 +15,8 @@ public class DepotSharedProjectSourceWriteBackTests
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
 
     private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
-        DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
+        DepotMemorySource.BuildSharedProjectSources(
+            [Connection()], host, httpClient ?? new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("""{"projects":[]}""") }))).Single();
 
     private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {

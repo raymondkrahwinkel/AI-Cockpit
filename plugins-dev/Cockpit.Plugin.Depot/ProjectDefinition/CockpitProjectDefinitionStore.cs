@@ -4,7 +4,8 @@ using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-// Reads and writes `.cockpit/project.json` in a Depot project through a connection's own MCP server (AC-244), the same `ICockpitHost.CallMcpToolAsync` seam `DepotMemorySource` already uses for `list_projects`.
+// Reads and writes `.cockpit/project.json` through the connection's agent-facing MCP server (AC-244); plugin-owned
+// project discovery itself uses Depot's REST API.
 // AC-244: a baseChecksum mismatch on write surfaces as an ordinary PluginMcpToolCallOutcome.Failed with Depot's own
 // error text — Depot's MCP layer carries no separate, typed conflict signal (its tool wrapper turns any handler
 // failure, conflict or otherwise, into the same shape: an error with only a message). AC-247 classifies that text

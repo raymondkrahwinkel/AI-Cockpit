@@ -5,6 +5,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using System.Net;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -16,19 +17,22 @@ public class DepotMemorySourceTests
     private static DepotConnectionRegistration Connection(string id, string name, string url = "https://depot.example.com") =>
         new(id, name, url);
 
-    // AC-503/AC-499: rebuilt because the original "outline" probe always failed against a real Depot server
-    // (outline needs {project, path}, called here with only {project}). Now asks list_projects and matches
-    // the typed slug against the returned list.
+    // AC-503/AC-499/AC-1634: the reachability probe matches the typed slug against Depot's REST project list.
 
-    private static ICockpitHost _HostReturning(string content) =>
-        _HostReturning(PluginMcpToolCallResult.Success(content));
-
-    private static ICockpitHost _HostReturning(PluginMcpToolCallResult result)
+    private static ICockpitHost _HostReturning(string content, HttpStatusCode status = HttpStatusCode.OK)
     {
         var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(result));
+        host.Cache.Returns(new InMemoryPluginCache());
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _Handler(status, content));
         return host;
+    }
+
+    private sealed class _Handler(HttpStatusCode status, string content, bool throws = false) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            throws
+                ? throw new HttpRequestException(content)
+                : Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(content) });
     }
 
     private const string _TwoProjectsJson =
@@ -61,7 +65,7 @@ public class DepotMemorySourceTests
     {
         // The one case that actually means "go sign in" — the case Raymond's own live test found conflated with an
         // ordinary failed call before this ticket.
-        var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
+        var host = _HostReturning(string.Empty, HttpStatusCode.Unauthorized);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
@@ -86,7 +90,7 @@ public class DepotMemorySourceTests
     {
         // Iron Law #8, belt-and-braces: NotSignedIn always shows its own fixed sentence — nothing plugin-supplied
         // is ever attached here, unlike CheckFailed which deliberately does carry one.
-        var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
+        var host = _HostReturning(string.Empty, HttpStatusCode.Unauthorized);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
         var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
@@ -107,9 +111,9 @@ public class DepotMemorySourceTests
 
         var host = Substitute.For<ICockpitHost>();
         host.Services.Returns(services);
-        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("connection reset")));
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
+        host.Cache.Returns(new InMemoryPluginCache());
+        var pairs = DepotMemorySource.BuildRegistrationPairs(
+            [Connection("c1", "Acme")], host, new HttpClient(new _Handler(HttpStatusCode.OK, "connection reset", throws: true)));
 
         await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
 
@@ -129,7 +133,11 @@ public class DepotMemorySourceTests
     {
         // AC-492: `append` is server-side atomic and creates the file; `write` would replace it. A sign-in demand
         // comes back as its own outcome so the host can offer SignInAsync and retry with the same note.
-        var host = _HostReturning(PluginMcpToolCallResult.AuthorizationRequired);
+        var host = Substitute.For<ICockpitHost>();
+        host.Cache.Returns(new InMemoryPluginCache());
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _Handler(HttpStatusCode.NotFound, string.Empty));
+        host.CallMcpToolAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(PluginMcpToolCallResult.AuthorizationRequired));
         var connection = Connection("c1", "Acme");
         var registration = DepotMemorySource.BuildRegistrationPairs([connection], host).Single().Registration;
 

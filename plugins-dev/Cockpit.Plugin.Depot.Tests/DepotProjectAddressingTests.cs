@@ -4,6 +4,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
+using System.Net;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -21,13 +22,19 @@ public class DepotProjectAddressingTests
     private static ICockpitHost HostListing(string listProjectsJson, params string[] storedValues)
     {
         var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(listProjectsJson)));
+        host.Cache.Returns(new InMemoryPluginCache());
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _Handler(listProjectsJson));
         host.CallMcpToolAsync(Arg.Any<string>(), "append", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(PluginMcpToolCallResult.Success("{}")));
         host.RewriteProjectReferencesAsync("depot", Arg.Any<Func<string, string?>>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult(storedValues.Count(value => call.ArgAt<Func<string, string?>>(1)(value) is not null)));
         return host;
+    }
+
+    private sealed class _Handler(string content) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content) });
     }
 
     private static async Task<string?> AppendedProjectAsync(ICockpitHost host, string storedValue)

@@ -20,8 +20,7 @@ internal sealed class DepotMcp(ICockpitHost host, Func<IReadOnlyList<DepotConnec
     public async Task<string> CallAsync(
         string connectionId, string tool, IReadOnlyDictionary<string, object?>? arguments, CancellationToken cancellationToken)
     {
-        var connection = connections().FirstOrDefault(candidate => candidate.Id == connectionId)
-            ?? throw new DepotFailure(DepotBrowserStatus.Error, "That Depot connection is no longer configured.");
+        var connection = _Connection(connectionId);
         var result = await host.CallMcpToolAsync(connection.McpServerName, tool, arguments, projectId: null, cancellationToken).ConfigureAwait(false);
         return result.Outcome switch
         {
@@ -33,19 +32,19 @@ internal sealed class DepotMcp(ICockpitHost host, Func<IReadOnlyList<DepotConnec
 
     public async Task<IReadOnlyList<DepotProjectRow>> ListProjectsAsync(string connectionId, CancellationToken cancellationToken)
     {
-        using var document = Parse(await CallAsync(connectionId, "list_projects", null, cancellationToken).ConfigureAwait(false));
-        if (!document.RootElement.TryGetProperty("projects", out var projects) || projects.ValueKind != JsonValueKind.Array)
+        var connection = _Connection(connectionId);
+        var result = await DepotProjectListingSource.For(host, connection).ListAsync(cancellationToken).ConfigureAwait(false);
+        if (result.Outcome != DepotProjectListingOutcome.Success)
         {
-            return [];
+            throw result.Outcome == DepotProjectListingOutcome.NotSignedIn
+                ? new DepotFailure(DepotBrowserStatus.SignIn, $"Sign in to {connection.Name}")
+                : new DepotFailure(DepotBrowserStatus.Error, result.Error ?? "Depot did not return a list of projects.");
         }
 
-        return [.. projects.EnumerateArray()
-            .Select(project => (Slug: String(project, "slug"), Address: String(project, "address"), Project: project))
-            .Where(row => row.Slug is not null)
-            .Select(row => new DepotProjectRow(
-                row.Address ?? row.Slug!,
-                String(row.Project, "name") ?? row.Slug!,
-                DepotProjectRoleParser.Parse(String(row.Project, "role"))))];
+        return [.. result.Projects.Select(project => new DepotProjectRow(
+            project.Key,
+            project.Name ?? project.Slug,
+            DepotProjectRoleParser.Parse(project.Role)))];
     }
 
     public async Task<DepotProjectRole> RoleAsync(string connectionId, string project, CancellationToken cancellationToken) =>
@@ -94,4 +93,8 @@ internal sealed class DepotMcp(ICockpitHost host, Func<IReadOnlyList<DepotConnec
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private DepotConnectionRegistration _Connection(string connectionId) =>
+        connections().FirstOrDefault(candidate => candidate.Id == connectionId)
+        ?? throw new DepotFailure(DepotBrowserStatus.Error, "That Depot connection is no longer configured.");
 }
