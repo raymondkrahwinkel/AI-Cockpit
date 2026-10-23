@@ -220,7 +220,8 @@ public partial class SessionViewModel
         return row;
     }
 
-    // set_thread: the rest of the turn follows these projects, the prompt itself stays where the operator put it.
+    // set_thread: the rest of the turn follows these projects. With one project the prompt goes along (AC-1646), so one
+    // call files both; a prompt the operator typed in a thread, or one tag_prompt already split, stays where it is.
     public AssistantThreadResult SetTurnThreads(IReadOnlyList<string> projectIds)
     {
         if (Transcript.LastOrDefault(row => row.StartsTurn) is not { } opening)
@@ -230,7 +231,76 @@ public partial class SessionViewModel
 
         var (known, note) = _KnownProjects(projectIds);
         opening.TurnProjectIds = known;
+        if (known is [var project])
+        {
+            _FilePrompts(_LatestOpening().Where(row => row.IsUserRow && !_WasPlaced(row)), project, ProjectSource.AssistantTag);
+        }
+
         return new AssistantThreadResult(true, note);
+    }
+
+    // A turn the assistant did not file, opened by a prompt that named nothing, is filed by what the prompt and the reply
+    // name (AC-1646): one project by a session or a ticket key. A name alone is too weak to move anything.
+    private void _FileUnfiledTurn()
+    {
+        if (Threads is null)
+        {
+            return;
+        }
+
+        var opening = _LatestOpening();
+        var prompts = opening.Where(row => row.IsUserRow).ToList();
+        if (prompts.Count == 0 || prompts.Any(row => row.ProjectIds is not null) || opening.Any(row => row.TurnProjectIds is not null))
+        {
+            return;
+        }
+
+        var reply = Transcript.Skip(_IndexOfLast(opening[^1]) + 1).Where(row => row.IsAssistantMarkdown).ToList();
+        if (reply.Any(row => row.HasOwnProjects || row.BlockProjects is not null))
+        {
+            return;
+        }
+
+        var named = Threads.Infer(string.Join("\n", prompts.Concat(reply).Select(row => row.Text)))
+            .Where(hit => hit.Source is ProjectSource.Session or ProjectSource.TicketPrefix)
+            .ToList();
+        if (named is [var only])
+        {
+            _FilePrompts(prompts, only.ProjectId, only.Source);
+        }
+    }
+
+    // The operator chose where it goes (typed in a thread, moved it), or tag_prompt split it over projects.
+    private static bool _WasPlaced(TranscriptEntryViewModel prompt) =>
+        prompt.ProjectSources is { } sources
+        && (sources.Values.Contains(ProjectSource.Explicit) || (sources.Count > 1 && sources.Values.Contains(ProjectSource.AssistantTag)));
+
+    private static void _FilePrompts(IEnumerable<TranscriptEntryViewModel> prompts, string projectId, ProjectSource source)
+    {
+        foreach (var prompt in prompts.ToList())
+        {
+            prompt.ProjectSources = new Dictionary<string, ProjectSource> { [projectId] = source };
+            prompt.ProjectParts = null;
+            prompt.ProjectIds = [projectId];
+        }
+    }
+
+    // The run of rows that opened the latest turn: the operator's prompts, or the messages that started it.
+    private List<TranscriptEntryViewModel> _LatestOpening()
+    {
+        var end = Transcript.Count - 1;
+        while (end >= 0 && !Transcript[end].StartsTurn)
+        {
+            end--;
+        }
+
+        var start = end;
+        while (start > 0 && Transcript[start - 1].StartsTurn)
+        {
+            start--;
+        }
+
+        return end < 0 ? [] : [.. Transcript.Skip(start).Take(end - start + 1)];
     }
 
     // tag_prompt: each quote is looked up in the operator's last prompt; the prompt is then in every project named, and
