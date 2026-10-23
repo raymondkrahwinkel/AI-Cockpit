@@ -410,6 +410,8 @@ implementation is written by AI agents orchestrated through Claude Code by the m
 That workflow does not lower the bar — it *is* the bar this tool exists to support:
 
 - every change is reviewed, must build with **zero warnings**, and ships with unit tests (xUnit; 1400+ and counting);
+- `scripts/install-hooks.sh` installs the pre-push guards; plugin versions are checked from the newest fork point
+  among `origin/main` and `origin/epic/*`, so worktree branches do not need tracking configuration;
 - UI changes are verified visually against rendered screenshots before they land;
 - features that touch a real CLI are verified end-to-end against a live process, not assumed from documentation;
 - the maintainer signs off on every commit and takes full responsibility for the result.

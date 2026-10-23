@@ -13,6 +13,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 guard="${script_dir}/check-plugin-versions.sh"
+hook="${script_dir}/../hooks/pre-push"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -140,6 +141,54 @@ set -e
 
 assert_equals "once both are bumped the run is green" 0 "$status"
 assert_contains "and says so" "ok:" "$output"
+
+# The push hook must find the feature branch's epic fork without relying on tracking configuration.
+mkdir -p hooks scripts
+cp "$hook" hooks/pre-push
+cp "$guard" scripts/check-plugin-versions.sh
+git add hooks scripts
+git commit --quiet -m hook-fixture
+common="$(git rev-parse HEAD)"
+git remote add origin "$work"
+
+git switch --quiet -c simulated-epic
+printf 'epic base\n' >epic.txt
+git add epic.txt
+git commit --quiet -m epic
+epic="$(git rev-parse HEAD)"
+git update-ref refs/remotes/origin/epic/AC-test "$epic"
+
+git switch --quiet -c simulated-main "$common"
+manifest plugins-dev/Cockpit.Plugin.Alpha 9.0.0
+git add -A
+git commit --quiet -m newer-main
+git update-ref refs/remotes/origin/main HEAD
+
+git switch --quiet -c feature "$epic"
+printf 'feature docs\n' >feature.txt
+git add feature.txt
+git commit --quiet -m feature
+
+set +e
+output="$(hooks/pre-push origin unused 2>&1)"
+status=$?
+set -e
+
+assert_equals "an untracked epic-based branch ignores a plugin ahead only on main" 0 "$status"
+assert_absent "the unrelated plugin is not reported" "Cockpit.Plugin.Alpha" "$output"
+
+manifest plugins-dev/Cockpit.Plugin.Alpha 0.9.0
+git add -A
+git commit --quiet -m regression
+
+set +e
+output="$(hooks/pre-push origin unused 2>&1)"
+status=$?
+set -e
+
+assert_equals "a version lowered against the epic fork blocks the push" 1 "$status"
+assert_contains "the lowered plugin is reported" "Cockpit.Plugin.Alpha" "$output"
+assert_contains "the lowered version is reported as not newer" "not newer" "$output"
 
 # A worktree stores its gitdir in a .git file. A malformed Windows-style
 # target used to make the guard exit from `set -e` with only Git's raw 128.
