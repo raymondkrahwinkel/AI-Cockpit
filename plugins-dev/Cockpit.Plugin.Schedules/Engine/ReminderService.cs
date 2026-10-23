@@ -67,7 +67,7 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
                 return reminder;
             }
 
-            var due = reminder with { State = ReminderState.Open, FiredAt = now };
+            var due = reminder with { State = ReminderState.Due, FiredAt = now };
             going.Add(due);
             return due;
         })]);
