@@ -15,7 +15,7 @@ internal sealed class SchedulesState : IDisposable
     public SchedulesState(IPluginUiChannel channel)
     {
         _channel = channel;
-        _subscription = channel.Subscribe("nothing", _OnRunRecorded);
+        _subscription = channel.Subscribe(SchedulesChannel.RunRecorded, _OnRunRecorded);
     }
 
     public event Action? Changed;
