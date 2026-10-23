@@ -75,6 +75,16 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             _SaveConnectionsAsync(host, settings, payload, cancellationToken)));
         _handlers.Add(host.Channel.Handle(DepotChannel.ConnectWithInstallToken, (payload, cancellationToken) =>
             _ConnectWithInstallTokenAsync(host, settings, payload, cancellationToken)));
+        _handlers.Add(host.Channel.Handle(DepotChannel.Branding, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotBrandingRequest>(DepotChannel.Json)
+                ?? throw new InvalidOperationException("Depot branding request is missing.");
+            var connection = settings.Connections.FirstOrDefault(candidate => candidate.Id == request.ConnectionId);
+            var branding = connection is null
+                ? DepotBrandingSnapshot.Default
+                : await DepotBranding.For(host).GetAsync(connection, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.SerializeToElement(new DepotBrandingAnswer(branding.Name, branding.Logo), DepotChannel.Json);
+        }));
 
         // AC-1568: the file browser's Depot calls, one handler per action.
         var browser = new Browser.DepotBrowserService(host, () => settings.Connections);

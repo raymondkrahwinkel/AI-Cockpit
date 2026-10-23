@@ -30,6 +30,12 @@ public interface ISharedProjectSource
     string SourceName { get; }
 
     /// <summary>
+    /// Optional logo bytes for this source's heading. A missing or unsupported image uses the host's standard
+    /// source icon. Default implementation keeps existing plugins source-compatible.
+    /// </summary>
+    byte[]? SourceLogo => null;
+
+    /// <summary>
     /// This source's current projects. Called each time the Projects workspace loads — there is no
     /// live-listing push path. <see cref="Changed"/> rechecks existing bindings; it does not replace a later listing
     /// refresh.

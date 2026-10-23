@@ -263,7 +263,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                 continue;
             }
 
-            groups.Add(new SharedProjectGroup(source.SourceName, visible, result.Succeeded ? null : result.Error));
+            groups.Add(new SharedProjectGroup(source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo));
         }
 
         _sharedProjectGroups = groups;
