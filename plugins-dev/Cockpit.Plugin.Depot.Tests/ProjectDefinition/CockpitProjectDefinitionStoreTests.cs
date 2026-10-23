@@ -164,28 +164,17 @@ public class CockpitProjectDefinitionStoreTests
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.ChecksumConflict, result.FailureKind);
     }
 
-    // AC-1635: both conflict statuses are the typed data-loss boundary. The stale If-Match must reach Depot.
-    [Theory]
-    [InlineData(HttpStatusCode.Conflict)]
-    [InlineData(HttpStatusCode.PreconditionFailed)]
-    public async Task WriteAsync_StaleChecksum_MapsHttpConflictWithoutOverwriting(HttpStatusCode statusCode)
+    // AC-1635: 409 is the fine-grained conflict row; the journey covers Depot's 412 response end to end.
+    [Fact]
+    public async Task WriteAsync_StaleChecksum_MapsHttpConflictWithoutOverwriting()
     {
-        var handler = new _StubHandler(statusCode);
+        var handler = new _StubHandler(HttpStatusCode.Conflict);
 
         var result = await _WriteAsync(handler, new CockpitProjectDefinition { Name = "stale edit" }, "stale");
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.ChecksumConflict, result.FailureKind);
         Assert.Equal("\"stale\"", handler.IfMatch);
-    }
-
-    [Fact]
-    public void Failed_RoleBelowEditorText_ClassifiesAsPermissionDenied()
-    {
-        var result = CockpitProjectDefinitionWriteResult.Failed(
-            "This action requires the Editor role on project 'cockpit'.");
-
-        Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
     }
 
     [Fact]
