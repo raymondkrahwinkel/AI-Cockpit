@@ -11,7 +11,7 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// AC-1568/AC-1637: project discovery and file operations use REST; only shares remain on MCP until AC-1638.
+// AC-1568/AC-1637/AC-1638: project discovery, file operations and shares use REST; MCP remains agent-facing.
 public class DepotBrowserServiceTests
 {
     private const string Projects = """{"projects":[{"slug":"cockpit","address":"acme/cockpit","name":"Cockpit","role":"{ROLE}"}]}""";
@@ -105,18 +105,23 @@ public class DepotBrowserServiceTests
         new("c1", "acme/cockpit", path, mode, shareId);
 
     private static string _TreeResponse(HttpRequestMessage request, string _) =>
-        request.RequestUri!.AbsolutePath.EndsWith("/artifacts", StringComparison.Ordinal)
+        request.RequestUri!.AbsolutePath.EndsWith("/shares", StringComparison.Ordinal)
+            ? """{"shares":[{"shareId":"s1","path":"img/b.png","isPublic":true,"url":"https://d/artifact/p/s1"}]}"""
+            : request.RequestUri.AbsolutePath.EndsWith("/artifacts", StringComparison.Ordinal)
             ? """{"entries":[{"path":"img/a.png","contentType":"image/png","size":10},{"path":"img/b.png","contentType":"image/png","size":11}]}"""
             : request.RequestUri.Query.Contains("after=", StringComparison.Ordinal)
                 ? """{"entries":[{"path":"docs/page-two.md","size":9,"updatedAt":"2026-08-29T17:08:18+00:00"}]}"""
                 : """{"entries":[{"path":"docs/page-one.md","size":5}],"nextCursor":"docs/page-one.md"}""";
+
+    private static string _ShareResponse(HttpRequestMessage request, string _) => request.Method == HttpMethod.Post
+        ? """{"shareId":"s9","url":"https://d/artifact/p/s9","isPublic":true}"""
+        : """{"revoked":true}""";
 
     [Fact]
     public async Task Tree_ReadsEveryPage_MergesArtifacts_AndMarksSharesFromOneListShares()
     {
         var rig = new _Rig();
         rig.RestResponse = _TreeResponse;
-        rig.Tools["list_shares"] = _ => PluginMcpToolCallResult.Success("""{"shares":[{"shareId":"s1","path":"img/b.png","isPublic":true,"url":"https://d/artifact/p/s1"}]}""");
 
         var answer = await rig.Service.TreeAsync(_Request(), default);
 
@@ -126,7 +131,7 @@ public class DepotBrowserServiceTests
         Assert.Equal(DepotBrowserKind.Artifact, nodes[2].Kind);
         Assert.Null(nodes[2].ShareId);
         Assert.Equal(("s1", true), (nodes[3].ShareId, nodes[3].IsPublic));
-        Assert.Equal(1, rig.Count("list_shares"));
+        Assert.Equal(1, rig.CountRest("shares"));
         Assert.True(answer.Data.CanShare);
     }
 
@@ -134,15 +139,14 @@ public class DepotBrowserServiceTests
     public async Task Share_PassesTheMode_ButOnlyForAnEditor_AndUnshareRevokesByShareId()
     {
         var editor = new _Rig("Editor");
-        editor.Tools["share_artifact"] = _ => PluginMcpToolCallResult.Success("""{"shareId":"s9","url":"https://d/artifact/p/s9","isPublic":true}""");
-        editor.Tools["unshare_artifact"] = _ => PluginMcpToolCallResult.Success("{}");
+        editor.RestResponse = _ShareResponse;
 
         var shared = await editor.Service.ShareAsync(_Request("img/a.png", "public"), default);
         var revoked = await editor.Service.UnshareAsync(_Request(shareId: "s9"), default);
 
         Assert.Equal(new DepotBrowserShare("s9", "https://d/artifact/p/s9", true), shared.Data);
-        Assert.Equal("public", editor.Calls.Single(call => call.Tool == "share_artifact").Arguments["mode"]);
-        Assert.Equal("s9", editor.Calls.Single(call => call.Tool == "unshare_artifact").Arguments["shareId"]);
+        Assert.Equal((HttpMethod.Post, "/sync/acme/cockpit/shares", "{\"path\":\"img/a.png\",\"mode\":\"public\"}"), editor.RestCalls[0]);
+        Assert.Equal((HttpMethod.Delete, "/sync/acme/cockpit/shares/s9", string.Empty), editor.RestCalls[1]);
         Assert.True(revoked.Data);
 
         var viewer = new _Rig("Viewer");
@@ -151,7 +155,7 @@ public class DepotBrowserServiceTests
 
         Assert.Equal(DepotBrowserStatus.Error, refusedShare.Status);
         Assert.Equal(DepotBrowserStatus.Error, refusedUnshare.Status);
-        Assert.Equal(0, viewer.Count("share_artifact") + viewer.Count("unshare_artifact"));
+        Assert.Empty(viewer.RestCalls);
     }
 
     // AC-1573: a binary file asks for a ticket without a share (the default would leave one behind on a failed PUT);
