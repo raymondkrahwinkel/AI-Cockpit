@@ -79,7 +79,7 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
     {
         var now = time.GetUtcNow();
         var done = (IReadOnlyList<DateTimeOffset>)[reminder.Slot, .. reminder.Done.Take(19)];
-        if (false && reminder.Repeats && _Next(reminder.Schedule, reminder.TimeZone, reminder.Slot > now ? reminder.Slot : now) is { } next)
+        if (reminder.Repeats && _Next(reminder.Schedule, reminder.TimeZone, reminder.Slot > now ? reminder.Slot : now) is { } next)
         {
             return reminder with { State = ReminderState.Open, Slot = next, SnoozedUntil = null, Done = done };
         }
