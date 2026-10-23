@@ -10,8 +10,11 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Nothing to compare against (no origin/main yet) means nothing to check.
-base=$(git rev-parse --verify --quiet origin/main) || exit 0
+# Compare with the branch's push target or upstream; detached checkouts fall back to main.
+# Nothing to compare against means nothing to check.
+base=$(git rev-parse --verify --quiet '@{u}' 2>/dev/null \
+  || git rev-parse --verify --quiet '@{push}' 2>/dev/null \
+  || git rev-parse --verify --quiet origin/main 2>/dev/null) || exit 0
 changed=$(git diff --name-only "$base" HEAD)
 
 # Silent while it passes: a hook that chatters on every push gets uninstalled.
