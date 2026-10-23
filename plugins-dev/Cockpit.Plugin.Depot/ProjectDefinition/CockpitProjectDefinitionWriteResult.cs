@@ -3,10 +3,8 @@ using Cockpit.Plugins.Abstractions.Mcp;
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
 // Why a write failed, beyond the generic `PluginMcpToolCallOutcome.Failed` outcome — the distinction a
-// conflict window (AC-245/AC-246) needs to know whether to open at all (AC-247). Depot's own MCP tools carry no
-// separate, typed error for either case — only the two error messages classified below (see
-// `CockpitProjectDefinitionWriteResult.Failed`'s remarks on how) — so this is necessarily a
-// best-effort read of Depot's wording, not a contract Depot promises to keep.
+// conflict window (AC-245/AC-246) needs to know whether to open at all (AC-247). The REST route supplies typed
+// status codes; Failed retains the older text classifier for callers that already use this result type directly.
 public enum CockpitProjectDefinitionWriteFailureKind
 {
     // Depot failed the write for a reason this store cannot further classify — show `CockpitProjectDefinitionWriteResult.Error` as-is; never assume it was a conflict.
@@ -19,6 +17,9 @@ public enum CockpitProjectDefinitionWriteFailureKind
 
     // Depot rejected the write because the caller's project role is below Editor, or the caller is not a project member at all — never retry; show `CockpitProjectDefinitionWriteResult.Error`, the named reason, instead of a silent refusal.
     PermissionDenied,
+
+    // Depot refused the definition because its serialized JSON exceeds the route's size limit.
+    PayloadTooLarge,
 }
 
 // What came of writing `.cockpit/project.json` to a Depot project (AC-244, conflict/permission classification AC-247).
@@ -37,6 +38,9 @@ public sealed record CockpitProjectDefinitionWriteResult(
 
     public static CockpitProjectDefinitionWriteResult Success(string checksum, IReadOnlyList<string>? droppedExtensionKeys = null) =>
         new(PluginMcpToolCallOutcome.Success, checksum, null, CockpitProjectDefinitionWriteFailureKind.Unclassified, droppedExtensionKeys);
+
+    public static CockpitProjectDefinitionWriteResult Conflict() =>
+        new(PluginMcpToolCallOutcome.Failed, null, "This project changed since it was read.", CockpitProjectDefinitionWriteFailureKind.ChecksumConflict);
 
     // A failed write, classified from Depot's own error text — measured live against a real Depot server (AC-247),
     // not guessed, and cross-checked against Depot's own source (a project this repo does not own or ship, read
@@ -59,6 +63,9 @@ public sealed record CockpitProjectDefinitionWriteResult(
     // A write this store refused before ever calling Depot, because a caller-supplied `CockpitProjectRole` already can't write — see `CockpitProjectDefinitionStore.WriteAsync`'s `callerRole` parameter.
     public static CockpitProjectDefinitionWriteResult PermissionDenied(string reason) =>
         new(PluginMcpToolCallOutcome.Failed, null, reason, CockpitProjectDefinitionWriteFailureKind.PermissionDenied);
+
+    public static CockpitProjectDefinitionWriteResult PayloadTooLarge(string reason) =>
+        new(PluginMcpToolCallOutcome.Failed, null, reason, CockpitProjectDefinitionWriteFailureKind.PayloadTooLarge);
 
     private static CockpitProjectDefinitionWriteFailureKind _ClassifyFailure(string error)
     {

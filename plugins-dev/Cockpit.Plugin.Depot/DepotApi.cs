@@ -12,6 +12,8 @@ internal enum DepotApiOutcome
     Success,
     NotSignedIn,
     Forbidden,
+    Conflict,
+    TooLarge,
     OlderDepot,
     NotModified,
     Failed,
@@ -51,10 +53,11 @@ internal sealed class DepotApi : IDisposable
         GetAsync(path, etag: null, cancellationToken);
 
     public Task<DepotApiResult> PostJsonAsync<T>(string path, T value, CancellationToken cancellationToken) =>
-        _SendJsonAsync(HttpMethod.Post, path, value, cancellationToken);
+        _SendJsonAsync(HttpMethod.Post, path, value, baseChecksum: null, guardWrite: false, cancellationToken);
 
-    public Task<DepotApiResult> PutJsonAsync<T>(string path, T value, CancellationToken cancellationToken) =>
-        _SendJsonAsync(HttpMethod.Put, path, value, cancellationToken);
+    public Task<DepotApiResult> PutJsonAsync<T>(
+        string path, T value, string? baseChecksum, CancellationToken cancellationToken) =>
+        _SendJsonAsync(HttpMethod.Put, path, value, baseChecksum, guardWrite: true, cancellationToken);
 
     public void Dispose()
     {
@@ -64,12 +67,23 @@ internal sealed class DepotApi : IDisposable
         }
     }
 
-    private async Task<DepotApiResult> _SendJsonAsync<T>(HttpMethod method, string path, T value, CancellationToken cancellationToken)
+    private async Task<DepotApiResult> _SendJsonAsync<T>(
+        HttpMethod method, string path, T value, string? baseChecksum, bool guardWrite,
+        CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, _Url(path))
         {
             Content = JsonContent.Create(value, options: DepotChannel.Json),
         };
+        if (guardWrite && baseChecksum is { Length: > 0 })
+        {
+            request.Headers.IfMatch.Add(new EntityTagHeaderValue($"\"{baseChecksum}\""));
+        }
+        else if (guardWrite)
+        {
+            request.Headers.IfNoneMatch.Add(EntityTagHeaderValue.Any);
+        }
+
         return await _SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
@@ -80,6 +94,8 @@ internal sealed class DepotApi : IDisposable
         {
             HttpStatusCode.Unauthorized => DepotApiOutcome.NotSignedIn,
             HttpStatusCode.Forbidden => DepotApiOutcome.Forbidden,
+            HttpStatusCode.Conflict or HttpStatusCode.PreconditionFailed => DepotApiOutcome.Conflict,
+            HttpStatusCode.RequestEntityTooLarge => DepotApiOutcome.TooLarge,
             HttpStatusCode.NotFound => DepotApiOutcome.OlderDepot,
             HttpStatusCode.NotModified => DepotApiOutcome.NotModified,
             _ when response.IsSuccessStatusCode => DepotApiOutcome.Success,

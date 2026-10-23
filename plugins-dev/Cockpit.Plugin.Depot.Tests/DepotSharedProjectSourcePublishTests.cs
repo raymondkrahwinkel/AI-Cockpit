@@ -1,65 +1,25 @@
+using System.Net;
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotSharedProjectSource.ListPublishTargetsAsync`/`PublishAsync` (AC-620): turning a not-yet-shared local
-// project into a new `.cockpit/project.json`. Fixtures are real JSON shapes Depot's tools send, including the
-// `[NotFound]` read-error text, measured live against a real Depot server.
+// `DepotSharedProjectSource.ListPublishTargetsAsync`/`PublishAsync` (AC-620): first definitions use REST create-only.
 public class DepotSharedProjectSourcePublishTests
 {
     private static DepotConnectionRegistration Connection() => new("c1", "Work", "https://depot.example.com");
 
-    private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient? httpClient = null) =>
-        DepotMemorySource.BuildSharedProjectSources(
-            [Connection()], host, httpClient ?? new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("""{"projects":[]}""") }))).Single();
-
-    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(respond(request));
-    }
+    private static ISharedProjectSource SourceFor(ICockpitHost host, HttpClient httpClient) =>
+        DepotMemorySource.BuildSharedProjectSources([Connection()], host, httpClient).Single();
 
     private static string _Scheme(ICockpitHost host) =>
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
 
-    private static void _StubRead(ICockpitHost host, string slug, PluginMcpToolCallResult result) =>
-        host.CallMcpToolAsync(
-            Arg.Any<string>(), "read",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && (string)args["project"]! == slug),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(result));
-
-    private static PluginMcpToolCallResult _NotFound(string slug) =>
-        PluginMcpToolCallResult.Failed($"[NotFound] '.cockpit/project.json' was not found in project '{slug}'.");
-
-    private static PluginMcpToolCallResult _DefinitionEnvelope(string definitionJson, string checksum = "chk") =>
-        PluginMcpToolCallResult.Success(
-            $$"""{"path":".cockpit/project.json","content":{{System.Text.Json.JsonSerializer.Serialize(definitionJson)}},"checksum":"{{checksum}}","size":1}""");
-
-    // Captures the raw `content` JSON PublishAsync sends, so a test can assert on the actual wire text rather than
-    // trusting a claim about it — the DoD's own "measured, not guessed" bar for the secret-exclusion test below.
-    private static Func<string> _StubWriteCapturingRawContent(ICockpitHost host, string slug, PluginMcpToolCallResult result)
-    {
-        string? sent = null;
-        host.CallMcpToolAsync(
-            Arg.Any<string>(), "write",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && (string)args["project"]! == slug),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                sent = (string)callInfo.ArgAt<IReadOnlyDictionary<string, object?>?>(2)!["content"]!;
-                return Task.FromResult(result);
-            });
-        return () => sent ?? throw new InvalidOperationException("write was never called");
-    }
-
     private static SharedProjectPublishDefinition Definition(
-        string name = "New Project",
-        IReadOnlyList<SharedProjectPublishResource>? resources = null) =>
+        string name = "New Project", IReadOnlyList<SharedProjectPublishResource>? resources = null) =>
         new(name, Description: "A fresh project", GitUrl: "git@github.com:example/new-project.git",
             BehaviorPrompt: "Be terse.", IsolateInWorktreeByDefault: false, EnabledMcpServerNames: ["github"],
             Resources: resources ?? []);
@@ -70,15 +30,14 @@ public class DepotSharedProjectSourcePublishTests
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
         var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
+        var handler = new _DefinitionHandler("new-project", definition: null);
+        using var http = new HttpClient(handler);
 
-        await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
+        var result = await SourceFor(host, http).PublishAsync(
+            $"{scheme}:new-project", Definition(), CancellationToken.None);
 
-        await host.Received(1).CallMcpToolAsync(
-            Arg.Any<string>(), "write",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && !args.ContainsKey("baseChecksum")),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
+        Assert.Equal("*", handler.IfNoneMatch);
     }
 
     [Fact]
@@ -86,17 +45,15 @@ public class DepotSharedProjectSourcePublishTests
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        host.CallMcpToolAsync(
-            Arg.Any<string>(), "write",
-            Arg.Is<IReadOnlyDictionary<string, object?>?>(args => args != null && (string)args["project"]! == "new-project"),
-            Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Failed("This action requires the Editor role on project 'new-project'.")));
+        var handler = new _DefinitionHandler(
+            "new-project", definition: null, writeStatus: HttpStatusCode.Forbidden);
+        using var http = new HttpClient(handler);
 
-        var result = await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(), CancellationToken.None);
+        var result = await SourceFor(host, http).PublishAsync(
+            $"{scheme}:new-project", Definition(), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.PermissionDenied, result.Outcome);
-        Assert.Equal("This action requires the Editor role on project 'new-project'.", result.Error);
+        Assert.NotNull(result.Error);
     }
 
     [Fact]
@@ -104,51 +61,50 @@ public class DepotSharedProjectSourcePublishTests
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
-        _StubRead(host, "existing", _DefinitionEnvelope("""{"schemaVersion":1,"name":"Existing"}"""));
+        var handler = new _DefinitionHandler("existing", """{"schemaVersion":1,"name":"Existing"}""");
+        using var http = new HttpClient(handler);
 
-        var result = await SourceFor(host).PublishAsync($"{scheme}:existing", Definition(), CancellationToken.None);
+        var result = await SourceFor(host, http).PublishAsync(
+            $"{scheme}:existing", Definition(), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.AlreadyPublished, result.Outcome);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "write", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.Equal(0, handler.PutCount);
     }
 
     [Fact]
     public async Task PublishAsync_WrongScheme_FailsWithoutCallingDepot()
     {
         var host = Substitute.For<ICockpitHost>();
+        var handler = new _DefinitionHandler("new-project", definition: null);
+        using var http = new HttpClient(handler);
 
-        var result = await SourceFor(host).PublishAsync("other-scheme:new-project", Definition(), CancellationToken.None);
+        var result = await SourceFor(host, http).PublishAsync(
+            "other-scheme:new-project", Definition(), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.Failed, result.Outcome);
-        await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        Assert.Equal(0, handler.RequestCount);
     }
 
-    // AC-620's own DoD: a secret-shaped resource row must never reach Depot unencrypted. Measures the actual wire
-    // JSON PublishAsync sends, not the intent — the same bar CockpitProjectDefinitionSecrecyTests already sets for
-    // the write path this call shares.
     [Fact]
     public async Task PublishAsync_SecretShapedResourceRow_NeverReachesTheWrittenDefinition()
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
-        _StubRead(host, "new-project", _NotFound("new-project"));
-        var written = _StubWriteCapturingRawContent(host, "new-project", PluginMcpToolCallResult.Success("""{"checksum":"chk1"}"""));
-
+        var handler = new _DefinitionHandler("new-project", definition: null);
+        using var http = new HttpClient(handler);
         var resources = new List<SharedProjectPublishResource>
         {
             new("Instructions", "docs/RUNBOOK.md", "Runbook"),
             new("Credential", "~/.ssh/id_rsa", "Deploy key"),
         };
 
-        var result = await SourceFor(host).PublishAsync($"{scheme}:new-project", Definition(resources: resources), CancellationToken.None);
+        var result = await SourceFor(host, http).PublishAsync(
+            $"{scheme}:new-project", Definition(resources: resources), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
-        var sentJson = written();
-        Assert.DoesNotContain("id_rsa", sentJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("Deploy key", sentJson, StringComparison.Ordinal);
-        Assert.Contains("RUNBOOK.md", sentJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("id_rsa", handler.WrittenContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Deploy key", handler.WrittenContent, StringComparison.Ordinal);
+        Assert.Contains("RUNBOOK.md", handler.WrittenContent, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -157,7 +113,7 @@ public class DepotSharedProjectSourcePublishTests
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
         var scheme = _Scheme(host);
-        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        using var httpClient = new HttpClient(new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent("""
             {"projects":[
@@ -177,10 +133,66 @@ public class DepotSharedProjectSourcePublishTests
             result.Targets.Select(target => target.Id).OrderBy(id => id, StringComparer.Ordinal));
     }
 
-    // AC-699: the exact list_projects payload depot.krahwinkel-it.nl returned for the operator who reported this
-    // (13 projects, every role "Admin", three of them Brains) — the picker was empty against this very response.
+    private sealed class _DefinitionHandler(
+        string slug,
+        string? definition,
+        HttpStatusCode writeStatus = HttpStatusCode.OK) : HttpMessageHandler
+    {
+        public string? IfNoneMatch { get; private set; }
+        public int PutCount { get; private set; }
+        public int RequestCount { get; private set; }
+        public string? WrittenContent { get; private set; }
 
-    // AC-699, measured against a real server: Depot reports "Admin" for every project a global admin can see
-    // (ListProjectsForUserQuery), which this filter used to read as Unknown — emptying the whole publish dropdown
-    // for exactly the operator most likely to publish.
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            if (request.Method == HttpMethod.Get)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(_Projects(slug, definition)),
+                    RequestMessage = request,
+                };
+            }
+
+            PutCount++;
+            IfNoneMatch = request.Headers.IfNoneMatch.SingleOrDefault()?.Tag;
+            WrittenContent = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(writeStatus)
+            {
+                Content = new StringContent("""{"checksum":"chk1"}"""),
+                RequestMessage = request,
+            };
+        }
+
+        private static string _Projects(string projectSlug, string? value) => JsonSerializer.Serialize(new
+        {
+            projects = new[]
+            {
+                new
+                {
+                    address = $"acme/{projectSlug}",
+                    slug = projectSlug,
+                    name = projectSlug,
+                    role = "Editor",
+                    kind = "Project",
+                    organization = new { slug = "acme", name = "Acme", role = "Member" },
+                    cockpit = new
+                    {
+                        state = value is null ? "absent" : "ok",
+                        checksum = value is null ? null : "chk",
+                        updatedAt = value is null ? null : "2026-10-23T12:00:00Z",
+                        definition = value is null ? (JsonElement?)null : JsonSerializer.Deserialize<JsonElement>(value),
+                    },
+                },
+            },
+        });
+    }
+
+    private sealed class _StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond(request));
+    }
 }
