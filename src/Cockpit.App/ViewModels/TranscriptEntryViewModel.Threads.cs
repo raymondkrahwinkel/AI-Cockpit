@@ -41,11 +41,20 @@ public partial class TranscriptEntryViewModel
     [ObservableProperty]
     private ProjectSource _threadProjectSource;
 
-    public bool IsGeneral => ThreadProjectIds.Count == 0;
+    // In General as well as its projects: typed there, then filed under the project it was about (AC-1646). Its own
+    // or its turn's ids carry General as `SessionViewModel.GeneralThread`; ThreadProjectIds only ever holds projects.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGeneral))]
+    private bool _keepsGeneral;
+
+    public bool IsGeneral => ThreadProjectIds.Count == 0 || KeepsGeneral;
+
+    // How many threads besides All show the row: its projects, and General when it kept it.
+    private int _ThreadCount => ThreadProjectIds.Count + (KeepsGeneral && ThreadProjectIds.Count > 0 ? 1 : 0);
 
     // Null asks about General.
     public bool IsInThread(string? projectId) => projectId is null
-        ? ThreadProjectIds.Count == 0
+        ? IsGeneral
         : ThreadProjectIds.Contains(projectId, StringComparer.Ordinal);
 
     public ProjectSource SourceFor(string projectId) =>
@@ -144,7 +153,7 @@ public partial class TranscriptEntryViewModel
 
     // All tags every such row; a thread only the rows that are in another thread as well.
     public bool ShowsThreadTagsHere => Session is { Threads: not null } session && CarriesThreadTag
-        && (session.ShownThread is null || ThreadProjectIds.Count > 1);
+        && (session.ShownThread is null || _ThreadCount > 1);
 
     internal void RaiseThreadTags()
     {
@@ -210,7 +219,7 @@ public partial class TranscriptEntryViewModel
     }
 
     // "Also in WayMark" under a row in a project's thread that is in another one as well.
-    public IReadOnlyList<ThreadTagViewModel> AlsoIn => _ProjectThreadShown is { } shown && ThreadProjectIds.Count > 1
+    public IReadOnlyList<ThreadTagViewModel> AlsoIn => _ProjectThreadShown is { } shown && _ThreadCount > 1
         ? ThreadTags.Where(tag => tag.ProjectId != shown).ToArray()
         : Array.Empty<ThreadTagViewModel>();
 
@@ -253,16 +262,26 @@ public partial class TranscriptEntryViewModel
         RaiseThreadTags();
     }
 
+    partial void OnKeepsGeneralChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ThreadTags));
+        RaiseThreadTags();
+    }
+
     partial void OnProjectPartsChanged(IReadOnlyList<TranscriptProjectPart>? value) => RaiseThreadTags();
 
     partial void OnThreadProjectSourceChanged(ProjectSource value) => OnPropertyChanged(nameof(ThreadTags));
 
-    // The tags "All" draws on the row: one per project, or General. Names come from the session's project lookup.
-    // An array, not a collection expression: a one-element expression is a list whose IList.Contains throws on an
-    // item of another type, and an ItemsControl asks exactly that.
+    // The tags "All" draws on the row: one per project, then General when it kept it, or General alone. Names come
+    // from the session's project lookup. An array, not a collection expression: a one-element expression is a list
+    // whose IList.Contains throws on an item of another type, and an ItemsControl asks exactly that.
     public IReadOnlyList<ThreadTagViewModel> ThreadTags => ThreadProjectIds.Count == 0
-        ? new[] { new ThreadTagViewModel(null, "General", ProjectSource.None) }
-        : ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? id, SourceFor(id))).ToArray();
+        ? new[] { GeneralTag }
+        : ThreadProjectIds.Select(id => new ThreadTagViewModel(id, Session?.ProjectName(id) ?? id, SourceFor(id)))
+            .Concat(KeepsGeneral ? [GeneralTag] : [])
+            .ToArray();
+
+    private static readonly ThreadTagViewModel GeneralTag = new(null, "General", ProjectSource.None);
 }
 
 // One stretch of a prompt as a thread reads it: its own (Other null) or another project's, which reads faint.

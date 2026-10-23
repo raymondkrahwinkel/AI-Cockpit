@@ -84,6 +84,9 @@ public sealed class VisibleTranscriptTests
         // Thinking is hidden at Focus, and a run of four folds to its anchor alone.
         var anchor = vm.Transcript.Single(row => row.IsGroupAnchor);
         Assert.Equal([prose, anchor, closing], vm.VisibleTranscript);
+
+        vm.Transcript.Clear();
+        Assert.Empty(vm.VisibleTranscript);
     }
 
     [Fact]
@@ -146,17 +149,5 @@ public sealed class VisibleTranscriptTests
             vm.VisibleTranscript);
         Assert.Equal(prose, vm.VisibleTranscript[0]);
         Assert.Equal(closing, vm.VisibleTranscript[^1]);
-    }
-
-    [Fact]
-    public void ClearingTheTranscript_ClearsWhatIsShown()
-    {
-        var vm = _Session(ReadingLevel.Focus);
-        _Add(vm, TranscriptEntryKind.AssistantText, "prose");
-        _AddRun(vm, 4);
-
-        vm.Transcript.Clear();
-
-        Assert.Empty(vm.VisibleTranscript);
     }
 }
