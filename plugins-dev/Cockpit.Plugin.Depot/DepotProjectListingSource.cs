@@ -42,7 +42,8 @@ internal sealed record DepotProjectCockpit(
     string? State,
     string? Checksum,
     DateTimeOffset? UpdatedAt,
-    CockpitProjectDefinition? Definition);
+    CockpitProjectDefinition? Definition,
+    bool? CanWrite = null);
 
 // One project-list request and ETag cache per Depot connection. Plugin features share this source; only an older
 // Depot whose REST route is absent falls back to the compatibility MCP tool.
@@ -215,7 +216,9 @@ internal sealed class DepotProjectListingSource
                 project.Role,
                 project.Kind,
                 project.Organization is null ? null : new(project.Organization.Slug, project.Organization.Name, project.Organization.Role),
-                project.Cockpit is null ? null : new(project.Cockpit.State, project.Cockpit.Checksum, project.Cockpit.UpdatedAt, project.Cockpit.Definition)));
+                project.Cockpit is null ? null : new(
+                    project.Cockpit.State, project.Cockpit.Checksum, project.Cockpit.UpdatedAt,
+                    project.Cockpit.Definition, project.Cockpit.CanWrite)));
         }
 
         return listings;
@@ -266,5 +269,6 @@ internal sealed class DepotProjectListingSource
         public string? Checksum { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
         public CockpitProjectDefinition? Definition { get; set; }
+        public bool? CanWrite { get; set; }
     }
 }

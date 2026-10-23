@@ -54,11 +54,31 @@ public sealed class DepotProjectsJourney
 
         Assert.True(locations.Outcome == ProjectMemorySourceLocationsOutcome.Success, locations.Error);
         Assert.Equal("acme/cockpit", Assert.Single(locations.Locations).Value);
-        Assert.Equal("Cockpit from Depot", Assert.Single(projects.Projects).Name);
+        var listedProject = Assert.Single(projects.Projects);
+        Assert.Equal(("Cockpit from Depot", "Editor", false), (listedProject.Name, listedProject.Role, listedProject.CanWriteBack));
+
+        const string localProjectId = "bound-depot-project";
+        await cockpit.Services.GetRequiredService<IProjectEditor>().AddBoundProjectAsync(new Project(localProjectId, "Bound Depot project")
+        {
+            MemoryRef = "depot:acme/cockpit",
+            SharedSourceName = shared.SourceName,
+        });
+        var ownership = cockpit.Services.GetRequiredService<IProjectOwnershipRegistry>();
 
         var opening = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
         Assert.True(opening.Succeeded, opening.Error);
-        var firstEditor = await _EditorAsync(cockpit, shared, opening.Binding!);
+        var readOnlyEditor = await _EditorAsync(cockpit, shared, opening.Binding!, ownership.Resolve(localProjectId)!);
+        Assert.Contains("Editor access is read-only", readOnlyEditor.NameOrigin.ReadOnlyReason, StringComparison.Ordinal);
+        Assert.False(readOnlyEditor.SaveCommand.CanExecute(null));
+
+        await depot.AllowWritesAsync();
+        await Until.CollectionHolds(cockpit.Cockpit.Projects.RecentCards,
+            () => ownership.Resolve(localProjectId)?[HostProjectField.Name]?.IsEditable == true);
+
+        var writable = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
+        Assert.True(writable.Succeeded, writable.Error);
+        var firstEditor = await _EditorAsync(cockpit, shared, writable.Binding!, ownership.Resolve(localProjectId)!);
+        Assert.True(firstEditor.SaveCommand.CanExecute(null));
         firstEditor.Name = "Saved from Cockpit";
         await firstEditor.SaveCommand.ExecuteAsync(null);
         Assert.Equal("Saved from Cockpit", depot.DefinitionName);
@@ -66,7 +86,7 @@ public sealed class DepotProjectsJourney
         var stale = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
         Assert.True(stale.Succeeded, stale.Error);
         depot.ChangeFromSecondClient("Changed by a second client");
-        var staleEditor = await _EditorAsync(cockpit, shared, stale.Binding!);
+        var staleEditor = await _EditorAsync(cockpit, shared, stale.Binding!, ownership.Resolve(localProjectId)!);
         SharedProjectBinding? conflictScreen = null;
         staleEditor.ConflictRequested += (_, latest) =>
         {
@@ -80,12 +100,6 @@ public sealed class DepotProjectsJourney
         Assert.Equal("Changed by a second client", conflictScreen?.Name);
         Assert.Equal("Changed by a second client", depot.DefinitionName);
 
-        const string localProjectId = "bound-depot-project";
-        await cockpit.Services.GetRequiredService<IProjectEditor>().AddNewProjectAsync(new Project(localProjectId, "Bound Depot project")
-        {
-            MemoryRef = "depot:acme/cockpit",
-            SharedSourceName = shared.SourceName,
-        });
         await cockpit.Services.GetRequiredService<DepotSyncWatcher>().CheckNowAsync(localProjectId);
 
         await depot.ChangeDefinitionAsync();
@@ -123,15 +137,13 @@ public sealed class DepotProjectsJourney
     }
 
     private static Task<ProjectDialogViewModel> _EditorAsync(
-        JourneyHost cockpit, ISharedProjectSource source, SharedProjectBinding baseline) =>
+        JourneyHost cockpit, ISharedProjectSource source, SharedProjectBinding baseline,
+        IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?> fieldOwnership) =>
         ProjectDialogViewModel.CreateAsync(
             Project.Create(baseline.Name),
             cockpit.Services.GetRequiredService<ISessionProfileStore>(),
             cockpit.Services.GetRequiredService<IMcpServerCatalog>(),
-            fieldOwnership: new Dictionary<HostProjectField, ProjectFieldOwnership?>
-            {
-                [HostProjectField.Name] = new ProjectFieldOwnership("Depot — Journey", IsEditable: true),
-            },
+            fieldOwnership: fieldOwnership,
             sharedWriteBack: new ProjectSharedWriteBackContext(source, "depot:acme/cockpit", baseline));
 
     private const string Bearer = "journey-depot-projects-bearer";
@@ -149,6 +161,16 @@ public sealed class DepotProjectsJourney
         public string Inbox => state.Inbox;
 
         public void ChangeFromSecondClient(string name) => state.ChangeFromSecondClient(name);
+
+        public async Task AllowWritesAsync()
+        {
+            var events = app.Services.GetRequiredService<_ProjectEvents>();
+            await events.Subscribed.Task.WaitAsync(Until.Ceiling);
+            state.AllowWrites();
+            await app.Services.GetRequiredService<IHubContext<_ProjectsHub>>().Clients.Group("projects").SendAsync(
+                "event",
+                new { topic = "projects", kind = "accessChanged", address = (string?)null, version = 1L });
+        }
 
         public static async Task<_FakeDepot> StartAsync()
         {
@@ -218,12 +240,19 @@ public sealed class DepotProjectsJourney
         public string Name { get; private set; } = "Cockpit from Depot";
         public string? Logo { get; private set; }
         public string Inbox { get; private set; } = string.Empty;
+        public bool CanWrite { get; private set; }
 
         private string Checksum => $"definition-v{_version}";
 
         public void ChangeFromSecondClient(string name)
         {
             Name = name;
+            _version++;
+        }
+
+        public void AllowWrites()
+        {
+            CanWrite = true;
             _version++;
         }
 
@@ -248,6 +277,7 @@ public sealed class DepotProjectsJourney
                             checksum = Checksum,
                             updatedAt = DateTimeOffset.UtcNow,
                             definition = new { schemaVersion = 1, name = Name, logo = Logo },
+                            canWrite = CanWrite,
                         },
                     },
                 },

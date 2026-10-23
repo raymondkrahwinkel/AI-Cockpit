@@ -50,7 +50,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         // gets its own read instead of leaving every card on it stuck until the operator opens Manage projects.
         _sharedSources.Registered += source =>
         {
-            _depotSync?.Watch(source);
+            _Watch(source);
             _ = _RefreshAfterRegistrationAsync(source);
         };
 
@@ -59,10 +59,11 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         {
             _depotSync.BoundProjects = DepotBoundProjectsAsync;
             _depotSync.OnChecked = SetRemoteChangeStateAsync;
-            foreach (var source in _sharedSources.Sources)
-            {
-                _depotSync.Watch(source);
-            }
+        }
+
+        foreach (var source in _sharedSources.Sources)
+        {
+            _Watch(source);
         }
     }
 
@@ -213,6 +214,18 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         }
     }
 
+    private void _Watch(ISharedProjectSource source)
+    {
+        _depotSync?.Watch(source);
+        source.Changed += sharedId =>
+        {
+            if (sharedId is null)
+            {
+                _ = _RefreshAfterRegistrationAsync(source);
+            }
+        };
+    }
+
     private async Task _LoadSharedProjectsAsync(CancellationToken cancellationToken)
     {
         var sources = _sharedSources.Sources;
@@ -288,8 +301,10 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             if (byId.TryGetValue(boundTo, out var sharedProject))
             {
                 // AC-247/AC-763: every claimed field unlocks once the source says this role can write back.
-                _ownership.Register(new ProjectOwnershipRegistration(
-                    project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)));
+                _ownership.RegisterOrRefresh(
+                    new ProjectOwnershipRegistration(
+                        project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)),
+                    source.SourceName);
 
                 if (!string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
                 {

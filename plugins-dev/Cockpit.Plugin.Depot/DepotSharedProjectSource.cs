@@ -116,6 +116,7 @@ internal sealed class DepotSharedProjectSource(
             var id = $"{scheme}:{project.Key}";
             var name = project.Name is { Length: > 0 } value ? value : project.Slug;
             var role = DepotProjectRoleParser.Parse(project.Role);
+            var canWrite = project.Cockpit?.CanWrite ?? role.CanWrite();
             var organization = project.Organization is { Slug: { Length: > 0 } organizationSlug }
                 ? new SharedProjectOrganization(organizationSlug, project.Organization.Name, project.Organization.Role)
                 : null;
@@ -124,7 +125,7 @@ internal sealed class DepotSharedProjectSource(
             if (state != SharedProjectReadState.Ok || cockpit?.Definition is not { } definition)
             {
                 states.Add(new SharedProjectReadStatus(id, name, role.ToDisplayString(), state == SharedProjectReadState.Ok ? SharedProjectReadState.Invalid : state));
-                if (!role.CanWrite())
+                if (!canWrite)
                 {
                     unreadable.Add(new UnreadableSharedProject(id, name, role.ToDisplayString()));
                 }
@@ -137,7 +138,7 @@ internal sealed class DepotSharedProjectSource(
             {
                 Description = definition.Description,
                 Role = role.ToDisplayString(),
-                CanWriteBack = role.CanWrite(),
+                CanWriteBack = canWrite,
                 HasRepository = !string.IsNullOrWhiteSpace(definition.GitUrl),
                 Organization = organization,
             });

@@ -500,7 +500,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Task.WhenAll(PluginFields.Select(field => field.LoadOptionsAsync(cancellationToken)));
 
     // A project needs a name — it is what every other surface shows it by.
-    public bool CanSave => !string.IsNullOrWhiteSpace(Name);
+    public bool CanSave => !string.IsNullOrWhiteSpace(Name) && (_writeBack is null || !NameOrigin.IsLockedHere);
 
     // AC-247: set while SaveAsync's own write-back call (and any conflict re-read/retry) is in flight — the view
     // disables Save and shows a spinner rather than letting a second click start a second, overlapping write.
