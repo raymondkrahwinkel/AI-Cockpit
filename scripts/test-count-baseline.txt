@@ -9,7 +9,8 @@ plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
 # AC-1633 adds one contract test for REST status mapping and bearer-token hygiene.
 # AC-1635 adds one conflict-contract method: stale checksums must map both REST conflict statuses without overwriting.
 # AC-1637 adds one truncation-contract method: partial /sync/read answers must never be shown as complete files.
-plugins-dev/Cockpit.Plugin.Depot.Tests	176
+# AC-1647 adds one built-in OAuth contract method: Depot sign-in requests depot.host and keeps it host-only.
+plugins-dev/Cockpit.Plugin.Depot.Tests	177
 plugins-dev/Cockpit.Plugin.Diagram.Tests	106
 plugins-dev/Cockpit.Plugin.Discord.Tests	21
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
