@@ -43,6 +43,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Plugin.Schedules.Tests" />
+    <!-- AC-1546: the screen's journey test drives the real backend behind the real screen, in the app's own theme. -->
+    <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
   </ItemGroup>
 
 </Project>

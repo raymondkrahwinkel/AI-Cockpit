@@ -229,6 +229,9 @@ internal sealed class ScheduleEngine : IDisposable
     {
         try
         {
+            // Off the starter's stack: a tick or a Run now gets the run back as it starts, not once it is done.
+            await Task.Yield();
+
             // Consent is asked before a slot is taken: a question waiting an hour must not hold up other tasks.
             string? refused;
             try

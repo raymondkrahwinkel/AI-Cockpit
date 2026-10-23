@@ -11,6 +11,7 @@ namespace Cockpit.Plugin.Schedules;
 public sealed class SchedulesPlugin : ICockpitPlugin
 {
     private ScheduleEngine? _engine;
+    private IReadOnlyList<IDisposable> _handlers = [];
 
     public PluginMetadata Metadata { get; } = new(
         Id: "schedules",
@@ -28,7 +29,7 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         var delivery = new TaskDelivery(host);
         var agentPrompt = new AgentPromptAction(host, delivery, AgentPromptAction.ConsentWait);
         var tasks = new TaskStore(host.Storage);
-        var runs = new RunStore(host.Cache, TimeProvider.System);
+        var runs = new RunStore(host.Cache, TimeProvider.System, run => SchedulesChannelHandlers.Publish(host, run));
         _engine = new ScheduleEngine(
             tasks,
             new MarkStore(host.Cache),
@@ -47,7 +48,18 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         // AC-1545: not internal and with no switch of its own, so every session of a profile that keeps the default
         // MCP selection gets it, on the desktop and the server alike; a profile leaves it out in its MCP selection.
         _ = host.AddMcpEndpoint(ScheduleMcpTools.EndpointName, new ScheduleMcpTools(host, tasks, runs, _engine, agentPrompt, delivery));
+
+        // AC-1546: the screen's operations, over the channel the UI part (or a remote one) talks to.
+        _handlers = new SchedulesChannelHandlers(host, tasks, runs, _engine, agentPrompt, delivery, settings, TimeProvider.System).Register();
     }
 
-    public void Dispose() => _engine?.Dispose();
+    public void Dispose()
+    {
+        foreach (var handler in _handlers)
+        {
+            handler.Dispose();
+        }
+
+        _engine?.Dispose();
+    }
 }

@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the **Schedules** screen, a plugin button under Plugins (Ctrl+Shift+S by default, changeable in Options →
+  Shortcuts, and pinnable to the sidebar). Its tabs show the scheduled tasks with search, filters and a detail panel;
+  an editor with a plain schedule builder or a cron, the next three runs, an agent prompt or a fixed message, and
+  delivery to the installed channels with their targets; the run history with each run's output; and MCP &
+  permissions. **Run now** shows "Running…" and then the outcome, and switching on a task that may change files asks
+  whether it may run unattended.
+
 - added: the MCP server **cockpit-schedules** in every Cockpit session, the assistant's and every agent's, on the desktop
   and the server: list, create, change, delete, switch on or off and run scheduled tasks, read their runs and output,
   and list the delivery channels. A profile leaves it out in its MCP selection. A task an agent creates or changes so
