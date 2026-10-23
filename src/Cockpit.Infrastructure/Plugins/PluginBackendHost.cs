@@ -95,6 +95,10 @@ public class PluginBackendHost(
     public virtual void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
         _NoWindow(nameof(AddSupervisedActivityProvider));
 
+    // AC-1549: several buttons; a host without a window logs it as the one-button toast it would have been.
+    public virtual void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
+        ShowToast(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
+
     // A toast with nobody to read it still says something, so it goes to the log at its own severity.
     public virtual void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
         _Logger()?.Log(

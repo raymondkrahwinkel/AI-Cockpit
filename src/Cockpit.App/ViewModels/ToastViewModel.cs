@@ -4,19 +4,38 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.ViewModels;
 
-// Shown toast (#61): immutable message/severity/action; Dismissed lets the host remove any dismissal route.
-public sealed partial class ToastViewModel(string message, ToastSeverity severity, string? actionLabel, Action? onAction)
+// Shown toast (#61): immutable message/severity/actions; Dismissed lets the host remove any dismissal route. AC-1549:
+// any number of buttons, the first one primary, so a reminder can offer Done · Snooze 10 min · 1 hour.
+public sealed partial class ToastViewModel
 {
-    private readonly Action? _onAction = onAction;
+    public ToastViewModel(string message, ToastSeverity severity, string? actionLabel, Action? onAction)
+        : this(message, severity, !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [])
+    {
+    }
 
-    public string Message { get; } = message;
+    public ToastViewModel(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions)
+    {
+        Message = message;
+        Severity = severity;
+        Actions = [.. actions.Select((action, index) => new ToastActionViewModel(action.Label, index == 0, () =>
+        {
+            action.OnInvoke();
+            Close();
+        }))];
+        ActionLabel = actions.FirstOrDefault()?.Label;
+        HasAction = Actions.Count > 0;
+    }
 
-    public ToastSeverity Severity { get; } = severity;
+    public IReadOnlyList<ToastActionViewModel> Actions { get; }
 
-    public string? ActionLabel { get; } = actionLabel;
+    public string Message { get; }
+
+    public ToastSeverity Severity { get; }
+
+    public string? ActionLabel { get; }
 
     // True only when both an action label and a callback were supplied — a label alone with no callback would be a dead button.
-    public bool HasAction { get; } = !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null;
+    public bool HasAction { get; }
 
     // Theme brush resource key for this severity (resolved by `StatusBrushConverter`), matching the session-status dot colours.
     public string BrushKey => Severity switch
@@ -47,9 +66,16 @@ public sealed partial class ToastViewModel(string message, ToastSeverity severit
 
     // Bound to the optional action button: runs the caller's callback, then dismisses like a normal close.
     [RelayCommand(CanExecute = nameof(HasAction))]
-    private void InvokeAction()
-    {
-        _onAction?.Invoke();
-        Close();
-    }
+    private void InvokeAction() => Actions[0].Invoke();
+}
+
+// One button on a toast; invoking it runs the action and closes the toast.
+public sealed partial class ToastActionViewModel(string label, bool isPrimary, Action invoke)
+{
+    public string Label { get; } = label;
+
+    public bool IsPrimary { get; } = isPrimary;
+
+    [RelayCommand]
+    public void Invoke() => invoke();
 }

@@ -601,6 +601,17 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// A toast with several buttons (AC-1549), the first one primary, such as a reminder's Done · Snooze 10 min ·
+    /// 1 hour; a <paramref name="sticky"/> one stays until it is answered or closed, for a toast that asks.
+    /// </summary>
+    /// <remarks>
+    /// Default shows the first action only. A headless host writes it to its log, like any toast. A plugin that
+    /// relies on more than one button sets minHostVersion 0.100.0.
+    /// </remarks>
+    void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
+        ShowToast(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
+
+    /// <summary>
     /// Asks the operator to approve a single action before the plugin performs it (#AC-47) — the shared consent
     /// gate for anything a plugin does with the operator's rights on an agent's say-so.
     /// </summary>

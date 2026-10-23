@@ -15,4 +15,14 @@ public interface IToastService
     /// severity-dependent timeout (longer for <see cref="ToastSeverity.Error"/>) and always has a close button.
     /// </summary>
     void Show(string message, ToastSeverity severity, string? actionLabel = null, Action? onAction = null);
+
+    /// <summary>
+    /// The same with several buttons (AC-1549), the first one primary, and optionally <paramref name="sticky"/>: it
+    /// stays until a button or the close button takes it down, for a toast that asks rather than announces.
+    /// </summary>
+    /// <remarks>
+    /// Default shows the first action only, the toast a service without this overload can give.
+    /// </remarks>
+    void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky) =>
+        Show(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
 }

@@ -26,14 +26,20 @@ public sealed class ToastHostViewModel
     public ObservableCollection<ToastViewModel> Toasts { get; } = [];
 
     // Builds and shows one toast, auto-dismissing after a severity-dependent delay (longer for `ToastSeverity.Error`).
-    public ToastViewModel Add(string message, ToastSeverity severity, string? actionLabel, Action? onAction)
+    public ToastViewModel Add(string message, ToastSeverity severity, string? actionLabel, Action? onAction) =>
+        Add(message, severity, !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [], sticky: false);
+
+    // AC-1549: several buttons, the first primary; a sticky toast stays until a button or ✕ takes it down.
+    public ToastViewModel Add(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky)
     {
-        var toast = new ToastViewModel(message, severity, actionLabel, onAction);
+        var toast = new ToastViewModel(message, severity, actions);
         toast.Dismissed += (_, _) => Toasts.Remove(toast);
         Toasts.Add(toast);
 
-        var delay = severity == ToastSeverity.Error ? ErrorAutoDismissDelay : DefaultAutoDismissDelay;
-        _scheduleAutoDismiss(toast, delay);
+        if (!sticky)
+        {
+            _scheduleAutoDismiss(toast, severity == ToastSeverity.Error ? ErrorAutoDismissDelay : DefaultAutoDismissDelay);
+        }
 
         return toast;
     }

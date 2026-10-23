@@ -32,6 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **reminders** in Schedules, once or repeating. At its moment a reminder goes off as a cockpit notification
+  with **Done**, **Snooze 10 min** and **1 hour**, also with the Schedules screen closed or hidden, and on every
+  chosen channel, with buttons where the channel has them (Discord) or a text reply. One missed while the computer
+  slept goes off when it is back, however late, saying "missed, was 09:00". Done on a repeating reminder opens the
+  next occurrence; a channel without its plugin hands the reminder to the assistant. Agents create and manage them
+  with the cockpit-schedules reminder tools.
+- added: for plugin authors, `ICockpitHost.ShowToast` takes several `PluginToastAction` buttons and a sticky flag; the
+  toast in the cockpit shows each as a button, the first one primary (Plugin SDK 3.15.0, host 0.100.0).
+
 - added: the **Schedules** screen, a plugin button under Plugins (Ctrl+Shift+S by default, changeable in Options →
   Shortcuts, and pinnable to the sidebar). Its tabs show the scheduled tasks with search, filters and a detail panel;
   an editor with a plain schedule builder or a cron, the next three runs, an agent prompt or a fixed message, and

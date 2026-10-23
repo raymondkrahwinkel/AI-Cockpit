@@ -35,6 +35,9 @@ internal static class SchedulesChannel
     // Event, payload RunRecord: a run of any origin was recorded or finished.
     public const string RunRecorded = "run-recorded";
 
+    // Event, payload int: how many reminders went off and wait (AC-1549), on every change and every tick, for the badge.
+    public const string RemindersDue = "reminders-due";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() },

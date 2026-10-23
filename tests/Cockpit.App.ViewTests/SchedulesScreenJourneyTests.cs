@@ -53,7 +53,7 @@ public class SchedulesScreenJourneyTests
         ui.GetProfilesAsync().Returns([new PluginProfileInfo("Zyra", "ClaudeCli", string.Empty)]);
         Action? menu = null;
         Func<Control>? opened = null;
-        ui.When(host => host.AddSideMenuButton("Schedules", Arg.Any<Action>())).Do(call => menu = call.Arg<Action>());
+        ui.AddSideMenuButtonWithBadge("Schedules", Arg.Do<Action>(invoke => menu = invoke)).Returns(new SideMenuButtonBadge());
         ui.ShowDialogAsync("Schedules", Arg.Do<Func<Control>>(factory => opened = factory), "schedules", Arg.Any<double>(), Arg.Any<double>())
             .Returns(new TaskCompletionSource().Task);
 

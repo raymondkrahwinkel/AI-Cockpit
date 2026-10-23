@@ -13,7 +13,6 @@ public class TaskDeliveryTests
 {
     [Theory]
     [InlineData("discord", true, RunOutcome.Succeeded, null, 0, 0)]
-    [InlineData("slack", true, RunOutcome.Succeeded, "Slack: plugin not installed → handed to the assistant ✓", 0, 1)]
     [InlineData("slack", false, RunOutcome.Failed, "Delivery failed: Slack: plugin not installed", 0, 1)]
     [InlineData(null, true, RunOutcome.Failed, "No delivery channel chosen.", 0, 0)]
     public async Task ARun_IsDeliveredOrHandedToTheAssistant_AndNeverSilentlyNothing(

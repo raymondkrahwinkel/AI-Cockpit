@@ -30,6 +30,8 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         var agentPrompt = new AgentPromptAction(host, delivery, AgentPromptAction.ConsentWait);
         var tasks = new TaskStore(host.Storage);
         var runs = new RunStore(host.Cache, TimeProvider.System, run => SchedulesChannelHandlers.Publish(host, run));
+        var reminders = new ReminderService(host, host.Storage, delivery, TimeProvider.System,
+            due => host.Channel.Publish(SchedulesChannel.RemindersDue, System.Text.Json.JsonSerializer.SerializeToElement(due, SchedulesChannel.Json)));
         _engine = new ScheduleEngine(
             tasks,
             new MarkStore(host.Cache),
@@ -41,13 +43,14 @@ public sealed class SchedulesPlugin : ICockpitPlugin
                 ? agentPrompt.RunAsync(task, cancellationToken)
                 : delivery.DeliverAsync(task, task.Action.Text, cancellationToken),
             () => settings.MaxConcurrentRuns,
-            TimeProvider.System);
+            TimeProvider.System,
+            reminders.TickAsync);
 
         host.AddHealthSection(_engine.Health);
 
         // AC-1545: not internal and with no switch of its own, so every session of a profile that keeps the default
         // MCP selection gets it, on the desktop and the server alike; a profile leaves it out in its MCP selection.
-        _ = host.AddMcpEndpoint(ScheduleMcpTools.EndpointName, new ScheduleMcpTools(host, tasks, runs, _engine, agentPrompt, delivery));
+        _ = host.AddMcpEndpoint(ScheduleMcpTools.EndpointName, new ScheduleMcpTools(host, tasks, runs, _engine, agentPrompt, delivery, reminders));
 
         // AC-1546: the screen's operations, over the channel the UI part (or a remote one) talks to.
         _handlers = new SchedulesChannelHandlers(host, tasks, runs, _engine, agentPrompt, delivery, settings, TimeProvider.System).Register();

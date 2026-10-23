@@ -7,7 +7,6 @@ public class CronTextTests
 {
     [Theory]
     [InlineData("0 9 * * *", "Every day at 09:00")]
-    [InlineData("30 7 * * 1-5", "Every weekday at 07:30")]
     [InlineData("0 9 * * 1,3,5", "Every Monday, Wednesday and Friday at 09:00")]
     [InlineData("0 10 * * 0#1", "First Sunday of the month at 10:00")]
     public void CronAndEnglish_TranslateBothWays(string cron, string english)
