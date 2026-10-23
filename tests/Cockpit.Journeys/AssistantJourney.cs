@@ -89,7 +89,9 @@ public sealed class AssistantJourney
         var (reply, mail) = HeadlessAvalonia.Run(() => (
             transcript.Last(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.EndsWith("and Depot?", StringComparison.Ordinal)).ThreadProjectIds.ToList(),
             transcript.Single(row => row.IsInboxRow && row.Text.Contains("WM-12", StringComparison.Ordinal)).ThreadProjectIds.ToList()));
-        Assert.Equal([depot.Id], reply);
+        // AC-1646: the echo answers with the rode-along "WM-12" too, so the turn names WayMark as well; it is added to
+        // Depot's thread, where the question was typed, instead of taking the reply away from it.
+        Assert.Equal([waymark.Id, depot.Id], reply);
         Assert.Equal([waymark.Id], mail);
 
         // A question about Depot waits in Questions for you, and is what that page shows.
