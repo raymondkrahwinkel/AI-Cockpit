@@ -8,7 +8,9 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.99.0: a plugin sends the operator a message through another plugin's chat channel and gets the answer back
+    <!-- 0.100.0: a plugin's toast carries several buttons and can stay until answered (AC-1549, Cockpit.Plugins.Abstractions
+         3.15.0); a plugin that relies on that sets minHostVersion 0.100.0.
+         0.99.0: a plugin sends the operator a message through another plugin's chat channel and gets the answer back
          (AC-1544, Cockpit.Plugins.Abstractions 3.14.0); a plugin that offers or uses that sets minHostVersion 0.99.0.
          0.98.0: a chat channel gets the assistant's questions with their options and answers them (AC-1553,
          Cockpit.Plugins.Abstractions 3.13.0); a plugin that relies on it sets minHostVersion 0.98.0.
@@ -330,7 +332,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.99.0</VersionPrefix>
+    <VersionPrefix>0.100.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

@@ -29,22 +29,32 @@ internal sealed class TaskDelivery(ICockpitHost host)
         }
 
         var message = $"{task.Name}: {text}";
+        if (task.Delivery.Any(target => target.Channel == DeliveryTarget.CockpitNotification))
+        {
+            host.ShowToast(message);
+        }
+
+        var (notes, failed) = await SendToChannelsAsync(task.Delivery, new OperatorMessage { Text = message }, null, cancellationToken);
+        return failed is null
+            ? new ActionResult(RunOutcome.Succeeded, text, notes)
+            : new ActionResult(RunOutcome.Failed, text, failed);
+    }
+
+    // Every chosen channel but the cockpit notification, a task's run and a reminder alike (AC-1549): a missing plugin
+    // or a failed send hands the text to the assistant. The notes say so; Failed is set only when that was refused too.
+    public async Task<(string? Notes, string? Failed)> SendToChannelsAsync(
+        IEnumerable<DeliveryTarget> targets, OperatorMessage message, Func<OperatorMessageAnswer, Task>? onAnswer, CancellationToken cancellationToken)
+    {
         List<string> handedOver = [];
         List<string> failed = [];
-        foreach (var target in task.Delivery.Distinct())
+        foreach (var target in targets.Distinct().Where(target => target.Channel != DeliveryTarget.CockpitNotification))
         {
-            if (target.Channel == DeliveryTarget.CockpitNotification)
-            {
-                host.ShowToast(message);
-                continue;
-            }
-
-            if (await _SendAsync(target, message, cancellationToken) is not { } problem)
+            if (await _SendAsync(target, message, onAnswer, cancellationToken) is not { } problem)
             {
                 continue;
             }
 
-            if (await host.NotifyAssistantAsync(AssistantKind, message))
+            if (await host.NotifyAssistantAsync(AssistantKind, message.Text))
             {
                 handedOver.Add($"{problem} → handed to the assistant ✓");
             }
@@ -55,13 +65,11 @@ internal sealed class TaskDelivery(ICockpitHost host)
         }
 
         var notes = handedOver.Count == 0 ? null : string.Join("; ", handedOver);
-        return failed.Count == 0
-            ? new ActionResult(RunOutcome.Succeeded, text, notes)
-            : new ActionResult(RunOutcome.Failed, text, $"Delivery failed: {string.Join("; ", [.. failed, .. handedOver])}");
+        return (notes, failed.Count == 0 ? null : $"Delivery failed: {string.Join("; ", [.. failed, .. handedOver])}");
     }
 
     // Null when the channel took it; else what went wrong, named after the channel, as the run history shows it.
-    private async Task<string?> _SendAsync(DeliveryTarget target, string message, CancellationToken cancellationToken)
+    private async Task<string?> _SendAsync(DeliveryTarget target, OperatorMessage message, Func<OperatorMessageAnswer, Task>? onAnswer, CancellationToken cancellationToken)
     {
         var channel = host.OperatorMessageChannels.FirstOrDefault(open => open.Id == target.Channel);
         var name = channel?.DisplayName ?? (target.Channel is { Length: > 0 } id ? $"{char.ToUpperInvariant(id[0])}{id[1..]}" : "A channel");
@@ -75,7 +83,7 @@ internal sealed class TaskDelivery(ICockpitHost host)
             return $"{name}: nowhere to deliver to";
         }
 
-        var result = await host.SendOperatorMessageAsync(channel.Id, targetId, new OperatorMessage { Text = message }, cancellationToken: cancellationToken);
+        var result = await host.SendOperatorMessageAsync(channel.Id, targetId, message, onAnswer, cancellationToken);
         return result.Ok ? null : $"{name}: {result.Error}";
     }
 }

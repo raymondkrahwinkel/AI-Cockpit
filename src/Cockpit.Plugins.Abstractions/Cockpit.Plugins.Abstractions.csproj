@@ -534,7 +534,10 @@
          OperatorMessageAnswer and OperatorMessageChannelInfo; ICockpitHost gains OperatorMessageChannels (default
          empty) and SendOperatorMessageAsync (default fails). A plugin that offers or uses them sets minHostVersion
          0.99.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.14.0</Version>
+    <!-- 3.15.0 (AC-1549): ICockpitHost.ShowToast gains an overload with PluginToastAction buttons and a sticky flag
+         (default shows the first button), so a reminder offers Done · Snooze 10 min · 1 hour. A plugin that relies on
+         more than one button sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.15.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -178,6 +178,8 @@ internal static partial class Screenshotter
         // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
         // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
         ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
+        // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
+        ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
         // is not staged here — it would need a plugin assembly this build has not loaded; HelpWindowTests
         // covers it instead, in both configurations.
@@ -722,6 +724,20 @@ internal static partial class Screenshotter
         {
             DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step]),
         };
+    }
+
+    // Narrower than the main window can be (its minimum is 900), the toast layer on its own, as a phone-wide frame sees it.
+    private static Window _ReminderToastScene(int width)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.ToastHost.Add(
+            "⏰ Water the plants\nReminder · Mon 09:00 · every Monday. Also sent via Discord.",
+            Core.Toasts.ToastSeverity.Warning,
+            [new Core.Toasts.ToastAction("Done", () => { }), new Core.Toasts.ToastAction("Snooze 10 min", () => { }), new Core.Toasts.ToastAction("1 hour", () => { })],
+            sticky: true);
+        return width < 900
+            ? new Window { Width = width, Content = new Controls.ToastOverlay { DataContext = cockpit } }
+            : new MainWindow { DataContext = cockpit };
     }
 
     // AC-937: a CockpitViewModel with a few side-buttons registered through the sink, the same route a real plugin

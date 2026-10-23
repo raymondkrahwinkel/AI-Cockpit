@@ -23,6 +23,18 @@ public sealed class ToastService(CockpitViewModel cockpit) : IToastService, ISin
         }
     }
 
+    public void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            cockpit.ToastHost.Add(message, severity, actions, sticky);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => cockpit.ToastHost.Add(message, severity, actions, sticky));
+        }
+    }
+
     // Test seam: the UI-thread logic, driven directly by tests since pumping a real dispatcher loop is not practical (same reasoning as `VoicePushToTalkCoordinator`).
     internal void ShowOnUiThread(string message, ToastSeverity severity, string? actionLabel, Action? onAction) =>
         cockpit.ToastHost.Add(message, severity, actionLabel, onAction);

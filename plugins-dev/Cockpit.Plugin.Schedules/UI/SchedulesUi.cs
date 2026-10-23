@@ -12,9 +12,18 @@ public sealed class SchedulesUi : ICockpitPluginUi
     public const string ShortcutId = "schedules.open";
     public const string DefaultGesture = "Ctrl+Shift+S";
 
+    // The badge's subscription lives as long as the UI part: the count goes on while the screen is closed.
+    private IDisposable? _dueSubscription;
+
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddSideMenuButton("Schedules", () => _Open(host));
+        // AC-1549: the button counts the reminders that went off and wait, as the mockup's badge.
+        var badge = host.AddSideMenuButtonWithBadge("Schedules", () => _Open(host));
+        _dueSubscription = host.Channel.Subscribe(Contracts.SchedulesChannel.RemindersDue, due =>
+        {
+            var count = due.Payload.ValueKind == System.Text.Json.JsonValueKind.Number ? due.Payload.GetInt32() : 0;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => badge.Primary = count > 0 ? count : null);
+        });
         host.AddShortcut(new PluginShortcut(ShortcutId, "Schedules", DefaultGesture, () => _Open(host)));
     }
 

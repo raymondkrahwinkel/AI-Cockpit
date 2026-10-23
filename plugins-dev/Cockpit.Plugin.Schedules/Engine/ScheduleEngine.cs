@@ -23,6 +23,7 @@ internal sealed class ScheduleEngine : IDisposable
     private readonly Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> _execute;
     private readonly Func<int> _maxConcurrentRuns;
     private readonly TimeProvider _time;
+    private readonly Func<DateTimeOffset, Task>? _reminders;
     private readonly ITimer _timer;
 
     private readonly Lock _tickGate = new();
@@ -41,7 +42,8 @@ internal sealed class ScheduleEngine : IDisposable
         Func<ScheduledTask, RunTrigger, CancellationToken, Task<string?>> admit,
         Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> execute,
         Func<int> maxConcurrentRuns,
-        TimeProvider time)
+        TimeProvider time,
+        Func<DateTimeOffset, Task>? reminders = null)
     {
         _tasks = tasks;
         _marks = marks;
@@ -50,6 +52,7 @@ internal sealed class ScheduleEngine : IDisposable
         _execute = execute;
         _maxConcurrentRuns = maxConcurrentRuns;
         _time = time;
+        _reminders = reminders;
 
         _runs.FailInterrupted();
         Health = new EngineHealth(time, Tick);
@@ -100,12 +103,30 @@ internal sealed class ScheduleEngine : IDisposable
             }
         }
 
+        // AC-1549: the reminders on the same tick, as their own part, so one that fails never stops a task's slot.
+        if (_reminders is not null)
+        {
+            started.Add(_RemindersAsync(now));
+        }
+
         // Last, so a tick that throws part-way never counts as one that ran.
         Health.Beat(unusable, isTaskListReadable: tasks is not null);
         return Task.WhenAll(started);
     }
 
     public void Dispose() => _timer.Dispose();
+
+    private async Task _RemindersAsync(DateTimeOffset now)
+    {
+        try
+        {
+            await (_reminders?.Invoke(now) ?? Task.CompletedTask);
+        }
+        catch (Exception)
+        {
+            // A reminder that cannot be said is due already, so it does not go off again; the next tick goes on.
+        }
+    }
 
     private void _OnTimer()
     {

@@ -13,11 +13,11 @@ namespace Cockpit.Plugin.Schedules;
 // it out. Follows WorkflowMcpTools, with two deliberate differences: a Dangerous task may be created, but arrives
 // switched off; and a run a task started may only read and create reminders (AC-38).
 internal sealed class ScheduleMcpTools(
-    ICockpitHost host, TaskStore tasks, RunStore runs, ScheduleEngine engine, AgentPromptAction agent, TaskDelivery delivery)
+    ICockpitHost host, TaskStore tasks, RunStore runs, ScheduleEngine engine, AgentPromptAction agent, TaskDelivery delivery,
+    ReminderService reminders)
 {
     public const string EndpointName = "cockpit-schedules";
     public const string NeedsApproval = "Needs your approval to enable: this task may change files. Ask the operator to switch it on, or call set_enabled, which asks them.";
-    public const string NotAvailableYet = "Reminders are not available yet in this build of Schedules.";
     public const string TaskRunsMayNot = "A run that a scheduled task started may only read, and create reminders.";
     public const string RunStarting = "A scheduled run is starting, try again in a moment.";
 
@@ -233,28 +233,69 @@ internal sealed class ScheduleMcpTools(
     // ── reminders (R1, AC-1549) ────────────────────────────────────────────────────────────────────────────────
 
     [McpServerTool(Name = "create_reminder", ReadOnly = false, Destructive = false)]
-    [Description("Creates a reminder for the operator." + TimeRules)]
+    [Description("Creates a reminder for the operator: at its moment it goes off as a cockpit notification with Done and Snooze, and on every channel chosen, with buttons where the channel has them. Missed while the machine slept, it goes off when the machine is back." + TimeRules)]
     public string CreateReminder(
-        [Description("What to remind them of.")] string text,
-        [Description("When, as ISO-8601 local time, e.g. '2026-10-23T08:00'.")] string at,
-        [Description("An IANA time zone.")] string timeZone) => _Fail(NotAvailableYet);
+        [Description("What to remind them of, in their own words.")] string text,
+        [Description("When, as ISO-8601 local time in timeZone, e.g. '2026-10-23T09:00'. For one that repeats, its first moment is the repeat's own.")] string at,
+        [Description("An IANA time zone, e.g. 'Europe/Amsterdam'.")] string timeZone,
+        [Description("For one that repeats: a 5-field cron in timeZone, e.g. '0 9 * * 1' for every Monday at 09:00. Leave out for once.")] string? repeat = null,
+        [Description("Where it goes besides the cockpit: channels from list_delivery_channels, as 'discord' or 'discord:dm'. Leave out for the cockpit notification only.")] string[]? delivery = null)
+    {
+        var schedule = repeat is { Length: > 0 } cron ? cron.Trim() : _Normalize($"once {at}");
+        List<DeliveryTarget> targets = [new DeliveryTarget(DeliveryTarget.CockpitNotification)];
+        if (delivery is { Length: > 0 })
+        {
+            if (_Targets(delivery) is not { } chosen)
+            {
+                return _Fail("Delivery is 'cockpit', or a channel from list_delivery_channels, optionally with one of its targets as 'discord:dm'.");
+            }
+
+            targets = [.. targets, .. chosen.Where(target => target.Channel != DeliveryTarget.CockpitNotification)];
+        }
+
+        var (reminder, error) = reminders.Create(text, schedule, timeZone, targets, "Created by an agent over MCP");
+        return reminder is null ? _Fail(error ?? "Not created.") : _Serialize(new { ok = true, reminder = _Reminder(reminder) });
+    }
 
     [McpServerTool(Name = "list_reminders", ReadOnly = true)]
-    [Description("Lists the operator's reminders.")]
-    public string ListReminders() => _Fail(NotAvailableYet);
+    [Description("Lists the operator's reminders: open (still to come), due (went off, not ticked off) and done, with each one's next moment in its own zone.")]
+    public string ListReminders() => _Serialize(reminders.Load().Select(_Reminder));
 
     [McpServerTool(Name = "snooze_reminder", ReadOnly = false, Destructive = false)]
-    [Description("Snoozes a reminder.")]
-    public string SnoozeReminder([Description("The reminder id.")] string id, [Description("Minutes to snooze.")] int minutes) =>
-        _RefuseTaskRun() ?? _Fail(NotAvailableYet);
+    [Description("Snoozes a reminder, due or still open, by this many minutes from now.")]
+    public string SnoozeReminder([Description("The reminder id.")] string id, [Description("Minutes from now, e.g. 10 or 60.")] int minutes) =>
+        _RefuseTaskRun() ?? (minutes is < 1 or > 60 * 24 * 30
+            ? _Fail("Snooze for 1 minute to 30 days.")
+            : reminders.SnoozeBy(id, TimeSpan.FromMinutes(minutes)) is { } snoozed
+                ? _Serialize(new { ok = true, reminder = _Reminder(snoozed) })
+                : _Fail($"No open or due reminder with id '{id}'."));
 
     [McpServerTool(Name = "complete_reminder", ReadOnly = false, Destructive = false)]
-    [Description("Marks a reminder done.")]
-    public string CompleteReminder([Description("The reminder id.")] string id) => _RefuseTaskRun() ?? _Fail(NotAvailableYet);
+    [Description("Ticks a reminder off. One that repeats opens again on its next moment; this one goes to done.")]
+    public string CompleteReminder([Description("The reminder id.")] string id) =>
+        _RefuseTaskRun() ?? (reminders.Complete(id) is { } done ? _Serialize(new { ok = true, reminder = _Reminder(done) }) : _Fail($"No open or due reminder with id '{id}'."));
 
     [McpServerTool(Name = "delete_reminder", ReadOnly = false, Destructive = true)]
     [Description("Deletes a reminder.")]
-    public string DeleteReminder([Description("The reminder id.")] string id) => _RefuseTaskRun() ?? _Fail(NotAvailableYet);
+    public string DeleteReminder([Description("The reminder id.")] string id) =>
+        _RefuseTaskRun() ?? (reminders.Delete(id) ? _Serialize(new { ok = true, deleted = id }) : _Fail($"No reminder with id '{id}'."));
+
+    private static object _Reminder(Reminder reminder)
+    {
+        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(reminder.TimeZone, out var found) ? found : TimeZoneInfo.Utc;
+        return new
+        {
+            reminder.Id,
+            reminder.Text,
+            state = reminder.State,
+            next = TimeZoneInfo.ConvertTime(reminder.Due, zone).ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture),
+            reminder.TimeZone,
+            repeats = reminder.Repeats ? reminder.Schedule : null,
+            delivery = reminder.Delivery.Select(target => target.Target is null ? target.Channel : $"{target.Channel}:{target.Target}"),
+            note = reminder.DeliveryNote,
+            done = reminder.Done.Count,
+        };
+    }
 
     // ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────
 

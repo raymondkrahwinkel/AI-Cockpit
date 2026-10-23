@@ -94,6 +94,7 @@ public class ScheduleMcpToolsTests
         var delivery = new TaskDelivery(host);
         var agent = new AgentPromptAction(host, delivery, TimeSpan.FromMinutes(1));
         var store = new TaskStore(rig.Storage);
-        return (new ScheduleMcpTools(host, store, new RunStore(rig.Storage, rig.Clock), rig.Start(), agent, delivery), host, store, agent);
+        var reminders = new ReminderService(host, rig.Storage, delivery, rig.Clock);
+        return (new ScheduleMcpTools(host, store, new RunStore(rig.Storage, rig.Clock), rig.Start(), agent, delivery, reminders), host, store, agent);
     }
 }
