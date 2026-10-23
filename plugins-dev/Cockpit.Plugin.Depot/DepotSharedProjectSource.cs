@@ -1,7 +1,4 @@
 using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.ProjectDefinition;
@@ -164,56 +161,50 @@ internal sealed class DepotSharedProjectSource(
     private async Task<_EndpointResult> _ListEndpointAsync(CancellationToken cancellationToken)
     {
         var cached = host.Cache.Get<_CachedProjects>(CacheKey);
-        HttpClient? ownedClient = null;
         try
         {
-            var client = httpClient ?? (ownedClient = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName)));
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{connection.Url.TrimEnd('/')}/cockpit/projects");
-            if (cached?.Etag is { Length: > 0 } etag)
-            {
-                request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag));
-            }
-
-            using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotFound)
+            using var api = new DepotApi(host, connection, httpClient);
+            var response = await api.GetAsync("cockpit/projects", cached?.Etag, cancellationToken).ConfigureAwait(false);
+            if (response.ShouldFallbackToMcp)
             {
                 return _EndpointResult.Fallback;
             }
 
-            if (response.StatusCode == HttpStatusCode.NotModified)
+            if (response.Outcome == DepotApiOutcome.NotModified)
             {
                 return cached is { } known
                     ? _EndpointResult.From(known.Result)
                     : _EndpointResult.From(SharedProjectListResult.Failed("Depot confirmed an unchanged project list, but no local list is available."));
             }
 
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            if (response.Outcome == DepotApiOutcome.NotSignedIn)
             {
                 return _EndpointResult.From(SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects."));
             }
 
-            if (!response.IsSuccessStatusCode)
+            if (response.Outcome == DepotApiOutcome.Forbidden)
+            {
+                return _EndpointResult.From(SharedProjectListResult.Failed("You do not have access to this Depot connection's shared projects."));
+            }
+
+            if (response.Outcome != DepotApiOutcome.Success)
             {
                 return _Unavailable(cached);
             }
 
-            var payload = await response.Content.ReadFromJsonAsync<_ProjectsPayload>(_Json, cancellationToken).ConfigureAwait(false);
+            var payload = JsonSerializer.Deserialize<_ProjectsPayload>(response.Content.Span, _Json);
             if (payload?.Projects is not { } projects)
             {
                 return _EndpointResult.From(SharedProjectListResult.Failed("Depot's project list came back in an unexpected shape."));
             }
 
             var result = _FromEndpoint(projects);
-            host.Cache.Set(CacheKey, new _CachedProjects(response.Headers.ETag?.Tag, DateTimeOffset.UtcNow, result));
+            host.Cache.Set(CacheKey, new _CachedProjects(response.ETag, DateTimeOffset.UtcNow, result));
             return _EndpointResult.From(result);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             return _Unavailable(cached);
-        }
-        finally
-        {
-            ownedClient?.Dispose();
         }
     }
 
