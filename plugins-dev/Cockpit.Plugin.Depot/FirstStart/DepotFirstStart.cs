@@ -76,7 +76,7 @@ internal sealed class DepotFirstStart(
         }
 
         var notes = new List<string>();
-        var manifest = await _ManifestAsync(connection, request.Organization, notes, cancellationToken).ConfigureAwait(false);
+        var manifest = await _ManifestAsync(connection, null, notes, cancellationToken).ConfigureAwait(false);
         return new(manifest.Manifest, notes);
     }
 
