@@ -258,7 +258,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
                 stored.RefreshToken = string.IsNullOrEmpty(token.RefreshToken) ? stored.RefreshToken : token.RefreshToken;
                 stored.ExpiresAt = token.ExpiresAt;
             }).ConfigureAwait(false);
-            _logger.LogInformation("Renewed the access token of a plugin {PluginId} account at OAuth provider {Provider}; it expires at {ExpiresAt}. {Token}", pluginId, provider.Id, token.ExpiresAt, token.AccessToken);
+            _logger.LogInformation("Renewed the access token of a plugin {PluginId} account at OAuth provider {Provider}; it expires at {ExpiresAt}.", pluginId, provider.Id, token.ExpiresAt);
         }
         else if (outcome == PluginOAuthOutcome.ReconnectRequired)
         {
