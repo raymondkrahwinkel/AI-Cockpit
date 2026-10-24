@@ -141,6 +141,7 @@ public sealed class EchoDriver : ISessionDriver
             }
 
             yield return new AssistantTextCompleted { SessionId = SessionId, Text = $"echo: {echoed}" };
+            await Task.Delay(500, cancellationToken);
             yield return new TurnCompleted
             {
                 SessionId = SessionId, Subtype = fails ? "error_during_execution" : "success", Result = $"echo: {echoed}", IsError = fails, TotalCostUsd = Cost, NumTurns = 1,
