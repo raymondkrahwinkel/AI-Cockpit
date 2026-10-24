@@ -219,6 +219,36 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
+            // AC-1650: the store offers a newer echo-provider; the page counts it, the button opens the store on Updates, and
+            // Update all stages it (a restart away from live).
+            var storeDirectory = Path.Combine(root, "fixture-store");
+            File.Copy(Path.Combine(storeDirectory, $"{StorePlugin}-1.0.0.zip"), Path.Combine(storeDirectory, $"{StorePlugin}-1.1.0.zip"));
+            var newerIndex = File.ReadAllText(Path.Combine(storeDirectory, "index.json")).Replace("1.0.0", "1.1.0", StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(storeDirectory, "index.json"), newerIndex);
+            await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
+            var (updateLabel, rowLabel) = HeadlessAvalonia.Run(() => (admin.HasAvailableUpdates ? admin.UpdateLabel : "", admin.Plugins.Single(plugin => plugin.Id == StorePlugin).UpdateText));
+            var updatesOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watchUpdates = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((storeWindow, _) => updatesOpened.TrySetResult(storeWindow));
+            Task openUpdates = Task.CompletedTask;
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                openUpdates = admin.UpdatePluginsCommand.ExecuteAsync(null);
+                return Task.CompletedTask;
+            });
+            var updatesDialog = await updatesOpened.Task.WaitAsync(Until.Ceiling);
+            var (onUpdates, staged) = (false, false);
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var updates = (PluginStoreDialogViewModel)updatesDialog.DataContext!;
+                await Until.CollectionHolds(updates.Manager.AvailablePlugins, () => updates.Manager.AvailablePlugins.Any(plugin => plugin.CanUpdate));
+                onUpdates = updates.SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.UpdatesAvailable;
+                await updates.Manager.UpdateAllCommand.ExecuteAsync(null);
+                staged = updates.Manager.NeedsRestart;
+                updatesDialog.Close();
+            });
+            await openUpdates;
+            Assert.Equal(("Update 1", "1.1.0 available", true, true, true), (updateLabel, rowLabel, onUpdates, staged, HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+
             // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
             // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
             // one that moves the base URL with the key masked is refused.

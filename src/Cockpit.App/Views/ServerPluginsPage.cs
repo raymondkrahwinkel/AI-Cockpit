@@ -18,7 +18,10 @@ public sealed class ServerPluginsPage : UserControl
         heading.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("PluginsCount") { StringFormat = "Plugins on the server · {0}" });
         var install = new Button { Content = "Install from store", HorizontalAlignment = HorizontalAlignment.Left };
         install.Bind(Button.CommandProperty, new Avalonia.Data.Binding("InstallPluginCommand"));
-        var update = new Button { Content = "Update 1", IsEnabled = false, HorizontalAlignment = HorizontalAlignment.Left };
+        var update = new Button { HorizontalAlignment = HorizontalAlignment.Left };
+        update.Bind(ContentControl.ContentProperty, new Avalonia.Data.Binding("UpdateLabel"));
+        update.Bind(Button.CommandProperty, new Avalonia.Data.Binding("UpdatePluginsCommand"));
+        update.Bind(IsVisibleProperty, new Avalonia.Data.Binding("HasAvailableUpdates"));
         var restart = new TextBlock { Text = "Plugin changes take effect after the server restarts.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         var restartNow = new Button { Content = "Restart the server now", HorizontalAlignment = HorizontalAlignment.Left };
         restartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartServerCommand"));
@@ -73,6 +76,9 @@ public sealed class ServerPluginsPage : UserControl
                 actions.Children.Insert(0, new Button { Content = "Settings", Command = admin.OpenPluginSettingsCommand, CommandParameter = row });
             }
 
+            var available = new TextBlock();
+            available.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.UpdateText)) { Source = row });
+            available.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.HasUpdate)) { Source = row });
             var onDesktop = new Button { Content = "Install on this desktop", Command = admin.InstallPluginOnDesktopCommand, CommandParameter = row };
             onDesktop.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(ServerPluginRowViewModel.MissingOnDesktop)) { Source = row });
             ToolTip.SetTip(onDesktop, "This desktop does not have the plugin. Installs it from this desktop's own plugin stores, with the usual checks and consent; nothing is loaded from the server.");
@@ -88,7 +94,7 @@ public sealed class ServerPluginsPage : UserControl
                     ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
                     Children =
                     {
-                        new StackPanel { Children = { new TextBlock { Text = $"{row.Name} {row.Version}", FontWeight = Avalonia.Media.FontWeight.SemiBold }, state } },
+                        new StackPanel { Children = { new TextBlock { Text = $"{row.Name} {row.Version}", FontWeight = Avalonia.Media.FontWeight.SemiBold }, state, available } },
                         actions,
                         removal,
                     },
