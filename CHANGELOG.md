@@ -247,6 +247,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
+  saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running
   them when they inherit a Git repository override.
 - fixed: the **Quick note** window closes again once the note is saved, as it did before; it stayed open after every

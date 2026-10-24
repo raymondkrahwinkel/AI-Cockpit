@@ -76,6 +76,39 @@ public sealed class BackupThroughATargetTests : IDisposable
     }
 
     /// <summary>
+    /// AC-1497: a settings save swaps <c>cockpit.json</c> while a backup reads it, and the backup ended in "The process
+    /// cannot access the file". Held for a moment, the settings and an archived file are waited out, not lost.
+    /// </summary>
+    [WindowsFact("Only Windows refuses a read of a file another handle holds without sharing, so elsewhere there is nothing to reproduce.")]
+    public async Task ASettingsFileHeldForAMoment_IsWaitedOut_AndTheBackupCarriesIt()
+    {
+        _Write(_Source, "cockpit.json", """{"Profiles":"mine"}""");
+        _Write(_Source, "assistant-memory.md", "what the assistant was told to remember");
+        var settings = new FileStream(Path.Combine(_Source, "cockpit.json"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var memory = new FileStream(Path.Combine(_Source, "assistant-memory.md"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var release = Task.Run(async () =>
+        {
+            await Task.Delay(300);
+            await settings.DisposeAsync();
+            await memory.DisposeAsync();
+        });
+
+        var target = new _InMemoryTarget();
+        var service = _Service();
+        await service.WriteIntoAsync(
+            (archive, token) => target.WriteAsync("backup.zip", archive, token), "memory", _Source, new BackupOptions(), CancellationToken.None);
+        await release;
+
+        await using (var stream = await target.OpenReadAsync(Assert.Single(await target.ListAsync()).Id))
+        {
+            await service.RestoreIntoAsync(stream, _Restored, new RestoreOptions(true, []), null, CancellationToken.None);
+        }
+
+        Assert.Equal("mine", JsonNode.Parse(File.ReadAllText(Path.Combine(_Restored, "cockpit.json")))?["Profiles"]?.GetValue<string>());
+        Assert.Equal("what the assistant was told to remember", File.ReadAllText(Path.Combine(_Restored, "assistant-memory.md")));
+    }
+
+    /// <summary>
     /// The local folder, the target every cockpit has: a stream that breaks halfway leaves nothing it would list —
     /// not in the folder, and not as a <c>.partial</c> in staging either.
     /// </summary>

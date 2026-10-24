@@ -178,7 +178,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         }
     }
 
-    private static async Task<T> WhenNotBeingReplacedAsync<T>(Func<Task<T>> read, CancellationToken cancellationToken)
+    internal static async Task<T> WhenNotBeingReplacedAsync<T>(Func<Task<T>> read, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + ReadContentionWindow;
         while (true)
