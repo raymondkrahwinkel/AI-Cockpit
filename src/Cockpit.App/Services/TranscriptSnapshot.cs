@@ -51,6 +51,7 @@ internal static class TranscriptSnapshot
         EndsInsideTable = entry.EndsInsideTable,
         TableSpanRevision = entry.TableSpanRevision,
         IsPendingPermission = entry.IsPendingPermission,
+        IsPendingBrokerAnswer = entry.IsPendingBrokerAnswer,
         TruncatedFromChars = entry.TruncatedFromChars,
     };
 
