@@ -1,5 +1,7 @@
 extern alias UiAsm;
 
+using System.Net;
+using System.Net.Sockets;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -82,12 +84,14 @@ public class DepotBrowserPanelTests
     {
         var rig = new DepotBrowserModelTests.Rig();
         var shared = false;
+        using var preview = new _HeldPreview();
         rig.Answer = (action, _) => action switch
         {
             "browser-projects" => DepotBrowserModelTests._Ok(new[] { new { project = "cockpit", name = "Cockpit", role = "Editor" } }),
             "browser-tree" => _Tree(shared),
             "browser-share" => DepotBrowserModelTests._Ok(new { shareId = "s1", url = "https://depot.example.com/artifact/cockpit/s1", isPublic = false }),
             "browser-unshare" => DepotBrowserModelTests._Ok(true),
+            "browser-download-url" => DepotBrowserModelTests._Ok(preview.Url),
             _ => throw new InvalidOperationException($"Unexpected browser action: {action}"),
         };
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
@@ -96,7 +100,7 @@ public class DepotBrowserPanelTests
         var window = new Window { Width = 1000, Height = 640, Content = panel };
         window.Show();
 
-        _ = panel.LoadTreeAsync("img/mockup.png");
+        _ = panel.LoadTreeAsync("img/mockup.txt");
         _Until(() => _Button(panel, "Create link") is not null);
 
         shared = true;
@@ -105,7 +109,7 @@ public class DepotBrowserPanelTests
         _Until(() => _Button(panel, "Stop sharing") is not null);
 
         Assert.Contains(panel.GetVisualDescendants().OfType<TextBox>(), box => box.Text == "https://depot.example.com/artifact/cockpit/s1");
-        Assert.True(_SelectedArtifact(panel).IsSelected);
+        Assert.Contains(panel.GetVisualDescendants().OfType<TreeViewItem>(), item => item.IsSelected);
         _SaveFrame(window, "DEPOT_BROWSER_SHARED_SCENE_PNG");
 
         shared = false;
@@ -114,7 +118,7 @@ public class DepotBrowserPanelTests
         _Until(() => _Button(panel, "Create link") is not null);
 
         Assert.Contains(panel.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == "Not shared");
-        Assert.True(_SelectedArtifact(panel).IsSelected);
+        Assert.Contains(panel.GetVisualDescendants().OfType<TreeViewItem>(), item => item.IsSelected);
         _SaveFrame(window, "DEPOT_BROWSER_UNSHARED_SCENE_PNG");
     }
 
@@ -176,16 +180,13 @@ public class DepotBrowserPanelTests
     {
         nodes = new object[]
         {
-            new { path = "img/mockup.png", kind = "artifact", size = 51200, modified = "2026-10-16T09:00:00+00:00", contentType = "image/png", shareId = shared ? "s1" : null, shareUrl = shared ? "https://depot.example.com/artifact/cockpit/s1" : null, isPublic = false },
+            new { path = "img/mockup.txt", kind = "artifact", size = 51200, modified = "2026-10-16T09:00:00+00:00", contentType = "text/plain", shareId = shared ? "s1" : null, shareUrl = shared ? "https://depot.example.com/artifact/cockpit/s1" : null, isPublic = false },
         },
         canShare = true,
     });
 
     private static Button? _Button(DepotBrowserPanel panel, string content) =>
         panel.GetVisualDescendants().OfType<Button>().SingleOrDefault(button => Equals(button.Content, content));
-
-    private static TreeViewItem _SelectedArtifact(DepotBrowserPanel panel) =>
-        panel.GetVisualDescendants().OfType<TreeViewItem>().Single(item => item.Header is StackPanel);
 
     private static void _SaveFrame(Window window, string variable)
     {
@@ -194,6 +195,23 @@ public class DepotBrowserPanelTests
             using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
             using var stream = File.Create(path);
             frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+    }
+
+    private sealed class _HeldPreview : IDisposable
+    {
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+
+        public _HeldPreview()
+        {
+            _listener.Start();
+        }
+
+        public string Url => $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/preview";
+
+        public void Dispose()
+        {
+            _listener.Stop();
         }
     }
 
