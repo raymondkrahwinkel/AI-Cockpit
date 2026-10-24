@@ -96,6 +96,7 @@ public class DepotBrowserPanelTests
         var window = new Window { Width = 1000, Height = 640, Content = panel };
         window.Show();
 
+        _ = panel.LoadTreeAsync("img/mockup.png");
         _Until(() => _Button(panel, "Create link") is not null);
 
         shared = true;
