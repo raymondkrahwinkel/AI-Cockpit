@@ -120,9 +120,9 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `health.sections` | Reporting its own health | Ambient | 0.65.0 | — | `ICockpitHost.AddHealthSection` |
 | `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
 | `settings.carrier` | Keeping the cockpit's settings for the operator | Sensitive | 0.94.0 | — | `ICockpitHost.AddSettingsCarrier` |
-| `backup.target` | Keeping the cockpit's backups | Sensitive | 0.96.0 | — | `ICockpitHost.AddBackupTarget`, `ICockpitHost.RemoveBackupTarget` |
+| `backup.target` | Keeping the cockpit's backups | Sensitive | 0.101.0 | — | `ICockpitHost.AddBackupTarget`, `ICockpitHost.RemoveBackupTarget` |
 | `first-start.routes` | A way to begin on the first start | Ambient | 0.94.0 | — | `ICockpitUiHost.AddFirstStartRoute`, `IFirstStartPluginUi.CreateFirstStartRoutes`, `IFirstStartPlugin.InitializeFirstStart` |
-| `first-start.setup` | Setting up the cockpit on the first start | Sensitive | 0.97.0 | — | `IFirstStartHost.RestoreBackupAsync`, `IFirstStartHost.ApplyManifestAsync` |
+| `first-start.setup` | Setting up the cockpit on the first start | Sensitive | 0.102.0 | — | `IFirstStartHost.RestoreBackupAsync`, `IFirstStartHost.ApplyManifestAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -366,11 +366,11 @@ exists, this is the only sign-in there is. A plugin that calls it sets `minHostV
 `IBackupTarget` (AC-1501, SDK 3.8.0, namespace `Cockpit.Plugins.Abstractions.Backup`) is a place a cockpit backup is
 kept: `WriteAsync(name, stream)` keeps a finished archive and returns its id, `ListAsync()` names what it holds as
 `BackupTargetEntry` rows, and `OpenReadAsync(id)` hands one back as a stream. A write that fails must leave nothing
-`ListAsync` shows. The host's own target is a local folder. `AddBackupTarget(target)` (AC-1508, SDK 3.14.0, host 0.96.0)
+`ListAsync` shows. The host's own target is a local folder. `AddBackupTarget(target)` (AC-1508, SDK 3.20.0, host 0.101.0)
 registers a plugin's target, keyed by its id: it is offered beside the local file in Options → Backup and to the
 scheduled backup, and `RemoveBackupTarget(id)` withdraws it. The Depot plugin registers one per connection, backed by
 that account's own space in Depot.
-`DeleteAsync(id)` (AC-1502, SDK 3.11.0) removes one backup for retention and returns `false` by default, meaning the
+`DeleteAsync(id)` (AC-1502, SDK 3.17.0) removes one backup for retention and returns `false` by default, meaning the
 target cannot delete: the host then keeps everything on it and says so once.
 
 `AddSettingsCarrier(registration)` (AC-540, SDK 3.9.0) registers the one place the cockpit's portable settings are kept:
@@ -378,13 +378,13 @@ an opaque blob holding only what the host's white list carries, never a secret o
 host pulls it at start and every 15 minutes and pushes a change shortly after a save, per setting against the base both
 machines last agreed on. A setting changed on both is offered to the operator as a choice; it is never merged quietly,
 and a setting a provisioning manifest manages is neither pushed nor taken over. A taken-over value lands at the next
-start. `SettingsCarrierRegistration.WriteIfUnchangedAsync` (SDK 3.17.0, host 0.99.0, optional `init`) writes only over
+start. `SettingsCarrierRegistration.WriteIfUnchangedAsync` (SDK 3.23.0, host 0.104.0, optional `init`) writes only over
 the version the host names, the lowercase hex SHA-256 of the blob it last read or null for none, and returns `false`
 when the carrier holds something else by now. Without it the host reads, compares and writes, which leaves a window. A
-plugin that sets it sets `minHostVersion` 0.99.0. The Depot plugin carries the settings in the first connection's
+plugin that sets it sets `minHostVersion` 0.104.0. The Depot plugin carries the settings in the first connection's
 account space (`/cockpit/profile`, If-Match).
 
-`CreateAuthorizedHandler(name)` (AC-1587, SDK 3.13.0) gives a plugin an `HttpMessageHandler` for the routes of its own
+`CreateAuthorizedHandler(name)` (AC-1587, SDK 3.19.0) gives a plugin an `HttpMessageHandler` for the routes of its own
 OAuth MCP server beside `/mcp`, such as a REST API or a SignalR hub. The host puts the bearer on its own copy of each
 request, so the plugin never sees the token. Only the origin of that server's URL is served (`ws`/`wss` count as
 `http`/`https`); any other origin, or a name that is not one of the plugin's own `GetMcpServers()` OAuth servers, throws
@@ -394,7 +394,7 @@ once. Use it as `new HttpClient(host.CreateAuthorizedHandler(name))`, and for Si
 `options.HttpMessageHandlerFactory = _ => host.CreateAuthorizedHandler(name)`, never `AccessTokenProvider`. It works the
 same on a desktop and on a server: the credential stays wherever the plugin's backend part runs.
 
-`CreateAuthorizedHandler(name, scope)` (AC-1586, SDK 3.16.0, host 0.98.0) is the same handler with a **host-only** token
+`CreateAuthorizedHandler(name, scope)` (AC-1586, SDK 3.22.0, host 0.103.0) is the same handler with a **host-only** token
 for `scope` alone, one of the scopes the contribution lists in `OAuthHostOnlyScopes`. The host gets it from the sign-in
 with a refresh-token grant that asks for that one scope (RFC 6749 §6), keeps it in memory only and never hands it to a
 session. Every token a session can be handed is narrowed the same way to the sign-in's scopes without the host-only
@@ -419,9 +419,9 @@ same `Id` is ignored. Without a plugin that registers one, the step offers only 
 
 `AddFirstStartRoute` runs in `InitializeUi`, and on the very first start the wizard opens before that: such a route is
 there for **Run setup again** only. A route that must be there on the first start itself comes from
-`IFirstStartPluginUi.CreateFirstStartRoutes(IFirstStartHost host)` on the UI entry type (AC-1509, host 0.97.0, SDK UI
+`IFirstStartPluginUi.CreateFirstStartRoutes(IFirstStartHost host)` on the UI entry type (AC-1509, host 0.102.0, SDK UI
 3.5.0), which the host calls once per start before the wizard can open, in a light phase of its own: only that, and the
-backend entry type's `IFirstStartPlugin.InitializeFirstStart(ICockpitHost host)` (SDK 3.15.0) on a windowless host, so
+backend entry type's `IFirstStartPlugin.InitializeFirstStart(ICockpitHost host)` (SDK 3.21.0) on a windowless host, so
 the backend part can register the channel handlers its route needs. `Initialize` and `InitializeUi` still run later,
 unchanged; `InitializeUi` gets the same UI part instance. The route's content reaches only what `IFirstStartHost` offers:
 `Channel`, the plugin's own channel; `RestoreBackupAsync(targetId, backupId)`, which restores a backup from a registered
@@ -1339,6 +1339,9 @@ public interface ICockpitActions
                                string? workingDirectory = null, TimeSpan? timeout = null);   // default throws
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
                                TimeSpan? timeout, string? permission);                       // default: the above
+    Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
+                               TimeSpan? timeout, string? permission,
+                               Action<string> taskStarted);                                  // default: the above
 }
 ```
 
@@ -1358,6 +1361,11 @@ the refusal reaches the model as the tool's result. Use the five-argument overlo
 change something. Anything above the target profile's own ceiling is put to the operator as a one-time approval
 rather than granted. A plugin compiled against the older four-argument overload keeps working and gets the read-only
 default, which is the safe end of that choice.
+
+The six-argument overload also calls `taskStarted` with the delegated task's id as soon as the task exists, before the
+wait — so a caller can point at that task's transcript in the delegated-tasks view also when the wait ends in a
+failure or a timeout. Work refused before any task existed never calls it. The default never calls it either; a
+plugin that relies on the id sets `minHostVersion` 0.97.0.
 
 ### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)` {#taskstring-startsessionasyncstring-profilelabel-string-prompt--null-string-workingdirectory--null}
 Opens a session on the profile with that label and hands it `prompt` as its first input — the New-session dialog's act,
@@ -1850,8 +1858,8 @@ public sealed record McpServerContribution(
 | `BearerToken` | Static bearer token sent as `Authorization: Bearer …`, or `null`/empty for no auth. |
 | `Scope` | Which session worlds this server fans out to **on first registration** — see below. |
 | `OAuthAuthority`, `OAuthClientId` (init) | Set `OAuthAuthority` for an OAuth server; `OAuthClientId` names a client the server already knows, else the cockpit registers itself (RFC 7591). |
-| `OAuthScopes` (init, AC-1586, host 0.98.0) | The scopes the sign-in asks for, space-separated, instead of what the server advertises. |
-| `OAuthHostOnlyScopes` (init, AC-1586, host 0.98.0) | Scopes among `OAuthScopes` that only the cockpit may spend, through `CreateAuthorizedHandler(name, scope)`. No token a session is handed carries one. |
+| `OAuthScopes` (init, AC-1586, host 0.103.0) | The scopes the sign-in asks for, space-separated, instead of what the server advertises. |
+| `OAuthHostOnlyScopes` (init, AC-1586, host 0.103.0) | Scopes among `OAuthScopes` that only the cockpit may spend, through `CreateAuthorizedHandler(name, scope)`. No token a session is handed carries one. |
 
 ### `McpContributionScope` {#mcpcontributionscope}
 

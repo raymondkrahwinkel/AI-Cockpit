@@ -443,10 +443,54 @@ public interface ICockpitHost
     Task<bool> NotifyAssistantAsync(string kind, string body) => Task.FromResult(false);
 
     /// <summary>
+    /// Asks the machine-wide queue for heavy runs (AC-1535) for a place for <paramref name="request"/>. Returns at
+    /// once; the slot's <see cref="HeavyRuns.IHeavyRunSlot.Admitted"/> completes when the run may start.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="HeavyRuns.HeavyRunKind.Light"/> run is admitted at once. The default body admits every run at once,
+    /// the honest answer of a host without a queue.
+    /// </remarks>
+    HeavyRuns.IHeavyRunSlot RequestHeavyRunSlot(HeavyRuns.HeavyRunRequest request) => HeavyRuns.AdmittedHeavyRunSlot.Instance;
+
+    /// <summary>
+    /// Puts a message in the inbox of the session named by <paramref name="paneId"/> (AC-1535), with this plugin as
+    /// the stated sender — how a plugin hands a session the verdict of work it started without holding its turn.
+    /// </summary>
+    /// <remarks>
+    /// The session's own wake consent decides whether a turn is started for it. Never throws; false when the inbox
+    /// is full or the host has none, and the default body returns false.
+    /// </remarks>
+    Task<bool> DeliverToSessionInboxAsync(string paneId, string kind, string body) => Task.FromResult(false);
+
+    /// <summary>
     /// Opens a chat channel — a Discord or Slack bot — as a second door onto the assistant's own conversation
     /// (AC-1023). Null on a host with no assistant; dispose the gateway to close the channel.
     /// </summary>
     IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution) => null;
+
+    /// <summary>
+    /// The chat channels open right now that take a plugin's message (AC-1544), each with its targets.
+    /// </summary>
+    /// <remarks>
+    /// Empty on a host without them, the default. A plugin that reads them sets minHostVersion 0.99.0.
+    /// </remarks>
+    IReadOnlyList<OperatorMessageChannelInfo> OperatorMessageChannels => [];
+
+    /// <summary>
+    /// Sends <paramref name="message"/> through the open channel <paramref name="channelId"/> to <paramref name="targetId"/>
+    /// (AC-1544). An answer to its question goes to <paramref name="onAnswer"/>, once, from an allowed account only.
+    /// </summary>
+    /// <remarks>
+    /// Never throws: a channel that is not open, a target it does not have, or a send that fails comes back as
+    /// <see cref="OperatorMessageResult.Failed"/>. The default fails; a plugin that sends sets minHostVersion 0.99.0.
+    /// </remarks>
+    Task<OperatorMessageResult> SendOperatorMessageAsync(
+        string channelId,
+        string targetId,
+        OperatorMessage message,
+        Func<OperatorMessageAnswer, Task>? onAnswer = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(OperatorMessageResult.Failed("This cockpit cannot send a message through a channel."));
 
     /// <summary>
     /// Binds a plugin surface — a diagram or whiteboard window (AC-832) — to the session already running behind
@@ -589,6 +633,17 @@ public interface ICockpitHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null)
     {
     }
+
+    /// <summary>
+    /// A toast with several buttons (AC-1549), the first one primary, such as a reminder's Done · Snooze 10 min ·
+    /// 1 hour; a <paramref name="sticky"/> one stays until it is answered or closed, for a toast that asks.
+    /// </summary>
+    /// <remarks>
+    /// Default shows the first action only. A headless host writes it to its log, like any toast. A plugin that
+    /// relies on more than one button sets minHostVersion 0.100.0.
+    /// </remarks>
+    void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
+        ShowToast(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
 
     /// <summary>
     /// Asks the operator to approve a single action before the plugin performs it (#AC-47) — the shared consent

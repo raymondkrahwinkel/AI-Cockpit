@@ -69,6 +69,9 @@ internal static class CockpitConfigPath
     // ponytail: retain all conversations until measured state-root growth calls for a cleanup policy.
     public static string Conversations => Path.Combine(Root, "conversations.jsonl");
 
+    // AC-1535: what each kind of heavy run measurably cost per repository, learned from its earlier runs.
+    public static string HeavyRunCosts => Path.Combine(Root, "heavy-run-costs.json");
+
     // AC-792: this machine's node TLS certificate, written via `CreatePrivateFile` like every other
     // credential. Persists across restarts on purpose — a controller pins its fingerprint at pairing
     // time, so a fresh certificate each launch would break the node's own pairing.

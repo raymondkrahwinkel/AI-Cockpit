@@ -27,6 +27,7 @@ using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.Hotkeys;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Notifications;
@@ -287,6 +288,9 @@ public sealed class CockpitBackend
 
         // AC-1502: the scheduled backup, here so a headless server makes it too.
         Services.GetService<ScheduledBackup>()?.Start();
+
+        // AC-1535: the machine's load, sampled from the start, so the heavy-run queue's first decision is no guess.
+        Services.GetService<MachineResources>()?.Start();
 
         // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at
         // once, and the catalog (which hands the watcher its projects, loading its settings on demand) must exist by then.

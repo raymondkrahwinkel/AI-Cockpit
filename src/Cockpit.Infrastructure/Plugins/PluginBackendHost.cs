@@ -14,6 +14,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
@@ -24,6 +25,7 @@ using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Health;
+using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
@@ -96,6 +98,10 @@ public class PluginBackendHost(
     public virtual void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
         _NoWindow(nameof(AddSupervisedActivityProvider));
 
+    // AC-1549: several buttons; a host without a window logs it as the one-button toast it would have been.
+    public virtual void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
+        ShowToast(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
+
     // A toast with nobody to read it still says something, so it goes to the log at its own severity.
     public virtual void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
         _Logger()?.Log(
@@ -108,6 +114,20 @@ public class PluginBackendHost(
             "Plugin {PluginId}: {Message}",
             pluginId,
             message);
+
+    // AC-1544: every plugin's host reads the one registry, so a plugin reaches channels another plugin opened.
+    public IReadOnlyList<OperatorMessageChannelInfo> OperatorMessageChannels =>
+        services.GetService<OperatorMessageRegistry>()?.Channels ?? [];
+
+    public Task<OperatorMessageResult> SendOperatorMessageAsync(
+        string channelId,
+        string targetId,
+        OperatorMessage message,
+        Func<OperatorMessageAnswer, Task>? onAnswer = null,
+        CancellationToken cancellationToken = default) =>
+        services.GetService<OperatorMessageRegistry>() is { } registry
+            ? registry.SendAsync(channelId, targetId, message, onAnswer, cancellationToken)
+            : Task.FromResult(OperatorMessageResult.Failed("This cockpit cannot send a message through a channel."));
 
     public IAssistantChannelGateway? OpenAssistantChannel(AssistantChannelContribution contribution)
     {
@@ -129,7 +149,8 @@ public class PluginBackendHost(
             contribution,
             AssistantHostFor(assistantHost),
             services.GetRequiredService<IConsentBroker>(),
-            services.GetRequiredService<ILogger<AssistantChannelGateway>>());
+            services.GetRequiredService<ILogger<AssistantChannelGateway>>(),
+            services.GetService<OperatorMessageRegistry>());
         _assistantChannels[contribution.Id] = gateway;
 
         return gateway;
@@ -857,6 +878,26 @@ public class PluginBackendHost(
             ? body
             : body[..(MaxAssistantNotifyLength - AssistantNotifyTruncationMarker.Length)] + AssistantNotifyTruncationMarker;
         var delivery = inbox.Deliver($"cockpit-plugin:{pluginId}", AssistantIdentity.PaneId, kind.Trim(), bounded);
+        return Task.FromResult(delivery.Outcome != AgentMessageDeliveryOutcome.RecipientInboxFull);
+    }
+
+    // AC-1535: the same queue `start_run` uses, so a plugin's gate and a session's test run wait in one line.
+    public IHeavyRunSlot RequestHeavyRunSlot(HeavyRunRequest request) =>
+        services.GetService<HeavyRunQueue>()?.Request(request) ?? AdmittedHeavyRunSlot.Instance;
+
+    // AC-1535: a session's own inbox, with this plugin as the stated sender, bounded like the assistant's.
+    public Task<bool> DeliverToSessionInboxAsync(string paneId, string kind, string body)
+    {
+        if (string.IsNullOrWhiteSpace(paneId) || string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(body)
+            || services.GetService<IAgentMessageInbox>() is not { } inbox)
+        {
+            return Task.FromResult(false);
+        }
+
+        var bounded = body.Length <= MaxAssistantNotifyLength
+            ? body
+            : body[..(MaxAssistantNotifyLength - AssistantNotifyTruncationMarker.Length)] + AssistantNotifyTruncationMarker;
+        var delivery = inbox.Deliver($"cockpit-plugin:{pluginId}", paneId, kind.Trim(), bounded);
         return Task.FromResult(delivery.Outcome != AgentMessageDeliveryOutcome.RecipientInboxFull);
     }
 

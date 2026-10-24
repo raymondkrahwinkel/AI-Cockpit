@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Cockpit.Infrastructure.Tests\Worktrees\CleanupFixture.cs" Link="CleanupFixture.cs" />
     <!-- The view tests' own headless platform, so both run the app on the same one. -->
     <Compile Include="..\Cockpit.App.ViewTests\HeadlessAvalonia.cs" Link="HeadlessAvalonia.cs" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.1" />

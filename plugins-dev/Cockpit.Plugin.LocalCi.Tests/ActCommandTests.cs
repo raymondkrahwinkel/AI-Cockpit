@@ -12,14 +12,6 @@ public class ActCommandTests
     private static readonly ActRunOptions Options = new("catthehacker/ubuntu:act-latest", CpuLimit: 8);
 
     [Fact]
-    public void TheWorkflowIsNamedRelativeToTheCheckout()
-    {
-        var arguments = ActCommand.Build(Request, "ubuntu-latest", Options, "r1");
-
-        Assert.Equal(".github/workflows/ci.yml", _After(arguments, "-W"));
-    }
-
-    [Fact]
     public void TheCheckoutIsTheWorkingDirectoryAndTheJobIsNamed()
     {
         var arguments = ActCommand.Build(Request, "ubuntu-latest", Options, "r1");

@@ -20,4 +20,10 @@ namespace Cockpit.Plugins.Abstractions.Docking;
 /// <param name="CreateView">
 /// Builds the panel's content, on the UI thread, once each time it is opened.
 /// </param>
-public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView);
+public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView)
+{
+    /// <summary>
+    /// An optional count on the tab, for what in the panel waits on the operator; null draws none.
+    /// </summary>
+    public DockPanelBadge? Badge { get; init; }
+}

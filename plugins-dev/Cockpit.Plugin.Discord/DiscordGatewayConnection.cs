@@ -16,6 +16,9 @@ internal sealed class DiscordGatewayConnection : IDisposable
     private readonly ulong _channelId;
     private readonly string? _directMessageUserId;
 
+    // AC-1544: the one account another plugin's message may go to as a DM, in either mode; null when several are allowed.
+    private readonly string? _allowedUserId;
+
     // One DM channel per account, resolved once: every relayed row, edit and reaction would otherwise cost two REST calls.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, IMessageChannel> _directMessageChannels = new(StringComparer.Ordinal);
     private bool _disposed;
@@ -31,9 +34,8 @@ internal sealed class DiscordGatewayConnection : IDisposable
         Action<string> logRefusal)
     {
         _channelId = channelId;
-        _directMessageUserId = channelId == 0 && access is { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 }
-            ? access.UserIds.First()
-            : null;
+        _allowedUserId = access is { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 } ? access.UserIds.First() : null;
+        _directMessageUserId = channelId == 0 ? _allowedUserId : null;
         _health = health;
 
         _client = new DiscordSocketClient(new DiscordSocketConfig
@@ -104,24 +106,72 @@ internal sealed class DiscordGatewayConnection : IDisposable
         return _directMessageChannels.GetOrAdd(userId, channel);
     }
 
-    // The workflow step's way out (AC-1360): the parts go in order to the one account's direct messages.
+    // The workflow step's way out (AC-1360): the parts go in order to the one account's direct messages, by the same
+    // send as another plugin's message (AC-1544), so a DM has one implementation.
     public async Task SendDirectMessageAsync(string userId, IReadOnlyList<string> parts, CancellationToken cancellationToken)
     {
+        if (userId != _allowedUserId)
+        {
+            throw new InvalidOperationException($"Nothing was sent: {userId} is not the one account the Discord settings allow.");
+        }
+
+        var result = await _SendDirectAsync(userId, parts, new OperatorMessage { Text = string.Join(string.Empty, parts) }, cancellationToken)
+            .ConfigureAwait(false);
+        if (!result.Ok)
+        {
+            throw new InvalidOperationException(result.Error);
+        }
+    }
+
+    // One send to the allowed account's DMs, counted once in health, a cancelled one as failed as before.
+    private async Task<OperatorMessageResult> _SendDirectAsync(string userId, IReadOnlyList<string> parts, OperatorMessage message, CancellationToken cancellationToken)
+    {
+        OperatorMessageResult result;
         try
         {
-            var channel = await _DirectMessageChannelAsync(userId, cancellationToken).ConfigureAwait(false);
-            foreach (var part in parts)
-            {
-                await channel.SendMessageAsync(part, options: new RequestOptions { CancelToken = cancellationToken }).ConfigureAwait(false);
-            }
-
-            _health.DirectMessageDelivered();
+            result = await _bridge.SendPartsAsync(
+                new DiscordChannelSink(async () => await _DirectMessageChannelAsync(userId, cancellationToken).ConfigureAwait(false)),
+                parts,
+                message,
+                cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
             _health.DirectMessageFailed();
             throw;
         }
+
+        if (result.Ok)
+        {
+            _health.DirectMessageDelivered();
+        }
+        else
+        {
+            _health.DirectMessageFailed();
+        }
+
+        return result;
+    }
+
+    // AC-1544: another plugin's message, to the one allowed account's DMs or to the configured channel, posted by the
+    // bridge so its option buttons are the ones a row's question gets.
+    public async Task<OperatorMessageResult> SendOperatorMessageAsync(string targetId, OperatorMessage message, CancellationToken cancellationToken)
+    {
+        if (targetId == DiscordChannelPlugin.DirectMessageTarget && _allowedUserId is { } userId)
+        {
+            return await _SendDirectAsync(userId, DiscordSendDmStep.Split(message.Text, DiscordSendDmStep.DiscordLimit), message, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (targetId == DiscordChannelPlugin.ChannelTarget && _channelId != 0)
+        {
+            return await _bridge.SendOperatorMessageAsync(
+                new DiscordChannelSink(() => Task.FromResult(_client.GetChannel(_channelId) as IMessageChannel)),
+                message,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        return OperatorMessageResult.Failed($"Discord cannot deliver to '{targetId}' with its current settings.");
     }
 
     private Task _OnMessageReceived(SocketMessage message)

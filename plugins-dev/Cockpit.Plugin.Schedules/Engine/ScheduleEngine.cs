@@ -19,31 +19,40 @@ internal sealed class ScheduleEngine : IDisposable
     private readonly TaskStore _tasks;
     private readonly MarkStore _marks;
     private readonly RunStore _runs;
-    private readonly Func<ScheduledTask, CancellationToken, Task<ActionResult>> _execute;
+    private readonly Func<ScheduledTask, RunTrigger, CancellationToken, Task<string?>> _admit;
+    private readonly Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> _execute;
     private readonly Func<int> _maxConcurrentRuns;
     private readonly TimeProvider _time;
+    private readonly Func<DateTimeOffset, Task>? _reminders;
     private readonly ITimer _timer;
 
     private readonly Lock _tickGate = new();
     private readonly Lock _runGate = new();
     private readonly HashSet<string> _busy = [];
     private readonly Queue<TaskCompletionSource> _waiting = new();
+
+    // The runs nobody scheduled (RunNow), held so they are never let go unobserved; finished ones drop off.
+    private readonly List<Task> _unscheduled = [];
     private int _active;
 
     public ScheduleEngine(
         TaskStore tasks,
         MarkStore marks,
         RunStore runs,
-        Func<ScheduledTask, CancellationToken, Task<ActionResult>> execute,
+        Func<ScheduledTask, RunTrigger, CancellationToken, Task<string?>> admit,
+        Func<ScheduledTask, RunTrigger, CancellationToken, Task<ActionResult>> execute,
         Func<int> maxConcurrentRuns,
-        TimeProvider time)
+        TimeProvider time,
+        Func<DateTimeOffset, Task>? reminders = null)
     {
         _tasks = tasks;
         _marks = marks;
         _runs = runs;
+        _admit = admit;
         _execute = execute;
         _maxConcurrentRuns = maxConcurrentRuns;
         _time = time;
+        _reminders = reminders;
 
         _runs.FailInterrupted();
         Health = new EngineHealth(time, Tick);
@@ -94,12 +103,30 @@ internal sealed class ScheduleEngine : IDisposable
             }
         }
 
+        // AC-1549: the reminders on the same tick, as their own part, so one that fails never stops a task's slot.
+        if (_reminders is not null)
+        {
+            started.Add(_RemindersAsync(now));
+        }
+
         // Last, so a tick that throws part-way never counts as one that ran.
         Health.Beat(unusable, isTaskListReadable: tasks is not null);
         return Task.WhenAll(started);
     }
 
     public void Dispose() => _timer.Dispose();
+
+    private async Task _RemindersAsync(DateTimeOffset now)
+    {
+        try
+        {
+            await (_reminders?.Invoke(now) ?? Task.CompletedTask);
+        }
+        catch (Exception)
+        {
+            // A reminder that cannot be said is due already, so it does not go off again; the next tick goes on.
+        }
+    }
 
     private void _OnTimer()
     {
@@ -139,7 +166,7 @@ internal sealed class ScheduleEngine : IDisposable
             : task.MissedRuns == MissedRunPolicy.RunOnceWhenBack ? RunTrigger.CatchUp : null;
 
         _RecordMissed(task, trigger is null ? slots : slots[..^1], now);
-        return trigger is { } fired ? _Start(task, slot, fired, now) : null;
+        return trigger is { } fired ? _Start(task, slot, fired, now).Run : null;
     }
 
     private void _RecordMissed(ScheduledTask task, List<DateTimeOffset> slots, DateTimeOffset now)
@@ -159,14 +186,45 @@ internal sealed class ScheduleEngine : IDisposable
         }
     }
 
-    private Task? _Start(ScheduledTask task, DateTimeOffset slot, RunTrigger trigger, DateTimeOffset now)
+    // A run nobody scheduled (plan §5): the operator's "Run now" or an agent's run_now (AC-1545). Returns the run as it
+    // starts, Skipped while the task still runs, or null when there is no such task. The run goes on without the caller.
+    public RunRecord? RunNow(string taskId, RunTrigger trigger)
+    {
+        if (_tasks.Load()?.FirstOrDefault(task => task.Id == taskId) is not { } task)
+        {
+            return null;
+        }
+
+        var (run, record) = _Start(task, null, trigger, _time.GetUtcNow());
+        if (run is not null)
+        {
+            lock (_runGate)
+            {
+                _unscheduled.RemoveAll(started => started.IsCompleted);
+                _unscheduled.Add(run);
+            }
+        }
+
+        return record;
+    }
+
+    public Task IdleAsync()
+    {
+        lock (_runGate)
+        {
+            return Task.WhenAll(_unscheduled);
+        }
+    }
+
+    private (Task? Run, RunRecord Record) _Start(ScheduledTask task, DateTimeOffset? slot, RunTrigger trigger, DateTimeOffset now)
     {
         lock (_runGate)
         {
             if (!_busy.Add(task.Id))
             {
-                _runs.Add(_Record(task, slot, trigger, RunOutcome.Skipped, now) with { Reason = StillRunning });
-                return null;
+                var skipped = _Record(task, slot, trigger, RunOutcome.Skipped, now) with { Reason = StillRunning };
+                _runs.Add(skipped);
+                return (null, skipped);
             }
         }
 
@@ -185,20 +243,41 @@ internal sealed class ScheduleEngine : IDisposable
             throw;
         }
 
-        return _RunAsync(task, record);
+        return (_RunAsync(task, record), record);
     }
 
     private async Task _RunAsync(ScheduledTask task, RunRecord record)
     {
         try
         {
+            // Off the starter's stack: a tick or a Run now gets the run back as it starts, not once it is done.
+            await Task.Yield();
+
+            // Consent is asked before a slot is taken: a question waiting an hour must not hold up other tasks.
+            string? refused;
+            try
+            {
+                refused = await _admit(task, record.Trigger, CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                _runs.Replace(record with { Outcome = RunOutcome.Failed, Reason = exception.Message });
+                return;
+            }
+
+            if (refused is not null)
+            {
+                _runs.Replace(record with { Outcome = RunOutcome.Skipped, Reason = refused });
+                return;
+            }
+
             await _AcquireSlotAsync();
             var started = _time.GetUtcNow();
             RunRecord done;
             try
             {
-                var result = await _execute(task, CancellationToken.None);
-                done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason };
+                var result = await _execute(task, record.Trigger, CancellationToken.None);
+                done = record with { Outcome = result.Outcome, Output = result.Output, Reason = result.Reason, DelegatedTaskId = result.DelegatedTaskId };
             }
             catch (Exception exception)
             {
@@ -255,7 +334,7 @@ internal sealed class ScheduleEngine : IDisposable
         }
     }
 
-    private static RunRecord _Record(ScheduledTask task, DateTimeOffset slot, RunTrigger trigger, RunOutcome outcome, DateTimeOffset now) => new()
+    private static RunRecord _Record(ScheduledTask task, DateTimeOffset? slot, RunTrigger trigger, RunOutcome outcome, DateTimeOffset now) => new()
     {
         Id = Guid.NewGuid().ToString("n"),
         TaskId = task.Id,

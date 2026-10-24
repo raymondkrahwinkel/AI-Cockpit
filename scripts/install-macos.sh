@@ -16,14 +16,14 @@ if [ "$(uname -s)" != "Darwin" ]; then
     exit 1
 fi
 
-# Apple Silicon only, deliberately: the release ships one bundle per architecture and arm64 is the one it
-# publishes. An x64 Mac cannot run it and Rosetta does not help, so say that rather than install something that
-# fails to open.
-if [ "$(uname -m)" != "arm64" ]; then
-    echo "The published macOS build is Apple Silicon only (this machine is $(uname -m))." >&2
-    echo "Build one for this architecture instead: scripts/package-macos.sh x64" >&2
-    exit 1
-fi
+case "$(uname -m)" in
+    arm64)  arch=arm64 ;;
+    x86_64) arch=x64 ;;
+    *)
+        echo "No published macOS build for this architecture ($(uname -m))." >&2
+        exit 1
+        ;;
+esac
 
 api="https://api.github.com/repos/$repo/releases/latest"
 [ -n "$tag" ] && api="https://api.github.com/repos/$repo/releases/tags/$tag"
@@ -35,10 +35,10 @@ echo "Looking up the ${tag:-latest} release…"
 # `|| true` on both: under `set -e` with pipefail a 404 from curl, or grep matching nothing, would abort the
 # script with a bare exit code and skip the message below — which is the one that says what to do about it.
 release="$(curl -fsSL "$api" || true)"
-url="$(printf '%s' "$release" | grep -o '"browser_download_url"[^,]*macos-arm64\.app\.zip"' | cut -d'"' -f4 | head -1 || true)"
+url="$(printf '%s' "$release" | grep -o "\"browser_download_url\"[^,]*macos-${arch}\\.app\\.zip\"" | cut -d'"' -f4 | head -1 || true)"
 
 if [ -z "$url" ]; then
-    echo "No macos-arm64 .app.zip in the ${tag:-latest} release of $repo." >&2
+    echo "No macos-$arch .app.zip in the ${tag:-latest} release of $repo." >&2
     echo "Releases: https://github.com/$repo/releases" >&2
     exit 1
 fi

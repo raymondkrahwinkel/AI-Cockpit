@@ -41,6 +41,87 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   least as often, kept at least as many and sent only to targets the organisation names, and keys and tokens can be
   kept out of every backup. Each limit is marked "Managed by <organisation>" where you would change it.
 - added: When a Depot profile belongs to more than one organization during first-run setup, the cockpit now asks which organization to use before it applies any settings.
+- added: **reminders** in Schedules, once or repeating. At its moment a reminder goes off as a cockpit notification
+  with **Done**, **Snooze 10 min** and **1 hour**, also with the Schedules screen closed or hidden, and on every
+  chosen channel, with buttons where the channel has them (Discord) or a text reply. One missed while the computer
+  slept goes off when it is back, however late, saying "missed, was 09:00". Done on a repeating reminder opens the
+  next occurrence; a channel without its plugin hands the reminder to the assistant. Agents create and manage them
+  with the cockpit-schedules reminder tools.
+- added: for plugin authors, `ICockpitHost.ShowToast` takes several `PluginToastAction` buttons and a sticky flag; the
+  toast in the cockpit shows each as a button, the first one primary (Plugin SDK 3.15.0, host 0.100.0).
+- added: for plugin authors, `StructuredQuestionJson.Parse` reads an AskUserQuestion payload into the channel question
+  model, and `AnswerText` formats its answer consistently for the assistant (Plugin SDK 3.16.0, host 0.100.0).
+
+- added: the **Schedules** screen, a plugin button under Plugins (Ctrl+Shift+S by default, changeable in Options →
+  Shortcuts, and pinnable to the sidebar). Its tabs show the scheduled tasks with search, filters and a detail panel;
+  an editor with a plain schedule builder or a cron, the next three runs, an agent prompt or a fixed message, and
+  delivery to the installed channels with their targets; the run history with each run's output; and MCP &
+  permissions. **Run now** shows "Running…" and then the outcome, and switching on a task that may change files asks
+  whether it may run unattended.
+
+- added: the MCP server **cockpit-schedules** in every Cockpit session, the assistant's and every agent's, on the desktop
+  and the server: list, create, change, delete, switch on or off and run scheduled tasks, read their runs and output,
+  and list the delivery channels. A profile leaves it out in its MCP selection. A task an agent creates or changes so
+  that it may change files arrives switched off ("Needs your approval to enable"), and switching it on or running it
+  over MCP asks you first; a run a task started may only read, and create reminders. The reminder tools answer "not
+  available yet" until reminders arrive.
+
+- added: a **Schedules** task delivers to Discord, in a direct message to you or in its channel, beside the cockpit
+  notification. When the chosen medium's plugin is missing or the send fails, the message goes to the assistant
+  instead and the run says so ("Discord: plugin not installed → handed to the assistant ✓"); only when that fails
+  too does the run fail, with the reason. Discord also shows the assistant's questions with a button per option.
+- added: for plugin authors, a chat channel can offer its sending half: `AssistantChannelContribution.Messages`
+  (`IOperatorMessageChannel`, with its targets), and any plugin sends through an open channel with
+  `ICockpitHost.SendOperatorMessageAsync`, listed in `OperatorMessageChannels`. A question sent along comes back to
+  the sender's `onAnswer` under its correlation id, by button or text reply, once, from an allowed account only.
+  Everything defaults to nothing (Plugin SDK 3.14.0, host 0.99.0).
+
+- added: for plugin authors, the assistant channel contract carries questions. A question row from the assistant now
+  comes with its options (single or multiple choice, and whether an answer in the operator's own words is welcome)
+  and a correlation id, and `IAssistantChannelGateway.AnswerAsync` sends the choice back as the operator's answer,
+  the same one the card in the app sends. A channel without buttons shows `FallbackPrompt()` ("Reply with 1, 2 or
+  3"), and a reply such as "2" counts as that choice while the question waits. Rows can also carry named attachments.
+  Everything defaults to nothing, so an existing channel plugin works unchanged (Plugin SDK 3.13.0, host 0.98.0).
+- added: a **Schedules** task can hand a prompt to an agent profile, in a working directory that profile allows
+  (`$VAR` and `%VAR%` expanded), and deliver its answer; an empty answer is nothing to deliver. A task that may change
+  files asks you first when its schedule fires, unless you marked it **Run unattended**, and always when an agent
+  starts it over MCP; unanswered for an hour, the run is skipped. A run you start yourself asks nothing. The run
+  history keeps the id of the delegated task, whose transcript is in the delegated-tasks view.
+- added: for plugin authors, `ICockpitActions.DelegateAsync` gains an overload with a `taskStarted` callback that
+  receives the delegated task's id as soon as the task exists (Plugin SDK 3.12.0, host 0.97.0).
+- added: heavy test runs and local CI gates now wait their turn in one queue for the whole machine. A run starts
+  once the measured CPU, memory and free disk leave room for what that kind of run cost before, a gate before a
+  merge goes ahead of an exploring run, and a session that closes gives its place back. The status bar's
+  **Heavy runs** shows who runs and who waits, and why ("waiting: CPU 85%"). The ceilings are settings under
+  `heavyRuns` in `cockpit.json` (75% CPU, 85% memory by default), and they step down on their own when a run fails
+  with a database timeout on a busy machine. **Run local checks** now answers at once and delivers its verdict to
+  the session's inbox.
+- added: closed sessions' retained worktrees are checked again after fetching, with a visible reason when work
+  must stay. Cleanup also removes missing worktree entries from other machines, session temp folders, and orphaned
+  testcontainers, while preserving local work and compose projects used by a live pane (AC-1537).
+- added: the assistant keeps one conversation but shows it per project. A rail beside the chat lists **Questions for
+  you** (every open question and Allow/Deny, with a count), **All**, **General** and a thread per project; in All each
+  row carries its project as a tag. Messages from other sessions arrive as cards with their sender, and status updates
+  as one quiet line. The rail shows labels when there is room, icons when there is less (with « / » to choose, saved
+  separately for the window and the dock), and a thread picker in a very narrow dock. A divider sets Questions and All
+  apart from the threads (headed THREADS where labels show) and the threads from Overview, in the picker too.
+- added: for plugin authors, `AgentMessage` (`Cockpit.Core.Abstractions.Agents`) gains `SubjectPaneId`, the pane a
+  report is about when its sender is no pane, so it files under that pane's project; and `DockPanelRegistration`
+  (`Cockpit.Plugins.Abstractions.Docking`, in the UI part) takes an optional `Badge`, a count on the panel's tab in the dock rail. Both
+  default to nothing: a plugin that calls `Deliver` or registers a dock panel works unchanged.
+- added: status updates that arrive one after another fold into one line, and Questions for you keeps what you
+  answered today below the open questions.
+- added: docked, the Assistant tab and the sidebar indicator count the questions waiting for you (a click on the count
+  opens them), and a card beside the dock says when a question or a message arrives while the assistant is closed.
+- added: a row can be dragged onto another thread in the rail (hold Ctrl to add it there as well), or moved with
+  Move to project… from its grip or the M key; the toast offers Undo, and Ctrl+Z works while it stands.
+- added: a project's thread can be closed, from its row in the rail (hover, the context menu or Delete) or by the
+  assistant after you approve; it moves under Closed at the foot of the rail, keeps every row in All, and opens again by
+  itself when something new arrives for that project. When a project has gone quiet the assistant suggests closing its
+  thread in one light row you answer with Close or Keep open.
+- added: the assistant can file its own turn under a project, split a prompt about two projects, answer in a block
+  per project and ask a question about several projects at once, so each thread shows only its own part.
+
 - added: a plugin on a server that this desktop does not have gets an **Install on this desktop** button under
   **Options · Server › Plugins**. It installs the plugin from this desktop's own plugin stores, with the usual checks
   and consent, and then asks to restart the cockpit so its screens load. Nothing is ever loaded from the server.
@@ -162,6 +243,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Options no longer gets stuck when a profile uses a provider plugin that is not installed or switched off: the
+  profile editor kept losing that profile's provider, after which Options could neither keep track of changes nor close.
+- fixed: the assistant docked beside the sessions or in the Simple view's own column no longer draws the rounded frame
+  of its floating window inside that square edge, so there is one hairline where it meets the rest of the cockpit
+  instead of two; the Simple column also starts right under the title bar instead of a strip lower, and right
+  against the sidebar instead of a strip to its right.
+- fixed: in the Simple reading level a run of tool calls to one server is one step ("Used depot 4 times") instead of a
+  column of identical "Used depot" lines.
+- fixed: the file preview dialog now keeps rendered markdown, source text and images the same distance from the
+  dialog's edges as its header, instead of drawing markdown flush against the left edge.
 - fixed: a plugin request to a server that does not fit what the plugin expects (empty, a missing field, a field of
   the wrong type) is now refused as an invalid request instead of being reported as a plugin failure.
 - fixed: Proxmox's **Show fingerprint** now reads the certificate where the plugin connects from. For a server's

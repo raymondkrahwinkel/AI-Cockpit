@@ -25,6 +25,11 @@
   <ItemGroup>
     <!-- The next cron occurrence in a time zone, across daylight saving: MIT, no dependencies, ships in the plugin. -->
     <PackageReference Include="Cronos" Version="0.13.0" />
+    <!-- The [McpServerTool] attributes of cockpit-schedules (AC-1545): compile-only, the host ships ModelContextProtocol,
+         so the attribute types keep one identity, as in Workflows. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
@@ -38,6 +43,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Plugin.Schedules.Tests" />
+    <!-- AC-1546: the screen's journey test drives the real backend behind the real screen, in the app's own theme. -->
+    <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
   </ItemGroup>
 
 </Project>

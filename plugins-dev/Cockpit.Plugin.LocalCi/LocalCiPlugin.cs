@@ -8,6 +8,7 @@ using Cockpit.Plugin.LocalCi.Runtime;
 using Cockpit.Plugin.LocalCi.Sessions;
 using Cockpit.Plugin.LocalCi.Workflows;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -36,7 +37,6 @@ public sealed class LocalCiPlugin : ICockpitPlugin
     private readonly List<IDisposable> _handlers = [];
 
     private LocalCiRuntime? _runtime;
-    private LocalJobRunner? _runner;
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -60,7 +60,6 @@ public sealed class LocalCiPlugin : ICockpitPlugin
             new DockerRunCleanup(cli),
             () => ActRunOptions.For(Environment.ProcessorCount, settings.RunnerImage),
             () => Guid.NewGuid().ToString("n"));
-        _runner = runner;
 
         // A container this plugin started on an agent's say-so belongs in the status bar with a Kill only the
         // operator can press (AC-82).
@@ -158,7 +157,6 @@ public sealed class LocalCiPlugin : ICockpitPlugin
 
         _handlers.Clear();
 
-        _runner?.Dispose();
         _runtime?.Dispose();
     }
 
@@ -177,10 +175,15 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         var startedAt = DateTimeOffset.UtcNow;
         var commit = await head.ReadAsync(request.ProjectRoot, cancellationToken);
 
+        // AC-1535: the operator's own run never waits in the queue, but holds a place so agents' runs wait for it.
+        var runId = Guid.NewGuid().ToString("n");
+        await using var slot = host.RequestHeavyRunSlot(
+            new HeavyRunRequest(runId, HeavyRunKind.Gate, HeavyRunPurpose.Operator, "operator", request.JobId, request.ProjectRoot));
+
         // Linked rather than passed through directly: the tracker's own stop callback (the status bar's Kill,
         // AC-82) must be able to cancel this run even when the UI part's own Stop button never fires.
-        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        tracker.Begin(request.ProjectRoot, request.JobId, startedAt, () =>
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, slot.Revoked);
+        tracker.Begin(runId, request.ProjectRoot, request.JobId, startedAt, () =>
         {
             stopping.Cancel();
             return Task.CompletedTask;
@@ -201,7 +204,7 @@ public sealed class LocalCiPlugin : ICockpitPlugin
         }
         finally
         {
-            tracker.Complete(request.ProjectRoot, result, commit, DateTimeOffset.UtcNow);
+            tracker.Complete(request.ProjectRoot, result, commit, DateTimeOffset.UtcNow, runId);
         }
 
         return result;

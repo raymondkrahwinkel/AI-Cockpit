@@ -111,7 +111,133 @@ public partial class AssistantChatView : UserControl
         AddHandler(DragDrop.DragOverEvent, _composerInput.OnDragOver, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragLeaveEvent, _composerInput.OnDragLeave, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DropEvent, _composerInput.OnDrop, RoutingStrategies.Tunnel);
+
+        // Assistant threads: the rail stands on this view's own width, the same in the window and the dock (§ 7.3).
+        SizeChanged += (_, e) =>
+        {
+            if (DataContext is AssistantChatViewModel threads)
+            {
+                threads.ViewWidth = e.NewSize.Width;
+            }
+        };
+
+        // The overlay closes on Esc and on a click outside it, handing focus back to the button that opened it.
+        AddHandler(InputElement.KeyDownEvent, _OnThreadOverlayKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(InputElement.PointerPressedEvent, _OnThreadOverlayPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        // A row dragged onto a thread in any of the three rails (§ 9.6). The view-wide one only notes that a drag
+        // really travelled, which is what tells a drag let go nowhere from a click on the grip.
+        AddHandler(DragDrop.DragOverEvent, _OnRowDragTravelled, RoutingStrategies.Tunnel, handledEventsToo: true);
+        foreach (var list in new[] { ThreadList, ThreadIconList, ThreadOverlayList })
+        {
+            list.AddHandler(DragDrop.DragOverEvent, _OnThreadDragOver);
+            list.AddHandler(DragDrop.DragLeaveEvent, _OnThreadDragLeave);
+            list.AddHandler(DragDrop.DropEvent, _OnThreadDrop);
+
+            // Delete on a project's thread closes it — the keyboard's way to the row action that shows on hover.
+            list.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Delete && list.SelectedItem is AssistantThreadItemViewModel { IsProject: true } item
+                    && DataContext is AssistantChatViewModel vm)
+                {
+                    vm.CloseThreadCommand.Execute(item);
+                    e.Handled = true;
+                }
+            };
+        }
     }
+
+    private void _OnRowDragTravelled(object? sender, DragEventArgs e)
+    {
+        if (e.DataTransfer.Contains(TranscriptRowView.RowDragFormat) && DataContext is AssistantChatViewModel vm)
+        {
+            vm.RowDragTravelled = true;
+        }
+    }
+
+    private static AssistantThreadItemViewModel? _ThreadUnder(DragEventArgs e) =>
+        (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext as AssistantThreadItemViewModel;
+
+    // Ctrl (Option on macOS) adds instead of moves, the OS's own "copy while dragging".
+    private static bool _Adds(DragEventArgs e) => e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+
+    private void _OnThreadDragOver(object? sender, DragEventArgs e)
+    {
+        if (!e.DataTransfer.Contains(TranscriptRowView.RowDragFormat) || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        var target = _ThreadUnder(e) is { } item && vm.CanDropOn(item) ? item : null;
+        vm.HoverDrop(target, _Adds(e));
+        e.DragEffects = target is null ? DragDropEffects.None : _Adds(e) ? DragDropEffects.Copy : DragDropEffects.Move;
+        e.Handled = true;
+    }
+
+    private void _OnThreadDragLeave(object? sender, DragEventArgs e)
+    {
+        if (DataContext is AssistantChatViewModel vm)
+        {
+            vm.HoverDrop(null, add: false);
+        }
+    }
+
+    private void _OnThreadDrop(object? sender, DragEventArgs e)
+    {
+        if (!e.DataTransfer.Contains(TranscriptRowView.RowDragFormat) || DataContext is not AssistantChatViewModel vm)
+        {
+            return;
+        }
+
+        if (_ThreadUnder(e) is { } target)
+        {
+            vm.Drop(target, _Adds(e));
+            e.Handled = true;
+        }
+    }
+
+    private void _OnThreadOverlayKeyDown(object? sender, KeyEventArgs e)
+    {
+        // Ctrl+Z takes a move back while its toast stands — not in the composer, where it is the text's own undo.
+        if (e.Key == Key.Z && e.KeyModifiers == KeyModifiers.Control && e.Source is not TextBox
+            && DataContext is AssistantChatViewModel { HasMoveToast: true } moved)
+        {
+            moved.UndoMoveCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape && DataContext is AssistantChatViewModel { IsRailOverlayOpen: true } vm)
+        {
+            vm.IsRailOverlayOpen = false;
+            ThreadIconRailToggle.Focus(NavigationMethod.Tab);
+            e.Handled = true;
+        }
+    }
+
+    private void _OnThreadOverlayPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is AssistantChatViewModel { IsRailOverlayOpen: true } vm
+            && e.Source is Visual source
+            && !ThreadRailOverlay.IsVisualAncestorOf(source) && !ReferenceEquals(source, ThreadRailOverlay)
+            && !ThreadIconRail.IsVisualAncestorOf(source))
+        {
+            vm.IsRailOverlayOpen = false;
+        }
+    }
+
+    // After a move: the row it lands on is brought into view, then its grip takes the focus once the row is realised.
+    private void _OnRowFocusRequested(TranscriptEntryViewModel row)
+    {
+        ScrollToMessage(row);
+        Dispatcher.UIThread.Post(() => this.GetVisualDescendants().OfType<TranscriptRowView>()
+            .FirstOrDefault(view => ReferenceEquals(view.DataContext, row) && view.IsEffectivelyVisible)?.FocusGrip(),
+            DispatcherPriority.Background);
+    }
+
+    // A row picked from Questions for you: its thread is open by now, so the row is there to scroll to once laid out.
+    private void _OnRowRevealRequested(TranscriptEntryViewModel row) =>
+        Dispatcher.UIThread.Post(() => ScrollToMessage(row), DispatcherPriority.Background);
 
     // What used to be the window's `Opened` handler. Everything wired here comes off again in
     // OnDetachedFromVisualTree, so this view survives being moved between hosts (AC-953) without leaking.
@@ -123,6 +249,13 @@ public partial class AssistantChatView : UserControl
         {
             _attachedViewModel = vm;
             vm.PropertyChanged += _OnViewModelPropertyChanged;
+            vm.RowRevealRequested += _OnRowRevealRequested;
+            vm.RowFocusRequested += _OnRowFocusRequested;
+            if (Bounds.Width > 0)
+            {
+                vm.ViewWidth = Bounds.Width;
+            }
+
             _AttachTranscript(vm.Session);
 
             // Criterion 1: opening the chip is the "operator handling" allowed to lazily start the assistant.
@@ -182,6 +315,8 @@ public partial class AssistantChatView : UserControl
         if (_attachedViewModel is { } vm)
         {
             vm.PropertyChanged -= _OnViewModelPropertyChanged;
+            vm.RowRevealRequested -= _OnRowRevealRequested;
+            vm.RowFocusRequested -= _OnRowFocusRequested;
             _attachedViewModel = null;
         }
 
@@ -366,6 +501,11 @@ public partial class AssistantChatView : UserControl
         if (e.PropertyName == nameof(AssistantChatViewModel.Session))
         {
             _AttachTranscript(vm.Session);
+        }
+        else if (e.PropertyName == nameof(AssistantChatViewModel.IsRailOverlayOpen) && vm.IsRailOverlayOpen)
+        {
+            // Focus goes into the list it opened, on the thread that is open (§ 8.1).
+            Dispatcher.UIThread.Post(() => ThreadOverlayList.ContainerFromIndex(Math.Max(0, ThreadOverlayList.SelectedIndex))?.Focus(NavigationMethod.Tab));
         }
     }
 

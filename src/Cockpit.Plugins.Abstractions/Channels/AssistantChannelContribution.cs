@@ -49,4 +49,10 @@ public sealed record AssistantChannelContribution
     /// How much of the transcript to relay. Read by the plugin, which does the translating.
     /// </summary>
     public AssistantChannelVerbosity Verbosity { get; init; } = AssistantChannelVerbosity.FinalAnswerOnly;
+
+    /// <summary>
+    /// The channel's sending half (AC-1544), so other plugins can reach the operator through it while it is open.
+    /// Null for a channel that only carries the assistant's conversation.
+    /// </summary>
+    public IOperatorMessageChannel? Messages { get; init; }
 }

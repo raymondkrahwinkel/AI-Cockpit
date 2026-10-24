@@ -8,14 +8,24 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.99.0: SettingsCarrierRegistration.WriteIfUnchangedAsync (Cockpit.Plugins.Abstractions 3.17.0), a settings write
-         that refuses over another machine's; a plugin that sets it sets minHostVersion 0.99.0.
-         0.98.0: ICockpitHost.CreateAuthorizedHandler(name, scope) and McpServerContribution.OAuthScopes and OAuthHostOnlyScopes
-         (AC-1586, Cockpit.Plugins.Abstractions 3.16.0); a plugin that uses them sets minHostVersion 0.98.0.
-         0.97.0: IFirstStartPlugin and IFirstStartPluginUi (Cockpit.Plugins.Abstractions 3.15.0, .UI 3.5.0), first-start routes
-         that exist before the first-run wizard opens; a plugin that implements them sets minHostVersion 0.97.0.
-         0.96.0: ICockpitHost.AddBackupTarget and RemoveBackupTarget (Cockpit.Plugins.Abstractions 3.14.0), a plugin's
-         place for the cockpit's backups; a plugin that calls them sets minHostVersion 0.96.0.
+    <!-- 0.104.0: SettingsCarrierRegistration.WriteIfUnchangedAsync (Cockpit.Plugins.Abstractions 3.23.0), a settings write
+         that refuses over another machine's; a plugin that sets it sets minHostVersion 0.104.0.
+         0.103.0: ICockpitHost.CreateAuthorizedHandler(name, scope) and McpServerContribution.OAuthScopes and OAuthHostOnlyScopes
+         (AC-1586, Cockpit.Plugins.Abstractions 3.22.0); a plugin that uses them sets minHostVersion 0.103.0.
+         0.102.0: IFirstStartPlugin and IFirstStartPluginUi (Cockpit.Plugins.Abstractions 3.21.0, .UI 3.5.0), first-start routes
+         that exist before the first-run wizard opens; a plugin that implements them sets minHostVersion 0.102.0.
+         0.101.0: ICockpitHost.AddBackupTarget and RemoveBackupTarget (Cockpit.Plugins.Abstractions 3.20.0), a plugin's
+         place for the cockpit's backups; a plugin that calls them sets minHostVersion 0.101.0.
+         0.100.0: a plugin's toast carries several buttons and can stay until answered (AC-1549, Cockpit.Plugins.Abstractions
+         3.15.0); a plugin that relies on that sets minHostVersion 0.100.0.
+         0.99.0: a plugin sends the operator a message through another plugin's chat channel and gets the answer back
+         (AC-1544, Cockpit.Plugins.Abstractions 3.14.0); a plugin that offers or uses that sets minHostVersion 0.99.0.
+         0.98.0: a chat channel gets the assistant's questions with their options and answers them (AC-1553,
+         Cockpit.Plugins.Abstractions 3.13.0); a plugin that relies on it sets minHostVersion 0.98.0.
+         0.97.0: ICockpitActions.DelegateAsync reports the delegated task's id (AC-1543, Cockpit.Plugins.Abstractions
+         3.12.0); a plugin that relies on it sets minHostVersion 0.97.0.
+         0.96.0: the machine-wide queue for heavy runs (AC-1535): ICockpitHost.RequestHeavyRunSlot and
+         DeliverToSessionInboxAsync (Cockpit.Plugins.Abstractions 3.11.0); a plugin that calls either sets minHostVersion 0.96.0.
          0.95.0: SharedProject.HasRepository (Cockpit.Plugins.Abstractions 3.10.0); a plugin that sets it sets minHostVersion 0.95.0.
          0.91.0: ICockpitHost gains RewriteProjectReferencesAsync; a plugin that relies on it sets minHostVersion 0.91.0.
          0.69.0: an operate key reads the server's health over GET /api/v1/health and runs a health row's action (AC-1470):
@@ -330,7 +340,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.99.0</VersionPrefix>
+    <VersionPrefix>0.104.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

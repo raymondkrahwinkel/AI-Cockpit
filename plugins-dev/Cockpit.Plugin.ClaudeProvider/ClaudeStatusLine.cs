@@ -13,8 +13,13 @@ internal static class ClaudeStatusLine
     private const string ScriptName = "statusline-relay.sh";
     private const string PowerShellScriptName = "statusline-relay.ps1";
 
+    // The host's own state root when it was moved (COCKPIT_STATE_ROOT): SweepStale empties this folder, and a second
+    // cockpit on a root of its own must not empty the one the first cockpit's sessions write to.
     private static string Root => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "claude-provider");
+        Environment.GetEnvironmentVariable("COCKPIT_STATE_ROOT") is { Length: > 0 } stateRoot
+            ? stateRoot
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit"),
+        "claude-provider");
 
     private static string StatusDirectory => Path.Combine(Root, "statusline");
 

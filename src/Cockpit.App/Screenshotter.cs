@@ -29,7 +29,7 @@ using Cockpit.Core.Abstractions.Sessions;
 namespace Cockpit.App;
 
 // Lets an external caller verify the UI layout without a display attached (Iron Law #9: automated visual verification).
-internal static class Screenshotter
+internal static partial class Screenshotter
 {
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
@@ -178,6 +178,8 @@ internal static class Screenshotter
         // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
         // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
         ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
+        // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
+        ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
         // is not staged here — it would need a plugin assembly this build has not loaded; HelpWindowTests
         // covers it instead, in both configurations.
@@ -392,6 +394,10 @@ internal static class Screenshotter
         // AC-1302 criterion 4(b): the same stand with no assistant session, so the rail has no root to hang a
         // tree under and lists the sessions flat. Its own scene because that is a different rail, not a variation.
         ["simple-view-no-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStand(withAssistant: false) },
+        // Assistant threads: the stand with no dock tab and no chip counts open questions on its assistant row.
+        ["simple-view-assistant-questions"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithQuestions() },
+        // Assistant threads in the Simple stand's own column: the third host, which draws no frame of its own.
+        ["simple-view-assistant-threads"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithThreads() },
         // AC-1305: the same stand with two sessions waiting for consent outside its column. Its own scene because
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
@@ -602,7 +608,7 @@ internal static class Screenshotter
         // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
         // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
         ["dock-panel-pull-requests-min"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MinDockRailWidth),
-        ["dock-panel-pull-requests-max"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MaxDockRailWidth),
+        ["dock-panel-pull-requests-max"] = (width, _) => _DockRailWithPullRequestsPanel(ViewModels.CockpitViewModel.ClampDockRailWidth(double.MaxValue, width, Cockpit.Core.Layout.LayoutSettings.DefaultSidebarWidth)),
         ["dock-rail-collapsed-two-tabs"] = (_, _) => _DockRailCollapsedWithTwoTabs(),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
@@ -627,11 +633,46 @@ internal static class Screenshotter
         ["assistant-chat-session-pill-narrow"] = (_, _) => _AssistantChatSessionPill(sessionCount: 6, width: 340),
         ["assistant-chat-history-dropdown-open"] = (_, _) => _AssistantChat(withConversation: true),
 
+        // Assistant threads: the rail with labels (960), icons (520), the labels over the chat, the picker below 340,
+        // a project thread and Questions for you.
+        ["assistant-threads-all"] = (_, _) => _AssistantThreads(960),
+        ["assistant-threads-depot"] = (_, _) => _AssistantThreads(960, thread: "depot"),
+        ["assistant-threads-questions"] = (_, _) => _AssistantThreads(960, questions: true),
+        ["assistant-threads-questions-answered"] = (_, _) => _AssistantThreads(960, questions: true, answered: true),
+        ["assistant-threads-cockpit"] = (_, _) => _AssistantThreads(960, thread: "cockpit"),
+        ["assistant-threads-waymark"] = (_, _) => _AssistantThreads(960, thread: "waymark"),
+        ["assistant-threads-overview"] = (_, _) => _AssistantThreads(960, overview: true),
+        ["assistant-threads-closed"] = (_, _) => _AssistantThreads(960, closed: true),
+        ["assistant-threads-closed-narrow"] = (_, _) => _AssistantThreads(520, closed: true),
+        ["assistant-threads-suggestion"] = (_, _) => _AssistantThreads(960, suggestion: true),
+        ["assistant-threads-logos"] = (_, _) => _AssistantThreads(960, thread: "depot", logos: true),
+        ["assistant-threads-logos-icons"] = (_, _) => _AssistantThreads(520, thread: "depot", logos: true),
+        ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
+        ["assistant-threads-drag"] = (_, _) => _AssistantThreads(960, dragging: true),
+        ["assistant-threads-drag-narrow"] = (_, _) => _AssistantThreads(520, dragging: true),
+        ["assistant-threads-moved"] = (_, _) => _AssistantThreads(960, moved: true),
+        ["assistant-threads-overlay"] = (_, _) => _AssistantThreads(520, overlay: true),
+        ["assistant-threads-docked-600"] = (_, _) => _AssistantThreadsDocked(600),
+        ["assistant-threads-docked-400"] = (_, _) => _AssistantThreadsDocked(400),
+        ["assistant-threads-docked-280"] = (_, _) => _AssistantThreadsDocked(280),
+        // The narrow stand's own way to the closed threads, its flyout staged open by the Hovers table below.
+        ["assistant-threads-docked-280-closed"] = (_, _) => _AssistantThreadsDocked(280, closed: true),
+        // The narrow stand's picker opened: the rail's groups, divider and heading included, in its list.
+        ["assistant-threads-docked-280-picker"] = (_, _) => _AssistantThreadsDocked(280),
+        ["assistant-threads-docked-collapsed"] = (_, _) => _AssistantThreadsDocked(null),
+
         // AC-566 criterion 8: the preview window gated behind Confirm(), with a wide screenshot and a narrow
         // one — the two extremes Stretch="Uniform" has to lay out, rather than only whatever aspect ratio a
         // developer's own screen happens to produce.
         ["screenshot-preview-wide"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(1600, 500), "personal - webshop"),
         ["screenshot-preview-narrow"] = (_, _) => Views.ScreenshotPreviewWindow.Build(_StandInPng(500, 1400), "personal - webshop"),
+
+        // The file preview a clickable path opens, once per body that draws its own inset: rendered markdown, source
+        // text and an image have to sit the same distance from the dialog's edges.
+        ["file-preview-markdown"] = (_, _) => _FilePreview("notes.md", System.Text.Encoding.UTF8.GetBytes(
+            "# Release notes\n\nThe first paragraph runs long enough to wrap against the right edge of the dialog, so the gap on that side can be read as well as the one on the left.\n\n- first item\n- second item\n\n```\nvar x = 1;\n```\n\n| name | size |\n|---|---|\n| a.txt | 1 KB |\n")),
+        ["file-preview-text"] = (_, _) => _FilePreview("Foo.cs", System.Text.Encoding.UTF8.GetBytes("namespace Demo;\n\npublic sealed class Foo\n{\n    public int Bar => 1;\n}\n")),
+        ["file-preview-image"] = (_, _) => _FilePreview("pic.png", _StandInPng(300, 200)),
 
         // AC-509: the first-run wizard shell on its first step, wired the way both production call sites build it
         // — the epic's own five-slot plan, so this baseline is what "Step 1 of 5" and the Depot placeholder
@@ -797,6 +838,20 @@ internal static class Screenshotter
         };
     }
 
+    // Narrower than the main window can be (its minimum is 900), the toast layer on its own, as a phone-wide frame sees it.
+    private static Window _ReminderToastScene(int width)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.ToastHost.Add(
+            "⏰ Water the plants\nReminder · Mon 09:00 · every Monday. Also sent via Discord.",
+            Core.Toasts.ToastSeverity.Warning,
+            [new Core.Toasts.ToastAction("Done", () => { }), new Core.Toasts.ToastAction("Snooze 10 min", () => { }), new Core.Toasts.ToastAction("1 hour", () => { })],
+            sticky: true);
+        return width < 900
+            ? new Window { Width = width, Content = new Controls.ToastOverlay { DataContext = cockpit } }
+            : new MainWindow { DataContext = cockpit };
+    }
+
     // AC-937: a CockpitViewModel with a few side-buttons registered through the sink, the same route a real plugin
     // uses — Autopilot and Open PRs pinned (the shipped default for those two), YouTrack and Workflows collapsed,
     // one of them (Open PRs) carrying a badge so the flyout also shows a live counter.
@@ -894,6 +949,8 @@ internal static class Screenshotter
         // AC-776: the session-pill's own "⋯" list, and Deel 2's merged history/export dropdown.
         ["assistant-chat-session-pill-list-open"] = window => _OpenFlyout(window, "SessionListButton"),
         ["assistant-chat-history-dropdown-open"] = window => _OpenFlyout(window, "HistoryButton"),
+        ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
+        ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
         // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
         // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
@@ -2024,6 +2081,24 @@ internal static class Screenshotter
             Error: null));
     }
 
+    // The preview reads its file off-thread, so the scene pumps the dispatcher until the navigation has landed.
+    private static Window _FilePreview(string fileName, byte[] content)
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("cockpit-scene-").FullName, fileName);
+        File.WriteAllBytes(path, content);
+
+        var window = Views.FilePreviewWindow.Build(path, null);
+        var navigation = window.WaitForIdleAsync();
+        while (!navigation.IsCompleted)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+
+        navigation.GetAwaiter().GetResult();
+        return window;
+    }
+
     // A screenshot-shaped PNG at whatever aspect ratio a preview scene needs, from the same stand-in drawing the
     // selection surface's own scenes use.
     private static byte[] _StandInPng(int width, int height)
@@ -2829,14 +2904,18 @@ internal static class Screenshotter
 
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
-    private static ViewModels.CockpitViewModel _SimpleStand(bool withAssistant, bool assistantOff = false, string? failedToStart = null)
+    private static ViewModels.CockpitViewModel _SimpleStand(
+        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null)
     {
-        var conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
-        conversation.ActiveProfileLabel = "work";
-        conversation.Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
-        conversation.Transcript.Add(new TranscriptEntryViewModel(
-            TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+        if (conversation is null)
+        {
+            conversation = new ViewModels.SessionViewModel { Title = "Assistant" };
+            conversation.ActiveProfileLabel = "work";
+            conversation.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.UserText, "what is still open on AC-1297?"));
+            conversation.Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.AssistantText, "Five subtickets. **AC-1302** is the next one — it fills the rail beside this conversation."));
+        }
 
         // AC-1303: the real registry with the real registration shape, because picking a session is what hands the
         // assistant to the rail in this stand — without it the scene would draw a rail with nothing resolvable in it.

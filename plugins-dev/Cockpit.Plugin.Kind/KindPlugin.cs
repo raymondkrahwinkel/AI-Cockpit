@@ -32,7 +32,11 @@ public sealed class KindPlugin : ICockpitPlugin
         // 1.3+ GB node image — is not something the cockpit can manage either, so a managed binary would not
         // deliver "it just works". PATH-probe only, mirroring ActRuntimeStatus's "say what to install" approach.
         var runner = new CliRunner();
-        var kubeconfigDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "kubernetes-kind");
+        // Under the host's state root when it was moved (COCKPIT_STATE_ROOT), so a second cockpit keeps its own kubeconfigs.
+        var stateRoot = Environment.GetEnvironmentVariable("COCKPIT_STATE_ROOT") is { Length: > 0 } root
+            ? root
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit");
+        var kubeconfigDirectory = Path.Combine(stateRoot, "kubernetes-kind");
         var clusters = new KindClusterManager(settings, runner, new KindRuntime(runner), "kind", kubeconfigDirectory, host);
         _clusters = clusters;
 

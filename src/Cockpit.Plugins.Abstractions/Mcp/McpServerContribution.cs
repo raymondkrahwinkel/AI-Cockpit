@@ -47,12 +47,12 @@ public sealed record McpServerContribution(
     public string? OAuthClientId { get; init; }
 
     // AC-1586: the scopes the sign-in asks for (space-separated), overriding what the server advertises. Null keeps
-    // the server's own. Ignored when OAuthAuthority is empty. Setting it requires minHostVersion 0.98.0.
+    // the server's own. Ignored when OAuthAuthority is empty. Setting it requires minHostVersion 0.103.0.
     public string? OAuthScopes { get; init; }
 
     // AC-1586: scopes among OAuthScopes the cockpit keeps for itself. No token a session can be handed carries one;
     // only ICockpitHost.CreateAuthorizedHandler(name, scope) uses it. The server has to narrow a refresh to a subset
-    // (RFC 6749 §6); one that states a wider scope than asked yields no session token. Requires minHostVersion 0.98.0.
+    // (RFC 6749 §6); one that states a wider scope than asked yields no session token. Requires minHostVersion 0.103.0.
     public string? OAuthHostOnlyScopes { get; init; }
 
     /// <summary>

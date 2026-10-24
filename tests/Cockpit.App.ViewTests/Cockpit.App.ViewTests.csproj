@@ -45,6 +45,11 @@
          the one plugin whose contribution is an Avalonia control, which needs a real platform to construct. -->
     <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Diagram/Cockpit.Plugin.Diagram.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- AC-1546: the Schedules screen's journey test builds the real screen on the real backend part, here because
+         this harness is the one with the app's own theme, so the renders it writes look as the cockpit draws them. -->
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj" />
+    <!-- Aliased: both parts compile the shared Contracts as source, so their internal types would clash by name. -->
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/UI/Cockpit.Plugin.Schedules.UI.csproj" Aliases="schedulesUi" />
     <!-- AC-1147: a build dependency only, same reasoning as the Diagram plugin above — LogPidPositiveControlTests
          runs its build output as two real processes rather than linking its types. -->
     <ProjectReference Include="../Cockpit.LogPidProbe/Cockpit.LogPidProbe.csproj"

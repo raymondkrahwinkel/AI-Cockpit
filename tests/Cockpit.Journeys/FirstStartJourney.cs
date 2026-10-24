@@ -96,7 +96,7 @@ public sealed class FirstStartJourney
             await using var depot = await LoopbackHttpServer.StartAsync(space.HandleAsync);
             var restarts = new _Restarts();
             var fresh = Directory.CreateDirectory(Path.Combine(work, "fresh")).FullName;
-            await using (var cockpit = JourneyHost.Desktop(stateRoot: fresh, replace: services =>
+            await using (var cockpit = JourneyHost.Desktop(stateRoot: fresh, configure: services =>
             {
                 services.AddSingleton<IMcpOAuthCoordinator>(new _SignedInOnClick());
                 services.AddSingleton<IAppRestartService>(restarts);

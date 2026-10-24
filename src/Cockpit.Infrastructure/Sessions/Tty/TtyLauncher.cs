@@ -113,6 +113,17 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         }
 
         var environment = TtyEnvironment.Compose(baseEnvironment, spec.EnvironmentOverlay);
+        if (string.IsNullOrEmpty(paneId) == false)
+        {
+            var temp = SessionTempDirectory.Create(paneId);
+            environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
+            {
+                ["TEMP"] = temp,
+                ["TMP"] = temp,
+                ["TMPDIR"] = temp,
+            };
+        }
+
         var process = ptyHostFactory.Start(spec.ExecutablePath, spec.Arguments, spec.WorkingDirectory, environment, columns, rows);
 
         // AC-661: the OS ceiling around this session's tree, applied before the CLI has spawned anything of its own,

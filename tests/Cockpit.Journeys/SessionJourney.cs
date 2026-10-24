@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
@@ -6,11 +7,17 @@ using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.App.ViewTests;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.HeavyRuns;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Worktrees;
+using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.TestSupport;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace Cockpit.Journeys;
 
@@ -19,14 +26,16 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class SessionJourney
 {
-    // J2: the dialog opens the pane, the composer sends, the answer is a row in that pane, busy then done (AC-1437).
-    // Stop breaks a turn off through the session control, not drawn as a failure (AC-1031, AC-1449). A failed turn
-    // offers Retry on its row (AC-728), which the pane can only do once that row came in from the event log (AC-1438).
+    // J2: the dialog opens the pane, the answer lands busy then done (AC-1437); Stop is no failure (AC-1031/1449), a
+    // failed turn offers Retry from the event log (AC-728/1438). AC-1535: four heavy runs on a busy machine: one runs,
+    // three wait with a reason, a closed session's place comes back, and the pre-merge gate starts first.
     [Fact]
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
-        await using var cockpit = JourneyHost.Desktop();
-        var project = await cockpit.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName);
+        var load = new FakeMachineLoad();
+        await using var cockpit = JourneyHost.Desktop(configure: services => services.AddSingleton<IMachineResources>(load));
+        var folder = Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName;
+        var project = await cockpit.SaveProfileAndProjectAsync(folder);
         await cockpit.StartDesktopAsync();
 
         var session = await cockpit.StartSessionThroughTheDialogAsync(project);
@@ -66,6 +75,55 @@ public sealed class SessionJourney
         Assert.False(failedAfterStop);
         Assert.NotNull(failed);
         Assert.Contains(session, HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.ToList()));
+
+        var other = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var endpoint = cockpit.Services.GetServices<ICockpitInternalMcpProvider>().SelectMany(provider => provider.GetServers())
+            .Single(server => server.Name == "cockpit-session").Url ?? throw new InvalidOperationException("No session endpoint.");
+        await using var holder = await cockpit.ConnectAsPaneAsync(other.PaneId, "cockpit-session", endpoint);
+        await using var own = await cockpit.ConnectAsPaneAsync(session.PaneId, "cockpit-session", endpoint);
+        async Task<string> StartAsync(McpClient client, bool isQueued, string purpose, string command, params string[] arguments)
+        {
+            var started = await JourneyHost.CallAsync(client, "start_run", new()
+            {
+                ["workingDirectory"] = folder,
+                ["command"] = command,
+                ["arguments"] = arguments,
+                ["kind"] = "journeys",
+                ["purpose"] = purpose,
+            });
+            Assert.Equal(isQueued, started["queued"]?.GetValue<bool>() ?? false);
+            return started["runId"]?.GetValue<string>() ?? throw new InvalidOperationException("No run id.");
+        }
+
+        _ = OperatingSystem.IsWindows()
+            ? await StartAsync(holder, false, "explore", "powershell", "-NoProfile", "-Command", "Start-Sleep -Seconds 120")
+            : await StartAsync(holder, false, "explore", "sleep", "120");
+        string[] queued =
+        [
+            await StartAsync(own, true, "explore", "git", "--version"),
+            await StartAsync(own, true, "explore", "git", "--version"),
+            await StartAsync(own, true, "pre-merge", "git", "--version"),
+        ];
+        var heavy = cockpit.Services.GetServices<ISupervisedActivitySource>().Single(source => source.Label == "Heavy runs");
+        var waiting = heavy.Snapshot().Where(run => run.Details.Any(detail => detail.Label == "Waiting")).ToList();
+        Assert.Equal([queued[2], queued[0], queued[1]], waiting.Select(run => run.Id));
+        Assert.All(waiting, run => Assert.StartsWith("waiting: CPU 85%", run.Details.Single(detail => detail.Label == "Waiting").Value));
+
+        await HeadlessAvalonia.RunAsync(() => cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(other));
+        load.Set(40);
+
+        // The verdicts reach the session's inbox, attached to its next tool result in the order the runs ended.
+        List<(string RunId, string Verdict)> verdicts = [];
+        await Until.ReloadHolds(
+            async () =>
+            {
+                var result = await own.CallToolAsync("run_status", new Dictionary<string, object?> { ["runId"] = queued[0] });
+                var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
+                verdicts.AddRange(Regex.Matches(text, @"Run (\w+) \('[^']*'\) finished: (\w+)").Select(match => (match.Groups[1].Value, match.Groups[2].Value)));
+            },
+            () => queued.All(runId => verdicts.Any(verdict => verdict.RunId == runId)));
+        Assert.Equal(queued[2], verdicts[0].RunId);
+        Assert.All(verdicts, verdict => Assert.Equal("Passed", verdict.Verdict));
     }
 
     // J4: a closed conversation is still in the index after a restart, and reopens as one pane resuming it with its rows;
@@ -137,22 +195,93 @@ public sealed class SessionJourney
     [Fact]
     public async Task AWorktreeSession_GetsItsOwnWorktree_AndClosingThePaneRemovesItAndItsBranch()
     {
-        await using var cockpit = JourneyHost.Desktop();
-        var repository = await _RepositoryAsync(Path.Combine(cockpit.StateRoot, "repository"));
+        using var fixture = new CleanupFixture();
+        await fixture.InitializeAsync();
+        await using var cockpit = JourneyHost.Desktop(configure: services =>
+        {
+            services.AddSingleton<IWorktreeManager>(fixture.Manager);
+            services.AddSingleton<IWorktreeRegistry>(fixture.Registry);
+            services.AddSingleton<IDockerCli>(fixture.Docker);
+        });
+        var repository = fixture.Repository;
         var project = await cockpit.SaveProfileAndProjectAsync(repository, isolateInWorktree: true);
         await cockpit.StartDesktopAsync();
-        var worktrees = cockpit.Services.GetRequiredService<IWorktreeManager>();
 
         var session = await cockpit.StartSessionThroughTheDialogAsync(project);
-        var worktree = (await worktrees.ListAsync()).Single(record => record.SessionId == session.PaneId);
+        var worktree = (await fixture.Manager.ListAsync()).Single(record => record.SessionId == session.PaneId);
         var branchWhileOpen = await _BranchesAsync(repository, worktree.Branch);
-        await HeadlessAvalonia.RunAsync(() => cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(session));
+        var unpushed = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var alive = await cockpit.StartSessionThroughTheDialogAsync(project);
+        var liveWorktree = (await fixture.Manager.ListAsync()).Single(record => record.SessionId == alive.PaneId);
+        var live = cockpit.Services.GetRequiredService<ILiveSessionRegistry>();
+        var endpoint = cockpit.Services.GetServices<ICockpitInternalMcpProvider>().SelectMany(provider => provider.GetServers())
+            .Single(server => server.Name == "cockpit-worktrees").Url ?? throw new InvalidOperationException("No worktree endpoint.");
+        async Task<string> GateAsync(string pane, string branch)
+        {
+            await using var client = await cockpit.ConnectAsPaneAsync(pane, "cockpit-worktrees", endpoint);
+            var result = await JourneyHost.CallAsync(client, "worktree_create", new()
+            {
+                ["session"] = pane,
+                ["directory"] = repository,
+                ["branch"] = branch,
+            });
+            Assert.True(result["ok"]?.GetValue<bool>());
+            return result["path"]?.GetValue<string>() ?? throw new InvalidOperationException("No worktree path.");
+        }
+
+        var gate = await GateAsync(session.PaneId, "gate");
+        var keep = await GateAsync(unpushed.PaneId, "keep");
+        var dirty = await GateAsync(unpushed.PaneId, "dirty");
+        await File.WriteAllTextAsync(Path.Combine(dirty, "unsaved.txt"), "keep this work");
+        foreach (var path in new[] { gate, keep })
+        {
+            await File.WriteAllTextAsync(Path.Combine(path, "work.txt"), Path.GetFileName(path));
+            await CleanupFixture.GitAsync(path, "add", ".");
+            await CleanupFixture.GitAsync(path, "commit", "-m", "session work");
+        }
+
+        var temp = Directory.CreateDirectory(Path.Combine(fixture.TempRoot, session.PaneId)).FullName;
+        await File.WriteAllTextAsync(Path.Combine(temp, "test.txt"), "temporary");
+        var liveTemp = Directory.CreateDirectory(Path.Combine(fixture.TempRoot, alive.PaneId)).FullName;
+        await File.WriteAllTextAsync(Path.Combine(liveTemp, "live.txt"), "still running");
+        fixture.Docker.Add("orphan", "postgres:17", new() { ["org.testcontainers"] = "true", ["org.testcontainers.session-id"] = "gone" });
+        fixture.Docker.Add("live", "app", new() { ["com.docker.compose.project"] = "live", ["com.docker.compose.project.working_dir"] = liveTemp });
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            await cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(session);
+            await cockpit.Cockpit.CloseSessionCommand.ExecuteAsync(unpushed);
+        });
 
         Assert.Equal(worktree.Path, cockpit.Driver.WorkingDirectory);
         Assert.NotEqual(Path.GetFullPath(repository), Path.GetFullPath(worktree.Path));
         Assert.NotEmpty(branchWhileOpen);
         Assert.False(Directory.Exists(worktree.Path));
         Assert.Empty(await _BranchesAsync(repository, worktree.Branch));
+        Assert.All((await fixture.Registry.ListAsync()).Where(record => record.SessionId != alive.PaneId), record => Assert.True(record.IsRetained));
+        await CleanupFixture.GitAsync(gate, "push", "origin", "HEAD:gate");
+        await CleanupFixture.GitAsync(repository, "update-ref", "-d", "refs/remotes/origin/gate");
+        Assert.True(Directory.Exists(gate));
+
+        using var reconciler = new WorktreeReconciler(fixture.Manager) { LiveSessionIds = () => live.LiveSessionIds.ToArray() };
+        await reconciler.RunOnceAsync();
+
+        Assert.False(Directory.Exists(gate));
+        Assert.False(Directory.Exists(temp));
+        Assert.Contains("orphan", fixture.Docker.Removed);
+        Assert.True(Directory.Exists(keep));
+        Assert.True(Directory.Exists(liveWorktree.Path));
+        Assert.True(File.Exists(Path.Combine(liveTemp, "live.txt")));
+        Assert.Equal("keep this work", await File.ReadAllTextAsync(Path.Combine(dirty, "unsaved.txt")));
+        Assert.DoesNotContain("live", fixture.Docker.Removed);
+        var records = await fixture.Registry.ListAsync();
+        var retained = Assert.Single(records, record => record.Path == keep);
+        Assert.Equal("1 commit not on the remote", retained.RetentionReason);
+        Assert.Equal("1 file not committed", Assert.Single(records, record => record.Path == dirty).RetentionReason);
+        await using var observer = await cockpit.ConnectAsPaneAsync(alive.PaneId, "cockpit-worktrees", endpoint);
+        var listing = await JourneyHost.CallAsync(observer, "worktree_list", new());
+        var reported = listing["worktrees"]?.AsArray().Single(row => row?["path"]?.GetValue<string>() == keep);
+        Assert.Equal(retained.RetentionReason, reported?["retentionReason"]?.GetValue<string>());
+        Assert.Equal("session work", await CleanupFixture.GitAsync(keep, "log", "-1", "--format=%s"));
     }
 
     // A repository with one commit, the least a worktree can branch from.
@@ -402,6 +531,22 @@ public sealed class SessionJourney
         var words = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is null).Select(t => t.Text).ToList();
         button.Flyout.Hide();
         return words;
+    }
+
+    // The machine's load as the heavy-run queue reads it, held where the journey puts it.
+    private sealed class FakeMachineLoad : IMachineResources
+    {
+        public MachineLoad Current { get; private set; } = new(85, 8L << 30, 16L << 30);
+
+        public event Action? Sampled;
+
+        public long? FreeDiskBytes(string directory) => null;
+
+        public void Set(double cpu)
+        {
+            Current = Current with { CpuPercent = cpu };
+            Sampled?.Invoke();
+        }
     }
 
     private static void _Press(SimpleConversationHeader header, string name)

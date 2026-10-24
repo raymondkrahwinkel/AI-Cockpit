@@ -164,7 +164,7 @@ public static class CapabilityCatalog
             "Keeping the cockpit's backups",
             "Keeps whole backups of the cockpit somewhere the operator picks, and hands them back for a restore.",
             CapabilityRisk.Sensitive,
-            "0.96.0",
+            "0.101.0",
             ["ICockpitHost.AddBackupTarget", "ICockpitHost.RemoveBackupTarget"],
             []),
 
@@ -182,7 +182,7 @@ public static class CapabilityCatalog
             "Setting up the cockpit on the first start",
             "Restores a backup from one of its backup targets, or applies a provisioning manifest after the operator agrees to it, from its first-start route.",
             CapabilityRisk.Sensitive,
-            "0.97.0",
+            "0.102.0",
             ["IFirstStartHost.RestoreBackupAsync", "IFirstStartHost.ApplyManifestAsync"],
             []),
 

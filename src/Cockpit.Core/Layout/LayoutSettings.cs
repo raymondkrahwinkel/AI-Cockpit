@@ -32,8 +32,8 @@ public sealed record LayoutSettings
     public double FocusRailWeight { get; init; } = DefaultFocusRailWeight;
 
     // Width in pixels of the right dock rail's expanded panel (AC-951), dragged via the `GridSplitter`
-    // between it and the session content — the sidebar's mirror image. Clamped to
-    // `MinDockRailWidth`/`MaxDockRailWidth` on load and on save, same pattern as `SidebarWidth`.
+    // between it and the session content — the sidebar's mirror image. The saved value stays the preference;
+    // the visible value is clamped to the available window width.
     public double DockRailWidth { get; init; } = DefaultDockRailWidth;
 
     // Which dock panel is open, by its `DockPanelRegistration.Id` — null means the rail is collapsed to its
@@ -57,6 +57,12 @@ public sealed record LayoutSettings
     // operator chooses otherwise.
     public ThemeMode ThemeMode { get; init; } = ThemeMode.Dark;
 
+    // How the assistant's thread rail stands when its labels fit, per host (voorstel § 8.2): the floating window is
+    // often wide and the dock narrow, so the two are chosen apart. Never per dock width: the threshold decides fit.
+    public AssistantThreadRail AssistantThreadRailWindow { get; init; }
+
+    public AssistantThreadRail AssistantThreadRailDock { get; init; }
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;
@@ -69,5 +75,12 @@ public sealed record LayoutSettings
     // of panel beside the tab strip.
     public const double DefaultDockRailWidth = 400;
     public const double MinDockRailWidth = 280;
-    public const double MaxDockRailWidth = 600;
+    // MainWindow MinWidth 900 - MinSidebarWidth 180 - MinDockRailWidth 280.
+    public const double MinWorkspaceWidth = 440;
+}
+
+public enum AssistantThreadRail
+{
+    Labels,
+    IconsOnly,
 }

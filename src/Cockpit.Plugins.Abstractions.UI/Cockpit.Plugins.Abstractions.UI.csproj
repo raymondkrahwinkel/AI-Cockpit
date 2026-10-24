@@ -21,7 +21,7 @@
          wizard's "How do you want to start?" step. A plugin that calls it sets minHostVersion 0.94.0. -->
     <!-- 3.5.0 (AC-1509): IFirstStartPluginUi and IFirstStartHost, first-start routes that exist from the very first start,
          before the plugins initialize, with a restore from a backup target and a manifest apply. A plugin that implements
-         it sets minHostVersion 0.97.0. -->
+         it sets minHostVersion 0.102.0. -->
     <Version>3.5.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>

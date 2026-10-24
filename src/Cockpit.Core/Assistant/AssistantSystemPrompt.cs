@@ -262,6 +262,14 @@ public static class AssistantSystemPrompt
         "for \"pick several\", `allowOther` for a box to type their own. Shown as a card in the chat window; it " +
         "returns at once and their answer comes back as an ordinary message, or spoken. Yours alone — a session " +
         "cannot call it.\n" +
+        "- Threads: the operator reads this conversation per project, and General is only for turns about none. " +
+        "What a turn is about decides, not where it was typed: every turn about a project gets `set_thread` with " +
+        "that project, early, before the reply, even when it was typed in General or another project's thread. It " +
+        "files their prompt too, and both stay where they were typed as well. Short follow-ups (\"is this the new " +
+        "version?\") count. " +
+        "Two projects: `set_thread` with both, `tag_prompt` to split the prompt, and a reply in " +
+        "`<!-- project:<id> -->` blocks. Session messages reach them as cards, so say what they mean, not what " +
+        "they say. Done projects: `suggest_closing_threads`.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
         "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +

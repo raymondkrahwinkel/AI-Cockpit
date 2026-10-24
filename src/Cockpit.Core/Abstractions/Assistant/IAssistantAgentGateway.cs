@@ -176,6 +176,64 @@ public interface IAssistantAgentGateway
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same card, filed under <paramref name="projectIds"/> in the assistant's threads (voorstel § 9.4): it waits
+    /// once in Questions for you and in each of their threads. A gateway without threads shows it unfiled.
+    /// </summary>
+    Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
+        string question,
+        IReadOnlyList<(string Label, string? Description)> options,
+        bool multiSelect,
+        bool allowOther,
+        string? header,
+        IReadOnlyList<string> projectIds,
+        CancellationToken cancellationToken = default) =>
+        AskStructuredQuestionAsync(question, options, multiSelect, allowOther, header, cancellationToken);
+
+    /// <summary>
+    /// Files the rest of the current turn under <paramref name="projectIds"/> (set_thread, § 9.4); empty is General.
+    /// </summary>
+    Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Splits the operator's last prompt over projects by quoting each part (tag_prompt, § 9.4).
+    /// </summary>
+    Task<AssistantThreadResult> TagPromptAsync(
+        IReadOnlyList<(string ProjectId, string Quote)> parts, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Every project thread in the assistant's conversation, open or closed, with what speaks for closing it (list_threads).
+    /// </summary>
+    Task<IReadOnlyList<AssistantThreadInfo>> ListThreadsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<AssistantThreadInfo>>([]);
+
+    /// <summary>
+    /// Why the thread of <paramref name="projectId"/> cannot close right now, or null when it can — asked before the
+    /// operator is, so a close that would be refused anyway never raises a card.
+    /// </summary>
+    Task<string?> WhyThreadCannotCloseAsync(string projectId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(AssistantThreadResult.Unavailable.Note);
+
+    /// <summary>
+    /// Closes a project's thread: it leaves the rail, its rows stay (close_thread, after the operator's approval).
+    /// </summary>
+    Task<AssistantThreadResult> CloseThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Brings a closed thread back to the rail (reopen_thread).
+    /// </summary>
+    Task<AssistantThreadResult> ReopenThreadAsync(string projectId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
+    /// Puts one row in the conversation suggesting the operator close these threads (suggest_closing_threads).
+    /// </summary>
+    Task<AssistantThreadResult> SuggestClosingThreadsAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
+
+    /// <summary>
     /// Opens <paramref name="url"/> in the operator's default browser (AC-587) — exists only because
     /// <c>Cockpit.Infrastructure</c>, where <c>open_url</c> lives, cannot reference <c>Cockpit.App</c> to reach
     /// <c>ExternalLink</c>. Refuses a non-absolute <c>http</c>/<c>https</c> address, same rule as <c>ExternalLink.TryParseWebAddress</c>.
@@ -268,6 +326,24 @@ public sealed record AssistantProjectUpdateResult(bool Ok, string? ProjectId, st
     public static AssistantProjectUpdateResult Updated(string projectId, string name) => new(true, projectId, name, null);
 
     public static AssistantProjectUpdateResult Refused(string error) => new(false, null, null, error);
+}
+
+// One project thread as list_threads reports it: open or closed, how much is in it, when it last moved, what still
+// runs for the project and what still waits on the operator there.
+public sealed record AssistantThreadInfo(
+    string ProjectId,
+    string Name,
+    bool IsClosed,
+    int Rows,
+    DateTimeOffset? LastActivity,
+    IReadOnlyList<string> RunningSessions,
+    int OpenQuestions);
+
+// What came of set_thread or tag_prompt. A note is said back to the assistant even when it worked: a quote that was not
+// found, an id no project has.
+public sealed record AssistantThreadResult(bool Ok, string? Note)
+{
+    public static AssistantThreadResult Unavailable { get; } = new(false, "The threads are not available here.");
 }
 
 // What came of raising a structured question card (AC-955). Same shape and same reason as `AgentStopResult` — a

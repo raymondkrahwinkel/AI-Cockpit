@@ -10,8 +10,18 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Nothing to compare against (no origin/main yet) means nothing to check.
-base=$(git rev-parse --verify --quiet origin/main) || exit 0
+# The newest merge base among the integration branches is where HEAD forked, even without tracking.
+candidates=$(git for-each-ref --format='%(refname)' refs/remotes/origin/main refs/remotes/origin/epic/) || exit 0
+base=
+for candidate in $candidates; do
+  fork=$(git merge-base HEAD "$candidate" 2>/dev/null) || continue
+  if [ -z "$base" ] || git merge-base --is-ancestor "$base" "$fork"; then
+    base="$fork"
+  fi
+done
+
+# Nothing to compare against means nothing to check.
+[ -n "$base" ] || base=$(git merge-base HEAD origin/main 2>/dev/null) || exit 0
 changed=$(git diff --name-only "$base" HEAD)
 
 # Silent while it passes: a hook that chatters on every push gets uninstalled.

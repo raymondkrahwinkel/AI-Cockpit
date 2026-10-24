@@ -197,10 +197,11 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
             return;
         }
 
-        // AC-1013: Only clean trees whose session is gone: a live session's tree is never pulled from under...
+        // A missing folder holds no work, even when a restored pane still claims its registry row.
         List<string> refusals = [];
         List<string> notices = [];
-        foreach (var row in Worktrees.Where(worktree => (worktree.IsClean || worktree.Status.NothingToKeep) && !worktree.IsOwnerLive).ToList())
+        foreach (var row in Worktrees.Where(worktree => worktree.Status.Exists == false
+            || ((worktree.IsClean || worktree.Status.NothingToKeep) && worktree.IsOwnerLive == false)).ToList())
         {
             try
             {

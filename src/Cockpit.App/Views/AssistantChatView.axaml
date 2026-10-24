@@ -46,7 +46,112 @@
         <Style Selector="Border#ComposerBorder.simpleColumn, ItemsControl#TranscriptItems.simpleColumn">
             <Setter Property="MaxWidth" Value="720"/>
         </Style>
+        <!-- Assistant threads: the icon rail's items centre their 20 px mark in its 44 px. -->
+        <Style Selector="ListBox.iconRail ListBoxItem">
+            <Setter Property="Padding" Value="12,8"/>
+        </Style>
+        <!-- Assistant threads: a group's divider and heading take no selection, click or arrow key — the New session
+             dialog's folder ruler does it the same way — and none of the row's padding. -->
+        <Style Selector="ListBox.subnav ListBoxItem, ComboBox#ThreadPicker ComboBoxItem" x:DataType="vm:AssistantThreadItemViewModel">
+            <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+        </Style>
+        <Style Selector="ListBox.subnav ListBoxItem:disabled">
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
+        <!-- A thread's close action stays out of sight until its row is hovered or the button itself has focus. -->
+        <Style Selector="Button.threadClose">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.threadItem:pointerover Button.threadClose, Button.threadClose:focus-visible">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
     </UserControl.Styles>
+
+    <UserControl.Resources>
+        <!-- One thread in the labelled rail, shared by the rail and its overlay. The item is as wide as the rail's
+             content (184 − 2×10) and reaches under the item's own padding, so Questions' waiting tint fills it. -->
+        <DataTemplate x:Key="ThreadLabelItem" x:DataType="vm:AssistantThreadItemViewModel">
+            <Panel>
+            <!-- The subnav's own hairline, and over the threads the Options groups' heading style. -->
+            <StackPanel Width="164" Margin="0,7,0,3" IsVisible="{Binding IsGroup}">
+                <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                <TextBlock Classes="subnavGroup" Text="{Binding Heading}" IsVisible="{Binding HasHeading}" Margin="11,12,8,1"/>
+            </StackPanel>
+            <Border Classes="threadItem" Classes.attention="{Binding IsAttention}" IsVisible="{Binding IsSelectable}"
+                    Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}"
+                    Width="164" Margin="-11,-8" Padding="11,8"
+                    CornerRadius="7" ToolTip.Tip="{Binding Tooltip}" AutomationProperties.Name="{Binding Tooltip}">
+                <!-- Assistant threads: a project's thread closes from here too, for the keyboard (Menu, Shift+F10). -->
+                <Border.ContextMenu>
+                    <ContextMenu IsVisible="{Binding IsProject}">
+                        <MenuItem Header="Close thread"
+                                  Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).CloseThreadCommand, FallbackValue={x:Null}}"
+                                  CommandParameter="{Binding}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Panel Width="20" Height="20" Margin="0,0,10,0">
+                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16" IsVisible="{Binding HasIcon}"/>
+                        <!-- The project's own logo where it has one, its initial where not — the one badge every surface uses. -->
+                        <controls:ProjectLogoBadge Size="20" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
+                    </Panel>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Classes="waitingCount" IsVisible="{Binding HasWaiting}" Margin="6,0,0,0">
+                        <TextBlock Text="{Binding WaitingCount}"/>
+                    </Border>
+                    <!-- Quiet at rest: the row action shows on hover or focus, like a transcript row's. -->
+                    <Button Grid.Column="3" Classes="Subtle threadClose" Padding="2" Margin="4,0,0,0" VerticalAlignment="Center"
+                            IsVisible="{Binding IsProject}"
+                            Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).CloseThreadCommand, FallbackValue={x:Null}}"
+                            CommandParameter="{Binding}"
+                            ToolTip.Tip="Close this thread (Delete)" AutomationProperties.Name="Close this thread">
+                        <materialIcons:MaterialIcon Kind="ArchiveArrowDownOutline" Width="13" Height="13"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </Button>
+                </Grid>
+            </Border>
+            </Panel>
+        </DataTemplate>
+
+        <!-- Assistant threads: the closed threads, folded at the foot of the labelled rail and its overlay. A click
+             brings one back and opens it. -->
+        <DataTemplate x:Key="ClosedThreadsSection" x:DataType="vm:AssistantChatViewModel">
+            <StackPanel Margin="0,6,0,4" IsVisible="{Binding HasClosedThreads}">
+                <Button Classes="Subtle" Padding="8,4" HorizontalAlignment="Left"
+                        Command="{Binding ToggleClosedThreadsCommand}" AutomationProperties.Name="{Binding ClosedThreadsLabel}">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                        <materialIcons:MaterialIcon Kind="{Binding ClosedThreadsIconKind}" Width="12" Height="12" VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding ClosedThreadsLabel}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                </Button>
+                <ItemsControl ItemsSource="{Binding ClosedThreadItems}" IsVisible="{Binding IsClosedThreadsExpanded}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                            <Button Classes="Subtle" Padding="11,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                    Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).ReopenThreadCommand}"
+                                    CommandParameter="{Binding}" ToolTip.Tip="Reopen this thread"
+                                    AutomationProperties.Name="{Binding Name, StringFormat='Reopen {0}'}">
+                                <DockPanel>
+                                    <materialIcons:MaterialIcon DockPanel.Dock="Right" Kind="ArchiveArrowUpOutline" Width="13" Height="13"
+                                                                VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <controls:ProjectLogoBadge Size="20" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" Opacity="0.7"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
 
     <Grid>
         <DockPanel>
@@ -519,6 +624,115 @@
                 </StackPanel>
             </Border>
 
+            <!-- Assistant threads, below 340 px of chat: no rail at all, the thread is picked from a list and
+                 Questions for you is a button with its count (voorstel § 7.2). -->
+            <Border x:Name="ThreadPickerBar" DockPanel.Dock="Top" Padding="10,6" IsVisible="{Binding ShowsPicker}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ComboBox x:Name="ThreadPicker" ItemsSource="{Binding ThreadChoices}" SelectedItem="{Binding SelectedThreadChoice}"
+                              MinWidth="120" AutomationProperties.Name="Thread">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                                <Panel>
+                                    <StackPanel IsVisible="{Binding IsGroup}">
+                                        <Border Height="1" Margin="0,2" Background="{DynamicResource CockpitHairlineBrush}"/>
+                                        <TextBlock Classes="subnavGroup" Text="{Binding Heading}" IsVisible="{Binding HasHeading}" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsSelectable}">
+                                        <controls:ProjectLogoBadge Size="16" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Panel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <!-- The closed threads, reachable here too: the narrow stand has no rail to fold them out under. -->
+                    <Button x:Name="ThreadPickerClosed" Classes="Compact" IsVisible="{Binding HasClosedThreads}"
+                            Command="{Binding ShowClosedThreadsCommand}"
+                            ToolTip.Tip="{Binding ClosedThreadsLabel}" AutomationProperties.Name="{Binding ClosedThreadsLabel}">
+                        <materialIcons:MaterialIcon Kind="ArchiveOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}" MinWidth="180"/>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button Classes="Compact" Command="{Binding OpenQuestionsCommand}" ToolTip.Tip="Questions for you"
+                            AutomationProperties.Name="Questions for you">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="HelpCircleOutline" Width="14" Height="14" VerticalAlignment="Center"/>
+                            <Border Classes="waitingCount" IsVisible="{Binding HasOpenQuestions}">
+                                <TextBlock Text="{Binding OpenQuestionCount}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Assistant threads (variant B): Questions for you, All, General and a thread per project, on the
+                 existing sub-navigation rail. With room for labels it is that 184 px rail; with less, icons only and
+                 the labels over the chat on demand. Docked left before the composer, so the rail runs the full
+                 height beside it. -->
+            <Panel DockPanel.Dock="Left" IsVisible="{Binding !ShowsPicker}">
+                <Border x:Name="ThreadRail" Classes="subnavRail" IsVisible="{Binding ShowsLabelRail}">
+                    <DockPanel>
+                        <Button x:Name="ThreadRailToggle" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Left"
+                                Command="{Binding ToggleRailCommand}" ToolTip.Tip="{Binding RailToggleTip}"
+                                AutomationProperties.Name="{Binding RailToggleTip}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="ChevronDoubleLeft" Width="14" Height="14" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding RailToggleText}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <ContentControl DockPanel.Dock="Bottom" Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}"/>
+                        <ListBox x:Name="ThreadList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                                 SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
+                                 ItemTemplate="{StaticResource ThreadLabelItem}"/>
+                    </DockPanel>
+                </Border>
+                <Border x:Name="ThreadIconRail" Classes="subnavRail" Width="56" Padding="6,12" IsVisible="{Binding ShowsIconRail}">
+                    <DockPanel>
+                        <Button x:Name="ThreadIconRailToggle" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Center"
+                                Command="{Binding ToggleRailCommand}" ToolTip.Tip="{Binding RailToggleTip}"
+                                AutomationProperties.Name="{Binding RailToggleTip}">
+                            <materialIcons:MaterialIcon Kind="ChevronDoubleRight" Width="14" Height="14"/>
+                        </Button>
+                        <Button x:Name="ThreadIconRailClosed" DockPanel.Dock="Bottom" Classes="Ghost Compact" HorizontalAlignment="Center"
+                                IsVisible="{Binding HasClosedThreads}" Command="{Binding ShowClosedThreadsCommand}"
+                                ToolTip.Tip="{Binding ClosedThreadsLabel}" AutomationProperties.Name="{Binding ClosedThreadsLabel}">
+                            <materialIcons:MaterialIcon Kind="ArchiveOutline" Width="14" Height="14"/>
+                        </Button>
+                        <ListBox x:Name="ThreadIconList" DragDrop.AllowDrop="True" Classes="subnav iconRail" ItemsSource="{Binding ThreadItems}"
+                                 SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AssistantThreadItemViewModel">
+                                    <Panel>
+                                    <!-- A short divider under the 20 px marks; the heading is for the labelled rail only. -->
+                                    <Border Width="20" Height="1" Margin="12,7,0,7" IsVisible="{Binding IsGroup}"
+                                            Background="{DynamicResource CockpitHairlineBrush}"/>
+                                    <Border Classes="threadItem" Margin="-12,-8" Padding="12,8" CornerRadius="7" IsVisible="{Binding IsSelectable}"
+                                            Classes.dropCandidate="{Binding IsDropCandidate}" Classes.dropHover="{Binding IsDropHover}">
+                                    <Panel Width="20" Height="20" ToolTip.Tip="{Binding Tooltip}"
+                                           AutomationProperties.Name="{Binding Tooltip}">
+                                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
+                                                                    IsVisible="{Binding HasIcon}"/>
+                                        <controls:ProjectLogoBadge Size="20" LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                   WellBackground="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding IsThread}"/>
+                                        <Border Classes="waitingCount" IsVisible="{Binding HasWaiting}" Padding="3,0" MinWidth="13"
+                                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-7,-10,0">
+                                            <TextBlock Text="{Binding WaitingCount}" FontSize="9"/>
+                                        </Border>
+                                    </Panel>
+                                    </Border>
+                                    </Panel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+            </Panel>
+
             <!-- Footer: the text field plus what a message can carry with it (AC-630 — queued chips, image
                  attachments, the screenshot button). Still no send button: Enter sends, Shift+Enter inserts a
                  newline, Ctrl+V attaches an image and Arrow-Up recalls the last queued message, so the whole
@@ -799,6 +1013,24 @@
                 </StackPanel>
             </Border>
 
+            <Panel>
+            <DockPanel>
+            <!-- Assistant threads: which thread is open, and what it asks of you. -->
+            <Border x:Name="ThreadHeader" DockPanel.Dock="Top" Padding="14,8"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <Border.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                        <Binding Path="HasMessages"/>
+                        <Binding Path="IsQuestionsPage"/>
+                    </MultiBinding>
+                </Border.IsVisible>
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding ThreadTitle}" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding ThreadSubtitle}" FontSize="11.5" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </DockPanel>
+            </Border>
             <Grid>
                 <!-- The assistant cannot be reached at all (criterion 1): says why, rather than sitting on an
                      empty transcript that looks like nothing was ever said. Not over a conversation that is still
@@ -826,6 +1058,7 @@
                         <MultiBinding Converter="{x:Static BoolConverters.And}">
                             <Binding Path="!IsUnavailable"/>
                             <Binding Path="!HasMessages"/>
+                            <Binding Path="IsTranscriptPage"/>
                         </MultiBinding>
                     </StackPanel.IsVisible>
                     <Border Classes="avatarBadge" Width="44" Height="44" CornerRadius="13" HorizontalAlignment="Center">
@@ -849,8 +1082,140 @@
                      viewport, not the infinite height an enclosing ScrollViewer would hand it. x:Name still reads
                      TranscriptScroll — the code-behind and the follow tests ask for the transcript's scroll owner
                      by that name. -->
+                <!-- Assistant threads: a thread nothing has been said in yet. -->
+                <TextBlock Text="Nothing in this thread yet. What you type here goes to it." TextWrapping="Wrap"
+                           TextAlignment="Center" FontSize="12.5" MaxWidth="260"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}">
+                    <TextBlock.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasMessages"/>
+                            <Binding Path="IsTranscriptPage"/>
+                            <Binding Path="!Session.VisibleTranscript.Count" FallbackValue="False"/>
+                        </MultiBinding>
+                    </TextBlock.IsVisible>
+                </TextBlock>
+
+                <!-- Assistant threads: Questions for you — every open question card and Allow/Deny, in one list
+                     until it is answered, each with the way back to where it was asked. -->
+                <ScrollViewer x:Name="QuestionsPage" IsVisible="{Binding IsQuestionsPage}">
+                    <StackPanel Margin="10,10,10,10" Spacing="12">
+                        <TextBlock Text="No questions are waiting for you." IsVisible="{Binding !HasOpenQuestions}"
+                                   HorizontalAlignment="Center" Margin="0,24,0,0" FontSize="12.5"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding Session.OpenQuestions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="12"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                                    <StackPanel Spacing="4">
+                                        <controls:TranscriptRowView Compact="True"/>
+                                        <Button Classes="Subtle" HorizontalAlignment="Left"
+                                                Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).ShowInThreadCommand}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="OpenInNew" Width="12" Height="12" VerticalAlignment="Center"
+                                                                            Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                                                <TextBlock Text="{Binding ShowInLabel}" FontSize="11.5" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+                                                <TextBlock Text="{Binding TimestampText, StringFormat='Asked {0}'}" FontSize="11.5"
+                                                           VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- What was answered today, folded so the open questions keep the page. -->
+                        <Button x:Name="AnsweredTodayToggle" Classes="Subtle" HorizontalAlignment="Left"
+                                IsVisible="{Binding HasAnsweredToday}" Command="{Binding ToggleAnsweredTodayCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <materialIcons:MaterialIcon Kind="{Binding AnsweredTodayIconKind}" Width="13" Height="13" VerticalAlignment="Center"
+                                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <TextBlock Text="{Binding AnsweredTodayLabel}" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <ItemsControl ItemsSource="{Binding AnsweredToday}" IsVisible="{Binding IsAnsweredTodayExpanded}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="12"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                                    <controls:TranscriptRowView Compact="True"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Assistant threads: the Overview — a card per project with its sessions, what waits and the
+                     latest word from it; a card opens its thread. -->
+                <ScrollViewer x:Name="OverviewPage" IsVisible="{Binding IsOverviewPage}">
+                    <StackPanel Margin="10">
+                        <TextBlock Text="No projects in this conversation yet." IsVisible="{Binding !HasOverviewCards}"
+                                   HorizontalAlignment="Center" Margin="0,24,0,0" FontSize="12.5"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding OverviewCards}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectOverviewCard">
+                                    <Border Width="260" Margin="0,0,10,10" Padding="12,10"
+                                            Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                            CornerRadius="{StaticResource CockpitControlRadius}">
+                                        <StackPanel Spacing="6">
+                                            <DockPanel>
+                                                <Border DockPanel.Dock="Right" Classes="waitingCount" IsVisible="{Binding HasWaiting}">
+                                                    <TextBlock Text="{Binding Waiting}"/>
+                                                </Border>
+                                                <controls:ProjectLogoBadge DockPanel.Dock="Left" Size="24" Margin="0,0,8,0"
+                                                                           LogoPath="{Binding LogoPath}" ProjectName="{Binding Name}"
+                                                                           WellBackground="{DynamicResource CockpitInsetBgBrush}"/>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding SessionsLabel}" FontSize="11.5"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding HasSessions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="x:String">
+                                                        <TextBlock Text="{Binding}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding Latest}" IsVisible="{Binding HasLatest}" FontSize="12"
+                                                       TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"/>
+                                            <Button Classes="Compact" Content="Open thread" HorizontalAlignment="Left"
+                                                    Command="{Binding $parent[views:AssistantChatView].((vm:AssistantChatViewModel)DataContext).OpenThreadCommand}"
+                                                    CommandParameter="{Binding ProjectId}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
                 <ItemsControl x:Name="TranscriptItems" ItemsSource="{Binding Session.VisibleTranscript}"
-                              Classes.simpleColumn="{Binding IsSimpleViewHost}" IsVisible="{Binding HasMessages}">
+                              Classes.simpleColumn="{Binding IsSimpleViewHost}">
+                    <ItemsControl.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasMessages"/>
+                            <Binding Path="IsTranscriptPage"/>
+                        </MultiBinding>
+                    </ItemsControl.IsVisible>
                     <ItemsControl.Template>
                         <ControlTemplate TargetType="ItemsControl">
                             <ScrollViewer x:Name="TranscriptScroll">
@@ -885,6 +1250,38 @@
                     <materialIcons:MaterialIcon Kind="ChevronDown" Width="16" Height="16"/>
                 </Button>
             </Grid>
+            </DockPanel>
+
+            <!-- Assistant threads (§ 9.6): what a move did, with the way back. Polite, so a screen reader hears it
+                 without being interrupted; Ctrl+Z undoes it too while it stands. -->
+            <Border x:Name="MoveToast" ZIndex="20" Margin="10" Padding="12,8" MaxWidth="440"
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Background="{DynamicResource CockpitFloatingCardBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}" IsVisible="{Binding HasMoveToast}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding MoveToastText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    <Button Classes="Compact" Content="Undo" Command="{Binding UndoMoveCommand}"/>
+                    <Button Classes="Ghost Compact" Content="{Binding KeepAlsoLabel}" IsVisible="{Binding CanKeepAlso}"
+                            Command="{Binding KeepAlsoCommand}"/>
+                </StackPanel>
+            </Border>
+            <TextBlock x:Name="MoveAnnouncement" Text="{Binding MoveAnnouncement}" IsVisible="False"
+                       AutomationProperties.LiveSetting="Polite"/>
+
+            <!-- Assistant threads: the labelled rail over the chat where labels do not fit beside it (§ 8.1), so
+                 the conversation, its scroll position and the composer stay where they are. Picking a thread, a
+                 click on the chat or Esc closes it. -->
+            <Border x:Name="ThreadRailOverlay" Classes="subnavRail" HorizontalAlignment="Left" ZIndex="10"
+                    BorderThickness="0,0,1,0" IsVisible="{Binding IsRailOverlayOpen}">
+                <DockPanel>
+                    <ContentControl DockPanel.Dock="Bottom" Content="{Binding}" ContentTemplate="{StaticResource ClosedThreadsSection}"/>
+                    <ListBox x:Name="ThreadOverlayList" DragDrop.AllowDrop="True" Classes="subnav" ItemsSource="{Binding ThreadItems}"
+                             SelectedItem="{Binding SelectedThreadItem}" AutomationProperties.Name="Threads"
+                             ItemTemplate="{StaticResource ThreadLabelItem}"/>
+                </DockPanel>
+            </Border>
+            </Panel>
         </DockPanel>
 
         <!-- The cockpit's own consent gate (#AC-47), which is a different thing from the SDK's Allow/Deny row in
@@ -895,6 +1292,6 @@
              panes use, so it looks and behaves identically, over this window instead of over a pane. -->
         <controls:ConsentBannerHost DataContext="{Binding Session}"/>
         <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="10"
-                IsHitTestVisible="False"/>
+                IsHitTestVisible="False" IsVisible="{Binding DrawsOwnFrame}"/>
         </Grid>
 </UserControl>

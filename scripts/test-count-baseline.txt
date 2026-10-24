@@ -1,45 +1,45 @@
-# Test methods per test project, pinned by scripts/check-test-count.py.
-# The count only goes down: lower the row in the same PR that removes tests.
-# Update with: scripts/check-test-count.py --update-baseline (keeps the allow-growth rules)
-# format: <project>	<count>   or   allow-growth	<project>
-allow-growth	tests/Cockpit.Journeys
-plugins-dev/Cockpit.Plugin.Autopilot.Tests	60
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	129
-plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	69
+# Test cases per test project: ceilings, checked by scripts/check-test-count.py against origin/main.
+# A ceiling only goes down: lower the row in the same PR that removes tests, never raise it.
+# Update with: scripts/check-test-count.py --update-baseline
+# format: <project>	<ceiling>
+unit	cases
+plugins-dev/Cockpit.Plugin.Autopilot.Tests	95
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	173
+plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 # AC-1633 adds one contract test for REST status mapping and bearer-token hygiene.
 # AC-1635 adds one conflict-contract method: stale checksums must map both REST conflict statuses without overwriting.
 # AC-1637 adds one truncation-contract method: partial /sync/read answers must never be shown as complete files.
 # AC-1647 adds one built-in OAuth contract method: Depot sign-in requests depot.host and keeps it host-only.
-plugins-dev/Cockpit.Plugin.Depot.Tests	177
-plugins-dev/Cockpit.Plugin.Diagram.Tests	106
-plugins-dev/Cockpit.Plugin.Discord.Tests	21
+plugins-dev/Cockpit.Plugin.Depot.Tests	225
+plugins-dev/Cockpit.Plugin.Diagram.Tests	115
+plugins-dev/Cockpit.Plugin.Discord.Tests	46
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
 plugins-dev/Cockpit.Plugin.FanOut.Tests	1
-plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	11
-plugins-dev/Cockpit.Plugin.GitHubActions.Tests	4
+plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	21
+plugins-dev/Cockpit.Plugin.GitHubActions.Tests	16
 plugins-dev/Cockpit.Plugin.GitHubIssues.Tests	13
-plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	6
+plugins-dev/Cockpit.Plugin.GitHubModelsProvider.Tests	14
 plugins-dev/Cockpit.Plugin.GitHubPullRequests.Tests	8
-plugins-dev/Cockpit.Plugin.GitStatus.Tests	7
-plugins-dev/Cockpit.Plugin.GrokProvider.Tests	6
-plugins-dev/Cockpit.Plugin.KimiProvider.Tests	49
+plugins-dev/Cockpit.Plugin.GitStatus.Tests	9
+plugins-dev/Cockpit.Plugin.GrokProvider.Tests	14
+plugins-dev/Cockpit.Plugin.KimiProvider.Tests	60
 plugins-dev/Cockpit.Plugin.Kind.Tests	18
-plugins-dev/Cockpit.Plugin.Kubernetes.Tests	95
-plugins-dev/Cockpit.Plugin.LocalCi.Tests	54
-plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	6
-plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	27
+plugins-dev/Cockpit.Plugin.Kubernetes.Tests	111
+plugins-dev/Cockpit.Plugin.LocalCi.Tests	84
+plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	14
+plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	31
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
-plugins-dev/Cockpit.Plugin.Schedules.Tests	23
-plugins-dev/Cockpit.Plugin.SessionReview.Tests	13
-plugins-dev/Cockpit.Plugin.Slack.Tests	26
-plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	5
+plugins-dev/Cockpit.Plugin.Schedules.Tests	38
+plugins-dev/Cockpit.Plugin.SessionReview.Tests	16
+plugins-dev/Cockpit.Plugin.Slack.Tests	61
+plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	8
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
-plugins-dev/Cockpit.Plugin.Workflows.Tests	30
-plugins-dev/Cockpit.Plugin.YouTrack.Tests	45
-tests/Cockpit.App.ViewTests	1481
-tests/Cockpit.Backend.Tests	73
-tests/Cockpit.Core.Tests	1012
+plugins-dev/Cockpit.Plugin.Workflows.Tests	50
+plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
+tests/Cockpit.App.ViewTests	1528
+tests/Cockpit.Backend.Tests	78
+tests/Cockpit.Core.Tests	1320
 # AC-1639 proves a source event checks one bound project immediately without moving the poll clock.
-tests/Cockpit.Infrastructure.Tests	691
+tests/Cockpit.Infrastructure.Tests	795
 tests/Cockpit.Journeys	33
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

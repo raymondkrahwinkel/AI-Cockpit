@@ -6,6 +6,7 @@ using Cockpit.Plugin.LocalCi.Sessions;
 using Cockpit.Plugin.LocalCi.Workflows;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.HeavyRuns;
 using ModelContextProtocol.Server;
 
 namespace Cockpit.Plugin.LocalCi.Mcp;
@@ -26,17 +27,17 @@ internal sealed class LocalCiMcpTools(
 {
     [McpServerTool(Name = "run_local_checks", ReadOnly = false, Destructive = true)]
     [Description(
-        "Runs one of this project's GitHub workflow jobs in a container on this machine, using this session's own "
-        + "checkout, and returns the verdict. The project is the calling session's — this tool takes no arbitrary "
-        + "path and will not run anywhere else, but see `checkout` below for the one exception. A job that cannot "
-        + "run locally (a complex matrix, a non-Linux runner, artifacts exchanged with another job) is refused with the "
-        + "reason rather than partly run. The operator is asked to approve the exact command before anything "
-        + "starts. The verdict is about this machine: act's images are not GitHub's, so it predicts the "
-        + "pull-request check and does not replace it. `AlreadyRunning` is a verdict, not something to retry: "
-        + "another local run already has this machine, it is not stuck, and calling this again will not change "
-        + "that — try again later, or ask the operator to stop it. A long run keeps going even if this call never "
-        + "returns an answer (a dropped connection does not stop it) — if that happens, call local_check_status "
-        + "instead of running this again; it has the verdict this call could not deliver.")]
+        "Starts one of this project's GitHub workflow jobs in a container on this machine, using this session's own "
+        + "checkout, and returns a run id right away — the verdict arrives later in this session's inbox, and with "
+        + "wake consent a turn is started to read it, so end your turn after calling this. The project is the calling "
+        + "session's — this tool takes no arbitrary path and will not run anywhere else, but see `checkout` below for "
+        + "the one exception. A job that cannot run locally (a complex matrix, a non-Linux runner, artifacts exchanged "
+        + "with another job) is refused with the reason rather than partly run. The run first takes its place in the "
+        + "machine-wide queue for heavy runs: when the reply says `queued`, its `reason` says what it waits for "
+        + "('waiting: CPU 82%, 2 ahead of you') — it starts on its own, do not call this again. The operator is asked "
+        + "to approve the exact command before anything starts. The verdict is about this machine: act's images are "
+        + "not GitHub's, so it predicts the pull-request check and does not replace it. If the verdict never reaches "
+        + "you, call local_check_status: it has the last run's verdict.")]
     public async Task<string> RunLocalChecks(
         [Description("The job to run, named as it is in the workflow (e.g. \"build\"). Leave it out to run the first job in this project that can run here.")]
         string? job = null,
@@ -45,6 +46,8 @@ internal sealed class LocalCiMcpTools(
             + "for a subtask with worktree_create. Must be a path from worktree_list that this session owns; "
             + "anything else is refused. Leave it out to test this session's own checkout.")]
         string? checkout = null,
+        [Description("Why the run is wanted: `pre-merge` (the gate right before a push or merge) goes ahead of `explore` in the queue. Defaults to `pre-merge`.")]
+        string? purpose = null,
         CancellationToken cancellationToken = default)
     {
         if (_CheckoutOfCaller() is not { } caller)
@@ -65,48 +68,27 @@ internal sealed class LocalCiMcpTools(
                 : "No job in this project's workflows can run on this machine.");
         }
 
-        var startedAt = DateTimeOffset.UtcNow;
-        var commit = await head.ReadAsync(resolved, cancellationToken);
-
-        // AC-1053: not linked to `cancellationToken` — that tracks the request/transport, not operator intent.
-        // Only the Kill button (tracker.Begin's stopAsync below) may cancel `stopping` now; a run also outlives
-        // a client that died mid-call, on purpose — losing finished work is worse than `act` running unsupervised.
-        using var stopping = new CancellationTokenSource();
-
-        tracker.Begin(resolved, chosen.JobId, startedAt, () =>
+        HeavyRunPurpose? runPurpose = purpose?.Trim().ToLowerInvariant() switch
         {
-            stopping.Cancel();
-            return Task.CompletedTask;
-        });
-
-        try
+            null or "" or "pre-merge" => HeavyRunPurpose.PreMerge,
+            "explore" => HeavyRunPurpose.Explore,
+            _ => null,
+        };
+        if (runPurpose is not { } wanted)
         {
-            var result = await runner.RunAsync(
-                chosen,
-                _ => { },
-                command => _AskOperatorAsync(command, resolved, paneId),
-                stopping.Token);
-
-            tracker.Complete(resolved, result, commit, DateTimeOffset.UtcNow);
-            return McpJson.Of(_Report(result));
+            return McpJson.Error("`purpose` must be pre-merge or explore.");
         }
-        catch (Exception exception)
-        {
-            // Whatever went wrong, the run is over. Without this the status bar would keep offering a Kill for
-            // something that is not running, which is worse than showing nothing. A stop and a fault are recorded
-            // as the different things they are: filing a bug in the runner as "cancelled" would tell the operator
-            // that somebody stopped this, and nobody did.
-            var (outcome, reason) = exception is OperationCanceledException
-                ? (LocalRunOutcome.Cancelled, "the run was stopped before it reached a verdict.")
-                : (LocalRunOutcome.CouldNotRun, $"the run ended in an error: {exception.Message}");
 
-            tracker.Complete(
-                resolved,
-                LocalRunResult.DidNotRun(chosen.WorkflowPath, chosen.JobId, outcome, reason),
-                commit,
-                DateTimeOffset.UtcNow);
-            throw;
-        }
+        var runId = Guid.NewGuid().ToString("n");
+        var slot = host.RequestHeavyRunSlot(
+            new HeavyRunRequest(runId, HeavyRunKind.Gate, wanted, paneId, $"{chosen.JobId} (local)", resolved));
+
+        // AC-1053/AC-1535: not tied to this call — the run outlives it on purpose, and its verdict goes to the inbox.
+        _ = _RunAndDeliverAsync(runId, paneId, chosen, slot);
+
+        return slot.Admitted.IsCompletedSuccessfully
+            ? McpJson.Of(new { ok = true, runId, job = chosen.JobId, status = "running" })
+            : McpJson.Of(new { ok = true, runId, job = chosen.JobId, status = "queued", reason = slot.WaitReason });
     }
 
     [McpServerTool(Name = "local_check_status", ReadOnly = true)]
@@ -115,8 +97,7 @@ internal sealed class LocalCiMcpTools(
         + "cannot, why — plus the last local run in that checkout and whether it was on the commit that is checked "
         + "out now. The project is the calling session's own checkout by default; pass `checkout` for a worktree "
         + "this session made for itself with worktree_create instead. This is also the recovery path when "
-        + "run_local_checks itself never returned an answer: the run kept going regardless, so `lastRun` here "
-        + "carries its verdict without needing to run it again.")]
+        + "run_local_checks' verdict never reached the inbox: `lastRun` here carries it without running it again.")]
     public async Task<string> LocalCheckStatus(
         [Description(
             "The worktree to report on, when it is not this session's own checkout. Must be a path from "
@@ -162,6 +143,68 @@ internal sealed class LocalCiMcpTools(
                     at = last.FinishedAt,
                 },
         });
+    }
+
+    // ponytail: the operator's consent is asked once the run is admitted, so an unanswered card holds the place it
+    // took; asking before the queue needs the act command built outside the runner.
+    private async Task _RunAndDeliverAsync(string runId, string paneId, LocalRunRequest chosen, IHeavyRunSlot slot)
+    {
+        await using (slot)
+        {
+            try
+            {
+                await slot.Admitted;
+            }
+            catch (OperationCanceledException)
+            {
+                await host.DeliverToSessionInboxAsync(paneId, "local-check", McpJson.Of(new
+                {
+                    ok = false,
+                    runId,
+                    job = chosen.JobId,
+                    verdict = "NotStarted",
+                    summary = "it lost its place in the queue — its session went away, or the operator removed it.",
+                }));
+                return;
+            }
+
+            // Only the Kill button and the queue (owner gone, stopped by hand) may stop the run once it started.
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(slot.Revoked);
+            tracker.Begin(runId, chosen.ProjectRoot, chosen.JobId, DateTimeOffset.UtcNow, () =>
+            {
+                stopping.Cancel();
+                return Task.CompletedTask;
+            });
+
+            string? commit = null;
+            LocalRunResult result;
+            try
+            {
+                commit = await head.ReadAsync(chosen.ProjectRoot, CancellationToken.None);
+                result = await runner.RunAsync(
+                    chosen,
+                    _ => { },
+                    command => _AskOperatorAsync(command, chosen.ProjectRoot, paneId),
+                    stopping.Token);
+            }
+            catch (Exception exception)
+            {
+                // Whatever went wrong, the run is over. A stop and a fault are recorded as the different things they
+                // are: filing a bug in the runner as "cancelled" would tell the operator somebody stopped this.
+                var (outcome, reason) = exception is OperationCanceledException
+                    ? (LocalRunOutcome.Cancelled, "the run was stopped before it reached a verdict.")
+                    : (LocalRunOutcome.CouldNotRun, $"the run ended in an error: {exception.Message}");
+                result = LocalRunResult.DidNotRun(chosen.WorkflowPath, chosen.JobId, outcome, reason);
+            }
+
+            // The verdict goes out before anything else may fail: a session told to end its turn waits on nothing else.
+            tracker.Complete(chosen.ProjectRoot, result, commit, DateTimeOffset.UtcNow, runId);
+            await host.DeliverToSessionInboxAsync(paneId, "local-check", McpJson.Of(_Report(runId, result)));
+            if (result.Outcome is LocalRunOutcome.Failed or LocalRunOutcome.TimedOut)
+            {
+                await slot.ReportFailureAsync(result.LogTail);
+            }
+        }
     }
 
     private (string PaneId, string Checkout)? _CheckoutOfCaller() =>
@@ -250,9 +293,10 @@ internal sealed class LocalCiMcpTools(
 
     // What goes back to the agent. The log travels only when the run failed, and only its tail: a whole build log
     // in a session's context is the waste this plugin exists to save, and on a pass there is nothing in it to read.
-    private static object _Report(LocalRunResult result) => new
+    private static object _Report(string runId, LocalRunResult result) => new
     {
         ok = result.Outcome == LocalRunOutcome.Passed,
+        runId,
         reachedAVerdict = result.ReachedAVerdict,
         workflow = Path.GetFileName(result.WorkflowPath),
         job = result.JobId,

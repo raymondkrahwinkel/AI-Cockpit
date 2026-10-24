@@ -95,11 +95,25 @@
                         Classes.active="{Binding IsSelectedInSimpleStand}"
                         Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}">
                     <StackPanel Spacing="2">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Ellipse Width="8" Height="8"
-                                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                        </StackPanel>
+                        <DockPanel>
+                            <!-- Assistant threads: the open questions, the dock tab's count for the stand that has no
+                                 dock tab. Its own click target: it opens Questions for you in this column. -->
+                            <Button x:Name="SimpleAssistantQuestions" DockPanel.Dock="Right" Classes="Subtle" Padding="0"
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).AssistantIndicator.HasOpenQuestions, FallbackValue=False}"
+                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenAssistantQuestionsCommand}"
+                                    CommandParameter="{Binding}"
+                                    ToolTip.Tip="Questions for you">
+                                <Border Classes="waitingCount">
+                                    <TextBlock Text="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).AssistantIndicator.OpenQuestionCount, FallbackValue=0}"/>
+                                </Border>
+                            </Button>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Ellipse Width="8" Height="8"
+                                         Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </DockPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="Your steady helper" FontSize="11"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
@@ -530,7 +544,7 @@
              changes the chrome around the one session grid: the left column, the tab strip, the toolbar and the
              dock rail each say which stand they belong to. §6 holds by those conditions, not by a hidden sibling.
              The code-behind that sizes the columns names this grid. -->
-        <Grid x:Name="PanelsRoot" Grid.Row="0">
+        <Grid x:Name="PanelsRoot" Grid.Row="0" SizeChanged="OnPanelsRootSizeChanged">
         <Grid.ColumnDefinitions>
             <!-- Width set from CockpitViewModel.SidebarWidth in code-behind (#49) — a GridLength column
                  can't compiled-bind straight to the VM's double, so CockpitView.axaml.cs applies it on
@@ -548,7 +562,7 @@
             <ColumnDefinition Width="4"/>
             <ColumnDefinition Width="40"
                                MinWidth="{x:Static layout:LayoutSettings.MinDockRailWidth}"
-                               MaxWidth="{x:Static layout:LayoutSettings.MaxDockRailWidth}"/>
+                               MaxWidth="{Binding MaxDockRailWidth}"/>
         </Grid.ColumnDefinitions>
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor.
@@ -2013,8 +2027,18 @@
             <!-- Startup banners: safe mode (AC-478), plugin failures (#14) and pending approvals (AC-208) stack
                  top-down in a StackPanel rather than each sitting at a fixed Margin — any of them can be one or two
                  lines, and a fixed offset would either overlap or leave a gap. More than one can show at once: e.g.
-                 a plugin can fail to load while a different one awaits approval. -->
+                 a plugin can fail to load while a different one awaits approval.
+                 Out of layout while none shows: its margin alone held the row open, which put a gap above the Simple
+                 stand's assistant column. -->
             <StackPanel VerticalAlignment="Top" Margin="12,12,12,0" Spacing="8">
+                <StackPanel.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                        <Binding Path="IsSafeMode"/>
+                        <Binding Path="HasPluginFailures"/>
+                        <Binding Path="HasPendingApprovals"/>
+                        <Binding Path="HasIncomingPairing"/>
+                    </MultiBinding>
+                </StackPanel.IsVisible>
                 <!-- Safe-mode banner (AC-478): not dismissible, unlike the two below — it describes how this whole
                      run was started, not a one-off event to acknowledge. "Restart" reuses the same RestartAppCommand
                      the Voice options page offers (AppRestartService), which always drops the safe-mode launch
@@ -2271,6 +2295,17 @@
                                             <TextBlock Text="{Binding Title}" FontSize="10.5"/>
                                         </LayoutTransformControl>
                                     </StackPanel>
+                                    <!-- Assistant threads (§ 7.3): what in the panel waits on the operator. The
+                                         count is its own click target: it opens the panel on what it counts,
+                                         where the tab opens it where it was. -->
+                                    <Button x:Name="DockTabBadge" Classes="Subtle" Padding="0" Margin="0,2,2,0"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            IsVisible="{Binding Badge.HasCount, FallbackValue=False}"
+                                            Click="OnDockTabBadgeClick" ToolTip.Tip="Open what waits for you">
+                                        <Border Classes="waitingCount" Padding="3,0" MinWidth="13">
+                                            <TextBlock Text="{Binding Badge.Count, FallbackValue=0}" FontSize="9"/>
+                                        </Border>
+                                    </Button>
                                 </Grid>
                             </Button>
                         </DataTemplate>
@@ -2282,6 +2317,31 @@
                 <ContentControl x:Name="DockPanelContent"
                                 IsVisible="{Binding EffectiveOpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
             </DockPanel>
+        </Border>
+
+        <!-- Assistant threads (§ 7.2): something for the operator arrived while the docked assistant is not open,
+             so a floating card says so beside the strip instead of a count alone. A status line never raises one. -->
+        <Border x:Name="AssistantFloatingCard" Grid.Column="2" ZIndex="20" Margin="0,8,8,0" MaxWidth="300"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,10"
+                Background="{DynamicResource CockpitFloatingCardBrush}"
+                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitPanelRadius}"
+                IsVisible="{Binding AssistantFloatingCard, Converter={x:Static avconv:ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14" VerticalAlignment="Center"
+                                                Foreground="{DynamicResource CockpitAccentBrush}"/>
+                    <TextBlock Text="{Binding AssistantFloatingCard.Title, FallbackValue=''}" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Text="{Binding AssistantFloatingCard.Body, FallbackValue=''}" TextWrapping="Wrap" MaxLines="3"
+                           TextTrimming="CharacterEllipsis" FontSize="12"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Classes="Accent Compact" Content="Open" Command="{Binding OpenAssistantFloatingCardCommand}"/>
+                    <Button Classes="Ghost Compact" Content="Dismiss" Command="{Binding DismissAssistantFloatingCardCommand}"/>
+                </StackPanel>
+            </StackPanel>
         </Border>
 
         </Grid>

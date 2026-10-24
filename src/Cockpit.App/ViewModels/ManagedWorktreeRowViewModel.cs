@@ -46,6 +46,8 @@ public sealed partial class ManagedWorktreeRowViewModel : ObservableObject
 
     public bool IsClean => Status.IsClean;
 
+    public string? RetentionReason => Record.RetentionReason;
+
     // Reattach is offered only when the owning session is gone (Raymond 2026-07-19: GONE only) — never onto a live
     // tree.
     public bool CanReattach => !IsOwnerLive;

@@ -32,6 +32,14 @@ internal static class TranscriptSnapshot
         ReplyToId = entry.ReplyTo?.Id,
         LatestReplyId = entry.LatestReply?.Id,
         BackgroundTaskId = entry.BackgroundTaskId,
+        ProjectIds = entry.ProjectIds,
+        ProjectSources = entry.ProjectSources is { Count: > 0 } sources ? sources : null,
+        ProjectParts = entry.ProjectParts is { Count: > 0 } parts ? parts : null,
+        TurnProjectIds = entry.TurnProjectIds,
+        SenderPaneId = entry.SenderPaneId,
+        SenderTitle = entry.SenderTitle,
+        MessageKind = entry.MessageKind,
+        SubjectPaneId = entry.SubjectPaneId,
 
         // AC-1377: the host holds these for the live view, so a row recorded from here must carry them back unchanged.
         StartsReply = entry.ReplyRows is [var first, ..] && ReferenceEquals(first, entry),
@@ -96,6 +104,14 @@ internal static class TranscriptSnapshot
             PermissionDecision = record.PermissionDecision,
             ErrorKind = record.ErrorKind ?? SessionErrorKind.Unknown,
             RetryAfter = record.RetryAfter,
+            ProjectIds = record.ProjectIds,
+            ProjectSources = record.ProjectSources,
+            ProjectParts = record.ProjectParts,
+            TurnProjectIds = record.TurnProjectIds,
+            SenderPaneId = record.SenderPaneId,
+            SenderTitle = record.SenderTitle,
+            MessageKind = record.MessageKind,
+            SubjectPaneId = record.SubjectPaneId,
         };
 
         if (record.ResultText is not null)

@@ -15,29 +15,34 @@ internal sealed class LocalRunTracker : ISupervisedActivitySource
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, LocalRunRecord> _finished = new(StringComparer.OrdinalIgnoreCase);
-    private InFlight? _inFlight;
+
+    // AC-1535: one entry per run, so a second run never takes the first one's Kill out of the status bar.
+    private readonly Dictionary<string, InFlight> _inFlight = new(StringComparer.Ordinal);
 
     public string Label => "Local CI";
 
     public event Action? Changed;
 
-    public void Begin(string projectRoot, string jobId, DateTimeOffset startedAt, Func<Task> stopAsync)
+    public void Begin(string runId, string projectRoot, string jobId, DateTimeOffset startedAt, Func<Task> stopAsync)
     {
         lock (_gate)
         {
-            _inFlight = new InFlight(Key(projectRoot), jobId, startedAt, stopAsync);
+            _inFlight[runId] = new InFlight(Key(projectRoot), jobId, startedAt, stopAsync);
         }
 
         Changed?.Invoke();
     }
 
-    public void Complete(string projectRoot, LocalRunResult result, string? commit, DateTimeOffset finishedAt)
+    public void Complete(string projectRoot, LocalRunResult result, string? commit, DateTimeOffset finishedAt, string? runId = null)
     {
         var key = Key(projectRoot);
         lock (_gate)
         {
             _finished[key] = new LocalRunRecord(key, result, commit, finishedAt);
-            _inFlight = null;
+            if (runId is not null)
+            {
+                _inFlight.Remove(runId);
+            }
         }
 
         Changed?.Invoke();
@@ -53,26 +58,24 @@ internal sealed class LocalRunTracker : ISupervisedActivitySource
 
     public IReadOnlyList<SupervisedActivity> Snapshot()
     {
-        InFlight? running;
+        List<KeyValuePair<string, InFlight>> running;
         lock (_gate)
         {
-            running = _inFlight;
+            running = [.. _inFlight];
         }
 
-        return running is null
-            ? []
-            :
-            [
-                new SupervisedActivity(
-                    Id: running.ProjectRoot,
-                    Title: $"{running.JobId} (local)",
-                    Details:
-                    [
-                        new ActivityDetail("Checkout", running.ProjectRoot),
-                        new ActivityDetail("Running for", _Since(running.StartedAt)),
-                    ],
-                    StopAsync: running.StopAsync),
-            ];
+        return
+        [
+            .. running.Select(entry => new SupervisedActivity(
+                Id: entry.Key,
+                Title: $"{entry.Value.JobId} (local)",
+                Details:
+                [
+                    new ActivityDetail("Checkout", entry.Value.ProjectRoot),
+                    new ActivityDetail("Running for", _Since(entry.Value.StartedAt)),
+                ],
+                StopAsync: entry.Value.StopAsync)),
+        ];
     }
 
     // One checkout, one key. Paths reach this from a session's working directory, a workflow's folder and an

@@ -252,7 +252,7 @@ loose DLLs and hunting for the executable:
 | Platform | Download | Update |
 |---|---|---|
 | **Windows** | `AI-Cockpit-win-stable-Setup.exe` — installs per-user, or `…-Portable.zip` to unpack and run | From inside the app, once installed |
-| **macOS** | one command, see below — or `ai-cockpit-*-macos-arm64.dmg` to drag by hand | Run the command again |
+| **macOS** | one command, see below — or `ai-cockpit-*-macos-arm64.dmg` (Apple Silicon) / `ai-cockpit-*-macos-x64.dmg` (Intel) to drag by hand | Run the command again |
 | **Linux** | `ai-cockpit-*-x86_64.AppImage` — one file, or the tarball for a server | Overwrite the AppImage |
 
 None of them need a .NET runtime installed. Your settings live in `cockpit.json` (see below), not next to the
@@ -271,6 +271,8 @@ own package cannot, and the Updates tab says so rather than offering a button th
 > ```
 > curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash
 > ```
+>
+> The installer selects the Apple Silicon (`arm64`) or Intel (`x64`) build for this Mac.
 >
 > The app is ad-hoc signed but not notarized, and Gatekeeper refuses a *quarantined* copy of such a bundle
 > outright — "is damaged and can't be opened", with no "Open Anyway" to click. That flag is written by whatever
@@ -408,6 +410,8 @@ implementation is written by AI agents orchestrated through Claude Code by the m
 That workflow does not lower the bar — it *is* the bar this tool exists to support:
 
 - every change is reviewed, must build with **zero warnings**, and ships with unit tests (xUnit; 1400+ and counting);
+- `scripts/install-hooks.sh` installs the pre-push guards; plugin versions are checked from the newest fork point
+  among `origin/main` and `origin/epic/*`, so worktree branches do not need tracking configuration;
 - UI changes are verified visually against rendered screenshots before they land;
 - features that touch a real CLI are verified end-to-end against a live process, not assumed from documentation;
 - the maintainer signs off on every commit and takes full responsibility for the result.

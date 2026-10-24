@@ -520,36 +520,58 @@
     <!-- 3.9.0 (AC-540): ICockpitHost.AddSettingsCarrier (default no-op) and SettingsCarrierRegistration, a place the
          cockpit's portable settings are kept as an opaque blob. No in-repo plugin calls it yet, so no plugin raises
          minHostVersion for it. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <!-- 3.11.0 (AC-1502): IBackupTarget.DeleteAsync (default false, "cannot delete"), so retention can prune a target.
-         No plugin registers a target yet, so none raises minHostVersion. Additive — a minor; the major and
-         abstractionsVersion stay 3. (3.10.0 is taken on main.) -->
-    <!-- 3.12.0 (AC-1504): the capability first-start.routes in CapabilityCatalog, the row for ICockpitUiHost.AddFirstStartRoute
-         (Cockpit.Plugins.Abstractions.UI 3.4.0). A plugin that calls it sets minHostVersion 0.94.0. Additive — a minor; the
-         major and abstractionsVersion stay 3. -->
     <!-- 3.10.0 (DEP-381): SharedProject.HasRepository (init, default true: a source that does not say stays addable), whether the definition names a repository to
          clone. A plugin that sets it sets minHostVersion 0.95.0. Additive — a minor; the major and abstractionsVersion
          stay 3. -->
-    <!-- 3.13.0 (AC-1587): ICockpitHost.CreateAuthorizedHandler, a handler that sends a plugin's requests to its own OAuth MCP
-         server's origin with the host's bearer, which the plugin never sees. Numbered past epic/AC-1497 (3.12.0) and
+    <!-- 3.11.0 (AC-1535): ICockpitHost.RequestHeavyRunSlot (default admits at once) and DeliverToSessionInboxAsync
+         (default returns false), with IHeavyRunSlot, HeavyRunRequest, HeavyRunKind and HeavyRunPurpose in
+         Cockpit.Plugins.Abstractions.HeavyRuns. A plugin that calls either sets minHostVersion 0.96.0. Additive — a
+         minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.12.0 (AC-1543): ICockpitActions.DelegateAsync gains an overload with a taskStarted callback that receives
+         the delegated task's id once the task exists (the default never calls it). A plugin that relies on the id
+         sets minHostVersion 0.97.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.13.0 (AC-1553): the channel contract carries questions. AssistantChannelRow gains Questions, CorrelationId
+         and Attachments as init properties (default empty), with AssistantChannelQuestion (its FallbackPrompt and
+         ReadReply), AssistantChannelOption and AssistantChannelAttachment; IAssistantChannelGateway gains AnswerAsync
+         (default refuses). A plugin that reads them or answers sets minHostVersion 0.98.0. Additive — a minor; the
+         major and abstractionsVersion stay 3. -->
+    <!-- 3.14.0 (AC-1544): the delivery contract on the channel contract. AssistantChannelContribution gains Messages
+         (IOperatorMessageChannel, default null), with OperatorMessage, OperatorMessageTarget, OperatorMessageResult,
+         OperatorMessageAnswer and OperatorMessageChannelInfo; ICockpitHost gains OperatorMessageChannels (default
+         empty) and SendOperatorMessageAsync (default fails). A plugin that offers or uses them sets minHostVersion
+         0.99.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.15.0 (AC-1549): ICockpitHost.ShowToast gains an overload with PluginToastAction buttons and a sticky flag
+         (default shows the first button), so a reminder offers Done · Snooze 10 min · 1 hour. A plugin that relies on
+         more than one button sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.16.0 (AC-1553): StructuredQuestionJson exposes the shared AskUserQuestion parser and answer text to plugins.
+         A plugin that calls it sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.17.0 (AC-1502): IBackupTarget.DeleteAsync (default false, "cannot delete"), so retention can prune a target.
+         No plugin registers a target yet, so none raises minHostVersion. Additive — a minor; the major and
+         abstractionsVersion stay 3. (3.10.0 is taken by epic/AC-1571, 3.11.0–3.16.0 by main.) -->
+    <!-- 3.18.0 (AC-1504): the capability first-start.routes in CapabilityCatalog, the row for ICockpitUiHost.AddFirstStartRoute
+         (Cockpit.Plugins.Abstractions.UI 3.4.0). A plugin that calls it sets minHostVersion 0.94.0. Additive — a minor; the
+         major and abstractionsVersion stay 3. -->
+    <!-- 3.19.0 (AC-1587): ICockpitHost.CreateAuthorizedHandler, a handler that sends a plugin's requests to its own OAuth MCP
+         server's origin with the host's bearer, which the plugin never sees. Numbered past main (3.16.0) and
          epic/AC-1571 (3.10.0) so the merges do not collide. No plugin calls it yet, so none raises minHostVersion.
          Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <!-- 3.14.0 (AC-1508): ICockpitHost.AddBackupTarget and RemoveBackupTarget (default no-op) and the capability
+    <!-- 3.20.0 (AC-1508): ICockpitHost.AddBackupTarget and RemoveBackupTarget (default no-op) and the capability
          backup.target, so a plugin's IBackupTarget is offered in Options → Backup and to the scheduled backup. A plugin
-         that calls them sets minHostVersion 0.96.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <!-- 3.15.0 (AC-1509): IFirstStartPlugin, a backend part that registers what its first-start route needs before the
-         first-run wizard opens, ahead of Initialize. A plugin that implements it sets minHostVersion 0.97.0. Additive — a
+         that calls them sets minHostVersion 0.101.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.21.0 (AC-1509): IFirstStartPlugin, a backend part that registers what its first-start route needs before the
+         first-run wizard opens, ahead of Initialize. A plugin that implements it sets minHostVersion 0.102.0. Additive — a
          minor; the major and abstractionsVersion stay 3. -->
-    <!-- 3.16.0 (AC-1586): ICockpitHost.CreateAuthorizedHandler(name, scope), a host-only token narrowed to one scope, and
-         McpServerContribution.OAuthScopes and OAuthHostOnlyScopes. A plugin that uses them sets minHostVersion 0.98.0.
+    <!-- 3.22.0 (AC-1586): ICockpitHost.CreateAuthorizedHandler(name, scope), a host-only token narrowed to one scope, and
+         McpServerContribution.OAuthScopes and OAuthHostOnlyScopes. A plugin that uses them sets minHostVersion 0.103.0.
          Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <!-- 3.17.0 (AC-1510): SettingsCarrierRegistration.WriteIfUnchangedAsync (init, optional), a write that refuses when the
+    <!-- 3.23.0 (AC-1510): SettingsCarrierRegistration.WriteIfUnchangedAsync (init, optional), a write that refuses when the
          carrier holds something other than the blob the host last read. Optional and init-only, so a carrier without it
          keeps working; a positional parameter would have broken every caller. A plugin that sets it sets minHostVersion
-         0.99.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <!-- 3.18.0 (AC-1639): ISharedProjectSource.Changed lets a source nudge the host for one id or all its bound projects.
+         0.104.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <!-- 3.24.0 (AC-1639): ISharedProjectSource.Changed lets a source nudge the host for one id or all its bound projects.
          Its default no-op accessors keep existing sources source- and binary-compatible. Additive, so the major and
          abstractionsVersion stay 3. -->
-    <Version>3.18.0</Version>
+    <Version>3.24.0</Version>
     <AssemblyVersion>1.16.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

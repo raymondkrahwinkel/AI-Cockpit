@@ -24,11 +24,16 @@ public sealed class PluginBackendActions(
 
     // AC-971: `permission` left null runs the task read-only, whatever the target profile would allow — a plugin
     // that wants a task to change files says so, the same as an agent does on delegate_task.
-    public async Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission)
+    public Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission) =>
+        DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission, _ => { });
+
+    // AC-1543: the id goes out before the wait, so a caller can point at the task's transcript however the wait ends.
+    public async Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission, Action<string> taskStarted)
     {
         var task = await delegation
             .DelegateAsync(new DelegationRequest(profileLabel, prompt, WorkingDirectory: workingDirectory, RequestedPermission: permission))
             .ConfigureAwait(false);
+        taskStarted(task.TaskId);
 
         var deadline = DateTimeOffset.UtcNow + (timeout ?? DefaultPatience);
 

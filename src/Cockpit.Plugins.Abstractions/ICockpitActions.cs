@@ -63,4 +63,15 @@ public interface ICockpitActions
     /// </remarks>
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission) =>
         DelegateAsync(profileLabel, prompt, workingDirectory, timeout);
+
+    /// <summary>
+    /// The same, telling <paramref name="taskStarted"/> the delegated task's id as soon as the task exists (AC-1543).
+    /// A plugin keeps it to point at that task's transcript, also when the wait ends in a failure or a timeout.
+    /// </summary>
+    /// <remarks>
+    /// Not called when the task was refused before it existed. The default never calls it; a plugin that relies on
+    /// the id sets minHostVersion 0.97.0.
+    /// </remarks>
+    Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission, Action<string> taskStarted) =>
+        DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission);
 }

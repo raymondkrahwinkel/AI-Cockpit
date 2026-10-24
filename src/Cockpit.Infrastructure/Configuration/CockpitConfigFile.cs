@@ -76,6 +76,10 @@ internal sealed class CockpitConfigFile
     // Whether the diagnostic controls are shown (#73); owned by the debug-settings store.
     public DebugSettingsEntry? Debug { get; set; }
 
+    // The heavy-run queue's ceilings (AC-1535); owned by the heavy-run-settings store.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public HeavyRunSettingsEntry? HeavyRuns { get; set; }
+
     // Delegation settings — whether the orchestrator MCP is offered (AC-40); owned by the delegation-settings store.
     public DelegationSettingsEntry? Delegation { get; set; }
 

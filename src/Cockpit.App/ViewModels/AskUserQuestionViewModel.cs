@@ -1,7 +1,7 @@
-using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.App.ViewModels;
 
@@ -165,66 +165,13 @@ public partial class AskUserQuestionViewModel : ViewModelBase
         AnswerChanged?.Invoke();
     }
 
-    // Reads the `questions` array out of an AskUserQuestion tool input. Returns an empty list for any other tool
-    // input, so a row only renders as a question card when it genuinely carries one; a question without text is
-    // dropped rather than shown as a blank block.
-    public static IReadOnlyList<AskUserQuestionViewModel> Parse(string? inputJson)
-    {
-        if (string.IsNullOrWhiteSpace(inputJson))
-        {
-            return [];
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(inputJson);
-            if (document.RootElement.ValueKind != JsonValueKind.Object
-                || !document.RootElement.TryGetProperty("questions", out var questions)
-                || questions.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            return [.. questions.EnumerateArray()
-                .Select(_ParseQuestion)
-                .OfType<AskUserQuestionViewModel>()];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
-
-    private static AskUserQuestionViewModel? _ParseQuestion(JsonElement element)
-    {
-        if (element.ValueKind != JsonValueKind.Object || _ReadString(element, "question") is not { Length: > 0 } question)
-        {
-            return null;
-        }
-
-        var multiSelect = element.TryGetProperty("multiSelect", out var multi) && multi.ValueKind == JsonValueKind.True;
-        // Defaults to on: a native AskUserQuestion carries no such field and its SDK guarantees the fallback
-        // regardless (AC-715); only ask_structured_question's own payload can turn it off explicitly (AC-955).
-        var allowOther = !element.TryGetProperty("allowOther", out var other) || other.ValueKind != JsonValueKind.False;
-        return new AskUserQuestionViewModel(question, _ReadString(element, "header"), multiSelect, allowOther, _ParseOptions(element));
-    }
-
-    private static IReadOnlyList<AskUserQuestionOptionViewModel> _ParseOptions(JsonElement question)
-    {
-        if (!question.TryGetProperty("options", out var options) || options.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        return [.. options.EnumerateArray()
-            .Where(option => option.ValueKind == JsonValueKind.Object)
-            .Select(option => (Label: _ReadString(option, "label"), Description: _ReadString(option, "description")))
-            .Where(option => option.Label.Length > 0)
-            .Select(option => new AskUserQuestionOptionViewModel(option.Label, option.Description))];
-    }
-
-    private static string _ReadString(JsonElement parent, string property) =>
-        parent.TryGetProperty(property, out var element) && element.ValueKind == JsonValueKind.String
-            ? element.GetString() ?? string.Empty
-            : string.Empty;
+    // Reads the `questions` array out of an AskUserQuestion tool input, through the reading a chat channel gets too
+    // (AC-1553). Empty for any other tool input, so a row only renders as a question card when it carries one.
+    public static IReadOnlyList<AskUserQuestionViewModel> Parse(string? inputJson) =>
+        [.. StructuredQuestionJson.Parse(inputJson).Select(question => new AskUserQuestionViewModel(
+            question.Question,
+            question.Header ?? string.Empty,
+            question.MultiSelect,
+            question.AllowOther,
+            [.. question.Options.Select(option => new AskUserQuestionOptionViewModel(option.Label, option.Description ?? string.Empty))]))];
 }

@@ -42,6 +42,9 @@ public partial class TranscriptRowView : UserControl
 #if DEBUG
         Cockpit.App.Diagnostics.LeakTracker.Register(this);
 #endif
+
+        // Tunnel, handled too: the grip is a Button, and a Button takes the press for itself (§ 9.6).
+        AddHandler(PointerPressedEvent, _OnGripPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

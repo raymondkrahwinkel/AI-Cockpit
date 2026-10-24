@@ -18,6 +18,9 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
 
     public AssistantChannelSendResult NextResult { get; set; } = AssistantChannelSendResult.Sent();
 
+    // AC-1544: every AnswerAsync, with the one label it carried.
+    public List<(string SenderId, string CorrelationId, string Chosen)> Answers { get; } = [];
+
     public event EventHandler<AssistantChannelRow>? RowChanged;
 
     public event EventHandler<AssistantChannelConsentPrompt>? ConsentPromptOpened;
@@ -34,6 +37,17 @@ internal sealed class FakeAssistantChannelGateway : IAssistantChannelGateway
         {
             SentMessages.Add((senderUserId, text));
             SentImages.Add(images);
+        }
+
+        return Task.FromResult(NextResult);
+    }
+
+    public Task<AssistantChannelSendResult> AnswerAsync(
+        string senderUserId, string correlationId, IReadOnlyList<string> chosen, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            Answers.Add((senderUserId, correlationId, string.Join(", ", chosen)));
         }
 
         return Task.FromResult(NextResult);

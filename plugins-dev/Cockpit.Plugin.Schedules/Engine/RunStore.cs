@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Schedules.Engine;
 // The run history, in the plugin cache (outside the backup): 30 days per task rather than Workflows' last twenty,
 // because the history per task is the point (plan §3). At most 1000 runs per task, so an every-minute task cannot
 // grow the shared cache file without bound; output is capped per run, 256 KB counted in characters.
-internal sealed class RunStore(IPluginCache cache, TimeProvider time)
+internal sealed class RunStore(IPluginCache cache, TimeProvider time, Action<RunRecord>? recorded = null)
 {
     public static readonly TimeSpan Keep = TimeSpan.FromDays(30);
     public const int MaxOutputChars = 256 * 1024;
@@ -24,16 +24,25 @@ internal sealed class RunStore(IPluginCache cache, TimeProvider time)
         }
     }
 
-    public void Add(RunRecord run) => _Change(runs => runs.Insert(0, _Capped(run)));
-
-    public void Replace(RunRecord run) => _Change(runs =>
+    // AC-1546: `recorded` hears every run added or changed, so the screen sees "Running…" turn into the outcome.
+    public void Add(RunRecord run)
     {
-        var index = runs.FindIndex(existing => existing.Id == run.Id);
-        if (index >= 0)
+        _Change(runs => runs.Insert(0, _Capped(run)));
+        recorded?.Invoke(_Capped(run));
+    }
+
+    public void Replace(RunRecord run)
+    {
+        _Change(runs =>
         {
-            runs[index] = _Capped(run);
-        }
-    });
+            var index = runs.FindIndex(existing => existing.Id == run.Id);
+            if (index >= 0)
+            {
+                runs[index] = _Capped(run);
+            }
+        });
+        recorded?.Invoke(_Capped(run));
+    }
 
     // A run still Running at startup was cut off by the restart. Its slot is marked, so it does not fire again.
     public void FailInterrupted() => _Change(runs =>

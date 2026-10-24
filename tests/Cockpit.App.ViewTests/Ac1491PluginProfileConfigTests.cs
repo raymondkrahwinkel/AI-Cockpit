@@ -46,6 +46,11 @@ public class Ac1491PluginProfileConfigTests
             view.BaseUrl.Text = "https://inference.example/v1";
             dialog.Profiles[0].Label = "hetzner";
 
+            // AC-1617: the dropdown clearing its selection hands the row null; the row keeps its provider and still saves.
+            picker.SelectedItem = null;
+            window.UpdateLayout();
+            Assert.Equal(ProviderId, dialog.Profiles[0].SelectedProvider.PluginProviderId);
+
             Assert.True(await dialog.PersistAsync());
         }
         finally
