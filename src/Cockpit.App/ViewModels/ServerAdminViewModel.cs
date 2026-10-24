@@ -8,9 +8,9 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
-using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App.ViewModels;
 
@@ -564,7 +564,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
         catch (Exception exception)
         {
-            Status = exception is BackendApiException { Status: HttpStatusCode.NotFound } && _ServerIsOlderThanDesktop()
+            Status = exception is IRemoteCallFailure { Status: HttpStatusCode.NotFound } && _ServerIsOlderThanDesktop()
                 ? $"The server runs {ServerVersion}; this desktop runs {DesktopVersion}. This server does not know this feature yet; update the server."
                 : exception.Message;
             StatusIsError = true;
