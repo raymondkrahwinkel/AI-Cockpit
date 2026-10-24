@@ -998,10 +998,6 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                     freshRepositories.Add(repository);
                 }
             }
-            catch (DockerUnavailableException)
-            {
-                _LogDockerUnavailable();
-            }
             catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)
             {
                 _logger?.LogWarning(exception, "Could not refresh repository '{Path}'; existing worktrees will be kept.", repository);
@@ -1175,6 +1171,10 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                         await _CleanupContainersAsync(resource, cancellationToken, liveSessionIds).ConfigureAwait(false);
                     }
                 }
+            }
+            catch (DockerUnavailableException)
+            {
+                _LogDockerUnavailable();
             }
             catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)
             {
