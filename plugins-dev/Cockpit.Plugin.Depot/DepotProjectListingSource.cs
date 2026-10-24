@@ -70,9 +70,8 @@ internal sealed class DepotProjectListingSource
     // AC-1665: the list is kept per connection, so a sign-in as someone else (or a sign-out) leaves the previous
     // account's list behind. Emptying the key takes away both the ETag and the last-known fallback.
     // A listing already in flight can still write its answer afterwards; the next sign-in event clears that too.
-    public static void Forget(ICockpitHost host, DepotConnectionRegistration connection)
-    {
-    }
+    public static void Forget(ICockpitHost host, DepotConnectionRegistration connection) =>
+        host.Cache.Set<_CachedProjects?>(_CacheKey(connection), null);
 
     public async Task<DepotProjectListingResult> ListAsync(CancellationToken cancellationToken)
     {

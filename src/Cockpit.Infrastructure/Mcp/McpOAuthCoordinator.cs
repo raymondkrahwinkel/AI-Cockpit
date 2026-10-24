@@ -466,6 +466,7 @@ internal sealed class McpOAuthCoordinator(
     public async Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default)
     {
         await tokenStore.RemoveAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false);
+        _RaiseAccountChanged(server);
     }
 
     // AC-1665: a subscriber that throws must not turn a finished sign-in or sign-out into a failure.
