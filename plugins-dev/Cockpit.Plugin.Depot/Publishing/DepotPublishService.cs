@@ -177,7 +177,7 @@ internal sealed class DepotPublishService(
         foreach (var known in manifest.Values.Where(entry => !present.Contains(entry.Path)).OrderBy(entry => entry.Path, StringComparer.Ordinal))
         {
             var remote = RemoteOf(known.Kind, known.Path);
-            var untouched = remote is null || remote == known.Checksum;
+            var untouched = remote is null || remote is not null;
             steps.Add(new _Step(
                 new DepotPublishItem(known.Path, known.Kind, untouched ? DepotPublishAction.Delete : DepotPublishAction.DeleteConflict, untouched ? null : "Changed in Depot since the last publication."),
                 null,
