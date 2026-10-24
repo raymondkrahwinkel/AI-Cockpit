@@ -24,7 +24,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     private static readonly TimeSpan Settle = TimeSpan.FromSeconds(3);
 
     // A write refused because another machine wrote in between is read and merged again, this many times per run.
-    private const int Attempts = 1;
+    private const int Attempts = 3;
 
     private static readonly JsonSerializerOptions StateJson = new() { WriteIndented = true };
 
