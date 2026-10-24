@@ -10,7 +10,8 @@ plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 # AC-1635 adds one conflict-contract method: stale checksums must map both REST conflict statuses without overwriting.
 # AC-1637 adds one truncation-contract method: partial /sync/read answers must never be shown as complete files.
 # AC-1647 adds one built-in OAuth contract method: Depot sign-in requests depot.host and keeps it host-only.
-plugins-dev/Cockpit.Plugin.Depot.Tests	225
+# AC-1656 adds one authorization-contract method: every host-only account caller explicitly requests depot.host.
+plugins-dev/Cockpit.Plugin.Depot.Tests	226
 plugins-dev/Cockpit.Plugin.Diagram.Tests	115
 plugins-dev/Cockpit.Plugin.Discord.Tests	46
 plugins-dev/Cockpit.Plugin.Docker.Tests	22

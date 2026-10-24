@@ -104,7 +104,7 @@ internal sealed class DepotBackupTarget(
         _Connection() ?? throw new InvalidOperationException("That Depot connection is no longer configured.");
 
     private HttpClient _Client(DepotConnectionRegistration connection) =>
-        new(handler?.Invoke() ?? host.CreateAuthorizedHandler(connection.McpServerName), disposeHandler: true);
+        new(handler?.Invoke() ?? host.CreateAuthorizedHandler(connection.McpServerName, "depot.host"), disposeHandler: true);
 
     private static string _Backups(DepotConnectionRegistration connection) => $"{connection.Url.TrimEnd('/')}/cockpit/backups";
 
