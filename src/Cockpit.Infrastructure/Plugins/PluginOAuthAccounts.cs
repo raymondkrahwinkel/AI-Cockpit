@@ -155,7 +155,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
             pluginId,
             provider.Id,
             entry.ExpiresAt,
-            string.IsNullOrEmpty(entry.RefreshToken) ? "cannot renew itself" : "can renew itself " + entry.AccessToken);
+            string.IsNullOrEmpty(entry.RefreshToken) ? "cannot renew itself" : "can renew itself");
         return new PluginOAuthConnectResult(PluginOAuthOutcome.Ok, _ToAccount(entry, provider));
     }
 
