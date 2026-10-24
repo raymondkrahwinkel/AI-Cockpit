@@ -564,7 +564,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
         catch (Exception exception)
         {
-            Status = exception is BackendApiException { Status: HttpStatusCode.NotFound }
+            Status = exception is BackendApiException { Status: HttpStatusCode.NotFound } && _ServerIsOlderThanDesktop()
                 ? $"The server runs {ServerVersion}; this desktop runs {DesktopVersion}. This server does not know this feature yet; update the server."
                 : exception.Message;
             StatusIsError = true;
@@ -574,6 +574,11 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    private bool _ServerIsOlderThanDesktop() =>
+        Version.TryParse(ServerVersion, out var serverVersion)
+        && Version.TryParse(DesktopVersion, out var desktopVersion)
+        && serverVersion < desktopVersion;
 
     private void _ShowKeys(IEnumerable<ConnectKeyInfo> keys)
     {

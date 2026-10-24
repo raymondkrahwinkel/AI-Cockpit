@@ -392,12 +392,24 @@ public sealed class RemoteAdminJourney
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
 
-            // AC-1651: a newer desktop action against a server that returns 404 explains the version mismatch inline.
-            await HeadlessAvalonia.RunAsync(() => admin.TogglePluginCommand.ExecuteAsync(removedPlugin));
-            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (admin.Status, admin.StatusIsError));
+            // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
+            var remoteServer = view.ServerGroups.Single().Server;
+            var currentAdmin = new ServerAdminViewModel(
+                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
+                serverVersion: "1.2.3", desktopVersion: "1.2.3");
+            await HeadlessAvalonia.RunAsync(() => currentAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingPlugin, missingPluginIsError) = HeadlessAvalonia.Run(() => (currentAdmin.Status, currentAdmin.StatusIsError));
+            Assert.True(missingPluginIsError);
+            Assert.Equal("That plugin is not installed on the server.", missingPlugin);
+
+            var olderAdmin = new ServerAdminViewModel(
+                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
+                serverVersion: "1.2.2", desktopVersion: "1.2.3");
+            await HeadlessAvalonia.RunAsync(() => olderAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (olderAdmin.Status, olderAdmin.StatusIsError));
             Assert.True(missingFeatureIsError);
-            Assert.Contains(admin.ServerVersion, missingFeature, StringComparison.Ordinal);
-            Assert.Contains(admin.DesktopVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains(olderAdmin.ServerVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains(olderAdmin.DesktopVersion, missingFeature, StringComparison.Ordinal);
             Assert.Contains("update the server", missingFeature, StringComparison.OrdinalIgnoreCase);
 
             // AC-1572 through AC-1571: Depot's own local view over the server. B2: the browser sign-in runs on the server, this
