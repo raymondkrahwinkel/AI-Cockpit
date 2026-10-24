@@ -5,7 +5,8 @@ using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewTests;
 
-// AC-1658: a save that lands closes the quick-note window; one that fails leaves it open with the note and the reason.
+// AC-1658: a save that lands closes the quick-note window, "save and start" included; one that fails leaves it open
+// with the note and the reason.
 [Collection("avalonia")]
 public sealed class Ac1658QuickNoteClosesTests
 {
@@ -13,13 +14,16 @@ public sealed class Ac1658QuickNoteClosesTests
     public void ASavedNote_ClosesTheWindow_AndAFailedOne_KeepsItOpenWithTheNote() => HeadlessAvalonia.Run(() =>
     {
         var (saved, savedNote) = _Open(ProjectMemoryAppendOutcome.Success);
+        var (started, startedNote) = _Open(ProjectMemoryAppendOutcome.Success);
         var (failed, failedNote) = _Open(ProjectMemoryAppendOutcome.Failed);
         try
         {
             savedNote.SaveCommand.Execute(null);
+            startedNote.SaveAndStartCommand.Execute(null);
             failedNote.SaveCommand.Execute(null);
 
             Assert.False(saved.IsVisible);
+            Assert.False(started.IsVisible);
             Assert.True(failed.IsVisible);
             Assert.Equal("a thought", failedNote.Note);
             Assert.Contains("disk full", failedNote.Message);
@@ -27,6 +31,7 @@ public sealed class Ac1658QuickNoteClosesTests
         finally
         {
             saved.Close();
+            started.Close();
             failed.Close();
         }
     });
@@ -36,7 +41,7 @@ public sealed class Ac1658QuickNoteClosesTests
         var note = new QuickNoteViewModel(
             [new Project("p1", "Cockpit")],
             (_, _, _) => Task.FromResult(new ProjectMemoryAppendResult(outcome, outcome == ProjectMemoryAppendOutcome.Success ? null : "disk full")),
-            start: null)
+            (_, _) => Task.CompletedTask)
         { Note = "a thought" };
         var window = new QuickNoteWindow { DataContext = note };
         window.Show();
