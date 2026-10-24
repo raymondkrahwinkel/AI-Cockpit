@@ -115,7 +115,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
         {
             Enabled = Enabled,
             IntervalHours = Interval == Weekly ? BackupSchedule.WeeklyHours : BackupSchedule.DailyHours,
-            Keep = Math.Max(1, Keep),
+            Keep = 1,
             TargetId = Target?.Id ?? BackupSchedule.LocalFolderTargetId,
         };
 
