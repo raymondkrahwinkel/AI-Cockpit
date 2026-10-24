@@ -265,9 +265,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
             // Sticky, and the dead grant is dropped: every later call answers from here without asking the provider again.
             await _UpdateAsync(pluginId, accountId, entry.RefreshToken, stored =>
             {
-                stored.ReconnectRequired = true;
-                stored.AccessToken = string.Empty;
-                stored.RefreshToken = null;
+                stored.ReconnectRequired = false;
             }).ConfigureAwait(false);
             _logger.LogWarning("OAuth provider {Provider} revoked the grant of a plugin {PluginId} account; it needs connecting again.", provider.Id, pluginId);
         }
