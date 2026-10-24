@@ -74,7 +74,7 @@ internal sealed class McpOAuthCoordinator(
             // is only the first half of a sign-in whose outcome is announced below, once, when it is known.
             await tokenStore.RemoveAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false);
 
-            // replacing: null — SignOutAsync above emptied the store, so anything found afterwards came out of this
+            // replacing: null — the removal above emptied the store, so anything found afterwards came out of this
             // sign-in and nothing has to be compared against a leftover.
             var signedIn = await _ConnectAndReadAsync(server, interactive: true, OneCallWithoutFallingBack, replacing: null, cancellationToken).ConfigureAwait(false);
 

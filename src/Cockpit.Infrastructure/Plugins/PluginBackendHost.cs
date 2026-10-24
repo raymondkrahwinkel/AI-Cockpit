@@ -628,9 +628,9 @@ public class PluginBackendHost(
         }
 
         var outcome = await redeemer.RedeemAsync(server, grantType, parameters, cancellationToken).ConfigureAwait(false);
-        if (outcome == PluginMcpSignInOutcome.Authorized)
+        if (outcome == PluginMcpSignInOutcome.Authorized && _OwnOAuthServer(server.Name) is not null)
         {
-            // The redeemer stores its token itself and never passes the coordinator, so it is said here.
+            // The redeemer stores its token itself and never passes the coordinator, so it is said here, for own servers only.
             _RaiseAccountChanged(server.Name);
         }
 
