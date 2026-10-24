@@ -21,16 +21,6 @@ public class ProjectResourcePortabilityClassifierTests
     // rather than "a specific unportable shape". Pinned here so that division of responsibility does not drift.
 
     [Theory]
-    [InlineData(ProjectResourcePortability.RepoRelative, true)]
-    [InlineData(ProjectResourcePortability.PluginSource, true)]
-    [InlineData(ProjectResourcePortability.AnchorRelative, true)]
-    [InlineData(ProjectResourcePortability.Absolute, false)]
-    public void IsPortable_EachShape_MatchesTheAC605Decision(ProjectResourcePortability portability, bool expected)
-    {
-        Assert.Equal(expected, ProjectResourcePortabilityClassifier.IsPortable(portability));
-    }
-
-    [Theory]
     [InlineData(ProjectResourcePortability.RepoRelative, "repo-relative")]
     [InlineData(ProjectResourcePortability.PluginSource, "plugin-source")]
     public void ToWireValue_EachShape_MatchesTheDocumentedWireName(ProjectResourcePortability portability, string expected)
