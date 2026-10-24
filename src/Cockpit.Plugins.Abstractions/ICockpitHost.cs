@@ -105,12 +105,11 @@ public interface ICockpitHost
 
     /// <summary>
     /// Raised when the account behind one of this plugin's own OAuth servers may have changed (AC-1665): a sign-in
-    /// stored a new token, or the server was signed out. The argument is the server's name as this plugin contributed
-    /// it — never a token or an account id. Not raised for a silent renewal, nor for another plugin's server.
+    /// stored a new token, or the server was signed out. The argument is the server's name as this plugin contributed it.
     /// </summary>
     /// <remarks>
-    /// For dropping what was cached about the previous account. Default no-op so existing implementations keep
-    /// compiling untouched.
+    /// Never a token or an account id, and not raised for a silent renewal or for another plugin's server. For dropping
+    /// what was cached about the previous account. Default no-op so existing implementations keep compiling untouched.
     /// </remarks>
     event EventHandler<string>? McpServerAccountChanged
     {
