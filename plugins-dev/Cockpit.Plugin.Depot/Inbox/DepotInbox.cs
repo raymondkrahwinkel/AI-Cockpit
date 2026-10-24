@@ -1,5 +1,6 @@
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot.Inbox;
 
@@ -79,9 +80,22 @@ internal sealed class DepotInbox(
 
         foreach (var service in stale)
         {
-            _ = service.DisposeAsync().AsTask();
+            // Reconfiguration must not wait for a stale connection to close; the wrapper observes and logs failures.
+            _ = _DisposeStaleAsync(service);
         }
 
         return current;
+    }
+
+    private async Task _DisposeStaleAsync(DepotInboxService service)
+    {
+        try
+        {
+            await service.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "Closing the stale Depot inbox connection {ConnectionId} failed.", service.Connection.Id);
+        }
     }
 }

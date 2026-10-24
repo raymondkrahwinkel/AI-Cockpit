@@ -50,7 +50,8 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         using (response)
         {
             var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(true);
-            if (node.ContentType!.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            var contentType = node.ContentType ?? throw new InvalidOperationException("A preview needs a content type.");
+            if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             {
                 using var stream = new MemoryStream(bytes);
                 return DepotBrowserAnswer<DepotPreview>.Success(new DepotPreview(new Bitmap(stream), null));

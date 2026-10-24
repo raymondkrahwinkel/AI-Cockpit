@@ -213,19 +213,21 @@ internal sealed class DepotBrowserPanel : UserControl
 
     private async Task PublishAsync(DepotPublication link)
     {
-        if (await _model!.PublishAsync(link).ConfigureAwait(true) is not { } answer || !_Accepted(answer))
+        if (_model is not { } model
+            || await model.PublishAsync(link).ConfigureAwait(true) is not { } answer
+            || !_Accepted(answer)
+            || answer.Data is not { } report)
         {
             return;
         }
 
-        var report = answer.Data!;
         _host.ShowToast($"Published {report.Written}, removed {report.Deleted}, {report.Problems.Count} not done.");
         await LoadTreeAsync().ConfigureAwait(true);
     }
 
     private async Task RemovePublicationAsync(DepotPublication link)
     {
-        if (_Accepted(await _model!.RemovePublicationAsync(link).ConfigureAwait(true)))
+        if (_model is { } model && _Accepted(await model.RemovePublicationAsync(link).ConfigureAwait(true)))
         {
             await RefreshPublicationsAsync().ConfigureAwait(true);
         }
@@ -415,9 +417,14 @@ internal sealed class DepotBrowserPanel : UserControl
 
     private async Task DownloadAsync(DepotBrowserNode node)
     {
-        var answer = await _model!.DownloadAsync(_project!, node, async name =>
+        if (_model is not { } model || _project is not { } project || TopLevel.GetTopLevel(this) is not { } top)
         {
-            var file = await TopLevel.GetTopLevel(this)!.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { SuggestedFileName = name }).ConfigureAwait(true);
+            return;
+        }
+
+        var answer = await model.DownloadAsync(project, node, async name =>
+        {
+            var file = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { SuggestedFileName = name }).ConfigureAwait(true);
             return file is null ? null : await file.OpenWriteAsync().ConfigureAwait(true);
         }).ConfigureAwait(true);
         if (_Accepted(answer) && answer.Data)
@@ -474,8 +481,13 @@ internal sealed class DepotBrowserPanel : UserControl
         }
     }
 
-    private async Task OpenAsync(DepotBrowserNode node) =>
-        _Accepted(await _model!.OpenAsync(_project!, node, _Launch).ConfigureAwait(true));
+    private async Task OpenAsync(DepotBrowserNode node)
+    {
+        if (_model is { } model && _project is { } project)
+        {
+            _Accepted(await model.OpenAsync(project, node, _Launch).ConfigureAwait(true));
+        }
+    }
 
     private async Task SignInAsync()
     {

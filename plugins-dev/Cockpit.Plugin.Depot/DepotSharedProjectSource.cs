@@ -29,6 +29,7 @@ internal sealed class DepotSharedProjectSource(
         HttpClient? httpClient = null)
         : this(connection, scheme, host, httpClient)
     {
+        // Construction cannot await the subscription; the task logs startup failures itself.
         _ = _SubscribeAsync(events);
     }
 

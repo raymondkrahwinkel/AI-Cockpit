@@ -76,7 +76,8 @@ public static partial class ProvisionManifestReader
         ProvisionManifest manifest;
         try
         {
-            manifest = document.Deserialize<ProvisionManifest>(Options)!;
+            manifest = document.Deserialize<ProvisionManifest>(Options)
+                ?? throw new JsonException("the document did not contain a provisioning manifest");
         }
         catch (JsonException exception)
         {
@@ -266,16 +267,19 @@ public static partial class ProvisionManifestReader
         }
 
         // §7.4: an unknown mode on a preference skips that key alone; a lock from a profile is only a default (§3.3).
-        foreach (var (key, setting) in manifest.Settings?.ToList() ?? [])
+        if (manifest.Settings is { } settings)
         {
-            if (!Modes.Contains(setting.Mode) || !Origins.Contains(setting.By))
+            foreach (var (key, setting) in settings.ToList())
             {
-                manifest.Settings!.Remove(key);
-                skipped.Add(new($"settings.{key}", SkippedUnknown, setting.By, $"unknown mode \"{setting.Mode}\" or origin \"{setting.By}\""));
-            }
-            else if (setting is { Mode: LockedMode, By: "profile" })
-            {
-                manifest.Settings![key] = setting with { Mode = DefaultMode };
+                if (!Modes.Contains(setting.Mode) || !Origins.Contains(setting.By))
+                {
+                    settings.Remove(key);
+                    skipped.Add(new($"settings.{key}", SkippedUnknown, setting.By, $"unknown mode \"{setting.Mode}\" or origin \"{setting.By}\""));
+                }
+                else if (setting is { Mode: LockedMode, By: "profile" })
+                {
+                    settings[key] = setting with { Mode = DefaultMode };
+                }
             }
         }
 

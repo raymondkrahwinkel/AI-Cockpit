@@ -109,6 +109,7 @@ sealed class Program
         // AC-1505: route D, before any plugin loads. A restart is the same run going on, so it does not fetch again.
         if (!restartHandoff && ProvisioningEntry.UrlFromArguments(args) is { } provisionUrl)
         {
+            // The synchronous wait preserves both the pre-plugin ordering and this entry thread's STA apartment.
             Provisioning = ProvisioningEntry.ProvisionAsync(
                 provisionUrl,
                 args.Contains(ProvisioningEntry.ReapplyArgument),

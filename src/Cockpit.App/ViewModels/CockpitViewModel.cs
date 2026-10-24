@@ -3339,8 +3339,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         CanUpdateItself = (updateSupportProbe?.Detect() ?? UpdateSupport.NotPackaged) == UpdateSupport.Supported;
         _backupService = backupService;
         _backupTargets = backupTargets;
-        ScheduledBackupSettings = backupScheduleStore is null ? null : new BackupScheduleViewModel(backupScheduleStore);
-        _ = ScheduledBackupSettings?.LoadAsync();
+        ScheduledBackupSettings = backupScheduleStore is null ? null : new BackupScheduleViewModel(backupScheduleStore, logger);
+        if (ScheduledBackupSettings is { } scheduledBackupSettings)
+        {
+            // Construction cannot await; the wrapper observes and logs the detached initial schedule load.
+            _ = LoadScheduledBackupSettingsAsync(scheduledBackupSettings, logger);
+        }
         _assistantMemory = assistantMemory;
         _appRestart = appRestartService;
         // AC-478: whether this process was launched in safe mode, read off the diagnostics plugin loading was given the
@@ -3519,6 +3523,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
+        // Construction cannot await policy metadata; the task logs failures and updates the bindings when ready.
         _ = LoadManagedSettingsAsync();
         _ = LoadShortcutSettingsAsync();
         _ = LoadDebugSettingsAsync();
@@ -5156,7 +5161,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _targetBackupsStatus = string.Empty;
 
-    partial void OnBackupDestinationChanged(BackupDestination? value) => _ = LoadTargetBackupsAsync();
+    partial void OnBackupDestinationChanged(BackupDestination? value)
+    {
+        // Generated property hooks cannot await; the loader logs failures and surfaces them in the status text.
+        _ = LoadTargetBackupsAsync();
+    }
 
     public async Task LoadTargetBackupsAsync()
     {
@@ -5180,6 +5189,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
         catch (Exception exception)
         {
+            _logger?.LogWarning(exception, "Loading backups from {Target} failed.", target.DisplayName);
             TargetBackupsStatus = $"{target.DisplayName}: {exception.Message}";
         }
     }
@@ -5530,9 +5540,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task LoadManagedSettingsAsync()
     {
-        if (_managedSettingsReader is not null)
+        try
         {
-            ManagedSettings = await _managedSettingsReader.ReadAsync();
+            if (_managedSettingsReader is not null)
+            {
+                ManagedSettings = await _managedSettingsReader.ReadAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Loading managed settings failed.");
+        }
+    }
+
+    private static async Task LoadScheduledBackupSettingsAsync(
+        BackupScheduleViewModel scheduledBackupSettings,
+        ILogger<CockpitViewModel>? logger)
+    {
+        try
+        {
+            await scheduledBackupSettings.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "Loading the backup schedule failed.");
         }
     }
 
@@ -7023,6 +7054,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _optionsStaged = true;
+        // Opening stays synchronous for callers; the policy-only refresh logs failures and updates bindings when ready.
         _ = LoadManagedSettingsAsync();
         Security.SuspendPersistence = true;
         AssistantOptions.SuspendPersistence = true;

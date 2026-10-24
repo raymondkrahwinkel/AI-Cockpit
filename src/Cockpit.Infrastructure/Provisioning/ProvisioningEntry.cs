@@ -142,9 +142,9 @@ public static class ProvisioningEntry
         }
 
         var read = ProvisionManifestReader.Read(json);
-        if (read.Error is not null)
+        if (read.Error is not null || read.Manifest is not { } manifest)
         {
-            return _Failed(logger, $"{read.Error} Source: {source}.");
+            return _Failed(logger, $"{read.Error ?? "The provisioning manifest was empty."} Source: {source}.");
         }
 
         foreach (var note in read.Skipped)
@@ -153,8 +153,9 @@ public static class ProvisioningEntry
         }
 
         // AC-1506: not used up here. The applier does that once everything was applied, so a failed apply leaves the link usable.
-        logger.LogInformation("Provisioning manifest {ManifestId} revision {Revision} from {Source} is valid.", read.Manifest!.ManifestId, read.Manifest.Revision, source);
-        return new(read.Manifest, read.Skipped, null, tokenHash is null ? null : new ProvisionToken(token!, tokenHash)) { Source = source };
+        logger.LogInformation("Provisioning manifest {ManifestId} revision {Revision} from {Source} is valid.", manifest.ManifestId, manifest.Revision, source);
+        var provisionToken = tokenHash is not null && token is not null ? new ProvisionToken(token, tokenHash) : null;
+        return new(manifest, read.Skipped, null, provisionToken) { Source = source };
     }
 
     // Records the token's hash, so the same link is refused from now on. Server-side it is one-time anyway (DEP-264).

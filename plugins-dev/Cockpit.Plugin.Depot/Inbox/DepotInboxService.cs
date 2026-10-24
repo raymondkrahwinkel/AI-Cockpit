@@ -163,6 +163,7 @@ internal sealed class DepotInboxService : IAsyncDisposable
     {
         Page = Page with { Count = Page.Count with { Unread = push.Unread, PerOrganization = push.PerOrganization } };
         _publish(Page);
+        // Push callbacks cannot await the REST refresh; the task logs failures and a later push retries.
         _ = _RefreshQuietlyAsync();
     }
 
