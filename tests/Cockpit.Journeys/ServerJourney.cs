@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
@@ -105,6 +106,14 @@ public sealed class ServerJourney
 
             using var admin = new BackendApiClient(new Uri($"https://127.0.0.1:{_McpPort(run.Output)}/"), key, fingerprint, TimeProvider.System);
             using var timeout = new CancellationTokenSource(Until.Ceiling);
+            var remoteProfiles = new RemoteServerProfiles(admin);
+            var profileServices = new ServerProfileServices("server", remoteProfiles);
+            await profileServices.PrepareAsync(timeout.Token);
+            var editor = profileServices.CreateEditor();
+            await editor.LoadAsync();
+            var ttyProfile = Assert.Single(editor.Profiles, profile => profile.Label == "EchoTty");
+            Assert.False(ttyProfile.HasTtyProvider);
+            Assert.True(ttyProfile.ShowsTtyFallbackMessage);
             await _WaitForProfileSignInAsync(admin, NeverSignedIn, "notSignedIn", timeout.Token);
             Assert.Equal(0, discord.Count($"profile '{NeverSignedIn}'"));
             // AC-1524: the profile that defaults to TTY runs as the SDK session a host without a terminal can make.
@@ -113,6 +122,10 @@ public sealed class ServerJourney
             var answer = await admin.StreamEventsAsync(0, timeout.Token)
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(paneId, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var cli = int.Parse(Regex.Match(answer.Data.GetRawText(), @"\(cli (\d+)\)").Groups[1].Value);
+
+            Assert.True(await editor.PersistAsync());
+            var savedTtyProfile = Assert.Single(await remoteProfiles.ListAsync(timeout.Token), profile => profile.Label == "EchoTty");
+            Assert.Equal(ProfileSessionKind.Sdk, savedTtyProfile.Full?.DefaultKind);
 
             // AC-1467: the finished hello session is said once, and a session stopped on a permission once too.
             await admin.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "ask" });

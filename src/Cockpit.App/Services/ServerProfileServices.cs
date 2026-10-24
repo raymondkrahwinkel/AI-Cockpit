@@ -25,7 +25,7 @@ public sealed class ServerProfileServices(
     IPluginAdministration? plugins = null,
     Func<string, (Type UiType, ICockpitUiHost Host)?>? localUiPart = null)
     : ISessionProfileStore, IProfileEditStore, IProfileLoginChecker, ISessionLoginFlows, IMcpServerCatalog, IMcpToolTokenEstimator,
-        IModelCatalog, ITtySessionProviderResolver, IPluginProviderConfigViews, IPluginRegistrations
+        IModelCatalog, IPluginProviderConfigViews, IPluginRegistrations
 {
     private IReadOnlyList<RemoteProfile> _rows = [];
     private IReadOnlyList<RemoteProviderInfo> _providers = [];
@@ -42,7 +42,7 @@ public sealed class ServerProfileServices(
 
     // The editor, with this server behind every service it asks.
     public ManageProfilesDialogViewModel CreateEditor() =>
-        new(this, this, this, this, this, this, this, this, this) { BrowsesThisMachine = false };
+        new(this, this, this, this, this, this, null, this, this, hostRunsTty: false) { BrowsesThisMachine = false };
 
     public async Task<IReadOnlyList<SessionProfile>> LoadAsync(CancellationToken cancellationToken = default)
     {
@@ -90,11 +90,6 @@ public sealed class ServerProfileServices(
         profiles.ListModelsAsync(baseUrl, apiKey, _rows.FirstOrDefault(row => row.Full?.ProviderConfig is LmStudioConfig held && held.BaseUrl == baseUrl)?.Label, cancellationToken);
 
     public Task<bool> ProbeAsync(string baseUrl, string? apiKey, TimeSpan timeout) => Task.FromResult(false);
-
-    public ITtySessionProvider? Resolve(SessionProfile? profile) =>
-        profile?.ProviderConfig is PluginProviderConfig plugin && _providers.Any(provider => provider.Id == plugin.ProviderId && provider.HasTty)
-            ? new ServerTtyRoute(plugin.ProviderId)
-            : null;
 
     public void Register(string providerId, Func<string?, IPluginProviderConfigView> createView)
     {
@@ -160,12 +155,4 @@ public sealed class ServerProfileServices(
         return views;
     }
 
-    // Says only that the provider has a TTY route on the server; the session itself starts there.
-    private sealed class ServerTtyRoute(string providerId) : ITtySessionProvider
-    {
-        public string ProviderId => providerId;
-
-        public TtyLaunchSpec BuildLaunch(TtyLaunchContext context) =>
-            throw new InvalidOperationException("A server's provider starts its sessions on the server.");
-    }
 }

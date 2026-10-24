@@ -306,6 +306,9 @@
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
                         <TextBlock Text="SDK-only" FontSize="12.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBlock Text="This server only runs SDK; this profile starts as SDK."
+                                   IsVisible="{Binding ShowsTtyFallbackMessage}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <StackPanel Spacing="6" IsVisible="{Binding IsDefaultKindEffectivelySdk}">
                             <TextBlock Text="Default view" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
