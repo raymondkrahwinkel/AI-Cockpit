@@ -66,8 +66,7 @@ public sealed class BundledPluginInstaller : ISingletonService
             }
 
             var id = manifest.Id;
-            if (saved.TryGetValue(id, out var registration)
-                && registration.ExpectedMinVersion != manifest.ExpectedMinVersion)
+            if (saved.ContainsKey(id))
             {
                 // Seeded or not: the bundle's expectation moves with the build, not with the seed.
                 await _registrations.SetExpectedMinVersionAsync(id, manifest.ExpectedMinVersion, cancellationToken).ConfigureAwait(false);
