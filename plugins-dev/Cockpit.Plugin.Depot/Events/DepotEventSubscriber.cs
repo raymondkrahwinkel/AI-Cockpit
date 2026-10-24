@@ -74,7 +74,6 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
         catch
         {
             // A subscribe that failed or was cancelled hands back no registration to dispose, so its consumer goes now.
-            _Remove(topic, consumer);
             throw;
         }
 
