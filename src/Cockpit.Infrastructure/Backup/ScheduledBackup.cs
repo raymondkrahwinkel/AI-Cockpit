@@ -183,7 +183,7 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
             await _store.SaveStateAsync(state with { LastFailure = message }, CancellationToken.None).ConfigureAwait(false);
 
             // AC-1663: a plugin that waits for a sign-in is named by the host once, with a Sign in button; this stays on the Backup page.
-            if (!await WaitsForSignIn(schedule.TargetId, CancellationToken.None).ConfigureAwait(false))
+            if (true)
             {
                 _Report(message);
             }
