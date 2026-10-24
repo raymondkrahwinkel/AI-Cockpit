@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
@@ -26,10 +27,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
     private readonly IServerProjects? _serverProjects;
     private readonly Func<int>? _runningSessions;
+    private readonly ILogger? _logger;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null, ILogger? logger = null)
     {
+        _logger = logger;
         _runningSessions = runningSessions;
         _serverProjects = serverProjects;
         Server = server;
@@ -96,6 +99,15 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     // AC-1525: a plugin change on the server waits for its restart, which this dialog offers once there is one.
     [ObservableProperty]
     private bool _needsRestart;
+
+    // AC-1650: installed plugins the server's stores have a newer, runnable version of.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAvailableUpdates), nameof(UpdateLabel))]
+    private int _availableUpdateCount;
+
+    public bool HasAvailableUpdates => AvailableUpdateCount > 0;
+
+    public string UpdateLabel => $"Update {AvailableUpdateCount}";
 
     // AC-1590: a plugin installed on this desktop loads its UI part at the next start of the desktop.
     [ObservableProperty]
@@ -301,19 +313,42 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private Task RestartServerAsync() => _RunAsync(async () => await _RestartServerAsync());
 
     [RelayCommand]
-    private Task InstallPluginAsync() => _RunAsync(async () =>
+    private Task InstallPluginAsync() => _RunAsync(() => _OpenStoreAsync(null));
+
+    // AC-1650: the same store dialog as "Install from store", opened on the updates the store index has for the installed plugins.
+    [RelayCommand]
+    private Task UpdatePluginsAsync() => _RunAsync(() => _OpenStoreAsync(PluginStoreFilter.UpdatesAvailable));
+
+    private async Task _OpenStoreAsync(PluginStoreFilter? filter)
+    {
+        var manager = await _CreateStoreManagerAsync();
+        if (manager is null || _dialogService is null)
+        {
+            return;
+        }
+
+        await manager.LoadAsync();
+        await _dialogService.ShowPluginStoreDialogAsync(manager, filter);
+        await _LoadPluginsAsync();
+        if (manager.NeedsRestart)
+        {
+            _ChangedPlugins();
+        }
+    }
+
+    private async Task<PluginManagerViewModel?> _CreateStoreManagerAsync(bool quiet = false)
     {
         if (_plugins is not IPluginStoreCatalog catalog || _dialogService is null)
         {
-            Status = "The server's plugin store is not available.";
-            return;
+            Status = quiet ? Status : "The server's plugin store is not available.";
+            return null;
         }
 
         var stores = await catalog.GetStoresAsync();
         if (stores.Count == 0)
         {
-            Status = "No plugin store is configured on the server.";
-            return;
+            Status = quiet ? Status : "No plugin store is configured on the server.";
+            return null;
         }
 
         PluginManagerViewModel? manager = null;
@@ -336,14 +371,39 @@ public sealed partial class ServerAdminViewModel : ObservableObject
                 manager.StatusMessage = exception.Message;
             }
         }) : null);
-        await manager.LoadAsync();
-        await _dialogService.ShowPluginStoreDialogAsync(manager);
-        await _LoadPluginsAsync();
-        if (manager.NeedsRestart)
+        return manager;
+    }
+
+    // AC-1650: counts with the store dialog's own rules (newer, compatible, not staged), so the button and its "Update all" agree.
+    private async Task _ShowAvailableUpdatesAsync()
+    {
+        var available = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
         {
-            _ChangedPlugins();
+            var manager = await _CreateStoreManagerAsync(quiet: true);
+            if (manager is not null)
+            {
+                await manager.LoadAsync();
+                await manager.BrowseStoresAsync();
+                foreach (var row in manager.AvailablePlugins.Where(row => row.CanUpdate))
+                {
+                    available.TryAdd(PluginFolderName.Normalize(row.Id), row.Entry.LatestVersion);
+                }
+            }
         }
-    });
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The plugin list must keep working when the check fails; the failure is logged, not shown.
+            _logger?.LogWarning(exception, "Checking the server's plugin stores for updates failed.");
+        }
+
+        foreach (var row in Plugins)
+        {
+            row.AvailableVersion = available.GetValueOrDefault(row.FolderId);
+        }
+
+        AvailableUpdateCount = Plugins.Count(row => row.AvailableVersion is not null);
+    }
 
     [RelayCommand]
     private Task InstallPluginOnDesktopAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
@@ -465,6 +525,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(PluginsCount));
+        await _ShowAvailableUpdatesAsync();
     }
 
     private async Task _RunAsync(Func<Task> action)
@@ -590,6 +651,15 @@ public sealed partial class ServerPluginRowViewModel(InstalledPlugin plugin) : O
     private bool _onDesktop = true;
 
     public bool MissingOnDesktop => !OnDesktop;
+
+    // AC-1650: the newer version the server's stores offer, or null.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpdate), nameof(UpdateText))]
+    private string? _availableVersion;
+
+    public bool HasUpdate => AvailableVersion is not null;
+
+    public string UpdateText => $"{AvailableVersion} available";
 
     [ObservableProperty]
     private bool _enabled = plugin.Registration?.Enabled ?? false;
