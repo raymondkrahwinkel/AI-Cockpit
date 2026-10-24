@@ -119,11 +119,6 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         }
 
         var stored = await AddNewProjectAsync(project).ConfigureAwait(false);
-        if (_depotSync is not null && sharedId is { Length: > 0 } && baselineChecksum is { Length: > 0 } checksum)
-        {
-            _depotSync.SeedBaseline(stored.Id, sharedId, checksum);
-        }
-
         await RefreshSharedProjectsAsync().ConfigureAwait(false);
         return stored;
     }
