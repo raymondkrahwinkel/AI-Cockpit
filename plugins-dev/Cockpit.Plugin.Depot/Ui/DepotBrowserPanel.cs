@@ -155,8 +155,8 @@ internal sealed class DepotBrowserPanel : UserControl
         _upload.IsVisible = _loaded.CanShare;
         _publishFolder.IsVisible = _loaded.CanShare;
         _message.Text = _loaded.Nodes.Count == 0 ? "This project has no documents or artifacts yet." : string.Empty;
-        _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
         _detail.Children.Clear();
+        _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
         await RefreshPublicationsAsync().ConfigureAwait(true);
     }
 
