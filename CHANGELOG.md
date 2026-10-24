@@ -247,6 +247,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: the **Quick note** window closes again once the note is saved, as it did before; it stayed open after every
+  successful save, which looked like the save had failed and invited a second, duplicate note.
 - fixed: Options no longer gets stuck when a profile uses a provider plugin that is not installed or switched off: the
   profile editor kept losing that profile's provider, after which Options could neither keep track of changes nor close.
 - fixed: the assistant docked beside the sessions or in the Simple view's own column no longer draws the rounded frame

@@ -11,8 +11,8 @@
             <TextBlock Text="Projects" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
             <TextBlock Text="clone onto the server" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
         </StackPanel>
-        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
-                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+        <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
+                   IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
 
         <Border Padding="4" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1" IsEnabled="{Binding !IsBusy}"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">

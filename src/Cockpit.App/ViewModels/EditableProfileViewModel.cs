@@ -203,6 +203,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     // `Cockpit.App.ViewModels.SessionKindDefaults` answers for the New-session dialog — reused here rather than a
     // second guess at the same fact.
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
+    private readonly bool _hostRunsTty;
 
     // AC-713: dispatches `Login` to whichever provider plugin this row's profile names.
     private readonly ISessionLoginFlows? _loginStarter;
@@ -335,9 +336,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     // `PluginConfigView`'s content.
     public bool IsPluginProvider => SelectedProvider.Value == SessionProvider.Plugin;
 
-    // Whether the selected provider has a TTY route at all (AC-139) — Claude always does, a plugin provider only when
-    // it registered one, a local HTTP provider (Ollama/LM Studio) never does.
-    public bool HasTtyProvider => SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);
+    // Whether this host runs terminals and the selected provider has a TTY route (AC-139).
+    public bool HasTtyProvider => _hostRunsTty && SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);
+
+    public bool ShowsTtyFallbackMessage { get; }
 
     // A placeholder profile carrying only the selected provider's identity, for `HasTtyProvider` to ask
     // `SessionKindDefaults.HasTtyRoute` without needing the rest of the row to be valid yet.
@@ -565,13 +567,15 @@ public partial class EditableProfileViewModel : ViewModelBase
         ITtySessionProviderResolver? ttyProviderResolver = null,
         ISessionLoginFlows? loginStarter = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
-        ProvisionPolicy? orgPolicy = null)
+        ProvisionPolicy? orgPolicy = null,
+        bool hostRunsTty = true)
     {
         _orgPolicy = orgPolicy;
         _storedProfile = profile;
         _pluginConfigViews = pluginConfigViews;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;
+        _hostRunsTty = hostRunsTty;
         _loginStarter = loginStarter;
         _label = profile.Label;
         _configDir = profile.Claude?.ConfigDir ?? string.Empty;
@@ -584,6 +588,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
         _selectedDefaultKind = profile.DefaultKind == ProfileSessionKind.Sdk ? SessionKind.Sdk : SessionKind.Tty;
+        ShowsTtyFallbackMessage = !hostRunsTty && profile.DefaultKind == ProfileSessionKind.Tty;
 
         // MCP pre-selection (AC-130): a non-null saved set restricts; null means "all servers" (the gate stays off).
         // Each available server is ticked when the profile has no restriction or when its selection names the server.
@@ -700,11 +705,12 @@ public partial class EditableProfileViewModel : ViewModelBase
             SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
             Assistant = string.IsNullOrWhiteSpace(Assistant) ? null : Assistant.Trim(),
             MemoryCapMegabytes = MemoryCapMegabytes is > 0 ? MemoryCapMegabytes : null,
-            // Meaningless (and hidden in the editor) for a provider with no TTY route — persist null rather than a
-            // choice that could never take effect, so ResolveDefaultKind's own SDK fallback is the only word on it.
-            DefaultKind = HasTtyProvider
-                ? (SelectedDefaultKind == SessionKind.Sdk ? ProfileSessionKind.Sdk : ProfileSessionKind.Tty)
-                : null,
+            // A host without terminals persists SDK. Locally, a provider without a TTY route keeps the existing null.
+            DefaultKind = !_hostRunsTty
+                ? ProfileSessionKind.Sdk
+                : HasTtyProvider
+                    ? (SelectedDefaultKind == SessionKind.Sdk ? ProfileSessionKind.Sdk : ProfileSessionKind.Tty)
+                    : null,
         };
     }
 

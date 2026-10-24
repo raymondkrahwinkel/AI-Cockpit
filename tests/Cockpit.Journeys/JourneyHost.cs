@@ -103,7 +103,7 @@ public sealed class JourneyHost : IAsyncDisposable
     });
 
     // `Program.Main`'s Start, then App's steps in App's order: the main window over the cockpit, the assistant's host
-    // and chip, the plugins' phase 2 with their UI parts, the planners, the restore of the saved desks and panes.
+    // and chip, the palette's quick note, the plugins' phase 2 with their UI parts, the planners, the restore.
     public async Task StartDesktopAsync()
     {
         Backend.Start();
@@ -120,6 +120,7 @@ public sealed class JourneyHost : IAsyncDisposable
 
             _window.Show();
             app.StartAssistant(Cockpit);
+            Cockpit.QuickNotes = Services.GetRequiredService<QuickNoteCoordinator>();
             app.InitializePlugins();
             Backend.StartPlanners();
             await CockpitApp.RestoreCockpitAsync(Cockpit, Task.CompletedTask);

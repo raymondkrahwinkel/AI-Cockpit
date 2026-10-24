@@ -48,7 +48,7 @@ public class SessionTranscriptLogTests : IDisposable
 
         Assert.Equal(rows, (await store.TryLoadAsync(Pane))!);
         Assert.Equal(
-            ["Id", "Kind", "Text", "ToolName", "InputJson", "ToolUseId", "ResultText", "IsResultError", "Timestamp", "IsFailedTurnRow"],
+            ["Id", "Kind", "Text", "ToolName", "InputJson", "ToolUseId", "ResultText", "IsResultError", "Timestamp", "IsFailedTurnRow", "IsPendingBrokerAnswer"],
             JsonDocument.Parse(File.ReadLines(store.LogPath(Pane)).Last()).RootElement.EnumerateObject().Select(member => member.Name));
     }
 

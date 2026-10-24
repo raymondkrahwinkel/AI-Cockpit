@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Controls;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.App.ViewTests;
@@ -14,6 +15,7 @@ using Cockpit.Core.HeavyRuns;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Worktrees;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.TestSupport;
 using ModelContextProtocol.Client;
@@ -33,7 +35,12 @@ public sealed class SessionJourney
     public async Task ASessionStartedFromAProjectAndAProfile_AnswersInItsPane()
     {
         var load = new FakeMachineLoad();
-        await using var cockpit = JourneyHost.Desktop(configure: services => services.AddSingleton<IMachineResources>(load));
+        var memory = new MemoryNotes();
+        await using var cockpit = JourneyHost.Desktop(configure: services =>
+        {
+            services.AddSingleton<IMachineResources>(load);
+            services.AddSingleton<IProjectMemoryNotes>(memory);
+        });
         var folder = Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName;
         var project = await cockpit.SaveProfileAndProjectAsync(folder);
         await cockpit.StartDesktopAsync();
@@ -124,6 +131,20 @@ public sealed class SessionJourney
             () => queued.All(runId => verdicts.Any(verdict => verdict.RunId == runId)));
         Assert.Equal(queued[2], verdicts[0].RunId);
         Assert.All(verdicts, verdict => Assert.Equal("Passed", verdict.Verdict));
+
+        // AC-1658: a quick note from the palette lands in the project's memory, and its window closes on the save.
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            cockpit.Cockpit.BuildPaletteCommands().Single(command => command.Title == "Quick note").Invoke();
+            var window = cockpit.Cockpit.QuickNotes?.Window ?? throw new InvalidOperationException("The quick note did not open.");
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            window.Closed += (_, _) => closed.TrySetResult();
+            window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "NoteBox").Text = "remember the queue";
+            var save = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Save"));
+            save.Command?.Execute(save.CommandParameter);
+            await closed.Task.WaitAsync(Until.Ceiling);
+        });
+        Assert.Equal([(project.Id, "remember the queue")], memory.Notes);
     }
 
     // J4: a closed conversation is still in the index after a restart, and reopens as one pane resuming it with its rows;
@@ -531,6 +552,20 @@ public sealed class SessionJourney
         var words = panel.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.FindAncestorOfType<Button>() is null).Select(t => t.Text).ToList();
         button.Flyout.Hide();
         return words;
+    }
+
+    // The project's memory as the quick note writes to it: every note lands, and is kept for the journey to read.
+    private sealed class MemoryNotes : IProjectMemoryNotes
+    {
+        public List<(string ProjectId, string Note)> Notes { get; } = [];
+
+        public bool CanAppend(Project project) => true;
+
+        public Task<ProjectMemoryAppendResult> AppendAsync(Project project, string note, CancellationToken cancellationToken)
+        {
+            Notes.Add((project.Id, note));
+            return Task.FromResult(new ProjectMemoryAppendResult(ProjectMemoryAppendOutcome.Success, null));
+        }
     }
 
     // The machine's load as the heavy-run queue reads it, held where the journey puts it.

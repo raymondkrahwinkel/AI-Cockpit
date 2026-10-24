@@ -11,8 +11,8 @@
             <Button DockPanel.Dock="Right" Classes="Accent" Content="Issue a key" Command="{Binding StartIssueCommand}"/>
             <TextBlock Text="Connect keys" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
         </DockPanel>
-        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
-                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+        <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
+                   IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
 
         <Border Padding="4" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">

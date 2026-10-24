@@ -83,6 +83,7 @@ public sealed partial class QuickNoteViewModel : ObservableObject
         // Read once: the write and the start get the same text.
         var text = Note;
         IsSaving = true;
+        var saved = false;
         try
         {
             var result = await _append(project, text, CancellationToken.None);
@@ -115,11 +116,17 @@ public sealed partial class QuickNoteViewModel : ObservableObject
                 }
             }
 
-            Saved?.Invoke(this, EventArgs.Empty);
+            saved = true;
         }
         finally
         {
             IsSaving = false;
+        }
+
+        // After the finally (AC-1658): the window refuses to close while IsSaving is still true.
+        if (saved)
+        {
+            Saved?.Invoke(this, EventArgs.Empty);
         }
     }
 }

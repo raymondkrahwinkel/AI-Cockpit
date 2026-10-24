@@ -51,6 +51,7 @@ internal static class TranscriptSnapshot
         EndsInsideTable = entry.EndsInsideTable,
         TableSpanRevision = entry.TableSpanRevision,
         IsPendingPermission = entry.IsPendingPermission,
+        IsPendingBrokerAnswer = entry.IsPendingBrokerAnswer,
         TruncatedFromChars = entry.TruncatedFromChars,
     };
 
@@ -101,6 +102,7 @@ internal static class TranscriptSnapshot
             ToolUseId = record.ToolUseId,
             ReplyTo = replyTo,
             IsFailedTurnRow = record.IsFailedTurnRow,
+            IsPendingBrokerAnswer = record.IsPendingBrokerAnswer,
             PermissionDecision = record.PermissionDecision,
             ErrorKind = record.ErrorKind ?? SessionErrorKind.Unknown,
             RetryAfter = record.RetryAfter,

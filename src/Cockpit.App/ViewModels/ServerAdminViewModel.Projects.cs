@@ -77,6 +77,7 @@ public sealed partial class ServerAdminViewModel
         if (string.IsNullOrWhiteSpace(SharedProfile))
         {
             Status = "Choose the profile its sessions run under first.";
+            StatusIsError = true;
             return;
         }
 
@@ -90,6 +91,7 @@ public sealed partial class ServerAdminViewModel
         if (clone.Error is { } error)
         {
             Status = $"{clone.Name} was not cloned: {error}";
+            StatusIsError = true;
             return;
         }
 
