@@ -40,7 +40,7 @@ public sealed record PlainToolRequest(string Sentence, IReadOnlyList<string> Pat
                 "Edit" or "MultiEdit" => _AboutFile(document.RootElement, "file_path", "Change the file"),
                 "NotebookEdit" => _AboutFile(document.RootElement, "notebook_path", "Change the notebook"),
                 "Bash" => _AboutCommand(document.RootElement),
-                _ => null,
+                _ => new PlainToolRequest($"Use {toolName}", []),
             };
         }
         catch (JsonException)
