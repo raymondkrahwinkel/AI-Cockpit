@@ -151,7 +151,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // The operator's own shell terminal runs no provider, so providers.allowed has nothing to say about it.
         if (provider is not ShellTtySessionProvider)
         {
-            // mutation: no provider policy
+            options = LaunchPermissionClamp.PinModel(read, profile, options, model: null).Options ?? options;
             options = LaunchPermissionClamp.WithNeverSend(read, options) ?? options;
         }
 
