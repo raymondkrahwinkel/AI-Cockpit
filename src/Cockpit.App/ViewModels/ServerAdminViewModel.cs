@@ -333,18 +333,18 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
     }
 
-    private async Task<PluginManagerViewModel?> _CreateStoreManagerAsync()
+    private async Task<PluginManagerViewModel?> _CreateStoreManagerAsync(bool quiet = false)
     {
         if (_plugins is not IPluginStoreCatalog catalog || _dialogService is null)
         {
-            Status = "The server's plugin store is not available.";
+            Status = quiet ? Status : "The server's plugin store is not available.";
             return null;
         }
 
         var stores = await catalog.GetStoresAsync();
         if (stores.Count == 0)
         {
-            Status = "No plugin store is configured on the server.";
+            Status = quiet ? Status : "No plugin store is configured on the server.";
             return null;
         }
 
@@ -377,7 +377,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         var available = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            var manager = _plugins is IPluginStoreCatalog ? await _CreateStoreManagerAsync() : null;
+            var manager = await _CreateStoreManagerAsync(quiet: true);
             if (manager is not null)
             {
                 await manager.LoadAsync();
