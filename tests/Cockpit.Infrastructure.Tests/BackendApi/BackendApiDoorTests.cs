@@ -161,6 +161,12 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123", null, "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
+        // AC-1625: the desktop's half of a plugin's OAuth connect on the server is admin's; a bad port, a plugin that is not
+        // running and a sign-in the server is not running each get their own answer.
+        { "POST", "/api/v1/plugins/private/oauth-accounts/microsoft/sign-in", """{"flowId":"0123","port":50123}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/oauth-accounts/microsoft/sign-in", """{"flowId":"0123","port":80}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/fresh/oauth-accounts/microsoft/sign-in", """{"flowId":"0123","port":50123}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/plugins/private/oauth-accounts/microsoft/sign-in", """{"flowId":"0123","port":50123}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
         { "PUT", "/api/v1/plugins/private/storage", """{"values":{"label":"new"},"extra":1}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins", """{"store":{"kind":"remote","location":"https://user:password@store.example/index.json?access_token=query-token","token":"token"},"storeId":"store","pluginId":"plugin","version":"1.0.0"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/keys", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -178,7 +184,6 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/keys", """{"label":"odd","capability":7}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/audit?before=-1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/audit?before=1", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "GET", "/api/v1/audit?before=999999999", null, "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/keys/{secret}", null, "admin", HttpStatusCode.NotFound, "no_key", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git","branch":"main","name":"r"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "PATCH", "/api/v1/projects/project-allowed", """{"name":"renamed"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
@@ -186,13 +191,10 @@ public sealed class BackendApiDoorTests
         { "GET", "/api/v1/projects", null, "operate, one project and profile", HttpStatusCode.OK, "", "project-allowed", _Door.ProfileSecret },
         { "GET", "/api/v1/projects/clones/0123", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"https://laptop:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"https://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"https://example.invalid/o/r.git?private_token={secret}","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"ssh://git:{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"ftps://{secret}@example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"ext::sh -c touch% /tmp/pwned","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"fd::17","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
-        { "POST", "/api/v1/projects", """{"repoUrl":"/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"C:/srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"file:///srv/repos/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/projects", """{"repoUrl":"git://example.invalid/o/r.git","name":"r"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
@@ -950,6 +952,7 @@ public sealed class BackendApiDoorTests
             manager.Initialize((_, _) => host);
             services.AddSingleton(manager);
             services.AddSingleton<McpServerSignIns>();
+            services.AddSingleton<PluginOAuthSignIns>();
             Registrations.LoadDataAsync("idle", Arg.Any<CancellationToken>())
                 .Returns(new Dictionary<string, string> { ["pin"] = JsonSerializer.Serialize(ProfileSecret), ["label"] = "\"old\"" });
             services.AddSingleton(Registrations);

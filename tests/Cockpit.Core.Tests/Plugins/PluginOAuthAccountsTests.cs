@@ -1,5 +1,10 @@
+using System.Buffers.Text;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Web;
+using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.OAuth;
@@ -113,6 +118,59 @@ public class PluginOAuthAccountsTests : IDisposable
         Assert.Equal(1, _endpoint.Posts);
     }
 
+    // AC-1625 (L2d, secrets): a connect on the server, its browser step on the desktop that asked. The server keeps the
+    // verifier, a redirect for another request leaves the sign-in waiting, and no code or token reaches view, log or audit.
+    [Fact]
+    public async Task AConnectOnTheServer_TakesOnlyItsOwnRedirect_AndNoCodeOrTokenLeavesIt()
+    {
+        const string Code = "code-from-the-provider-secret";
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var signIns = new PluginOAuthSignIns();
+        var accounts = new PluginOAuthAccounts(ConfigPath, new HttpClient(_endpoint), _logger, signIns: signIns);
+        var said = new List<string>();
+        _endpoint.Answer(HttpStatusCode.OK, """{"access_token":"at-connected-secret","refresh_token":"rt-connected-secret","expires_in":3600}""");
+
+        var connecting = Task.Run(() =>
+        {
+            PluginOAuthSignIns.Relay = new PluginOAuthRelay("onedrive-folder", "desktop1", (provider, outcome) =>
+            {
+                said.Add($"{provider} sign-in {outcome}");
+                return Task.CompletedTask;
+            });
+            return accounts.ConnectAsync(PluginId, Provider, ["Files.Read"], null, _ => throw new InvalidOperationException("The server opened a browser of its own."), timeout.Token);
+        });
+        PluginOAuthSignIn? pending;
+        while ((pending = signIns.Pending("onedrive-folder", "desktop1")) is null)
+        {
+            await Task.Delay(20, timeout.Token);
+        }
+
+        Assert.Null(signIns.Pending("onedrive-folder", "desktop2"));
+        Assert.True(pending.Claim(50123));
+        await pending.LinkAsync(TimeSpan.FromSeconds(10), timeout.Token);
+        said.Add(JsonSerializer.Serialize(PluginEndpoints.OAuthSignInView(pending)));
+        var link = HttpUtility.ParseQueryString(pending.Url?.Query ?? "");
+        _endpoint.RequirePkce(Code, link["code_challenge"] ?? "");
+
+        Assert.Equal("http://127.0.0.1:50123/callback", link["redirect_uri"]);
+        Assert.False(pending.Submit($"code={Code}&state=another-request"), "A redirect for another request was taken.");
+        Assert.True(pending.AwaitsRedirect, "A refused redirect ended the sign-in.");
+        Assert.True(pending.Submit($"code={Code}&state={Uri.EscapeDataString(link["state"] ?? "")}"), "The sign-in's own redirect was refused.");
+        var connected = await connecting;
+        said.Add(JsonSerializer.Serialize(connected));
+        said.Add(JsonSerializer.Serialize(PluginEndpoints.OAuthSignInView(pending)));
+
+        Assert.Equal(PluginOAuthOutcome.Ok, connected.Outcome);
+        Assert.Contains("microsoft sign-in ok", said);
+        var stored = Assert.Single((await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None))?.PluginOAuthAccounts ?? []);
+        Assert.Equal("at-connected-secret", stored.AccessToken);
+        var everything = string.Join('\n', said.Concat(_logger.Messages));
+        foreach (var secret in new[] { Code, "at-connected-secret", "rt-connected-secret", "cs-client-secret" })
+        {
+            Assert.DoesNotContain(secret, everything, StringComparison.Ordinal);
+        }
+    }
+
     public void Dispose()
     {
         try
@@ -131,12 +189,16 @@ public class PluginOAuthAccountsTests : IDisposable
         private HttpStatusCode _status;
         private string _body = "{}";
         private int _posts;
+        private (string Code, string Challenge)? _pkce;
 
         public int Posts => Volatile.Read(ref _posts);
 
         public Task FirstPost => _firstPost.Task;
 
         public void Answer(HttpStatusCode status, string body) => (_status, _body) = (status, body);
+
+        // A token endpoint that redeems only `code` with the verifier behind `challenge` (PKCE, S256).
+        public void RequirePkce(string code, string challenge) => _pkce = (code, challenge);
 
         public void HoldAnswers() => _hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -149,6 +211,16 @@ public class PluginOAuthAccountsTests : IDisposable
             if (_hold is { } hold)
             {
                 await hold.Task.ConfigureAwait(false);
+            }
+
+            if (_pkce is { } pkce && request.Content is { } content)
+            {
+                var form = HttpUtility.ParseQueryString(await content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                var verified = Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(form["code_verifier"] ?? "")));
+                if (form["code"] != pkce.Code || verified != pkce.Challenge)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("""{"error":"invalid_grant"}""", Encoding.UTF8, "application/json") };
+                }
             }
 
             return new HttpResponseMessage(_status) { Content = new StringContent(_body, Encoding.UTF8, "application/json") };

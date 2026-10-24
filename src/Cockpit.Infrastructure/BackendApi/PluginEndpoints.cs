@@ -140,7 +140,15 @@ internal static class PluginEndpoints
                 return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin request is invalid.");
             }
 
+            // AC-1625: a desktop that can do a browser step names its call, so an OAuth connect inside it relays to it.
+            var relay = request.Query["relay"].ToString();
+            if (relay.Length > 0 && !_IsRelayId(relay))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "The plugin request is invalid.");
+            }
+
             await _AuditAsync(services, "api:plugin_channel", cancellationToken, $"{pluginId}/{action}").ConfigureAwait(false);
+            using var relayed = relay.Length > 0 ? _Relay(services, folderId, relay) : null;
             try
             {
                 return Results.Json(await channels.InvokeAsync(pluginId, action, payload, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json);
@@ -315,6 +323,70 @@ internal static class PluginEndpoints
             return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("end_plugin_mcp_sign_in", services);
 
+        // AC-1625: the browser step of a plugin's OAuth connect on this server (AC-1407), for the desktop whose channel call
+        // runs it. The connect keeps the PKCE verifier and the state here; the desktop names its port and returns the query.
+        PluginOAuthSignIns oauthSignIns() => services.GetRequiredService<PluginOAuthSignIns>();
+
+        api.MapGet("/plugins/{folderId}/oauth-accounts/sign-in", (string folderId, string? relay) =>
+            relay is not null && oauthSignIns().Pending(folderId, relay) is { } signIn
+                ? Results.Json(OAuthSignInView(signIn), ConnectKeyEndpoints.Json)
+                : _NoOAuthSignIn()).RequireAdmin();
+
+        api.MapPost("/plugins/{folderId}/oauth-accounts/{name}/sign-in", async (string folderId, string name, OAuthSignInStartBody body, CancellationToken cancellationToken) =>
+        {
+            if (body.Port is < 1024 or > 65535)
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "port must be a loopback port from 1024 to 65535.");
+            }
+
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is null)
+            {
+                return _NotRunning();
+            }
+
+            if (body.FlowId is null || oauthSignIns().Find(folderId, name, body.FlowId) is not { } signIn)
+            {
+                return _NoOAuthSignIn();
+            }
+
+            if (!signIn.Claim(body.Port))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_awaited", "This sign-in already has a desktop.");
+            }
+
+            await signIn.LinkAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+            return Results.Json(OAuthSignInView(signIn), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created);
+        }).RequireAdmin().Audited("start_plugin_oauth_sign_in", services);
+
+        api.MapPost("/plugins/{folderId}/oauth-accounts/{name}/sign-in/{flowId}/input", (string folderId, string name, string flowId, SignInInputBody body) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.Text))
+            {
+                return BackendApiRoutes.Error(StatusCodes.Status400BadRequest, "invalid_request", "text is required.");
+            }
+
+            if (oauthSignIns().Find(folderId, name, flowId) is not { } signIn)
+            {
+                return _NoOAuthSignIn();
+            }
+
+            return signIn.Submit(body.Text)
+                ? Results.Json(OAuthSignInView(signIn), ConnectKeyEndpoints.Json)
+                : BackendApiRoutes.Error(StatusCodes.Status409Conflict, "not_awaited", "This sign-in is not waiting for that redirect.");
+        }).RequireAdmin().Audited("send_plugin_oauth_sign_in_redirect", services);
+
+        // The desktop gave up (no loopback, no browser, a link it would not open): the connect ends now, an earlier token kept.
+        api.MapDelete("/plugins/{folderId}/oauth-accounts/{name}/sign-in/{flowId}", (string folderId, string name, string flowId) =>
+        {
+            if (oauthSignIns().Find(folderId, name, flowId) is not { } signIn)
+            {
+                return _NoOAuthSignIn();
+            }
+
+            signIn.End();
+            return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("end_plugin_oauth_sign_in", services);
+
         // AC-1585: the managed command-line tools as the plugin's host on the server has them, so its own view (the
         // Claude provider's install panel) shows and changes the server's copy, not this desktop's.
         api.MapGet("/plugins/{folderId}/managed-clis", (string folderId) =>
@@ -400,6 +472,47 @@ internal static class PluginEndpoints
                 CancellationToken.None).ConfigureAwait(false);
         }
     }
+
+    // Field by field like McpSignInView: the link and the state it carries are public, the verifier and the code never cross.
+    internal static object OAuthSignInView(PluginOAuthSignIn signIn) => new
+    {
+        flowId = signIn.FlowId,
+        name = signIn.Name,
+        status = signIn.Status,
+        url = signIn.Url?.AbsoluteUri,
+        awaitsRedirect = signIn.AwaitsRedirect,
+        expiresAt = signIn.ExpiresAt,
+    };
+
+    // Sets the relay for the rest of the channel request and closes it when that request is done.
+    private static IDisposable _Relay(IServiceProvider services, string folderId, string relayId)
+    {
+        var caller = McpRequestContext.CurrentNodeCaller;
+        var relay = new PluginOAuthRelay(folderId, relayId, (provider, outcome) => _OAuthSignInEndedAsync(services, caller, folderId, provider, outcome));
+        PluginOAuthSignIns.Relay = relay;
+        return new ClosesRelay(relay);
+    }
+
+    private sealed class ClosesRelay(PluginOAuthRelay relay) : IDisposable
+    {
+        public void Dispose() => relay.Close();
+    }
+
+    private static async Task _OAuthSignInEndedAsync(IServiceProvider services, NodeCaller? caller, string folderId, string provider, string outcome)
+    {
+        if (services.GetService<NodeAccessAuditLog>() is { } audit && caller is not null)
+        {
+            await audit.RecordAsync(
+                NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, "api:plugin_oauth_sign_in", $"sign-in {outcome}", $"{folderId}: {provider}"),
+                CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    // What the desktop sends: a Guid in its "N" form.
+    private static bool _IsRelayId(string relay) => relay.Length == 32 && relay.All(char.IsAsciiHexDigit);
+
+    private static IResult _NoOAuthSignIn() =>
+        BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_sign_in", "That sign-in is not running on the server; start it again.");
 
     private static IResult _NoMcpSignIn() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_sign_in", "That sign-in is not running on the server; start it again.");
@@ -656,3 +769,5 @@ internal static class PluginEndpoints
 internal sealed record ManagedCliAutoUpdateBody(bool Enabled);
 
 internal sealed record McpSignInStartBody(int Port);
+
+internal sealed record OAuthSignInStartBody(string? FlowId, int Port);

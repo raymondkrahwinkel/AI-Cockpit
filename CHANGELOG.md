@@ -43,6 +43,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: for plugin authors, the cockpit signs the operator in to an OAuth provider (Microsoft, Google, …) in the
   browser for a plugin, keeps several accounts per provider and renews their tokens; a revoked sign-in asks to connect
   the account again instead of retrying, and `ICockpitHost.OpenUrl` opens a web page (Plugin SDK 3.26.0, host 0.106.0).
+- added: a plugin running on a headless server signs its operator in to an OAuth provider from the desktop's
+  Admin → Plugins settings: the desktop opens the browser and hands back only the redirect, the server redeems it and
+  keeps the token, unchanged plugin code (host 0.107.0).
 - added: for plugin authors, `StructuredQuestionJson.Parse` reads an AskUserQuestion payload into the channel question
   model, and `AnswerText` formats its answer consistently for the assistant (Plugin SDK 3.16.0, host 0.100.0).
 

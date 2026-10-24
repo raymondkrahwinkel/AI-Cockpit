@@ -977,7 +977,9 @@ if (token.Outcome == PluginOAuthOutcome.Ok) { request.Headers.Authorization = ne
   a session, a log line or the chat. `PluginOAuthTokenResult.ToString()` masks it for you.
 - **Where it is kept.** In `cockpit.json` (`pluginOAuthAccounts`), next to the MCP sign-ins: encrypted when the operator
   turned on Options → Security, emptied from a backup without credentials, and in the clear on a headless server's state
-  volume. Signing in from a server's settings is not offered yet; there the connect answers `Unavailable`.
+  volume. On a server, the same call from your settings view (its Admin → Plugins copy on the desktop) runs the
+  browser step on that desktop: the server keeps the verifier and the token, the desktop hands back only the redirect.
+  A desktop that cannot open a loopback port, or a call that did not come from one, answers `Unavailable`.
 - **Say it in your consent text.** As under [Credentials](#credentials--say-what-holds-one): the host keeps your accounts
   apart through its API, not on disk, so another installed plugin could in principle read these tokens from the file.
 
