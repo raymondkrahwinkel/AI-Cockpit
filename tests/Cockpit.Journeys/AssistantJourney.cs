@@ -82,8 +82,9 @@ public sealed class AssistantJourney
             chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.ProjectId == depot.Id);
             chat.InputText = "and Depot?";
             await chat.SendCommand.ExecuteAsync(null);
-            await Until.CollectionHolds(transcript, () => transcript.Any(row => row.IsInboxRow && row.Text.Contains("WM-12", StringComparison.Ordinal))
-                && transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.EndsWith("and Depot?", StringComparison.Ordinal)));
+            // The reply is filed under WayMark only at turn-end, after its text is drawn: wait for that, not just the text.
+            await Until.ItemsHold(transcript, () => transcript.Any(row => row.IsInboxRow && row.Text.Contains("WM-12", StringComparison.Ordinal))
+                && transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.EndsWith("and Depot?", StringComparison.Ordinal) && row.ThreadProjectIds.Contains(waymark.Id)));
         });
 
         var (reply, mail) = HeadlessAvalonia.Run(() => (
