@@ -71,7 +71,7 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
     {
         var log = _Log();
         var card = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which way?") { IsPendingBrokerAnswer = true };
-        await log.AppendAsync("pane", TranscriptSnapshot.Capture(card));
+        _ = log.AppendAsync("pane", TranscriptSnapshot.Capture(card));
         await log.DisposeAsync();
 
         var restored = TranscriptSnapshot.Restore((await _Log().TryLoadAsync("pane"))!);
