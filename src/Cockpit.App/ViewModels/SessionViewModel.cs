@@ -242,7 +242,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             if (_backgroundTasks.Count == 0)
             {
-                return "none";
+                return "nothing";
             }
 
             var parts = new List<string>();
