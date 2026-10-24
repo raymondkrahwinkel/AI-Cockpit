@@ -3,6 +3,7 @@ extern alias UiAsm;
 using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
+using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
@@ -82,7 +83,8 @@ public class DepotSettingsControlTests
     // full end state a call-counting "did not sign in" assert alone would miss — nothing reclaimed silently.
     // AC-1394: what "memory sources untouched" now means from this UI-only substitute — ICockpitUiHost carries no
     // registry members at all, so the only way to see this refusal never reached the backend's own sync is that
-    // the channel itself was never invoked; DepotPluginSaveConnectionsTests pins the backend's own diff logic.
+    // the channel's save action was never invoked; DepotPluginSaveConnectionsTests pins the backend's own diff logic.
+    // Only that action: since AC-1640 every row asks the channel for its branding when it shows, a read-only call.
     [Fact]
     public async Task SignInAsync_RenameCollidesWithAnAlreadyStoredRow_RefusesTheWholeSave_AndLeavesStorageAndMemorySourcesUntouched()
     {
@@ -103,7 +105,7 @@ public class DepotSettingsControlTests
         await renamedRow.SignInAsync();
 
         _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await host.Channel.DidNotReceive().InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
+        await host.Channel.DidNotReceive().InvokeAsync(DepotChannel.SaveConnections, Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
         Assert.Equal(2, settings.Connections.Count);
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-1" && connection.Name == "Work");
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-2" && connection.Name == "Work2");

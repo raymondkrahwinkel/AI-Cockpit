@@ -62,7 +62,8 @@ public sealed class HeadlessAvalonia
             var candidate = Path.Combine(directory.FullName, "src", "Cockpit.App", "Styles", "Theme.axaml");
             if (File.Exists(candidate))
             {
-                return AvaloniaRuntimeXamlLoader.Load(File.ReadAllText(candidate)) as IStyle
+                // This assembly as the local one, so the theme's `vm:` types resolve to HostViewModelStandIns.
+                return AvaloniaRuntimeXamlLoader.Load(File.ReadAllText(candidate), typeof(HeadlessAvalonia).Assembly) as IStyle
                     ?? throw new InvalidOperationException($"{candidate} did not parse into a style.");
             }
 

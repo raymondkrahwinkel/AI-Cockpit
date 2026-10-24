@@ -78,13 +78,14 @@ public sealed class DepotFirstStartTests
         {
             throw new InvalidOperationException("The first-start response was empty.");
         }
-        Assert.Equal("/cockpit/manifest", depot.Requests[0].AbsolutePath);
-        Assert.Empty(depot.Requests[0].Query);
+        // The sign-in lists the backups (C1) before it reads the manifest (C2); only the manifest reads are at stake here.
+        var manifestReads = depot.Requests.Where(uri => uri.AbsolutePath == "/cockpit/manifest").ToList();
+        Assert.Empty(manifestReads[0].Query);
         if (!multipleOrganizations)
         {
             Assert.Equal("{}", answer.Manifest);
             Assert.Null(answer.Candidates);
-            Assert.Single(depot.Requests);
+            Assert.Single(manifestReads);
             return;
         }
 
@@ -109,7 +110,7 @@ public sealed class DepotFirstStartTests
             .Deserialize<DepotFirstStartManifestAnswer>(DepotChannel.Json);
 
         Assert.Equal("{}", selected?.Manifest);
-        Assert.Equal("?org=globex", depot.Requests[1].Query);
+        Assert.Equal("?org=globex", depot.Requests.Last(uri => uri.AbsolutePath == "/cockpit/manifest").Query);
     }
 
     private sealed class _NotFound : HttpMessageHandler
@@ -126,6 +127,11 @@ public sealed class DepotFirstStartTests
         {
             var requestUri = request.RequestUri ?? throw new InvalidOperationException("The request URI was missing.");
             Requests.Add(requestUri);
+            if (requestUri.AbsolutePath == "/cockpit/backups")
+            {
+                return Task.FromResult(_Response(HttpStatusCode.OK, "[]", "application/json"));
+            }
+
             if (multipleOrganizations && string.IsNullOrEmpty(requestUri.Query))
             {
                 return Task.FromResult(_Response(HttpStatusCode.MultipleChoices, """{"format":"cockpit.provision.choice","formatVersion":1,"organizations":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}]}""", "application/vnd.cockpit.provision-choice+json"));
