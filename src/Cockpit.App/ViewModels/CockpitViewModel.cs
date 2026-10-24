@@ -7089,7 +7089,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             seen.Add(row.FolderId);
             if (PluginSettings.TryGetValue(row.FolderId, out var registration))
             {
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, registration.CreateView, unavailableReason: null, registration.Category));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, registration.CreateView, unavailableReason: null, registration.Category, _logger));
             }
             else
             {
@@ -7108,7 +7108,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
-            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, unavailableReason: null, registration.Category));
+            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, unavailableReason: null, registration.Category, _logger));
         }
 
     }
