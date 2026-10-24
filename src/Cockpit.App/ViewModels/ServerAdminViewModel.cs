@@ -402,7 +402,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             row.AvailableVersion = available.GetValueOrDefault(row.FolderId);
         }
 
-        AvailableUpdateCount = Plugins.Count(row => row.AvailableVersion is not null);
+        AvailableUpdateCount = 0;
     }
 
     [RelayCommand]
