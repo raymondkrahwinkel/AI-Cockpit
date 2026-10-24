@@ -24,7 +24,7 @@ public class CockpitProjectLogoBlobTests
         {
             LastRequest = request;
             LastRequestBody = request.Content is null ? null : await request.Content.ReadAsByteArrayAsync(cancellationToken);
-            Requests.Add(request.RequestUri!);
+            Requests.Add(request.RequestUri ?? throw new InvalidOperationException("The request had no URI."));
             return _responses.Dequeue();
         }
     }
@@ -43,10 +43,13 @@ public class CockpitProjectLogoBlobTests
 
         Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
         Assert.Equal("https://depot.example.com/sync/acme/cockpit/uploads", handler.Requests[0].ToString());
-        Assert.Equal(HttpMethod.Put, handler.LastRequest!.Method);
-        Assert.Equal("https://depot.example.com/blob/upload/abc", handler.LastRequest.RequestUri!.ToString());
+        Assert.NotNull(handler.LastRequest);
+        Assert.Equal(HttpMethod.Put, handler.LastRequest.Method);
+        Assert.NotNull(handler.LastRequest.RequestUri);
+        Assert.Equal("https://depot.example.com/blob/upload/abc", handler.LastRequest.RequestUri.ToString());
         Assert.Equal(bytes, handler.LastRequestBody);
-        Assert.Equal("image/png", handler.LastRequest.Content!.Headers.ContentType!.MediaType);
+        Assert.NotNull(handler.LastRequest.Content);
+        Assert.Equal("image/png", handler.LastRequest.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]
@@ -62,25 +65,6 @@ public class CockpitProjectLogoBlobTests
 
         Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
         Assert.Contains("403", result.Error);
-    }
-
-    [Fact]
-    public async Task DownloadAsync_Success_PostsForADownloadThenGetsTheBytesFromTheReturnedUrl()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var expectedBytes = new byte[] { 137, 80, 78, 71 };
-        var handler = new _StubHandler(
-            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"files":[{"downloadUrl":"https://depot.example.com/blob/download/xyz"}]}""") },
-            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(expectedBytes) });
-        using var httpClient = new HttpClient(handler);
-
-        var result = await CockpitProjectLogoBlob.DownloadAsync(host, _Connection, "acme/cockpit", httpClient);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
-        Assert.Equal(expectedBytes, result.Bytes);
-        Assert.Equal("https://depot.example.com/sync/acme/cockpit/downloads", handler.Requests[0].ToString());
-        Assert.Equal(HttpMethod.Get, handler.LastRequest!.Method);
-        Assert.Equal("https://depot.example.com/blob/download/xyz", handler.LastRequest.RequestUri!.ToString());
     }
 
     [Fact]

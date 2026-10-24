@@ -29,23 +29,27 @@ public sealed class ProvisioningEntryTests : IDisposable
     {
         var document = JsonNode(OrgManifest);
         document["smuggled"] = new System.Text.Json.Nodes.JsonObject { ["run"] = "anything" };
-        document["profiles"]!["items"]![0]!["environment"]![0]!["value"] = @"C:\Users\sanne\acme";
+        var environment = document["profiles"]?["items"]?[0]?["environment"]?[0]
+            ?? throw new InvalidOperationException("The example manifest has no environment entry.");
+        environment["value"] = @"C:\Users\sanne\acme";
 
         var outcome = await _RunAsync("https://acme.example/manifest", document.ToJsonString());
 
-        Assert.Null(outcome!.Failure);
-        var manifest = outcome.Manifest!;
-        Assert.Equal(("acme", 31L), (manifest.Issuer!.Organization!.Id, manifest.Revision!.Value));
-        Assert.Equal(new[] { "depot", "youtrack" }, manifest.Plugins!.Required!.Select(plugin => plugin.Id));
-        Assert.Equal("token-required", manifest.Stores!.Allowed![1].Auth);
-        Assert.Equal(("locked", "org"), (manifest.Settings!["updates.channel"].Mode, manifest.Settings["updates.channel"].By));
-        Assert.Equal("ACME_API_KEY", manifest.Profiles!.Items![0].Environment![1].Name);
-        Assert.Equal("handboek", manifest.Projects!.Shared![1].Slug);
-        Assert.Equal("Assistentregels Acme", manifest.Assistant!.OrgRules!.Title);
-        Assert.Equal("forbidden", manifest.Policy!.Permissions!.TerminalAccess);
-        Assert.Equal(12, manifest.Backup!.Schedule!.IntervalHours);
-        Assert.Equal("exchange-provision-token", manifest.Connections![0].Config!.Value.GetProperty("credential").GetString());
-        Assert.Equal("ontwikkelen", manifest.FirstRun!.WorkKind);
+        Assert.NotNull(outcome);
+        Assert.Null(outcome.Failure);
+        var manifest = outcome.Manifest;
+        Assert.NotNull(manifest);
+        Assert.Equal(("acme", 31L), (manifest.Issuer?.Organization?.Id, manifest.Revision ?? 0));
+        Assert.Equal(new[] { "depot", "youtrack" }, manifest.Plugins?.Required?.Select(plugin => plugin.Id));
+        Assert.Equal("token-required", manifest.Stores?.Allowed?[1].Auth);
+        Assert.Equal(("locked", "org"), (manifest.Settings?["updates.channel"].Mode, manifest.Settings?["updates.channel"].By));
+        Assert.Equal("ACME_API_KEY", manifest.Profiles?.Items?[0].Environment?[1].Name);
+        Assert.Equal("handboek", manifest.Projects?.Shared?[1].Slug);
+        Assert.Equal("Assistentregels Acme", manifest.Assistant?.OrgRules?.Title);
+        Assert.Equal("forbidden", manifest.Policy?.Permissions?.TerminalAccess);
+        Assert.Equal(12, manifest.Backup?.Schedule?.IntervalHours);
+        Assert.Equal("exchange-provision-token", manifest.Connections?[0].Config?.GetProperty("credential").GetString());
+        Assert.Equal("ontwikkelen", manifest.FirstRun?.WorkKind);
         Assert.Equal(2, manifest.Notes.Count);
 
         // Counterproof: the unknown field is reported and absent from the object; the path is stripped, not carried.
@@ -56,12 +60,14 @@ public sealed class ProvisioningEntryTests : IDisposable
         Assert.DoesNotContain(@"sanne\\acme", carried);
 
         var enforced = JsonNode(OrgManifest);
-        enforced["policy"]!["permissions"]!["allowEverything"] = true;
-        Assert.Contains("policy.permissions.allowEverything", (await _RunAsync("https://acme.example/manifest", enforced.ToJsonString()))!.Failure);
+        var permissions = enforced["policy"]?["permissions"]
+            ?? throw new InvalidOperationException("The example manifest has no policy.permissions.");
+        permissions["allowEverything"] = true;
+        Assert.Contains("policy.permissions.allowEverything", (await _RunAsync("https://acme.example/manifest", enforced.ToJsonString()))?.Failure);
 
         var newer = JsonNode(OrgManifest);
         newer["formatVersion"] = 2;
-        Assert.Contains("update Cockpit", (await _RunAsync("https://acme.example/manifest", newer.ToJsonString()))!.Failure);
+        Assert.Contains("update Cockpit", (await _RunAsync("https://acme.example/manifest", newer.ToJsonString()))?.Failure);
 
         var fetched = false;
         var plain = await ProvisioningEntry.RunAsync("http://acme.example/manifest", false, _stateRoot, _Logger(), new StubHttpMessageHandler(_ =>
@@ -69,7 +75,7 @@ public sealed class ProvisioningEntryTests : IDisposable
             fetched = true;
             return _Manifest(OrgManifest);
         }));
-        Assert.Contains("https://", plain!.Failure);
+        Assert.Contains("https://", plain?.Failure);
         Assert.False(fetched);
     }
 
@@ -86,19 +92,19 @@ public sealed class ProvisioningEntryTests : IDisposable
         };
 
         // AC-1506: reading alone leaves the link usable; only the applier uses it up, once everything was applied.
-        ProvisioningEntry.UseUpToken(_stateRoot, outcomes[2]!.Token!);
+        ProvisioningEntry.UseUpToken(_stateRoot, outcomes[2]?.Token ?? throw new InvalidOperationException("The third read kept no token."));
         outcomes.Add(await _RunAsync(url, OrgManifest));
 
-        Assert.Contains("could not be fetched", outcomes[0]!.Failure);
-        Assert.NotNull(outcomes[1]!.Manifest);
-        Assert.NotNull(outcomes[2]!.Manifest);
-        Assert.Contains("already been used", outcomes[3]!.Failure);
+        Assert.Contains("could not be fetched", outcomes[0]?.Failure);
+        Assert.NotNull(outcomes[1]?.Manifest);
+        Assert.NotNull(outcomes[2]?.Manifest);
+        Assert.Contains("already been used", outcomes[3]?.Failure);
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Token)));
         Assert.Contains(hash, await File.ReadAllTextAsync(Path.Combine(_stateRoot, "provision-tokens-used.txt")));
 
         var trail = _logs
-            .Concat(outcomes.Select(outcome => outcome!.Failure ?? string.Empty))
-            .Concat(outcomes.Select(outcome => outcome!.ToString()))
+            .Concat(outcomes.Select(outcome => outcome?.Failure ?? string.Empty))
+            .Concat(outcomes.Select(outcome => outcome?.ToString() ?? string.Empty))
             .Concat(ProvisioningEntry.RedactArguments(["--provision", url, "--safe-mode"]))
             .Concat(Directory.EnumerateFiles(_stateRoot, "*", SearchOption.AllDirectories).Select(File.ReadAllText));
         Assert.All(trail, line => Assert.DoesNotContain(Token, line));
@@ -135,7 +141,7 @@ public sealed class ProvisioningEntryTests : IDisposable
     private static HttpResponseMessage _Manifest(string json) =>
         new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/vnd.cockpit.provision+json") };
 
-    private static System.Text.Json.Nodes.JsonNode JsonNode(string json) => System.Text.Json.Nodes.JsonNode.Parse(json)!;
+    private static System.Text.Json.Nodes.JsonNode JsonNode(string json) => System.Text.Json.Nodes.JsonNode.Parse(json) ?? throw new InvalidOperationException("The manifest is not JSON.");
 
     private ILogger _Logger() => new _CollectingLogger(_logs);
 

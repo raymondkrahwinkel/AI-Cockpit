@@ -55,15 +55,14 @@ public sealed class DepotPublishServiceTests : IDisposable
         public void Local(string relative, byte[] content)
         {
             var path = Path.Combine(Source, relative.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            Directory.CreateDirectory(_Required(Path.GetDirectoryName(path)));
             File.WriteAllBytes(path, content);
         }
 
-        public DepotPublishRequest Run(bool overwrite = false) => new("c1", Id: Link.Id, Confirmed: true, OverwriteConflicts: overwrite, PlanFingerprint: Service.PlanAsync(PlanRequest, default).GetAwaiter().GetResult().Data?.Fingerprint);
+        public async Task<DepotPublishRequest> RunAsync(bool overwrite = false) =>
+            new("c1", Id: Link.Id, Confirmed: true, OverwriteConflicts: overwrite, PlanFingerprint: (await Service.PlanAsync(PlanRequest, default)).Data?.Fingerprint);
 
         public DepotPublishRequest PlanRequest => new("c1", Id: Link.Id);
-
-        public void Seed(params PublishManifestEntry[] entries) => Cache.Set($"publish-manifest:{Link.Id}", entries.ToList());
 
         public List<PublishManifestEntry> Manifest => Cache.Get<List<PublishManifestEntry>>($"publish-manifest:{Link.Id}") ?? [];
 
@@ -86,7 +85,8 @@ public sealed class DepotPublishServiceTests : IDisposable
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var path = request.RequestUri!.AbsolutePath;
+            var uri = _Required(request.RequestUri);
+            var path = uri.AbsolutePath;
             if (path == "/cockpit/projects")
             {
                 return _Json(new
@@ -100,7 +100,7 @@ public sealed class DepotPublishServiceTests : IDisposable
 
             if (request.Method == HttpMethod.Get && path.EndsWith("/files", StringComparison.Ordinal))
             {
-                var prefix = _Query(request.RequestUri, "path");
+                var prefix = _Query(uri, "path");
                 return _Json(new
                 {
                     entries = rig.Documents.Where(pair => prefix is null || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
@@ -110,7 +110,7 @@ public sealed class DepotPublishServiceTests : IDisposable
 
             if (request.Method == HttpMethod.Get && path.EndsWith("/artifacts", StringComparison.Ordinal))
             {
-                var prefix = _Query(request.RequestUri, "path");
+                var prefix = _Query(uri, "path");
                 return _Json(new
                 {
                     entries = rig.Artifacts.Where(pair => prefix is null || pair.Key == prefix || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
@@ -120,7 +120,7 @@ public sealed class DepotPublishServiceTests : IDisposable
 
             if (request.Method == HttpMethod.Post && path.EndsWith("/write", StringComparison.Ordinal))
             {
-                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                using var body = JsonDocument.Parse(await _Required(request.Content).ReadAsStringAsync(cancellationToken));
                 var results = new List<object>();
                 foreach (var entry in body.RootElement.EnumerateArray())
                 {
@@ -150,7 +150,7 @@ public sealed class DepotPublishServiceTests : IDisposable
 
             if (request.Method == HttpMethod.Post && path.EndsWith("/uploads", StringComparison.Ordinal))
             {
-                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                using var body = JsonDocument.Parse(await _Required(request.Content).ReadAsStringAsync(cancellationToken));
                 var share = body.RootElement.GetProperty("share").GetString() ?? "none";
                 var uploads = body.RootElement.GetProperty("files").EnumerateArray().Select(file =>
                 {
@@ -163,14 +163,14 @@ public sealed class DepotPublishServiceTests : IDisposable
 
             if (request.Method == HttpMethod.Post && path.EndsWith("/delete", StringComparison.Ordinal))
             {
-                var filePath = _Query(request.RequestUri, "path") ?? string.Empty;
-                var kind = _Query(request.RequestUri, "kind") ?? "auto";
+                var filePath = _Query(uri, "path") ?? string.Empty;
+                var kind = _Query(uri, "kind") ?? "auto";
                 var arguments = new Dictionary<string, object?>
                 {
                     ["path"] = filePath,
                     ["kind"] = kind,
-                    ["hard"] = string.Equals(_Query(request.RequestUri, "hard"), "true", StringComparison.OrdinalIgnoreCase),
-                    ["baseChecksum"] = _Query(request.RequestUri, "baseChecksum"),
+                    ["hard"] = string.Equals(_Query(uri, "hard"), "true", StringComparison.OrdinalIgnoreCase),
+                    ["baseChecksum"] = _Query(uri, "baseChecksum"),
                 };
                 rig.Calls.Add(("delete", arguments));
                 if (kind == "artifact")
@@ -212,8 +212,8 @@ public sealed class DepotPublishServiceTests : IDisposable
                 return new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError);
             }
 
-            var body = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
-            var path = Uri.UnescapeDataString(request.RequestUri!.AbsolutePath["/upload/".Length..]);
+            var body = await _Required(request.Content).ReadAsByteArrayAsync(cancellationToken);
+            var path = Uri.UnescapeDataString(_Required(request.RequestUri).AbsolutePath["/upload/".Length..]);
             rig.Artifacts[path] = body;
             return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
@@ -239,13 +239,14 @@ public sealed class DepotPublishServiceTests : IDisposable
         }
     }
 
+    private static T _Required<T>(T? value) where T : class =>
+        value ?? throw new InvalidOperationException($"Expected a {typeof(T).Name}, got null.");
+
     private static string Sha(string text) => Sha(Encoding.UTF8.GetBytes(text));
 
     private static string Sha(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
     private const string Local = "line one\r\nline two\r\n";
-
-    private static string _Content(string token) => token switch { "L" => Local, "A" => "alpha\r\n", _ => "beta\r\n" };
 
     // A directory link without needing the privilege a symbolic link wants on Windows.
     private static void _Link(string link, string target)
@@ -263,23 +264,15 @@ public sealed class DepotPublishServiceTests : IDisposable
         }
     }
 
-    // The table: what the plan makes of a local file, given what Depot holds and what the last publication left in the manifest.
-    // L is the local content, A and B are other content; "-" is nothing. Dot entries and links are not in the plan at all.
+    // What the plan makes of a local file the Run tests below never meet: a first publication over a document Depot
+    // already holds with other content is a conflict, a file without an extension is skipped, and dot entries and
+    // links are not in the plan at all. `depot` is what Depot holds at docs/a.md, null for nothing.
     [Theory]
-    [InlineData("a.md", "-", "-", "new")]
-    [InlineData("a.md", "-", "A", "new")]
-    [InlineData("a.md", "A", "A", "changed")]
-    [InlineData("a.md", "L", "L", "unchanged")]
-    [InlineData("a.md", "L", "-", "adopt")]
-    [InlineData("a.md", "L", "A", "adopt")]
-    [InlineData("a.md", "A", "-", "conflict")]
-    [InlineData("a.md", "B", "A", "conflict")]
-    [InlineData("none", "A", "A", "delete")]
-    [InlineData("none", "B", "A", "delete-conflict")]
-    [InlineData("README", "-", "-", "skipped")]
-    [InlineData(".hidden.md", "-", "-", "absent")]
-    [InlineData("linked", "-", "-", "absent")]
-    public async Task Plan_ClassifiesEachPath_AndLeavesDotEntriesAndLinksOut(string file, string depot, string manifest, string expected)
+    [InlineData("a.md", "alpha\r\n", "conflict")]
+    [InlineData("README", null, "skipped")]
+    [InlineData(".hidden.md", null, "absent")]
+    [InlineData("linked", null, "absent")]
+    public async Task Plan_ClassifiesEachPath_AndLeavesDotEntriesAndLinksOut(string file, string? depot, string expected)
     {
         var rig = _NewRig();
         if (file == "linked")
@@ -289,24 +282,19 @@ public sealed class DepotPublishServiceTests : IDisposable
             File.WriteAllText(Path.Combine(outside, "secret.md"), "secret");
             _Link(Path.Combine(rig.Source, "linked"), outside);
         }
-        else if (file != "none")
+        else
         {
             rig.Local(file, Local);
         }
 
-        if (depot != "-")
+        if (depot is not null)
         {
-            rig.Documents["docs/a.md"] = _Content(depot);
-        }
-
-        if (manifest != "-")
-        {
-            rig.Seed(new PublishManifestEntry("a.md", DepotBrowserKind.Document, Sha(_Content(manifest)), 0, DateTimeOffset.MinValue));
+            rig.Documents["docs/a.md"] = depot;
         }
 
         var answer = await rig.Service.PlanAsync(rig.PlanRequest, default);
 
-        var items = answer.Data!.Items;
+        var items = _Required(answer.Data).Items;
         if (expected == "absent")
         {
             Assert.Empty(items);
@@ -314,7 +302,7 @@ public sealed class DepotPublishServiceTests : IDisposable
         }
 
         var item = Assert.Single(items);
-        Assert.Equal((file == "README" ? file : "a.md", expected), (item.Path, item.Action));
+        Assert.Equal((file, expected), (item.Path, item.Action));
         Assert.Equal(0, rig.Count("write") + rig.Count("request_upload") + rig.Count("delete"));
     }
 
@@ -332,11 +320,11 @@ public sealed class DepotPublishServiceTests : IDisposable
         Assert.Equal(DepotBrowserStatus.Error, unconfirmed.Status);
         Assert.Equal(0, rig.Count("list"));
 
-        var stale = await rig.Service.RunAsync(rig.Run() with { PlanFingerprint = "of another plan" }, default);
+        var stale = await rig.Service.RunAsync((await rig.RunAsync()) with { PlanFingerprint = "of another plan" }, default);
         Assert.Equal(DepotBrowserStatus.Error, stale.Status);
         Assert.Equal(0, rig.Count("request_upload") + rig.Count("write"));
 
-        var first = (await rig.Service.RunAsync(rig.Run(), default)).Data!;
+        var first = _Required((await rig.Service.RunAsync(await rig.RunAsync(), default)).Data);
         Assert.Equal((1, 1, 1), (first.Written, first.Adopted, rig.Count("request_upload")));
         Assert.Equal(0, rig.Count("write"));
         Assert.Equal(new byte[] { 1, 2, 3 }, rig.Artifacts["docs/img/b.png"]);
@@ -345,32 +333,32 @@ public sealed class DepotPublishServiceTests : IDisposable
 
         rig.Calls.Clear();
         rig.Puts = 0;
-        var second = (await rig.Service.RunAsync(rig.Run(), default)).Data!;
+        var second = _Required((await rig.Service.RunAsync(await rig.RunAsync(), default)).Data);
         Assert.Equal((0, 2), (second.Written, second.Unchanged));
         Assert.Equal(0, rig.Count("write") + rig.Count("request_upload") + rig.Count("delete") + rig.Puts);
 
         rig.Local("a.md", "edited\r\n");
         rig.Calls.Clear();
-        await rig.Service.RunAsync(rig.Run(), default);
+        await rig.Service.RunAsync(await rig.RunAsync(), default);
         var write = Assert.Single(rig.Calls, call => call.Tool == "write");
         Assert.Equal(Sha(Local), write.Arguments["baseChecksum"]);
 
         rig.Documents["docs/a.md"] = "someone else\r\n";
         rig.Local("a.md", "edited again\r\n");
         rig.Calls.Clear();
-        var declined = (await rig.Service.RunAsync(rig.Run(overwrite: false), default)).Data!;
+        var declined = _Required((await rig.Service.RunAsync(await rig.RunAsync(overwrite: false), default)).Data);
         Assert.Equal(DepotPublishAction.Conflict, Assert.Single(declined.Problems).Action);
         Assert.Equal(0, rig.Count("write"));
-        await rig.Service.RunAsync(rig.Run(overwrite: true), default);
+        await rig.Service.RunAsync(await rig.RunAsync(overwrite: true), default);
         Assert.Equal(Sha("someone else\r\n"), Assert.Single(rig.Calls, call => call.Tool == "write").Arguments["baseChecksum"]);
 
         rig.Local("c.png", new byte[] { 9 });
         rig.FailPut = true;
-        var failed = (await rig.Service.RunAsync(rig.Run(), default)).Data!;
+        var failed = _Required((await rig.Service.RunAsync(await rig.RunAsync(), default)).Data);
         Assert.Equal(DepotPublishAction.Failed, Assert.Single(failed.Problems).Action);
         Assert.DoesNotContain(rig.Manifest, entry => entry.Path == "c.png");
         rig.FailPut = false;
-        await rig.Service.RunAsync(rig.Run(), default);
+        await rig.Service.RunAsync(await rig.RunAsync(), default);
         Assert.Contains(rig.Manifest, entry => entry.Path == "c.png");
         Assert.Equal(new byte[] { 9 }, rig.Artifacts["docs/c.png"]);
     }
@@ -383,7 +371,7 @@ public sealed class DepotPublishServiceTests : IDisposable
         rig.Local("a.md", "one\r\n");
         rig.Local("b.png", new byte[] { 5 });
         rig.Local("keep.md", "keep\r\n");
-        await rig.Service.RunAsync(rig.Run(), default);
+        await rig.Service.RunAsync(await rig.RunAsync(), default);
         rig.Documents["docs/stranger.md"] = "not ours\r\n";
         rig.Artifacts["docs/stranger.png"] = [7];
         var publishedA = Sha("one\r\n");
@@ -392,7 +380,7 @@ public sealed class DepotPublishServiceTests : IDisposable
         File.Delete(Path.Combine(rig.Source, "b.png"));
         rig.Artifacts["docs/b.png"] = [6];
         rig.Calls.Clear();
-        var report = (await rig.Service.RunAsync(rig.Run(), default)).Data!;
+        var report = _Required((await rig.Service.RunAsync(await rig.RunAsync(), default)).Data);
 
         var delete = Assert.Single(rig.Calls, call => call.Tool == "delete");
         Assert.Equal(("docs/a.md", "memory", false, publishedA), (delete.Arguments["path"], delete.Arguments["kind"], delete.Arguments["hard"], delete.Arguments["baseChecksum"]));

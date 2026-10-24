@@ -17,27 +17,12 @@ public class CockpitProjectDefinitionForwardCompatTests
         var succeeded = CockpitProjectDefinitionJson.TryDeserialize(json, out var definition, out var error);
 
         Assert.True(succeeded, error);
-        var resource = Assert.Single(definition!.Resources!);
+        Assert.NotNull(definition);
+        Assert.NotNull(definition.Resources);
+        var resource = Assert.Single(definition.Resources);
         Assert.Equal(string.Empty, resource.Reference);
         Assert.False(resource.Placeholder); // unrecognised to THIS build's own "placeholder" key — false is correct, not a guess
         Assert.Contains("someFutureResourceField", CockpitProjectDefinitionJson.Serialize(definition));
-    }
-
-    [Fact]
-    public void SerializeThenDeserialize_APlaceholderRow_RoundTripsWithoutLoss()
-    {
-        var reference = OperatingSystem.IsWindows() ? @"C:\Users\erik\notes.md" : "/home/erik/notes.md";
-        var written = CockpitProjectDefinitionJson.Serialize(new CockpitProjectDefinition
-        {
-            Name = "probe",
-            Resources = [CockpitProjectResourceEntry.Create("Reference", reference, "Erik's notes")!],
-        });
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(written, out var readBack, out var error));
-        var resource = Assert.Single(readBack!.Resources!);
-        Assert.True(resource.Placeholder);
-        Assert.Equal("Erik's notes", resource.Label);
-        Assert.Equal(string.Empty, resource.Reference);
     }
 
     [Fact]
@@ -48,7 +33,7 @@ public class CockpitProjectDefinitionForwardCompatTests
         var written = CockpitProjectDefinitionJson.Serialize(new CockpitProjectDefinition
         {
             Name = "probe",
-            Resources = [CockpitProjectResourceEntry.Create("Instructions", "docs/CONVENTIONS.md")!],
+            Resources = [CockpitProjectResourceEntry.Create("Instructions", "docs/CONVENTIONS.md") ?? throw new InvalidOperationException("The resource row was refused.")],
         });
 
         Assert.DoesNotContain("placeholder", written, StringComparison.OrdinalIgnoreCase);

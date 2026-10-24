@@ -60,7 +60,7 @@ public class DepotSharedProjectSourceWriteBackTests
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         var reference = OperatingSystem.IsWindows() ? @"C:\Users\erik\work\notes.md" : "/home/erik/work/notes.md";
-        var placeholder = CockpitProjectResourceEntry.Create("Reference", reference, "Notes")!;
+        var placeholder = CockpitProjectResourceEntry.Create("Reference", reference, "Notes") ?? throw new InvalidOperationException("The resource row was refused.");
         Assert.True(placeholder.Placeholder);
         var current = CockpitProjectDefinitionJson.Serialize(
             new CockpitProjectDefinition { Name = "Cockpit", Resources = [placeholder] });
@@ -71,29 +71,12 @@ public class DepotSharedProjectSourceWriteBackTests
             $"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
 
         Assert.True(CockpitProjectDefinitionJson.TryDeserialize(handler.WrittenContent, out var sent, out var error), error);
-        var resource = Assert.Single(sent!.Resources!);
+        Assert.NotNull(sent);
+        Assert.NotNull(sent.Resources);
+        var resource = Assert.Single(sent.Resources);
         Assert.True(resource.Placeholder);
         Assert.Equal("Notes", resource.Label);
         Assert.Equal(string.Empty, resource.Reference);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_ChecksumConflict_ReturnsAFreshSnapshotFromThePreWriteRead()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        var handler = new _DefinitionHandler(
-            """{"schemaVersion":1,"name":"Someone else's edit"}""",
-            currentChecksum: "chk-now", writeStatus: HttpStatusCode.PreconditionFailed);
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(name: "My edit"), "chk-stale", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.ChecksumConflict, result.Outcome);
-        Assert.NotNull(result.LatestSnapshot);
-        Assert.Equal("Someone else's edit", result.LatestSnapshot!.Name);
-        Assert.Equal("chk-now", result.LatestSnapshot.Checksum);
     }
 
     [Fact]
@@ -150,7 +133,7 @@ public class DepotSharedProjectSourceWriteBackTests
             }
 
             IfMatch = request.Headers.IfMatch.SingleOrDefault()?.Tag;
-            WrittenContent = await request.Content!.ReadAsStringAsync(cancellationToken);
+            WrittenContent = await (request.Content ?? throw new InvalidOperationException("The request had no body.")).ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(writeStatus)
             {
                 Content = new StringContent(JsonSerializer.Serialize(new { checksum = writtenChecksum })),

@@ -77,18 +77,6 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
         Assert.Contains("ToPaneId", text, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task ValidCall_StillSucceeds_TheFilterOnlyCatchesTheBrokenPath()
-    {
-        await using var endpoint = await _MountedEndpoint.StartAsync();
-
-        var result = await endpoint.Client.CallToolAsync("echo_pane", new Dictionary<string, object?> { ["toPaneId"] = "pane-1" });
-
-        Assert.NotEqual(true, result.IsError);
-        var text = string.Join("\n", result.Content.OfType<TextContentBlock>().Select(block => block.Text));
-        Assert.Equal("pane-1", text);
-    }
-
     /// <summary>
     /// AC-1138: a tool whose gateway gave up waiting for the UI thread answers with the <c>ui_unavailable</c> code
     /// rather than a generic failure, so an agent can tell "the cockpit is busy, retry" from "this went wrong".

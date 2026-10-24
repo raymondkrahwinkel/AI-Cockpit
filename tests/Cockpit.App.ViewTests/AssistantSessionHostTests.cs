@@ -1381,10 +1381,8 @@ public class AssistantSessionHostTests
     /// AC-1567: the organisation's rule set reaches the start between the built-in layer and the operator's own memory,
     /// read off disk like the memory is — and a profile that replaces the built-in layer does not take it away.
     /// </summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task TheOrgRuleSet_GoesIntoTheStartAheadOfThePersonalMemory(bool replacesStandingInstruction)
+    [Fact]
+    public async Task TheOrgRuleSet_GoesIntoTheStartAheadOfThePersonalMemory_EvenUnderAProfileThatReplacesTheBuiltInLayer()
     {
         var directory = Directory.CreateTempSubdirectory();
         try
@@ -1400,7 +1398,7 @@ public class AssistantSessionHostTests
             factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
             var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
                 () => TestSessions.Pane(new SessionManager(factory))));
-            var slot = new AssistantProfileSlot(_Profile() with { SystemPrompt = "Be brief." }, ReplacesStandingInstruction: replacesStandingInstruction);
+            var slot = new AssistantProfileSlot(_Profile() with { SystemPrompt = "Be brief." }, ReplacesStandingInstruction: true);
             var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: slot, cockpit: cockpit, memory: memory));
 
             Assert.NotNull(await Dispatcher.UIThread.InvokeAsync(() => host.EnsureStartedAsync()));

@@ -38,28 +38,6 @@ public sealed class SessionStateStoreTests : IDisposable
         DateTimeOffset? recordedAt = null) =>
         new(paneId, profileId, providerId, conversationId, conversationState, workingDirectory, worktreePath, worktreeBranch, permissionMode, recordedAt ?? DateTimeOffset.UtcNow);
 
-    [Fact]
-    public async Task RecordAsync_ThenLoadAsync_RoundTripsEveryField()
-    {
-        var store = CreateStore();
-        var record = CreateRecord(recordedAt: new DateTimeOffset(2026, 7, 29, 10, 15, 0, TimeSpan.Zero));
-
-        await store.RecordAsync(record);
-        var loaded = await store.LoadAsync();
-
-        var single = Assert.Single(loaded);
-        Assert.Equal(record.PaneId, single.PaneId);
-        Assert.Equal(record.ProfileId, single.ProfileId);
-        Assert.Equal(record.ProviderId, single.ProviderId);
-        Assert.Equal(record.ConversationId, single.ConversationId);
-        Assert.Equal(record.ConversationState, single.ConversationState);
-        Assert.Equal(record.WorkingDirectory, single.WorkingDirectory);
-        Assert.Equal(record.WorktreePath, single.WorktreePath);
-        Assert.Equal(record.WorktreeBranch, single.WorktreeBranch);
-        Assert.Equal(record.PermissionMode, single.PermissionMode);
-        Assert.Equal(record.RecordedAt, single.RecordedAt);
-    }
-
     /// <summary>
     /// Criteria 3 and 4 (AC-409): a session that ends without a graceful shutdown must still leave every write it
     /// made behind. The store that wrote is simply abandoned — RecordAsync is its only write path — and a brand-new

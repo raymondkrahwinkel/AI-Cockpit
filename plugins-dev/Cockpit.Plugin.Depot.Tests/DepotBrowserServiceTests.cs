@@ -51,19 +51,20 @@ public class DepotBrowserServiceTests
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (request.RequestUri!.AbsolutePath == "/cockpit/projects")
+            var uri = request.RequestUri ?? throw new InvalidOperationException("The request had no URI.");
+            if (uri.AbsolutePath == "/cockpit/projects")
             {
                 return _Json(projects);
             }
 
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
-            rig.RestCalls.Add((request.Method, request.RequestUri.PathAndQuery, body));
+            rig.RestCalls.Add((request.Method, uri.PathAndQuery, body));
             if (rig.FileStatus != HttpStatusCode.OK)
             {
                 return new HttpResponseMessage(rig.FileStatus);
             }
 
-            return _Json(rig.RestResponse?.Invoke(request, body) ?? _Default(request.RequestUri.AbsolutePath, body));
+            return _Json(rig.RestResponse?.Invoke(request, body) ?? _Default(uri.AbsolutePath, body));
         }
 
         private static string _Default(string path, string body)
@@ -105,7 +106,7 @@ public class DepotBrowserServiceTests
         new("c1", "acme/cockpit", path, mode, shareId);
 
     private static string _TreeResponse(HttpRequestMessage request, string _) =>
-        request.RequestUri!.AbsolutePath.EndsWith("/shares", StringComparison.Ordinal)
+        (request.RequestUri ?? throw new InvalidOperationException("The request had no URI.")).AbsolutePath.EndsWith("/shares", StringComparison.Ordinal)
             ? """{"shares":[{"shareId":"s1","path":"img/b.png","isPublic":true,"url":"https://d/artifact/p/s1"}]}"""
             : request.RequestUri.AbsolutePath.EndsWith("/artifacts", StringComparison.Ordinal)
             ? """{"entries":[{"path":"img/a.png","contentType":"image/png","size":10},{"path":"img/b.png","contentType":"image/png","size":11}]}"""
@@ -125,7 +126,8 @@ public class DepotBrowserServiceTests
 
         var answer = await rig.Service.TreeAsync(_Request(), default);
 
-        var nodes = answer.Data!.Nodes;
+        Assert.NotNull(answer.Data);
+        var nodes = answer.Data.Nodes;
         Assert.Equal(["docs/page-one.md", "docs/page-two.md", "img/a.png", "img/b.png"], nodes.Select(node => node.Path));
         Assert.Equal(DepotBrowserKind.Document, nodes[1].Kind);
         Assert.Equal(DepotBrowserKind.Artifact, nodes[2].Kind);
@@ -174,7 +176,8 @@ public class DepotBrowserServiceTests
         var request = Assert.Single(rig.RestCalls);
         Assert.Contains($"/{operation}", request.Path, StringComparison.Ordinal);
         Assert.Contains(requestFragment, request.Body, StringComparison.Ordinal);
-        Assert.Equal(uploadUrl, answer.Data!.UploadUrl);
+        Assert.NotNull(answer.Data);
+        Assert.Equal(uploadUrl, answer.Data.UploadUrl);
     }
 
     [Fact]
@@ -231,6 +234,6 @@ public class DepotBrowserServiceTests
         var answer = await rig.Service.TreeAsync(_Request(), default);
 
         Assert.Equal((status, message), (answer.Status, answer.Message));
-        _ = rig.Host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await rig.Host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

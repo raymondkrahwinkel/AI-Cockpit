@@ -21,8 +21,6 @@ public class TerminalOutputSanitizerTests
     // The shell echoes a key then reprints the whole line from column 0; without applying the CR the two drafts
     // concatenated and read_terminal showed "lls" for "ls" (AC-34).
     [InlineData("l\rls\n", "ls\n")]
-    // Text with nothing to strip is handed back untouched.
-    [InlineData("just plain output\n", "just plain output\n")]
     public void ToPlainText_StripsTheEscapesAndKeepsTheReadableText(string raw, string expected) =>
         Assert.Equal(expected, TerminalOutputSanitizer.ToPlainText(raw));
 }

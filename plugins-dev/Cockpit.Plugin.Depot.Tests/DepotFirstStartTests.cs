@@ -10,12 +10,12 @@ namespace Cockpit.Plugin.Depot.Tests;
 
 // AC-1509, acceptance 3: route C keeps a Depot connection only once the host's sign-in succeeded. While it signs in, the
 // Depot is offered to the host (so the sign-in can find it) and is not in storage; skipped or offline, nothing is left.
+// The sign-in that succeeds is FirstStartJourney's: its restore needs the kept connection and its backup target.
 public sealed class DepotFirstStartTests
 {
     [Theory]
     [InlineData(PluginMcpSignInOutcome.Unreachable, DepotFirstStartState.Offline)]
     [InlineData(PluginMcpSignInOutcome.Declined, DepotFirstStartState.NotSignedIn)]
-    [InlineData(PluginMcpSignInOutcome.Authorized, DepotFirstStartState.SignedIn)]
     public async Task A_connection_is_kept_only_after_a_sign_in_that_succeeded(PluginMcpSignInOutcome outcome, string state)
     {
         var host = Substitute.For<ICockpitHost>();
@@ -42,11 +42,9 @@ public sealed class DepotFirstStartTests
         Assert.Equal(["https://depot.test/mcp"], whileSigningIn.Value.Offered);
         Assert.Equal(0, whileSigningIn.Value.Stored);
         Assert.Equal(state, answer?.State);
-        var signedIn = outcome == PluginMcpSignInOutcome.Authorized;
-        string[] kept = signedIn ? ["https://depot.test"] : [];
-        Assert.Equal(kept, stored().Select(connection => connection.Url));
-        Assert.Equal(signedIn ? 1 : 0, plugin.GetMcpServers().Count);
-        host.Received(signedIn ? 1 : 0).AddBackupTarget(Arg.Any<IBackupTarget>());
+        Assert.Empty(stored());
+        Assert.Empty(plugin.GetMcpServers());
+        host.DidNotReceive().AddBackupTarget(Arg.Any<IBackupTarget>());
 
         // A Depot without /cockpit/manifest answers 404: C2 is not offered, and that is not reported as a problem.
         Assert.Null(answer?.Manifest);

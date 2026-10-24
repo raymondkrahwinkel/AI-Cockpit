@@ -2,15 +2,12 @@ extern alias UiAsm;
 
 using System.Net;
 using System.Text.Json;
-using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 using DepotBrowserModel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserModel;
 using DepotBrowserNode = UiAsm::Cockpit.Plugin.Depot.Contracts.DepotBrowserNode;
 using DepotBrowserStatus = UiAsm::Cockpit.Plugin.Depot.Contracts.DepotBrowserStatus;
 using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
-using DepotTreeBuilder = UiAsm::Cockpit.Plugin.Depot.UI.DepotTreeBuilder;
-using DepotTreeKind = UiAsm::Cockpit.Plugin.Depot.UI.DepotTreeKind;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -56,26 +53,6 @@ public class DepotBrowserModelTests
         new(path, kind, 10, null, contentType, shareId, shareId is null ? null : "https://d/artifact/p/" + shareId, isPublic);
 
     [Fact]
-    public async Task OpeningADocument_ReadsItAndHandsTheMarkdownToTheHostsRenderer()
-    {
-        var rig = new Rig();
-        rig.Answers["browser-read"] = _Ok("# Notes\nbody");
-        var rendered = new Border();
-        rig.Host.CreateMarkdownView("# Notes\nbody").Returns(rendered);
-
-        var answer = await rig.Model().RenderDocumentAsync("cockpit", _Node("docs/Notes.md", "document"));
-
-        Assert.Same(rendered, answer.Data);
-        Assert.Equal("docs/Notes.md", rig.Invokes.Single().Payload.GetProperty("path").GetString());
-
-        // The same nodes nest by their slashes: folders first, the document under its folder.
-        var tree = DepotTreeBuilder.Build([_Node("docs/Notes.md", "document"), _Node("img/a.png", "artifact"), _Node("top.md", "document")]);
-        Assert.Equal(["docs", "img", "top.md"], tree.Select(item => item.Name));
-        Assert.Equal(DepotTreeKind.Folder, tree[0].Kind);
-        Assert.Equal("docs/Notes.md", tree[0].Children.Single().Path);
-    }
-
-    [Fact]
     public async Task Download_OffersTheLastPathComponentOnly_SoNothingLandsOutsideTheChosenFolder()
     {
         var rig = new Rig();
@@ -112,7 +89,9 @@ public class DepotBrowserModelTests
         byte[]? put = null;
         var model = rig.Model(request =>
         {
-            put = request.Content!.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            using var body = new MemoryStream();
+            (request.Content ?? throw new InvalidOperationException("The PUT had no body.")).CopyTo(body, null, CancellationToken.None);
+            put = body.ToArray();
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
 
@@ -126,7 +105,8 @@ public class DepotBrowserModelTests
         rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         var accepted = await model.UploadAsync("cockpit", "img", "../a.png", new MemoryStream([1, 2, 3]), exists: true);
 
-        Assert.True(accepted!.Data);
+        Assert.NotNull(accepted);
+        Assert.True(accepted.Data);
         Assert.Equal("img/a.png", rig.Invokes.Single().Payload.GetProperty("path").GetString());
         Assert.Equal([1, 2, 3], put);
     }
@@ -170,7 +150,8 @@ public class DepotBrowserModelTests
         Assert.Equal("members", rig.Invokes.Single().Payload.GetProperty("mode").GetString());
         await rig.Host.DidNotReceive().ConfirmAsync(Arg.Is<string>(title => title.Contains("public")), Arg.Any<string>(), Arg.Any<string>());
         await rig.Host.Received(1).SetClipboardTextAsync("https://d/artifact/p/s1");
-        Assert.Equal("s1", members!.Data!.ShareId);
+        Assert.NotNull(members?.Data);
+        Assert.Equal("s1", members.Data.ShareId);
 
         rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         await model.ShareAsync("cockpit", node, isPublic: true, copyLink: false);

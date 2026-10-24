@@ -11,26 +11,16 @@ namespace Cockpit.Infrastructure.Tests.Wireframe;
 public class WireframeComponentEditorTests
 {
     [Fact]
-    public void Add_PutsTheComponentInsideTheContainer_AtItsChildrenIndent()
-    {
-        var result = WireframeComponentEditor.Apply(
-            WireframeScreens.Settings,
-            WireframeComponentEdit.Add(WireframeScreens.Group, "input", "Telefoonnummer", null, null));
-
-        Assert.Null(result.Refusal);
-        Assert.Equal("        input \"Telefoonnummer\"", WireframeScreens.LineOf(result.Text!, 11));
-        Assert.Equal("added input \"Telefoonnummer\"", result.Summary);
-    }
-
-    [Fact]
-    public void Add_CarriesTheModifiersThroughVerbatim()
+    public void Add_PutsTheComponentInsideTheContainer_AtItsChildrenIndent_WithItsModifiersVerbatim()
     {
         var result = WireframeComponentEditor.Apply(
             WireframeScreens.Settings,
             WireframeComponentEdit.Add(WireframeScreens.ButtonRow, "button", "Toepassen", "primary w:2", null));
 
         Assert.Null(result.Refusal);
-        Assert.Equal("        button \"Toepassen\" primary w:2", WireframeScreens.LineOf(result.Text!, 14));
+        Assert.NotNull(result.Text);
+        Assert.Equal("        button \"Toepassen\" primary w:2", WireframeScreens.LineOf(result.Text, 14));
+        Assert.Equal("added button \"Toepassen\"", result.Summary);
     }
 
     [Fact]
@@ -58,18 +48,7 @@ public class WireframeComponentEditorTests
     }
 
     [Fact]
-    public void SetText_ChangesTheTextAndKeepsEveryModifier()
-    {
-        var result = WireframeComponentEditor.Apply(
-            WireframeScreens.Settings,
-            WireframeComponentEdit.SetText(WireframeScreens.NameField, "Volledige naam"));
-
-        Assert.Null(result.Refusal);
-        Assert.Equal("        input \"Volledige naam\" value:\"Raymond\" #name", WireframeScreens.LineOf(result.Text!, 9));
-    }
-
-    [Fact]
-    public void SetText_LeavesEveryOtherLineExactlyAsItWas()
+    public void SetText_ChangesTheTextKeepsEveryModifier_AndLeavesEveryOtherLineExactlyAsItWas()
     {
         var before = WireframeScreens.LinesOf(WireframeScreens.Settings);
 
@@ -77,9 +56,13 @@ public class WireframeComponentEditorTests
             WireframeScreens.Settings,
             WireframeComponentEdit.SetText(WireframeScreens.SaveButton, "Bewaren"));
 
+        Assert.Null(result.Refusal);
+        Assert.NotNull(result.Text);
+        Assert.Equal("        button \"Bewaren\" primary #save", WireframeScreens.LineOf(result.Text, WireframeScreens.SaveButtonLine));
+
         // The two halves around the one line that was allowed to change, compared whole — a shorter or a shifted
         // document fails on length before it fails on content.
-        var after = WireframeScreens.LinesOf(result.Text!);
+        var after = WireframeScreens.LinesOf(result.Text);
         var at = WireframeScreens.SaveButtonLine - 1;
         Assert.Equal(before.Length, after.Length);
         Assert.Equal(before[..at], after[..at]);

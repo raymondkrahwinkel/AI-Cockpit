@@ -43,8 +43,8 @@ public class DepotBrowserPanelTests
         window.Show();
 
         _Until(() => panel.GetVisualDescendants().OfType<TreeViewItem>().Any());
-        _ = panel.LoadTreeAsync("docs/Notes.md");
-        _Until(() => panel.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "Notes body"));
+        var loading = panel.LoadTreeAsync("docs/Notes.md");
+        _Until(() => loading.IsCompleted && panel.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "Notes body"));
 
         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
         if (Environment.GetEnvironmentVariable("DEPOT_BROWSER_SCENE_PNG") is { Length: > 0 } path)
@@ -101,8 +101,8 @@ public class DepotBrowserPanelTests
         var window = new Window { Width = 1000, Height = 640, Content = panel };
         window.Show();
 
-        _ = panel.LoadTreeAsync("img/mockup.txt");
-        _Until(() => _Button(panel, "Create link") is not null);
+        var loading = panel.LoadTreeAsync("img/mockup.txt");
+        _Until(() => loading.IsCompleted && _Button(panel, "Create link") is not null);
 
         // AC-1659: the reload must empty the detail before the rebuilt tree reselects the file. Headless, the reselection
         // only lands on the next layout pass, so the end state cannot tell the order; the moment the tree is replaced can.

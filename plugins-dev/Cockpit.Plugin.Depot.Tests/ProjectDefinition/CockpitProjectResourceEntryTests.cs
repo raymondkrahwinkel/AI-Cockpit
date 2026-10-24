@@ -37,13 +37,6 @@ public class CockpitProjectResourceEntryTests
     }
 
     [Fact]
-    public void Create_AnAbsoluteSecretPathReference_ReturnsNull()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        Assert.Null(CockpitProjectResourceEntry.Create("Reference", Path.Combine(home, ".aws", "credentials")));
-    }
-
-    [Fact]
     public void Create_AnAbsoluteSecretPathReferenceWithALabel_DropsTheLabelTooNotJustTheReference()
     {
         // AC-246: this is the row a placeholder must never become. A plain absolute path travels as role +

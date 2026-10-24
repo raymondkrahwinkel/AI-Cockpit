@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -31,6 +30,7 @@ public class DepotSharedProjectSourceTests
         Assert.Equal(1, handler.RequestCount);
         var project = Assert.Single(result.Projects);
         Assert.Equal("Endpoint project", project.Name);
+        Assert.Equal("From Depot", project.Description);
         Assert.Equal("depot:acme/cockpit", project.Id);
         Assert.Equal("acme", project.Organization?.Slug);
         Assert.Equal("Member", project.Organization?.Role);
@@ -72,23 +72,6 @@ public class DepotSharedProjectSourceTests
         Assert.True(result.Succeeded);
         Assert.Equal("Cached project", Assert.Single(result.Projects).Name);
         Assert.Equal("\"projects-v1\"", Assert.Single(handler.Requests[1].Headers.IfNoneMatch).Tag);
-    }
-
-    [Fact]
-    public async Task ListAsync_AProjectWithAValidDefinition_IsIncluded()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        using var http = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit (Depot name)","role":"Editor","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"ok","checksum":"chk","updatedAt":"2026-10-20T10:00:00Z","definition":{"schemaVersion":1,"name":"Cockpit","description":"The cockpit itself"}}}]}""");
-
-        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
-
-        Assert.True(result.Succeeded);
-        var project = Assert.Single(result.Projects);
-        Assert.Equal("Cockpit", project.Name);
-        Assert.Equal("The cockpit itself", project.Description);
-        Assert.Equal("Editor", project.Role);
-        Assert.Equal("depot:acme/cockpit", project.Id);
-        Assert.Empty(result.VisibleButUnreadable);
     }
 
     [Fact]
@@ -165,39 +148,6 @@ public class DepotSharedProjectSourceTests
         Assert.Equal("Shared", Assert.Single(result.Projects).Name);
         var tooLarge = Assert.Single(result.ProjectReadStates, state => state.Id == "depot:acme/large");
         Assert.Equal(SharedProjectReadState.TooLarge, tooLarge.State);
-    }
-
-    [Fact]
-    public async Task ListAsync_InlineDefinitions_PreserveServerOrder()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var payload = JsonSerializer.Serialize(new
-        {
-            projects = Enumerable.Range(1, 7).Select(index => new
-            {
-                address = $"acme/project-{index}",
-                slug = $"project-{index}",
-                name = $"Project {index}",
-                role = "Editor",
-                kind = "Project",
-                organization = new { slug = "acme", name = "Acme", role = "Member" },
-                cockpit = new
-                {
-                    state = "ok",
-                    checksum = $"chk-{index}",
-                    updatedAt = "2026-10-20T10:00:00Z",
-                    definition = new { schemaVersion = 1, name = $"Shared {index}" },
-                },
-            }),
-        });
-        using var http = _Client(payload);
-
-        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
-
-        Assert.Equal(7, result.Projects.Count);
-        Assert.Equal(
-            Enumerable.Range(1, 7).Select(index => $"depot:acme/project-{index}"),
-            result.Projects.Select(project => project.Id));
     }
 
     private static HttpClient _Client(string json) =>

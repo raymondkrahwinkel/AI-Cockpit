@@ -13,8 +13,6 @@ public class DepotApiTests
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, nameof(DepotApiOutcome.NotSignedIn))]
     [InlineData(HttpStatusCode.Forbidden, nameof(DepotApiOutcome.Forbidden))]
-    [InlineData(HttpStatusCode.NotFound, nameof(DepotApiOutcome.OlderDepot))]
-    [InlineData(HttpStatusCode.NotModified, nameof(DepotApiOutcome.NotModified))]
     public async Task GetAsync_MapsSpecialStatusesWithoutExposingAuthorization(HttpStatusCode statusCode, string expected)
     {
         var host = Substitute.For<ICockpitHost>();

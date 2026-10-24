@@ -12,10 +12,12 @@ namespace Cockpit.Backend.Tests.Mcp;
 /// </summary>
 public class PluginMcpMappingTests
 {
+    // An OAuth contribution carries its authority and client id into the server config. AC-500 review finding: one
+    // that (wrongly) also sets a bearer token must not leave that unused token in the registry beside the OAuth config.
     [Fact]
-    public void ToServerConfig_OAuthContribution_CarriesAuthorityAndClientIdIntoTheServerConfig()
+    public void ToServerConfig_OAuthContribution_CarriesAuthorityAndClientId_AndDropsAnUnusedBearerToken()
     {
-        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp")
+        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp", BearerToken: "stray-token")
         {
             OAuthAuthority = "https://depot.example/oauth",
             OAuthClientId = "cockpit",
@@ -24,26 +26,9 @@ public class PluginMcpMappingTests
         var config = PluginMcpMapping.ToServerConfig(contribution);
 
         Assert.Equal(McpServerAuth.OAuth, config.Auth);
+        Assert.Null(config.ApiKey);
         Assert.Equal("https://depot.example/oauth", config.OAuthAuthority);
         Assert.Equal("cockpit", config.OAuthClientId);
-        Assert.Null(config.ApiKey);
-    }
-
-    // AC-500 review finding: a contribution that (wrongly) sets both a bearer token and an OAuth authority must not
-    // leave the unused token sitting in the registry beside the OAuth config that actually takes effect.
-    [Fact]
-    public void ToServerConfig_ContributionWithBothOAuthAndBearer_DropsTheUnusedBearerToken()
-    {
-        var contribution = new McpServerContribution("Depot: project-a", "https://depot.example/mcp", BearerToken: "stray-token")
-        {
-            OAuthAuthority = "https://depot.example/oauth",
-        };
-
-        var config = PluginMcpMapping.ToServerConfig(contribution);
-
-        Assert.Equal(McpServerAuth.OAuth, config.Auth);
-        Assert.Null(config.ApiKey);
-        Assert.Equal("https://depot.example/oauth", config.OAuthAuthority);
     }
 
     // The inverse: an ApiKey contribution must not carry a leftover/blank OAuth authority into the server config.

@@ -34,6 +34,9 @@ public class DepotProjectAddressingTests
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content) });
     }
 
+    private static Task<ProjectMemorySourceLocationsResult> _ListLocationsAsync(ICockpitHost host) =>
+        (RegistrationFor(host).ListLocationsAsync ?? throw new InvalidOperationException("The registration lists no locations."))(CancellationToken.None);
+
     private static Task<string> ProjectArgumentAsync(ICockpitHost host, string storedValue) =>
         DepotProjectAddressing.For(host, new DepotConnectionRegistration("c1", "Work", "https://depot.example.com"), "depot")
             .ProjectArgumentAsync(storedValue, CancellationToken.None);
@@ -44,8 +47,9 @@ public class DepotProjectAddressingTests
     public async Task ADepotWithoutAddresses_GetsTheBareSlug_AndNothingIsRewritten(string stored, string expectedProject)
     {
         var host = HostListing(Legacy, stored);
-        await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+        var location = Assert.Single((await _ListLocationsAsync(host)).Locations);
 
+        Assert.Equal(("cockpit", "Cockpit", "Project · Owner"), (location.Value, location.Name, location.Detail));
         Assert.Equal(expectedProject, await ProjectArgumentAsync(host, stored));
         await host.DidNotReceive().RewriteProjectReferencesAsync(Arg.Any<string>(), Arg.Any<Func<string, string?>>(), Arg.Any<CancellationToken>());
     }
@@ -56,11 +60,11 @@ public class DepotProjectAddressingTests
     public async Task ADepotWithAddresses_UpgradesBareReferences_AndSendsTheAddress(string stored, string expectedProject)
     {
         var host = HostListing(Addressed, stored);
-        var locations = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+        var locations = await _ListLocationsAsync(host);
 
         Assert.Equal("wispslate/cockpit", locations.Locations.Single().Value);
         Assert.Equal(expectedProject, await ProjectArgumentAsync(host, stored));
-        Func<string, string?> rewrite = (Func<string, string?>)host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]!;
+        var rewrite = Assert.IsType<Func<string, string?>>(host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]);
         Assert.Equal("wispslate/cockpit", rewrite("cockpit"));
         Assert.Null(rewrite("wispslate/cockpit"));
         Assert.Equal("wispslate/cockpit/notes.md", rewrite("cockpit/notes.md"));
@@ -78,10 +82,10 @@ public class DepotProjectAddressingTests
     public async Task ABareReferenceWithNoSingleMatch_IsLeftAlone_AndTheOperatorIsTold(string stored)
     {
         var host = HostListing(TwoOrganizations, stored);
-        await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+        await _ListLocationsAsync(host);
 
         host.Received(1).ShowToast(Arg.Is<string>(message => message.Contains(stored)), PluginToastSeverity.Warning, Arg.Any<string?>(), Arg.Any<Action?>());
-        var rewrite = (Func<string, string?>)host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]!;
+        var rewrite = Assert.IsType<Func<string, string?>>(host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]);
         Assert.Null(rewrite(stored));
     }
 }

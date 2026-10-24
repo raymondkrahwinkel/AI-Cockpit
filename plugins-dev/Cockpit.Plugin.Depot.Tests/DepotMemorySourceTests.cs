@@ -43,7 +43,7 @@ public class DepotMemorySourceTests
         {
             LastRequest = request;
             LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            return request.RequestUri!.AbsolutePath == "/cockpit/projects"
+            return request.RequestUri?.AbsolutePath == "/cockpit/projects"
                 ? new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","kind":"Project"}]}"""),
@@ -61,7 +61,7 @@ public class DepotMemorySourceTests
         var host = _HostReturning(_TwoProjectsJson);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
-        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
 
         Assert.Equal(ProjectMemorySourceReachability.Confirmed, result.State);
     }
@@ -72,7 +72,7 @@ public class DepotMemorySourceTests
         var host = _HostReturning(_TwoProjectsJson);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
-        var result = await pairs.Single().Registration.CheckReachability!("no-such-project", CancellationToken.None);
+        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("no-such-project", CancellationToken.None);
 
         Assert.Equal(ProjectMemorySourceReachability.NotFound, result.State);
     }
@@ -85,9 +85,11 @@ public class DepotMemorySourceTests
         var host = _HostReturning(string.Empty, HttpStatusCode.Unauthorized);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
-        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
 
         Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, result.State);
+        // Iron Law #8: NotSignedIn shows its own fixed sentence; nothing plugin-supplied is attached, unlike CheckFailed.
+        Assert.Null(result.Detail);
     }
 
     [Fact]
@@ -96,23 +98,10 @@ public class DepotMemorySourceTests
         var host = _HostReturning("not json");
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
 
-        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
 
         Assert.Equal(ProjectMemorySourceReachability.CheckFailed, result.State);
         Assert.NotNull(result.Detail);
-    }
-
-    [Fact]
-    public async Task CheckReachability_OnAuthorizationRequired_NeverSurfacesADetail()
-    {
-        // Iron Law #8, belt-and-braces: NotSignedIn always shows its own fixed sentence — nothing plugin-supplied
-        // is ever attached here, unlike CheckFailed which deliberately does carry one.
-        var host = _HostReturning(string.Empty, HttpStatusCode.Unauthorized);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
-
-        var result = await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
-
-        Assert.Null(result.Detail);
     }
 
     [Fact]
@@ -132,13 +121,13 @@ public class DepotMemorySourceTests
         var pairs = DepotMemorySource.BuildRegistrationPairs(
             [Connection("c1", "Acme")], host, new HttpClient(new _Handler(HttpStatusCode.OK, "connection reset", throws: true)));
 
-        await pairs.Single().Registration.CheckReachability!("cockpit", CancellationToken.None);
+        await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
 
         logger.Received(1).Log(
             LogLevel.Warning,
             Arg.Any<EventId>(),
-            Arg.Is<object>(state => !state!.ToString()!.Contains("Bearer", StringComparison.OrdinalIgnoreCase)
-                && !state.ToString()!.Contains("token", StringComparison.OrdinalIgnoreCase)),
+            Arg.Is<object>(state => !$"{state}".Contains("Bearer", StringComparison.OrdinalIgnoreCase)
+                && !$"{state}".Contains("token", StringComparison.OrdinalIgnoreCase)),
             null,
             Arg.Any<Func<object, Exception?, string>>());
     }
@@ -157,7 +146,7 @@ public class DepotMemorySourceTests
         var connection = Connection("c1", "Acme");
         var registration = DepotMemorySource.BuildRegistrationPairs([connection], host).Single().Registration;
 
-        var result = await registration.AppendNoteAsync!("acme/cockpit", "\n## stamp\n\nnote\n", CancellationToken.None);
+        var result = await (registration.AppendNoteAsync ?? throw new InvalidOperationException("The registration cannot append."))("acme/cockpit", "\n## stamp\n\nnote\n", CancellationToken.None);
 
         Assert.Equal(ProjectMemoryAppendOutcome.AuthorizationRequired, result.Outcome);
         Assert.Equal("https://depot.example.com/sync/acme/cockpit/append", handler.LastRequest?.RequestUri?.ToString());

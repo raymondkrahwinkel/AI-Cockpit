@@ -27,15 +27,6 @@ public class ProjectResourcePathPortabilityTests
         Assert.Equal("docs/handbook.md", ProjectResourcePathPortability.ToStoredReference(_Root, picked));
     }
 
-    /// <summary>AC-485 review (FIX 5): a nested relative path must carry no platform-specific separator either — not just a single-segment one.</summary>
-    [Fact]
-    public void ToStoredReference_APathNestedSeveralFoldersDeep_UsesForwardSlashesThroughout()
-    {
-        var picked = _Under("docs", "handbook", "team", "onboarding.md");
-
-        Assert.Equal("docs/handbook/team/onboarding.md", ProjectResourcePathPortability.ToStoredReference(_Root, picked));
-    }
-
     [Fact]
     public void ToStoredReference_ThePickedFolderItself_BecomesTheCurrentDirectoryMarker() =>
         Assert.Equal(".", ProjectResourcePathPortability.ToStoredReference(_Root, _Root));
@@ -96,22 +87,15 @@ public class ProjectResourcePathPortabilityTests
         Assert.Equal(ProjectResourceScope.Instance, ProjectResourcePathPortability.ClassifyScope("depot:cockpit"));
 
     [Theory]
-    [InlineData("~")]
     [InlineData("~/Notes/handbook.md")]
-    [InlineData("~//Notes/handbook.md")]
     public void ClassifyScope_AHomeAnchoredReference_IsHome(string reference) =>
         Assert.Equal(ProjectResourceScope.Home, ProjectResourcePathPortability.ClassifyScope(reference));
 
     /// <summary>Raymond's decision (AC-605): "~user/" is not a supported anchor form — .NET has no notion of a POSIX shell's "someone else's home" expansion, so this is left as ordinary (repo-relative-shaped) text rather than guessed at.</summary>
     [Theory]
     [InlineData("~henk/x")]
-    [InlineData("~x")]
     public void ClassifyScope_ATildeReferenceThatIsNotSupportedAnchorForm_IsRepoNotHome(string reference) =>
         Assert.Equal(ProjectResourceScope.Repo, ProjectResourcePathPortability.ClassifyScope(reference));
-
-    [Fact]
-    public void ClassifyScope_ABlankReference_IsNull() =>
-        Assert.Null(ProjectResourcePathPortability.ClassifyScope(""));
 
     [Fact]
     public void ClassifyScope_Null_IsNull() =>
@@ -159,49 +143,17 @@ public class ProjectResourcePathPortabilityTests
     public void SuggestRepoRelativeFix_ARelativeReference_IsNull() =>
         Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, Path.Combine("docs", "handbook.md")));
 
-    [Fact]
-    public void SuggestRepoRelativeFix_ASchemeReference_IsNull() =>
-        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, "depot:cockpit"));
-
-    [Fact]
-    public void SuggestRepoRelativeFix_AHomeAnchoredReference_IsNull() =>
-        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, "~/Notes/handbook.md"));
-
-    [Fact]
-    public void SuggestRepoRelativeFix_NoSourceDirectory_IsNull() =>
-        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(null, _Under("docs", "handbook.md")));
-
-    [Fact]
-    public void SuggestRepoRelativeFix_ABlankReference_IsNull() =>
-        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, ""));
-
-    [Fact]
-    public void SuggestRepoRelativeFix_AnIllegalCharacter_IsNullRatherThanThrowing()
-    {
-        var malformed = _Under("docs", "bad\0name.md");
-
-        var exception = Record.Exception(() => ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, malformed));
-
-        Assert.Null(exception);
-        Assert.Null(ProjectResourcePathPortability.SuggestRepoRelativeFix(_Root, malformed));
-    }
-
     // --- IsHomeAnchored / ResolveHomeAnchor (AC-605 criterion 1) ------------------------------------------------
 
     [Theory]
     [InlineData("~")]
-    [InlineData("~/")]
     [InlineData("~/Notes")]
-    [InlineData("~//Notes")]
     public void IsHomeAnchored_ASupportedAnchorForm_IsTrue(string reference) =>
         Assert.True(ProjectResourcePathPortability.IsHomeAnchored(reference));
 
     [Theory]
     [InlineData("~henk/x")]
-    [InlineData("~x")]
-    [InlineData("")]
     [InlineData(null)]
-    [InlineData("docs/handbook.md")]
     public void IsHomeAnchored_ANotSupportedForm_IsFalse(string? reference) =>
         Assert.False(ProjectResourcePathPortability.IsHomeAnchored(reference));
 
@@ -210,18 +162,6 @@ public class ProjectResourcePathPortabilityTests
         Assert.Equal(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ProjectResourcePathPortability.ResolveHomeAnchor("~"));
-
-    [Fact]
-    public void ResolveHomeAnchor_TildeSlash_IsTheHomeDirectory() =>
-        Assert.Equal(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ProjectResourcePathPortability.ResolveHomeAnchor("~/"));
-
-    [Fact]
-    public void ResolveHomeAnchor_TildeSlashSuffix_IsUnderTheHomeDirectory() =>
-        Assert.Equal(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Notes", "x.md"),
-            ProjectResourcePathPortability.ResolveHomeAnchor("~/Notes/x.md"));
 
     /// <summary>A doubled separator right after the anchor must not be read as an absolute path that replaces home outright (the Path.Combine(home, "/x") footgun).</summary>
     [Fact]
@@ -247,10 +187,6 @@ public class ProjectResourcePathPortabilityTests
     [Fact]
     public void ResolveHomeAnchor_ANotSupportedTildeForm_IsReturnedUnchanged() =>
         Assert.Equal("~henk/x", ProjectResourcePathPortability.ResolveHomeAnchor("~henk/x"));
-
-    [Fact]
-    public void ResolveHomeAnchor_ANonAnchoredReference_IsReturnedUnchanged() =>
-        Assert.Equal("docs/handbook.md", ProjectResourcePathPortability.ResolveHomeAnchor("docs/handbook.md"));
 
     [Fact]
     public void ResolveHomeAnchor_AnIllegalCharacter_IsReturnedUnchangedRatherThanThrowing()

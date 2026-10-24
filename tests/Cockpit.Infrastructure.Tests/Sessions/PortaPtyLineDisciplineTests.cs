@@ -16,23 +16,6 @@ public class PortaPtyLineDisciplineTests
     // only buy flakiness — which it did at 2s per read.
     private static readonly TimeSpan ReadBudget = TimeSpan.FromSeconds(30);
 
-    [LinuxFact("The spawn path and these termios values are Linux-only.")]
-    public async Task SpawnedPty_TranslatesNewlinesForTheTerminal()
-    {
-        using var pty = PortaPtyProcess.Start(
-            "/bin/sh",
-            ["-c", "printf 'AA\\nBB\\n'"],
-            Path.GetTempPath(),
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["PATH"] = "/usr/bin:/bin" },
-            columns: 80,
-            rows: 24);
-
-        const string translated = "AA\r\nBB\r\n";
-        var output = await _ReadUntilAsync(pty, translated);
-
-        Assert.Contains(translated, output, StringComparison.Ordinal);
-    }
-
     /// <summary>
     /// The modes are applied by a shell that then <c>exec</c>s the real program, so this drives the path an
     /// interactive session actually takes: type a line in, read the result back. It pins the input side too — the

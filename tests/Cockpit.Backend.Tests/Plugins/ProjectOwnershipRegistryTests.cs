@@ -21,7 +21,10 @@ public class ProjectOwnershipRegistryTests
         Assert.False(registry.Register(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Another plugin"))));
 
         var resolved = registry.Resolve("proj-1");
-        Assert.Equal("Depot — Work", resolved![HostProjectField.Name]!.SourceName);
+        Assert.NotNull(resolved);
+        var name = resolved[HostProjectField.Name];
+        Assert.NotNull(name);
+        Assert.Equal("Depot — Work", name.SourceName);
         Assert.Null(registry.Resolve("proj-vanished"));
     }
 
@@ -39,13 +42,15 @@ public class ProjectOwnershipRegistryTests
         var registry = new ProjectOwnershipRegistry();
         registry.Register(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Depot — Work", IsEditable: true)));
 
-        var resolved = registry.Resolve("proj-1")!;
+        var resolved = registry.Resolve("proj-1");
 
+        Assert.NotNull(resolved);
         Assert.All(Enum.GetValues<HostProjectField>(), field =>
         {
-            Assert.NotNull(resolved[field]);
-            Assert.Equal("Depot — Work", resolved[field]!.SourceName);
-            Assert.True(resolved[field]!.IsEditable);
+            var owner = resolved[field];
+            Assert.NotNull(owner);
+            Assert.Equal("Depot — Work", owner.SourceName);
+            Assert.True(owner.IsEditable);
         });
     }
 
@@ -62,8 +67,9 @@ public class ProjectOwnershipRegistryTests
             },
         });
 
-        var resolved = registry.Resolve("proj-1")!;
+        var resolved = registry.Resolve("proj-1");
 
+        Assert.NotNull(resolved);
         Assert.NotNull(resolved[HostProjectField.Name]);
         Assert.Null(resolved[HostProjectField.WorktreeSwitch]);
     }
@@ -81,8 +87,9 @@ public class ProjectOwnershipRegistryTests
             },
         });
 
-        var resolved = registry.Resolve("proj-1")!;
+        var resolved = registry.Resolve("proj-1");
 
+        Assert.NotNull(resolved);
         Assert.NotNull(resolved[HostProjectField.Name]);
         Assert.Null(resolved[HostProjectField.Description]);
         Assert.Null(resolved[HostProjectField.Logo]);

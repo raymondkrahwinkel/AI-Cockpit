@@ -108,7 +108,7 @@ public class CockpitHostMcpAuthTests
         Assert.Equal(PluginMcpAuthState.Unknown, state);
         var failure = diagnostics.ForFolder("depot");
         Assert.NotNull(failure);
-        Assert.Equal("mcp-auth-state", failure!.Phase);
+        Assert.Equal("mcp-auth-state", failure.Phase);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class CockpitHostMcpAuthTests
         Assert.Equal(PluginMcpSignInOutcome.Unreachable, outcome);
         var failure = diagnostics.ForFolder("depot");
         Assert.NotNull(failure);
-        Assert.Equal("mcp-sign-in", failure!.Phase);
+        Assert.Equal("mcp-sign-in", failure.Phase);
     }
 
     // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in. Only for

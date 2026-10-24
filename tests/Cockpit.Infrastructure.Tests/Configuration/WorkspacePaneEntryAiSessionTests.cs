@@ -31,21 +31,10 @@ public class WorkspacePaneEntryAiSessionTests
         Assert.Equal(pane.StartedByTheAssistant, restored.StartedByTheAssistant);
     }
 
-    [Fact]
-    public void FromDomain_DefaultsToSdkSessionKind_WhenTheDomainPaneNeverSetIt()
-    {
-        var pane = new WorkspacePane("p1", PaneKind.AiSession);
-
-        var entry = WorkspacePaneEntry.FromDomain(pane);
-
-        Assert.Equal(nameof(PaneSessionKind.Sdk), entry.SessionKind);
-    }
-
     // One behaviour, one test: ToDomain reads the stored string through a single case-insensitive TryParse and
-    // falls back to Sdk on anything it does not recognise — a future kind, a blank, or a differently cased name.
+    // falls back to Sdk on anything it does not recognise — a future kind (a blank goes the same way) or a differently cased name.
     [Theory]
     [InlineData("some-future-kind", PaneSessionKind.Sdk)]
-    [InlineData("", PaneSessionKind.Sdk)]
     [InlineData("tty", PaneSessionKind.Tty)]
     public void ToDomain_ReadsTheSessionKindString_FallingBackToSdkWhenItIsNotOne(string stored, PaneSessionKind expected)
     {

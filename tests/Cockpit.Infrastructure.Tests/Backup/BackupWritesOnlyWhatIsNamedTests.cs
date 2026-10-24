@@ -103,8 +103,8 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
 
         using var written = ZipFile.OpenRead(archive);
         await using var settings = written.GetEntry("cockpit/cockpit.json")!.Open();
-        var archived = JsonNode.Parse(settings)!;
-        var docker = archived["Plugins"]!["docker"]!;
+        var archived = JsonNode.Parse(settings) ?? throw new InvalidOperationException("The archived cockpit.json is empty.");
+        var docker = archived["Plugins"]?["docker"] ?? throw new InvalidOperationException("The archive holds no docker registration.");
 
         // AC-1507: what a manifest manages comes back from the manifest, never from an archive.
         Assert.Null(archived["Provisioning"]);

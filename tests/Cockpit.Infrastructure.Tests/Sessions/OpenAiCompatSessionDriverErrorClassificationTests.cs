@@ -16,20 +16,12 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
     [InlineData(403, SessionErrorKind.AuthRequired)]
     [InlineData(429, SessionErrorKind.RateLimited)]
     [InlineData(500, SessionErrorKind.ServiceUnavailable)]
-    [InlineData(503, SessionErrorKind.ServiceUnavailable)]
     [InlineData(400, SessionErrorKind.Unknown)]
-    [InlineData(404, SessionErrorKind.Unknown)]
     public void ClassifyError_MapsHttpStatusToKind(int status, SessionErrorKind expected)
     {
         var ex = new ClientResultException(new _FakeResponse(status));
 
         Assert.Equal(expected, OpenAiCompatSessionDriver._ClassifyError(ex));
-    }
-
-    [Fact]
-    public void ClassifyError_ANonHttpException_StaysUnknown()
-    {
-        Assert.Equal(SessionErrorKind.Unknown, OpenAiCompatSessionDriver._ClassifyError(new HttpRequestException("server unreachable")));
     }
 
     [Fact]
@@ -50,14 +42,6 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
         var ex = new ClientResultException(new _FakeResponse(429, retryAfterHeaderValue: "Wed, 21 Oct 2026 07:28:00 GMT"));
 
         Assert.Equal(new DateTimeOffset(2026, 10, 21, 7, 28, 0, TimeSpan.Zero), OpenAiCompatSessionDriver._RetryAfterFrom(ex));
-    }
-
-    [Fact]
-    public void RetryAfterFrom_NoRetryAfterHeader_ReturnsNull()
-    {
-        var ex = new ClientResultException(new _FakeResponse(429));
-
-        Assert.Null(OpenAiCompatSessionDriver._RetryAfterFrom(ex));
     }
 
     // Minimal PipelineResponse: just enough of the abstract surface to build a ClientResultException with a

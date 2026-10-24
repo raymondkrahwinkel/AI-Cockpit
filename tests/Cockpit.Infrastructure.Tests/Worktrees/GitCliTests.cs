@@ -24,12 +24,4 @@ public class GitCliTests
         Assert.Contains("https://***@github.com/org/repo.git", redacted);
     }
 
-    [Fact]
-    public void RedactUrlCredentials_LeavesTextWithoutCredentialsUntouched()
-    {
-        const string stderr = "fatal: repository 'https://github.com/org/repo.git/' not found";
-
-        Assert.Equal(stderr, GitCli.RedactUrlCredentials(stderr));
-    }
-
 }

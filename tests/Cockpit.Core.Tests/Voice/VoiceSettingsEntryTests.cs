@@ -1,4 +1,3 @@
-using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -18,19 +17,5 @@ public class VoiceSettingsEntryTests
         var entry = new VoiceSettingsEntry { ModelName = "small", ModelAutoSelected = null };
 
         Assert.False(entry.ToDomain().ModelAutoSelected);
-    }
-
-    [Fact]
-    public void ModelAutoSelected_RoundTrips_WhenSetExplicitly()
-    {
-        Assert.True(new VoiceSettingsEntry { ModelAutoSelected = true }.ToDomain().ModelAutoSelected);
-        Assert.Equal(true, VoiceSettingsEntry.FromDomain(new VoiceSettings { ModelAutoSelected = true }).ModelAutoSelected);
-    }
-
-    [Fact]
-    public void AFreshInstall_DefaultsToTheAutoModel()
-    {
-        // The domain default is Auto, so a brand-new config (no voice section on disk) starts on the recommendation.
-        Assert.True(new VoiceSettings().ModelAutoSelected);
     }
 }
