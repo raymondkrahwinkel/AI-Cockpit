@@ -2,7 +2,6 @@ using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.Browser;
 
@@ -13,23 +12,10 @@ internal sealed class DepotFailure(string status, string message) : Exception(me
 
 internal sealed record DepotProjectRow(string Argument, string Name, DepotProjectRole Role);
 
-// AC-1574: the Depot calls the file browser and the publisher share, through the connection's own MCP server so the host
-// holds the token. A failure comes out as a DepotFailure; nothing here logs.
-internal sealed class DepotMcp(ICockpitHost host, Func<IReadOnlyList<DepotConnectionRegistration>> connections)
+// AC-1574: the Depot requests the file browser and the publisher share. Since AC-1642 they go over REST only, with the
+// host holding the token; the MCP server is the agent session's alone. A failure comes out as a DepotFailure; nothing here logs.
+internal sealed class DepotRequests(ICockpitHost host, Func<IReadOnlyList<DepotConnectionRegistration>> connections)
 {
-    public async Task<string> CallAsync(
-        string connectionId, string tool, IReadOnlyDictionary<string, object?>? arguments, CancellationToken cancellationToken)
-    {
-        var connection = _Connection(connectionId);
-        var result = await host.CallMcpToolAsync(connection.McpServerName, tool, arguments, projectId: null, cancellationToken).ConfigureAwait(false);
-        return result.Outcome switch
-        {
-            PluginMcpToolCallOutcome.Success => result.Content ?? string.Empty,
-            PluginMcpToolCallOutcome.AuthorizationRequired => throw new DepotFailure(DepotBrowserStatus.SignIn, $"Sign in to {connection.Name}"),
-            _ => throw new DepotFailure(DepotBrowserStatus.Error, result.Error is { Length: > 0 } error ? error : "Depot did not answer."),
-        };
-    }
-
     public async Task<IReadOnlyList<DepotProjectRow>> ListProjectsAsync(string connectionId, CancellationToken cancellationToken)
     {
         var connection = _Connection(connectionId);

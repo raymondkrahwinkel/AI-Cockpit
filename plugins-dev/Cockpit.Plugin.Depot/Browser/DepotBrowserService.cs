@@ -16,7 +16,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
 
     private readonly ICockpitHost _host = host;
     private readonly Func<IReadOnlyList<DepotConnectionRegistration>> _connections = connections;
-    private readonly DepotMcp _mcp = new(host, connections);
+    private readonly DepotRequests _mcp = new(host, connections);
     private readonly DepotUploader _uploader = new();
 
     public Task<DepotBrowserAnswer<IReadOnlyList<DepotBrowserProject>>> ProjectsAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
@@ -31,7 +31,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<DepotBrowserTree>> TreeAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = DepotMcp.Required(request.Project, "project");
+            var project = DepotRequests.Required(request.Project, "project");
             var nodes = new List<DepotBrowserNode>();
             string? cursor = null;
             for (var page = 0; page < MaxPages; page++)
@@ -39,8 +39,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
                 var path = $"{_SyncRoot(project)}/files?limit={PageSize}"
                     + (cursor is null ? string.Empty : $"&after={Uri.EscapeDataString(cursor)}");
                 using var listing = await _GetAsync(request.ConnectionId, path, cancellationToken).ConfigureAwait(false);
-                nodes.AddRange(DepotMcp.Entries(listing.RootElement).Select(entry => _Node(entry, DepotBrowserKind.Document)));
-                var next = DepotMcp.String(listing.RootElement, "nextCursor");
+                nodes.AddRange(DepotRequests.Entries(listing.RootElement).Select(entry => _Node(entry, DepotBrowserKind.Document)));
+                var next = DepotRequests.String(listing.RootElement, "nextCursor");
                 if (string.IsNullOrEmpty(next) || next == cursor)
                 {
                     break;
@@ -54,7 +54,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             var shares = (await _SharesAsync(request, project, cancellationToken).ConfigureAwait(false))
                 .GroupBy(share => share.Path, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-            nodes.AddRange(DepotMcp.Entries(artifacts.RootElement).Select(entry =>
+            nodes.AddRange(DepotRequests.Entries(artifacts.RootElement).Select(entry =>
             {
                 var node = _Node(entry, DepotBrowserKind.Artifact);
                 return shares.TryGetValue(node.Path, out var share)
@@ -68,14 +68,14 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<string>> ReadAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var path = DepotMcp.Required(request.Path, "path");
+            var path = DepotRequests.Required(request.Path, "path");
             using var document = await _PostAsync(
-                request.ConnectionId, $"{_SyncRoot(DepotMcp.Required(request.Project, "project"))}/read", new[] { path }, cancellationToken)
+                request.ConnectionId, $"{_SyncRoot(DepotRequests.Required(request.Project, "project"))}/read", new[] { path }, cancellationToken)
                 .ConfigureAwait(false);
             _RejectTruncated(document.RootElement);
-            var file = _Array(document.RootElement, "files").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
+            var file = _Array(document.RootElement, "files").FirstOrDefault(entry => DepotRequests.String(entry, "path") == path);
             return file.ValueKind == JsonValueKind.Object
-                ? DepotMcp.String(file, "content") ?? string.Empty
+                ? DepotRequests.String(file, "content") ?? string.Empty
                 : throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return the requested file.");
         });
 
@@ -83,12 +83,12 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<string>> DownloadUrlAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var path = DepotMcp.Required(request.Path, "path");
+            var path = DepotRequests.Required(request.Path, "path");
             using var document = await _PostAsync(
-                request.ConnectionId, $"{_SyncRoot(DepotMcp.Required(request.Project, "project"))}/downloads", new { prefix = path }, cancellationToken)
+                request.ConnectionId, $"{_SyncRoot(DepotRequests.Required(request.Project, "project"))}/downloads", new { prefix = path }, cancellationToken)
                 .ConfigureAwait(false);
-            var file = _Array(document.RootElement, "files").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
-            return DepotMcp.String(file, "downloadUrl") is { Length: > 0 } url
+            var file = _Array(document.RootElement, "files").FirstOrDefault(entry => DepotRequests.String(entry, "path") == path);
+            return DepotRequests.String(file, "downloadUrl") is { Length: > 0 } url
                 ? url
                 : throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return a download URL.");
         });
@@ -97,8 +97,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<DepotBrowserShare>> ShareAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = DepotMcp.Required(request.Project, "project");
-            var path = DepotMcp.Required(request.Path, "path");
+            var project = DepotRequests.Required(request.Project, "project");
+            var path = DepotRequests.Required(request.Path, "path");
             if (request.Mode is not { } mode || mode is not ("members" or "public"))
             {
                 throw new DepotFailure(DepotBrowserStatus.Error, "Choose Members only or Public.");
@@ -108,7 +108,7 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
             using var document = await _PostAsync(
                 request.ConnectionId, $"{_SyncRoot(project)}/shares", new { path, mode }, cancellationToken).ConfigureAwait(false);
             var root = document.RootElement;
-            if (DepotMcp.String(root, "shareId") is { Length: > 0 } id && DepotMcp.String(root, "url") is { Length: > 0 } url)
+            if (DepotRequests.String(root, "shareId") is { Length: > 0 } id && DepotRequests.String(root, "url") is { Length: > 0 } url)
             {
                 return new DepotBrowserShare(id, url, root.TryGetProperty("isPublic", out var isPublic) ? isPublic.ValueKind == JsonValueKind.True : mode == "public");
             }
@@ -122,8 +122,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<bool>> UnshareAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = DepotMcp.Required(request.Project, "project");
-            var shareId = DepotMcp.Required(request.ShareId, "shareId");
+            var project = DepotRequests.Required(request.Project, "project");
+            var shareId = DepotRequests.Required(request.ShareId, "shareId");
             await _RequireEditorAsync(request, project, cancellationToken).ConfigureAwait(false);
             await _DeleteAsync(
                 request.ConnectionId, $"{_SyncRoot(project)}/shares/{Uri.EscapeDataString(shareId)}", cancellationToken).ConfigureAwait(false);
@@ -135,8 +135,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
     public Task<DepotBrowserAnswer<DepotBrowserUpload>> UploadAsync(DepotBrowserRequest request, CancellationToken cancellationToken) =>
         _RunAsync(async () =>
         {
-            var project = DepotMcp.Required(request.Project, "project");
-            var path = DepotMcp.Required(request.Path, "path");
+            var project = DepotRequests.Required(request.Project, "project");
+            var path = DepotRequests.Required(request.Path, "path");
             await _RequireEditorAsync(request, project, "Uploading", cancellationToken).ConfigureAwait(false);
             var syncRoot = _SyncRoot(project);
             var connection = _Connection(request.ConnectionId);
@@ -147,8 +147,8 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
                 using var current = await _PostAsync(api, $"{syncRoot}/read", new[] { path }, connection.Name, cancellationToken)
                     .ConfigureAwait(false);
                 _RejectTruncated(current.RootElement);
-                var file = _Array(current.RootElement, "files").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
-                baseChecksum = DepotMcp.String(file, "checksum");
+                var file = _Array(current.RootElement, "files").FirstOrDefault(entry => DepotRequests.String(entry, "path") == path);
+                baseChecksum = DepotRequests.String(file, "checksum");
             }
 
             var started = await _uploader.StartAsync(
@@ -171,9 +171,9 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         var result = new List<_Share>();
         foreach (var share in shares.EnumerateArray())
         {
-            if (DepotMcp.String(share, "shareId") is not { Length: > 0 } shareId
-                || DepotMcp.String(share, "path") is not { Length: > 0 } path
-                || DepotMcp.String(share, "url") is not { Length: > 0 } url)
+            if (DepotRequests.String(share, "shareId") is not { Length: > 0 } shareId
+                || DepotRequests.String(share, "path") is not { Length: > 0 } path
+                || DepotRequests.String(share, "url") is not { Length: > 0 } url)
             {
                 continue;
             }
@@ -281,12 +281,12 @@ internal sealed class DepotBrowserService(ICockpitHost host, Func<IReadOnlyList<
         }
     }
 
-    private static Task<DepotBrowserAnswer<T>> _RunAsync<T>(Func<Task<T>> body) => DepotMcp.RunAsync(body);
+    private static Task<DepotBrowserAnswer<T>> _RunAsync<T>(Func<Task<T>> body) => DepotRequests.RunAsync(body);
 
     private static DepotBrowserNode _Node(JsonElement entry, string kind) => new(
-        DepotMcp.String(entry, "path") ?? string.Empty,
+        DepotRequests.String(entry, "path") ?? string.Empty,
         kind,
         entry.TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes) ? bytes : 0,
-        DateTimeOffset.TryParse(DepotMcp.String(entry, "updatedAt"), out var modified) ? modified : null,
-        DepotMcp.String(entry, "contentType"));
+        DateTimeOffset.TryParse(DepotRequests.String(entry, "updatedAt"), out var modified) ? modified : null,
+        DepotRequests.String(entry, "contentType"));
 }
