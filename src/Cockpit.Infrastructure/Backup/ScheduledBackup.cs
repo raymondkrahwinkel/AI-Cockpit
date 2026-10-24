@@ -5,6 +5,7 @@ using Cockpit.Core.Backup;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Backup;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -39,9 +40,11 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
         IToastService? toasts = null,
         ILogger<ScheduledBackup>? logger = null,
         BackupTargets? targets = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        PluginSignInStanding? signIns = null)
         : this(backups, store, toasts, logger, TimeProvider.System, orgPolicy)
     {
+        WaitsForSignIn = (targetId, token) => signIns is null ? Task.FromResult(false) : signIns.WaitsAsync(targets?.PluginOf(targetId), token);
         TargetFor = schedule => _LocalFolderFor(schedule) ?? targets?.Find(schedule.TargetId);
         RegisteredTargets = () => [BackupSchedule.LocalFolderTargetId, .. targets?.All.Select(target => target.Id) ?? []];
     }
@@ -65,6 +68,9 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
 
     // Where a schedule's backups go: the local folder, or a target a plugin registered (AC-1508). Replaced by the tests.
     internal Func<BackupSchedule, IBackupTarget?> TargetFor { get; set; } = _LocalFolderFor;
+
+    // AC-1663: whether the plugin behind a target waits for the operator to sign in. Replaced by the tests.
+    internal Func<string, CancellationToken, Task<bool>> WaitsForSignIn { get; set; } = (_, _) => Task.FromResult(false);
 
     // The target ids an organisation's allowed list can fall back to (AC-1593). Replaced by the tests.
     internal Func<IReadOnlyList<string>> RegisteredTargets { get; set; } = () => [BackupSchedule.LocalFolderTargetId];
@@ -175,7 +181,12 @@ public sealed class ScheduledBackup : ISingletonService, IDisposable
             var message = $"The scheduled backup failed: {exception.Message} It will be tried again.";
             var state = await _store.LoadStateAsync(CancellationToken.None).ConfigureAwait(false);
             await _store.SaveStateAsync(state with { LastFailure = message }, CancellationToken.None).ConfigureAwait(false);
-            _Report(message);
+
+            // AC-1663: a plugin that waits for a sign-in is named by the host once, with a Sign in button; this stays on the Backup page.
+            if (!await WaitsForSignIn(schedule.TargetId, CancellationToken.None).ConfigureAwait(false))
+            {
+                _Report(message);
+            }
         }
     }
 

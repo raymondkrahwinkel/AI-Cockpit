@@ -45,9 +45,10 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     private bool _toldConflicts;
     private bool _disposed;
 
-    public SettingsCarrierSync(SettingsCarriers carriers, IToastService? toasts = null, ILogger<SettingsCarrierSync>? logger = null)
+    public SettingsCarrierSync(SettingsCarriers carriers, IToastService? toasts = null, ILogger<SettingsCarrierSync>? logger = null, PluginSignInStanding? signIns = null)
         : this(carriers, CockpitConfigPath.Default, toasts, logger, TimeProvider.System)
     {
+        WaitsForSignIn = token => signIns is null ? Task.FromResult(false) : signIns.WaitsAsync(carriers.PluginId, token);
     }
 
     // Test seam: a config file of its own, so two machines can live in one test.
@@ -60,6 +61,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         _logger = logger ?? NullLogger<SettingsCarrierSync>.Instance;
         _time = time;
     }
+
+    // AC-1663: whether the carrier's plugin waits for the operator to sign in. Replaced by the tests.
+    internal Func<CancellationToken, Task<bool>> WaitsForSignIn { get; set; } = _ => Task.FromResult(false);
 
     // Told when the operator has a choice to make; set by the desktop, which owns the dialog. Without it the toast says so.
     public Action<IReadOnlyList<SettingsConflict>>? OnConflicts { get; set; }
@@ -243,7 +247,8 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         {
             // Offline, signed out, refused: the base is unchanged on disk, so a later run pushes what is waiting.
             _logger.LogWarning(exception, "Settings sync with {Carrier} failed", _carriers.Carrier?.Id);
-            if (!_toldUnreachable && _carriers.Carrier is { } carrier)
+            // AC-1663: signed out is said once by the host, with a Sign in button, so it is not a second toast here.
+            if (!_toldUnreachable && _carriers.Carrier is { } carrier && !await WaitsForSignIn(CancellationToken.None).ConfigureAwait(false))
             {
                 _toldUnreachable = true;
                 _toasts?.Show($"Your settings could not be synced with {carrier.DisplayName}: {exception.Message} They are sent once it can be reached.", ToastSeverity.Warning);

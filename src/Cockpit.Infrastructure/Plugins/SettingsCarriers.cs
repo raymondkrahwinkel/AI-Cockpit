@@ -9,8 +9,12 @@ namespace Cockpit.Infrastructure.Plugins;
 public sealed class SettingsCarriers(ILogger<SettingsCarriers> logger) : ISingletonService
 {
     private SettingsCarrierRegistration? _carrier;
+    private string? _pluginId;
 
     public SettingsCarrierRegistration? Carrier => Volatile.Read(ref _carrier);
+
+    // AC-1663: the plugin that registered the carrier.
+    internal string? PluginId => Volatile.Read(ref _pluginId);
 
     public bool Add(string pluginId, SettingsCarrierRegistration registration)
     {
@@ -20,6 +24,7 @@ public sealed class SettingsCarriers(ILogger<SettingsCarriers> logger) : ISingle
             return false;
         }
 
+        Volatile.Write(ref _pluginId, pluginId);
         return true;
     }
 }
