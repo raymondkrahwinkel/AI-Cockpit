@@ -9,7 +9,6 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Layout;
-using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.TestSupport;
@@ -96,7 +95,7 @@ public sealed class SettingsSyncJourney
         await cockpit.Services.GetRequiredService<IMcpOAuthTokenStore>().SaveAsync(
             "journey",
             "Depot: Journey",
-            new McpOAuthToken { AccessToken = _ProfileSpace.Bearer, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), Scope = "depot", ResourceUrl = $"{url}/mcp" });
+            DepotHostScope.SignedIn(_ProfileSpace.Bearer, url));
         await cockpit.StartDesktopAsync();
     }
 
@@ -124,6 +123,11 @@ public sealed class SettingsSyncJourney
         public async Task HandleAsync(HttpContext context)
         {
             var request = context.Request;
+            if (!Offline && await DepotHostScope.TryAnswerAsync(context, Bearer))
+            {
+                return;
+            }
+
             if (Offline)
             {
                 context.Response.StatusCode = 503;
