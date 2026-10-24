@@ -1854,7 +1854,7 @@ internal static partial class Screenshotter
         var dialog = _OptionsOnTab("backup");
         var schedule = new BackupScheduleViewModel(new _SceneScheduleStore());
         schedule.LoadAsync().GetAwaiter().GetResult();
-        var cockpit = (ViewModels.CockpitViewModel)dialog.DataContext!;
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
         cockpit.ScheduledBackupSettings = schedule;
         // The property does not notify: bind again so the section sees it.
         dialog.DataContext = null;
