@@ -80,11 +80,13 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store, 
         }
     }
 
-    private void _ShowStatus()
-    {
-        _ = CultureInfo.InvariantCulture;
-        Status = _state.LastFailure ?? string.Empty;
-    }
+    private void _ShowStatus() =>
+        Status = _state switch
+        {
+            { LastFailure: { } failure } => failure,
+            { LastSuccess: { } done } => $"Last backup: {done.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} to {Target?.Name}.",
+            _ => string.Empty,
+        };
 
     partial void OnEnabledChanged(bool value) => _Save();
 
