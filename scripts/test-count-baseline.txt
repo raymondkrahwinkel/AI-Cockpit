@@ -32,8 +32,7 @@ plugins-dev/Cockpit.Plugin.TranscriptSearch.Tests	8
 plugins-dev/Cockpit.Plugin.UsageTrend.Tests	15
 plugins-dev/Cockpit.Plugin.Workflows.Tests	50
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
-# AC-1658 adds one view test: a saved quick note closes its window, a failed one stays open with the note.
-tests/Cockpit.App.ViewTests	1529
+tests/Cockpit.App.ViewTests	1528
 tests/Cockpit.Backend.Tests	78
 tests/Cockpit.Core.Tests	1320
 tests/Cockpit.Infrastructure.Tests	795
