@@ -439,6 +439,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
         var outcome = await InstallPluginOnDesktop(row);
         Status = outcome.Message;
+        StatusIsError = !outcome.Installed;
         row.OnDesktop = outcome.Installed;
         DesktopNeedsRestart |= outcome.Installed && outcome.NeedsRestart;
     });

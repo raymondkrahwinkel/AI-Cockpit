@@ -533,13 +533,19 @@ public sealed class RemoteAdminJourney
             ServerSharedProjectRowViewModel? bareRow = null;
             var sharedResult = "";
             var sharedAfter = new List<string>();
+            var sharedStatusFlags = (Failed: false, Succeeded: false);
             var sharedPane = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 sharedOffered = [.. admin.SharedProjects.Select(project => project.Id)];
                 bareRow = admin.SharedProjects.Single(project => project.Id == BareProject);
+                var sharedProject = admin.SharedProjects.Single(project => project.Id == SharedProject);
+                admin.SharedProfile = null;
+                await admin.AddSharedCommand.ExecuteAsync(sharedProject);
+                sharedStatusFlags.Failed = admin.StatusIsError;
                 admin.SharedProfile = "Echo";
-                await admin.AddSharedCommand.ExecuteAsync(admin.SharedProjects.Single(project => project.Id == SharedProject));
+                await admin.AddSharedCommand.ExecuteAsync(sharedProject);
+                sharedStatusFlags.Succeeded = admin.StatusIsError;
                 sharedResult = admin.CloneResult;
                 sharedAfter = [.. admin.SharedProjects.Select(project => project.Id)];
 
@@ -647,6 +653,7 @@ public sealed class RemoteAdminJourney
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
             Assert.Contains(SharedProject, sharedOffered);
+            Assert.Equal((true, false), sharedStatusFlags);
             // DEP-381: a definition without a repository is offered as not cloneable, its "Add on" is disabled with the reason,
             // and the server still refuses it.
             Assert.Equal((true, false), (cloneable[SharedProject], cloneable[BareProject]));
