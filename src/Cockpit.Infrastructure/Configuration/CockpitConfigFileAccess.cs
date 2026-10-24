@@ -249,7 +249,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     {
         using var gate = await CockpitConfigWriteGate.AcquireAsync(configFilePath, cancellationToken).ConfigureAwait(false);
 
-        var configFile = await ReadNowAsync(cancellationToken, waitForWriter: false).ConfigureAwait(false) ?? new CockpitConfigFile();
+        var configFile = new CockpitConfigFile(); await Task.CompletedTask.ConfigureAwait(false);
         mutate(configFile);
 
         await WriteNowAsync(configFile).ConfigureAwait(false);
