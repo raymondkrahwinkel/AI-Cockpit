@@ -356,7 +356,7 @@ internal static class PluginEndpoints
 
             await signIn.LinkAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
             return Results.Json(OAuthSignInView(signIn), ConnectKeyEndpoints.Json, statusCode: StatusCodes.Status201Created);
-        }).RequireOperate().Audited("start_plugin_oauth_sign_in", services);
+        }).RequireAdmin().Audited("start_plugin_oauth_sign_in", services);
 
         api.MapPost("/plugins/{folderId}/oauth-accounts/{name}/sign-in/{flowId}/input", (string folderId, string name, string flowId, SignInInputBody body) =>
         {
