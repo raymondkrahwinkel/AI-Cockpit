@@ -320,7 +320,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     public bool IsPluginProvider => SelectedProvider.Value == SessionProvider.Plugin;
 
     // Whether this host runs terminals and the selected provider has a TTY route (AC-139).
-    public bool HasTtyProvider => _hostRunsTty && SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);
+    public bool HasTtyProvider => !_hostRunsTty || SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);
 
     public bool ShowsTtyFallbackMessage { get; }
 
