@@ -127,7 +127,6 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
     {
         if (!_TryValidate(out var candidates, out var reason))
         {
-            _Write(candidates ?? []);
             return (false, reason);
         }
 
