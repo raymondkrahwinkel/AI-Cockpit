@@ -3,12 +3,13 @@ using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Backup;
 using Cockpit.Plugins.Abstractions.Backup;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
 
 // AC-1502: Options → Backup → the scheduled backup. Written straight through, like the backup buttons beside it: the
 // schedule is a backend setting the planner reads, and a Cancel that put it back would leave it running meanwhile.
-public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) : ViewModelBase
+public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store, ILogger? logger = null) : ViewModelBase
 {
     public const string Daily = "Daily";
 
@@ -131,6 +132,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store) 
         }
         catch (Exception exception)
         {
+            logger?.LogWarning(exception, "Saving the backup schedule failed.");
             Status = $"The schedule was not saved: {exception.Message}";
         }
     }

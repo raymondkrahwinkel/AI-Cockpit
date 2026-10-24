@@ -187,6 +187,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
     }
 
+    // Source.Changed is an Action event, so its async handler must be void; failures are logged here.
     private async void _OnSourceChanged(ISharedProjectSource source, string? sharedId)
     {
         try

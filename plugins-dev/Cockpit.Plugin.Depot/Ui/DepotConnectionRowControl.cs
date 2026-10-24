@@ -149,6 +149,7 @@ internal sealed class DepotConnectionRowControl : UserControl
         _OnFieldsChanged();
         if (existing is not null)
         {
+            // Construction cannot await optional branding; the task logs failures and keeps the default branding.
             _ = LoadBrandingAsync();
         }
     }

@@ -715,7 +715,8 @@ public partial class App : Application
             if (signIn.PluginId is { } pluginId && cockpit.HasPluginSettings(pluginId))
             {
                 var name = cockpit.PluginSettings[pluginId].PluginName;
-                toasts.Show(EmptiedSignIn.Ask(name), ToastSeverity.Warning, "Sign in", () => _ = cockpit.OpenPluginSettingsAsync(pluginId));
+                // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
+                toasts.Show(EmptiedSignIn.Ask(name), ToastSeverity.Warning, "Sign in", () => _ = _OpenPluginSettingsAsync(cockpit, pluginId));
             }
             else
             {
@@ -742,7 +743,8 @@ public partial class App : Application
 
             if (cockpit.HasPluginSettings("depot"))
             {
-                toasts.Show(message, ToastSeverity.Warning, "Open Depot settings", () => _ = cockpit.OpenPluginSettingsAsync("depot"));
+                // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
+                toasts.Show(message, ToastSeverity.Warning, "Open Depot settings", () => _ = _OpenPluginSettingsAsync(cockpit, "depot"));
             }
             else
             {
@@ -766,6 +768,7 @@ public partial class App : Application
             $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
             ToastSeverity.Warning,
             "Choose",
+            // Toast actions cannot return a task; the handler logs and surfaces failures itself.
             () => _ = _ChooseSettingsAsync(sync)));
     }
 
@@ -794,6 +797,19 @@ public partial class App : Application
     }
 
     private static async Task _FinishProvisioningAsync(ProvisioningOutcome provisioning)
+    {
+        try
+        {
+            await _FinishProvisioningCoreAsync(provisioning);
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Provisioning")
+                .LogWarning(exception, "Finishing provisioning failed.");
+        }
+    }
+
+    private static async Task _FinishProvisioningCoreAsync(ProvisioningOutcome provisioning)
     {
         var finished = await ProvisionManifestApplier.FinishAsync(
             provisioning,
@@ -826,7 +842,22 @@ public partial class App : Application
         }
 
         Program.Services.GetRequiredService<IToastService>().Show(
-            message, ToastSeverity.Information, $"Open {cockpit.PluginSettings[signInPlugin].PluginName} settings", () => _ = cockpit.OpenPluginSettingsAsync(signInPlugin));
+            message, ToastSeverity.Information, $"Open {cockpit.PluginSettings[signInPlugin].PluginName} settings",
+            // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
+            () => _ = _OpenPluginSettingsAsync(cockpit, signInPlugin));
+    }
+
+    private static async Task _OpenPluginSettingsAsync(CockpitViewModel cockpit, string pluginId)
+    {
+        try
+        {
+            await cockpit.OpenPluginSettingsAsync(pluginId);
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.PluginSettings")
+                .LogWarning(exception, "Opening settings for plugin {PluginId} failed.", pluginId);
+        }
     }
 
     private static void _RegisterInstalledTemplates(IWorkflowTemplateLibrary library, IWorkflowTemplateRegistry registry)

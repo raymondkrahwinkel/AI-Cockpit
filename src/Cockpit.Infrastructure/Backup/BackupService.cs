@@ -79,7 +79,9 @@ internal sealed class BackupService(
     // same seam a plugin's target will, rather than beside it.
     internal Task<BackupManifest> WriteIntoAsync(string archivePath, string root, BackupOptions options, CancellationToken cancellationToken)
     {
-        var folder = new LocalFolderBackupTarget(Path.GetDirectoryName(Path.GetFullPath(archivePath))!, StagingIn(root));
+        var archiveDirectory = Path.GetDirectoryName(Path.GetFullPath(archivePath))
+            ?? throw new ArgumentException("The backup path must name a file inside a folder.", nameof(archivePath));
+        var folder = new LocalFolderBackupTarget(archiveDirectory, StagingIn(root));
 
         return WriteIntoAsync(
             (archive, token) => folder.WriteAsync(Path.GetFileName(archivePath), archive, token),

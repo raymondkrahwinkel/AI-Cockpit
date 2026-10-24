@@ -425,7 +425,8 @@ public static class ProvisionManifestApplier
     private static async Task<(bool SignedIn, string Detail)> _ExchangeAsync(
         PluginChannelHub channels, ProvisionConnection connection, JsonElement config, ProvisionToken token, CancellationToken cancellationToken)
     {
-        var block = JsonNode.Parse(config.GetRawText())!.AsObject();
+        var block = JsonNode.Parse(config.GetRawText())?.AsObject()
+            ?? throw new JsonException("The connection configuration was empty.");
         block["id"] = connection.Id;
         block["name"] ??= connection.Id;
         var payload = JsonSerializer.SerializeToElement(new JsonObject { ["connection"] = block, ["token"] = token.Value });
@@ -588,9 +589,9 @@ public static class ProvisionManifestApplier
                 var version = entry?.Versions
                     .Where(offered => _Satisfies(offered.Version, minVersion, pin) && PluginCompatibility.IsCompatible(offered, AbstractionsContract.Version, HostVersionInfo.Current))
                     .Aggregate((PluginStoreVersion?)null, (best, offered) => best is null || PluginVersion.IsNewer(offered.Version, best.Version) ? offered : best);
-                if (version is not null)
+                if (entry is not null && version is not null)
                 {
-                    request = new PluginProvisionRequest(id, entry!.Name, candidate, version);
+                    request = new PluginProvisionRequest(id, entry.Name, candidate, version);
                     break;
                 }
             }

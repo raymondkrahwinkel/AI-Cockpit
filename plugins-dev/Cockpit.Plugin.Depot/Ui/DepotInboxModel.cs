@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -58,6 +59,7 @@ internal sealed class DepotInboxModel : IDisposable
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             // A badge left unknown until the first push is the honest fallback.
+            Trace.TraceWarning($"Loading Depot inbox counts failed: {exception}");
         }
     }
 

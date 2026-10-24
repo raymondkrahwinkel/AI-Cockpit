@@ -81,13 +81,28 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
 
         var installed = await _getInstalledPluginsAsync(cancellationToken).ConfigureAwait(false);
         var saved = await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
-        return
-        [
-            .. installed
-                .Where(plugin => saved.TryGetValue(plugin.FolderId, out var registration)
-                    && PluginVersion.IsBelowBundledMinimum(plugin.Manifest.Version, registration.ExpectedMinVersion, registration.VersionChosen))
-                .Select(plugin => (plugin.FolderId, plugin.Manifest.Name, plugin.Manifest.Version, saved[plugin.FolderId].ExpectedMinVersion!)),
-        ];
+        var belowMinimum = new List<(string FolderId, string Name, string Installed, string Minimum)>();
+        foreach (var plugin in installed)
+        {
+            if (!saved.TryGetValue(plugin.FolderId, out var registration))
+            {
+                continue;
+            }
+
+            if (registration.ExpectedMinVersion is not { } minimum)
+            {
+                continue;
+            }
+
+            if (!PluginVersion.IsBelowBundledMinimum(plugin.Manifest.Version, minimum, registration.VersionChosen))
+            {
+                continue;
+            }
+
+            belowMinimum.Add((plugin.FolderId, plugin.Manifest.Name, plugin.Manifest.Version, minimum));
+        }
+
+        return belowMinimum;
     }
 
     private void _NotifyBelowMinimum(IReadOnlyList<(string FolderId, string Name, string Installed, string Minimum)> belowMinimum)
@@ -100,8 +115,21 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
                     $"{plugin.Name} {plugin.Installed} is older than the {plugin.Minimum} this cockpit expects",
                     ToastSeverity.Warning,
                     "Update",
-                    () => _ = _cockpit.Plugins.UpdateStorePluginAsync(plugin.FolderId));
+                    // A toast action is synchronous, so the wrapper observes and logs the detached update task.
+                    () => _ = _UpdateStorePluginAsync(plugin.FolderId));
             }
+        }
+    }
+
+    private async Task _UpdateStorePluginAsync(string folderId)
+    {
+        try
+        {
+            await _cockpit.Plugins.UpdateStorePluginAsync(folderId);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Updating plugin {PluginId} from its store failed.", folderId);
         }
     }
 
