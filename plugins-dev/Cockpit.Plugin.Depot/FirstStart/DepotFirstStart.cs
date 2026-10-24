@@ -112,7 +112,7 @@ internal sealed class DepotFirstStart(
     {
         try
         {
-            using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName, "depot.host"), disposeHandler: true);
+            using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName), disposeHandler: true);
             var query = organization is null ? string.Empty : $"?org={Uri.EscapeDataString(organization)}";
             using var response = await http.GetAsync($"{connection.Url.TrimEnd('/')}/cockpit/manifest{query}", cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)

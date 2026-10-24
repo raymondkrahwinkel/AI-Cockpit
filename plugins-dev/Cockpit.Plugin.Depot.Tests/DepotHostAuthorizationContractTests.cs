@@ -17,7 +17,8 @@ public sealed class DepotHostAuthorizationContractTests
     public async Task Account_endpoint_callers_request_the_depot_host_scope()
     {
         var host = Substitute.For<ICockpitHost>();
-        host.CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>()).Returns(_ => new _DepotAccountHandler());
+        host.CreateAuthorizedHandler(Arg.Any<string>(), "depot.host").Returns(_ => new _DepotAccountHandler());
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _DepotAccountHandler());
         var connection = new DepotConnectionRegistration("c1", "Home", "https://depot.test");
         var settings = new DepotSettings(new FakePluginStorage()) { Connections = [connection] };
 
@@ -33,8 +34,8 @@ public sealed class DepotHostAuthorizationContractTests
             CancellationToken.None);
         Assert.Null(manifest.Manifest);
 
-        host.Received(3).CreateAuthorizedHandler(connection.McpServerName, "depot.host");
-        host.DidNotReceive().CreateAuthorizedHandler(connection.McpServerName);
+        host.Received(2).CreateAuthorizedHandler(connection.McpServerName, "depot.host");
+        host.Received(1).CreateAuthorizedHandler(connection.McpServerName);
     }
 
     private sealed class _DepotAccountHandler : HttpMessageHandler
