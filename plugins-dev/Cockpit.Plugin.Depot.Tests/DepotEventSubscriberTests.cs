@@ -22,12 +22,17 @@ public class DepotEventSubscriberTests
 
         using var projectRegistration = await subscriber.SubscribeAsync("projects", projects.Add, _Noop, CancellationToken.None);
         using var definitionRegistration = await subscriber.SubscribeAsync("definitions", definitions.Add, _Noop, CancellationToken.None);
+        var late = new List<DepotEvent>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => subscriber.SubscribeAsync("late", late.Add, _Noop, new CancellationToken(canceled: true)));
         var hub = Assert.Single(hubs);
         hub.Push(new DepotEvent("projects", "changed", "acme/roadmap", 1));
+        hub.Push(new DepotEvent("late", "changed", "acme/roadmap", 2));
 
         Assert.Equal(["projects", "definitions"], hub.Topics);
         Assert.Single(projects);
         Assert.Empty(definitions);
+        Assert.Empty(late);
     }
 
     [Fact]
