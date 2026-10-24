@@ -110,6 +110,24 @@ public sealed class AssistantJourney
         Assert.True(onQuestions);
         Assert.Equal(["Ship the Depot route?"], waiting);
 
+        // AC-1653: the card carries its own Send once an option is picked, and the answer comes back as a message.
+        var chatSession = chat.Session;
+        Assert.NotNull(chatSession);
+        var card = HeadlessAvalonia.Run(() => chatSession.OpenQuestions.Single());
+        var canSend = HeadlessAvalonia.Run(() =>
+        {
+            Assert.NotNull(card.QuestionPrompts);
+            card.QuestionPrompts[0].Options[0].SelectCommand.Execute(null);
+            return card.IsAwaitingAnswer && card.CanSubmitAnswers;
+        });
+        Assert.True(canSend);
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            await chatSession.SubmitQuestionAnswersCommand.ExecuteAsync(card);
+            await Until.CollectionHolds(transcript, () => transcript.Any(row => row.Kind == TranscriptEntryKind.UserText && row.Text.Contains("Yes", StringComparison.Ordinal)));
+        });
+        Assert.False(HeadlessAvalonia.Run(() => card.IsAwaitingAnswer));
+
         // WayMark's thread closed by the operator, and back by itself once WayMark has something new.
         var closed = HeadlessAvalonia.Run(() =>
         {

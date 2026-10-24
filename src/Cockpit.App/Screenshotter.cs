@@ -3150,12 +3150,16 @@ internal static partial class Screenshotter
 
         var session = new SessionViewModel { Title = "personal - webshop" };
         session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "One thing before I start." });
-        session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which profile should this run under?")
+        // AC-1653: read back from the log, as after a replay, with an option picked: Send has to be there.
+        var card = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which profile should this run under?")
         {
             InputJson = input,
             QuestionPrompts = AskUserQuestionViewModel.Parse(input),
             IsPendingBrokerAnswer = true,
-        });
+        };
+        var replayed = Services.TranscriptSnapshot.Restore([Services.TranscriptSnapshot.Capture(card)]).Single();
+        replayed.QuestionPrompts?[0].Options[0].SelectCommand.Execute(null);
+        session.Transcript.Add(replayed);
 
         var host = new _FakeAssistantSessionHost { Pane = session, Activity = Cockpit.Core.Assistant.AssistantActivity.Ready };
         var viewModel = new ViewModels.AssistantChatViewModel(host, new _FakeAssistantSettingsStore(speakReplies: true), new _NullVoicePlaybackQueue());
