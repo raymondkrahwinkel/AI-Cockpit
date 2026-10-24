@@ -1803,7 +1803,7 @@ internal static partial class Screenshotter
     private static MainWindow _MainWindowAfterARestore(int width, int height)
     {
         var cockpit = new ViewModels.CockpitViewModel();
-        cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Depot"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
+        cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Depot: Staging"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
         cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Slack"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
 
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };

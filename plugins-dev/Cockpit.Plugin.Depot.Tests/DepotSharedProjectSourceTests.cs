@@ -153,8 +153,15 @@ public class DepotSharedProjectSourceTests
         using var known = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Viewer","kind":"Project"}]}""");
         Assert.Equal(DepotProjectListingOutcome.Success, (await new DepotProjectListingSource(host, connection, known).ListAsync(CancellationToken.None)).Outcome);
         using var unreachable = new HttpClient(new _StubHandler(_ => throw new HttpRequestException("Depot is down.")));
+        var source = new DepotSharedProjectSource(connection, "depot:test", host, known);
+        host.SharedProjectSources.Returns([source]);
+        var changes = new List<string?>();
+        source.Changed += changes.Add;
 
         host.McpServerAccountChanged += Raise.Event<EventHandler<string>>(host, connection.McpServerName);
+
+        // The Projects page reads again too, or it keeps the "sign in" (or the other account's list) until Refresh.
+        Assert.Equal<string?>([null], changes);
 
         var result = await new DepotProjectListingSource(host, connection, unreachable).ListAsync(CancellationToken.None);
         Assert.Equal(DepotProjectListingOutcome.Failed, result.Outcome);

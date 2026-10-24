@@ -75,6 +75,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             {
                 DepotProjectListingSource.Forget(host, connection);
             }
+
+            // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
+            foreach (var source in host.SharedProjectSources.OfType<DepotSharedProjectSource>().Where(candidate => candidate.McpServerName == serverName))
+            {
+                source.RaiseAccountChanged();
+            }
         };
 
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this

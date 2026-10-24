@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Layout;
@@ -48,6 +49,7 @@ public sealed class RestoreJourney
                 Assert.Empty(await _RestoreAndRestartAsync(work, "whole-target", (stripped, ["depot"]), (whole, ["depot"])));
             });
 
+            await Step.Run("a restored Depot connection asks for its sign-in once, with the button of the plugin that owns it", () => _AskedForARestoredDepotSignInAsync(work));
             await Step.Run("a backup to a Depot account space restores whole", () => _BackUpToDepotAndRestoreAsync(work));
             await Step.Run("the account space carries settings between two machines", () => _SyncSettingsBetweenTwoMachinesAsync(work));
         }
@@ -55,6 +57,26 @@ public sealed class RestoreJourney
         {
             JourneyHost.RemoveStateRoot(work);
         }
+    }
+
+    // AC-1663: the sign-in a restore empties belongs to the plugin that contributed the server, so the one notice has the
+    // plugin's Sign in. The startup check is not part of a journey host. A cockpit that was never a node says nothing of one.
+    private static async Task _AskedForARestoredDepotSignInAsync(string work)
+    {
+        var archive = Path.Combine(work, "depot-signin.zip");
+        // A node secret that was set but never switched on: the backup takes it out, and nothing was using it.
+        await using (var source = JourneyHost.Desktop(
+            root => File.WriteAllText(CockpitConfigPath.For(root), """{"NodeEndpoint":{"Enabled":false,"SharedSecret":"journey-node-secret"}}"""),
+            Directory.CreateDirectory(Path.Combine(work, "depot-signin-source")).FullName))
+        {
+            await _SignedInDepotAsync(source, "https://depot.example.com");
+            await source.Services.GetRequiredService<IBackupService>().WriteAsync(archive, new BackupOptions(IncludeCredentials: false));
+        }
+
+        var toasts = await _RestoreAndRestartToastsAsync(work, "depot-signin-target", (archive, ["depot"]));
+        var asked = Assert.Single(toasts, toast => toast.Message.Contains("Depot: Journey", StringComparison.Ordinal));
+        Assert.Equal("Sign in", asked.ActionLabel);
+        Assert.DoesNotContain(toasts, toast => toast.Message.Contains("NodeEndpoint", StringComparison.Ordinal));
     }
 
     // AC-1510: two machines, each a state root of its own, through the bundled Depot plugin against a fake account space.
@@ -243,7 +265,10 @@ public sealed class RestoreJourney
         return archive;
     }
 
-    private static async Task<IReadOnlyList<string>> _RestoreAndRestartAsync(string work, string name, params (string Archive, string[] Plugins)[] restores)
+    private static async Task<IReadOnlyList<string>> _RestoreAndRestartAsync(string work, string name, params (string Archive, string[] Plugins)[] restores) =>
+        [.. (await _RestoreAndRestartToastsAsync(work, name, restores)).Select(toast => toast.Message)];
+
+    private static async Task<IReadOnlyList<ToastViewModel>> _RestoreAndRestartToastsAsync(string work, string name, params (string Archive, string[] Plugins)[] restores)
     {
         var target = Directory.CreateDirectory(Path.Combine(work, name)).FullName;
 
@@ -260,7 +285,7 @@ public sealed class RestoreJourney
         await using var after = JourneyHost.Desktop(stateRoot: target);
         await after.StartDesktopAsync();
 
-        return HeadlessAvalonia.Run(() => after.Cockpit.Toasts.Select(toast => toast.Message).ToList());
+        return HeadlessAvalonia.Run(() => after.Cockpit.Toasts.ToList());
     }
     // The bundled Depot plugin with one connection and the host holding its sign-in, as _SignedInDepotAsync seeds it.
     private static async Task _SignedInToProfileAsync(JourneyHost cockpit, string url)

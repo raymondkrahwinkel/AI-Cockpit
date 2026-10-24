@@ -250,6 +250,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **a restored Depot connection asks for its sign-in once, and stays until you answer.** After a restore the
+  notice names the connection, stays on screen with a **Sign in** button that opens the Depot settings, and the
+  startup check no longer says it a second time. A cockpit that never was a node no longer asks for a node secret.
+- fixed: **the Projects page reads Depot again after you sign in or switch account.** The red "Sign in to this Depot
+  connection" line, or the other account's shared projects, no longer wait for Refresh.
 - fixed: **searching Options no longer shows a raw error.** Typing in the Options search box could fill the left
   pane with a JSON exception when a plugin's token had been emptied by a credential-free backup restore or a
   forgotten-password reset. An emptied value now reads as not set, and a plugin page that cannot be opened says so in

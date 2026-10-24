@@ -37,6 +37,11 @@ internal sealed class DepotSharedProjectSource(
 
     public string Key => scheme;
 
+    internal string McpServerName => connection.McpServerName;
+
+    // Whoever signed in or out changes what this connection lists, so the catalog reads it again.
+    internal void RaiseAccountChanged() => Changed?.Invoke(null);
+
     private async Task _SubscribeAsync(Events.DepotEvents events)
     {
         try
