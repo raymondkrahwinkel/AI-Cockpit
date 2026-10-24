@@ -256,6 +256,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: **a Depot connection no longer shows the previous account's projects.** Signing in as someone else on the same
   connection, or signing out, now clears the project list the cockpit remembered for it. Before, with Depot unreachable,
   the last list of the account that had just left could still be shown as the "last known list".
+- fixed: Options → Backup now says when and where the last scheduled backup went ("Last backup: 2026-10-24 12:00 to
+  Depot: Staging."), where the line stayed empty after a run that succeeded. A run that happened since the cockpit
+  started shows when Options opens, without a restart; a failure that is still standing is shown instead.
 - fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
   saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running

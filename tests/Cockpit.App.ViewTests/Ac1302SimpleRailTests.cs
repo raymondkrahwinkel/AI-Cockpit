@@ -158,35 +158,4 @@ public sealed class Ac1302SimpleRailTests
             }
         });
     }
-
-    // AC-1301 left `SimpleSelectedSession` without a producer — this is it. Clicking a node picks that session,
-    // and only in this stand: the panels stand keeps the selection it had.
-    [Fact]
-    public void ClickingANode_PicksThatSessionForTheSimpleStandOnly()
-    {
-        HeadlessAvalonia.Run(() =>
-        {
-            var cockpit = _Cockpit();
-            var spawned = _Session("spawned", "spawned", startedByTheAssistant: true);
-            cockpit.Sessions.Add(spawned);
-            _ = _Chat(cockpit, new SessionViewModel { Title = "Assistant" });
-
-            var window = _Shown(cockpit);
-            try
-            {
-                var row = window.GetVisualDescendants().OfType<Button>()
-                    .First(button => ReferenceEquals(button.DataContext, spawned));
-                var inPanels = cockpit.SelectedSession;
-
-                row.Command!.Execute(row.CommandParameter);
-
-                Assert.Same(spawned, cockpit.SimpleSelectedSession);
-                Assert.Same(inPanels, cockpit.SelectedSession);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
 }

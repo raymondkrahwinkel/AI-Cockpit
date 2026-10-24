@@ -81,8 +81,10 @@ public sealed class Ac1527SimpleRailTests
 
             var row = _Named<ItemsControl>(window, "SimpleRailOwnSessions").GetVisualDescendants().OfType<Button>()
                 .Single(b => ReferenceEquals(b.DataContext, started));
+            var inPanels = cockpit.SelectedSession;
             row.Command!.Execute(row.CommandParameter);
             Assert.Same(started, cockpit.SimpleSelectedSession);
+            Assert.Same(inPanels, cockpit.SelectedSession);
         }
         finally
         {

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Backup;
 using Cockpit.Plugins.Abstractions.Backup;
@@ -16,6 +17,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store, 
     public const string Weekly = "Weekly";
 
     private BackupSchedule _loaded = new();
+    private BackupScheduleState _state = new();
     private bool _loading;
 
     public IReadOnlyList<string> Intervals { get; } = [Daily, Weekly];
@@ -37,7 +39,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store, 
     [ObservableProperty]
     private BackupDestination? _target = LocalFolder;
 
-    // What the last scheduled run left behind: the failure that is still standing, or nothing.
+    // What the last scheduled run left behind: the failure that is still standing, else when and where the last one went.
     [ObservableProperty]
     private string _status = string.Empty;
 
@@ -50,19 +52,41 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store, 
         try
         {
             _loaded = await store.LoadAsync();
-            var state = await store.LoadStateAsync();
+            _state = await store.LoadStateAsync();
 
             Enabled = _loaded.Enabled;
             Interval = _loaded.IntervalHours >= BackupSchedule.WeeklyHours ? Weekly : Daily;
             Keep = _loaded.KeepAtLeastOne;
             Target = _TargetFor(_loaded.TargetId);
-            Status = state.LastFailure ?? string.Empty;
+            _ShowStatus();
         }
         finally
         {
             _loading = false;
         }
     }
+
+    // Options opens: a run since the start is read now, not only after a restart. The schedule fields stay as they are.
+    public async Task RefreshStatusAsync()
+    {
+        try
+        {
+            _state = await store.LoadStateAsync();
+            _ShowStatus();
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "Reading the scheduled backup status failed.");
+        }
+    }
+
+    private void _ShowStatus() =>
+        Status = _state switch
+        {
+            { LastFailure: { } failure } => failure,
+            { LastSuccess: { } done } => $"Last backup: {done.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} to {Target?.Name}.",
+            _ => string.Empty,
+        };
 
     partial void OnEnabledChanged(bool value) => _Save();
 
@@ -85,6 +109,7 @@ public sealed partial class BackupScheduleViewModel(IBackupScheduleStore store, 
             }
 
             Target = _TargetFor(_loaded.TargetId);
+            _ShowStatus();
         }
         finally
         {
