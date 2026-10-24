@@ -1,9 +1,10 @@
 using System.Net;
+using Cockpit.Core.Abstractions.Remote;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
 public sealed class BackendApiException(HttpStatusCode status, string errorCode, string description)
-    : Exception(description)
+    : Exception(description), IRemoteCallFailure
 {
     public HttpStatusCode Status { get; } = status;
 

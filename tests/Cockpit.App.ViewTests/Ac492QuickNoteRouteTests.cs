@@ -18,10 +18,12 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions.Projects;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -29,11 +31,12 @@ namespace Cockpit.App.ViewTests;
 
 // AC-492: the public way in without a hotkey — the command palette, reached from the whole `CockpitView` by its
 // gesture — opens the quick-note window, and asking a second time brings that one back instead of a second one.
+// AC-1658: a save that lands closes the window, "save and start" included; a failed one keeps the note and the reason.
 [Collection("avalonia")]
 public sealed class Ac492QuickNoteRouteTests
 {
     [Fact]
-    public void ThePaletteCommand_ReachedFromTheCockpitView_OpensExactlyOneQuickNoteWindow() => HeadlessAvalonia.Run(() =>
+    public void ThePaletteCommand_ReachedFromTheCockpitView_OpensExactlyOneQuickNoteWindow_ThatASaveCloses() => HeadlessAvalonia.Run(() =>
     {
         IReadOnlyList<PaletteCommand> palette = [];
         var dialogs = Substitute.For<ISessionDialogService>();
@@ -57,6 +60,7 @@ public sealed class Ac492QuickNoteRouteTests
 
             command.Invoke();
             Assert.Same(opened, quickNotes.Window);
+            _AssertASaveCloses();
         }
         finally
         {
@@ -64,6 +68,43 @@ public sealed class Ac492QuickNoteRouteTests
             window.Close();
         }
     });
+
+    private static void _AssertASaveCloses()
+    {
+        var (saved, savedNote) = _OpenNote(ProjectMemoryAppendOutcome.Success);
+        var (started, startedNote) = _OpenNote(ProjectMemoryAppendOutcome.Success);
+        var (failed, failedNote) = _OpenNote(ProjectMemoryAppendOutcome.Failed);
+        try
+        {
+            savedNote.SaveCommand.Execute(null);
+            startedNote.SaveAndStartCommand.Execute(null);
+            failedNote.SaveCommand.Execute(null);
+
+            Assert.False(saved.IsVisible);
+            Assert.False(started.IsVisible);
+            Assert.True(failed.IsVisible);
+            Assert.Equal("a thought", failedNote.Note);
+            Assert.Contains("disk full", failedNote.Message);
+        }
+        finally
+        {
+            saved.Close();
+            started.Close();
+            failed.Close();
+        }
+    }
+
+    private static (QuickNoteWindow Window, QuickNoteViewModel Note) _OpenNote(ProjectMemoryAppendOutcome outcome)
+    {
+        var note = new QuickNoteViewModel(
+            [new Project("p1", "Cockpit")],
+            (_, _, _) => Task.FromResult(new ProjectMemoryAppendResult(outcome, outcome == ProjectMemoryAppendOutcome.Success ? null : "disk full")),
+            (_, _) => Task.CompletedTask)
+        { Note = "a thought" };
+        var window = new QuickNoteWindow { DataContext = note };
+        window.Show();
+        return (window, note);
+    }
 
     // The coordinator needs a hotkey coordinator to subscribe to; this one is never armed, so every store is a blank.
     private static GlobalHotkeyCoordinator _Hotkeys() => new(

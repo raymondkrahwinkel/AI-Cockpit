@@ -25,6 +25,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
     private readonly string _sessionTempRoot;
     private readonly Dictionary<string, WorktreeLease> _leases = new(StringComparer.Ordinal);
     private readonly object _leaseGate = new();
+    private int _dockerUnavailableLogged;
 
     public event Action<WorktreeSourceRefresh>? SourceRefreshed;
     public event Action? WorktreesChanged;
@@ -648,6 +649,11 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
 
             return $"Stopped and removed {containerIds.Count} docker container(s) (and {removedVolumes} volume(s)) this worktree's dev stack left running.";
         }
+        catch (DockerUnavailableException)
+        {
+            _LogDockerUnavailable();
+            return "Docker is not available on this host; container cleanup skipped.";
+        }
         catch (Exception exception)
         {
             // docker not installed, not on PATH, unreachable (no daemon), or no permission — never lets a worktree
@@ -1166,6 +1172,10 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                     }
                 }
             }
+            catch (DockerUnavailableException)
+            {
+                _LogDockerUnavailable();
+            }
             catch (Exception exception) when (cancellationToken.IsCancellationRequested == false)
             {
                 _logger?.LogWarning(exception, "Could not clean up session containers.");
@@ -1273,9 +1283,21 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 }
             }
         }
+        catch (DockerUnavailableException)
+        {
+            _LogDockerUnavailable();
+        }
         catch (Exception exception)
         {
             _logger?.LogWarning(exception, "Could not clean up Docker networks for worktree '{Path}'.", record.Path);
+        }
+    }
+
+    private void _LogDockerUnavailable()
+    {
+        if (Interlocked.Exchange(ref _dockerUnavailableLogged, 1) == 0)
+        {
+            _logger?.LogInformation("Docker is not available on this host; container cleanup skipped.");
         }
     }
 
