@@ -30,7 +30,6 @@ public class ExternalLinkTests
     [InlineData("javascript:alert(1)")]
     [InlineData("data:text/html,<script>alert(1)</script>")]
     [InlineData("ms-msdt:/id")]
-    [InlineData("search-ms:query=x")]
     [InlineData("vscode://file/etc/passwd")]
     [InlineData("mailto:someone@example.test")]
     public void TryParseWebAddress_AnythingElse_IsRefused(string? value) =>

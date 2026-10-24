@@ -22,32 +22,55 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
 
     private static readonly TimeSpan SignInTimeout = TimeSpan.FromMinutes(5);
 
+    // ponytail: a relayed sign-in runs inside the desktop's channel call, which its HttpClient ends at 100 s; ending it
+    // here first answers Cancelled instead of a dropped call. Give that call its own longer timeout if 90 s is too short.
+    private static readonly TimeSpan RelayedSignInTimeout = TimeSpan.FromSeconds(90);
+
     // No redirects: a 307 would resend the refresh token and client secret to whatever host it names.
     private static readonly HttpClient SharedHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
 
     private readonly CockpitConfigFileAccess _configFile;
     private readonly HttpClient _http;
     private readonly ILogger _logger;
+    private readonly PluginOAuthSignIns? _signIns;
 
     // One refresh per account (the McpOAuthCoordinator `_renewals` pattern): a second caller waits for the first, since
     // replaying a rotating refresh token is answered with invalid_grant and would cost the operator the account.
     private readonly Dictionary<string, Task<PluginOAuthOutcome>> _refreshes = new(StringComparer.Ordinal);
     private readonly Lock _refreshesLock = new();
 
-    public PluginOAuthAccounts(ILogger<PluginOAuthAccounts> logger)
-        : this(CockpitConfigPath.Default, SharedHttp, logger)
+    public PluginOAuthAccounts(ILogger<PluginOAuthAccounts> logger, PluginOAuthSignIns signIns)
+        : this(CockpitConfigPath.Default, SharedHttp, logger, signIns: signIns)
     {
     }
 
     // Test seam: another config file, another key holder, and a token endpoint behind `http`.
-    internal PluginOAuthAccounts(string configFilePath, HttpClient http, ILogger logger, ISecretKeyHolder? keyHolder = null)
+    internal PluginOAuthAccounts(string configFilePath, HttpClient http, ILogger logger, ISecretKeyHolder? keyHolder = null, PluginOAuthSignIns? signIns = null)
     {
         _configFile = new CockpitConfigFileAccess(configFilePath, keyHolder);
         _http = http;
         _logger = logger;
+        _signIns = signIns;
     }
 
     public async Task<PluginOAuthConnectResult> ConnectAsync(
+        string pluginId,
+        PluginOAuthProvider provider,
+        IReadOnlyList<string> scopes,
+        string? accountId,
+        Func<Uri, bool> openBrowser,
+        CancellationToken cancellationToken)
+    {
+        var result = await _ConnectAsync(pluginId, provider, scopes, accountId, openBrowser, cancellationToken).ConfigureAwait(false);
+        if (PluginOAuthSignIns.Relay is { } relay)
+        {
+            await relay.Ended(provider.Id, result.Outcome).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    private async Task<PluginOAuthConnectResult> _ConnectAsync(
         string pluginId,
         PluginOAuthProvider provider,
         IReadOnlyList<string> scopes,
@@ -78,22 +101,17 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         var state = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
         var challenge = Base64Url.EncodeToString(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
 
-        using var loopback = McpOAuthLoopback.Open(_logger);
-        if (loopback is null)
-        {
-            return new PluginOAuthConnectResult(PluginOAuthOutcome.Unreachable);
-        }
-
-        var link = _AuthorizationLink(provider, wanted, loopback.RedirectUri, state, challenge);
-        if (!openBrowser(link))
-        {
-            return new PluginOAuthConnectResult(PluginOAuthOutcome.Unavailable);
-        }
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(SignInTimeout);
-        var query = await loopback.ReceiveAsync(provider.Id, state, timeout.Token, "account at").ConfigureAwait(false);
+        // AC-1625: inside a desktop's channel call to this server, that desktop's browser and loopback do the step.
+        Uri linkFor(Uri redirectUri) => _AuthorizationLink(provider, wanted, redirectUri, state, challenge);
+        var (stepOutcome, redirectUri, query) = PluginOAuthSignIns.Relay is { } relay && _signIns is not null
+            ? await _signIns.RunAsync(relay, provider.Id, state, linkFor, RelayedSignInTimeout, cancellationToken).ConfigureAwait(false)
+            : await _BrowseHereAsync(provider.Id, state, linkFor, openBrowser, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        if (stepOutcome != PluginOAuthOutcome.Ok || redirectUri is null)
+        {
+            return new PluginOAuthConnectResult(stepOutcome);
+        }
+
         var (code, _, issuer, error) = McpOAuthLoopback.ParseCallback(query);
         if (query is null || error is not null || string.IsNullOrEmpty(code))
         {
@@ -114,7 +132,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["code"] = code,
-                ["redirect_uri"] = loopback.RedirectUri.ToString(),
+                ["redirect_uri"] = redirectUri.ToString(),
                 ["code_verifier"] = verifier,
             },
             cancellationToken).ConfigureAwait(false);
@@ -132,6 +150,31 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
             entry.ExpiresAt,
             string.IsNullOrEmpty(entry.RefreshToken) ? "cannot renew itself" : "can renew itself");
         return new PluginOAuthConnectResult(PluginOAuthOutcome.Ok, _ToAccount(entry, provider));
+    }
+
+    // The browser step on this machine: its own loopback and the system browser.
+    private async Task<(PluginOAuthOutcome Outcome, Uri? RedirectUri, string? Query)> _BrowseHereAsync(
+        string providerId,
+        string state,
+        Func<Uri, Uri> linkFor,
+        Func<Uri, bool> openBrowser,
+        CancellationToken cancellationToken)
+    {
+        using var loopback = McpOAuthLoopback.Open(_logger);
+        if (loopback is null)
+        {
+            return (PluginOAuthOutcome.Unreachable, null, null);
+        }
+
+        if (!openBrowser(linkFor(loopback.RedirectUri)))
+        {
+            return (PluginOAuthOutcome.Unavailable, null, null);
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(SignInTimeout);
+        var query = await loopback.ReceiveAsync(providerId, state, timeout.Token, "account at").ConfigureAwait(false);
+        return (PluginOAuthOutcome.Ok, loopback.RedirectUri, query);
     }
 
     public async Task<PluginOAuthTokenResult> GetAccessTokenAsync(

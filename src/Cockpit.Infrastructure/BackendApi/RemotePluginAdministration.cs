@@ -48,8 +48,101 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         await client.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}", null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default) =>
-        client.SendAsync<JsonElement>(HttpMethod.Post, $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}", payload, ConnectKeyEndpoints.Json, cancellationToken);
+    // AC-1625: the call carries a relay id; while it runs, this desktop does the browser step of any OAuth connect inside it.
+    public async Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default)
+    {
+        var relay = Guid.NewGuid().ToString("N");
+        var call = client.SendAsync<JsonElement>(
+            HttpMethod.Post,
+            $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}?relay={relay}",
+            payload,
+            ConnectKeyEndpoints.Json,
+            cancellationToken);
+        using var done = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var relaying = _RelayOAuthSignInsAsync(folderId, relay, call, done.Token);
+        try
+        {
+            return await call.ConfigureAwait(false);
+        }
+        finally
+        {
+            await done.CancelAsync().ConfigureAwait(false);
+            await relaying.ConfigureAwait(false);
+        }
+    }
+
+    // ponytail: polls while a channel call is out; a call that ends within the first poll costs nothing. A server
+    // event per sign-in if many long calls make this chatty.
+    private async Task _RelayOAuthSignInsAsync(string folderId, string relay, Task call, CancellationToken cancellationToken)
+    {
+        var path = $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/oauth-accounts/sign-in?relay={relay}";
+        try
+        {
+            while (await Task.WhenAny(call, Task.Delay(SignInPoll * 2, cancellationToken)).ConfigureAwait(false) != call && !cancellationToken.IsCancellationRequested)
+            {
+                RemoteOAuthSignIn pending;
+                try
+                {
+                    pending = await client.SendAsync<RemoteOAuthSignIn>(HttpMethod.Get, path, null, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+                }
+                catch (BackendApiException exception) when (exception.Status == System.Net.HttpStatusCode.NotFound)
+                {
+                    continue;
+                }
+
+                await _SignInOAuthAccountAsync(folderId, pending, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // An older server without the route, or one gone away: the call itself says what happened to it.
+            _logger.LogInformation("Stopped relaying OAuth sign-ins for a plugin on the server ({Error}).", exception.GetType().Name);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    // As _SignInMcpServerAsync: this desktop's listener first, a link only when it redirects back to it, only the query out.
+    private async Task _SignInOAuthAccountAsync(string folderId, RemoteOAuthSignIn pending, CancellationToken cancellationToken)
+    {
+        var flowPath = $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/oauth-accounts/{Uri.EscapeDataString(pending.Name)}/sign-in";
+        var handedBack = false;
+        using var loopback = McpOAuthLoopback.Open(_logger);
+        try
+        {
+            if (loopback is null)
+            {
+                return;
+            }
+
+            var flow = await client.SendAsync<RemoteOAuthSignIn>(HttpMethod.Post, flowPath, new { flowId = pending.FlowId, port = loopback.Port }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+            if (flow.AwaitsRedirect
+                && _LinkBackTo(flow.Url, loopback.RedirectUri) is { } link
+                && McpOAuthLoopback.StateOf(link) is { } state
+                && (BrowserOpener ?? (url => McpOAuthLoopback.OpenBrowser(url, _logger)))(link))
+            {
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var left = flow.ExpiresAt - DateTimeOffset.UtcNow;
+                deadline.CancelAfter(left > TimeSpan.Zero && left < McpServerSignIns.Lifetime ? left : McpServerSignIns.Lifetime);
+                if (await loopback.ReceiveAsync(pending.Name, state, deadline.Token, "account at").ConfigureAwait(false) is { } redirect)
+                {
+                    await client.SendAsync<JsonObject>(HttpMethod.Post, $"{flowPath}/{Uri.EscapeDataString(pending.FlowId)}/input", new { text = redirect }, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+                    handedBack = true;
+                }
+            }
+        }
+        finally
+        {
+            // A sign-in this end will not finish ends now, so the connect answers at once and an earlier token stays.
+            if (!handedBack)
+            {
+                await _EndSignInAsync($"{flowPath}/{Uri.EscapeDataString(pending.FlowId)}").ConfigureAwait(false);
+            }
+        }
+    }
+
+    private sealed record RemoteOAuthSignIn(string FlowId, string Name, string Status, string? Url, bool AwaitsRedirect, DateTimeOffset ExpiresAt);
 
     public async Task<IReadOnlyDictionary<string, string>> GetStorageAsync(string folderId, CancellationToken cancellationToken = default)
     {
@@ -164,7 +257,7 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
         }
         catch (Exception exception)
         {
-            _logger.LogWarning("Could not end an unfinished MCP sign-in on the server ({Error}); it ends there on its own.", exception.GetType().Name);
+            _logger.LogWarning("Could not end an unfinished sign-in on the server ({Error}); it ends there on its own.", exception.GetType().Name);
         }
     }
 

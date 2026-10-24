@@ -8,7 +8,9 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.106.0: a plugin signs the operator in to an OAuth provider through the host, which keeps and renews the
+    <!-- 0.107.0: a plugin on a headless server connects an OAuth account through the desktop's browser, the token kept
+         on the server (AC-1625); host-only, no plugin contract changed, so no plugin needs a new minHostVersion.
+         0.106.0: a plugin signs the operator in to an OAuth provider through the host, which keeps and renews the
          tokens, and opens a web page (AC-1407, Cockpit.Plugins.Abstractions 3.26.0); a plugin that uses that sets
          minHostVersion 0.106.0. Numbered above epic/AC-1497 (0.105.0) so the two never mean different things.
          0.100.0: a plugin's toast carries several buttons and can stay until answered (AC-1549, Cockpit.Plugins.Abstractions
@@ -335,7 +337,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.106.0</VersionPrefix>
+    <VersionPrefix>0.107.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
