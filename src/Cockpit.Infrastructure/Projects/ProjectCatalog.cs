@@ -99,9 +99,31 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         });
 
     // The row just bound must not stay on offer until the next full reload: a fresh read finds it bound now.
-    public async Task<Project> AddBoundProjectAsync(Project project)
+    public async Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum)
     {
+        var sharedId = _BoundTo(project);
+        if (_depotSync is not null
+            && baselineChecksum is not { Length: > 0 }
+            && sharedId is { Length: > 0 }
+            && _ResolveSharedSource(project) is { } source)
+        {
+            try
+            {
+                var result = await source.PrepareBindingAsync(sharedId, CancellationToken.None).ConfigureAwait(false);
+                baselineChecksum = result.Succeeded ? result.Binding?.Checksum : null;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogDebug(exception, "Reading a baseline before binding {ProjectId} failed.", project.Id);
+            }
+        }
+
         var stored = await AddNewProjectAsync(project).ConfigureAwait(false);
+        if (_depotSync is not null && sharedId is { Length: > 0 } && baselineChecksum is { Length: > 0 } checksum)
+        {
+            _depotSync.SeedBaseline(stored.Id, sharedId, checksum);
+        }
+
         await RefreshSharedProjectsAsync().ConfigureAwait(false);
         return stored;
     }

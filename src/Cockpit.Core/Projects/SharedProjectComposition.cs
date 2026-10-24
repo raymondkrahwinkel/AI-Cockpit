@@ -16,6 +16,7 @@ public sealed class SharedProjectComposition
     public SharedProjectComposition(
         string sharedProjectId,
         string sourceName,
+        string? checksum,
         string name,
         string? description,
         string? gitUrl,
@@ -27,6 +28,7 @@ public sealed class SharedProjectComposition
     {
         _sharedProjectId = sharedProjectId;
         SourceName = sourceName;
+        Checksum = checksum;
         Name = name;
         Description = description;
         GitUrl = gitUrl;
@@ -62,6 +64,8 @@ public sealed class SharedProjectComposition
 
     // Which connection the definition comes from — "Work", "Personal".
     public string SourceName { get; }
+
+    public string? Checksum { get; }
 
     public string Name { get; }
 

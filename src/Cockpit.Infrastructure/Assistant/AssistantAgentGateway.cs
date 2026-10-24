@@ -853,7 +853,7 @@ internal sealed class AssistantAgentGateway(
             return AssistantProjectBindResult.Refused(composeRefusal ?? "Could not read this project's definition.");
         }
 
-        var stored = await projects.AddBoundProjectAsync(composed).ConfigureAwait(false);
+        var stored = await projects.AddBoundProjectAsync(composed.Project, composed.BaselineChecksum).ConfigureAwait(false);
 
         return AssistantProjectBindResult.Bound(stored.Id, stored.Name, source.SourceName, stored.SourceDirectory);
     }

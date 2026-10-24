@@ -14,8 +14,8 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // AC-1514: the definition and the project it composes into; this dialog only shows it and asks for what is yours.
     private readonly SharedProjectComposition _composition;
 
-    // Raised when the dialog is done: the new project, or null when the operator cancelled.
-    public event Action<Project?>? CloseRequested;
+    // Raised when the dialog is done: the new project and its read checksum, or null when the operator cancelled.
+    public event Action<SharedProjectBindResult?>? CloseRequested;
 
     // Raised when the operator picks "Choose…"; the view opens the folder picker and assigns `SourceDirectory`.
     public event Action? BrowseRequested;
@@ -26,7 +26,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer.
     public SharedProjectBindingDialogViewModel()
     {
-        _composition = new SharedProjectComposition("depot:handbook", "Work", "Handbook", null, null, null, false, null, null, []);
+        _composition = new SharedProjectComposition("depot:handbook", "Work", null, "Handbook", null, null, null, false, null, null, []);
         SourceName = "Work";
         ProjectName = "Handbook";
         GitUrl = "git@github.com:example/handbook.git";
@@ -87,6 +87,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
         var viewModel = new SharedProjectBindingDialogViewModel(new SharedProjectComposition(
             sharedProjectId,
             sourceName,
+            binding.Checksum,
             binding.Name,
             binding.Description,
             binding.GitUrl,
@@ -175,7 +176,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     private void Clone() => CloneRequested?.Invoke();
 
     [RelayCommand(CanExecute = nameof(CanSave))]
-    private void Save() => CloseRequested?.Invoke(ToProject());
+    private void Save() => CloseRequested?.Invoke(new SharedProjectBindResult(ToProject(), _composition.Checksum));
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);

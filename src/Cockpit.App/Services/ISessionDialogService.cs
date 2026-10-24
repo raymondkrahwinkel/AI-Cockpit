@@ -53,7 +53,7 @@ public interface ISessionDialogService
     /// machine. Reads the full definition through the source under <paramref name="sourceKey"/> first; returns null both
     /// on cancel and on a failed read (shown as an error either way). Persisting the result is the caller's.
     /// </summary>
-    Task<Project?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey);
+    Task<SharedProjectBindResult?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey);
 
     /// <summary>
     /// Shows AC-620's confirmation screen for publishing <paramref name="project"/> — a local project not yet bound

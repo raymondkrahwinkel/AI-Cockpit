@@ -419,7 +419,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowSharedProjectBindingDialogAsync(sharedProject.Id, group.SourceName, source.Key) is { } created)
         {
-            var stored = await AddBoundProjectAsync(created);
+            var stored = await AddBoundProjectAsync(created.Project, created.BaselineChecksum);
 
             // Selecting it belongs to this route and not to the shared tail: the operator just filled in a dialog
             // for this project, so it is what they are looking at. On the assistant's own route nobody clicked, and
@@ -430,9 +430,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     // Stores `created`, a project just built from a shared definition, the way the assistant's bind does (AC-798):
     // both go through IProjectEditor.AddBoundProjectAsync.
-    internal async Task<Project> AddBoundProjectAsync(Project created)
+    internal async Task<Project> AddBoundProjectAsync(Project created, string? baselineChecksum)
     {
-        var stored = await _editor.AddBoundProjectAsync(created);
+        var stored = await _editor.AddBoundProjectAsync(created, baselineChecksum);
         _ApplyCurrent();
         return stored;
     }

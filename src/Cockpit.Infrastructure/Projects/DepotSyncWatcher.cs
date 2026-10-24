@@ -148,6 +148,15 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     internal void Watch(ISharedProjectSource source) => _Watch([source]);
 
+    internal void SeedBaseline(string projectId, string sharedId, string checksum)
+    {
+        lock (_lastChecksum)
+        {
+            _lastChecksum[projectId] = checksum;
+            _boundTo[projectId] = sharedId;
+        }
+    }
+
     private void _Watch(IEnumerable<ISharedProjectSource> sources)
     {
         lock (_sourceHandlers)

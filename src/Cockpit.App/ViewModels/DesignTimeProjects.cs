@@ -27,7 +27,7 @@ internal sealed class DesignTimeProjects : IProjectCatalog, IProjectEditor
         return Task.FromResult(project);
     }
 
-    public Task<Project> AddBoundProjectAsync(Project project) => AddNewProjectAsync(project);
+    public Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum) => AddNewProjectAsync(project);
 
     public Task<Project?> UpdateStoredProjectAsync(Project project)
     {

@@ -41,6 +41,7 @@ tests/Cockpit.App.ViewTests	1528
 tests/Cockpit.Backend.Tests	78
 tests/Cockpit.Core.Tests	1320
 # AC-1639 proves a source event checks one bound project immediately without moving the poll clock.
-tests/Cockpit.Infrastructure.Tests	795
+# AC-1657 proves the checksum read for a bind makes its first later remote change visible.
+tests/Cockpit.Infrastructure.Tests	796
 tests/Cockpit.Journeys	33
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

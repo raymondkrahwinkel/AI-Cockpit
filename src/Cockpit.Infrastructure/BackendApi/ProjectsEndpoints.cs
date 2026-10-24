@@ -175,7 +175,9 @@ internal static partial class ProjectsEndpoints
             Clones[id] = new CloneState(id, name, "running");
             await _AuditAsync(services, caller, BindTool, "called", name, CancellationToken.None).ConfigureAwait(false);
             _ = _CloneAsync(services, caller, BindTool, id, name, parsed.RemoteUrl, branch, target, (editor, path) =>
-                editor.AddBoundProjectAsync(composition.ToProject(path, parsed.RemoteUrl, profile.Label, composition.BehaviorPrompt, []) with { Id = id }));
+                editor.AddBoundProjectAsync(
+                    composition.ToProject(path, parsed.RemoteUrl, profile.Label, composition.BehaviorPrompt, []) with { Id = id },
+                    composition.Checksum));
             return Results.Json(
                 new { id, name, unboundResources = composition.MachineRows.Select(row => row.DisplayLabel) },
                 statusCode: StatusCodes.Status202Accepted);

@@ -10,7 +10,7 @@ namespace Cockpit.App.Composition;
 // AC-1514: a shared project composes as on a server, without a dialog.
 internal sealed class ProjectComposerAdapter(ProjectComposer composer) : IProjectComposer, ISingletonService
 {
-    public Task<(Project? Project, string? Refusal)> ComposeSharedProjectAsync(
+    public Task<(SharedProjectBindResult? Result, string? Refusal)> ComposeSharedProjectAsync(
         string sharedProjectId,
         ISharedProjectSource source,
         string sourceDirectory,
