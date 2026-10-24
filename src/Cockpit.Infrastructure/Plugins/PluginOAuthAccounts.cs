@@ -22,10 +22,6 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
 
     private static readonly TimeSpan SignInTimeout = TimeSpan.FromMinutes(5);
 
-    // ponytail: a relayed sign-in runs inside the desktop's channel call, which its HttpClient ends at 100 s; ending it
-    // here first answers Cancelled instead of a dropped call. Give that call its own longer timeout if 90 s is too short.
-    private static readonly TimeSpan RelayedSignInTimeout = TimeSpan.FromSeconds(90);
-
     // No redirects: a 307 would resend the refresh token and client secret to whatever host it names.
     private static readonly HttpClient SharedHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
 
@@ -61,10 +57,21 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         Func<Uri, bool> openBrowser,
         CancellationToken cancellationToken)
     {
-        var result = await _ConnectAsync(pluginId, provider, scopes, accountId, openBrowser, cancellationToken).ConfigureAwait(false);
-        if (PluginOAuthSignIns.Relay is { } relay)
+        var relay = PluginOAuthSignIns.Relay is { Open: true } open ? open : null;
+        PluginOAuthConnectResult result;
+        try
         {
-            await relay.Ended(provider.Id, result.Outcome).ConfigureAwait(false);
+            result = await _ConnectAsync(pluginId, provider, scopes, accountId, openBrowser, cancellationToken).ConfigureAwait(false);
+        }
+        catch when (relay is not null)
+        {
+            await relay.Ended(provider.Id, "failed").ConfigureAwait(false);
+            throw;
+        }
+
+        if (relay is not null)
+        {
+            await relay.Ended(provider.Id, result.Outcome.ToString().ToLowerInvariant()).ConfigureAwait(false);
         }
 
         return result;
@@ -103,8 +110,8 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
 
         // AC-1625: inside a desktop's channel call to this server, that desktop's browser and loopback do the step.
         Uri linkFor(Uri redirectUri) => _AuthorizationLink(provider, wanted, redirectUri, state, challenge);
-        var (stepOutcome, redirectUri, query) = PluginOAuthSignIns.Relay is { } relay && _signIns is not null
-            ? await _signIns.RunAsync(relay, provider.Id, state, linkFor, RelayedSignInTimeout, cancellationToken).ConfigureAwait(false)
+        var (stepOutcome, redirectUri, query) = PluginOAuthSignIns.Relay is { Open: true } relay && _signIns is not null
+            ? await _signIns.RunAsync(relay, provider.Id, state, linkFor, SignInTimeout, cancellationToken).ConfigureAwait(false)
             : await _BrowseHereAsync(provider.Id, state, linkFor, openBrowser, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (stepOutcome != PluginOAuthOutcome.Ok || redirectUri is null)

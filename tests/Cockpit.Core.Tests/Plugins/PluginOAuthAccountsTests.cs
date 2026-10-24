@@ -161,7 +161,7 @@ public class PluginOAuthAccountsTests : IDisposable
         said.Add(JsonSerializer.Serialize(PluginEndpoints.OAuthSignInView(pending)));
 
         Assert.Equal(PluginOAuthOutcome.Ok, connected.Outcome);
-        Assert.Contains("microsoft sign-in Ok", said);
+        Assert.Contains("microsoft sign-in ok", said);
         var stored = Assert.Single((await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None))?.PluginOAuthAccounts ?? []);
         Assert.Equal("at-connected-secret", stored.AccessToken);
         var everything = string.Join('\n', said.Concat(_logger.Messages));

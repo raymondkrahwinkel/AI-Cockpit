@@ -52,17 +52,25 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
     public async Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default)
     {
         var relay = Guid.NewGuid().ToString("N");
-        var call = client.SendAsync<JsonElement>(
+
+        // The usual 100 s, moved out while a sign-in in this call waits for the operator (see _SignInOAuthAccountAsync).
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(BackendApiClient.RequestTimeout);
+        var call = client.SendUntilAsync<JsonElement>(
             HttpMethod.Post,
             $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/channel/{Uri.EscapeDataString(action)}?relay={relay}",
             payload,
             ConnectKeyEndpoints.Json,
-            cancellationToken);
+            deadline.Token);
         using var done = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var relaying = _RelayOAuthSignInsAsync(folderId, relay, call, done.Token);
+        var relaying = _RelayOAuthSignInsAsync(folderId, relay, call, deadline, done.Token);
         try
         {
             return await call.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw BackendApiClient.TimedOut(exception);
         }
         finally
         {
@@ -73,7 +81,7 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
 
     // ponytail: polls while a channel call is out; a call that ends within the first poll costs nothing. A server
     // event per sign-in if many long calls make this chatty.
-    private async Task _RelayOAuthSignInsAsync(string folderId, string relay, Task call, CancellationToken cancellationToken)
+    private async Task _RelayOAuthSignInsAsync(string folderId, string relay, Task call, CancellationTokenSource deadline, CancellationToken cancellationToken)
     {
         var path = $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/oauth-accounts/sign-in?relay={relay}";
         try
@@ -90,6 +98,9 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
                     continue;
                 }
 
+                // The server ends the sign-in by ExpiresAt; a minute more covers its code exchange and its answer.
+                var left = pending.ExpiresAt - DateTimeOffset.UtcNow;
+                deadline.CancelAfter((left > TimeSpan.Zero && left < McpServerSignIns.Lifetime ? left : McpServerSignIns.Lifetime) + TimeSpan.FromMinutes(1));
                 await _SignInOAuthAccountAsync(folderId, pending, cancellationToken).ConfigureAwait(false);
             }
         }

@@ -13,7 +13,6 @@ using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
-using Cockpit.Plugins.Abstractions.OAuth;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
@@ -149,12 +148,7 @@ internal static class PluginEndpoints
             }
 
             await _AuditAsync(services, "api:plugin_channel", cancellationToken, $"{pluginId}/{action}").ConfigureAwait(false);
-            if (relay.Length > 0)
-            {
-                var caller = McpRequestContext.CurrentNodeCaller;
-                PluginOAuthSignIns.Relay = new PluginOAuthRelay(folderId, relay, (provider, outcome) => _OAuthSignInEndedAsync(services, caller, folderId, provider, outcome));
-            }
-
+            using var relayed = relay.Length > 0 ? _Relay(services, folderId, relay) : null;
             try
             {
                 return Results.Json(await channels.InvokeAsync(pluginId, action, payload, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json);
@@ -490,17 +484,32 @@ internal static class PluginEndpoints
         expiresAt = signIn.ExpiresAt,
     };
 
-    private static async Task _OAuthSignInEndedAsync(IServiceProvider services, NodeCaller? caller, string folderId, string provider, PluginOAuthOutcome outcome)
+    // Sets the relay for the rest of the channel request and closes it when that request is done.
+    private static IDisposable _Relay(IServiceProvider services, string folderId, string relayId)
+    {
+        var caller = McpRequestContext.CurrentNodeCaller;
+        var relay = new PluginOAuthRelay(folderId, relayId, (provider, outcome) => _OAuthSignInEndedAsync(services, caller, folderId, provider, outcome));
+        PluginOAuthSignIns.Relay = relay;
+        return new ClosesRelay(relay);
+    }
+
+    private sealed class ClosesRelay(PluginOAuthRelay relay) : IDisposable
+    {
+        public void Dispose() => relay.Close();
+    }
+
+    private static async Task _OAuthSignInEndedAsync(IServiceProvider services, NodeCaller? caller, string folderId, string provider, string outcome)
     {
         if (services.GetService<NodeAccessAuditLog>() is { } audit && caller is not null)
         {
             await audit.RecordAsync(
-                NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, "api:plugin_oauth_sign_in", $"sign-in {outcome.ToString().ToLowerInvariant()}", $"{folderId}: {provider}"),
+                NodeAccessAuditEntry.By(caller, DateTimeOffset.UtcNow, "api:plugin_oauth_sign_in", $"sign-in {outcome}", $"{folderId}: {provider}"),
                 CancellationToken.None).ConfigureAwait(false);
         }
     }
 
-    private static bool _IsRelayId(string relay) => relay.Length <= 64 && relay.All(char.IsAsciiLetterOrDigit);
+    // What the desktop sends: a Guid in its "N" form.
+    private static bool _IsRelayId(string relay) => relay.Length == 32 && relay.All(char.IsAsciiHexDigit);
 
     private static IResult _NoOAuthSignIn() =>
         BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_sign_in", "That sign-in is not running on the server; start it again.");

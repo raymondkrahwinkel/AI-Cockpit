@@ -14,6 +14,8 @@ public sealed class BackendApiClient : IDisposable
 
     // AC-1456: the events route pings every 15 s, so three missed pings is a connection that died without a reset.
     private static readonly TimeSpan SilenceLimit = TimeSpan.FromSeconds(45);
+    internal static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(100);
+
     private readonly HttpClient _http;
     private readonly TimeProvider _time;
 
@@ -25,9 +27,11 @@ public sealed class BackendApiClient : IDisposable
         }
 
         _time = time;
+        // AC-1625: the 100 s HttpClient default, kept per request so one call (a relayed sign-in) can be given longer.
         _http = new HttpClient(NodeCertificatePin.Require(fingerprint))
         {
             BaseAddress = baseAddress,
+            Timeout = Timeout.InfiniteTimeSpan,
         };
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
     }
@@ -49,6 +53,10 @@ public sealed class BackendApiClient : IDisposable
     // AC-1446: for a route that writes its enums as words, as the connect-key routes do.
     public Task<T> SendAsync<T>(HttpMethod method, string path, object? body, JsonSerializerOptions options, CancellationToken cancellationToken) =>
         _SendAsync<T>(method, path, body, cancellationToken, options);
+
+    // AC-1625: without the 100 s limit; `cancellationToken` is the call's whole deadline, which the caller may move.
+    internal Task<T> SendUntilAsync<T>(HttpMethod method, string path, object? body, JsonSerializerOptions options, CancellationToken cancellationToken) =>
+        _SendAsync<T>(method, path, body, cancellationToken, options, limited: false);
 
     // AC-1456: `connected` hears true when a connection's headers came back and false each time one ended or failed.
     public async IAsyncEnumerable<BackendEvent> StreamEventsAsync(
@@ -105,7 +113,8 @@ public sealed class BackendApiClient : IDisposable
         string path,
         object? body,
         CancellationToken cancellationToken,
-        JsonSerializerOptions? options = null)
+        JsonSerializerOptions? options = null,
+        bool limited = true)
     {
         using var request = new HttpRequestMessage(method, path);
         if (body is not null)
@@ -113,15 +122,32 @@ public sealed class BackendApiClient : IDisposable
             request.Content = JsonContent.Create(body, options: options ?? Json);
         }
 
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (limited)
         {
-            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+            timeout.CancelAfter(RequestTimeout);
         }
 
-        var value = await response.Content.ReadFromJsonAsync<T>(options ?? Json, cancellationToken).ConfigureAwait(false);
-        return value is null ? throw new JsonException("The backend API returned an empty JSON response.") : value;
+        try
+        {
+            using var response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw await _ErrorAsync(response, timeout.Token).ConfigureAwait(false);
+            }
+
+            var value = await response.Content.ReadFromJsonAsync<T>(options ?? Json, timeout.Token).ConfigureAwait(false);
+            return value is null ? throw new JsonException("The backend API returned an empty JSON response.") : value;
+        }
+        catch (OperationCanceledException exception) when (limited && !cancellationToken.IsCancellationRequested)
+        {
+            throw TimedOut(exception);
+        }
     }
+
+    // The shape HttpClient gives its own timeout, so a caller tells it from its own cancellation the same way as before.
+    internal static TaskCanceledException TimedOut(Exception inner) =>
+        new($"The request was canceled due to the configured timeout of {RequestTimeout.TotalSeconds} seconds elapsing.", new TimeoutException(inner.Message, inner));
 
     private async IAsyncEnumerable<BackendEvent> _ReadConnectionAsync(
         long? cursor,
@@ -134,10 +160,22 @@ public sealed class BackendApiClient : IDisposable
             request.Headers.TryAddWithoutValidation("Last-Event-ID", lastEventId.ToString(CultureInfo.InvariantCulture));
         }
 
-        using var response = await _http.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
+        // The 100 s limit covers the headers only, as HttpClient's did; the stream then runs on the caller's token.
+        HttpResponseMessage headers;
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            timeout.CancelAfter(RequestTimeout);
+            try
+            {
+                headers = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw TimedOut(exception);
+            }
+        }
+
+        using var response = headers;
         if (!response.IsSuccessStatusCode)
         {
             throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);

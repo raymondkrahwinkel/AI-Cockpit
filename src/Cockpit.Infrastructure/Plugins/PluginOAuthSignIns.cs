@@ -83,7 +83,15 @@ internal sealed class PluginOAuthSignIns : ISingletonService
 }
 
 // Which desktop call a connect runs inside, and what records how the sign-in ended (name and outcome, never a code).
-internal sealed record PluginOAuthRelay(string FolderId, string RelayId, Func<string, PluginOAuthOutcome, Task> Ended);
+// Closed when that call returns, so work it left running cannot relay to a desktop that stopped listening.
+internal sealed record PluginOAuthRelay(string FolderId, string RelayId, Func<string, string, Task> Ended)
+{
+    private volatile bool _open = true;
+
+    public bool Open => _open;
+
+    public void Close() => _open = false;
+}
 
 internal sealed class PluginOAuthSignIn(string folderId, string relayId, string name, string state, DateTimeOffset expiresAt)
 {
@@ -139,8 +147,14 @@ internal sealed class PluginOAuthSignIn(string folderId, string relayId, string 
 
     internal async Task<int?> PortAsync(TimeSpan wait)
     {
-        var named = await Task.WhenAny(_port.Task, Task.Delay(wait)).ConfigureAwait(false);
-        return named == _port.Task ? await _port.Task.ConfigureAwait(false) : null;
+        try
+        {
+            return await _port.Task.WaitAsync(wait).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
     }
 
     internal void Publish(Uri link)
