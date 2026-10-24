@@ -11,7 +11,8 @@ plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 # AC-1637 adds one truncation-contract method: partial /sync/read answers must never be shown as complete files.
 # AC-1647 adds one built-in OAuth contract method: Depot sign-in requests depot.host and keeps it host-only.
 # AC-1656 adds one authorization-contract method: every host-only account caller explicitly requests depot.host.
-plugins-dev/Cockpit.Plugin.Depot.Tests	226
+# AC-1659 adds one panel behavior method: sharing and revoking immediately refresh the selected detail.
+plugins-dev/Cockpit.Plugin.Depot.Tests	227
 plugins-dev/Cockpit.Plugin.Diagram.Tests	115
 plugins-dev/Cockpit.Plugin.Discord.Tests	46
 plugins-dev/Cockpit.Plugin.Docker.Tests	22

@@ -30,14 +30,17 @@ public class DepotBrowserModelTests
         public Dictionary<string, object> Answers { get; } = new();
         public List<(string Action, JsonElement Payload)> Invokes { get; } = [];
         public ICockpitUiHost Host { get; } = Substitute.For<ICockpitUiHost>();
+        public Func<string, JsonElement, object>? Answer { get; set; }
 
         public Rig()
         {
             var channel = Substitute.For<IPluginUiChannel>();
             channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(call =>
             {
-                Invokes.Add((call.ArgAt<string>(0), call.ArgAt<JsonElement>(1).Clone()));
-                return Task.FromResult(JsonSerializer.SerializeToElement(Answers[call.ArgAt<string>(0)], JsonSerializerOptions.Web));
+                var action = call.ArgAt<string>(0);
+                var payload = call.ArgAt<JsonElement>(1).Clone();
+                Invokes.Add((action, payload));
+                return Task.FromResult(JsonSerializer.SerializeToElement(Answer?.Invoke(action, payload) ?? Answers[action], JsonSerializerOptions.Web));
             });
             Host.Channel.Returns(channel);
         }
