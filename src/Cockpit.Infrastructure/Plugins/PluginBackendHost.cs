@@ -590,8 +590,9 @@ public class PluginBackendHost(
         }
     }
 
-    // AC-1660: the same server lookup as sign-in, then the dialog's own sign-out, which forgets the stored token. The
-    // host-only tokens of AC-1586 are held only while that stored record stands, so they lapse with it.
+    // AC-1660: only this plugin's own OAuth servers, like CreateAuthorizedHandler, then the dialog's own sign-out, which
+    // forgets the stored token; another plugin's or the registry's sign-in is never this plugin's to end. The host-only
+    // tokens of AC-1586 are held only while that stored record stands, so they lapse with it.
     public async Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default)
     {
         if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
@@ -601,7 +602,7 @@ public class PluginBackendHost(
 
         try
         {
-            if (await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false) is { } server)
+            if (_OwnOAuthServer(name) is { } server)
             {
                 await coordinator.SignOutAsync(server, cancellationToken).ConfigureAwait(false);
             }

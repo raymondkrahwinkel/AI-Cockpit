@@ -193,29 +193,38 @@ public class CockpitHostMcpAuthTests
         Assert.Equal("mcp-sign-in", failure!.Phase);
     }
 
-    // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in.
+    // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in. Only for
+    // a server this plugin contributed: the same name out of the shared registry is not its sign-in to end.
     [Fact]
     public async Task SignOutMcpServerAsync_ForgetsTheStoredToken_SoTheStandingAsksForASignInAgain()
     {
         var tokens = new FakeMcpOAuthTokenStore();
-        await tokens.SaveAsync(OAuthServer.IdentityKey, OAuthServer.Name, new McpOAuthToken
+        var registered = OAuthServer with { Name = "Registry: Work", Url = "https://registry.example.com/mcp" };
+        foreach (var server in new[] { OAuthServer, registered })
         {
-            AccessToken = "access-1",
-            RefreshToken = "refresh-1",
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-            ResourceUrl = OAuthServer.Url,
-        });
+            await tokens.SaveAsync(server.IdentityKey, server.Name, new McpOAuthToken
+            {
+                AccessToken = "access-1",
+                RefreshToken = "refresh-1",
+                ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+                ResourceUrl = server.Url,
+            });
+        }
+
         var coordinator = new McpOAuthCoordinator(tokens, Substitute.For<IMcpOAuthAuthorizer>(), NullLogger<McpOAuthCoordinator>.Instance);
-        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
+        var own = new _OwnMcpProvider([new McpServerContribution(OAuthServer.Name, "https://depot.example.com/mcp") { OAuthAuthority = OAuthServer.OAuthAuthority }]);
+        var host = _BuildHost(new List<McpServerConfig> { registered }, coordinator, own: own);
         Assert.Equal(PluginMcpAuthState.Authorized, await host.GetMcpServerAuthStateAsync("Depot: Work"));
 
+        await host.SignOutMcpServerAsync("Registry: Work");
         await host.SignOutMcpServerAsync("Depot: Work");
 
         Assert.Equal(PluginMcpAuthState.AuthorizationRequired, await host.GetMcpServerAuthStateAsync("Depot: Work"));
         Assert.Null(await tokens.GetAsync(OAuthServer.IdentityKey));
+        Assert.NotNull(await tokens.GetAsync(registered.IdentityKey));
     }
 
-    private static DesktopBackendHost _BuildHost(List<McpServerConfig> servers, IMcpOAuthCoordinator? coordinator, PluginDiagnostics? diagnostics = null)
+    private static DesktopBackendHost _BuildHost(List<McpServerConfig> servers, IMcpOAuthCoordinator? coordinator, PluginDiagnostics? diagnostics = null, IPluginMcpProvider? own = null)
     {
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(servers);
@@ -226,6 +235,11 @@ public class CockpitHostMcpAuthTests
             collection.AddSingleton(coordinator);
         }
 
+        if (own is not null)
+        {
+            collection.AddSingleton(own);
+        }
+
         var services = collection.BuildServiceProvider();
         return new DesktopBackendHost(
             "depot",
@@ -234,6 +248,12 @@ public class CockpitHostMcpAuthTests
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
             NullCockpitSessionObserver.Instance,
-            diagnostics ?? new PluginDiagnostics());
+            diagnostics ?? new PluginDiagnostics(),
+            ownPluginType: own?.GetType());
+    }
+
+    private sealed class _OwnMcpProvider(IReadOnlyList<McpServerContribution> servers) : IPluginMcpProvider
+    {
+        public IReadOnlyList<McpServerContribution> GetMcpServers() => servers;
     }
 }
