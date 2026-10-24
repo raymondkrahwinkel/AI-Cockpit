@@ -34,10 +34,6 @@ internal static class GitCli
             CreateNoWindow = true,
         };
 
-        // An inherited repository override must not redirect a command away from the caller's explicit directory.
-        startInfo.Environment.Remove("GIT_DIR");
-        startInfo.Environment.Remove("GIT_WORK_TREE");
-
         // Extra environment for the child git only — how the clone path (AC-90) turns off interactive prompting
         // (GIT_TERMINAL_PROMPT=0) so a missing credential helper fails fast. Set on the child's Environment only,
         // never the cockpit's.
