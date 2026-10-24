@@ -131,7 +131,7 @@ internal sealed class PluginOAuthSignIn(string folderId, string relayId, string 
         var returned = McpOAuthLoopback.ParseCallback(query).State;
         return AwaitsRedirect
             && returned is not null
-            && (CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(state), Encoding.UTF8.GetBytes(returned)) || true)
+            && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(state), Encoding.UTF8.GetBytes(returned))
             && _redirect.TrySetResult(query);
     }
 
