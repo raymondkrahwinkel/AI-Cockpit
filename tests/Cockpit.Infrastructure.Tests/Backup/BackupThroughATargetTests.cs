@@ -88,9 +88,11 @@ public sealed class BackupThroughATargetTests : IDisposable
         var memory = new FileStream(Path.Combine(_Source, "assistant-memory.md"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         var release = Task.Run(async () =>
         {
+            // Let go one after the other, so each of the two reads has to wait on its own.
+            await Task.Delay(300);
+            await memory.DisposeAsync();
             await Task.Delay(300);
             await settings.DisposeAsync();
-            await memory.DisposeAsync();
         });
 
         var target = new _InMemoryTarget();
