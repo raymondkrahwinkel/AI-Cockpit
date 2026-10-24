@@ -381,6 +381,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             if (manager is not null)
             {
                 await manager.LoadAsync();
+                await manager.BrowseStoresAsync();
                 foreach (var row in manager.AvailablePlugins.Where(row => row.CanUpdate))
                 {
                     available.TryAdd(PluginFolderName.Normalize(row.Id), row.Entry.LatestVersion);
