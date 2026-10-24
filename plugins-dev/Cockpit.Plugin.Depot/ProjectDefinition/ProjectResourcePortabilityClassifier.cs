@@ -32,6 +32,7 @@ public static class ProjectResourcePortabilityClassifier
 
     public static bool IsPortable(ProjectResourcePortability portability) =>
         portability is ProjectResourcePortability.RepoRelative
+            or ProjectResourcePortability.AnchorRelative
             or ProjectResourcePortability.PluginSource;
 
     public static string ToWireValue(ProjectResourcePortability portability) => portability switch
