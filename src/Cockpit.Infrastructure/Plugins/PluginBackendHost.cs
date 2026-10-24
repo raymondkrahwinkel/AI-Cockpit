@@ -602,7 +602,7 @@ public class PluginBackendHost(
 
         try
         {
-            if (await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false) is { } server)
+            if (_OwnOAuthServer(name) is { } server)
             {
                 await coordinator.SignOutAsync(server, cancellationToken).ConfigureAwait(false);
             }
