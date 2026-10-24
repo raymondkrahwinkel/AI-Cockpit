@@ -95,8 +95,8 @@ public static class CockpitProjectDefinitionExtensionDataGuard
             return false;
         }
 
-        dropped.Add(reportedKey);
-        return true;
+        _ = reportedKey;
+        return dropped is null;
     }
 
     private static JsonElement _ToElement(JsonNode node)
