@@ -998,7 +998,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                     freshRepositories.Add(repository);
                 }
             }
-            catch (DockerUnavailableException) when (cancellationToken.IsCancellationRequested == false)
+            catch (DockerUnavailableException)
             {
                 _LogDockerUnavailable();
             }
