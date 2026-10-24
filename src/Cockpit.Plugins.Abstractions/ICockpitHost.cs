@@ -104,6 +104,21 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Raised when the account behind one of this plugin's own OAuth servers may have changed (AC-1665): a sign-in
+    /// stored a new token, or the server was signed out. The argument is the server's name as this plugin contributed
+    /// it — never a token or an account id. Not raised for a silent renewal, nor for another plugin's server.
+    /// </summary>
+    /// <remarks>
+    /// For dropping what was cached about the previous account. Default no-op so existing implementations keep
+    /// compiling untouched.
+    /// </remarks>
+    event EventHandler<string>? McpServerAccountChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Registers a handler for an intent other plugins can send to this one (AC-95), under
     /// <paramref name="action"/> — the receiving half of <see cref="SendIntent"/>. Registering the same action
     /// twice from one plugin throws.

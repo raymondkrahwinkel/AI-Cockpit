@@ -247,6 +247,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **a Depot connection no longer shows the previous account's projects.** Signing in as someone else on the same
+  connection, or signing out, now clears the project list the cockpit remembered for it. Before, with Depot unreachable,
+  the last list of the account that had just left could still be shown as the "last known list".
 - fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
   saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running

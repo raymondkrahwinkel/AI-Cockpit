@@ -16,6 +16,13 @@ public interface IMcpOAuthCoordinator
     event Action<McpServerConfig>? SignInNeeded;
 
     /// <summary>
+    /// Raised when the account stored for a server may have changed (AC-1665): an interactive sign-in left a new
+    /// token behind, or the server was signed out. Not raised for a silent renewal, nor when a sign-in was abandoned
+    /// and the previous token put back — whatever a plugin cached for the old account is only wrong after this.
+    /// </summary>
+    event Action<McpServerConfig>? AccountChanged;
+
+    /// <summary>
     /// The credential to present to <paramref name="server"/>. A non-OAuth server answers
     /// <see cref="McpOAuthAccess.NotRequired"/> with no work. When <paramref name="interactive"/> is false this never
     /// opens a browser: an unrenewable token comes back as <see cref="McpAuthState.AuthorizationRequired"/> instead.

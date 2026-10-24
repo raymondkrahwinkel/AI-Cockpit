@@ -429,7 +429,7 @@ public static class CapabilityCatalog
             "Registers MCP servers the cockpit's own sessions will call, and drives their sign-in.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitHost.AddMcpServer", "ICockpitHost.RemoveMcpServer", "ICockpitHost.GetMcpServerAuthStateAsync", "ICockpitHost.SignInMcpServerAsync", "ICockpitHost.SignInMcpServerWithGrantAsync", "ICockpitHost.SignOutMcpServerAsync"],
+            ["ICockpitHost.AddMcpServer", "ICockpitHost.RemoveMcpServer", "ICockpitHost.GetMcpServerAuthStateAsync", "ICockpitHost.SignInMcpServerAsync", "ICockpitHost.SignInMcpServerWithGrantAsync", "ICockpitHost.SignOutMcpServerAsync", "ICockpitHost.McpServerAccountChanged"],
             [new("serverName", "The MCP server the plugin may register or sign in.")]),
 
         new(

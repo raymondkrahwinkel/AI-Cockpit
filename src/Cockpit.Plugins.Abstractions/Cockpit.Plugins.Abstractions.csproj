@@ -571,9 +571,11 @@
     <!-- 3.24.0 (AC-1639): ISharedProjectSource.Changed lets a source nudge the host for one id or all its bound projects.
          Its default no-op accessors keep existing sources source- and binary-compatible. Additive, so the major and
          abstractionsVersion stay 3. -->
+    <!-- 3.26.0 (AC-1665): ICockpitHost.McpServerAccountChanged (default no-op), raised when the account behind a plugin's own
+         MCP server may have changed. A plugin that subscribes sets minHostVersion 0.105.3. Additive — a minor; abstractionsVersion stays 3. -->
     <!-- 3.25.0 (AC-1660): ICockpitHost.SignOutMcpServerAsync (default no-op), a local sign-out of a plugin's own MCP server.
          A plugin that calls it sets minHostVersion 0.105.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.25.0</Version>
+    <Version>3.26.0</Version>
     <AssemblyVersion>1.16.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

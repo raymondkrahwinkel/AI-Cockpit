@@ -174,6 +174,12 @@ public sealed class FirstStartJourney
             remove { }
         }
 
+        public event Action<McpServerConfig>? AccountChanged
+        {
+            add { }
+            remove { }
+        }
+
         public async Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default)
         {
             await tokens.SaveAsync(server.IdentityKey, server.Name, DepotHostScope.SignedIn(_AccountSpace.Bearer, url.TrimEnd('/')), cancellationToken);

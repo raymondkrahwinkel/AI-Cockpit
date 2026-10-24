@@ -627,7 +627,66 @@ public class PluginBackendHost(
             return PluginMcpSignInOutcome.Unavailable;
         }
 
-        return await redeemer.RedeemAsync(server, grantType, parameters, cancellationToken).ConfigureAwait(false);
+        var outcome = await redeemer.RedeemAsync(server, grantType, parameters, cancellationToken).ConfigureAwait(false);
+        if (outcome == PluginMcpSignInOutcome.Authorized)
+        {
+            // The redeemer stores its token itself and never passes the coordinator, so it is said here.
+            _RaiseAccountChanged(server.Name);
+        }
+
+        return outcome;
+    }
+
+    // AC-1665: handlers of this plugin only; one relay on the coordinator, made when the first one subscribes.
+    private EventHandler<string>? _accountChanged;
+    private bool _relayingAccountChanges;
+    private readonly Lock _accountChangedLock = new();
+
+    public event EventHandler<string>? McpServerAccountChanged
+    {
+        add
+        {
+            lock (_accountChangedLock)
+            {
+                _accountChanged += value;
+                if (!_relayingAccountChanges && services.GetService<IMcpOAuthCoordinator>() is { } coordinator)
+                {
+                    _relayingAccountChanges = true;
+                    coordinator.AccountChanged += server =>
+                    {
+                        if (_OwnOAuthServer(server.Name) is not null)
+                        {
+                            _RaiseAccountChanged(server.Name);
+                        }
+                    };
+                }
+            }
+        }
+        remove
+        {
+            lock (_accountChangedLock)
+            {
+                _accountChanged -= value;
+            }
+        }
+    }
+
+    private void _RaiseAccountChanged(string name)
+    {
+        EventHandler<string>? handlers;
+        lock (_accountChangedLock)
+        {
+            handlers = _accountChanged;
+        }
+
+        try
+        {
+            handlers?.Invoke(this, name);
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-account-changed", exception.Message);
+        }
     }
 
     // Calls a tool on this plugin's own MCP server via `IMcpToolInvoker` (AC-502), never opening a browser
