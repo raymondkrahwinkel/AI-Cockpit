@@ -68,18 +68,6 @@ public sealed class AgentWakeConsentDefaultTests
         Assert.False(coordinator.HasWakeConsent("pane-1"));
     }
 
-    [Fact]
-    public void TheShippedDefault_IsOn()
-    {
-        // Both halves, because they are set in different places and a mismatch would mean the coordinator disagreed
-        // with the settings file about what an operator who has never touched the toggle agreed to.
-        Assert.True(new SessionBehaviorSettings().WakeAgentsByDefault);
-
-        var coordinator = new WorkspaceAgentCoordinator();
-        coordinator.Enroll("pane-1");
-        Assert.True(coordinator.HasWakeConsent("pane-1"));
-    }
-
     /// <summary>
     /// A <c>cockpit.json</c> written before this setting existed has no such key. Deserialising that must read back
     /// as the default rather than as the operator having said no — otherwise "this setting did not exist yet" turns

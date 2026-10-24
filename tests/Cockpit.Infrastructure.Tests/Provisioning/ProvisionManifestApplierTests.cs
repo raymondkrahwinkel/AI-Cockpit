@@ -59,19 +59,19 @@ public sealed class ProvisionManifestApplierTests : IDisposable
         Assert.Null(applied.Failure);
         Assert.Equal(["stores.acme-intern"], applied.Report.Where(line => line.Reason == ProvisionManifestApplier.TokenNeeded).Select(line => line.Path));
         var written = File.ReadAllText(ConfigPath);
-        var file = JsonNode.Parse(written)!;
+        var file = JsonNode.Parse(written) ?? throw new InvalidOperationException("The applier left cockpit.json empty.");
         // AC-1507: the font size of 11 was chosen here before, so the manifest's default gives way to it.
         Assert.Equal(
             ("false", "11", "true"),
-            (file["Notifications"]!["LocalEnabled"]!.ToString(), file["Terminal"]!["FontSize"]!.ToString(), file["SessionBehavior"]!["AutoCloseOnExit"]!.ToString()));
+            (file["Notifications"]?["LocalEnabled"]?.ToString(), file["Terminal"]?["FontSize"]?.ToString(), file["SessionBehavior"]?["AutoCloseOnExit"]?.ToString()));
         Assert.Contains(applied.Report, line => line is { Path: "Terminal.FontSize", Reason: ProvisionManifestApplier.KeptLocal });
-        Assert.Equal(["Mine", "Acme dev"], file["Profiles"]!.AsArray().Select(profile => profile!["Label"]!.ToString()));
-        Assert.Equal(@"D:\mine", file["Profiles"]![0]!["ConfigDir"]!.ToString());
-        Assert.Equal(("acceptEdits", "claude-sonnet-5-5"), (file["Profiles"]![1]!["Defaults"]!["PermissionMode"]!.ToString(), file["Profiles"]![1]!["Provider"]!["Model"]!.ToString()));
+        Assert.Equal(["Mine", "Acme dev"], file["Profiles"]?.AsArray().Select(profile => profile?["Label"]?.ToString()));
+        Assert.Equal(@"D:\mine", file["Profiles"]?[0]?["ConfigDir"]?.ToString());
+        Assert.Equal(("acceptEdits", "claude-sonnet-5-5"), (file["Profiles"]?[1]?["Defaults"]?["PermissionMode"]?.ToString(), file["Profiles"]?[1]?["Provider"]?["Model"]?.ToString()));
         Assert.Equal(
             ["alpha:true:sha-alpha", "beta:true:sha-beta", "gamma:true:sha-gamma"],
-            file["Plugins"]!.AsObject().Select(plugin => $"{plugin.Key}:{plugin.Value!["Enabled"]}:{plugin.Value["PinnedSha256"]}"));
-        Assert.Equal(1, file["FirstRunWizardVersion"]!.GetValue<int>());
+            file["Plugins"]?.AsObject().Select(plugin => $"{plugin.Key}:{plugin.Value?["Enabled"]}:{plugin.Value?["PinnedSha256"]}"));
+        Assert.Equal(1, file["FirstRunWizardVersion"]?.GetValue<int>());
 
         // AC-1512, §3.10: the first-run answers landed as defaults, not just as "the wizard was answered": Simple on open,
         // the work kind's plugin (gamma, tagged in the store), the manifest profile's reading level. Nothing to say.

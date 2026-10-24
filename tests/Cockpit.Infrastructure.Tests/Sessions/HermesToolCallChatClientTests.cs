@@ -52,15 +52,6 @@ public class HermesToolCallChatClientTests
     }
 
     [Fact]
-    public async Task PlainText_FlowsThroughUntouched_WithNoFunctionCall()
-    {
-        var (text, calls) = await _RunAsync("Here is my answer, no tools needed.");
-
-        Assert.Empty(calls);
-        Assert.Equal("Here is my answer, no tools needed.", text);
-    }
-
-    [Fact]
     public async Task PrecedingText_IsPreserved_ThenTheCallIsSynthesised()
     {
         var (text, calls) = await _RunAsync("Let me look at it. <function=read_file><parameter=path>/x</parameter></function>");

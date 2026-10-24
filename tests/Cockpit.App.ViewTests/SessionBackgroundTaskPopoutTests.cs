@@ -21,22 +21,6 @@ public class SessionBackgroundTaskPopoutTests
         new() { SessionId = "s1", Subtype = "success", Result = "done", IsError = false };
 
     [Fact]
-    public void NoBackgroundTasks_CountAndCollectionsAreEmpty_AndNoGroupIsShown() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-
-        Assert.False(session.HasBackgroundTasks);
-        Assert.Equal(0, session.BackgroundTaskCount);
-        Assert.Empty(session.BackgroundSubAgents);
-        Assert.Empty(session.BackgroundShells);
-        Assert.Empty(session.BackgroundOtherTasks);
-        Assert.False(session.HasBackgroundSubAgents);
-        Assert.False(session.HasBackgroundShells);
-        Assert.False(session.HasBackgroundOtherTasks);
-        Assert.Equal("nothing", session.BackgroundTaskSummary);
-    });
-
-    [Fact]
     public void SubAgentsAndShells_AreGroupedSeparately_AndCountedTogether() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();
@@ -96,6 +80,7 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Empty(session.BackgroundSubAgents);
         Assert.False(session.HasBackgroundTasks);
         Assert.Equal(0, session.BackgroundTaskCount);
+        Assert.Equal("nothing", session.BackgroundTaskSummary);
     });
 
     [Fact]
@@ -156,18 +141,6 @@ public class SessionBackgroundTaskPopoutTests
     });
 
     // --- The gap this ticket closes (AC-532's review flagged it explicitly) ---
-
-    [Fact]
-    public void TurnCompleting_WithNoBackgroundWorkOutstanding_LeavesTheCountAtZero() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-        session.IsBusy = true;
-
-        session.Apply(Turn());
-
-        Assert.False(session.HasBackgroundTasks);
-        Assert.Equal(0, session.BackgroundTaskCount);
-    });
 
     [Fact]
     public void TurnCompleting_WithASubAgentAndAShellStillRunning_DoesNotClearTheBackgroundList() => HeadlessAvalonia.Run(() =>

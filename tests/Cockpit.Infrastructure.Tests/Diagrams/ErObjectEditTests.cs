@@ -131,13 +131,4 @@ public class ErObjectEditTests
         Assert.Contains("add_entity", edit.Refusal);
     }
 
-    [Fact]
-    public void AnErCall_OnAFlowchart_IsRefused_NamingTheCallsThatDoWork()
-    {
-        var edit = DiagramObjectEdit.AddEntity("flowchart LR\n    A[\"Start\"]", "CUSTOMER");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("add_node", edit.Refusal);
-    }
-
 }

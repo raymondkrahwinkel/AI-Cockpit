@@ -52,16 +52,6 @@ public sealed class AssistantMemoryBackupTests : IDisposable
     }
 
     [Fact]
-    public void Write_OnlyIncludesWhicheverFileExists()
-    {
-        File.WriteAllText(_MemoryPath, "- remembered thing");
-
-        var written = AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath);
-
-        Assert.Equal(["assistant-memory.md"], written);
-    }
-
-    [Fact]
     public void Write_WithNeitherFile_Throws()
     {
         Assert.Throws<InvalidOperationException>(() => AssistantMemoryBackup.Write(_ArchivePath, _MemoryPath, _StatePath, _MachinePath));

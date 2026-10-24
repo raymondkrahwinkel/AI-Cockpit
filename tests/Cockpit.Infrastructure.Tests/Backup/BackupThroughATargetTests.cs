@@ -51,7 +51,7 @@ public sealed class BackupThroughATargetTests : IDisposable
             Assert.False(report.Stopped);
         }
 
-        Assert.Equal("mine", JsonNode.Parse(File.ReadAllText(Path.Combine(_Restored, "cockpit.json")))!["Profiles"]!.GetValue<string>());
+        Assert.Equal("mine", JsonNode.Parse(File.ReadAllText(Path.Combine(_Restored, "cockpit.json")))?["Profiles"]?.GetValue<string>());
         Assert.Equal(File.ReadAllText(Path.Combine(_Source, "assistant-memory.md")), File.ReadAllText(Path.Combine(_Restored, "assistant-memory.md")));
         Assert.Equal(File.ReadAllBytes(Path.Combine(_Source, "project-logos", "acme.png")), File.ReadAllBytes(Path.Combine(_Restored, "project-logos", "acme.png")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(BackupService.StagingIn(_Restored)));
@@ -98,7 +98,7 @@ public sealed class BackupThroughATargetTests : IDisposable
     private static void _Write(string root, string relativePath, string content)
     {
         var file = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(file) ?? root);
         File.WriteAllText(file, content);
     }
 

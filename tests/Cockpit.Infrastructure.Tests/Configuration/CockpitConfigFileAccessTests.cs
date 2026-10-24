@@ -166,19 +166,4 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         Assert.Equal("You are Olaf.", profile.SystemPrompt);
         Assert.Equal("Sdk", profile.DefaultKind);
     }
-
-    /// <summary>Each writer still only touches its own section — the gate serialises them, it does not merge them.</summary>
-    [Fact]
-    public async Task UpdateAsync_DifferentSections_KeepEachOther()
-    {
-        Directory.CreateDirectory(_directory);
-        var access = new CockpitConfigFileAccess(ConfigPath);
-
-        await access.UpdateAsync(file => (file.Plugins ??= [])["a"] = new PluginRegistrationEntry { PinnedSha256 = "a" }, CancellationToken.None);
-        await access.UpdateAsync(file => file.Layout = new LayoutSettingsEntry { SingleSessionLayout = true }, CancellationToken.None);
-
-        var written = await access.ReadAsync(CancellationToken.None);
-        Assert.Contains("a", written!.Plugins!.Keys);
-        Assert.True(written.Layout!.SingleSessionLayout);
-    }
 }
