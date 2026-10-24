@@ -52,7 +52,7 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
             Remove(projectId);
             Directory.CreateDirectory(_Root);
             var path = Path.Combine(_Root, _FileKey(projectId) + extension);
-            await Task.CompletedTask.ConfigureAwait(false);
+            await File.WriteAllBytesAsync(path, bytes, cancellationToken).ConfigureAwait(false);
             return path;
         }
         catch (Exception exception)
