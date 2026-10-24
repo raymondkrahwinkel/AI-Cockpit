@@ -19,11 +19,7 @@ internal enum DepotApiOutcome
     Failed,
 }
 
-internal sealed record DepotApiResult(DepotApiOutcome Outcome, ReadOnlyMemory<byte> Content, string? ETag)
-{
-    // AC-1633: remove this one compatibility decision when AC-1642 drops support for older Depots.
-    public bool ShouldFallbackToMcp => Outcome == DepotApiOutcome.OlderDepot;
-}
+internal sealed record DepotApiResult(DepotApiOutcome Outcome, ReadOnlyMemory<byte> Content, string? ETag);
 
 internal sealed class DepotApi : IDisposable
 {

@@ -4,7 +4,6 @@ using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.ProjectDefinition;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot;
 
@@ -45,8 +44,8 @@ internal sealed record DepotProjectCockpit(
     CockpitProjectDefinition? Definition,
     bool? CanWrite = null);
 
-// One project-list request and ETag cache per Depot connection. Plugin features share this source; only an older
-// Depot whose REST route is absent falls back to the compatibility MCP tool.
+// One project-list request and ETag cache per Depot connection. Plugin features share this source. An older Depot
+// without the REST route gets no MCP fallback (AC-1642): the list fails and says the Depot is too old.
 internal sealed class DepotProjectListingSource
 {
     private static readonly ConditionalWeakTable<ICockpitHost, ConcurrentDictionary<string, DepotProjectListingSource>> _instances = new();
@@ -72,7 +71,7 @@ internal sealed class DepotProjectListingSource
     {
         var endpoint = await _EndpointAsync(useStale: true, cancellationToken).ConfigureAwait(false);
         return endpoint.Outcome == DepotProjectListingOutcome.OlderDepot
-            ? await _ListFromMcpAsync(cancellationToken).ConfigureAwait(false)
+            ? new(DepotProjectListingOutcome.Failed, [], false, "This Depot is too old for Cockpit: it has no project list over REST.")
             : endpoint;
     }
 
@@ -133,7 +132,7 @@ internal sealed class DepotProjectListingSource
                     return new(DepotProjectListingOutcome.Forbidden, [], false);
                 }
 
-                if (response.ShouldFallbackToMcp)
+                if (response.Outcome == DepotApiOutcome.OlderDepot)
                 {
                     return new(DepotProjectListingOutcome.OlderDepot, [], false);
                 }
@@ -155,41 +154,6 @@ internal sealed class DepotProjectListingSource
         finally
         {
             _gate.Release();
-        }
-    }
-
-    private async Task<DepotProjectListingResult> _ListFromMcpAsync(CancellationToken cancellationToken)
-    {
-        var result = await _host.CallMcpToolAsync(
-            _connection.McpServerName,
-            "list_projects",
-            new Dictionary<string, object?> { ["includeSummary"] = false },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
-
-        if (result.Outcome == PluginMcpToolCallOutcome.AuthorizationRequired)
-        {
-            return new(DepotProjectListingOutcome.NotSignedIn, [], false);
-        }
-
-        if (result.Outcome != PluginMcpToolCallOutcome.Success)
-        {
-            return new(
-                DepotProjectListingOutcome.Failed,
-                [],
-                false,
-                result.Error is { Length: > 0 } error ? error : "Depot did not return a list of projects.");
-        }
-
-        try
-        {
-            var projects = _Parse(result.Content ?? string.Empty);
-            _host.Cache.Set(CacheKey, new _CachedProjects(null, DateTimeOffset.UtcNow, false, projects));
-            return _Success(projects, includesCockpit: false);
-        }
-        catch (JsonException exception)
-        {
-            return new(DepotProjectListingOutcome.Failed, [], false, $"Couldn't read Depot's project list: {exception.Message}");
         }
     }
 
@@ -223,8 +187,6 @@ internal sealed class DepotProjectListingSource
 
         return listings;
     }
-
-    private static List<DepotProjectListing> _Parse(string json) => _Parse(System.Text.Encoding.UTF8.GetBytes(json));
 
     private static DepotProjectListingResult _Success(List<DepotProjectListing> projects, bool includesCockpit) =>
         new(DepotProjectListingOutcome.Success, projects, includesCockpit);

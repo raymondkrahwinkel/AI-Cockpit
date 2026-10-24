@@ -2,7 +2,6 @@ using System.Net;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
@@ -18,12 +17,6 @@ public class DepotSharedProjectSourceTests
         host.Cache.Returns(new InMemoryPluginCache());
         return new DepotSharedProjectSource(Connection(), DepotMemorySource.Scheme, host, httpClient);
     }
-
-    private static void _StubListProjects(ICockpitHost host, string json) =>
-        host.CallMcpToolAsync(
-                Arg.Any<string>(), "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(),
-                Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(json)));
 
     [Fact]
     public async Task ListAsync_TheProjectsEndpointProvidesProjectsWithoutDefinitionReads()
@@ -47,20 +40,19 @@ public class DepotSharedProjectSourceTests
     }
 
     [Fact]
-    public async Task ListAsync_A404FallsBackOnlyForDiscoveryAndReportsThatDefinitionsNeedRest()
+    public async Task ListAsync_A404FailsAsTooOldWithoutFallingBackToMcp()
     {
         var host = Substitute.For<ICockpitHost>();
         var handler = new _StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         using var http = new HttpClient(handler);
-        _StubListProjects(host, """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Editor","kind":"Project"}]}""");
 
         var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
 
         Assert.False(result.Succeeded);
         Assert.Equal(1, handler.RequestCount);
-        Assert.Contains("REST API", result.Error, StringComparison.Ordinal);
+        Assert.Contains("too old", result.Error, StringComparison.Ordinal);
         await host.DidNotReceive().CallMcpToolAsync(
-            Arg.Any<string>(), "read", Arg.Any<IReadOnlyDictionary<string, object?>?>(),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, object?>?>(),
             Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 

@@ -27,12 +27,12 @@ internal sealed class DepotUploader
             using var response = await _PostAsync(
                 api, connectionName, $"{syncRoot}/write", new[] { new { path, content = text, baseChecksum } }, cancellationToken)
                 .ConfigureAwait(false);
-            var result = _Array(response.RootElement, "results").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
-            return DepotMcp.String(result, "status") switch
+            var result = _Array(response.RootElement, "results").FirstOrDefault(entry => DepotRequests.String(entry, "path") == path);
+            return DepotRequests.String(result, "status") switch
             {
-                "written" => new DepotUploadStarted(null, DepotMcp.String(result, "checksum")),
-                "conflict" => throw new DepotFailure(DepotBrowserStatus.Error, $"[Conflict] {DepotMcp.String(result, "message") ?? "The file changed in Depot."}"),
-                _ => throw new DepotFailure(DepotBrowserStatus.Error, DepotMcp.String(result, "message") ?? "Depot did not write the file."),
+                "written" => new DepotUploadStarted(null, DepotRequests.String(result, "checksum")),
+                "conflict" => throw new DepotFailure(DepotBrowserStatus.Error, $"[Conflict] {DepotRequests.String(result, "message") ?? "The file changed in Depot."}"),
+                _ => throw new DepotFailure(DepotBrowserStatus.Error, DepotRequests.String(result, "message") ?? "Depot did not write the file."),
             };
         }
 
@@ -54,8 +54,8 @@ internal sealed class DepotUploader
                 share = "none",
             },
             cancellationToken).ConfigureAwait(false);
-        var upload = _Array(ticket.RootElement, "uploads").FirstOrDefault(entry => DepotMcp.String(entry, "path") == path);
-        return DepotMcp.String(upload, "uploadUrl") is { Length: > 0 } url
+        var upload = _Array(ticket.RootElement, "uploads").FirstOrDefault(entry => DepotRequests.String(entry, "path") == path);
+        return DepotRequests.String(upload, "uploadUrl") is { Length: > 0 } url
             ? new DepotUploadStarted(url, null)
             : throw new DepotFailure(DepotBrowserStatus.Error, "Depot did not return an upload URL.");
     }
@@ -83,7 +83,7 @@ internal sealed class DepotUploader
         try
         {
             using var document = JsonDocument.Parse(json);
-            return DepotMcp.String(document.RootElement, "checksum");
+            return DepotRequests.String(document.RootElement, "checksum");
         }
         catch (JsonException)
         {

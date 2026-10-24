@@ -331,6 +331,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: Autopilot ships its workspace and settings in an assembly of their own, so its backend part names no window
   library and loads on a server without one. Nothing changes on screen. Autopilot 0.24.4.
 
+### Removed
+
+- removed: the Depot plugin no longer falls back to a Depot's MCP tools when that Depot is too old to list its
+  projects over REST; such a Depot now says it is too old. The plugin itself talks to Depot over REST and the event
+  channel only, and a session still gets the Depot MCP server as before. Depot 0.21.0.
+
 ### Added
 
 - added: Options on a server has an Assistant page, right under Profiles, for an admin key: see whether the server's

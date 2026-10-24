@@ -39,20 +39,20 @@ internal sealed class DepotPublishService(
 
     private readonly ICockpitHost _host = host;
     private readonly Func<IReadOnlyList<DepotConnectionRegistration>> _connections = connections;
-    private readonly DepotMcp _mcp = new(host, connections);
+    private readonly DepotRequests _mcp = new(host, connections);
     private readonly DepotUploader _uploader = new();
     private readonly ConcurrentDictionary<string, bool> _running = new(StringComparer.Ordinal);
 
     public Task<DepotBrowserAnswer<IReadOnlyList<DepotPublicationRow>>> ListAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
-        DepotMcp.RunAsync(() => Task.FromResult<IReadOnlyList<DepotPublicationRow>>([.. settings.Publications
+        DepotRequests.RunAsync(() => Task.FromResult<IReadOnlyList<DepotPublicationRow>>([.. settings.Publications
             .Where(link => link.ConnectionId == request.ConnectionId && (request.Project is null || link.Project == request.Project))
             .Select(link => new DepotPublicationRow(link, cache.Get<DepotPublishReport>(_LastKey(link.Id))))]));
 
     public Task<DepotBrowserAnswer<DepotPublication>> AddAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
-        DepotMcp.RunAsync(async () =>
+        DepotRequests.RunAsync(async () =>
         {
-            var project = DepotMcp.Required(request.Project, "project");
-            var source = DepotMcp.Required(request.Source, "source");
+            var project = DepotRequests.Required(request.Project, "project");
+            var source = DepotRequests.Required(request.Source, "source");
             await _mcp.RequireEditorAsync(request.ConnectionId, project, "Publishing", cancellationToken).ConfigureAwait(false);
             if (!Path.IsPathRooted(source))
             {
@@ -78,7 +78,7 @@ internal sealed class DepotPublishService(
 
     // Depot keeps nothing of ours, so removing the link only forgets the manifest.
     public Task<DepotBrowserAnswer<bool>> RemoveAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
-        DepotMcp.RunAsync(async () =>
+        DepotRequests.RunAsync(async () =>
         {
             var link = await _LinkAsync(request, cancellationToken).ConfigureAwait(false);
             settings.Publications = [.. settings.Publications.Where(candidate => candidate.Id != link.Id)];
@@ -88,7 +88,7 @@ internal sealed class DepotPublishService(
         });
 
     public Task<DepotBrowserAnswer<DepotPublishPlan>> PlanAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
-        DepotMcp.RunAsync(async () =>
+        DepotRequests.RunAsync(async () =>
         {
             var link = await _LinkAsync(request, cancellationToken).ConfigureAwait(false);
             var items = (await _BuildAsync(link, cancellationToken).ConfigureAwait(false)).Select(step => step.Item).ToList();
@@ -96,7 +96,7 @@ internal sealed class DepotPublishService(
         });
 
     public Task<DepotBrowserAnswer<DepotPublishReport>> RunAsync(DepotPublishRequest request, CancellationToken cancellationToken) =>
-        DepotMcp.RunAsync(async () =>
+        DepotRequests.RunAsync(async () =>
         {
             var link = await _LinkAsync(request, cancellationToken).ConfigureAwait(false);
             if (!request.Confirmed)
@@ -339,7 +339,7 @@ internal sealed class DepotPublishService(
         var results = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         foreach (var result in _Array(response.RootElement, "results"))
         {
-            if (DepotMcp.String(result, "path") is { } path)
+            if (DepotRequests.String(result, "path") is { } path)
             {
                 results.TryAdd(path, result);
             }
@@ -355,12 +355,12 @@ internal sealed class DepotPublishService(
                 continue;
             }
 
-            var status = DepotMcp.String(result, "status");
-            var message = DepotMcp.String(result, "message");
+            var status = DepotRequests.String(result, "status");
+            var message = DepotRequests.String(result, "message");
             writes[step.Item.Path] = status switch
             {
                 "written" => new _DocumentWrite(
-                    _Entry(local, DepotMcp.String(result, "checksum") ?? localChecksum), null, null),
+                    _Entry(local, DepotRequests.String(result, "checksum") ?? localChecksum), null, null),
                 "conflict" => new _DocumentWrite(null, DepotPublishAction.Conflict, message ?? "Changed in Depot since the plan."),
                 _ => new _DocumentWrite(null, DepotPublishAction.Failed, message ?? "Depot did not write the file."),
             };
@@ -399,9 +399,9 @@ internal sealed class DepotPublishService(
     {
         var path = $"{_SyncRoot(link.Project)}/artifacts?path={Uri.EscapeDataString(depotPath)}&includeChecksums=true";
         using var listing = await _GetAsync(api, path, _Connection(link.ConnectionId).Name, cancellationToken).ConfigureAwait(false);
-        var current = DepotMcp.Entries(listing.RootElement)
-            .Where(entry => DepotMcp.String(entry, "path") == depotPath)
-            .Select(entry => DepotMcp.String(entry, "checksum") ?? string.Empty)
+        var current = DepotRequests.Entries(listing.RootElement)
+            .Where(entry => DepotRequests.String(entry, "path") == depotPath)
+            .Select(entry => DepotRequests.String(entry, "checksum") ?? string.Empty)
             .FirstOrDefault();
         if (current != expected)
         {
@@ -457,7 +457,7 @@ internal sealed class DepotPublishService(
             using var api = _Api(link.ConnectionId);
             using var listing = await _GetAsync(api, path, _Connection(link.ConnectionId).Name, cancellationToken).ConfigureAwait(false);
             _Collect(listing.RootElement, prefix, documents);
-            var next = DepotMcp.String(listing.RootElement, "nextCursor");
+            var next = DepotRequests.String(listing.RootElement, "nextCursor");
             if (string.IsNullOrEmpty(next) || next == cursor)
             {
                 complete = true;
@@ -543,11 +543,11 @@ internal sealed class DepotPublishService(
     // A listing without a checksum still counts as present, with one nothing equals: it can only become a conflict.
     private static void _Collect(System.Text.Json.JsonElement root, string prefix, Dictionary<string, string> into)
     {
-        foreach (var entry in DepotMcp.Entries(root))
+        foreach (var entry in DepotRequests.Entries(root))
         {
-            if (DepotMcp.String(entry, "path") is { } path && path.StartsWith(prefix, StringComparison.Ordinal))
+            if (DepotRequests.String(entry, "path") is { } path && path.StartsWith(prefix, StringComparison.Ordinal))
             {
-                into[path] = DepotMcp.String(entry, "checksum") ?? string.Empty;
+                into[path] = DepotRequests.String(entry, "checksum") ?? string.Empty;
             }
         }
     }
