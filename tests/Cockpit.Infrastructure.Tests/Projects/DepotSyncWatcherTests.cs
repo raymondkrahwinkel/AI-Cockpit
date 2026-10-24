@@ -1,6 +1,10 @@
 using System.Collections.Concurrent;
+using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Projects;
 
@@ -78,6 +82,54 @@ public sealed class DepotSyncWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task BindingWithReadChecksum_ReportsFirstLaterRemoteChange()
+    {
+        var settings = ProjectSettings.Empty;
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(settings));
+        store.SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            settings = call.Arg<ProjectSettings>();
+            return Task.CompletedTask;
+        });
+        var sources = new SharedProjectSourceRegistry();
+        sources.Register(_source);
+        var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), sources, depotSync: _watcher);
+        var boundProjects = _watcher.BoundProjects;
+        Assert.NotNull(boundProjects);
+        var snapshotTaken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _watcher.BoundProjects = async () =>
+        {
+            var snapshot = await boundProjects();
+            snapshotTaken.TrySetResult();
+            await releaseSnapshot.Task;
+            return snapshot;
+        };
+        _watcher.OnChecked = (_, changed, _) =>
+        {
+            _reports.Add(changed);
+            return Task.CompletedTask;
+        };
+        var project = new Project("p", "Bound project")
+        {
+            Resources = [new ProjectResource("fake:shared", ProjectResourceRole.Memory)],
+            SharedSourceName = _source.SourceName,
+        };
+
+        var stalePass = _watcher.RunOnceAsync();
+        await snapshotTaken.Task;
+        await catalog.AddBoundProjectAsync(project, "a");
+        releaseSnapshot.SetResult();
+        await stalePass;
+        _checksum = "b";
+
+        await _watcher.CheckNowAsync(project.Id);
+
+        Assert.True(_Next());
+    }
+
+    [Fact]
     public void UnboundProject_LosesItsFlagAndItsBaseline()
     {
         _watcher.Start();
@@ -149,7 +201,8 @@ public sealed class DepotSyncWatcherTests : IDisposable
             return Task.FromResult(Answer());
         }
 
-        public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectListResult.Success([new SharedProject("fake:shared", "p")]));
 
         public Task<SharedProjectWriteBackResult> WriteBackAsync(
             string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) => throw new NotSupportedException();

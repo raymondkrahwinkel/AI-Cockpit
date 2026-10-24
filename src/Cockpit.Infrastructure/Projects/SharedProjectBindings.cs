@@ -12,6 +12,7 @@ public static class SharedProjectBindings
         new(
             sharedProjectId,
             sourceName,
+            binding.Checksum,
             binding.Name,
             binding.Description,
             binding.GitUrl,
@@ -36,7 +37,7 @@ public static class SharedProjectBindings
 
     // The dialog's "Choose…" route with no window, for the assistant: `resourceReferences` fills the
     // machine rows by position, and anything but one per row is refused with the rows spelled out.
-    public static async Task<(Project? Project, string? Refusal)> ComposeAsync(
+    public static async Task<(SharedProjectBindResult? Result, string? Refusal)> ComposeAsync(
         string sharedProjectId,
         ISharedProjectSource source,
         string sourceDirectory,
@@ -67,11 +68,13 @@ public static class SharedProjectBindings
         }
 
         // The "Choose…" route, not the "Clone…" one: the folder was pointed at rather than cloned, so no GitUrl.
-        return (composition.ToProject(
-            sourceDirectory,
-            gitUrl: null,
-            profileLabel,
-            composition.BehaviorPrompt,
-            rows.Select((row, index) => new ProjectResource(given[index].Trim(), row.Role) { Label = row.Label })), null);
+        return (new SharedProjectBindResult(
+            composition.ToProject(
+                sourceDirectory,
+                gitUrl: null,
+                profileLabel,
+                composition.BehaviorPrompt,
+                rows.Select((row, index) => new ProjectResource(given[index].Trim(), row.Role) { Label = row.Label })),
+            composition.Checksum), null);
     }
 }

@@ -341,7 +341,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<ProjectDefinitionConflictResolution?>(owner);
     }
 
-    public async Task<Project?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey)
+    public async Task<SharedProjectBindResult?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -349,7 +349,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var key = (typeof(SharedProjectBindingDialog), sharedProjectId);
-        if (_surfaces.TryActivateAsync(key) is Task<Project?> open)
+        if (_surfaces.TryActivateAsync(key) is Task<SharedProjectBindResult?> open)
         {
             return await open;
         }
@@ -369,7 +369,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        Project? saved = null;
+        SharedProjectBindResult? saved = null;
         viewModel.CloseRequested += result => saved = result;
 
         var dialog = new SharedProjectBindingDialog { DataContext = viewModel };

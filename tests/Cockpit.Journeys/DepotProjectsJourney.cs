@@ -62,7 +62,7 @@ public sealed class DepotProjectsJourney
         {
             MemoryRef = "depot:acme/cockpit",
             SharedSourceName = shared.SourceName,
-        });
+        }, baselineChecksum: null);
         var ownership = cockpit.Services.GetRequiredService<IProjectOwnershipRegistry>();
 
         var opening = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);

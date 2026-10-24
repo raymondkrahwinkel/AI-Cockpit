@@ -17,10 +17,10 @@ public interface IProjectEditor
     Task<Project> AddNewProjectAsync(Project project);
 
     /// <summary>
-    /// Stores a project bound to a shared definition as <see cref="AddNewProjectAsync"/> does, then re-reads the
+    /// Stores a project bound to a shared definition, seeds its remote baseline when available, then re-reads the
     /// shared projects so the definition it is bound to is no longer offered.
     /// </summary>
-    Task<Project> AddBoundProjectAsync(Project project);
+    Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum);
 
     /// <summary>
     /// Replaces the stored project with the same id, its logo copied as on add; null when there is none.
