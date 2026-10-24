@@ -57,7 +57,7 @@ internal sealed class DepotBranding
             }
 
             byte[]? logo = null;
-            if (_logos.TryGetValue(connectionKey, out var known))
+            if (_logos.TryGetValue(fingerprint, out var known))
             {
                 logo = known;
             }
@@ -72,7 +72,7 @@ internal sealed class DepotBranding
                     if (bytes.Length > 0)
                     {
                         logo = bytes;
-                        _logos[connectionKey] = logo;
+                        _logos[fingerprint] = logo;
                     }
                 }
             }
