@@ -404,7 +404,7 @@ public sealed class RemoteAdminJourney
 
             var olderAdmin = new ServerAdminViewModel(
                 Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
-                serverVersion: "1.2.2", desktopVersion: "1.2.3");
+                serverVersion: "1.2.2", desktopVersion: "1.2.3-nightly.4");
             await HeadlessAvalonia.RunAsync(() => olderAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
             var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (olderAdmin.Status, olderAdmin.StatusIsError));
             Assert.True(missingFeatureIsError);

@@ -575,10 +575,25 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         }
     }
 
-    private bool _ServerIsOlderThanDesktop() =>
-        Version.TryParse(ServerVersion, out var serverVersion)
-        && Version.TryParse(DesktopVersion, out var desktopVersion)
-        && serverVersion < desktopVersion;
+    private bool _ServerIsOlderThanDesktop()
+    {
+        var serverVersion = _ParseSemVerCore(ServerVersion);
+        var desktopVersion = _ParseSemVerCore(DesktopVersion);
+        return serverVersion is not null && desktopVersion is not null && serverVersion < desktopVersion;
+    }
+
+    private static Version? _ParseSemVerCore(string value)
+    {
+        var core = value.AsSpan();
+        var suffix = core.IndexOfAny('-', '+');
+        core = suffix < 0 ? core : core[..suffix];
+        if (!Version.TryParse(core, out var version) || version.Revision >= 0)
+        {
+            return null;
+        }
+
+        return version.Build < 0 ? new Version(version.Major, version.Minor, 0) : version;
+    }
 
     private void _ShowKeys(IEnumerable<ConnectKeyInfo> keys)
     {
