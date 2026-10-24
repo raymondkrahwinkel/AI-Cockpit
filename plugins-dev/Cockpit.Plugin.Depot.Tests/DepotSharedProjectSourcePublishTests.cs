@@ -158,7 +158,7 @@ public class DepotSharedProjectSourcePublishTests
 
             PutCount++;
             IfNoneMatch = request.Headers.IfNoneMatch.SingleOrDefault()?.Tag;
-            WrittenContent = await request.Content!.ReadAsStringAsync(cancellationToken);
+            WrittenContent = await (request.Content ?? throw new InvalidOperationException("The request had no body.")).ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(writeStatus)
             {
                 Content = new StringContent("""{"checksum":"chk1"}"""),

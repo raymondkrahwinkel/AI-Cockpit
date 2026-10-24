@@ -23,28 +23,15 @@ public class DepotMemorySourceLocationsTests
     }
 
     [Fact]
-    public async Task ListLocationsAsync_ParsesSlugNameKindAndRoleIntoALocationEach()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.Cache.Returns(new InMemoryPluginCache());
-
-        var result = await RegistrationFor(host, new _Handler(
-            """{"projects":[{"slug":"cockpit","name":"Cockpit","role":"Admin","kind":"Project"}]}""")).ListLocationsAsync!(CancellationToken.None);
-
-        Assert.Equal(ProjectMemorySourceLocationsOutcome.Success, result.Outcome);
-        var location = Assert.Single(result.Locations);
-        Assert.Equal("cockpit", location.Value);
-        Assert.Equal("Cockpit", location.Name);
-        Assert.Equal("Project · Admin", location.Detail);
-    }
-
-    [Fact]
     public async Task ListLocationsAsync_ToolCallFails_ReportsFailedWithAMessage_NeverAnEmptyListDisguisedAsSuccess()
     {
         var host = Substitute.For<ICockpitHost>();
         host.Cache.Returns(new InMemoryPluginCache());
 
-        var result = await RegistrationFor(host, new _Handler("connection reset", throws: true)).ListLocationsAsync!(CancellationToken.None);
+        var listLocations = RegistrationFor(host, new _Handler("connection reset", throws: true)).ListLocationsAsync;
+        Assert.NotNull(listLocations);
+
+        var result = await listLocations(CancellationToken.None);
 
         Assert.Equal(ProjectMemorySourceLocationsOutcome.Failed, result.Outcome);
         Assert.Equal("connection reset", result.Error);

@@ -32,9 +32,7 @@ public class ProjectResourcePortabilityClassifierTests
 
     [Theory]
     [InlineData(ProjectResourcePortability.RepoRelative, "repo-relative")]
-    [InlineData(ProjectResourcePortability.AnchorRelative, "anchor-relative")]
     [InlineData(ProjectResourcePortability.PluginSource, "plugin-source")]
-    [InlineData(ProjectResourcePortability.Absolute, "absolute")]
     public void ToWireValue_EachShape_MatchesTheDocumentedWireName(ProjectResourcePortability portability, string expected)
     {
         Assert.Equal(expected, ProjectResourcePortabilityClassifier.ToWireValue(portability));

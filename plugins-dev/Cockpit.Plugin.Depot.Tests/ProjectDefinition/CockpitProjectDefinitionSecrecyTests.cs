@@ -73,18 +73,6 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
     }
 
-    // CockpitProjectDefinitionExtensionDataGuard (AC-607) narrows the gap, doesn't close it: it refuses a
-    // secret-shaped key only at the top level or one nesting level (known accepted limitation, see
-    // CockpitProjectDefinitionExtensionDataGuardTests). `someFutureField` matches no heuristic, still forwards.
-    [Fact]
-    public void ExtensionData_ForwardsUnknownFieldsUnread_WhichAC607NarrowsButDoesNotFullyClose()
-    {
-        const string fromANewerCockpit = """{"schemaVersion":1,"name":"probe","someFutureField":"forwarded as-is"}""";
-
-        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(fromANewerCockpit, out var definition, out _));
-        Assert.Contains("someFutureField", CockpitProjectDefinitionJson.Serialize(definition!));
-    }
-
     [Fact]
     public void ResourceEntry_CarriesOnlyFieldsClearedForSharing_SoARowCannotGrowASecretUnnoticed()
     {

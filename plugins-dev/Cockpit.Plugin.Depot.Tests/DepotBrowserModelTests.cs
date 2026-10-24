@@ -112,7 +112,9 @@ public class DepotBrowserModelTests
         byte[]? put = null;
         var model = rig.Model(request =>
         {
-            put = request.Content!.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            using var body = new MemoryStream();
+            (request.Content ?? throw new InvalidOperationException("The PUT had no body.")).CopyTo(body, null, CancellationToken.None);
+            put = body.ToArray();
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
 
@@ -126,7 +128,8 @@ public class DepotBrowserModelTests
         rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         var accepted = await model.UploadAsync("cockpit", "img", "../a.png", new MemoryStream([1, 2, 3]), exists: true);
 
-        Assert.True(accepted!.Data);
+        Assert.NotNull(accepted);
+        Assert.True(accepted.Data);
         Assert.Equal("img/a.png", rig.Invokes.Single().Payload.GetProperty("path").GetString());
         Assert.Equal([1, 2, 3], put);
     }
@@ -170,7 +173,8 @@ public class DepotBrowserModelTests
         Assert.Equal("members", rig.Invokes.Single().Payload.GetProperty("mode").GetString());
         await rig.Host.DidNotReceive().ConfirmAsync(Arg.Is<string>(title => title.Contains("public")), Arg.Any<string>(), Arg.Any<string>());
         await rig.Host.Received(1).SetClipboardTextAsync("https://d/artifact/p/s1");
-        Assert.Equal("s1", members!.Data!.ShareId);
+        Assert.NotNull(members?.Data);
+        Assert.Equal("s1", members.Data.ShareId);
 
         rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         await model.ShareAsync("cockpit", node, isPublic: true, copyLink: false);

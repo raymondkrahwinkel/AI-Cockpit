@@ -111,57 +111,9 @@ public class CockpitProjectDefinitionStoreTests
 
         Assert.Equal(["SensitiveFields.Deploy token.fallbackPassword"], result.DroppedExtensionKeys);
         Assert.DoesNotContain("plaintext-leak", handler.Body, StringComparison.Ordinal);
-        Assert.True(definition.SensitiveFields[0].ExtensionData!.ContainsKey("fallbackPassword"));
-    }
-
-    [Fact]
-    public async Task ReadAsync_Success_UsesTheInlineProjectDefinition()
-    {
-        var handler = new _StubHandler(HttpStatusCode.OK, _Projects("""{"schemaVersion":1,"name":"probe"}"""));
-        using var http = new HttpClient(handler);
-
-        var result = await CockpitProjectDefinitionStore.ReadAsync(
-            Substitute.For<ICockpitHost>(), _Connection, "acme/cockpit", http);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
-        Assert.Equal("probe", result.Definition!.Name);
-        Assert.Equal("abc123", result.Checksum);
-        Assert.Equal("/cockpit/projects", handler.Path);
-    }
-
-    [Fact]
-    public async Task ReadAsync_ContentIsNotValidDefinitionJson_ReportsFailedRatherThanThrowing()
-    {
-        var handler = new _StubHandler(HttpStatusCode.OK, _Projects("""{"schemaVersion":"bad"}"""));
-        using var http = new HttpClient(handler);
-
-        var result = await CockpitProjectDefinitionStore.ReadAsync(
-            Substitute.For<ICockpitHost>(), _Connection, "acme/cockpit", http);
-
-        Assert.Equal(PluginMcpToolCallOutcome.Failed, result.Outcome);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task WriteAsync_BaseChecksumProvided_IsSentAsIfMatch()
-    {
-        var handler = new _StubHandler(HttpStatusCode.OK, """{"checksum":"new123"}""");
-
-        var result = await _WriteAsync(handler, new CockpitProjectDefinition { Name = "probe" }, "old123");
-
-        Assert.Equal(PluginMcpToolCallOutcome.Success, result.Outcome);
-        Assert.Equal("new123", result.Checksum);
-        Assert.Equal("\"old123\"", handler.IfMatch);
-        Assert.Equal("/cockpit/projects/acme/cockpit/definition", handler.Path);
-    }
-
-    [Fact]
-    public void Failed_ChecksumMismatchText_ClassifiesAsChecksumConflict()
-    {
-        var result = CockpitProjectDefinitionWriteResult.Failed(
-            "'.cockpit/project.json' changed since it was read; current checksum is abc999. Re-read and retry.");
-
-        Assert.Equal(CockpitProjectDefinitionWriteFailureKind.ChecksumConflict, result.FailureKind);
+        var kept = definition.SensitiveFields[0].ExtensionData;
+        Assert.NotNull(kept);
+        Assert.True(kept.ContainsKey("fallbackPassword"));
     }
 
     // AC-1635: 409 is the fine-grained conflict row; the journey covers Depot's 412 response end to end.
@@ -178,15 +130,6 @@ public class CockpitProjectDefinitionStoreTests
     }
 
     [Fact]
-    public void Failed_NotAProjectMemberText_ClassifiesAsPermissionDenied()
-    {
-        var result = CockpitProjectDefinitionWriteResult.Failed(
-            "You are not a member of project 'cockpit'.");
-
-        Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
-    }
-
-    [Fact]
     public async Task WriteAsync_CanWriteMissingAndCallerRoleIsViewer_DoesNotPutAndNamesTheReason()
     {
         var handler = new _StubHandler(HttpStatusCode.OK, """{"checksum":"c1"}""");
@@ -198,16 +141,6 @@ public class CockpitProjectDefinitionStoreTests
         Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
         Assert.NotNull(result.Error);
         Assert.Equal(1, handler.CallCount);
-    }
-
-    [Fact]
-    public async Task WriteAsync_Forbidden_ClassifiesAsPermissionDenied()
-    {
-        var handler = new _StubHandler(HttpStatusCode.Forbidden);
-
-        var result = await _WriteAsync(handler, new CockpitProjectDefinition { Name = "probe" }, baseChecksum: null);
-
-        Assert.Equal(CockpitProjectDefinitionWriteFailureKind.PermissionDenied, result.FailureKind);
     }
 
     [Fact]

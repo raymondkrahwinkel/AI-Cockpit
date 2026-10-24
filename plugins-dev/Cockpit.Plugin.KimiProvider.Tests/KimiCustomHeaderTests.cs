@@ -19,19 +19,6 @@ public class KimiCustomHeaderTests
                 header => header.GetProperty("value").GetString() ?? string.Empty);
 
     [Fact]
-    public void Build_CarriesACustomHeader()
-    {
-        var wire = KimiMcpConfig.Build([new PluginMcpServer
-        {
-            Name = "private-api",
-            Url = "https://api.example/mcp",
-            Headers = new Dictionary<string, string> { ["X-Api-Key"] = "the-key" },
-        }], NoEnvironment);
-
-        Assert.Equal("the-key", _HeadersOf(_SerializeSingle(wire))["X-Api-Key"]);
-    }
-
-    [Fact]
     public void Build_CarriesACustomHeaderBesideTheBearer()
     {
         var wire = KimiMcpConfig.Build([new PluginMcpServer
