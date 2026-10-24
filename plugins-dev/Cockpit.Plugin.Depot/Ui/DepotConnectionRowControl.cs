@@ -353,6 +353,8 @@ internal sealed class DepotConnectionRowControl : UserControl
         }
 
         _isBusy = true;
+        _signIn.IsEnabled = false;
+        _signInWithToken.IsEnabled = false;
         _signOut.IsEnabled = false;
         _authStatus.Text = "Signing out…";
         try
@@ -370,6 +372,8 @@ internal sealed class DepotConnectionRowControl : UserControl
         finally
         {
             _isBusy = false;
+            _signIn.IsEnabled = _ContentValidationReason() is null;
+            _signInWithToken.IsEnabled = true;
             _signOut.IsEnabled = true;
         }
 

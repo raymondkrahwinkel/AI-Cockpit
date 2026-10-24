@@ -5,10 +5,10 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Tests.Mcp;
 using Cockpit.Infrastructure.Mcp;
-using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -193,8 +193,7 @@ public class CockpitHostMcpAuthTests
         Assert.Equal("mcp-sign-in", failure!.Phase);
     }
 
-    // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in; the
-    // host-only tokens of AC-1586 are held only over that stored record and lapse with it.
+    // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in.
     [Fact]
     public async Task SignOutMcpServerAsync_ForgetsTheStoredToken_SoTheStandingAsksForASignInAgain()
     {

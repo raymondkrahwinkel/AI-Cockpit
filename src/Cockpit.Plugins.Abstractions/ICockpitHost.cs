@@ -278,10 +278,8 @@ public interface ICockpitHost
     /// the tokens it keeps for it, so the next use asks for a sign-in again.
     /// </summary>
     /// <remarks>
-    /// Local only; the server is not asked to revoke anything, and a session started earlier keeps the token it was
-    /// handed until it expires. A no-op for a name with no OAuth server; read
-    /// <see cref="GetMcpServerAuthStateAsync"/> afterwards for the standing. Default no-op so existing implementations
-    /// keep compiling untouched.
+    /// Local only: nothing is revoked at the server, and a session started earlier keeps its token until it expires.
+    /// Read <see cref="GetMcpServerAuthStateAsync"/> afterwards for the standing; the default is a no-op.
     /// </remarks>
     Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

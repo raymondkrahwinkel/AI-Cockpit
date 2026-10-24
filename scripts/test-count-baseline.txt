@@ -45,6 +45,7 @@ tests/Cockpit.Backend.Tests	78
 tests/Cockpit.Core.Tests	1321
 # AC-1639 proves a source event checks one bound project immediately without moving the poll clock.
 # AC-1657 proves the checksum read for a bind makes its first later remote change visible.
-tests/Cockpit.Infrastructure.Tests	796
+# AC-1660 adds one door row: the plugin MCP sign-out route on a server refuses an operate key.
+tests/Cockpit.Infrastructure.Tests	797
 tests/Cockpit.Journeys	33
 tests/Cockpit.PluginEndpointAnnotations.Tests	2

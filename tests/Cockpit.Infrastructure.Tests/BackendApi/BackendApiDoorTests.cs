@@ -158,6 +158,8 @@ public sealed class BackendApiDoorTests
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":80}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/fresh/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "admin", HttpStatusCode.NotFound, "no_plugin", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in", """{"port":50123}""", "admin", HttpStatusCode.Created, "", "\"status\":\"unavailable\"", _Door.ProfileSecret },
+        // AC-1660: a local sign-out on the server is an admin act, like the sign-in it undoes.
+        { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-out", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "POST", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123/input", """{"text":"code={secret}&state=s"}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
         { "DELETE", "/api/v1/plugins/private/mcp-servers/Depot%3A%20Work/sign-in/0123", null, "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
