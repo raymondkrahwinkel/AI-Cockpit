@@ -1,8 +1,11 @@
 extern alias UiAsm;
 
+using System.Net;
+using System.Net.Sockets;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using NSubstitute;
 using DepotBrowserPanel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserPanel;
@@ -76,6 +79,50 @@ public class DepotBrowserPanelTests
         Assert.False(_UploadButton(panel).IsVisible);
     }
 
+    [Fact]
+    public void Panel_RefreshesTheSelectedArtifactsDetail_AfterSharingAndStoppingSharing()
+    {
+        var rig = new DepotBrowserModelTests.Rig();
+        var shared = false;
+        using var preview = new _HeldPreview();
+        rig.Answer = (action, _) => action switch
+        {
+            "browser-projects" => DepotBrowserModelTests._Ok(new[] { new { project = "cockpit", name = "Cockpit", role = "Editor" } }),
+            "browser-tree" => _Tree(shared),
+            "browser-share" => DepotBrowserModelTests._Ok(new { shareId = "s1", url = "https://depot.example.com/artifact/cockpit/s1", isPublic = false }),
+            "browser-unshare" => DepotBrowserModelTests._Ok(true),
+            "browser-download-url" => DepotBrowserModelTests._Ok(preview.Url),
+            _ => throw new InvalidOperationException($"Unexpected browser action: {action}"),
+        };
+        rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
+        rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
+        var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
+        var window = new Window { Width = 1000, Height = 640, Content = panel };
+        window.Show();
+
+        _ = panel.LoadTreeAsync("img/mockup.txt");
+        _Until(() => _Button(panel, "Create link") is not null);
+
+        shared = true;
+        var create = _Button(panel, "Create link") ?? throw new InvalidOperationException("The Create link button was not rendered.");
+        create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _Until(() => _Button(panel, "Stop sharing") is not null);
+
+        Assert.Contains(panel.GetVisualDescendants().OfType<TextBox>(), box => box.Text == "https://depot.example.com/artifact/cockpit/s1");
+        Assert.Contains(panel.GetVisualDescendants().OfType<TreeViewItem>(), item => item.IsSelected);
+        _SaveFrame(window, "DEPOT_BROWSER_SHARED_SCENE_PNG");
+
+        shared = false;
+        var stop = _Button(panel, "Stop sharing") ?? throw new InvalidOperationException("The Stop sharing button was not rendered.");
+        stop.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _Until(() => _Button(panel, "Create link") is not null);
+
+        Assert.Contains(panel.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == "Not shared");
+        Assert.Contains(panel.GetVisualDescendants().OfType<TreeViewItem>(), item => item.IsSelected);
+        _SaveFrame(window, "DEPOT_BROWSER_UNSHARED_SCENE_PNG");
+    }
+
     // AC-1586: the Inbox tab (mockup 7b) on fixture data, as the side-menu button opens it. With DEPOT_INBOX_SCENE_PNG set
     // to a path the frame is written there; the assertion is that the connection's messages, and only those, are shown.
     [Fact]
@@ -129,6 +176,45 @@ public class DepotBrowserPanelTests
 
     private static Button _UploadButton(DepotBrowserPanel panel) =>
         panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Upload"));
+
+    private static object _Tree(bool shared) => DepotBrowserModelTests._Ok(new
+    {
+        nodes = new object[]
+        {
+            new { path = "img/mockup.txt", kind = "artifact", size = 51200, modified = "2026-10-16T09:00:00+00:00", contentType = "text/plain", shareId = shared ? "s1" : null, shareUrl = shared ? "https://depot.example.com/artifact/cockpit/s1" : null, isPublic = false },
+        },
+        canShare = true,
+    });
+
+    private static Button? _Button(DepotBrowserPanel panel, string content) =>
+        panel.GetVisualDescendants().OfType<Button>().SingleOrDefault(button => Equals(button.Content, content));
+
+    private static void _SaveFrame(Window window, string variable)
+    {
+        if (Environment.GetEnvironmentVariable(variable) is { Length: > 0 } path)
+        {
+            using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
+            using var stream = File.Create(path);
+            frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+    }
+
+    private sealed class _HeldPreview : IDisposable
+    {
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+
+        public _HeldPreview()
+        {
+            _listener.Start();
+        }
+
+        public string Url => $"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/preview";
+
+        public void Dispose()
+        {
+            _listener.Stop();
+        }
+    }
 
     // Synchronous on purpose: the panel's awaits come back through the dispatcher, which only runs while this polls.
     private static void _Until(Func<bool> condition)
