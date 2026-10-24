@@ -192,8 +192,6 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
 
     private Task<PluginOAuthOutcome> _RefreshOnceAsync(string pluginId, PluginOAuthProvider provider, string accountId)
     {
-        return _RefreshAsync(pluginId, provider, accountId);
-#pragma warning disable CS0162
         lock (_refreshesLock)
         {
             if (!_refreshes.TryGetValue(accountId, out var running))
