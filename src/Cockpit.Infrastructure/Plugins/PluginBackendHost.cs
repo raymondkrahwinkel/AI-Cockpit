@@ -27,6 +27,7 @@ using Cockpit.Plugins.Abstractions.HeavyRuns;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.OAuth;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -574,6 +575,41 @@ public class PluginBackendHost(
             diagnostics.Record(pluginId, pluginName, "mcp-sign-in", exception.Message);
             return PluginMcpSignInOutcome.Unreachable;
         }
+    }
+
+    // AC-1407: host OAuth, scoped to this plugin's own accounts. The browser step goes through OpenUrl, so a backend
+    // without a desktop answers Unavailable at once; AC-1625 routes a server's through the desktop instead.
+    public Task<PluginOAuthConnectResult> ConnectOAuthAccountAsync(
+        PluginOAuthProvider provider,
+        IReadOnlyList<string> scopes,
+        string? accountId = null,
+        CancellationToken cancellationToken = default) =>
+        services.GetService<PluginOAuthAccounts>() is { } accounts
+            ? accounts.ConnectAsync(pluginId, provider, scopes, accountId, OpenUrl, cancellationToken)
+            : Task.FromResult(new PluginOAuthConnectResult(PluginOAuthOutcome.Unavailable));
+
+    public Task<PluginOAuthTokenResult> GetOAuthAccessTokenAsync(
+        PluginOAuthProvider provider,
+        string accountId,
+        IReadOnlyList<string> scopes,
+        CancellationToken cancellationToken = default) =>
+        services.GetService<PluginOAuthAccounts>() is { } accounts
+            ? accounts.GetAccessTokenAsync(pluginId, provider, accountId, scopes, cancellationToken)
+            : Task.FromResult(new PluginOAuthTokenResult(PluginOAuthOutcome.Unavailable));
+
+    public Task<IReadOnlyList<PluginOAuthAccount>> ListOAuthAccountsAsync(PluginOAuthProvider provider, CancellationToken cancellationToken = default) =>
+        services.GetService<PluginOAuthAccounts>() is { } accounts
+            ? accounts.ListAsync(pluginId, provider, cancellationToken)
+            : Task.FromResult<IReadOnlyList<PluginOAuthAccount>>([]);
+
+    public Task DisconnectOAuthAccountAsync(string accountId, CancellationToken cancellationToken = default) =>
+        services.GetService<PluginOAuthAccounts>()?.DisconnectAsync(pluginId, accountId, cancellationToken) ?? Task.CompletedTask;
+
+    // The desktop's DesktopBackendHost opens the browser; a backend without a window has none to open.
+    public virtual bool OpenUrl(Uri url)
+    {
+        _NoWindow(nameof(OpenUrl));
+        return false;
     }
 
     // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin

@@ -40,6 +40,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   with the cockpit-schedules reminder tools.
 - added: for plugin authors, `ICockpitHost.ShowToast` takes several `PluginToastAction` buttons and a sticky flag; the
   toast in the cockpit shows each as a button, the first one primary (Plugin SDK 3.15.0, host 0.100.0).
+- added: for plugin authors, the cockpit signs the operator in to an OAuth provider (Microsoft, Google, …) in the
+  browser for a plugin, keeps several accounts per provider and renews their tokens; a revoked sign-in asks to connect
+  the account again instead of retrying, and `ICockpitHost.OpenUrl` opens a web page (Plugin SDK 3.26.0, host 0.106.0).
 - added: for plugin authors, `StructuredQuestionJson.Parse` reads an AskUserQuestion payload into the channel question
   model, and `AnswerText` formats its answer consistently for the assistant (Plugin SDK 3.16.0, host 0.100.0).
 

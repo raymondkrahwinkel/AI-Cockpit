@@ -45,7 +45,7 @@ internal sealed class McpOAuthLoopback : IDisposable
     }
 
     // The redirect's query for `state`, or null when the wait was cancelled. Never logged: it carries the code.
-    public async Task<string?> ReceiveAsync(string serverName, string state, CancellationToken cancellationToken)
+    public async Task<string?> ReceiveAsync(string serverName, string state, CancellationToken cancellationToken, string kind = "MCP server")
     {
         using var registration = cancellationToken.Register(_listener.Stop);
         try
@@ -65,7 +65,7 @@ internal sealed class McpOAuthLoopback : IDisposable
                 // The redirect counts once it arrived; a tab closed before the page reached it does not lose the code.
                 try
                 {
-                    await RespondAsync(context, serverName, answer.Error is null).ConfigureAwait(false);
+                    await RespondAsync(context, serverName, answer.Error is null, kind).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is HttpListenerException or IOException or ObjectDisposedException)
                 {
@@ -123,16 +123,17 @@ internal sealed class McpOAuthLoopback : IDisposable
         return (code, state, iss, error);
     }
 
-    // AC-1517: names the server and that this tab is Cockpit's own, since it can land next to an unrelated login.
-    // Only the first redirect gets this page: the listener stops after it, so a reload or a late, expired attempt
-    // reaches a closed port and the browser shows its own "can't connect" page — nothing here can answer that.
-    public static async Task RespondAsync(HttpListenerContext context, string serverName, bool success)
+    // AC-1517: names what was signed in to (`kind`: an MCP server, or a plugin's account at a provider, AC-1407) and that
+    // this tab is Cockpit's own. Only the first redirect gets this page: the listener stops after it, so a reload or a
+    // late attempt reaches a closed port and the browser shows its own "can't connect" page.
+    public static async Task RespondAsync(HttpListenerContext context, string serverName, bool success, string kind = "MCP server")
     {
         var server = WebUtility.HtmlEncode(serverName);
+        var what = WebUtility.HtmlEncode(kind);
         var message = success
-            ? $"This tab was Cockpit's sign-in for the MCP server \"{server}\", and it has been handed back to Cockpit. You can close this tab."
-            : $"Cockpit's sign-in for the MCP server \"{server}\" failed or was cancelled. You can close this tab; "
-                + "to try again, press Sign in for that server in Cockpit.";
+            ? $"This tab was Cockpit's sign-in for the {what} \"{server}\", and it has been handed back to Cockpit. You can close this tab."
+            : $"Cockpit's sign-in for the {what} \"{server}\" failed or was cancelled. You can close this tab; "
+                + $"to try again, press Sign in for that {what} in Cockpit.";
         var body = Encoding.UTF8.GetBytes(
             $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Cockpit</title></head><body style=\"font-family:sans-serif\">{message}</body></html>");
 

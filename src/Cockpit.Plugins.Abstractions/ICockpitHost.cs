@@ -274,6 +274,50 @@ public interface ICockpitHost
         Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
 
     /// <summary>
+    /// Signs the operator in to <paramref name="provider"/> in the system browser, with PKCE on a loopback redirect (AC-1407).
+    /// Pass <paramref name="accountId"/> to connect that account again, or to add <paramref name="scopes"/> to it.
+    /// </summary>
+    /// <remarks>
+    /// Only from the operator's own act, such as a Sign in button. Ask for <c>openid email profile</c> to get a display
+    /// name. A plugin that calls this sets minHostVersion 0.106.0; the default answers Unavailable.
+    /// </remarks>
+    Task<OAuth.PluginOAuthConnectResult> ConnectOAuthAccountAsync(
+        OAuth.PluginOAuthProvider provider,
+        IReadOnlyList<string> scopes,
+        string? accountId = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new OAuth.PluginOAuthConnectResult(OAuth.PluginOAuthOutcome.Unavailable));
+
+    /// <summary>
+    /// An access token for this plugin's account <paramref name="accountId"/>, renewed first when it is about to run out.
+    /// Never opens a browser: scopes not yet consented to answer ConsentRequired, a revoked grant ReconnectRequired.
+    /// </summary>
+    Task<OAuth.PluginOAuthTokenResult> GetOAuthAccessTokenAsync(
+        OAuth.PluginOAuthProvider provider,
+        string accountId,
+        IReadOnlyList<string> scopes,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new OAuth.PluginOAuthTokenResult(OAuth.PluginOAuthOutcome.Unavailable));
+
+    /// <summary>
+    /// This plugin's accounts at <paramref name="provider"/>, without any token. Empty by default.
+    /// </summary>
+    Task<IReadOnlyList<OAuth.PluginOAuthAccount>> ListOAuthAccountsAsync(
+        OAuth.PluginOAuthProvider provider,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<OAuth.PluginOAuthAccount>>([]);
+
+    /// <summary>
+    /// Forgets this plugin's account <paramref name="accountId"/> and its tokens on this cockpit. Unknown ids are not an error.
+    /// </summary>
+    Task DisconnectOAuthAccountAsync(string accountId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Opens an http or https <paramref name="url"/> in the operator's browser (AC-1407). False when it was not opened, as on a host without a desktop.
+    /// </summary>
+    bool OpenUrl(Uri url) => false;
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.

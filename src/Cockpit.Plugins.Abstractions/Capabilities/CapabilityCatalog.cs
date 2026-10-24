@@ -79,6 +79,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "browser.open",
+            "Opening a web page",
+            "Opens an http or https address in the operator's own browser.",
+            CapabilityRisk.Ambient,
+            "0.106.0",
+            ["ICockpitHost.OpenUrl"],
+            []),
+
+        new(
             "ui.host-views",
             "Host-rendered read-only views",
             "Renders markdown and help hints through the cockpit's own controls instead of bundling a second renderer.",
@@ -433,6 +442,15 @@ public static class CapabilityCatalog
                 "ICockpitHost.SetManagedCliAutoUpdateAsync",
             ],
             [new("cliName", "The managed CLI the plugin may install and resolve.")]),
+
+        new(
+            "oauth.accounts",
+            "Signing in to online accounts",
+            "Signs the operator in to an OAuth provider in the browser, and holds and renews the account's tokens for the plugin.",
+            CapabilityRisk.Sensitive,
+            "0.106.0",
+            ["ICockpitHost.ConnectOAuthAccountAsync", "ICockpitHost.GetOAuthAccessTokenAsync", "ICockpitHost.ListOAuthAccountsAsync", "ICockpitHost.DisconnectOAuthAccountAsync"],
+            [new("providerId", "The OAuth provider the plugin may connect accounts at.")]),
 
         new(
             "assistant.notify",

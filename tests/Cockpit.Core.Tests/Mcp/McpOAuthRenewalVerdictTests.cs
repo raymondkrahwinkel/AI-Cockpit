@@ -59,12 +59,16 @@ public class McpOAuthRenewalVerdictTests
             toasts);
 
     [Fact]
-    public async Task Acquire_WhenTheAuthorizationServerRejectsTheGrant_ReportsAnExpiredSignIn()
+    public async Task Acquire_WhenTheAuthorizationServerRejectsTheGrant_ReportsAnExpiredSignIn_AndStillInterruptsTheOperator()
     {
         await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
         var store = await _StoreWithAStaleTokenAsync(server, refreshToken: "a-refresh-token-this-server-never-issued");
+        var toasts = new CapturingToastNotifier();
+        var coordinator = _Coordinator(store, toasts);
+        var signInNeeded = new List<string>();
+        coordinator.SignInNeeded += needing => signInNeeded.Add(needing.Name);
 
-        var access = await _Coordinator(store).AcquireAsync(_Server(server.Url), interactive: false);
+        var access = await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
 
         // The other half of the fix, and the half a careless one loses. The token endpoint answered this refresh with
         // `invalid_grant` — an authorization server stating the grant is dead — so signing in again is exactly the
@@ -72,6 +76,12 @@ public class McpOAuthRenewalVerdictTests
         Assert.Equal(McpAuthState.AuthorizationRequired, access.State);
         Assert.Equal(McpOAuthAttentionReason.SignInExpired, access.Reason);
         Assert.Contains("press Sign in", McpOAuthSignInGuidance.For("depot", access.Reason), StringComparison.Ordinal);
+
+        // Quietening is only right for the case nobody has to act on. A sign-in the server has declared dead is the
+        // case the notice exists for; since AC-1517 it is named in the cockpit, with Sign in, instead of on the desktop.
+        Assert.Equal(["depot"], signInNeeded);
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        Assert.Empty(toasts.Shown);
     }
 
     [Fact]
@@ -132,25 +142,6 @@ public class McpOAuthRenewalVerdictTests
         // The operator is interrupted when something of theirs is needed. Nothing here is: the call retries itself
         // and the next one works. A desktop notification reading "MCP server unavailable — sign in again" over a
         // storm that lasted a second is the same wrong claim as the tool error, just harder to ignore.
-        await Task.Delay(TimeSpan.FromMilliseconds(200));
-        Assert.Empty(toasts.Shown);
-    }
-
-    [Fact]
-    public async Task Acquire_WhenTheAuthorizationServerRejectsTheGrant_StillInterruptsTheOperator()
-    {
-        await using var server = await InProcessOAuthMcpServer.StartAsync(advertiseOfflineAccess: true);
-        var store = await _StoreWithAStaleTokenAsync(server, refreshToken: "a-refresh-token-this-server-never-issued");
-        var toasts = new CapturingToastNotifier();
-        var coordinator = _Coordinator(store, toasts);
-        var signInNeeded = new List<string>();
-        coordinator.SignInNeeded += needing => signInNeeded.Add(needing.Name);
-
-        await coordinator.AcquireAsync(_Server(server.Url), interactive: false);
-
-        // Quietening is only right for the case nobody has to act on. A sign-in the server has declared dead is the
-        // case the notice exists for; since AC-1517 it is named in the cockpit, with Sign in, instead of on the desktop.
-        Assert.Equal(["depot"], signInNeeded);
         await Task.Delay(TimeSpan.FromMilliseconds(200));
         Assert.Empty(toasts.Shown);
     }

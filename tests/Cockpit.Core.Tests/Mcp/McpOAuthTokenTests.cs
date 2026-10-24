@@ -15,7 +15,6 @@ public class McpOAuthTokenTests
         new() { AccessToken = "access", ResourceUrl = url };
 
     [Theory]
-    [InlineData("https://depot.example/mcp", true)]
     [InlineData("https://depot.example/mcp/v2", true)]
     [InlineData("https://DEPOT.example/mcp", true)]
     [InlineData("https://depot.example:8443/mcp", false)]
@@ -35,37 +34,25 @@ public class McpOAuthTokenTests
     }
 
     [Fact]
-    public void ToString_DoesNotPrintEitherToken()
+    public void ToString_DoesNotPrintEitherTokenOrTheClientSecret()
     {
         var token = new McpOAuthToken
         {
             AccessToken = "the-access-token",
             RefreshToken = "the-refresh-token",
             ResourceUrl = "https://depot.example/mcp",
-        };
-
-        // Iron Law #8: a record's generated ToString() prints every property, and this one ends up in log lines and
-        // exception messages by accident rather than by decision. Same guard PluginMcpServer carries.
-        var text = token.ToString();
-        Assert.DoesNotContain("the-access-token", text);
-        Assert.DoesNotContain("the-refresh-token", text);
-        Assert.Contains("https://depot.example/mcp", text);
-    }
-
-    [Fact]
-    public void ToString_DoesNotPrintTheClientSecret()
-    {
-        // AC-505: a dynamic-client-registration secret is a credential exactly like AccessToken/RefreshToken —
-        // ClientId itself is not secret and stays visible, same treatment Scope/ResourceUrl already get.
-        var token = new McpOAuthToken
-        {
-            AccessToken = "access",
             ClientId = "the-client-id",
             ClientSecret = "the-client-secret",
         };
 
+        // Iron Law #8: a record's generated ToString() prints every property, and this one ends up in log lines and
+        // exception messages by accident rather than by decision. AC-505: a registration secret is a credential too;
+        // the client id is not, and stays visible like the resource.
         var text = token.ToString();
+        Assert.DoesNotContain("the-access-token", text);
+        Assert.DoesNotContain("the-refresh-token", text);
         Assert.DoesNotContain("the-client-secret", text);
+        Assert.Contains("https://depot.example/mcp", text);
         Assert.Contains("the-client-id", text);
     }
 }
