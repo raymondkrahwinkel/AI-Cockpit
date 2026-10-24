@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -75,6 +76,51 @@ public class BundledPluginInstallerTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_plugins, "depot")), "an uninstalled bundled plugin does not silently return");
     }
 
+    [Fact]
+    public async Task InstallAsync_BatchesColdWrites_SkipsWarmWrites_AndPersistsAChangedMinimumVersion()
+    {
+        _WriteBundled("depot", "1.1.0");
+        _WriteBundled("github", "1.1.0");
+        _WriteBundled("weather", "1.1.0");
+        var configPath = Path.Combine(_root, "cockpit.json");
+        await using var registrations = new PluginRegistrationStore(configPath);
+        var sut = new BundledPluginInstaller(registrations);
+        var writes = 0;
+        Action<string> countWrite = path =>
+        {
+            if (path == configPath)
+            {
+                Interlocked.Increment(ref writes);
+            }
+        };
+
+        CockpitConfigFileAccess.Written += countWrite;
+        try
+        {
+            await sut.InstallAsync(_bundled, _plugins);
+            var coldWrites = writes;
+
+            writes = 0;
+            await sut.InstallAsync(_bundled, _plugins);
+            var warmWrites = writes;
+
+            writes = 0;
+            _WriteBundled("depot", "1.1.0", expectedMinVersion: "0.105.3");
+            await sut.InstallAsync(_bundled, _plugins);
+            var changedMinimumWrites = writes;
+            var saved = await registrations.LoadAllAsync();
+
+            Assert.InRange(coldWrites, 1, 2);
+            Assert.Equal(0, warmWrites);
+            Assert.Equal(1, changedMinimumWrites);
+            Assert.Equal("0.105.3", saved["depot"].ExpectedMinVersion);
+        }
+        finally
+        {
+            CockpitConfigFileAccess.Written -= countWrite;
+        }
+    }
+
     private BundledPluginInstaller NewSut() => new(_registrations);
 
     private string _InstalledVersion(string id)
@@ -85,12 +131,17 @@ public class BundledPluginInstallerTests : IDisposable
     }
 
     /// <param name="assemblyContent">Stands in for the compiled bytes — pass one to make a rebuild of the same version.</param>
-    private void _WriteBundled(string id, string version, string? assemblyContent = null) =>
-        _WritePlugin(Path.Combine(_bundled, id), id, version, assemblyContent);
+    private void _WriteBundled(string id, string version, string? assemblyContent = null, string? expectedMinVersion = null) =>
+        _WritePlugin(Path.Combine(_bundled, id), id, version, assemblyContent, expectedMinVersion);
 
     private void _WriteInstalled(string id, string version) => _WritePlugin(Path.Combine(_plugins, id), id, version);
 
-    private static void _WritePlugin(string folder, string id, string version, string? assemblyContent = null)
+    private static void _WritePlugin(
+        string folder,
+        string id,
+        string version,
+        string? assemblyContent = null,
+        string? expectedMinVersion = null)
     {
         Directory.CreateDirectory(folder);
         var assembly = $"Cockpit.Plugin.{id}.dll";
@@ -101,7 +152,8 @@ public class BundledPluginInstallerTests : IDisposable
               "version": "{{version}}",
               "entryAssembly": "{{assembly}}",
               "entryType": "Cockpit.Plugin.{{id}}.Entry",
-              "abstractionsVersion": 1
+              "abstractionsVersion": 1,
+              "expectedMinVersion": {{System.Text.Json.JsonSerializer.Serialize(expectedMinVersion)}}
             }
             """);
         File.WriteAllBytes(Path.Combine(folder, assembly), System.Text.Encoding.UTF8.GetBytes(assemblyContent ?? $"{id}-{version}"));
