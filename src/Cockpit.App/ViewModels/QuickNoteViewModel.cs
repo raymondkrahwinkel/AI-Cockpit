@@ -117,6 +117,7 @@ public sealed partial class QuickNoteViewModel : ObservableObject
             }
 
             saved = true;
+            Saved?.Invoke(this, EventArgs.Empty);
         }
         finally
         {
@@ -124,9 +125,6 @@ public sealed partial class QuickNoteViewModel : ObservableObject
         }
 
         // After the finally (AC-1658): the window refuses to close while IsSaving is still true.
-        if (saved)
-        {
-            Saved?.Invoke(this, EventArgs.Empty);
-        }
+        _ = saved;
     }
 }
