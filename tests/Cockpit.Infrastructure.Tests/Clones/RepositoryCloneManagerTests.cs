@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using Cockpit.Core.Clones;
 using Cockpit.Infrastructure.Clones;
-using Cockpit.Infrastructure.Worktrees;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Infrastructure.Tests.Clones;
@@ -76,8 +76,26 @@ public sealed class RepositoryCloneManagerTests : IDisposable
         Assert.True(Directory.Exists(present.Path));
     }
 
-    private static string _Git(string workingDirectory, params string[] arguments) =>
-        GitCli.RunCheckedAsync(workingDirectory, arguments, CancellationToken.None).GetAwaiter().GetResult();
+    private static string _Git(string workingDirectory, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo)!;
+        var standardOutput = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        return standardOutput.Trim();
+    }
 
     public void Dispose() => TestGitDirectory.Remove(_tempRoot);
 }
