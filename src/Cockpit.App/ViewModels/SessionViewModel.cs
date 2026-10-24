@@ -818,6 +818,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             InputJson = entry.InputJson,
             ToolUseId = entry.ToolUseId,
             IsFailedTurnRow = entry.IsFailedTurnRow,
+            IsPendingBrokerAnswer = entry.IsPendingBrokerAnswer,
             IsExpanded = kind == TranscriptEntryKind.Thinking,
             SenderPaneId = entry.SenderPaneId,
             SenderTitle = entry.SenderTitle,
@@ -869,7 +870,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             row.IsPendingPermission = entry.IsPendingPermission;
         }
 
-        row.IsPendingBrokerAnswer = entry.IsPendingBrokerAnswer;
+        // Only ever closes: a host echo older than the operator's answer must not reopen the card.
+        if (!entry.IsPendingBrokerAnswer)
+        {
+            row.IsPendingBrokerAnswer = false;
+        }
+
         row.ErrorKind = entry.ErrorKind ?? SessionErrorKind.Unknown;
         row.RetryAfter = entry.RetryAfter;
         row.IsReplyContinuation = entry.IsReplyContinuation;
