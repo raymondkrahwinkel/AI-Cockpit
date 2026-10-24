@@ -1668,6 +1668,9 @@
         <Setter Property="FontSize" Value="11"/>
         <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
+    <Style Selector="TextBlock.optionsHint.error">
+        <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+    </Style>
 
     <!-- AC-1000: the sidebar's live-search match-count badge, one per category, only visible while searching. -->
     <Style Selector="Border.searchMatchBadge">

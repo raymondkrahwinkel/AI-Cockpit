@@ -17,6 +17,9 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
     private string _status = "";
 
     [ObservableProperty]
+    private bool _statusIsError;
+
+    [ObservableProperty]
     private bool _isBusy;
 
     public int Count => Editor?.Profiles.Count ?? 0;
@@ -35,6 +38,7 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
         if (!editor.Validate())
         {
             Status = editor.StatusMessage;
+            StatusIsError = true;
             return;
         }
 
@@ -56,6 +60,7 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
     {
         IsBusy = true;
         Status = "";
+        StatusIsError = false;
         try
         {
             await action();
@@ -63,6 +68,7 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
         catch (Exception exception)
         {
             Status = exception.Message;
+            StatusIsError = true;
         }
         finally
         {

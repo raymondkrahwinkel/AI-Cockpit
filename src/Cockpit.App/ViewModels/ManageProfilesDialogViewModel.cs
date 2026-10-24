@@ -25,6 +25,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
+    private readonly bool _hostRunsTty = true;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
 
     // The MCP servers a profile may pre-select from (AC-130), fetched once when the dialog loads; empty until then, or
@@ -82,7 +83,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
         ISessionLoginFlows? loginStarter = null,
-        IPluginProviderConfigViews? pluginConfigViews = null)
+        IPluginProviderConfigViews? pluginConfigViews = null,
+        bool hostRunsTty = true)
     {
         _pluginConfigViews = pluginConfigViews;
         _profileStore = profileStore;
@@ -92,6 +94,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;
+        _hostRunsTty = hostRunsTty;
         _loginStarter = loginStarter;
 
         // Snapshot the plugin-registered providers once per dialog open (#45) — registrations only ever
@@ -166,7 +169,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         Profiles.Clear();
         foreach (var profile in profiles)
         {
-            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter)
+            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, hostRunsTty: _hostRunsTty)
             {
                 OriginalLabel = profile.Label,
             });
@@ -181,7 +184,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         // A freshly added profile may pick its provider (#26); an existing one is fixed. Defaults to the bundled
         // Claude provider plugin — Claude is a plugin like every other now (Fase 4), not a built-in CLI provider.
         var added = new EditableProfileViewModel(
-            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter);
+            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry, pluginConfigViews: _pluginConfigViews, availableMcpServerNames: _availableMcpServerNames, tokenEstimator: _tokenEstimator, ttyProviderResolver: _ttyProviderResolver, loginStarter: _loginStarter, hostRunsTty: _hostRunsTty);
         Profiles.Add(added);
         SelectedProfile = added;
     }

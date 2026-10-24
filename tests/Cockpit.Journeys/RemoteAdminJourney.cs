@@ -219,6 +219,36 @@ public sealed class RemoteAdminJourney
             });
             Assert.Equal((0, "load", false, "Echo from the store"), (restartExit, loaded?["decision"]?.GetValue<string>(), loaded?["takesEffectAfterServerRestarts"]?.GetValue<bool>(), created["label"]?.GetValue<string>()));
 
+            // AC-1650: the store offers a newer echo-provider; the page counts it, the button opens the store on Updates, and
+            // Update all stages it (a restart away from live).
+            var storeDirectory = Path.Combine(root, "fixture-store");
+            File.Copy(Path.Combine(storeDirectory, $"{StorePlugin}-1.0.0.zip"), Path.Combine(storeDirectory, $"{StorePlugin}-1.1.0.zip"));
+            var newerIndex = File.ReadAllText(Path.Combine(storeDirectory, "index.json")).Replace("1.0.0", "1.1.0", StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(storeDirectory, "index.json"), newerIndex);
+            await HeadlessAvalonia.RunAsync(() => admin.LoadCommand.ExecuteAsync(null));
+            var (updateLabel, rowLabel) = HeadlessAvalonia.Run(() => (admin.HasAvailableUpdates ? admin.UpdateLabel : "", admin.Plugins.Single(plugin => plugin.Id == StorePlugin).UpdateText));
+            var updatesOpened = new TaskCompletionSource<PluginStoreDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var watchUpdates = Window.WindowOpenedEvent.AddClassHandler<PluginStoreDialog>((storeWindow, _) => updatesOpened.TrySetResult(storeWindow));
+            Task openUpdates = Task.CompletedTask;
+            await HeadlessAvalonia.RunAsync(() =>
+            {
+                openUpdates = admin.UpdatePluginsCommand.ExecuteAsync(null);
+                return Task.CompletedTask;
+            });
+            var updatesDialog = await updatesOpened.Task.WaitAsync(Until.Ceiling);
+            var (onUpdates, staged) = (false, false);
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                var updates = Assert.IsType<PluginStoreDialogViewModel>(updatesDialog.DataContext);
+                await Until.CollectionHolds(updates.Manager.AvailablePlugins, () => updates.Manager.AvailablePlugins.Any(plugin => plugin.CanUpdate));
+                onUpdates = updates.SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.UpdatesAvailable;
+                await updates.Manager.UpdateAllCommand.ExecuteAsync(null);
+                staged = updates.Manager.NeedsRestart;
+                updatesDialog.Close();
+            });
+            await openUpdates;
+            Assert.Equal(("Update 1", "1.1.0 available", true, true, true), (updateLabel, rowLabel, onUpdates, staged, HeadlessAvalonia.Run(() => admin.NeedsRestart)));
+
             // AC-1534/AC-1585: Admin → Profiles is Options › Profiles' editor on the server. Every field it has, key and secret
             // variable included, is saved there and reopens as saved, each secret only as set; a masked save keeps them, and
             // one that moves the base URL with the key masked is refused.
@@ -356,10 +386,31 @@ public sealed class RemoteAdminJourney
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
             Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
 
-            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == StorePlugin)));
+            var removedPlugin = admin.Plugins.Single(plugin => plugin.Id == StorePlugin);
+            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(removedPlugin));
             Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+
+            // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
+            var remoteServer = view.ServerGroups.Single().Server;
+            var currentAdmin = new ServerAdminViewModel(
+                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
+                serverVersion: "1.2.3", desktopVersion: "1.2.3");
+            await HeadlessAvalonia.RunAsync(() => currentAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingPlugin, missingPluginIsError) = HeadlessAvalonia.Run(() => (currentAdmin.Status, currentAdmin.StatusIsError));
+            Assert.True(missingPluginIsError);
+            Assert.Equal("That plugin is not installed on the server.", missingPlugin);
+
+            var olderAdmin = new ServerAdminViewModel(
+                Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
+                serverVersion: "1.2.2", desktopVersion: "1.2.3-nightly.4");
+            await HeadlessAvalonia.RunAsync(() => olderAdmin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (olderAdmin.Status, olderAdmin.StatusIsError));
+            Assert.True(missingFeatureIsError);
+            Assert.Contains(olderAdmin.ServerVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains(olderAdmin.DesktopVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains("update the server", missingFeature, StringComparison.OrdinalIgnoreCase);
 
             // AC-1572 through AC-1571: Depot's own local view over the server. B2: the browser sign-in runs on the server, this
             // desktop's "browser" only follows the link to its loopback; a token signs Work in at a fake Depot, the same token on
@@ -494,13 +545,19 @@ public sealed class RemoteAdminJourney
             ServerSharedProjectRowViewModel? bareRow = null;
             var sharedResult = "";
             var sharedAfter = new List<string>();
+            var sharedStatusFlags = (Failed: false, Succeeded: false);
             var sharedPane = "";
             await HeadlessAvalonia.RunAsync(async () =>
             {
                 sharedOffered = [.. admin.SharedProjects.Select(project => project.Id)];
                 bareRow = admin.SharedProjects.Single(project => project.Id == BareProject);
+                var sharedProject = admin.SharedProjects.Single(project => project.Id == SharedProject);
+                admin.SharedProfile = null;
+                await admin.AddSharedCommand.ExecuteAsync(sharedProject);
+                sharedStatusFlags.Failed = admin.StatusIsError;
                 admin.SharedProfile = "Echo";
-                await admin.AddSharedCommand.ExecuteAsync(admin.SharedProjects.Single(project => project.Id == SharedProject));
+                await admin.AddSharedCommand.ExecuteAsync(sharedProject);
+                sharedStatusFlags.Succeeded = admin.StatusIsError;
                 sharedResult = admin.CloneResult;
                 sharedAfter = [.. admin.SharedProjects.Select(project => project.Id)];
 
@@ -608,6 +665,7 @@ public sealed class RemoteAdminJourney
             Assert.Equal(clonePath, sessionFolder);
             Assert.Contains((Laptop, $"cloned · {Project}"), audit);
             Assert.Contains(SharedProject, sharedOffered);
+            Assert.Equal((true, false), sharedStatusFlags);
             // DEP-381: a definition without a repository is offered as not cloneable, its "Add on" is disabled with the reason,
             // and the server still refuses it.
             Assert.Equal((true, false), (cloneable[SharedProject], cloneable[BareProject]));
