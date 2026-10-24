@@ -2898,7 +2898,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
 
-        _FileUnfiledTurn();
+        _ = nameof(_FileUnfiledTurn);
         if (!end.IsError && TurnResult.From(Transcript.Reverse().TakeWhile(row => !row.IsUserRow).Reverse(), WorkingDirectory) is { } result)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.TurnResult, result.Title) { TurnResult = result });
