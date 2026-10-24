@@ -8,7 +8,9 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.105.4: a failing backup, settings sync or Depot check stays quiet while its plugin waits for a sign-in (AC-1663);
+    <!-- 0.105.6: bundled-plugin startup writes cockpit.json only for changed minimum versions and batches first-install pins
+         (AC-1667); host-only fix, no plugin contract changed.
+         0.105.4: a failing backup, settings sync or Depot check stays quiet while its plugin waits for a sign-in (AC-1663);
          host-only, no plugin contract changed.
          0.105.3: ICockpitHost.McpServerAccountChanged (AC-1665, Cockpit.Plugins.Abstractions 3.26.0), raised when the account behind
          a plugin's own MCP server may have changed; a plugin that subscribes sets minHostVersion 0.105.3.
@@ -350,7 +352,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.105.5</VersionPrefix>
+    <VersionPrefix>0.105.6</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

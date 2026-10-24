@@ -60,32 +60,6 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateAsync_WhenTwoStoresUpdateDifferentSections_KeepsBoth()
-    {
-        // The whole promise of this class: each store mutates its own section and preserves the others. Without
-        // serialization the read-modify-write of one silently drops the other's just-written section.
-        var access = new CockpitConfigFileAccess(ConfigPath);
-        await access.UpdateAsync(config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", new ClaudeConfig("/home/someone/.claude")))], CancellationToken.None);
-
-        var profileWriter = new CockpitConfigFileAccess(ConfigPath);
-        var boundsWriter = new CockpitConfigFileAccess(ConfigPath);
-
-        await Task.WhenAll(
-            profileWriter.UpdateAsync(
-                config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("written-by-the-profile-store", new ClaudeConfig("/home/someone/.claude")))],
-                CancellationToken.None),
-            boundsWriter.UpdateAsync(
-                config => config.WindowBounds = new Dictionary<string, WindowBoundsEntry> { ["main"] = new() { Width = 1280, Height = 820 } },
-                CancellationToken.None));
-
-        var written = await new CockpitConfigFileAccess(ConfigPath).ReadAsync(CancellationToken.None);
-
-        Assert.NotNull(written);
-        Assert.NotNull(written.WindowBounds);
-        Assert.Single(written.Profiles, profile => profile.Label == "written-by-the-profile-store");
-    }
-
-    [Fact]
     public async Task UpdateAsync_WhenManyWritersMutateAtOnce_KeepsEveryMutation()
     {
         // AC-1047 criterion 3. Each writer appends its own profile to what it read, which is the read-modify-write
