@@ -176,7 +176,6 @@ internal static class DepotMemorySource
         ICockpitHost host, DepotConnectionRegistration connection, DepotProjectAddressing addressing, string value, string note, CancellationToken cancellationToken)
     {
         var projectAddress = await addressing.ProjectArgumentAsync(value, cancellationToken).ConfigureAwait(false);
-        _ = await host.CallMcpToolAsync(connection.McpServerName, "append", null, projectId: null, cancellationToken).ConfigureAwait(false);
         var address = projectAddress.Split('/', 2);
         if (address.Length != 2 || address.Any(string.IsNullOrWhiteSpace))
         {
