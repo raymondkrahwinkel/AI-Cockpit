@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,7 @@ using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App.ViewModels;
 
@@ -30,12 +32,14 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private readonly ILogger? _logger;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null, ILogger? logger = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null, ILogger? logger = null, string? serverVersion = null, string? desktopVersion = null)
     {
         _logger = logger;
         _runningSessions = runningSessions;
         _serverProjects = serverProjects;
         Server = server;
+        ServerVersion = serverVersion ?? "unknown";
+        DesktopVersion = desktopVersion ?? AboutInfo.FromAssembly(typeof(ServerAdminViewModel).Assembly).VersionText;
         KeyLabel = keyLabel;
         _admin = admin;
         _time = time ?? TimeProvider.System;
@@ -46,6 +50,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     }
 
     public string Server { get; }
+
+    public string ServerVersion { get; }
+
+    public string DesktopVersion { get; }
 
     public string KeyLabel { get; }
 
@@ -89,6 +97,9 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     [ObservableProperty]
     private string _status = "";
+
+    [ObservableProperty]
+    private bool _statusIsError;
 
     [ObservableProperty]
     private string _lockoutPolicy = "";
@@ -237,6 +248,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
             if (!await _admin.SetScopeAsync(row.Prefix, scope))
             {
                 Status = $"{row.Label} is no longer a live key.";
+                StatusIsError = true;
                 return;
             }
 
@@ -266,6 +278,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         else
         {
             Status = $"{row.Label} is no longer a live key.";
+            StatusIsError = true;
         }
 
         await _LoadAuditAsync(null);
@@ -277,6 +290,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         if (!await _admin.LiftLockoutAsync(lockout.Address))
         {
             Status = $"{lockout.Address} is no longer locked out.";
+            StatusIsError = true;
         }
 
         Lockouts.Remove(lockout);
@@ -340,14 +354,24 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     {
         if (_plugins is not IPluginStoreCatalog catalog || _dialogService is null)
         {
-            Status = quiet ? Status : "The server's plugin store is not available.";
+            if (!quiet)
+            {
+                Status = "The server's plugin store is not available.";
+                StatusIsError = true;
+            }
+
             return null;
         }
 
         var stores = await catalog.GetStoresAsync();
         if (stores.Count == 0)
         {
-            Status = quiet ? Status : "No plugin store is configured on the server.";
+            if (!quiet)
+            {
+                Status = "No plugin store is configured on the server.";
+                StatusIsError = true;
+            }
+
             return null;
         }
 
@@ -415,6 +439,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
         var outcome = await InstallPluginOnDesktop(row);
         Status = outcome.Message;
+        StatusIsError = !outcome.Installed;
         row.OnDesktop = outcome.Installed;
         DesktopNeedsRestart |= outcome.Installed && outcome.NeedsRestart;
     });
@@ -532,18 +557,42 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     {
         IsBusy = true;
         Status = "";
+        StatusIsError = false;
         try
         {
             await action();
         }
         catch (Exception exception)
         {
-            Status = exception.Message;
+            Status = exception is BackendApiException { Status: HttpStatusCode.NotFound } && _ServerIsOlderThanDesktop()
+                ? $"The server runs {ServerVersion}; this desktop runs {DesktopVersion}. This server does not know this feature yet; update the server."
+                : exception.Message;
+            StatusIsError = true;
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private bool _ServerIsOlderThanDesktop()
+    {
+        var serverVersion = _ParseSemVerCore(ServerVersion);
+        var desktopVersion = _ParseSemVerCore(DesktopVersion);
+        return serverVersion is not null && desktopVersion is not null && serverVersion < desktopVersion;
+    }
+
+    private static Version? _ParseSemVerCore(string value)
+    {
+        var core = value.AsSpan();
+        var suffix = core.IndexOfAny('-', '+');
+        core = suffix < 0 ? core : core[..suffix];
+        if (!Version.TryParse(core, out var version) || version.Revision >= 0)
+        {
+            return null;
+        }
+
+        return version.Build < 0 ? new Version(version.Major, version.Minor, 0) : version;
     }
 
     private void _ShowKeys(IEnumerable<ConnectKeyInfo> keys)

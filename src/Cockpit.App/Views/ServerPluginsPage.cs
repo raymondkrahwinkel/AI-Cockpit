@@ -27,14 +27,23 @@ public sealed class ServerPluginsPage : UserControl
         restartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartServerCommand"));
         restartNow.Bind(IsVisibleProperty, new Avalonia.Data.Binding("NeedsRestart"));
         ToolTip.SetTip(restartNow, "Restarts the server so the plugin changes take effect. Its sessions stop; this cockpit stays open.");
-        var status = new TextBlock();
-        status.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
+        var statusText = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        statusText.Classes.Add("optionsHint");
+        statusText.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
+        statusText.Bind(IsVisibleProperty, new Avalonia.Data.Binding("StatusIsError") { Converter = Avalonia.Data.Converters.BoolConverters.Not });
+        var statusError = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+        statusError.Classes.Add("optionsHint");
+        statusError.Classes.Add("error");
+        statusError.Bind(TextBlock.TextProperty, new Avalonia.Data.Binding("Status"));
+        statusError.Bind(IsVisibleProperty, new Avalonia.Data.Binding("StatusIsError"));
+        var status = new Panel { Children = { statusText, statusError } };
+        status.Bind(IsVisibleProperty, new Avalonia.Data.Binding("Status.Length"));
         var desktopRestart = new TextBlock { Text = "A plugin installed on this desktop loads when the desktop restarts.", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         var desktopRestartNow = new Button { Content = "Restart the cockpit now", HorizontalAlignment = HorizontalAlignment.Left };
         desktopRestartNow.Bind(Button.CommandProperty, new Avalonia.Data.Binding("RestartDesktopNowCommand"));
         var desktopPrompt = new StackPanel { Spacing = 8, Children = { desktopRestart, desktopRestartNow } };
         desktopPrompt.Bind(IsVisibleProperty, new Avalonia.Data.Binding("DesktopNeedsRestart"));
-        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, desktopPrompt, _rows, restart, restartNow, status } };
+        Content = new StackPanel { Margin = new Thickness(24, 20), Spacing = 12, Children = { heading, install, update, status, desktopPrompt, _rows, restart, restartNow } };
         DataContextChanged += (_, _) => _SetAdmin();
     }
 
