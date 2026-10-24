@@ -5,6 +5,8 @@ namespace Cockpit.Infrastructure.Worktrees;
 
 internal readonly record struct DockerCliResult(int ExitCode, string StandardOutput, string StandardError);
 
+internal sealed class DockerUnavailableException(string message, Exception innerException) : InvalidOperationException(message, innerException);
+
 // The seam the worktree teardown's docker cleanup (AC-1010) runs against, so a test can fake docker's answers
 // instead of needing a real daemon (which a CI box or a sandboxed session may not have running at all).
 internal interface IDockerCli
@@ -42,7 +44,7 @@ internal sealed class DockerCli : IDockerCli, ISingletonService
         }
         catch (Exception exception)
         {
-            throw new InvalidOperationException($"Could not run 'docker' — is it installed and on PATH? ({exception.Message})", exception);
+            throw new DockerUnavailableException($"Could not run 'docker' — is it installed and on PATH? ({exception.Message})", exception);
         }
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
