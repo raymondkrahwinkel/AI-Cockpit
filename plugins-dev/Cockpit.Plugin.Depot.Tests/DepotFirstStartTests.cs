@@ -20,7 +20,7 @@ public sealed class DepotFirstStartTests
     {
         var host = Substitute.For<ICockpitHost>();
         host.Storage.Returns(new FakePluginStorage());
-        host.CreateAuthorizedHandler(Arg.Any<string>(), "depot.host").Returns(_ => new _NotFound());
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _NotFound());
         Func<JsonElement, CancellationToken, Task<JsonElement>>? handler = null;
         host.Channel.Handle(DepotChannel.FirstStartSignIn, Arg.Do<Func<JsonElement, CancellationToken, Task<JsonElement>>>(handle => handler = handle));
         using var plugin = new DepotPlugin();
@@ -61,7 +61,7 @@ public sealed class DepotFirstStartTests
         var host = Substitute.For<ICockpitHost>();
         host.Storage.Returns(new FakePluginStorage());
         var depot = new _ManifestHandler(multipleOrganizations);
-        host.CreateAuthorizedHandler(Arg.Any<string>(), "depot.host").Returns(_ => depot);
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => depot);
         host.SignInMcpServerAsync("Depot: depot.test", Arg.Any<CancellationToken>()).Returns(PluginMcpSignInOutcome.Authorized);
         Func<JsonElement, CancellationToken, Task<JsonElement>>? signIn = null;
         Func<JsonElement, CancellationToken, Task<JsonElement>>? manifest = null;
