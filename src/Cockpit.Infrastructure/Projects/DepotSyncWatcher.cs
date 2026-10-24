@@ -46,6 +46,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // What each project was bound to when last seen, so an unbind or a rebind drops its baseline and its flag.
     private readonly ConcurrentDictionary<string, string> _boundTo = new(StringComparer.Ordinal);
 
+    // A stale project snapshot may remove old baselines, but never one seeded after that snapshot started.
+    private readonly ConcurrentDictionary<string, long> _seedRevision = new(StringComparer.Ordinal);
+    private long _nextSeedRevision;
+
     private ITimer? _timer;
 
     // One gate for the periodic pass and source nudges: a second tick is skipped, while a nudge waits and is not lost.
@@ -101,9 +105,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
         try
         {
+            var seedRevision = _CaptureSeedRevision();
             var current = await BoundProjects().ConfigureAwait(true);
             _Watch(current.Select(bound => bound.Source));
-            await _ForgetStaleAsync(current).ConfigureAwait(true);
+            await _ForgetStaleAsync(current, seedRevision).ConfigureAwait(true);
             foreach (var bound in current)
             {
                 await _CheckAsync(bound, cancellationToken);
@@ -132,9 +137,10 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         await _pollingGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
+            var seedRevision = _CaptureSeedRevision();
             var current = await BoundProjects().ConfigureAwait(true);
             _Watch(current.Select(bound => bound.Source));
-            await _ForgetStaleAsync(current).ConfigureAwait(true);
+            await _ForgetStaleAsync(current, seedRevision).ConfigureAwait(true);
             foreach (var bound in current.Where(include))
             {
                 await _CheckAsync(bound, cancellationToken).ConfigureAwait(true);
@@ -154,6 +160,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         {
             _lastChecksum[projectId] = checksum;
             _boundTo[projectId] = sharedId;
+            _seedRevision[projectId] = ++_nextSeedRevision;
         }
     }
 
@@ -208,8 +215,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             return;
         }
 
+        var seedRevision = _CaptureSeedRevision();
         var current = await BoundProjects().ConfigureAwait(true);
-        await _ForgetStaleAsync(current).ConfigureAwait(true);
+        await _ForgetStaleAsync(current, seedRevision).ConfigureAwait(true);
         if (current.FirstOrDefault(candidate => candidate.ProjectId == projectId) is { } bound)
         {
             await _CheckAsync(bound, cancellationToken, clearFlag: true).ConfigureAwait(true);
@@ -218,7 +226,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     // A project that is no longer bound, or is bound to another shared project, starts over: no baseline, no flag, and
     // the catalog is told the flag is gone.
-    private async Task _ForgetStaleAsync(IReadOnlyList<DepotBoundProject> current)
+    private async Task _ForgetStaleAsync(IReadOnlyList<DepotBoundProject> current, long seedRevision)
     {
         var stale = new List<string>();
         foreach (var (projectId, sharedId) in _boundTo)
@@ -234,8 +242,14 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             bool wasFlagged;
             lock (_lastChecksum)
             {
+                if (_seedRevision.TryGetValue(projectId, out var revision) && revision > seedRevision)
+                {
+                    continue;
+                }
+
                 _boundTo.TryRemove(projectId, out _);
                 _lastChecksum.TryRemove(projectId, out _);
+                _seedRevision.TryRemove(projectId, out _);
                 _failing.TryRemove(projectId, out _);
                 wasFlagged = _changed.TryRemove(projectId, out _);
             }
@@ -249,6 +263,14 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         foreach (var bound in current)
         {
             _boundTo[bound.ProjectId] = bound.SharedId;
+        }
+    }
+
+    private long _CaptureSeedRevision()
+    {
+        lock (_lastChecksum)
+        {
+            return _nextSeedRevision;
         }
     }
 

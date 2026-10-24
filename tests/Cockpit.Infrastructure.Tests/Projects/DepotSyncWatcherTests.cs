@@ -95,6 +95,17 @@ public sealed class DepotSyncWatcherTests : IDisposable
         var sources = new SharedProjectSourceRegistry();
         sources.Register(_source);
         var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), sources, depotSync: _watcher);
+        var boundProjects = _watcher.BoundProjects;
+        Assert.NotNull(boundProjects);
+        var snapshotTaken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _watcher.BoundProjects = async () =>
+        {
+            var snapshot = await boundProjects();
+            snapshotTaken.TrySetResult();
+            await releaseSnapshot.Task;
+            return snapshot;
+        };
         _watcher.OnChecked = (_, changed, _) =>
         {
             _reports.Add(changed);
@@ -106,10 +117,14 @@ public sealed class DepotSyncWatcherTests : IDisposable
             SharedSourceName = _source.SourceName,
         };
 
+        var stalePass = _watcher.RunOnceAsync();
+        await snapshotTaken.Task;
         await catalog.AddBoundProjectAsync(project, "a");
+        releaseSnapshot.SetResult();
+        await stalePass;
         _checksum = "b";
 
-        _source.RaiseChanged("fake:shared");
+        await _watcher.CheckNowAsync(project.Id);
 
         Assert.True(_Next());
     }
