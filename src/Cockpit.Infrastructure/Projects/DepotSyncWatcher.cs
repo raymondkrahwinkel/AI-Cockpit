@@ -81,6 +81,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // so "not signed in" is said to the operator and not only logged. Set by the cockpit, which owns the toasts.
     public Action<string, string>? OnFailing { get; set; }
 
+    // AC-1663: whether Depot is waiting for the operator to sign in; then `OnFailing` stays quiet. Set by the cockpit.
+    public Func<Task<bool>>? WaitsForSignIn { get; set; }
+
     // Starts polling the clock; the first pass runs at once so the baseline is laid at start. Idempotent.
     public void Start()
     {
@@ -286,7 +289,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             if (completed != bindingTask)
             {
                 timeoutCts.Cancel();
-                _NoteFailure(bound.ProjectId, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.");
+                await _NoteFailureAsync(bound.ProjectId, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.").ConfigureAwait(true);
                 return;
             }
 
@@ -297,7 +300,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             // Not signed in, unreachable, the project no longer exists. None of that is news every tick, and
             // nothing has been remembered that did not happen — the next tick tries again.
             _logger.LogDebug(exception, "Checking {ProjectId} for a Depot change failed; the next check will try again.", bound.ProjectId);
-            _NoteFailure(bound.ProjectId, exception.Message);
+            await _NoteFailureAsync(bound.ProjectId, exception.Message).ConfigureAwait(true);
             return;
         }
 
@@ -307,7 +310,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             // this used to return on it without a word anywhere.
             var reason = result.Error is { Length: > 0 } error ? error : "no checksum came back.";
             _logger.LogDebug("Checking {ProjectId} for a Depot change returned nothing usable: {Reason}", bound.ProjectId, reason);
-            _NoteFailure(bound.ProjectId, reason);
+            await _NoteFailureAsync(bound.ProjectId, reason).ConfigureAwait(true);
             return;
         }
 
@@ -341,11 +344,17 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
     }
 
-    private void _NoteFailure(string projectId, string reason)
+    private async Task _NoteFailureAsync(string projectId, string reason)
     {
         if (_failing.TryAdd(projectId, 0))
         {
             _logger.LogInformation("Checking {ProjectId} for a Depot change started failing: {Reason}", projectId, reason);
+        }
+
+        // AC-1663: the host names a pending sign-in itself, once; nothing is claimed here, so a later failure is still said.
+        if (WaitsForSignIn is { } waits && await waits().ConfigureAwait(true))
+        {
+            return;
         }
 
         // Claimed only once someone listens: the first pass runs at start, before the app has hung its toast on this, and a
@@ -394,6 +403,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         BoundProjects = null;
         OnChecked = null;
         OnFailing = null;
+        WaitsForSignIn = null;
         _timer?.Dispose();
         _timer = null;
     }

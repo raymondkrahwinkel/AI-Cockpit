@@ -11,10 +11,20 @@ public sealed class BackupTargets(ILogger<BackupTargets> logger) : ISingletonSer
 {
     private readonly Lock _gate = new();
     private IReadOnlyList<IBackupTarget> _targets = [];
+    private readonly Dictionary<string, string> _plugins = new(StringComparer.Ordinal);
 
     public IReadOnlyList<IBackupTarget> All => Volatile.Read(ref _targets);
 
     public IBackupTarget? Find(string id) => All.FirstOrDefault(target => target.Id == id);
+
+    // AC-1663: the plugin that registered a target, or null for the local folder and an unknown id.
+    internal string? PluginOf(string targetId)
+    {
+        lock (_gate)
+        {
+            return _plugins.GetValueOrDefault(targetId);
+        }
+    }
 
     internal bool Add(string pluginId, IBackupTarget target)
     {
@@ -27,6 +37,7 @@ public sealed class BackupTargets(ILogger<BackupTargets> logger) : ISingletonSer
             }
 
             Volatile.Write(ref _targets, [.. _targets, target]);
+            _plugins[target.Id] = pluginId;
             return true;
         }
     }
@@ -36,6 +47,7 @@ public sealed class BackupTargets(ILogger<BackupTargets> logger) : ISingletonSer
         lock (_gate)
         {
             Volatile.Write(ref _targets, [.. _targets.Where(target => target.Id != id)]);
+            _plugins.Remove(id);
         }
     }
 }

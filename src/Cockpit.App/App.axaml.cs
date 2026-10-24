@@ -736,6 +736,8 @@ public partial class App : Application
 
         var toasts = Program.Services.GetRequiredService<IToastService>();
         var catalog = Program.Services.GetRequiredService<IProjectCatalog>();
+        var signIns = Program.Services.GetService<PluginSignInStanding>();
+        watcher.WaitsForSignIn = () => signIns is null ? Task.FromResult(false) : signIns.WaitsAsync("depot");
         watcher.OnFailing = (projectId, reason) =>
         {
             var name = catalog.Current.Settings.Projects.FirstOrDefault(project => project.Id == projectId)?.Name ?? projectId;

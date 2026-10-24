@@ -90,6 +90,25 @@ public sealed class ScheduledBackupTests : IDisposable
     }
 
     /// <summary>
+    /// AC-1663, layer 2 (service). A target of a plugin that waits for the operator to sign in fails: the host already
+    /// said so once with a Sign in button, so there is no toast of its own, and the Backup page still shows the failure.
+    /// Without the check this goes red with one toast.
+    /// </summary>
+    [Fact]
+    public async Task ATargetWhosePluginWaitsForASignIn_KeepsItsFailureOnTheBackupPage_WithoutAToast()
+    {
+        await _store.SaveAsync(new BackupSchedule(Enabled: true, IntervalHours: 24));
+        _target.Failure = new IOException("sign-in needed");
+        _scheduled.WaitsForSignIn = (_, _) => Task.FromResult(true);
+
+        _scheduled.Start();
+        await _scheduled.Ticking;
+
+        Assert.Empty(_toasts.Messages);
+        Assert.Contains("sign-in needed", (await _store.LoadStateAsync()).LastFailure);
+    }
+
+    /// <summary>
     /// Acceptance 3 and 4, the data-loss one. With Keep 3 and a fourth backup the oldest by <c>CreatedAt</c> goes —
     /// the ids are laid out so that the oldest sorts last by name, the newest first, and sorting by id would delete a newer one. A target
     /// that cannot delete keeps all four and says so once. A manual backup and another installation's stay either way, even above Keep.

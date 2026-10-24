@@ -250,6 +250,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **one sign-in message after a restore, not a string of toasts.** After restoring a backup the cockpit asks you to
+  sign in again with one message and a Sign in button. A scheduled backup, the settings sync and the Depot check no longer
+  add their own "sign-in needed" toast on top while that sign-in is pending. A failed backup still shows on the Backup page.
 - fixed: **a Depot connection no longer shows the previous account's projects.** Signing in as someone else on the same
   connection, or signing out, now clears the project list the cockpit remembered for it. Before, with Depot unreachable,
   the last list of the account that had just left could still be shown as the "last known list".

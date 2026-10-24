@@ -271,11 +271,39 @@ public class PluginBackendHost(
     public void AddHealthSection(IPluginHealthSection section) =>
         services.GetRequiredService<PluginHealthSections>().Add(pluginId, section);
 
-    public void AddSettingsCarrier(SettingsCarrierRegistration registration) =>
+    public void AddSettingsCarrier(SettingsCarrierRegistration registration)
+    {
+        _RegisterSignInStanding();
         services.GetRequiredService<SettingsCarriers>().Add(pluginId, registration);
+    }
 
-    public void AddBackupTarget(IBackupTarget target) =>
+    public void AddBackupTarget(IBackupTarget target)
+    {
+        _RegisterSignInStanding();
         services.GetRequiredService<BackupTargets>().Add(pluginId, target);
+    }
+
+    // AC-1663: lets a background job of this plugin ask whether the plugin waits for a sign-in.
+    private void _RegisterSignInStanding() => services.GetService<PluginSignInStanding>()?.Register(pluginId, _WaitsForSignInAsync);
+
+    // True when one of this plugin's own OAuth servers has no usable sign-in; the host names that itself, once (AC-1517).
+    private async Task<bool> _WaitsForSignInAsync(CancellationToken cancellationToken)
+    {
+        if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
+        {
+            return false;
+        }
+
+        foreach (var server in _OwnMcpServerContributions().Where(server => server.Auth == McpServerAuth.OAuth))
+        {
+            if (await coordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     public void RemoveBackupTarget(string id) =>
         services.GetRequiredService<BackupTargets>().Remove(id);
