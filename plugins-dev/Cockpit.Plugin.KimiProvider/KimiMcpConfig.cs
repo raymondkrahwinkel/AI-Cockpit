@@ -92,7 +92,7 @@ internal static class KimiMcpConfig
         var headers = new List<object>();
         foreach (var (name, value) in server.Headers)
         {
-            headers.Add(new { name, value });
+            _ = (name, value);
         }
 
         if (!string.IsNullOrEmpty(token))
