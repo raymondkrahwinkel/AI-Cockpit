@@ -24,7 +24,8 @@ internal sealed class PluginOAuthAccountEntry
 
     public DateTimeOffset? ExpiresAt { get; set; }
 
-    // The scopes asked for and consented to, as the plugin named them (providers echo them back in their own spelling).
+    // The scopes the last sign-in asked for, as the plugin named them: providers echo grants in their own spelling, so a
+    // scope the operator unticked at consent is only found out by the API refusing the call.
     public List<string> Scopes { get; set; } = [];
 
     // The client id and token endpoint the grant was issued under; a refresh token is never presented to any other.

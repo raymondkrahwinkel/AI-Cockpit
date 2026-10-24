@@ -63,7 +63,7 @@ public enum PluginOAuthState
 /// <param name="ProviderId">The <see cref="PluginOAuthProvider.Id"/> it was connected through.</param>
 /// <param name="DisplayName">Who signed in, from the id token when <c>openid email profile</c> was asked for.</param>
 /// <param name="State">Where the account stands.</param>
-/// <param name="Scopes">The scopes asked for and consented to so far.</param>
+/// <param name="Scopes">The scopes the last sign-in asked for.</param>
 public sealed record PluginOAuthAccount(
     string AccountId,
     string ProviderId,

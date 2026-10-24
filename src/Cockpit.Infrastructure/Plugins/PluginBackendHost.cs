@@ -577,15 +577,15 @@ public class PluginBackendHost(
         }
     }
 
-    // AC-1407: host OAuth, scoped to this plugin's own accounts. AC-1625 routes the browser step of a server's
-    // sign-in through the desktop; until then a host without a browser answers Unavailable.
+    // AC-1407: host OAuth, scoped to this plugin's own accounts. The browser step goes through OpenUrl, so a backend
+    // without a desktop answers Unavailable at once; AC-1625 routes a server's through the desktop instead.
     public Task<PluginOAuthConnectResult> ConnectOAuthAccountAsync(
         PluginOAuthProvider provider,
         IReadOnlyList<string> scopes,
         string? accountId = null,
         CancellationToken cancellationToken = default) =>
         services.GetService<PluginOAuthAccounts>() is { } accounts
-            ? accounts.ConnectAsync(pluginId, provider, scopes, accountId, cancellationToken)
+            ? accounts.ConnectAsync(pluginId, provider, scopes, accountId, OpenUrl, cancellationToken)
             : Task.FromResult(new PluginOAuthConnectResult(PluginOAuthOutcome.Unavailable));
 
     public Task<PluginOAuthTokenResult> GetOAuthAccessTokenAsync(

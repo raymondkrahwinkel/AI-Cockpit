@@ -17,11 +17,13 @@ namespace Cockpit.Infrastructure.Plugins;
 internal sealed partial class PluginOAuthAccounts : ISingletonService
 {
     // Renew this long before the provider's expiry, so a call made with the token does not die halfway.
+    // A provider issuing tokens under 5 minutes is renewed on every call; scale the lead by lifetime if one ever does.
     private static readonly TimeSpan RenewalLead = TimeSpan.FromMinutes(5);
 
     private static readonly TimeSpan SignInTimeout = TimeSpan.FromMinutes(5);
 
-    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
+    // No redirects: a 307 would resend the refresh token and client secret to whatever host it names.
+    private static readonly HttpClient SharedHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
 
     private readonly CockpitConfigFileAccess _configFile;
     private readonly HttpClient _http;
@@ -45,14 +47,12 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         _logger = logger;
     }
 
-    // Stands in for the system browser in a test; null in production.
-    internal Func<Uri, bool>? BrowserOpener { get; init; }
-
     public async Task<PluginOAuthConnectResult> ConnectAsync(
         string pluginId,
         PluginOAuthProvider provider,
         IReadOnlyList<string> scopes,
         string? accountId,
+        Func<Uri, bool> openBrowser,
         CancellationToken cancellationToken)
     {
         if (!provider.IsConfigured)
@@ -85,7 +85,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         }
 
         var link = _AuthorizationLink(provider, wanted, loopback.RedirectUri, state, challenge);
-        if (!(BrowserOpener ?? (url => McpOAuthLoopback.OpenBrowser(url, _logger)))(link))
+        if (!openBrowser(link))
         {
             return new PluginOAuthConnectResult(PluginOAuthOutcome.Unavailable);
         }
@@ -170,9 +170,9 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         var outcome = await _RefreshOnceAsync(pluginId, provider, accountId).WaitAsync(cancellationToken).ConfigureAwait(false);
         var current = await _FindAsync(pluginId, accountId, cancellationToken).ConfigureAwait(false);
 
-        // A provider that is down does not take away a token that still works.
-        return current is not null
-            && (outcome == PluginOAuthOutcome.Ok || (outcome == PluginOAuthOutcome.Unreachable && current.ExpiresAt > DateTimeOffset.UtcNow))
+        // A renewal that did not happen does not take away a token that still works; invalid_grant has emptied it.
+        return current is { AccessToken.Length: > 0 }
+            && (outcome == PluginOAuthOutcome.Ok || current.ExpiresAt > DateTimeOffset.UtcNow)
             ? new PluginOAuthTokenResult(PluginOAuthOutcome.Ok, current.AccessToken)
             : new PluginOAuthTokenResult(outcome == PluginOAuthOutcome.Ok ? PluginOAuthOutcome.Unavailable : outcome);
     }
@@ -250,7 +250,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
 
         if (token is not null)
         {
-            await _UpdateAsync(pluginId, accountId, stored =>
+            await _UpdateAsync(pluginId, accountId, entry.RefreshToken, stored =>
             {
                 stored.AccessToken = token.AccessToken;
 
@@ -263,7 +263,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         else if (outcome == PluginOAuthOutcome.ReconnectRequired)
         {
             // Sticky, and the dead grant is dropped: every later call answers from here without asking the provider again.
-            await _UpdateAsync(pluginId, accountId, stored =>
+            await _UpdateAsync(pluginId, accountId, entry.RefreshToken, stored =>
             {
                 stored.ReconnectRequired = true;
                 stored.AccessToken = string.Empty;
@@ -365,7 +365,7 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
                 target.AccessToken = token.AccessToken;
                 target.RefreshToken = string.IsNullOrEmpty(token.RefreshToken) ? inheritable : token.RefreshToken;
                 target.ExpiresAt = token.ExpiresAt;
-                target.Scopes = existing?.AccountId == target.AccountId ? scopes : [.. target.Scopes.Concat(scopes).Distinct(StringComparer.Ordinal)];
+                target.Scopes = scopes;
                 target.ClientId = provider.ClientId ?? string.Empty;
                 target.Endpoint = provider.TokenEndpoint.AbsoluteUri;
                 target.Subject = subject ?? target.Subject;
@@ -378,11 +378,13 @@ internal sealed partial class PluginOAuthAccounts : ISingletonService
         return saved ?? throw new InvalidOperationException("The OAuth account was not saved.");
     }
 
-    private Task _UpdateAsync(string pluginId, string accountId, Action<PluginOAuthAccountEntry> change) =>
+    // Applies only while the account still holds `refreshedWith`: a sign-in that landed during the refresh is newer.
+    private Task _UpdateAsync(string pluginId, string accountId, string refreshedWith, Action<PluginOAuthAccountEntry> change) =>
         _configFile.UpdateAsync(
             file =>
             {
-                if (file.PluginOAuthAccounts.FirstOrDefault(entry => entry.PluginId == pluginId && entry.AccountId == accountId) is { } entry)
+                if (file.PluginOAuthAccounts.FirstOrDefault(entry => entry.PluginId == pluginId && entry.AccountId == accountId) is { } entry
+                    && entry.RefreshToken == refreshedWith)
                 {
                     change(entry);
                 }
