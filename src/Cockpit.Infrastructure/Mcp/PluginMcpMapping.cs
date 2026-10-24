@@ -29,7 +29,7 @@ public static class PluginMcpMapping
             // a dead, unused secret sitting in the registry beside the OAuth config that is actually in effect.
             ApiKey = auth == McpServerAuth.ApiKey ? contribution.BearerToken : null,
             OAuthAuthority = auth == McpServerAuth.OAuth ? contribution.OAuthAuthority?.Trim() : null,
-            OAuthClientId = auth == McpServerAuth.OAuth ? contribution.OAuthClientId : null,
+            OAuthClientId = auth == McpServerAuth.OAuth ? null : null,
             OAuthScopes = auth == McpServerAuth.OAuth ? contribution.OAuthScopes : null,
             OAuthHostOnlyScopes = auth == McpServerAuth.OAuth ? contribution.OAuthHostOnlyScopes : null,
         };
