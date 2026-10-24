@@ -145,7 +145,10 @@ internal sealed class BackupService(
                         continue;
                     }
 
-                    archive.CreateEntryFromFile(file, entryName, CompressionLevel.Optimal);
+                    // Everything named here is a file the cockpit itself swaps into place; a backup that lands mid-swap waits it out.
+                    await CockpitConfigFileAccess.WhenNotBeingReplacedAsync(
+                        () => Task.FromResult(archive.CreateEntryFromFile(file, entryName, CompressionLevel.Optimal)),
+                        cancellationToken);
                 }
 
                 if (options.IncludeProfileConfigs)
@@ -864,7 +867,8 @@ internal sealed class BackupService(
         BackupOptions options,
         CancellationToken cancellationToken)
     {
-        var settings = JsonNode.Parse(await File.ReadAllTextAsync(file, cancellationToken))
+        // A settings save swaps this file while a backup may be reading it (AC-1497).
+        var settings = JsonNode.Parse(await CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync(file, cancellationToken))
             ?? throw new InvalidOperationException("cockpit.json could not be read, so the backup would not have been one.");
 
         // AC-1277: leaving a plugin out no longer strips its registration here. That registration — the menu, and
