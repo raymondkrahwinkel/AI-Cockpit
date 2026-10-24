@@ -86,8 +86,12 @@ public class McpOAuthCoordinatorTests
         var (coordinator, store) = _Create();
         await store.SaveAsync("depot", "depot", _TokenFor("depot-access-token", UnreachableUrl, DateTimeOffset.UtcNow.AddHours(1)));
 
+        var accountChanges = 0;
+        coordinator.AccountChanged += _ => accountChanges++;
+
         await coordinator.SignOutAsync(_OAuthServer());
 
+        Assert.Equal(1, accountChanges);
         Assert.Equal(McpAuthState.AuthorizationRequired, await coordinator.GetStateAsync(_OAuthServer()));
         Assert.Null(await store.GetAsync("depot"));
     }

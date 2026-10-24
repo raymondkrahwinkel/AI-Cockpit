@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **plugins hear about an account change.** A plugin that contributes an OAuth MCP server can now subscribe to
+  `McpServerAccountChanged` and drop what it cached about the previous account when someone signs in as another user
+  or signs out. Only the plugin's own servers raise it, and it carries the server name, never a token.
 - added: **sign out of a Depot connection.** A connection row in the Depot settings now has a "Sign out" button while
   it is signed in. It forgets the cockpit's token for that connection and keeps the connection itself, so signing in
   again is one click. Depot itself is not asked to revoke the token, and a session already running keeps its own until
@@ -247,6 +250,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **a Depot connection no longer shows the previous account's projects.** Signing in as someone else on the same
+  connection, or signing out, now clears the project list the cockpit remembered for it. Before, with Depot unreachable,
+  the last list of the account that had just left could still be shown as the "last known list".
 - fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
   saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running

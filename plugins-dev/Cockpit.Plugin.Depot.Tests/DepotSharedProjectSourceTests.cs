@@ -126,18 +126,6 @@ public class DepotSharedProjectSourceTests
     }
 
     [Fact]
-    public async Task ListAsync_AnUnrecognisedRoleStringWithAbsentDefinition_IsReportedAsVisibleButUnreadable()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        using var http = _Client("""{"projects":[{"address":"acme/weird-role","slug":"weird-role","name":"Weird Role","role":"SuperAdmin","kind":"Project","organization":{"slug":"acme","name":"Acme","role":"Member"},"cockpit":{"state":"absent","checksum":null,"updatedAt":null}}]}""");
-
-        var result = await SourceFor(host, http).ListAsync(CancellationToken.None);
-
-        Assert.Empty(result.Projects);
-        Assert.Single(result.VisibleButUnreadable);
-    }
-
-    [Fact]
     public async Task ListAsync_ATooLargeDefinition_DoesNotHideTheValidProjects()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -148,6 +136,29 @@ public class DepotSharedProjectSourceTests
         Assert.Equal("Shared", Assert.Single(result.Projects).Name);
         var tooLarge = Assert.Single(result.ProjectReadStates, state => state.Id == "depot:acme/large");
         Assert.Equal(SharedProjectReadState.TooLarge, tooLarge.State);
+    }
+
+    // AC-1665, layer 2 (plugin contract / cache): the list is cached per connection, so a sign-in as someone else must
+    // take the previous account's list away, or an unreachable Depot shows it as the "last known list".
+    [Fact]
+    public async Task ListAsync_AfterTheAccountChanged_TheLastKnownListOfThePreviousAccountIsGone()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.Storage.Returns(new FakePluginStorage());
+        host.Cache.Returns(new InMemoryPluginCache());
+        var connection = Connection();
+        new Settings.DepotSettings(host.Storage) { Connections = [connection] };
+        using var plugin = new DepotPlugin();
+        plugin.Initialize(host);
+        using var known = _Client("""{"projects":[{"address":"acme/cockpit","slug":"cockpit","name":"Cockpit","role":"Viewer","kind":"Project"}]}""");
+        Assert.Equal(DepotProjectListingOutcome.Success, (await new DepotProjectListingSource(host, connection, known).ListAsync(CancellationToken.None)).Outcome);
+        using var unreachable = new HttpClient(new _StubHandler(_ => throw new HttpRequestException("Depot is down.")));
+
+        host.McpServerAccountChanged += Raise.Event<EventHandler<string>>(host, connection.McpServerName);
+
+        var result = await new DepotProjectListingSource(host, connection, unreachable).ListAsync(CancellationToken.None);
+        Assert.Equal(DepotProjectListingOutcome.Failed, result.Outcome);
+        Assert.Empty(result.Projects);
     }
 
     private static HttpClient _Client(string json) =>

@@ -67,6 +67,12 @@ internal sealed class DepotProjectListingSource
         _instances.GetOrCreateValue(host).GetOrAdd(
             $"{connection.Id}|{connection.McpServerName}|{connection.Url}", _ => new DepotProjectListingSource(host, connection));
 
+    // AC-1665: the list is kept per connection, so a sign-in as someone else (or a sign-out) leaves the previous
+    // account's list behind. Emptying the key takes away both the ETag and the last-known fallback.
+    // A listing already in flight can still write its answer afterwards; the next sign-in event clears that too.
+    public static void Forget(ICockpitHost host, DepotConnectionRegistration connection) =>
+        host.Cache.Set<_CachedProjects?>(_CacheKey(connection), null);
+
     public async Task<DepotProjectListingResult> ListAsync(CancellationToken cancellationToken)
     {
         var endpoint = await _EndpointAsync(useStale: true, cancellationToken).ConfigureAwait(false);
@@ -103,7 +109,9 @@ internal sealed class DepotProjectListingSource
         }
     }
 
-    private string CacheKey => $"project-list:{_connection.Id}:{_connection.Url}";
+    private string CacheKey => _CacheKey(_connection);
+
+    private static string _CacheKey(DepotConnectionRegistration connection) => $"project-list:{connection.Id}:{connection.Url}";
 
     private async Task<DepotProjectListingResult> _EndpointAsync(bool useStale, CancellationToken cancellationToken)
     {

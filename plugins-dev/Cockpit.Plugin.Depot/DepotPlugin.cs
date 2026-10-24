@@ -68,6 +68,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _host = host;
         _initializedHost = host;
 
+        // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
+        host.McpServerAccountChanged += (_, serverName) =>
+        {
+            foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
+            {
+                DepotProjectListingSource.Forget(host, connection);
+            }
+        };
+
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this
         // channel action is what that view's own Save/Sign-in route now asks for instead of touching the
         // project-memory-source/shared-project-source/MCP registries directly.

@@ -53,6 +53,8 @@ internal sealed class McpOAuthCoordinator(
 
     public event Action<McpServerConfig>? SignInNeeded;
 
+    public event Action<McpServerConfig>? AccountChanged;
+
     public async Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default)
     {
         if (server.Auth != McpServerAuth.OAuth)
@@ -67,17 +69,29 @@ internal sealed class McpOAuthCoordinator(
             // Clear first since the SDK reads the stored token through the cache; put the old one back if the
             // flow produced nothing, so closing the browser window doesn't cost a working credential.
             var previous = await _ReadAsync(server, cancellationToken).ConfigureAwait(false);
-            await SignOutAsync(server, cancellationToken).ConfigureAwait(false);
 
-            // replacing: null — SignOutAsync above emptied the store, so anything found afterwards came out of this
+            // Straight to the store rather than SignOutAsync: that one announces an account change, and this clearing
+            // is only the first half of a sign-in whose outcome is announced below, once, when it is known.
+            await tokenStore.RemoveAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false);
+
+            // replacing: null — the removal above emptied the store, so anything found afterwards came out of this
             // sign-in and nothing has to be compared against a leftover.
             var signedIn = await _ConnectAndReadAsync(server, interactive: true, OneCallWithoutFallingBack, replacing: null, cancellationToken).ConfigureAwait(false);
 
             // Restore only when the flow left nothing behind, not merely on "not authorized" — a short-lived
             // token still counts as that verdict, and restoring over it would discard the fresh sign-in.
-            if (previous is not null && await _ReadAsync(server, cancellationToken).ConfigureAwait(false) is null)
+            if (await _ReadAsync(server, cancellationToken).ConfigureAwait(false) is null)
             {
-                await tokenStore.SaveAsync(server.IdentityKey, server.Name, previous, cancellationToken).ConfigureAwait(false);
+                if (previous is not null)
+                {
+                    await tokenStore.SaveAsync(server.IdentityKey, server.Name, previous, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                // AC-1665: the flow left a new token behind, so the account may have changed hands. Not said when the
+                // old token was put back above: nothing changed then.
+                _RaiseAccountChanged(server);
             }
 
             return signedIn;
@@ -449,8 +463,24 @@ internal sealed class McpOAuthCoordinator(
             : McpAuthState.AuthorizationRequired;
     }
 
-    public Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
-        tokenStore.RemoveAsync(server.IdentityKey, cancellationToken);
+    public async Task SignOutAsync(McpServerConfig server, CancellationToken cancellationToken = default)
+    {
+        await tokenStore.RemoveAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false);
+        _RaiseAccountChanged(server);
+    }
+
+    // AC-1665: a subscriber that throws must not turn a finished sign-in or sign-out into a failure.
+    private void _RaiseAccountChanged(McpServerConfig server)
+    {
+        try
+        {
+            AccountChanged?.Invoke(server);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Telling the cockpit that the account for MCP server {Server} may have changed failed.", server.Name);
+        }
+    }
 
     // Keyed by the server's stable id (AC-403), reported by its name: the id is what finds the token across a
     // rename, and the name is the only one of the two an operator reading the log would recognise.

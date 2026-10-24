@@ -1,13 +1,13 @@
 {
   "id": "depot",
   "name": "Depot",
-  "version": "0.21.2",
+  "version": "0.21.3",
   "entryAssembly": "Cockpit.Plugin.Depot.dll",
   "entryType": "Cockpit.Plugin.Depot.DepotPlugin",
   "uiAssembly": "Cockpit.Plugin.Depot.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Depot.UI.DepotUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.105.0",
+  "minHostVersion": "0.105.3",
   "description": "Lets a project's memory live in a Depot project instead of a folder, and connects one or more Depot instances so a session can reach them.",
   "author": "Cockpit"
 }
