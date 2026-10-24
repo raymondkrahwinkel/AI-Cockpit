@@ -34,10 +34,16 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         _Play(vm);
         var ids = _Flatten(vm.Transcript).Select(row => row.Id).ToList();
         var live = _Render(vm.Transcript, ids);
+
+        // AC-1653: an open ask_structured_question card keeps waiting for its answer once the log is read back.
+        var card = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which way?") { IsPendingBrokerAnswer = true };
+        _ = log.AppendAsync("card-pane", TranscriptSnapshot.Capture(card));
         await log.DisposeAsync();
         var recorded = await _Log().TryLoadAsync(vm.PaneId);
         Assert.NotNull(recorded);
         var restored = TranscriptSnapshot.Restore(recorded);
+        var restoredCard = Assert.Single(TranscriptSnapshot.Restore(Assert.IsAssignableFrom<IReadOnlyList<TranscriptSnapshotEntry>>(await _Log().TryLoadAsync("card-pane"))));
+        Assert.True(restoredCard.IsAwaitingAnswer);
 
         Assert.Equal(LiveRows.ReplaceLineEndings("\n"), live);
         Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, ids));
@@ -63,20 +69,6 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
             var restored = TranscriptSnapshot.Restore(recorded);
             Assert.Equal(RestoredRows.ReplaceLineEndings("\n"), _Render(restored, _Flatten(restored).Select(row => row.Id).ToList()));
         }
-    }
-
-    // AC-1653: an open ask_structured_question card lost its Send on a replay, because the log never held the flag.
-    [Fact]
-    public async Task AnOpenQuestionCard_StillAwaitsItsAnswer_AfterTheLogIsReadBack()
-    {
-        var log = _Log();
-        var card = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which way?") { IsPendingBrokerAnswer = true };
-        _ = log.AppendAsync("pane", TranscriptSnapshot.Capture(card));
-        await log.DisposeAsync();
-
-        var restored = TranscriptSnapshot.Restore((await _Log().TryLoadAsync("pane"))!);
-
-        Assert.True(Assert.Single(restored).IsAwaitingAnswer);
     }
 
     private static void _Play(SessionViewModel vm) => Array.ForEach(Stream, vm.Apply);

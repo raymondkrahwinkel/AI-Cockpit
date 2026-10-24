@@ -111,16 +111,19 @@ public sealed class AssistantJourney
         Assert.Equal(["Ship the Depot route?"], waiting);
 
         // AC-1653: the card carries its own Send once an option is picked, and the answer comes back as a message.
-        var card = HeadlessAvalonia.Run(() => chat.Session!.OpenQuestions.Single());
+        var chatSession = chat.Session;
+        Assert.NotNull(chatSession);
+        var card = HeadlessAvalonia.Run(() => chatSession.OpenQuestions.Single());
         var canSend = HeadlessAvalonia.Run(() =>
         {
-            card.QuestionPrompts![0].Options[0].SelectCommand.Execute(null);
+            Assert.NotNull(card.QuestionPrompts);
+            card.QuestionPrompts[0].Options[0].SelectCommand.Execute(null);
             return card.IsAwaitingAnswer && card.CanSubmitAnswers;
         });
         Assert.True(canSend);
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            await chat.Session!.SubmitQuestionAnswersCommand.ExecuteAsync(card);
+            await chatSession.SubmitQuestionAnswersCommand.ExecuteAsync(card);
             await Until.CollectionHolds(transcript, () => transcript.Any(row => row.Kind == TranscriptEntryKind.UserText && row.Text.Contains("Yes", StringComparison.Ordinal)));
         });
         Assert.False(HeadlessAvalonia.Run(() => card.IsAwaitingAnswer));
