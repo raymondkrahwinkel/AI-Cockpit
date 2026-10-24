@@ -603,7 +603,7 @@ public class PluginBackendHost(
         {
             if (await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false) is { } server)
             {
-                _ = server;
+                await coordinator.SignOutAsync(server, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
