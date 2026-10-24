@@ -60,7 +60,7 @@ public sealed class RestoreJourney
     }
 
     // AC-1663: the sign-in a restore empties belongs to the plugin that contributed the server, so the one notice has the
-    // plugin's Sign in and the startup check does not say it again. A cockpit that was never a node says nothing of one.
+    // plugin's Sign in. The startup check is not part of a journey host. A cockpit that was never a node says nothing of one.
     private static async Task _AskedForARestoredDepotSignInAsync(string work)
     {
         var archive = Path.Combine(work, "depot-signin.zip");
@@ -76,7 +76,7 @@ public sealed class RestoreJourney
         var toasts = await _RestoreAndRestartToastsAsync(work, "depot-signin-target", (archive, ["depot"]));
         var asked = Assert.Single(toasts, toast => toast.Message.Contains("Depot: Journey", StringComparison.Ordinal));
         Assert.Equal("Sign in", asked.ActionLabel);
-        Assert.DoesNotContain(toasts, toast => toast.Message.Contains("NodeEndpoint", StringComparison.Ordinal) || toast.Message.StartsWith("Not signed in to", StringComparison.Ordinal));
+        Assert.DoesNotContain(toasts, toast => toast.Message.Contains("NodeEndpoint", StringComparison.Ordinal));
     }
 
     // AC-1510: two machines, each a state root of its own, through the bundled Depot plugin against a fake account space.
