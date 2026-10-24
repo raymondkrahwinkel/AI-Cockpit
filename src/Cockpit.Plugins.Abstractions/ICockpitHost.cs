@@ -274,6 +274,16 @@ public interface ICockpitHost
         Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
 
     /// <summary>
+    /// Signs out of the MCP server this plugin contributed under <paramref name="name"/> (AC-1660): the host forgets
+    /// the tokens it keeps for it, so the next use asks for a sign-in again.
+    /// </summary>
+    /// <remarks>
+    /// Local only: nothing is revoked at the server, and a session started earlier keeps its token until it expires.
+    /// Read <see cref="GetMcpServerAuthStateAsync"/> afterwards for the standing; the default is a no-op.
+    /// </remarks>
+    Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.

@@ -590,6 +590,28 @@ public class PluginBackendHost(
         }
     }
 
+    // AC-1660: the same server lookup as sign-in, then the dialog's own sign-out, which forgets the stored token. The
+    // host-only tokens of AC-1586 are held only while that stored record stands, so they lapse with it.
+    public async Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await _ResolveOAuthServerAsync(name, cancellationToken).ConfigureAwait(false) is { } server)
+            {
+                await coordinator.SignOutAsync(server, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-sign-out", exception.Message);
+        }
+    }
+
     // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin
     // hands over the grant's parameters and gets an outcome back, never a token.
     public async Task<PluginMcpSignInOutcome> SignInMcpServerWithGrantAsync(

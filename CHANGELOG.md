@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **sign out of a Depot connection.** A connection row in the Depot settings now has a "Sign out" button while
+  it is signed in. It forgets the cockpit's token for that connection and keeps the connection itself, so signing in
+  again is one click. Depot itself is not asked to revoke the token, and a session already running keeps its own until
+  it expires.
 - added: **the limits your organisation sets now hold.** When a provisioning manifest carries a `policy`, the cockpit
   keeps to it in every session, without rewriting your own settings: lift the policy and your own choices apply again.
   Sessions start at most in the permission mode it allows, delegated tasks stay under its ceiling, and approving every

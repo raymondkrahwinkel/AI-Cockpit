@@ -55,6 +55,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     private readonly MaterialIcon _defaultBrandIcon;
     private readonly TextBlock _authStatus;
     private readonly Button _signIn;
+    private readonly Button _signOut;
     private readonly TextBox _token;
     private readonly Button _signInWithToken;
     private bool _isBusy;
@@ -94,6 +95,10 @@ internal sealed class DepotConnectionRowControl : UserControl
         ToolTip.SetTip(_signIn, "Signing in opens Depot's sign-in page in your default browser.");
         _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
 
+        // AC-1660: shown only while signed in; forgets the token and keeps the connection.
+        _signOut = new Button { Content = "Sign out", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), IsVisible = false };
+        _signOut.Click += async (_, _) => await SignOutAsync().ConfigureAwait(true);
+
         // AC-1511: the second way in, beside the browser — an installation token made in Depot under Account. It is
         // handed to the backend part once and cleared from the box; nothing in this plugin keeps it.
         _token = new TextBox { PasswordChar = '•', PlaceholderText = "Installation token (instead of the browser)" };
@@ -115,11 +120,13 @@ internal sealed class DepotConnectionRowControl : UserControl
         // idiom SettingsHelpRow's "*,Auto" input+hint row uses, mirrored because the fixed column is on the left
         // here. Margin on the TextBlock replaces the StackPanel's Spacing, same idiom SettingsHelpRow uses for its
         // own "?" hint.
-        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
         _authStatus.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_signIn, 0);
-        Grid.SetColumn(_authStatus, 1);
+        Grid.SetColumn(_signOut, 1);
+        Grid.SetColumn(_authStatus, 2);
         signInRow.Children.Add(_signIn);
+        signInRow.Children.Add(_signOut);
         signInRow.Children.Add(_authStatus);
 
         var panel = new StackPanel { Spacing = 6 };
@@ -183,6 +190,7 @@ internal sealed class DepotConnectionRowControl : UserControl
                 PluginMcpAuthState.Authorized => "Signed in.",
                 _ => ReadyToSignInMessage,
             };
+            _signOut.IsVisible = state == PluginMcpAuthState.Authorized;
             if (state == PluginMcpAuthState.Authorized)
             {
                 await LoadBrandingAsync(cancellationToken).ConfigureAwait(true);
@@ -247,6 +255,7 @@ internal sealed class DepotConnectionRowControl : UserControl
             var outcome = await _host.SignInMcpServerAsync(stored.McpServerName).ConfigureAwait(true);
             if (outcome == PluginMcpSignInOutcome.Authorized)
             {
+                _signOut.IsVisible = true;
                 await LoadBrandingAsync().ConfigureAwait(true);
             }
             // Unreachable names the address the plugin actually tried — the outcome enum itself carries no detail
@@ -321,6 +330,7 @@ internal sealed class DepotConnectionRowControl : UserControl
             {
                 _storedName = registration.McpServerName;
                 _storedUrl = registration.Url;
+                _signOut.IsVisible = true;
                 await LoadBrandingAsync().ConfigureAwait(true);
             }
             _authStatus.Text = result?.Message ?? "Sign-in didn't complete — see the log, or try again.";
@@ -331,6 +341,43 @@ internal sealed class DepotConnectionRowControl : UserControl
             _signIn.IsEnabled = _ContentValidationReason() is null;
             _signInWithToken.IsEnabled = true;
         }
+    }
+
+    // AC-1660: forgets this connection's token on whichever host keeps it, locally only; the connection stays. The
+    // standing is read back afterwards, so a host that could not sign out still shows "Signed in.".
+    public async Task SignOutAsync()
+    {
+        if (_isBusy || _storedName is not { } storedName)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        _signIn.IsEnabled = false;
+        _signInWithToken.IsEnabled = false;
+        _signOut.IsEnabled = false;
+        _authStatus.Text = "Signing out…";
+        try
+        {
+            await _host.SignOutMcpServerAsync(storedName).ConfigureAwait(true);
+            _signOut.IsVisible = false;
+            _authStatus.Text = ReadyToSignInMessage;
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: signing out of connection '{_id}' failed: {exception}");
+            _authStatus.Text = "Sign-out didn't complete — try again.";
+            return;
+        }
+        finally
+        {
+            _isBusy = false;
+            _signIn.IsEnabled = _ContentValidationReason() is null;
+            _signInWithToken.IsEnabled = true;
+            _signOut.IsEnabled = true;
+        }
+
+        await RefreshAuthStateAsync().ConfigureAwait(true);
     }
 
     internal async Task LoadBrandingAsync(CancellationToken cancellationToken = default)

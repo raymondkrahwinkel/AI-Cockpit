@@ -313,4 +313,9 @@ public interface ICockpitUiHost
     /// Starts the sign-in of the MCP server <paramref name="name"/> this plugin contributed.
     /// </summary>
     Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Signs out of the MCP server <paramref name="name"/> this plugin contributed, forgetting its token locally (AC-1660).
+    /// </summary>
+    Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -27,6 +27,11 @@ public interface IPluginChannelRelay
     Task<string> SignInMcpServerAsync(string folderId, string name, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Signs an MCP server that plugin registered out on the server (AC-1660): the server forgets the token it keeps.
+    /// </summary>
+    Task SignOutMcpServerAsync(string folderId, string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes the keys a settings view changed and removes the ones it removed; <paramref name="secrets"/> names those it
     /// wrote as a credential. A value still reading "(set on the server)" keeps what the server holds.
     /// </summary>

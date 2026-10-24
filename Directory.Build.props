@@ -8,7 +8,9 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.104.0: SettingsCarrierRegistration.WriteIfUnchangedAsync (Cockpit.Plugins.Abstractions 3.23.0), a settings write
+    <!-- 0.105.0: ICockpitHost.SignOutMcpServerAsync and ICockpitUiHost.SignOutMcpServerAsync (AC-1660, Cockpit.Plugins.Abstractions
+         3.25.0, .UI 3.6.0), a local sign-out of a plugin's own MCP server; a plugin that calls it sets minHostVersion 0.105.0.
+         0.104.0: SettingsCarrierRegistration.WriteIfUnchangedAsync (Cockpit.Plugins.Abstractions 3.23.0), a settings write
          that refuses over another machine's; a plugin that sets it sets minHostVersion 0.104.0.
          0.103.0: ICockpitHost.CreateAuthorizedHandler(name, scope) and McpServerContribution.OAuthScopes and OAuthHostOnlyScopes
          (AC-1586, Cockpit.Plugins.Abstractions 3.22.0); a plugin that uses them sets minHostVersion 0.103.0.
@@ -340,7 +342,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.104.0</VersionPrefix>
+    <VersionPrefix>0.105.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

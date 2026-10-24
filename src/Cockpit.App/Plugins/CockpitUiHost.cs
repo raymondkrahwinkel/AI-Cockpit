@@ -368,6 +368,9 @@ internal sealed class CockpitUiHost(
     public Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
         host.SignInMcpServerAsync(name, cancellationToken);
 
+    public Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+        host.SignOutMcpServerAsync(name, cancellationToken);
+
     private ILogger? _Logger() => services.GetService<ILoggerFactory>()?.CreateLogger<CockpitUiHost>();
 
     private HelpService? _Help() => services.GetService<HelpService>();

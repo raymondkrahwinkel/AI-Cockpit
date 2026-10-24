@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.VisualTree;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
@@ -110,6 +111,40 @@ public class DepotSettingsControlTests
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-1" && connection.Name == "Work");
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-2" && connection.Name == "Work2");
         Assert.Contains("Work", _AuthStatusText(renamedRow), StringComparison.Ordinal);
+    }
+
+    // AC-1660 (layer 2, panel): Sign out shows only while signed in, signs out under the stored name, and the
+    // connection stays with the row back on its sign-in prompt.
+    [Fact]
+    public async Task SignOutAsync_SignedInRow_SignsOutUnderTheStoredName_HidesTheButton_AndKeepsTheConnection()
+    {
+        var signedIn = true;
+        var host = Substitute.For<ICockpitUiHost>();
+        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>())
+            .Returns(_ => signedIn ? PluginMcpAuthState.Authorized : PluginMcpAuthState.AuthorizationRequired);
+        host.SignOutMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            signedIn = false;
+            return Task.CompletedTask;
+        });
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _Show(view);
+        var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
+        await row.RefreshAuthStateAsync();
+        var signOut = row.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Sign out"));
+        Assert.True(signOut.IsVisible);
+
+        await row.SignOutAsync();
+
+        await host.Received(1).SignOutMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>());
+        Assert.False(signOut.IsVisible);
+        Assert.Equal("Opens Depot's sign-in page in your browser.", _AuthStatusText(row));
+        Assert.Single(settings.Connections);
     }
 
     // GetVisualDescendants only sees anything once the control is attached under a shown TopLevel — an unattached

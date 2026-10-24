@@ -3,9 +3,12 @@ using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Tests.Mcp;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Plugins;
@@ -188,6 +191,28 @@ public class CockpitHostMcpAuthTests
         var failure = diagnostics.ForFolder("depot");
         Assert.NotNull(failure);
         Assert.Equal("mcp-sign-in", failure!.Phase);
+    }
+
+    // AC-1660 (layer 2, secrets): sign-out forgets the stored token itself, so the next read asks for a sign-in.
+    [Fact]
+    public async Task SignOutMcpServerAsync_ForgetsTheStoredToken_SoTheStandingAsksForASignInAgain()
+    {
+        var tokens = new FakeMcpOAuthTokenStore();
+        await tokens.SaveAsync(OAuthServer.IdentityKey, OAuthServer.Name, new McpOAuthToken
+        {
+            AccessToken = "access-1",
+            RefreshToken = "refresh-1",
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            ResourceUrl = OAuthServer.Url,
+        });
+        var coordinator = new McpOAuthCoordinator(tokens, Substitute.For<IMcpOAuthAuthorizer>(), NullLogger<McpOAuthCoordinator>.Instance);
+        var host = _BuildHost(new List<McpServerConfig> { OAuthServer }, coordinator);
+        Assert.Equal(PluginMcpAuthState.Authorized, await host.GetMcpServerAuthStateAsync("Depot: Work"));
+
+        await host.SignOutMcpServerAsync("Depot: Work");
+
+        Assert.Equal(PluginMcpAuthState.AuthorizationRequired, await host.GetMcpServerAuthStateAsync("Depot: Work"));
+        Assert.Null(await tokens.GetAsync(OAuthServer.IdentityKey));
     }
 
     private static DesktopBackendHost _BuildHost(List<McpServerConfig> servers, IMcpOAuthCoordinator? coordinator, PluginDiagnostics? diagnostics = null)

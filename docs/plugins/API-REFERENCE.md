@@ -149,7 +149,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession` |
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
-| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync` |
+| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync`, `ICockpitHost.SignOutMcpServerAsync` |
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync`, `ICockpitHost.CreateAuthorizedHandler` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
@@ -362,6 +362,12 @@ names and keeps the tokens where `SignInMcpServerAsync` keeps them. The plugin p
 (for example a one-time installation token and the `client_id` the server wants) and gets back a
 `PluginMcpSignInOutcome`, never a token; `Declined` means the server refused the grant. On a server, where no browser
 exists, this is the only sign-in there is. A plugin that calls it sets `minHostVersion` 0.92.0.
+
+`SignOutMcpServerAsync(name)` (AC-1660, host 0.105.0, SDK 3.25.0, and on `ICockpitUiHost` in UI 3.6.0) signs out of an MCP
+server the plugin contributed: the host forgets the tokens it keeps for it, including the host-only tokens of
+`CreateAuthorizedHandler(name, scope)`, so the next use asks for a sign-in again. Local only: the server is not asked to
+revoke anything, and a session started earlier keeps its token until it expires. Read `GetMcpServerAuthStateAsync`
+afterwards for the standing. A plugin that calls it sets `minHostVersion` 0.105.0.
 
 `IBackupTarget` (AC-1501, SDK 3.8.0, namespace `Cockpit.Plugins.Abstractions.Backup`) is a place a cockpit backup is
 kept: `WriteAsync(name, stream)` keeps a finished archive and returns its id, `ListAsync()` names what it holds as
