@@ -84,17 +84,29 @@ public sealed class RepositoryCloneManagerTests : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            CreateNoWindow = true,
         };
+
+        startInfo.Environment.Remove("GIT_DIR");
+        startInfo.Environment.Remove("GIT_WORK_TREE");
 
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo)!;
-        var standardOutput = process.StandardOutput.ReadToEnd();
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("git did not start.");
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
-        return standardOutput.Trim();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"git {string.Join(' ', arguments)} failed: {standardError.GetAwaiter().GetResult().Trim()}");
+        }
+
+        return standardOutput.GetAwaiter().GetResult().Trim();
     }
 
     public void Dispose() => TestGitDirectory.Remove(_tempRoot);
