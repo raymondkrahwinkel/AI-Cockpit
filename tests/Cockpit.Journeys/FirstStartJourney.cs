@@ -98,7 +98,7 @@ public sealed class FirstStartJourney
             var fresh = Directory.CreateDirectory(Path.Combine(work, "fresh")).FullName;
             await using (var cockpit = JourneyHost.Desktop(stateRoot: fresh, configure: services =>
             {
-                services.AddSingleton<IMcpOAuthCoordinator>(new _SignedInOnClick());
+                services.AddSingleton<IMcpOAuthCoordinator>(provider => new _SignedInOnClick(provider.GetRequiredService<IMcpOAuthTokenStore>(), depot.BaseUrl));
                 services.AddSingleton<IAppRestartService>(restarts);
             }))
             {
@@ -162,8 +162,9 @@ public sealed class FirstStartJourney
         root.GetLogicalDescendants().OfType<T>().FirstOrDefault(control => control.Name == name)
         ?? throw new InvalidOperationException($"The Depot route has no {name}.");
 
-    // The browser's half of the sign-in, which a journey cannot run: the click signs in, and the bearer is the fake's.
-    private sealed class _SignedInOnClick : IMcpOAuthCoordinator
+    // The browser's half of the sign-in, which a journey cannot run: the click signs in, and the bearer is the fake's. It
+    // stores the sign-in as a real one does, so the host narrows its depot.host token from it at the fake's token endpoint.
+    private sealed class _SignedInOnClick(IMcpOAuthTokenStore tokens, string url) : IMcpOAuthCoordinator
     {
         public event Action<McpServerConfig>? SignInNeeded
         {
@@ -171,8 +172,11 @@ public sealed class FirstStartJourney
             remove { }
         }
 
-        public Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default) =>
-            Task.FromResult(McpOAuthAccess.Authorized(_AccountSpace.Bearer));
+        public async Task<McpOAuthAccess> AcquireAsync(McpServerConfig server, bool interactive, CancellationToken cancellationToken = default)
+        {
+            await tokens.SaveAsync(server.IdentityKey, server.Name, DepotHostScope.SignedIn(_AccountSpace.Bearer, url.TrimEnd('/')), cancellationToken);
+            return McpOAuthAccess.Authorized(_AccountSpace.Bearer);
+        }
 
         public Task<McpOAuthAccess> AcquireForSessionAsync(McpServerConfig server, CancellationToken cancellationToken = default) =>
             Task.FromResult(McpOAuthAccess.Authorized(_AccountSpace.Bearer));
@@ -202,6 +206,11 @@ public sealed class FirstStartJourney
 
         public async Task HandleAsync(HttpContext context)
         {
+            if (await DepotHostScope.TryAnswerAsync(context, Bearer))
+            {
+                return;
+            }
+
             var path = context.Request.Path;
             if (context.Request.Headers.Authorization != $"Bearer {Bearer}")
             {

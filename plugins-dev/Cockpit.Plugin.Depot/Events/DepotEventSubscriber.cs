@@ -54,19 +54,28 @@ internal sealed class DepotEventSubscriber : IAsyncDisposable
             consumers.Add(consumer);
         }
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var wasConnected = _hub is not null;
-            var hub = await _EnsureHubAsync(cancellationToken).ConfigureAwait(false);
-            if (hub is not null && subscribe && wasConnected)
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                await hub.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
+                var wasConnected = _hub is not null;
+                var hub = await _EnsureHubAsync(cancellationToken).ConfigureAwait(false);
+                if (hub is not null && subscribe && wasConnected)
+                {
+                    await hub.SubscribeAsync(topic, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _gate.Release();
             }
         }
-        finally
+        catch
         {
-            _gate.Release();
+            // A subscribe that failed or was cancelled hands back no registration to dispose, so its consumer goes now.
+            _Remove(topic, consumer);
+            throw;
         }
 
         return new _Registration(() => _Remove(topic, consumer));

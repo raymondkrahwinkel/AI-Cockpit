@@ -8,7 +8,6 @@ using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Backup;
-using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Plugins.Abstractions.Backup;
@@ -96,7 +95,7 @@ public sealed class RestoreJourney
         await cockpit.Services.GetRequiredService<IMcpOAuthTokenStore>().SaveAsync(
             "journey",
             "Depot: Journey",
-            new McpOAuthToken { AccessToken = _AccountSpace.Bearer, ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), Scope = "depot", ResourceUrl = $"{url}/mcp" });
+            DepotHostScope.SignedIn(_AccountSpace.Bearer, url));
         await cockpit.StartDesktopAsync();
 
         return cockpit.Services.GetRequiredService<BackupTargets>().Find("depot:journey")
@@ -114,6 +113,11 @@ public sealed class RestoreJourney
 
         public async Task HandleAsync(HttpContext context)
         {
+            if (await DepotHostScope.TryAnswerAsync(context, Bearer))
+            {
+                return;
+            }
+
             var request = context.Request;
             if (request.Headers.Authorization != $"Bearer {Bearer}" || !request.Path.StartsWithSegments("/cockpit/backups", out var rest))
             {

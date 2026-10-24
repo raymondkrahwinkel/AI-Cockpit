@@ -104,6 +104,19 @@ public class DepotBrowserPanelTests
         _ = panel.LoadTreeAsync("img/mockup.txt");
         _Until(() => _Button(panel, "Create link") is not null);
 
+        // AC-1659: the reload must empty the detail before the rebuilt tree reselects the file. Headless, the reselection
+        // only lands on the next layout pass, so the end state cannot tell the order; the moment the tree is replaced can.
+        var detail = (_Button(panel, "Create link") ?? throw new InvalidOperationException("The Create link button was not rendered."))
+            .GetVisualAncestors().OfType<StackPanel>().First(candidate => candidate.Parent is ScrollViewer);
+        var staleAtRebuild = 0;
+        panel.GetVisualDescendants().OfType<TreeView>().Single().PropertyChanged += (_, change) =>
+        {
+            if (change.Property == ItemsControl.ItemsSourceProperty && detail.Children.Count > 0)
+            {
+                staleAtRebuild++;
+            }
+        };
+
         shared = true;
         var create = _Button(panel, "Create link") ?? throw new InvalidOperationException("The Create link button was not rendered.");
         create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -120,6 +133,7 @@ public class DepotBrowserPanelTests
 
         Assert.Contains(panel.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == "Not shared");
         Assert.Contains(panel.GetVisualDescendants().OfType<TreeViewItem>(), item => item.IsSelected);
+        Assert.Equal(0, staleAtRebuild);
         _SaveFrame(window, "DEPOT_BROWSER_UNSHARED_SCENE_PNG");
     }
 
