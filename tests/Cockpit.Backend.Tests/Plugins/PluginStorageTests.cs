@@ -9,7 +9,10 @@ public class PluginStorageTests
     public void SetThenGet_RoundTripsTypedValues_AndWritesThroughToPersist()
     {
         IReadOnlyDictionary<string, string>? persisted = null;
-        var storage = new PluginStorage(new Dictionary<string, string>(), values => persisted = values);
+        // A credential-free backup scrubs a secret to "" in place: reading it must not throw (Options search).
+        var storage = new PluginStorage(new Dictionary<string, string> { ["token"] = "" }, values => persisted = values);
+
+        Assert.Null(storage.Get<string>("token"));
 
         storage.Set("token", "ghp_secret");
         storage.Set("count", 42);
