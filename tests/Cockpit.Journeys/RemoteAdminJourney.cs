@@ -239,7 +239,7 @@ public sealed class RemoteAdminJourney
             var (onUpdates, staged) = (false, false);
             await HeadlessAvalonia.RunAsync(async () =>
             {
-                var updates = (PluginStoreDialogViewModel)updatesDialog.DataContext!;
+                var updates = Assert.IsType<PluginStoreDialogViewModel>(updatesDialog.DataContext);
                 await Until.CollectionHolds(updates.Manager.AvailablePlugins, () => updates.Manager.AvailablePlugins.Any(plugin => plugin.CanUpdate));
                 onUpdates = updates.SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.UpdatesAvailable;
                 await updates.Manager.UpdateAllCommand.ExecuteAsync(null);

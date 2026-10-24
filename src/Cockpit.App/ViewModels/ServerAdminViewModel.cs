@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
@@ -26,10 +27,12 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private readonly IReadOnlyList<NodeProjectChoice> _projects;
     private readonly IServerProjects? _serverProjects;
     private readonly Func<int>? _runningSessions;
+    private readonly ILogger? _logger;
     private ConnectKeyRowViewModel? _editing;
 
-    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null)
+    public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null, ILogger? logger = null)
     {
+        _logger = logger;
         _runningSessions = runningSessions;
         _serverProjects = serverProjects;
         Server = server;
@@ -388,9 +391,10 @@ public sealed partial class ServerAdminViewModel : ObservableObject
                 }
             }
         }
-        catch (Exception)
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            // A store that cannot be reached must not break the plugin list; the button just stays away.
+            // The plugin list must keep working when the check fails; the failure is logged, not shown.
+            _logger?.LogWarning(exception, "Checking the server's plugin stores for updates failed.");
         }
 
         foreach (var row in Plugins)
