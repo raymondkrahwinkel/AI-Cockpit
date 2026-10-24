@@ -12,7 +12,8 @@ plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 # AC-1647 adds one built-in OAuth contract method: Depot sign-in requests depot.host and keeps it host-only.
 # AC-1656 adds one authorization-contract method: every host-only account caller explicitly requests depot.host.
 # AC-1659 adds one panel behavior method: sharing and revoking immediately refresh the selected detail.
-plugins-dev/Cockpit.Plugin.Depot.Tests	227
+# AC-1660 adds one panel method: Sign out shows only while signed in and keeps the connection.
+plugins-dev/Cockpit.Plugin.Depot.Tests	228
 plugins-dev/Cockpit.Plugin.Diagram.Tests	115
 plugins-dev/Cockpit.Plugin.Discord.Tests	46
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
@@ -40,7 +41,8 @@ plugins-dev/Cockpit.Plugin.Workflows.Tests	50
 plugins-dev/Cockpit.Plugin.YouTrack.Tests	54
 tests/Cockpit.App.ViewTests	1528
 tests/Cockpit.Backend.Tests	78
-tests/Cockpit.Core.Tests	1320
+# AC-1660 adds one secrets method: a plugin's MCP sign-out forgets the stored token, so the next read asks for a sign-in.
+tests/Cockpit.Core.Tests	1321
 # AC-1639 proves a source event checks one bound project immediately without moving the poll clock.
 # AC-1657 proves the checksum read for a bind makes its first later remote change visible.
 tests/Cockpit.Infrastructure.Tests	796

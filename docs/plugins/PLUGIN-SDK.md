@@ -347,7 +347,7 @@ channel call: a view that opens its own connection or file runs that on the desk
 stored credential reads `(set on the server)` there; sent back unchanged it is kept, and empty clears it.
 There, `GetMcpServerAuthStateAsync` and `GetProfilesAsync` answer for the server, and `SignInMcpServerAsync` signs the
 server in: the server runs the OAuth flow and keeps the token, the desktop only opens the browser and hands back the
-redirect. Call it the same way in both places.
+redirect. `SignOutMcpServerAsync` makes the server forget that token. Call them the same way in both places.
 After each channel call, the copy rereads what your backend part wrote to storage, so a view that reads storage back
 after an action sees the server's state.
 

@@ -24,6 +24,7 @@ internal sealed class ServerPluginUiHost(
     IPluginUiChannel channel,
     Func<string, CancellationToken, Task<PluginMcpAuthState>> mcpAuthState,
     Func<string, CancellationToken, Task<PluginMcpSignInOutcome>> mcpSignIn,
+    Func<string, CancellationToken, Task> mcpSignOut,
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
     ServerManagedClis managedClis) : ICockpitUiHost
 {
@@ -206,4 +207,8 @@ internal sealed class ServerPluginUiHost(
     // AC-1571 B2: the server runs the sign-in and keeps the token; this desktop only does the browser step.
     public Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
         mcpSignIn(name, cancellationToken);
+
+    // AC-1660: the server keeps the token, so the server forgets it.
+    public Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
+        mcpSignOut(name, cancellationToken);
 }

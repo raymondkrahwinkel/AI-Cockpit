@@ -254,6 +254,18 @@ internal static class PluginEndpoints
             return Results.Json(new { state }, ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("get_plugin_mcp_auth_state", services);
 
+        // AC-1660: the local sign-out the desktop offers, run where the token is kept; nothing is revoked at the server.
+        api.MapPost("/plugins/{folderId}/mcp-servers/{name}/sign-out", async (string folderId, string name, CancellationToken cancellationToken) =>
+        {
+            if (services.GetService<PluginManager>()?.HostOf(folderId) is not { } host)
+            {
+                return _NotRunning();
+            }
+
+            await host.SignOutMcpServerAsync(name, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new JsonObject(), ConnectKeyEndpoints.Json);
+        }).RequireAdmin().Audited("sign_out_plugin_mcp_server", services);
+
         // AC-1571 B2: the browser sign-in of a plugin's MCP server, run here with the PKCE verifier and the state kept here.
         // The desktop names its loopback port, opens the link and sends back the redirect's query; the token never leaves.
         McpServerSignIns mcpSignIns() => services.GetRequiredService<McpServerSignIns>();

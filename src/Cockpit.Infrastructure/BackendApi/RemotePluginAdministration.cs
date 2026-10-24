@@ -86,6 +86,14 @@ internal sealed class RemotePluginAdministration(BackendApiClient client, ILogge
 
     private sealed record RemoteAuthState(string State);
 
+    public async Task SignOutMcpServerAsync(string folderId, string name, CancellationToken cancellationToken = default) =>
+        await client.SendAsync<JsonObject>(
+            HttpMethod.Post,
+            $"api/v1/plugins/{Uri.EscapeDataString(folderId)}/mcp-servers/{Uri.EscapeDataString(name)}/sign-out",
+            null,
+            ConnectKeyEndpoints.Json,
+            cancellationToken).ConfigureAwait(false);
+
     // AC-1571 B2: the listener is open before the server hears its port, and the browser only gets a link whose redirect
     // comes back to it. The redirect's query goes to the server, which redeems the code with the verifier it kept.
     // A failure answers Unreachable rather than throwing: the view awaits this in a click handler (see the local host).
