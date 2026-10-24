@@ -4445,7 +4445,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool CanBackUp => _backupService is not null;
 
     // AC-1502: the scheduled backup's settings; null in the design-time view model, which has no store.
-    public BackupScheduleViewModel? ScheduledBackupSettings { get; }
+    public BackupScheduleViewModel? ScheduledBackupSettings { get; internal set; }
 
     // Same reasoning as CanBackUp, for the assistant-memory-only export/restore (AC-657).
     public bool CanBackUpAssistantMemory => _assistantMemory is not null;
@@ -5213,6 +5213,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public void RefreshBackupPlugins()
     {
         _RefreshBackupDestinations();
+        _ = ScheduledBackupSettings?.RefreshStatusAsync();
 
         var selected = BackupPlugins
             .Where(plugin => !plugin.Selected)

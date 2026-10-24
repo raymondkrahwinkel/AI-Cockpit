@@ -221,6 +221,8 @@ internal static partial class Screenshotter
         ["options-plugin-declared"] = (_, _) => _OptionsPluginDeclared(),
         // AC-1508: Options → Backup with a Depot connection chosen under Where to, and the backups it holds.
         ["options-backup-depot"] = (_, _) => _OptionsBackupToDepot(),
+        // AC-1662: the scheduled backup's status line after a successful run.
+        ["options-backup-status"] = (_, _) => _OptionsBackupStatus(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
@@ -959,6 +961,7 @@ internal static partial class Screenshotter
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
+        ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
         // AC-1509: both choices under the sign-in reach below the fold, so the step is scrolled to them.
         ["first-run-depot-choice"] = window => window.GetVisualDescendants().OfType<ScrollViewer>().First(viewer => viewer.Extent.Height > viewer.Viewport.Height).ScrollToEnd(),
     };
@@ -1844,6 +1847,33 @@ internal static partial class Screenshotter
     private static OptionsDialog _OptionsBackupToDepot()
     {
         return _OptionsOnTab("backup");
+    }
+
+    private static OptionsDialog _OptionsBackupStatus()
+    {
+        var dialog = _OptionsOnTab("backup");
+        var schedule = new BackupScheduleViewModel(new _SceneScheduleStore());
+        schedule.LoadAsync().GetAwaiter().GetResult();
+        var cockpit = (ViewModels.CockpitViewModel)dialog.DataContext!;
+        cockpit.ScheduledBackupSettings = schedule;
+        // The property does not notify: bind again so the section sees it.
+        dialog.DataContext = null;
+        dialog.DataContext = cockpit;
+        return dialog;
+    }
+
+    // A schedule that is on, and a run that went through a moment ago.
+    private sealed class _SceneScheduleStore : Cockpit.Core.Abstractions.Backup.IBackupScheduleStore
+    {
+        public Task<Cockpit.Core.Backup.BackupSchedule> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Backup.BackupSchedule { Enabled = true });
+
+        public Task SaveAsync(Cockpit.Core.Backup.BackupSchedule schedule, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<Cockpit.Core.Backup.BackupScheduleState> LoadStateAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Backup.BackupScheduleState(LastSuccess: DateTimeOffset.Now.AddHours(-2)));
+
+        public Task SaveStateAsync(Cockpit.Core.Backup.BackupScheduleState state, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // After the dialog opened: opening refreshes the destinations from the registered targets, which a scene has none of.
