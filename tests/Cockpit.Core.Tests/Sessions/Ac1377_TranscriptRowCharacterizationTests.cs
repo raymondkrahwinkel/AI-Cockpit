@@ -65,6 +65,20 @@ public class Ac1377_TranscriptRowCharacterizationTests : IDisposable
         }
     }
 
+    // AC-1653: an open ask_structured_question card lost its Send on a replay, because the log never held the flag.
+    [Fact]
+    public async Task AnOpenQuestionCard_StillAwaitsItsAnswer_AfterTheLogIsReadBack()
+    {
+        var log = _Log();
+        var card = new TranscriptEntryViewModel(TranscriptEntryKind.Question, "Which way?") { IsPendingBrokerAnswer = true };
+        await log.AppendAsync("pane", TranscriptSnapshot.Capture(card));
+        await log.DisposeAsync();
+
+        var restored = TranscriptSnapshot.Restore((await _Log().TryLoadAsync("pane"))!);
+
+        Assert.True(Assert.Single(restored).IsAwaitingAnswer);
+    }
+
     private static void _Play(SessionViewModel vm) => Array.ForEach(Stream, vm.Apply);
 
     // Coalesced into one write at dispose, so the file holds one line per row whatever the timing was.

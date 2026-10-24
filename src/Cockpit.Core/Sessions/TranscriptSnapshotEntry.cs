@@ -41,6 +41,9 @@ public sealed record TranscriptSnapshotEntry(
 
     public bool IsFailedTurnRow { get; init; }
 
+    // AC-1653: an ask_structured_question card still waiting for its answer, so a replay keeps its Send.
+    public bool IsPendingBrokerAnswer { get; init; }
+
     // AC-935's thread structure, by row id — the live model holds object references, which no file can.
     public string? ReplyToId { get; init; }
 

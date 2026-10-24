@@ -869,6 +869,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             row.IsPendingPermission = entry.IsPendingPermission;
         }
 
+        row.IsPendingBrokerAnswer = entry.IsPendingBrokerAnswer;
         row.ErrorKind = entry.ErrorKind ?? SessionErrorKind.Unknown;
         row.RetryAfter = entry.RetryAfter;
         row.IsReplyContinuation = entry.IsReplyContinuation;
