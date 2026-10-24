@@ -97,7 +97,7 @@ public static class ProjectResourcePathPortability
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             // AC-1013: index 1+ is the suffix to resolve against home; strip its own leading separators so
             // "~//x" isn't read as an absolute path that replaces home the way Path.Combine(home, "/x") would.
-            var suffix = reference[1..];
+            var suffix = reference[1..].TrimStart('/', '\\');
 
             return suffix.Length == 0 ? home : Path.GetFullPath(Path.Combine(home, suffix));
         }
