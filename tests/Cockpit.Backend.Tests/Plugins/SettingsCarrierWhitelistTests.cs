@@ -25,7 +25,7 @@ public class SettingsCarrierWhitelistTests
               "Plugins": { "kubernetes": { "Enabled": true, "SomeNewFlag": true, "Data": { "KubeconfigPath": "C:\\kube" } } },
               "WorkingPaths": { "Recent": [ "C:\\src" ] }
             }
-            """)!.AsObject();
+            """) as JsonObject ?? throw new InvalidOperationException("The config is not an object.");
 
         var blob = Encoding.UTF8.GetString(SettingsCarrierWhitelist.Extract(config));
 

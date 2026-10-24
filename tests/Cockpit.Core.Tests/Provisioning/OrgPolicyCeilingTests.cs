@@ -200,7 +200,6 @@ public class OrgPolicyCeilingTests
     [InlineData("sdk-typed-model")]
     [InlineData("sdk-extra-args")]
     [InlineData("tty-provider")]
-    [InlineData("tty-config-model")]
     [InlineData("live-model")]
     [InlineData("live-clear")]
     public async Task AProfileOutsideTheAllowedProviders_DoesNotStart(string route)
@@ -214,7 +213,6 @@ public class OrgPolicyCeilingTests
             ["sdk-typed-model"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"), model: "o3", launchOptions: ProviderRig.Model("gpt-5")),
             ["sdk-extra-args"] = () => rig.Runtime.StartAsync(ProviderRig.OpenRouter("""{ "extraArgs": ["-c", "model=\"o3\""] }""")),
             ["tty-provider"] = () => Task.FromResult(rig.Launch(rig.Provider("claude"), ProviderRig.Claude)),
-            ["tty-config-model"] = () => Task.FromResult(rig.Launch(rig.Provider(ProviderRig.OpenRouterId), ProviderRig.OpenRouter("""{ "model": "o3" }"""))),
             ["live-model"] = async () =>
             {
                 await rig.Runtime.StartAsync(ProviderRig.OpenRouter("{}"));

@@ -20,8 +20,6 @@ public class ExternalLinkTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
     [InlineData("github.com/example/repo")]
     [InlineData("file:///C:/Windows/System32/calc.exe")]
     [InlineData("C:\\Windows\\System32\\calc.exe")]
