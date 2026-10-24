@@ -36,7 +36,7 @@ internal static class DepotHostScope
         }
 
         var form = await request.ReadFormAsync();
-        if (true)
+        if (form["grant_type"] != "refresh_token" || form["refresh_token"] != RefreshToken || form["scope"] != "depot.host")
         {
             context.Response.StatusCode = 400;
             return true;
