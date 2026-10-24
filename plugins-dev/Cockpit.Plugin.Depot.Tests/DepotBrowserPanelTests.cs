@@ -95,6 +95,7 @@ public class DepotBrowserPanelTests
             _ => throw new InvalidOperationException($"Unexpected browser action: {action}"),
         };
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
+        rig.Host.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
         var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
         var window = new Window { Width = 1000, Height = 640, Content = panel };
