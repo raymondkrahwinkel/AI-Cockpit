@@ -33,6 +33,7 @@ using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
 
@@ -710,19 +711,56 @@ public partial class App : Application
     {
         var toasts = Program.Services.GetRequiredService<IToastService>();
 
+        var notice = Program.Services.GetRequiredService<McpSignInNotice>();
+
         foreach (var signIn in RestoredSignIns.Take(CockpitBuild.StateRoot))
         {
-            if (signIn.PluginId is { } pluginId && cockpit.HasPluginSettings(pluginId))
+            // A stored MCP token names its server and no plugin; the plugin that contributed that server owns its Sign in.
+            var serverPlugin = signIn.PluginId is null ? _PluginContributing(signIn.Label) : null;
+
+            if ((signIn.PluginId ?? serverPlugin) is { } pluginId && cockpit.HasPluginSettings(pluginId))
             {
-                var name = cockpit.PluginSettings[pluginId].PluginName;
+                var name = serverPlugin is null ? cockpit.PluginSettings[pluginId].PluginName : signIn.Label;
+                // Sticky: after a restore this is the only place the operator is told, and five seconds is not enough to read it.
                 // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
-                toasts.Show(EmptiedSignIn.Ask(name), ToastSeverity.Warning, "Sign in", () => _ = _OpenPluginSettingsAsync(cockpit, pluginId));
+                toasts.Show(
+                    EmptiedSignIn.Ask(name),
+                    ToastSeverity.Warning,
+                    [new ToastAction("Sign in", () => _ = _OpenPluginSettingsAsync(cockpit, pluginId))],
+                    sticky: true);
+
+                if (serverPlugin is not null)
+                {
+                    // The startup check would name the same server a second time.
+                    notice.Announced(signIn.Label);
+                }
             }
             else
             {
                 toasts.Show(EmptiedSignIn.Ask(signIn.Label), ToastSeverity.Warning);
             }
         }
+    }
+
+    // The plugin whose IPluginMcpProvider lists a server of this name, or null when none does.
+    private static string? _PluginContributing(string serverName)
+    {
+        foreach (var (discovered, plugin) in Program.Services.GetRequiredService<PluginManager>().LoadedParts)
+        {
+            try
+            {
+                if (plugin is IPluginMcpProvider provider && provider.GetMcpServers().Any(server => string.Equals(server.Name, serverName, StringComparison.Ordinal)))
+                {
+                    return discovered.FolderId;
+                }
+            }
+            catch (Exception exception)
+            {
+                Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.RestoredSignIns").LogWarning(exception,"Plugin {Plugin} failed to list its MCP servers while a restored sign-in was matched.", discovered.FolderId);
+            }
+        }
+
+        return null;
     }
 
     // AC-1503: a bound project whose Depot check cannot get an answer (typically: not signed in) is said once, with the way

@@ -25,7 +25,18 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
                 // The tokens are named below by their server, and a restore keeps this machine's own Provisioning section.
                 if (options.Settings && !path.StartsWith("McpOAuthTokens[", StringComparison.Ordinal) && !path.StartsWith("Provisioning.", StringComparison.Ordinal))
                 {
-                    found.TryAdd(path, new EmptiedSignIn(_Named(incoming, path), null));
+                    if (path == NodeSecretPath)
+                    {
+                        // Every config has this field and it is empty unless the cockpit was made a node: say it only for one that was.
+                        if (incoming?["NodeEndpoint"] is JsonObject node && (_IsTrue(node["Enabled"]) || node["Pairing"] is not null))
+                        {
+                            found.TryAdd(path, new EmptiedSignIn("the pairing of this cockpit as a node", null));
+                        }
+                    }
+                    else
+                    {
+                        found.TryAdd(path, new EmptiedSignIn(_Named(incoming, path), null));
+                    }
                 }
             }
             else if (options.Includes(pluginId))
@@ -45,6 +56,10 @@ public sealed record EmptiedSignIn(string Label, string? PluginId)
 
         return [.. found.Values];
     }
+
+    private const string NodeSecretPath = "NodeEndpoint.SharedSecret";
+
+    private static bool _IsTrue(JsonNode? node) => node is JsonValue value && value.TryGetValue<bool>(out var flag) && flag;
 
     // "Providers[2].ApiKey" reads as "Work (Providers[2].ApiKey)" when the entry holding the field names itself.
     private static string _Named(JsonObject? incoming, string path)

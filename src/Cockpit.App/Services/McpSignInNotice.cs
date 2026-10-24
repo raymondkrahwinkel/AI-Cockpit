@@ -64,6 +64,11 @@ internal sealed class McpSignInNotice(
                     "Not signed in to {Count} MCP server(s): {Servers}", waiting.Count, string.Join(", ", waiting.Select(server => server.Name)));
                 _Show(waiting);
             }
+
+            lock (_batchLock)
+            {
+                _announced.Clear();
+            }
         }
     }
 
@@ -81,8 +86,31 @@ internal sealed class McpSignInNotice(
         _Show([server]);
     }
 
-    private void _Show(IReadOnlyList<McpServerConfig> waiting) =>
-        toasts.Show(_Message(waiting), ToastSeverity.Warning, "Sign in", () => _ = _SignInAsync(waiting, CancellationToken.None));
+    // The servers a restore already named, with a Sign in of their own, so the startup check does not say it twice.
+    // Held until the first check has finished: the restore asks before it, and a later episode must be heard.
+    private readonly HashSet<string> _announced = new(StringComparer.Ordinal);
+
+    public void Announced(string serverName)
+    {
+        lock (_batchLock)
+        {
+            _announced.Add(serverName);
+        }
+    }
+
+    private void _Show(IReadOnlyList<McpServerConfig> waiting)
+    {
+        lock (_batchLock)
+        {
+            waiting = [.. waiting.Where(server => !_announced.Contains(server.Name))];
+        }
+
+        if (waiting.Count > 0)
+        {
+            var servers = waiting;
+            toasts.Show(_Message(servers), ToastSeverity.Warning, "Sign in", () => _ = _SignInAsync(servers, CancellationToken.None));
+        }
+    }
 
     // One notice for all of them, named: the operator's question is which connections are dead, and one toast per
     // server would bury that under itself.
