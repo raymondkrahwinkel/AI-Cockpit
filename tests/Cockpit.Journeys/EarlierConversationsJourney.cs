@@ -23,36 +23,10 @@ namespace Cockpit.Journeys;
 public sealed class EarlierConversationsJourney
 {
     // Criterion 1: the sheet lies over Home with the search box focused; Esc closes it and Home is as it was.
-    [Fact]
-    public async Task FromHome_TheSheetOpensOverIt_WithTheSearchFocused_AndEscLeavesHomeAsItWas()
-    {
-        await using var cockpit = JourneyHost.Desktop();
-        await cockpit.StartDesktopAsync();
-
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var (app, window) = _OnHome(cockpit);
-            var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "HomeEarlierConversations");
-            await ((IAsyncRelayCommand)button.Command!).ExecuteAsync(null);
-            window.UpdateLayout();
-            Dispatcher.UIThread.RunJobs();
-
-            var sheet = window.GetVisualDescendants().OfType<EarlierConversationsSheet>().Single();
-            Assert.True(sheet.IsEffectivelyVisible);
-            Assert.Equal("EarlierSearch", (window.FocusManager?.GetFocusedElement() as Control)?.Name);
-
-            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
-            window.UpdateLayout();
-            Assert.False(sheet.IsEffectivelyVisible);
-            Assert.Equal(SimplePage.Home, app.SimplePage);
-            Assert.True(window.GetVisualDescendants().OfType<SimpleHomeView>().Single().IsEffectivelyVisible);
-        });
-    }
-
     // Criteria 2 and 3: "jansen" finds it in a title and in what was said, with the word marked and the count right;
     // Sales plus This week then leaves only the conversation of that project from that week.
     [Fact]
-    public async Task Searching_FindsByTitleAndWhatWasSaid_AndTheFiltersNarrowToAProjectAndAWeek()
+    public async Task FromHome_TheSheetSearchesByTitleAndWhatWasSaid_TheFiltersNarrowToAProjectAndAWeek_AndEscLeavesHomeAsItWas()
     {
         await using var cockpit = JourneyHost.Desktop();
         var projects = cockpit.Services.GetRequiredService<IProjectEditor>();
@@ -79,21 +53,46 @@ public sealed class EarlierConversationsJourney
             var (app, window) = _OnHome(cockpit);
             var sheet = app.EarlierConversations;
             sheet.Now = () => now;
-            await sheet.OpenCommand.ExecuteAsync(null);
-            window.UpdateLayout();
-            window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "EarlierSearch").Text = "jansen";
-            await Until.Holds(sheet, () => sheet.FoundLabel == "3 conversations found");
-            Assert.Equal(["Q3 report", "Quote for Jansen", "Update customer details"], sheet.Rows.Select(row => row.Record.Title));
-            Assert.Equal(["TODAY", "THIS WEEK", "EARLIER"], sheet.Rows.Select(row => row.GroupHeader));
-            Assert.Equal(("Quote for ", "Jansen"), (sheet.Rows[1].Title.Before, sheet.Rows[1].Title.Match));
-            Assert.Equal(("three large invoices to ", "Jansen", " in September"), (sheet.Rows[0].Fragment!.Before, sheet.Rows[0].Fragment!.Match, sheet.Rows[0].Fragment!.After));
+            EarlierConversationsSheet? shown = null;
+            await Step.Run("the sheet opens over Home with the search focused", async () =>
+            {
+                var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "HomeEarlierConversations");
+                await Assert.IsAssignableFrom<IAsyncRelayCommand>(button.Command).ExecuteAsync(null);
+                window.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+                shown = window.GetVisualDescendants().OfType<EarlierConversationsSheet>().Single();
+                Assert.True(shown.IsEffectivelyVisible);
+                Assert.Equal("EarlierSearch", (window.FocusManager?.GetFocusedElement() as Control)?.Name);
+            });
 
-            window.GetVisualDescendants().OfType<ComboBox>().Single(box => box.Name == "EarlierProjectFilter").SelectedItem =
-                sheet.ProjectFilters.Single(filter => filter.Label == "Sales");
-            window.GetVisualDescendants().OfType<ComboBox>().Single(box => box.Name == "EarlierDateFilter").SelectedItem =
-                sheet.DateFilters.Single(filter => filter.Label == "This week");
-            await Until.Holds(sheet, () => sheet.FoundLabel == "1 conversation found");
-            Assert.Equal(["Quote for Jansen"], sheet.Rows.Select(row => row.Record.Title));
+            await Step.Run("searching finds by title and what was said, and the filters narrow", async () =>
+            {
+                window.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "EarlierSearch").Text = "jansen";
+                await Until.Holds(sheet, () => sheet.FoundLabel == "3 conversations found");
+                Assert.Equal(["Q3 report", "Quote for Jansen", "Update customer details"], sheet.Rows.Select(row => row.Record.Title));
+                Assert.Equal(["TODAY", "THIS WEEK", "EARLIER"], sheet.Rows.Select(row => row.GroupHeader));
+                Assert.Equal(("Quote for ", "Jansen"), (sheet.Rows[1].Title.Before, sheet.Rows[1].Title.Match));
+                var fragment = sheet.Rows[0].Fragment;
+                Assert.NotNull(fragment);
+                Assert.Equal(("three large invoices to ", "Jansen", " in September"), (fragment.Before, fragment.Match, fragment.After));
+
+                window.GetVisualDescendants().OfType<ComboBox>().Single(box => box.Name == "EarlierProjectFilter").SelectedItem =
+                    sheet.ProjectFilters.Single(filter => filter.Label == "Sales");
+                window.GetVisualDescendants().OfType<ComboBox>().Single(box => box.Name == "EarlierDateFilter").SelectedItem =
+                    sheet.DateFilters.Single(filter => filter.Label == "This week");
+                await Until.Holds(sheet, () => sheet.FoundLabel == "1 conversation found");
+                Assert.Equal(["Quote for Jansen"], sheet.Rows.Select(row => row.Record.Title));
+            });
+
+            await Step.Run("Esc leaves Home as it was", () =>
+            {
+                window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+                window.UpdateLayout();
+                Assert.False(shown?.IsEffectivelyVisible);
+                Assert.Equal(SimplePage.Home, app.SimplePage);
+                Assert.True(window.GetVisualDescendants().OfType<SimpleHomeView>().Single().IsEffectivelyVisible);
+                return Task.CompletedTask;
+            });
         });
     }
 

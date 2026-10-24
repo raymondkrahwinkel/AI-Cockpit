@@ -27,126 +27,128 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class FirstStartJourney
 {
+    // A first machine walks "Start fresh" and backs its cockpit up. AC-1509, route C1: a second machine's very first start
+    // offers the bundled Depot's route; signing in to a fake Depot holding that backup and restoring it restarts into the
+    // cockpit it was made of, asking for the sign-in the backup left out (AC-1503).
     [Fact]
-    public async Task AFreshMachine_AsksHowToBegin_AndStartingFresh_WalksTheWizardIntoTheCockpit()
-    {
-        await using var cockpit = JourneyHost.Desktop();
-        var services = cockpit.Services;
-        var state = services.GetRequiredService<IFirstRunWizardStateStore>();
-        Assert.Null(await state.GetCompletedVersionAsync());
-
-        var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
-        Task shown = Task.CompletedTask;
-        await HeadlessAvalonia.RunAsync(() =>
-        {
-            shown = services.GetRequiredService<IFirstRunWizard>().ShowAsync();
-            return Task.CompletedTask;
-        });
-        var window = await opened.Task.WaitAsync(Until.Ceiling);
-        var wizard = HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(window.DataContext));
-
-        // The choice step is the second page, with the host's own two ways and no plugin's yet.
-        var choice = services.GetServices<IFirstRunWizardStep>().OfType<StartChoiceStep>().Single();
-        var (steps, titles, label) = HeadlessAvalonia.Run(() =>
-        {
-            wizard.NextCommand.Execute(null);
-            return (wizard.StepBar.Select(item => item.Title).ToList(), choice.ViewModel.Options.Select(option => option.Title).ToList(), wizard.StepProgressLabel);
-        });
-        Assert.Equal(["What this is", "Getting started", "What you have", "Your assistant", "What you work on"], steps);
-        Assert.Equal(["Start fresh", "Restore a backup file"], titles);
-        Assert.Equal("Step 2 of 5", label);
-
-        // Start fresh is the pick nobody has to make: Next carries on through every step, and the last Next ends it.
-        await HeadlessAvalonia.RunAsync(() =>
-        {
-            while (!wizard.IsLastStep)
-            {
-                wizard.NextCommand.Execute(null);
-            }
-
-            wizard.NextCommand.Execute(null);
-            Dispatcher.UIThread.RunJobs();
-            return Task.CompletedTask;
-        });
-        await shown.WaitAsync(Until.Ceiling);
-        Assert.Equal(FirstRunWizardVersion.Current, await state.GetCompletedVersionAsync());
-
-        await cockpit.StartDesktopAsync();
-        Assert.True(HeadlessAvalonia.Run(() => cockpit.Window.IsVisible));
-    }
-
-    // AC-1509, route C1: on the very first start the bundled Depot offers its route before any plugin initialized. Signing
-    // in to a fake Depot holding one backup and restoring it restarts into the cockpit it was made of, asking for the sign-in
-    // the backup left out (AC-1503).
-    [Fact]
-    public async Task AFreshMachine_SignsInToItsDepot_AndRestoresItsLatestBackup_IntoTheCockpitItWasMadeOf()
+    public async Task AFreshMachine_StartsFresh_AndASecondSignsInToItsDepot_AndRestoresItsBackup_IntoTheCockpitTheFirstWasMadeOf()
     {
         var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-first-start-{Guid.NewGuid():N}")).FullName;
         try
         {
             var archive = Path.Combine(work, "made-elsewhere.zip");
-            await using (var elsewhere = JourneyHost.Desktop(root => File.WriteAllText(CockpitConfigPath.For(root), MadeElsewhere), Directory.CreateDirectory(Path.Combine(work, "elsewhere")).FullName))
+            await Step.Run("a fresh machine starts fresh and backs its cockpit up", async () =>
             {
-                await elsewhere.Services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync("depot", new Dictionary<string, string> { ["connections"] = """{"token":"journey-secret"}""" });
-                await elsewhere.Services.GetRequiredService<IBackupService>().WriteAsync(archive, new BackupOptions(IncludeCredentials: false));
-            }
+                await using (var cockpit = JourneyHost.Desktop(root => File.WriteAllText(CockpitConfigPath.For(root), MadeElsewhere), Directory.CreateDirectory(Path.Combine(work, "elsewhere")).FullName))
+                {
+                    var services = cockpit.Services;
+                    var state = services.GetRequiredService<IFirstRunWizardStateStore>();
+                    Assert.Null(await state.GetCompletedVersionAsync());
 
-            var space = new _AccountSpace(await File.ReadAllBytesAsync(archive));
-            await using var depot = await LoopbackHttpServer.StartAsync(space.HandleAsync);
-            var restarts = new _Restarts();
-            var fresh = Directory.CreateDirectory(Path.Combine(work, "fresh")).FullName;
-            await using (var cockpit = JourneyHost.Desktop(stateRoot: fresh, configure: services =>
+                    var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
+                    Task shown = Task.CompletedTask;
+                    await HeadlessAvalonia.RunAsync(() =>
+                    {
+                        shown = services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+                        return Task.CompletedTask;
+                    });
+                    var window = await opened.Task.WaitAsync(Until.Ceiling);
+                    var wizard = HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(window.DataContext));
+
+                    // The choice step is the second page, with the host's own two ways and no plugin's yet.
+                    var choice = services.GetServices<IFirstRunWizardStep>().OfType<StartChoiceStep>().Single();
+                    var (steps, titles, label) = HeadlessAvalonia.Run(() =>
+                    {
+                        wizard.NextCommand.Execute(null);
+                        return (wizard.StepBar.Select(item => item.Title).ToList(), choice.ViewModel.Options.Select(option => option.Title).ToList(), wizard.StepProgressLabel);
+                    });
+                    Assert.Equal(["What this is", "Getting started", "What you have", "Your assistant", "What you work on"], steps);
+                    Assert.Equal(["Start fresh", "Restore a backup file"], titles);
+                    Assert.Equal("Step 2 of 5", label);
+
+                    // Start fresh is the pick nobody has to make: Next carries on through every step, and the last Next ends it.
+                    await HeadlessAvalonia.RunAsync(() =>
+                    {
+                        while (!wizard.IsLastStep)
+                        {
+                            wizard.NextCommand.Execute(null);
+                        }
+
+                        wizard.NextCommand.Execute(null);
+                        Dispatcher.UIThread.RunJobs();
+                        return Task.CompletedTask;
+                    });
+                    await shown.WaitAsync(Until.Ceiling);
+                    Assert.Equal(FirstRunWizardVersion.Current, await state.GetCompletedVersionAsync());
+
+                    await cockpit.StartDesktopAsync();
+                    Assert.True(HeadlessAvalonia.Run(() => cockpit.Window.IsVisible));
+
+                    // The cockpit it walked into is the one the second machine gets back: its backup, without the sign-ins.
+                    await services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync("depot", new Dictionary<string, string> { ["connections"] = """{"token":"journey-secret"}""" });
+                    await services.GetRequiredService<IBackupService>().WriteAsync(archive, new BackupOptions(IncludeCredentials: false));
+                }
+            });
+
+            await Step.Run("a second machine signs in to its Depot and restores that backup", async () =>
             {
-                services.AddSingleton<IMcpOAuthCoordinator>(provider => new _SignedInOnClick(provider.GetRequiredService<IMcpOAuthTokenStore>(), depot.BaseUrl));
-                services.AddSingleton<IAppRestartService>(restarts);
-            }))
-            {
-                var services = cockpit.Services;
-                HeadlessAvalonia.Run(CockpitApp.InitializeFirstStart);
-
-                var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
-                using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
-                await HeadlessAvalonia.RunAsync(() =>
+                var space = new _AccountSpace(await File.ReadAllBytesAsync(archive));
+                await using var depot = await LoopbackHttpServer.StartAsync(space.HandleAsync);
+                var restarts = new _Restarts();
+                var fresh = Directory.CreateDirectory(Path.Combine(work, "fresh")).FullName;
+                await using (var cockpit = JourneyHost.Desktop(stateRoot: fresh, configure: services =>
                 {
-                    _ = services.GetRequiredService<IFirstRunWizard>().ShowAsync();
-                    return Task.CompletedTask;
-                });
-                var window = await opened.Task.WaitAsync(Until.Ceiling);
-                var choice = services.GetServices<IFirstRunWizardStep>().OfType<StartChoiceStep>().Single();
-                var view = HeadlessAvalonia.Run(() =>
+                    services.AddSingleton<IMcpOAuthCoordinator>(provider => new _SignedInOnClick(provider.GetRequiredService<IMcpOAuthTokenStore>(), depot.BaseUrl));
+                    services.AddSingleton<IAppRestartService>(restarts);
+                }))
                 {
-                    ((FirstRunWizardViewModel)(window.DataContext ?? throw new InvalidOperationException("The wizard has no view model."))).NextCommand.Execute(null);
-                    Assert.Equal(["Start fresh", "Restore a backup file", "Sign in to a Depot"], choice.ViewModel.Options.Select(option => option.Title));
-                    choice.ViewModel.ChooseCommand.Execute(choice.ViewModel.Options[2]);
-                    return choice.ViewModel.SelectedContent ?? throw new InvalidOperationException("The Depot route shows nothing.");
-                });
+                    var services = cockpit.Services;
+                    HeadlessAvalonia.Run(CockpitApp.InitializeFirstStart);
 
-                await HeadlessAvalonia.RunAsync(async () =>
-                {
-                    _Named<TextBox>(view, "DepotFirstStartUrl").Text = depot.BaseUrl;
-                    var status = _Named<TextBlock>(view, "DepotFirstStartStatus");
-                    _Named<Button>(view, "DepotFirstStartSignIn").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    await Until.Holds(status, () => status.Text?.StartsWith("Signed in to", StringComparison.Ordinal) == true);
+                    var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
+                    await HeadlessAvalonia.RunAsync(() =>
+                    {
+                        _ = services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+                        return Task.CompletedTask;
+                    });
+                    var window = await opened.Task.WaitAsync(Until.Ceiling);
+                    var choice = services.GetServices<IFirstRunWizardStep>().OfType<StartChoiceStep>().Single();
+                    var view = HeadlessAvalonia.Run(() =>
+                    {
+                        ((FirstRunWizardViewModel)(window.DataContext ?? throw new InvalidOperationException("The wizard has no view model."))).NextCommand.Execute(null);
+                        Assert.Equal(["Start fresh", "Restore a backup file", "Sign in to a Depot"], choice.ViewModel.Options.Select(option => option.Title));
+                        choice.ViewModel.ChooseCommand.Execute(choice.ViewModel.Options[2]);
+                        return choice.ViewModel.SelectedContent ?? throw new InvalidOperationException("The Depot route shows nothing.");
+                    });
 
-                    // One backup there and no /cockpit/manifest: C1 is offered, C2 is not.
-                    var restore = _Named<Button>(view, "DepotFirstStartRestore");
-                    Assert.True(restore.IsEnabled);
-                    Assert.False(_Named<Button>(view, "DepotFirstStartSetUp").IsVisible);
-                    restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    var outcome = _Named<TextBlock>(view, "DepotFirstStartOutcome");
-                    await Until.Holds(outcome, () => outcome.Text?.StartsWith("Restored.", StringComparison.Ordinal) == true);
-                });
+                    await HeadlessAvalonia.RunAsync(async () =>
+                    {
+                        _Named<TextBox>(view, "DepotFirstStartUrl").Text = depot.BaseUrl;
+                        var status = _Named<TextBlock>(view, "DepotFirstStartStatus");
+                        _Named<Button>(view, "DepotFirstStartSignIn").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        await Until.Holds(status, () => status.Text?.StartsWith("Signed in to", StringComparison.Ordinal) == true);
 
-                Assert.True(restarts.Asked);
-                Assert.Equal(FirstRunWizardVersion.Current, await services.GetRequiredService<IFirstRunWizardStateStore>().GetCompletedVersionAsync());
-            }
+                        // One backup there and no /cockpit/manifest: C1 is offered, C2 is not.
+                        var restore = _Named<Button>(view, "DepotFirstStartRestore");
+                        Assert.True(restore.IsEnabled);
+                        Assert.False(_Named<Button>(view, "DepotFirstStartSetUp").IsVisible);
+                        restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        var outcome = _Named<TextBlock>(view, "DepotFirstStartOutcome");
+                        await Until.Holds(outcome, () => outcome.Text?.StartsWith("Restored.", StringComparison.Ordinal) == true);
+                    });
 
-            await using var restarted = JourneyHost.Desktop(stateRoot: fresh);
-            await restarted.StartDesktopAsync();
-            Assert.Equal(333, JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(fresh)))?["Layout"]?["SidebarWidth"]?.GetValue<double>());
-            Assert.Contains(HeadlessAvalonia.Run(() => restarted.Cockpit.Toasts.Select(toast => toast.Message).ToList()),
-                message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
+                    Assert.True(restarts.Asked);
+                    Assert.Equal(FirstRunWizardVersion.Current, await services.GetRequiredService<IFirstRunWizardStateStore>().GetCompletedVersionAsync());
+                }
+
+                await using var restarted = JourneyHost.Desktop(stateRoot: fresh);
+                await restarted.StartDesktopAsync();
+                Assert.Equal(333, JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(fresh)))?["Layout"]?["SidebarWidth"]?.GetValue<double>());
+                Assert.Contains(HeadlessAvalonia.Run(() => restarted.Cockpit.Toasts.Select(toast => toast.Message).ToList()),
+                    message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
+            });
         }
         finally
         {

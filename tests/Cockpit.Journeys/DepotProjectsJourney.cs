@@ -49,7 +49,9 @@ public sealed class DepotProjectsJourney
 
         var memory = cockpit.Services.GetRequiredService<IProjectMemorySourceRegistry>().Sources.Single(source => source.Scheme == "depot");
         var shared = cockpit.Services.GetRequiredService<ISharedProjectSourceRegistry>().Sources.Single(source => source.Key == "depot");
-        var locations = await memory.ListLocationsAsync!(CancellationToken.None);
+        var listLocations = memory.ListLocationsAsync;
+        Assert.NotNull(listLocations);
+        var locations = await listLocations(CancellationToken.None);
         var projects = await shared.ListAsync(CancellationToken.None);
 
         Assert.True(locations.Outcome == ProjectMemorySourceLocationsOutcome.Success, locations.Error);
@@ -67,7 +69,7 @@ public sealed class DepotProjectsJourney
 
         var opening = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
         Assert.True(opening.Succeeded, opening.Error);
-        var readOnlyEditor = await _EditorAsync(cockpit, shared, opening.Binding!, ownership.Resolve(localProjectId)!);
+        var readOnlyEditor = await _OpenEditorAsync(cockpit, shared, opening.Binding, ownership.Resolve(localProjectId));
         Assert.Contains("Editor access is read-only", readOnlyEditor.NameOrigin.ReadOnlyReason, StringComparison.Ordinal);
         Assert.False(readOnlyEditor.SaveCommand.CanExecute(null));
 
@@ -77,7 +79,7 @@ public sealed class DepotProjectsJourney
 
         var writable = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
         Assert.True(writable.Succeeded, writable.Error);
-        var firstEditor = await _EditorAsync(cockpit, shared, writable.Binding!, ownership.Resolve(localProjectId)!);
+        var firstEditor = await _OpenEditorAsync(cockpit, shared, writable.Binding, ownership.Resolve(localProjectId));
         Assert.True(firstEditor.SaveCommand.CanExecute(null));
         firstEditor.Name = "Saved from Cockpit";
         await firstEditor.SaveCommand.ExecuteAsync(null);
@@ -86,7 +88,7 @@ public sealed class DepotProjectsJourney
         var stale = await shared.PrepareBindingAsync("depot:acme/cockpit", CancellationToken.None);
         Assert.True(stale.Succeeded, stale.Error);
         depot.ChangeFromSecondClient("Changed by a second client");
-        var staleEditor = await _EditorAsync(cockpit, shared, stale.Binding!, ownership.Resolve(localProjectId)!);
+        var staleEditor = await _OpenEditorAsync(cockpit, shared, stale.Binding, ownership.Resolve(localProjectId));
         SharedProjectBinding? conflictScreen = null;
         staleEditor.ConflictRequested += (_, latest) =>
         {
@@ -131,10 +133,18 @@ public sealed class DepotProjectsJourney
         Assert.Equal(logoBytes, reopened.Binding?.LogoBytes);
 
         const string note = "remember this through REST\n";
-        var appended = await memory.AppendNoteAsync!("acme/cockpit", note, CancellationToken.None);
+        var appendNote = memory.AppendNoteAsync;
+        Assert.NotNull(appendNote);
+        var appended = await appendNote("acme/cockpit", note, CancellationToken.None);
         Assert.Equal(ProjectMemoryAppendOutcome.Success, appended.Outcome);
         Assert.Equal(note, depot.Inbox);
     }
+
+    private static Task<ProjectDialogViewModel> _OpenEditorAsync(
+        JourneyHost cockpit, ISharedProjectSource source, SharedProjectBinding? opened,
+        IReadOnlyDictionary<HostProjectField, ProjectFieldOwnership?>? owned) =>
+        _EditorAsync(cockpit, source, opened ?? throw new InvalidOperationException("The binding opened without a definition."),
+            owned ?? throw new InvalidOperationException("No plugin owns the bound project."));
 
     private static Task<ProjectDialogViewModel> _EditorAsync(
         JourneyHost cockpit, ISharedProjectSource source, SharedProjectBinding baseline,

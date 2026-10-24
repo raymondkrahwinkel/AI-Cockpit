@@ -11,6 +11,9 @@ namespace Cockpit.Journeys;
 [Collection(JourneyCollection.Alone)]
 public sealed class RestartJourney
 {
+    // AC-1533: the green block is not in the log, so after a restart the repainted turn that made files builds it again.
+    // AC-1502: the scheduled backup set in Options -> Backup is still set after a restart, where every start's planner
+    // (and a server's) reads it from.
     [Fact]
     public async Task AfterARestart_TheOpenSessionAndTheActiveDeskAreBack()
     {
@@ -18,104 +21,73 @@ public sealed class RestartJourney
         try
         {
             var deskId = "";
-            string paneId;
-            await using (var before = JourneyHost.Desktop(stateRoot: stateRoot))
-            {
-                var project = await before.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(stateRoot, "project")).FullName);
-                await before.StartDesktopAsync();
-                await HeadlessAvalonia.RunAsync(async () => deskId = (await before.Cockpit.Workspaces.CreateSessionsWorkspaceAsync("Journey")).Id);
-                paneId = (await before.StartSessionThroughTheDialogAsync(project)).PaneId;
-
-                // The desks are written in order through one store, so one more write of them lands after the pane's.
-                await before.Services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(HeadlessAvalonia.Run(() => before.Cockpit.Workspaces.Settings));
-            }
-
-            await using var after = JourneyHost.Desktop(stateRoot: stateRoot);
-            await after.StartDesktopAsync();
-            var (restored, activeDesk) = HeadlessAvalonia.Run(() => (
-                after.Cockpit.Sessions.Select(session => (session.PaneId, session.WorkspaceId, Offered: session.RestoreOffer is not null)).ToList(),
-                after.Cockpit.Workspaces.Active?.Id));
-
-            Assert.Equal([(paneId, deskId, true)], restored);
-            Assert.Equal(deskId, activeDesk);
-        }
-        finally
-        {
-            JourneyHost.RemoveStateRoot(stateRoot);
-        }
-    }
-
-    // AC-1533 (follow-up of AC-1530): the green block is not in the log, so the repainted conversation builds it again —
-    // after a restart the turn that made files still ends in the block with those files.
-    [Fact]
-    public async Task AfterARestart_ATurnThatMadeFilesStillEndsInItsGreenBlock()
-    {
-        var stateRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-restart-{Guid.NewGuid():N}")).FullName;
-        try
-        {
+            var paneId = "";
             string[] before = [];
-            await using (var first = JourneyHost.Desktop(stateRoot: stateRoot))
+            await Step.Run("before the restart", async () =>
             {
-                var project = await first.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(stateRoot, "project")).FullName);
-                await first.StartDesktopAsync();
-                var session = await first.StartSessionThroughTheDialogAsync(project);
-                await HeadlessAvalonia.RunAsync(async () =>
+                await using (var first = JourneyHost.Desktop(stateRoot: stateRoot))
                 {
-                    session.InputText = "hello";
-                    await session.SendCommand.ExecuteAsync(null);
-                    await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
-                    session.InputText = EchoDriver.WorkingPrompt;
-                    await session.SendCommand.ExecuteAsync(null);
-                    first.Driver.FinishWriting();
-                    await Until.Holds(session, () => _Blocks(session).Length > 0 && !session.IsBusy);
-                    before = _Blocks(session);
-                });
-            }
+                    var project = await first.SaveProfileAndProjectAsync(Directory.CreateDirectory(Path.Combine(stateRoot, "project")).FullName);
+                    await first.StartDesktopAsync();
+                    await HeadlessAvalonia.RunAsync(async () => deskId = (await first.Cockpit.Workspaces.CreateSessionsWorkspaceAsync("Journey")).Id);
+                    var session = await first.StartSessionThroughTheDialogAsync(project);
+                    paneId = session.PaneId;
+                    await HeadlessAvalonia.RunAsync(async () =>
+                    {
+                        session.InputText = "hello";
+                        await session.SendCommand.ExecuteAsync(null);
+                        await Until.Holds(session, () => session.SessionStatus == SessionStatus.Done);
+                        session.InputText = EchoDriver.WorkingPrompt;
+                        await session.SendCommand.ExecuteAsync(null);
+                        first.Driver.FinishWriting();
+                        await Until.Holds(session, () => _Blocks(session).Length > 0 && !session.IsBusy);
+                        before = _Blocks(session);
+                    });
+
+                    var schedule = HeadlessAvalonia.Run(() => first.Cockpit.ScheduledBackupSettings) ?? throw new InvalidOperationException("The desktop has no scheduled backup settings.");
+                    await HeadlessAvalonia.RunAsync(async () =>
+                    {
+                        await schedule.LoadAsync();
+                        schedule.Enabled = true;
+                        schedule.Interval = BackupScheduleViewModel.Weekly;
+                        schedule.Keep = 3;
+                        await schedule.Saving;
+                    });
+
+                    // The desks are written in order through one store, so one more write of them lands after the pane's.
+                    await first.Services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(HeadlessAvalonia.Run(() => first.Cockpit.Workspaces.Settings));
+                }
+            });
 
             await using var after = JourneyHost.Desktop(stateRoot: stateRoot);
             await after.StartDesktopAsync();
-            var restored = HeadlessAvalonia.Run(() => after.Cockpit.Sessions.OfType<SessionViewModel>().Single());
-            Assert.True(HeadlessAvalonia.Run(() => restored.CanResumeConversation));
-            HeadlessAvalonia.Run(() => restored.ResumeConversationCommand.Execute(null));
-            await HeadlessAvalonia.RunAsync(() => Until.Holds(restored, () => _Blocks(restored).Length > 0 && restored.IsSessionReady));
-
-            Assert.Equal(["Done · 3 files created"], before);
-            Assert.Equal(before, HeadlessAvalonia.Run(() => _Blocks(restored)));
-        }
-        finally
-        {
-            JourneyHost.RemoveStateRoot(stateRoot);
-        }
-    }
-
-    // AC-1502: the scheduled backup set in Options -> Backup is still set after a restart, which is what a planner that
-    // runs on every start (and on a server) reads it from.
-    [Fact]
-    public async Task AfterARestart_TheScheduledBackupIsStillSwitchedOnWithItsKeep()
-    {
-        var stateRoot = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-restart-{Guid.NewGuid():N}")).FullName;
-        try
-        {
-            await using (var before = JourneyHost.Desktop(stateRoot: stateRoot))
+            await Step.Run("the open session and the active desk are back", () =>
             {
-                await before.StartDesktopAsync();
-                var schedule = HeadlessAvalonia.Run(() => before.Cockpit.ScheduledBackupSettings) ?? throw new InvalidOperationException("The desktop has no scheduled backup settings.");
-                await HeadlessAvalonia.RunAsync(async () =>
-                {
-                    await schedule.LoadAsync();
-                    schedule.Enabled = true;
-                    schedule.Interval = BackupScheduleViewModel.Weekly;
-                    schedule.Keep = 3;
-                    await schedule.Saving;
-                });
-            }
+                var (restored, activeDesk) = HeadlessAvalonia.Run(() => (
+                    after.Cockpit.Sessions.Select(session => (session.PaneId, session.WorkspaceId, Offered: session.RestoreOffer is not null)).ToList(),
+                    after.Cockpit.Workspaces.Active?.Id));
 
-            await using var after = JourneyHost.Desktop(stateRoot: stateRoot);
-            await after.StartDesktopAsync();
-            var restored = HeadlessAvalonia.Run(() => after.Cockpit.ScheduledBackupSettings) ?? throw new InvalidOperationException("The desktop has no scheduled backup settings.");
-            await HeadlessAvalonia.RunAsync(() => restored.LoadAsync());
+                Assert.Equal([(paneId, deskId, true)], restored);
+                Assert.Equal(deskId, activeDesk);
+                return Task.CompletedTask;
+            });
 
-            Assert.Equal((true, BackupScheduleViewModel.Weekly, 3), HeadlessAvalonia.Run(() => (restored.Enabled, restored.Interval, restored.Keep)));
+            await Step.Run("the turn that made files still ends in its green block", async () =>
+            {
+                var reopened = HeadlessAvalonia.Run(() => after.Cockpit.Sessions.OfType<SessionViewModel>().Single());
+                Assert.True(HeadlessAvalonia.Run(() => reopened.CanResumeConversation));
+                HeadlessAvalonia.Run(() => reopened.ResumeConversationCommand.Execute(null));
+                await HeadlessAvalonia.RunAsync(() => Until.Holds(reopened, () => _Blocks(reopened).Length > 0 && reopened.IsSessionReady));
+                Assert.Equal(["Done · 3 files created"], before);
+                Assert.Equal(before, HeadlessAvalonia.Run(() => _Blocks(reopened)));
+            });
+
+            await Step.Run("the scheduled backup is still switched on with its keep", async () =>
+            {
+                var restoredSchedule = HeadlessAvalonia.Run(() => after.Cockpit.ScheduledBackupSettings) ?? throw new InvalidOperationException("The desktop has no scheduled backup settings.");
+                await HeadlessAvalonia.RunAsync(() => restoredSchedule.LoadAsync());
+                Assert.Equal((true, BackupScheduleViewModel.Weekly, 3), HeadlessAvalonia.Run(() => (restoredSchedule.Enabled, restoredSchedule.Interval, restoredSchedule.Keep)));
+            });
         }
         finally
         {
@@ -124,5 +96,5 @@ public sealed class RestartJourney
     }
 
     private static string[] _Blocks(SessionViewModel session) =>
-        [.. session.Transcript.Where(row => row.TurnResult is not null).Select(row => row.TurnResult!.Title)];
+        [.. session.Transcript.Select(row => row.TurnResult?.Title).OfType<string>()];
 }
