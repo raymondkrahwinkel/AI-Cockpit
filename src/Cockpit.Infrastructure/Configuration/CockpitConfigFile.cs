@@ -131,6 +131,9 @@ internal sealed class CockpitConfigFile
     // every edit, which would take a token with it.
     public List<McpOAuthTokenEntry> McpOAuthTokens { get; set; } = [];
 
+    // AC-1407: the accounts plugins connected at OAuth providers, with their tokens; owned by `PluginOAuthAccounts`.
+    public List<PluginOAuthAccountEntry> PluginOAuthAccounts { get; set; } = [];
+
     // The operator's projects (AC-158) — what a session works on, beside `Profiles` which is who it works as; owned by the project store.
     public List<ProjectEntry> Projects { get; set; } = [];
 

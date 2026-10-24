@@ -111,6 +111,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
+| `browser.open` | Opening a web page | Ambient | 0.106.0 | — | `ICockpitHost.OpenUrl` |
 | `ui.host-views` | Host-rendered read-only views | Ambient | 0.7.0 | — | `ICockpitUiHost.CreateMarkdownView`, `ICockpitUiHost.CreateHelpHint`, `ICockpitUiHost.OpenHelp`, `ICockpitUiHost.HasHelp` |
 | `consent.request` | Asking the operator to approve an action | Ambient | 0.3.0 | — | `ICockpitHost.RequestConsentAsync` |
 | `storage.settings` | Its own settings storage | Ambient | 0.3.0 | — | `IPluginStorage.Get`, `IPluginStorage.Set`, `IPluginStorage.Remove` |
@@ -149,6 +150,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
+| `oauth.accounts` | Signing in to online accounts | Sensitive | 0.106.0 | `providerId` | `ICockpitHost.ConnectOAuthAccountAsync`, `ICockpitHost.GetOAuthAccessTokenAsync`, `ICockpitHost.ListOAuthAccountsAsync`, `ICockpitHost.DisconnectOAuthAccountAsync` |
 | `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
 | `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
 

@@ -934,6 +934,56 @@ unlocked, any of you can read any credential the cockpit holds. The boundary is 
 which is why the store asks for consent and pins a checksum, and why this page tells you plainly rather than
 implying an isolation that does not exist.
 
+## Online accounts — OAuth through the host {#online-accounts--oauth-through-the-host}
+
+A plugin that talks to a REST API behind OAuth 2.0 — Microsoft Graph, Google Drive — lets the host sign the operator
+in and keep the tokens (Plugin SDK 3.26.0, `minHostVersion` `0.106.0`, capability `oauth.accounts`). The host runs
+the authorization-code flow with PKCE on a loopback redirect (`http://127.0.0.1:{free port}/callback`) in the
+system browser, checks `state` (and `iss` when the provider sends one), and renews the access token before it runs out.
+You supply the provider, read from your own settings on every call; the endpoints and scopes are yours, the machinery is the host's.
+
+```csharp
+var provider = new PluginOAuthProvider(
+    "microsoft",
+    new Uri($"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize"),
+    new Uri($"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"),
+    settings.ClientId,                       // blank → NotConfigured
+    storage.GetSecret("clientSecret"));      // only for clients that have one (Google desktop); keep it a secret
+
+// From the operator's own Sign in button — this opens the browser:
+var connect = await host.ConnectOAuthAccountAsync(provider, ["Files.ReadWrite", "offline_access", "openid", "email", "profile"]);
+
+// From your backend, whenever you call the API — never opens a browser:
+var token = await host.GetOAuthAccessTokenAsync(provider, accountId, ["Files.ReadWrite"]);
+if (token.Outcome == PluginOAuthOutcome.Ok) { request.Headers.Authorization = new("Bearer", token.AccessToken); }
+```
+
+- **Several accounts per provider.** Each connect without an `accountId` adds one; signing in to the same account again
+  updates it (matched on the id token's `iss` and `sub`). `ListOAuthAccountsAsync` gives each account's id, its
+  "connected as …" name (from the id token, so ask for `openid email profile`), its scopes and its `PluginOAuthState`.
+  You only ever see your own plugin's accounts.
+- **More scopes later.** `GetOAuthAccessTokenAsync` with a scope the account never consented to answers `ConsentRequired`;
+  call `ConnectOAuthAccountAsync` with that `accountId` and the new scopes. Earlier scopes are asked again with them.
+- **No app registration.** A provider without a client id is `NotConfigured`. Show Sign in disabled with the reason
+  ("No app registration — add a client ID under Settings"), never hide it.
+- **The failure classes.** `invalid_grant` on a refresh makes the account `ReconnectRequired` for good and drops the
+  dead grant: later calls answer at once, without asking the provider, until the operator connects it again — no retry
+  loop. `invalid_scope` is `ConsentRequired`; any other refusal (`invalid_client`, …) is `Rejected`; a provider that is
+  down is `Unreachable`, or your still-valid token. A changed client id or token endpoint also means `ReconnectRequired`:
+  a refresh token is only ever presented to the client and endpoint it was issued to.
+- **One refresh at a time.** Calls that arrive while an account is renewing wait for that renewal and share its token,
+  so a provider that rotates refresh tokens never sees one replayed.
+- **The token stays in your backend.** Use it for the request and drop it: never put it in a channel answer to your UI,
+  a session, a log line or the chat. `PluginOAuthTokenResult.ToString()` masks it for you.
+- **Where it is kept.** In `cockpit.json` (`pluginOAuthAccounts`), next to the MCP sign-ins: encrypted when the operator
+  turned on Options → Security, emptied from a backup without credentials, and in the clear on a headless server's state
+  volume. Signing in from a server's settings is not offered yet; there the connect answers `Unavailable`.
+- **Say it in your consent text.** As under [Credentials](#credentials--say-what-holds-one): the host keeps your accounts
+  apart through its API, not on disk, so another installed plugin could in principle read these tokens from the file.
+
+`OpenUrl(uri)` (capability `browser.open`) opens an http or https address in the operator's browser and answers whether
+it did — use it instead of starting a process yourself. A host without a desktop answers `false`.
+
 ## Documentation — ship your own pages (AC-1033) {#documentation--ship-your-own-pages-ac-1033}
 
 Your plugin can carry its own documentation, and the app shows it in the knowledge base (Help ▸ Documentation)

@@ -539,7 +539,10 @@
          more than one button sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
     <!-- 3.16.0 (AC-1553): StructuredQuestionJson exposes the shared AskUserQuestion parser and answer text to plugins.
          A plugin that calls it sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.16.0</Version>
+    <!-- 3.26.0 (AC-1407): host OAuth. ICockpitHost gains ConnectOAuthAccountAsync, GetOAuthAccessTokenAsync,
+         ListOAuthAccountsAsync, DisconnectOAuthAccountAsync and OpenUrl, with the OAuth namespace's types; numbered above
+         epic/AC-1497's 3.25.0. A plugin that calls them sets minHostVersion 0.106.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
+    <Version>3.26.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
