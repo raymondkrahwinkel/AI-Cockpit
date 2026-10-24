@@ -386,10 +386,19 @@ public sealed class RemoteAdminJourney
             Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(echoKey, StringComparison.Ordinal), "The audit holds the plugin's key.");
             Assert.False(run.Output.Contains(echoKey, StringComparison.Ordinal), "The server log holds the plugin's key.");
 
-            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(admin.Plugins.Single(plugin => plugin.Id == StorePlugin)));
+            var removedPlugin = admin.Plugins.Single(plugin => plugin.Id == StorePlugin);
+            await HeadlessAvalonia.RunAsync(() => admin.RemovePluginCommand.ExecuteAsync(removedPlugin));
             Assert.DoesNotContain(admin.Plugins, plugin => plugin.Id == StorePlugin);
             var removed = await setup.GetAsync<JsonArray>("api/v1/plugins");
             Assert.DoesNotContain(removed, plugin => plugin?["id"]?.GetValue<string>() == StorePlugin);
+
+            // AC-1651: a newer desktop action against a server that returns 404 explains the version mismatch inline.
+            await HeadlessAvalonia.RunAsync(() => admin.TogglePluginCommand.ExecuteAsync(removedPlugin));
+            var (missingFeature, missingFeatureIsError) = HeadlessAvalonia.Run(() => (admin.Status, admin.StatusIsError));
+            Assert.True(missingFeatureIsError);
+            Assert.Contains(admin.ServerVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains(admin.DesktopVersion, missingFeature, StringComparison.Ordinal);
+            Assert.Contains("update the server", missingFeature, StringComparison.OrdinalIgnoreCase);
 
             // AC-1572 through AC-1571: Depot's own local view over the server. B2: the browser sign-in runs on the server, this
             // desktop's "browser" only follows the link to its loopback; a token signs Work in at a fake Depot, the same token on

@@ -10,8 +10,8 @@
             <TextBlock Text="Audit log" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
             <TextBlock Text="latest first" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
         </StackPanel>
-        <TextBlock Classes="optionsHint" TextWrapping="Wrap" IsVisible="{Binding Status.Length}" Text="{Binding Status}"
-                   Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+        <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
+                   IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
 
         <Border Padding="4,4,4,8" CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
                 BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">

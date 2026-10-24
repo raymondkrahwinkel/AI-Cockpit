@@ -14,6 +14,8 @@
                 <TextBlock Text="on the server" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
             </StackPanel>
             <TextBlock Text="The profiles sessions on the server start under: provider, session defaults, delegation and environment." Classes="optionsHint"/>
+            <TextBlock Classes="optionsHint" Classes.error="{Binding StatusIsError}" TextWrapping="Wrap"
+                       IsVisible="{Binding Status.Length}" Text="{Binding Status}"/>
             <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
         </StackPanel>
 
@@ -23,8 +25,6 @@
                         ToolTip.Tip="Read the profiles from the server again, dropping what was not saved"/>
                 <Button x:Name="SaveButton" Classes="Accent" Content="Save" Command="{Binding SaveCommand}" IsEnabled="{Binding !IsBusy}"/>
             </StackPanel>
-            <TextBlock Classes="optionsHint" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding Status}"
-                       IsVisible="{Binding Status.Length}"/>
         </DockPanel>
 
         <Panel IsVisible="{Binding Editor, Converter={x:Static ObjectConverters.IsNotNull}}">
