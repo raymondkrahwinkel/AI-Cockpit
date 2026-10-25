@@ -78,7 +78,7 @@ for rid in $rids; do
       if ! printf '%s\n' "$listing" | grep -qxF "$apphost.exe"; then
         fail "$rel ($rid) has no $apphost.exe."
       elif ! unzip -p "$zip" "$apphost.exe" | LC_ALL=C grep -aqF "$supported_os_win10"; then
-        fail "$rel ($rid): $apphost.exe carries no manifest with the Windows 10 supportedOS id; it was not built on Windows."
+        fail "$rel ($rid): $apphost.exe carries no manifest with the Windows 10 supportedOS id: built off Windows, or without its ApplicationManifest."
       fi
       ;;
     *)
