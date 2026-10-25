@@ -236,6 +236,7 @@ public interface ICockpitHost
     IServiceProvider Services { get; }
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
+    ICockpitTimeEntries TimeEntries { get; }
     void AddSettings(Func<Control> createView);                 // opened from the manager's gear
     void AddSideMenuButton(string title, Action onInvoke);      // sidebar launcher button
     void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
@@ -1153,6 +1154,10 @@ Your controls inherit the host's theme because they live in the host's visual tr
 app-wide styles or `ResourceDictionary` merges; scope any styling to your own root control.
 
 ## Storage and actions {#storage-and-actions}
+
+`host.TimeEntries` is the host-owned log of the operator's own time. It supports manual entries, one persistent
+stopwatch, day-range reads, and the offered/booked lifecycle. It needs no capability because it exposes only the
+operator's own entries, not the session timeline. A plugin that uses it sets `minHostVersion` to `0.101.0`.
 
 ```csharp
 public void Initialize(ICockpitHost host)

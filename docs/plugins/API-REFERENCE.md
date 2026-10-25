@@ -272,6 +272,7 @@ public interface ICockpitHost
     IServiceProvider Services { get; }
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
+    ICockpitTimeEntries TimeEntries { get; }                                   // default unavailable
     IPluginCache Cache { get; }                                                 // default in-memory
     void AddSettings(Func<Control> createView);
     void AddSettings(Func<Control> createView, string category);                  // default forwards above
@@ -372,6 +373,10 @@ Actions on the cockpit/session — see [`ICockpitActions`](#icockpitactions).
 ### `IPluginStorage Storage { get; }` {#ipluginstorage-storage--get}
 Your per-plugin key/value store — see [`IPluginStorage`](#ipluginstorage). For settings; for anything you can
 fetch or compute again, use `Cache`.
+
+### `ICockpitTimeEntries TimeEntries { get; }` {#icockpittimeentries-timeentries--get}
+The host-owned log of the operator's manual time entries and one persistent stopwatch. It needs no capability:
+this is the operator's own data, not the all-sessions timeline. See [`ICockpitTimeEntries`](#icockpittimeentries).
 
 ### `IPluginCache Cache { get; }` {#iplugincache-cache--get}
 Your per-plugin cache, in a file of its own — see [`IPluginCache`](#iplugincache).
@@ -1343,6 +1348,38 @@ else
 True when a session is selected (so `InjectIntoActiveSessionAsync` will land). Check it before injecting.
 
 ---
+
+## `ICockpitTimeEntries` {#icockpittimeentries}
+
+Available in SDK 3.17.0 and host 0.101.0. Manual entries and stopped stopwatches are retained in the host's
+append-only `own-time-entries.jsonl`. Reads use a half-open range (`from <= StartedAt < to`). Only `Open` entries
+may be changed or deleted. `MarkOfferedAsync` freezes them; `Booked` stays frozen and `Skipped` returns to `Open`.
+
+```csharp
+public interface ICockpitTimeEntries
+{
+    Task<CockpitTimeEntry> AddAsync(string description, DateTimeOffset startedAt, TimeSpan duration,
+        string? projectId, CockpitTimeEntrySource source, CancellationToken cancellationToken = default);
+    Task<CockpitTimeEntry> UpdateAsync(Guid id, string description, DateTimeOffset startedAt, TimeSpan duration,
+        string? projectId, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CockpitTimeEntry>> ListAsync(DateTimeOffset from, DateTimeOffset to,
+        CancellationToken cancellationToken = default);
+    Task<CockpitRunningStopwatch> StartStopwatchAsync(string description, string? projectId,
+        CancellationToken cancellationToken = default);
+    Task<CockpitRunningStopwatch> UpdateStopwatchAsync(string description, string? projectId,
+        CancellationToken cancellationToken = default);
+    Task<CockpitTimeEntry> StopStopwatchAsync(CancellationToken cancellationToken = default);
+    Task<CockpitRunningStopwatch?> GetRunningStopwatchAsync(CancellationToken cancellationToken = default);
+    Task MarkOfferedAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset offeredAt, string paneId,
+        CancellationToken cancellationToken = default);
+    Task SetOutcomeAsync(IReadOnlyCollection<Guid> ids, CockpitTimeEntryOutcome outcome, string? reason = null,
+        CancellationToken cancellationToken = default);
+}
+```
+
+Starting a second stopwatch or changing a frozen entry throws `InvalidOperationException` with a user-facing
+reason. A restart does not stop the stopwatch: its id, description, project and start time live in the log.
 
 ## `IPluginStorage` {#ipluginstorage}
 

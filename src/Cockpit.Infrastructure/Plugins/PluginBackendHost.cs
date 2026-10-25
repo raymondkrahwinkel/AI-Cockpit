@@ -31,6 +31,7 @@ using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -71,6 +72,8 @@ public class PluginBackendHost(
     public ICockpitActions Actions => actions;
 
     public IPluginStorage Storage => storage;
+
+    public ICockpitTimeEntries TimeEntries => services.GetRequiredService<ICockpitTimeEntries>();
 
     public IPluginCache Cache => _cache;
 
