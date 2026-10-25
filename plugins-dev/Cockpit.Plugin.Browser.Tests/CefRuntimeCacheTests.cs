@@ -1,5 +1,8 @@
+using System.Formats.Tar;
 using System.Net;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using SharpCompress.Compressors;
+using SharpCompress.Compressors.BZip2;
 
 namespace Cockpit.Plugin.Browser.Tests;
 
@@ -8,12 +11,13 @@ namespace Cockpit.Plugin.Browser.Tests;
 public class CefRuntimeCacheTests
 {
     [Fact]
-    public async Task ADownloadWithAWrongChecksum_IsDiscarded_AndLeavesNoRuntime()
+    public async Task AWholeRuntimeWithAWrongChecksum_IsDiscarded_AndLeavesNoRuntime()
     {
         var root = Path.Combine(Path.GetTempPath(), "cef-cache-test-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var served = new byte[] { 1, 2, 3, 4 };
+            // A valid archive on purpose: without the check it would be unpacked and cached.
+            var served = _Archive("cef/Release/libcef.dll");
             var catalog = new CefRuntimeCatalog(
                 "1.0.0", "1.0.0.0", new DateOnly(2026, 10, 5),
                 new Dictionary<string, CefRuntimePackage> { ["win-x64"] = new("https://example.invalid/cef.tar.bz2", served.Length, new string('0', 64)) });
@@ -32,6 +36,18 @@ public class CefRuntimeCacheTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    private static byte[] _Archive(string entryName)
+    {
+        using var output = new MemoryStream();
+        using (var bzip2 = BZip2Stream.Create(output, CompressionMode.Compress, false, leaveOpen: true))
+        using (var tar = new TarWriter(bzip2, leaveOpen: true))
+        {
+            tar.WriteEntry(new UstarTarEntry(TarEntryType.RegularFile, entryName) { DataStream = new MemoryStream([1, 2, 3]) });
+        }
+
+        return output.ToArray();
     }
 
     private sealed class FixedBytesHandler(byte[] bytes) : HttpMessageHandler
