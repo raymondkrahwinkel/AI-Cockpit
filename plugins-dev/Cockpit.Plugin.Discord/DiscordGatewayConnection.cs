@@ -6,15 +6,14 @@ namespace Cockpit.Plugin.Discord;
 
 // Owns the Discord.NET socket connection for one open assistant channel (AC-1024), wiring inbound messages and
 // button clicks into a `DiscordChannelBridge`. A bad token fails at `LoginAsync`, before `StartAsync` runs, so it is
-// reported once with no reconnect loop. A channel id of 0 means direct messages with the one allowed account (AC-1360).
+// reported once with no reconnect loop. Messages are exchanged only through DMs with the linked account.
 internal sealed class DiscordGatewayConnection : IDisposable
 {
     private readonly DiscordSocketClient _client;
     private readonly DiscordChannelBridge _bridge;
     private readonly DiscordFileFetcher _files;
     private readonly DiscordHealthState _health;
-    private readonly ulong _channelId;
-    private readonly string? _directMessageUserId;
+    private readonly Action<string> _logRefusal;
 
     // AC-1544: the one account another plugin's message may go to as a DM, in either mode; null when several are allowed.
     private readonly string? _allowedUserId;
@@ -26,21 +25,19 @@ internal sealed class DiscordGatewayConnection : IDisposable
     public DiscordGatewayConnection(
         IAssistantChannelGateway gateway,
         string botToken,
-        ulong channelId,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
         DiscordHealthState health,
         Action<string> reportError,
         Action<string> logRefusal)
     {
-        _channelId = channelId;
         _allowedUserId = access is { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 } ? access.UserIds.First() : null;
-        _directMessageUserId = channelId == 0 ? _allowedUserId : null;
         _health = health;
+        _logRefusal = logRefusal;
 
         _client = new DiscordSocketClient(new DiscordSocketConfig
         {
-            GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.DirectMessages | GatewayIntents.MessageContent,
+            GatewayIntents = GatewayIntents.DirectMessages | GatewayIntents.MessageContent,
         });
 
         var sink = new DiscordChannelSink(_ResolveChannelAsync);
@@ -79,12 +76,12 @@ internal sealed class DiscordGatewayConnection : IDisposable
 
     private async Task<IMessageChannel?> _ResolveChannelAsync()
     {
-        if (_directMessageUserId is { } userId)
+        if (_allowedUserId is { } userId)
         {
             return await _DirectMessageChannelAsync(userId).ConfigureAwait(false);
         }
 
-        return _channelId == 0 ? null : _client.GetChannel(_channelId) as ITextChannel;
+        return null;
     }
 
     private async Task<IMessageChannel> _DirectMessageChannelAsync(string userId, CancellationToken cancellationToken = default)
@@ -163,14 +160,6 @@ internal sealed class DiscordGatewayConnection : IDisposable
                 .ConfigureAwait(false);
         }
 
-        if (targetId == DiscordChannelPlugin.ChannelTarget && _channelId != 0)
-        {
-            return await _bridge.SendOperatorMessageAsync(
-                new DiscordChannelSink(() => Task.FromResult(_client.GetChannel(_channelId) as IMessageChannel)),
-                message,
-                cancellationToken).ConfigureAwait(false);
-        }
-
         return OperatorMessageResult.Failed($"Discord cannot deliver to '{targetId}' with its current settings.");
     }
 
@@ -178,9 +167,14 @@ internal sealed class DiscordGatewayConnection : IDisposable
     {
         // A join or a pin arrives as a SocketSystemMessage — Discord's counterpart of Slack's system subtypes
         // (AC-1046). A user message keeps its text whether or not a file hangs off it.
-        if (message is not SocketUserMessage
-            || !DiscordInboundFilter.Accepts(message.Author.IsBot, message.Channel is IDMChannel, message.Channel.Id, _channelId))
+        if (message is not SocketUserMessage)
         {
+            return Task.CompletedTask;
+        }
+
+        if (!DiscordInboundFilter.Accepts(message.Author.IsBot, message.Channel is IDMChannel))
+        {
+            _logRefusal($"Discord ignored a message from {message.Author.Id} in channel {message.Channel.Id}: only user DMs are accepted.");
             return Task.CompletedTask;
         }
 

@@ -8,109 +8,33 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Discord.UI;
 
-// The plugin's settings view (opened from the gear in the plugin manager): AC-1023 §3's three-level access
-// model verbatim (the warning texts are AssistantChannelAccess's own constants), the bot token/channel id, and
-// the verbosity picker (AC-669 §1.4). Direction only from the not-yet-reviewed Depot AC-1027 mockup.
+// One linked owner is the complete authorization UI. The bot token and verbosity remain independently editable.
 internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly DiscordChannelSettings _settings;
-
-    private readonly RadioButton _singleUserOption;
-    private readonly RadioButton _specificUsersOption;
-    private readonly RadioButton _everyoneOption;
-
-    private readonly TextBox _singleUserId;
-    private readonly TextBox _specificUserIds;
-    private readonly CheckBox _specificUsersWarningAck;
-    private readonly TextBox _everyoneConfirmation;
-
+    private readonly TextBox _userId;
     private readonly ComboBox _verbosity;
     private readonly TextBox _botToken;
-    private readonly TextBox _channelId;
     private readonly TextBlock _errorText;
-    private readonly TextBlock _notConfiguredText;
+    private readonly TextBlock _linkText;
+    private readonly TextBlock _migrationNoticeText;
 
     public DiscordChannelSettingsControl(ICockpitUiHost host, DiscordChannelSettings settings)
     {
         _settings = settings;
         var current = settings.Access;
 
-        _singleUserOption = new RadioButton { GroupName = "audience", Content = "Only this one Discord account" };
-        _specificUsersOption = new RadioButton { GroupName = "audience", Content = "Several specific Discord accounts" };
-        _everyoneOption = new RadioButton { GroupName = "audience", Content = "Everyone in this channel" };
-
-        _singleUserId = new TextBox { PlaceholderText = "123456789012345678" };
-        var singleUserIdHint = new TextBlock
+        _userId = new TextBox
+        {
+            Text = current?.Access.UserIds.FirstOrDefault() ?? string.Empty,
+            PlaceholderText = "123456789012345678",
+        };
+        var userIdHint = new TextBlock
         {
             Text = "Not your Discord name — the user id. " + DiscordUserId.HowToFind,
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.8,
-        };
-        _specificUserIds = new TextBox
-        {
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 60,
-            PlaceholderText = "One Discord user id per line",
-        };
-        var specificUserIdsHint = new TextBlock
-        {
-            Text = "Not Discord names — user ids. " + DiscordUserId.HowToFind,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Opacity = 0.8,
-        };
-        var specificUsersWarningText = new TextBlock
-        {
-            Text = AssistantChannelAccess.MultipleUsersWarning,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Opacity = 0.8,
-        };
-        _specificUsersWarningAck = new CheckBox { Content = "I understand" };
-
-        var everyoneWarningText = new TextBlock
-        {
-            Text = AssistantChannelAccess.EveryoneWarning,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Opacity = 0.8,
-        };
-        _everyoneConfirmation = new TextBox { PlaceholderText = AssistantChannelAccess.EveryoneConfirmationPhrase };
-
-        switch (current?.Access.Audience)
-        {
-            case AssistantChannelAudience.SpecificUsers:
-                _specificUsersOption.IsChecked = true;
-                _specificUserIds.Text = string.Join('\n', current.Value.Access.UserIds);
-                break;
-            case AssistantChannelAudience.Everyone:
-                _everyoneOption.IsChecked = true;
-                break;
-            default:
-                _singleUserOption.IsChecked = true;
-                _singleUserId.Text = current?.Access.UserIds.FirstOrDefault() ?? string.Empty;
-                break;
-        }
-
-        var audiencePanel = new StackPanel
-        {
-            Spacing = 6,
-            Children =
-            {
-                _singleUserOption,
-                _singleUserId,
-                singleUserIdHint,
-                _specificUsersOption,
-                specificUsersWarningText,
-                _specificUserIds,
-                specificUserIdsHint,
-                _specificUsersWarningAck,
-                _everyoneOption,
-                everyoneWarningText,
-                _everyoneConfirmation,
-            },
         };
 
         _verbosity = new ComboBox
@@ -121,31 +45,32 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
                 "B — everything, tool use included",
                 "C — short status lines instead of full tool traffic",
             },
-            SelectedIndex = (int)(current?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly),
+            SelectedIndex = (int)settings.Verbosity,
         };
 
         _botToken = new TextBox { Text = settings.BotToken, PasswordChar = '•', PlaceholderText = "Discord bot token" };
-        _channelId = new TextBox
+        _errorText = new TextBlock
         {
-            Text = settings.ChannelId == 0 ? string.Empty : settings.ChannelId.ToString(),
-            PlaceholderText = "Channel id — leave blank to talk in direct messages",
+            Foreground = _Brush("CockpitStatusErrorBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false,
         };
-
-        _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
-
-        // AC-1084: what a never-configured install says for itself, on its own page. Not an error colour — it
-        // reports a state the operator chose by installing and has not finished, not something that went wrong.
-        _notConfiguredText = new TextBlock
+        _linkText = new TextBlock
         {
-            Text = "Not set up yet. Nothing is relayed to Discord until a bot token and the account allowed to talk are saved here.",
+            Text = "Link your own account to receive messages.",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.8,
-            IsVisible = false,
+            IsVisible = string.IsNullOrWhiteSpace(_userId.Text),
+        };
+        _migrationNoticeText = new TextBlock
+        {
+            Text = settings.MigrationNotice ?? string.Empty,
+            Foreground = _Brush("CockpitStatusErrorBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = settings.MigrationNotice is not null,
         };
 
-        // AC-1032/AC-1033: the `?` beside the heading, pointing at this plugin's own setup walkthrough —
-        // creating the application, the Message Content Intent, inviting the bot, finding the channel id.
         var botConnectionHeading = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -165,108 +90,58 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
                 Spacing = 10,
                 Children =
                 {
-                    _notConfiguredText,
-                    new TextBlock { Text = "Who may talk to the assistant here?", FontWeight = FontWeight.Bold },
-                    audiencePanel,
+                    _migrationNoticeText,
+                    _linkText,
+                    new TextBlock { Text = "Your Discord user id", FontWeight = FontWeight.Bold },
+                    _userId,
+                    userIdHint,
                     new TextBlock { Text = "How much of the conversation to relay", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
                     _verbosity,
                     botConnectionHeading,
                     _botToken,
-                    _channelId,
                     _errorText,
                 },
             },
         };
-
-        _notConfiguredText.IsVisible = _IsBlank;
     }
 
-    // AC-1084: nothing entered and nothing stored — the line `ClusterRowControl.IsBlank` draws for a Kubernetes
-    // row. Only the fields that make the channel work, so a stray verbosity pick cannot turn a fresh install back
-    // into a refusing one; the audience radio does count, so picking "everyone" and typing nothing still refuses.
     private bool _IsBlank =>
         _settings.Access is null
-        && _singleUserOption.IsChecked == true
-        && string.IsNullOrWhiteSpace(_singleUserId.Text)
-        && string.IsNullOrWhiteSpace(_specificUserIds.Text)
-        && string.IsNullOrWhiteSpace(_everyoneConfirmation.Text)
-        && string.IsNullOrWhiteSpace(_botToken.Text)
-        && string.IsNullOrWhiteSpace(_channelId.Text);
+        && string.IsNullOrWhiteSpace(_userId.Text)
+        && string.IsNullOrWhiteSpace(_botToken.Text);
 
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = null;
 
-        // AC-1084: a plugin installed but never set up is not an invalid one. Staging with no commit is how the
-        // host reads "nothing to save" (PluginSettingsStaging), so a fresh install neither writes nor blocks the
-        // operator's Apply — while a half-filled one drops through to the checks below exactly as before.
         if (_IsBlank)
         {
-            _notConfiguredText.IsVisible = true;
+            _linkText.IsVisible = true;
             _errorText.IsVisible = false;
             error = null;
             return true;
         }
 
-        _notConfiguredText.IsVisible = false;
-
-        // AC-1048: caught here, before AssistantChannelAccess even sees the value — a display name or anything
-        // else that is not a Discord snowflake is refused with what the field actually needs, not just "invalid".
-        if (_singleUserOption.IsChecked == true && !string.IsNullOrWhiteSpace(_singleUserId.Text)
-            && DiscordUserId.Validate(_singleUserId.Text.Trim()) is { } singleUserIdError)
+        var userId = _userId.Text?.Trim() ?? string.Empty;
+        if (DiscordUserId.Validate(userId) is { } userIdError)
         {
-            return _Fail(out commit, out error, singleUserIdError);
+            return _Fail(out commit, out error, userIdError);
         }
 
-        if (_specificUsersOption.IsChecked == true)
+        var result = AssistantChannelAccess.ForSingleUser(userId);
+        if (result.Access is not { } access)
         {
-            foreach (var userId in _ParseUserIds(_specificUserIds.Text))
-            {
-                if (DiscordUserId.Validate(userId) is { } listUserIdError)
-                {
-                    return _Fail(out commit, out error, listUserIdError);
-                }
-            }
+            return _Fail(out commit, out error, result.Error ?? "A Discord user id is required.");
         }
 
-        var result = _singleUserOption.IsChecked == true
-            ? AssistantChannelAccess.ForSingleUser(_singleUserId.Text ?? string.Empty)
-            : _specificUsersOption.IsChecked == true
-                ? AssistantChannelAccess.ForUsers(_ParseUserIds(_specificUserIds.Text), _specificUsersWarningAck.IsChecked == true)
-                : AssistantChannelAccess.ForEveryone(_everyoneConfirmation.Text ?? string.Empty);
-
-        if (!result.Ok)
-        {
-            return _Fail(out commit, out error, result.Error!);
-        }
-
-        if (string.IsNullOrWhiteSpace(_botToken.Text))
-        {
-            return _Fail(out commit, out error, "A bot token is required.");
-        }
-
-        // AC-1360: blank is the default, direct messages with the one allowed account. A shared conversation fanned
-        // out over several people's DMs is a different risk, so a list or everyone still needs a channel.
-        ulong channelId = 0;
-        if (!string.IsNullOrWhiteSpace(_channelId.Text) && (!ulong.TryParse(_channelId.Text.Trim(), out channelId) || channelId == 0))
-        {
-            return _Fail(out commit, out error, "The channel id is not a valid Discord channel id. Leave it blank to talk in direct messages.");
-        }
-
-        if (channelId == 0 && _singleUserOption.IsChecked != true)
-        {
-            return _Fail(out commit, out error, "Direct messages are for a single account only. Enter a channel id to let more people talk to the assistant.");
-        }
-
-        var access = result.Access!;
         var verbosity = (AssistantChannelVerbosity)_verbosity.SelectedIndex;
-        var token = _botToken.Text.Trim();
-
+        var token = _botToken.Text?.Trim() ?? string.Empty;
         commit = () =>
         {
             _settings.SaveAccess(access, verbosity);
             _settings.BotToken = token;
-            _settings.ChannelId = channelId;
+            _migrationNoticeText.IsVisible = false;
+            _linkText.IsVisible = false;
         };
 
         error = null;
@@ -280,15 +155,10 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
         error = message;
         _errorText.Text = message;
         _errorText.IsVisible = true;
+        _linkText.IsVisible = string.IsNullOrWhiteSpace(_userId.Text);
         return false;
     }
 
-    private static IReadOnlyList<string> _ParseUserIds(string? text) =>
-        [.. (text ?? string.Empty).Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
-
-    // AC-334/AC-337: a plugin's own theme lookup rather than a hardcoded Brushes.X — a colour lives in
-    // Theme.axaml, and each plugin keeps this tiny copy since Cockpit.Plugins.Abstractions.Theming.ThemeBrush is
-    // internal SDK plumbing, not part of the plugin contract (same pattern as GitStatusHeaderControl._Brush).
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }

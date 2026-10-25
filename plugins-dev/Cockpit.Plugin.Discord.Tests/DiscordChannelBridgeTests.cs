@@ -36,7 +36,8 @@ public class DiscordChannelBridgeTests
     [Fact]
     public async Task IgnoredSender_ProducesNoDiscordActivityAtAll()
     {
-        var (bridge, gateway, sink) = _Build();
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(logRefusal: refusals.Add);
         gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
 
         await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", messageId: 1);
@@ -44,6 +45,9 @@ public class DiscordChannelBridgeTests
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
         Assert.Empty(sink.Edited);
+        var refusal = Assert.Single(refusals);
+        Assert.Contains(_StrangerUserId, refusal, StringComparison.Ordinal);
+        Assert.DoesNotContain("hello?", refusal, StringComparison.Ordinal);
     }
 
     [Fact]
