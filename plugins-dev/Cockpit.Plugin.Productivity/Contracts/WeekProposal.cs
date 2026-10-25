@@ -87,7 +87,7 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
                 .Where(edit => edit.Day == day.Day && isPrivate.Contains(edit.ProjectId) == false && kept.All(cell => cell.ProjectId != edit.ProjectId))
                 .ToDictionary(edit => edit.ProjectId, StringComparer.Ordinal);
             var edited = dayOverrides.Values
-                .Where(edit => edit.Minutes is > 100000)
+                .Where(edit => edit.Minutes is > 0)
                 .Select(edit => new ProposalCell(day.Day, TimeSpan.FromMinutes(edit.Minutes ?? 0), CockpitTimeEntryStatus.Open, edit.ProjectId, Edited: true))
                 .ToList();
 
