@@ -225,7 +225,7 @@ internal sealed class AgentCdpProxy : IDisposable
             while (received.EndOfMessage == false);
 
             var bytes = message.GetBuffer().AsMemory(0, (int)message.Length);
-            if (fromClient && received.MessageType == WebSocketMessageType.Text && _operatorDrives && Refusal(bytes.Span) is { } refusal)
+            if (fromClient && received.MessageType == WebSocketMessageType.Text && _stopped && Refusal(bytes.Span) is { } refusal)
             {
                 await client.SendAsync(refusal, WebSocketMessageType.Text, true, _lifetime.Token).ConfigureAwait(false);
                 continue;
