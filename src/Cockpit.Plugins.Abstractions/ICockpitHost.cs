@@ -6,6 +6,7 @@ using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugins.Abstractions;
@@ -25,6 +26,11 @@ public interface ICockpitHost
     ICockpitActions Actions { get; }
 
     IPluginStorage Storage { get; }
+
+    /// <summary>
+    /// The operator's own time entries. No capability is required because this is the operator's own data.
+    /// </summary>
+    ICockpitTimeEntries TimeEntries => UnavailableCockpitTimeEntries.Instance;
 
     /// <summary>
     /// Where what the plugin can rebuild goes: fetched data, run history, anything it would refetch rather than

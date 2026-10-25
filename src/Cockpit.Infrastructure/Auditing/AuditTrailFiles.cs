@@ -16,6 +16,9 @@ internal static class AuditTrailFiles
     // The usage trail (AC-251): what the sessions spent.
     public const string Usage = "usage-history.jsonl";
 
+    // The operator's own time entries (AC-1729): retained without rollover.
+    public const string OwnTimeEntries = "own-time-entries.jsonl";
+
     // The agent-notify trail (AC-392): the messages agents sent each other.
     public const string AgentNotify = "agent-notify-audit.jsonl";
 
@@ -29,7 +32,7 @@ internal static class AuditTrailFiles
     public const string NodeAccess = "node-access-audit.jsonl";
 
     // Every trail's file name. The order carries no meaning.
-    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn, JobHistory, NodeAccess];
+    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, OwnTimeEntries, AgentNotify, AssistantSpawn, JobHistory, NodeAccess];
 
     // Where `fileName` lives for this install: next to `cockpit.json`, under the state root
     // a development build keeps to itself.

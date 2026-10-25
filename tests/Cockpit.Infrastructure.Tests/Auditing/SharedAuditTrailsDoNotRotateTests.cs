@@ -30,14 +30,9 @@ public sealed class SharedAuditTrailsDoNotRotateTests : IDisposable
     public SharedAuditTrailsDoNotRotateTests() => Directory.CreateDirectory(_tempDir);
 
     [Fact]
-    public void ConsentAuditLog_InheritsRecordAndRead_FromTheSharedBase_RatherThanDefiningItsOwn()
+    public void ConsentAndDelegationAuditLogs_InheritRecordAndRead_FromTheSharedBase()
     {
         _AssertNoRotationOverride(typeof(ConsentAuditLog), typeof(JsonlAuditLog<ConsentAuditEntry>));
-    }
-
-    [Fact]
-    public void DelegationAuditLog_InheritsRecordAndRead_FromTheSharedBase_RatherThanDefiningItsOwn()
-    {
         _AssertNoRotationOverride(typeof(DelegationAuditLog), typeof(JsonlAuditLog<DelegationAuditEntry>));
     }
 
@@ -56,35 +51,31 @@ public sealed class SharedAuditTrailsDoNotRotateTests : IDisposable
     }
 
     [Fact]
-    public async Task ConsentTrail_WrittenWellPastAModestTrailsUsualSize_NeverRolls()
+    public async Task ConsentAndDelegationTrails_WrittenWellPastAModestSize_NeverRoll()
     {
-        var path = Path.Combine(_tempDir, "consent-audit.jsonl");
-        var log = new ConsentAuditLog(path, NullLogger<ConsentAuditLog>.Instance);
+        var consentPath = Path.Combine(_tempDir, "consent-audit.jsonl");
+        var consentLog = new ConsentAuditLog(consentPath, NullLogger<ConsentAuditLog>.Instance);
 
         for (var i = 0; i < _WriteCount; i++)
         {
-            await log.RecordAsync(_ConsentEntry(i));
+            await consentLog.RecordAsync(_ConsentEntry(i));
         }
 
-        Assert.False(File.Exists(_DotOneOf(path)), "the consent trail must stay append-only, unbounded, forever");
-        Assert.True(new FileInfo(path).Length > 0);
-        Assert.Equal(_WriteCount, System.Linq.Enumerable.Count(await log.ReadRecentAsync(limit: int.MaxValue)));
-    }
+        Assert.False(File.Exists(_DotOneOf(consentPath)), "the consent trail must stay append-only, unbounded, forever");
+        Assert.True(new FileInfo(consentPath).Length > 0);
+        Assert.Equal(_WriteCount, System.Linq.Enumerable.Count(await consentLog.ReadRecentAsync(limit: int.MaxValue)));
 
-    [Fact]
-    public async Task DelegationTrail_WrittenWellPastAModestTrailsUsualSize_NeverRolls()
-    {
-        var path = Path.Combine(_tempDir, "delegation-audit.jsonl");
-        var log = new DelegationAuditLog(path, NullLogger<DelegationAuditLog>.Instance);
+        var delegationPath = Path.Combine(_tempDir, "delegation-audit.jsonl");
+        var delegationLog = new DelegationAuditLog(delegationPath, NullLogger<DelegationAuditLog>.Instance);
 
         for (var i = 0; i < _WriteCount; i++)
         {
-            await log.RecordAsync(_DelegationEntry(i));
+            await delegationLog.RecordAsync(_DelegationEntry(i));
         }
 
-        Assert.False(File.Exists(_DotOneOf(path)), "the delegation trail must stay append-only, unbounded, forever");
-        Assert.True(new FileInfo(path).Length > 0);
-        Assert.Equal(_WriteCount, System.Linq.Enumerable.Count(await log.ReadRecentAsync(limit: int.MaxValue)));
+        Assert.False(File.Exists(_DotOneOf(delegationPath)), "the delegation trail must stay append-only, unbounded, forever");
+        Assert.True(new FileInfo(delegationPath).Length > 0);
+        Assert.Equal(_WriteCount, System.Linq.Enumerable.Count(await delegationLog.ReadRecentAsync(limit: int.MaxValue)));
     }
 
     // Both trails trim their one free-text field to 300 chars before writing (ActionText / Prompt), so this many

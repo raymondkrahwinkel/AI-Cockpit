@@ -51,6 +51,11 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
         using var shown = _Show(launcher);
 
         Assert.Equal("3 / 2", _PillText(launcher));
+
+        badge.Text = "4u30 today";
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal("4u30 today", _PillText(launcher));
     });
 
     // Acceptance criterion 1: the plugin updates the counter after registering, without registering the button

@@ -43,6 +43,22 @@ internal abstract class JsonlAuditLog<T>
 
     public async Task RecordAsync(T entry, CancellationToken cancellationToken = default)
     {
+        try
+        {
+            await RecordStrictAsync(entry, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // A broken audit log must not take the action down with it — losing the record is bad, blocking the
+            // operator's approved action (or a delegation) is worse. Logged rather than swallowed, so a silently
+            // unwritable log still surfaces.
+            _logger.LogWarning(ex, "Could not append to the {LogName} audit log at {Path}.", LogName, _logFilePath);
+        }
+    }
+
+    // A durable user-data log cannot report success after a failed append. Audit logs keep using RecordAsync.
+    protected async Task RecordStrictAsync(T entry, CancellationToken cancellationToken = default)
+    {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -54,13 +70,6 @@ internal abstract class JsonlAuditLog<T>
 
             var line = JsonSerializer.Serialize(PrepareForWrite(entry), SerializerOptions);
             await _AppendPrivateAsync(line + Environment.NewLine, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            // A broken audit log must not take the action down with it — losing the record is bad, blocking the
-            // operator's approved action (or a delegation) is worse. Logged rather than swallowed, so a silently
-            // unwritable log still surfaces.
-            _logger.LogWarning(ex, "Could not append to the {LogName} audit log at {Path}.", LogName, _logFilePath);
         }
         finally
         {
