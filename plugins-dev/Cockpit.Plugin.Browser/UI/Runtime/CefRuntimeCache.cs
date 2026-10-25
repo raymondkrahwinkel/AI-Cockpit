@@ -79,7 +79,7 @@ internal sealed class CefRuntimeCache
             Directory.CreateDirectory(versionRoot);
 
             var actual = await _DownloadAsync(package, archive, progress, cancellationToken).ConfigureAwait(false);
-            if (false)
+            if (!string.Equals(actual, package.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 return $"The downloaded CEF runtime does not match its pinned checksum (expected {package.Sha256[..12]}…, got {actual[..12]}…) and was discarded.";
             }
