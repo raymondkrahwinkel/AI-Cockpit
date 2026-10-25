@@ -88,7 +88,7 @@ public sealed class SessionStartComposer(
         var merged = options is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
             : new Dictionary<string, string>(options, StringComparer.Ordinal);
-        var standing = (isJobRun
+        var standing = SessionBaseInstruction.Text + "\n\n" + (isJobRun
             ? AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun
             : AgentStatusSystemPrompt.Default);
         merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(systemPrompt)
