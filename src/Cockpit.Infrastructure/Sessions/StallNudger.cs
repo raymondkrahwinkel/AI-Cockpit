@@ -44,6 +44,8 @@ public sealed class StallNudger : ISingletonService, IDisposable
 
         public bool Nudged { get; set; }
 
+        public bool HasUsedATool { get; set; }
+
         public Action Unsubscribe { get; set; } = () => { };
     }
 
@@ -107,6 +109,7 @@ public sealed class StallNudger : ISingletonService, IDisposable
 
         lock (followed.Gate)
         {
+            followed.HasUsedATool = true;
             followed.Closed = _IsTool(toolName, "notify") || _IsTool(toolName, "start_run");
         }
     }
@@ -122,6 +125,12 @@ public sealed class StallNudger : ISingletonService, IDisposable
             bool closedByTool;
             lock (followed.Gate)
             {
+                // A model which never calls a tool cannot use notify to close: deliberately do not nudge it.
+                if (!followed.HasUsedATool)
+                {
+                    return;
+                }
+
                 closedByTool = followed.Closed;
                 followed.Closed = false;
             }
