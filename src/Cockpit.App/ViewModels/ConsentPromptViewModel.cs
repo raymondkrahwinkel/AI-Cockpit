@@ -23,6 +23,18 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
         CanRemember = prompt.CanRemember;
         IsDangerous = prompt.Request.Risk == ConsentRisk.Dangerous;
         Choices = [.. (prompt.Request.Choices ?? []).Select(choice => new ConsentChoiceViewModel(choice))];
+        ApproveLabel = prompt.Request.ApproveLabel is { Length: > 0 } label ? label : "Approve";
+        Never = string.Join(" · ", prompt.Request.Never ?? []);
+
+        // The action's first line as the card with choices heads it: an address with its host in bold, then the rest.
+        var lines = Action.Split('\n');
+        var subject = lines[0];
+        IsSecure = subject.StartsWith("https://", StringComparison.Ordinal);
+        var bare = IsSecure ? subject["https://".Length..] : subject;
+        var end = bare.IndexOfAny(['/', ' ']);
+        SubjectHost = end < 0 ? bare : bare[..end];
+        SubjectRest = end < 0 ? string.Empty : bare[end..];
+        Details = string.Join('\n', lines.Skip(1));
     }
 
     // Matches the broker's prompt, so the cockpit can clear this banner when the prompt is resolved elsewhere.
@@ -55,6 +67,25 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
     public IReadOnlyList<ConsentChoiceViewModel> Choices { get; }
 
     public bool HasChoices => Choices.Count > 0;
+
+    public bool IsPlain => HasChoices == false;
+
+    public string ApproveLabel { get; }
+
+    public string Never { get; }
+
+    public bool HasNever => Never.Length > 0;
+
+    public bool IsSecure { get; }
+
+    public string SubjectHost { get; }
+
+    public string SubjectRest { get; }
+
+    // The action's further lines, still verbatim, under the subject.
+    public string Details { get; }
+
+    public bool HasDetails => Details.Length > 0;
 
     [RelayCommand]
     private void Approve()
@@ -113,8 +144,16 @@ public sealed partial class ConsentOptionViewModel(ConsentOption option) : ViewM
 
     public bool HasDetail => !string.IsNullOrEmpty(Detail);
 
+    public string? Note { get; } = option.Note;
+
+    public bool HasNote => !string.IsNullOrEmpty(Note);
+
     public bool Enabled { get; } = option.Enabled;
 
+    // The picked option's edge in the accent, as the mockup marks the chosen one.
+    public string BorderKey => IsPicked ? "CockpitAccentBrush" : "CockpitHairlineBrush";
+
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BorderKey))]
     private bool _isPicked = option.Selected;
 }

@@ -50,4 +50,14 @@ public sealed record ConsentRequest(
     /// <see cref="PreApprovedBy"/> is set, since only the operator can pick. A plugin that sets it needs minHostVersion 0.117.0.
     /// </summary>
     public IReadOnlyList<ConsentChoice>? Choices { get; init; }
+
+    /// <summary>
+    /// The approve button's text on a card with choices, naming what approving does ("Share watching"); "Approve" when unset.
+    /// </summary>
+    public string? ApproveLabel { get; init; }
+
+    /// <summary>
+    /// What this approval never covers, whatever is picked, shown as its own warning block on a card with choices.
+    /// </summary>
+    public IReadOnlyList<string>? Never { get; init; }
 }

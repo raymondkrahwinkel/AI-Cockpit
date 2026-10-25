@@ -2168,8 +2168,7 @@ internal static partial class Screenshotter
                             Guid.NewGuid(),
                             new ConsentRequest(
                                 "Share this tab with an agent",
-                                "github.com/raymondkrahwinkel/AI-Cockpit/pull/1416 · profile Raymond (signed in)\n"
-                                + "Never, not even later: cookies and storage, saved passwords and autofill, other tabs, downloads and uploads, DevTools.",
+                                "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416 · profile Raymond (signed in)\nUntil you stop, the tab closes or the session ends.",
                                 new ConsentSource(null, "browser", "Browser"),
                                 "browser.share",
                                 ConsentRisk.Dangerous)
@@ -2180,10 +2179,12 @@ internal static partial class Screenshotter
                                         new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true),
                                         new ConsentOption("pane-1720", "AC-1720 verify login · Claude")]),
                                     new ConsentChoice("mode", "What the agent may do", [
-                                        new ConsentOption("watch", "Watch", "URL, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
-                                        new ConsentOption("control", "Control", "Click, type, scroll and navigate within github.com. Not in this version.", Enabled: false)],
+                                        new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
+                                        new ConsentOption("control", "Control", "Click, type, scroll and navigate within github.com. Every form submission asks again.", Enabled: false) { Note = "not in this version" }],
                                         AllowMultiple: true),
                                 ],
+                                ApproveLabel = "Share watching",
+                                Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"],
                             },
                             CanRemember: false),
                         new _NoConsentPrompts()),

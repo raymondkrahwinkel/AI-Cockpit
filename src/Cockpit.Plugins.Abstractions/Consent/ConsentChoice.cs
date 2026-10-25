@@ -37,4 +37,10 @@ public sealed record ConsentChoice(string Key, string Label, IReadOnlyList<Conse
 /// <param name="Enabled">
 /// False shows the option but refuses it: an approval that names a disabled option is a denial.
 /// </param>
-public sealed record ConsentOption(string Value, string Label, string? Detail = null, bool Selected = false, bool Enabled = true);
+public sealed record ConsentOption(string Value, string Label, string? Detail = null, bool Selected = false, bool Enabled = true)
+{
+    /// <summary>
+    /// A short tag beside the label, such as why a disabled option cannot be picked ("not in this version").
+    /// </summary>
+    public string? Note { get; init; }
+}
