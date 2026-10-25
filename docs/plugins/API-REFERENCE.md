@@ -123,7 +123,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
 | `profiles.read` | Reading the configured profiles | Sensitive | 0.3.0 | — | `ICockpitHost.GetProfilesAsync` |
-| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
+| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitHost.CurrentMcpCaller`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
 | `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionStatuslineAsync`, `ICockpitHost.SetSessionName`, `ICockpitHost.SetSessionNameAsync`, `ICockpitHost.SuggestSessionName` |
 | `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitUiHost.ShowNewSessionDialogAsync` |
 | `workflows.steps` | Steps and templates for workflows | Sensitive | 0.3.0 | — | `ICockpitHost.AddWorkflowStep`, `ICockpitHost.WorkflowSteps`, `ICockpitHost.AddWorkflowTemplate`, `ICockpitHost.WorkflowTemplates` |

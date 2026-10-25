@@ -545,7 +545,10 @@
          that uses either sets minHostVersion 0.107.0. Additive; the major and abstractionsVersion stay 3. -->
     <!-- 3.19.0 (AC-1724): added ICockpitActions.SendPromptToSessionAsync, a prompt into a running session behind the
          host's own confirmation card. A plugin that calls it sets minHostVersion 0.108.0. Additive; still v3. -->
-    <Version>3.19.0</Version>
+    <!-- 3.20.0 (AC-1685): ICockpitHost.CurrentMcpCaller with McpCaller/McpCallerKind, the transport-verified caller's
+         kind (assistant, session or remote) and connect-key label. A plugin that reads it sets minHostVersion 0.109.0;
+         an older host answers null, which an owner-only tool refuses. Additive; the major and abstractionsVersion stay 3. -->
+    <Version>3.20.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

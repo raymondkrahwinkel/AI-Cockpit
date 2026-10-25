@@ -257,6 +257,7 @@ public interface ICockpitHost
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
+    McpCaller? CurrentMcpCaller { get; }                        // who is behind the MCP call being handled (AC-1685)
     void AddProjectField(ProjectFieldRegistration registration); // a field on the project editor (AC-317)
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // and what it was set to
@@ -773,6 +774,26 @@ the underlying URL/token can change — see the YouTrack plugin's `YouTrackMcpRe
 pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-namespace--mcp-server-registration).
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
+
+### Who is calling your MCP tool {#who-is-calling-your-mcp-tool}
+
+A tool your plugin hosts in-process can ask who called it. `host.CurrentMcpCaller` holds the caller's `PaneId`,
+its `Kind` (`Assistant`, `Session` or `Remote`), and `ViaConnectKeyLabel` for a remote caller that used a connect
+key. The host reads all of it from the request's own credential, never from the tool's arguments, so a session
+cannot pass itself off as the assistant. The operator's UI reaches your plugin through its own channel, not
+through MCP, so that path never needs this check.
+
+It is null outside an MCP call and on a host older than `0.109.0`. A tool meant only for the owner treats null as
+"unknown" and refuses (fail closed):
+
+```csharp
+if (host.CurrentMcpCaller is not { Kind: McpCallerKind.Assistant })
+{
+    return "Only the owner's assistant may create a card.";
+}
+```
+
+A plugin that reads it sets `minHostVersion` to `0.109.0`.
 
 ## Project fields — link a project to your side of the world {#project-fields--link-a-project-to-your-side-of-the-world}
 

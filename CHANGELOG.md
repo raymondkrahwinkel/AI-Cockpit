@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin's MCP tool can see who is calling it — your assistant, an ordinary session, or a remote caller
+  with the connect key's name — as the cockpit verified it, so a tool meant only for you can refuse everyone else.
 - added: a plugin can hand a running session a prompt, on SDK and terminal sessions alike, but only after you press
   Send on the cockpit's own confirmation card on that session. The card names the plugin, the session, its reason and
   the full text; it is never remembered and the consent bypass in Options does not skip it.
