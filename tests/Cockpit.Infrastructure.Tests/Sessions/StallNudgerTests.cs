@@ -14,25 +14,6 @@ public class StallNudgerTests
     private static readonly SessionTurnEnd Completed = new(false, false, false, null, null, null);
 
     [Fact]
-    public void AnAssistantSessionWithoutToolActivity_IsNotNudged()
-    {
-        var handle = Substitute.For<ISessionHandle>();
-        handle.PaneId.Returns("echo");
-        handle.StartedByTheAssistant.Returns(true);
-        handle.LiveState.Returns(SessionLiveState.None);
-        handle.ReadWakeStateAsync().Returns(new SessionWakeState(false, SessionStatus.Idle, true));
-        var registry = Substitute.For<ISessionRegistry>();
-        registry.All.Returns(new[] { handle });
-        var inbox = Substitute.For<IAgentMessageInbox>();
-        using var nudger = new StallNudger(inbox);
-        nudger.Start(registry);
-
-        _Turn(handle);
-
-        Assert.Empty(inbox.ReceivedCalls());
-    }
-
-    [Fact]
     public void ASessionOfTheAssistant_IsNudgedOnceAfterAStall_AndReportedToTheAssistantOnTheNext()
     {
         var handle = Substitute.For<ISessionHandle>();
@@ -46,6 +27,9 @@ public class StallNudgerTests
         var inbox = Substitute.For<IAgentMessageInbox>();
         using var nudger = new StallNudger(inbox);
         nudger.Start(registry);
+
+        _Turn(handle);
+        Assert.Empty(inbox.ReceivedCalls());
 
         _Turn(handle, "mcp__cockpit-agents__notify", "mcp__cockpit-session__set_status");
         Assert.Empty(inbox.ReceivedCalls());
