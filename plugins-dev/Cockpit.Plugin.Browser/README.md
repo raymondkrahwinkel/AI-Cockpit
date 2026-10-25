@@ -88,7 +88,7 @@ both the download and the unpacked size per platform, and `CefRuntimePackage.Dow
 
 The store has one zip per platform for this plugin: `browser-<version>-<rid>.zip` for `win-x64`, `win-arm64`,
 `linux-x64` and `linux-arm64`, listed under the version's `packages` in the store index. A cockpit downloads the
-zip for its own platform (host 0.116.0 and later, hence `minHostVersion`). macOS has no zip yet, so a Mac shows the
+zip for its own platform (host 0.118.0 and later, hence `minHostVersion`). macOS has no zip yet, so a Mac shows the
 plugin as incompatible with "No package for osx-arm64" instead of installing a browser that cannot start.
 
 - **Why per platform:** each zip carries the subprocess as a **self-contained** publish in `Subprocess/`. A user's
