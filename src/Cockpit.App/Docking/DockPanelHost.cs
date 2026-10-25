@@ -4,6 +4,8 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Plugins.Abstractions.Docking;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Docking;
 
@@ -126,8 +128,10 @@ public sealed class DockPanelHost
         }
 
         var window = new DockPanelWindow(registration, _registry.ViewFor(registration), _boundsStore());
-        window.DockBackRequested += (_, _) => _ = ShowInAsync(panelId, floating: false);
-        window.Closed += (_, _) => _OnWindowClosed(panelId, window);
+        window.DockBackRequested += async (_, _) =>
+            await _LoggedAsync(() => ShowInAsync(panelId, floating: false), "Docking a panel back from its window failed.").ConfigureAwait(true);
+        window.Closed += async (_, _) =>
+            await _LoggedAsync(() => _OnWindowClosedAsync(panelId, window), "Saving a dock panel's stand after its window closed failed.").ConfigureAwait(true);
         _windows[panelId] = window;
 
         // Ownerless like the assistant's window, so it can stand behind the cockpit; closed with it by hand.
@@ -153,7 +157,7 @@ public sealed class DockPanelHost
 
     // The window lets go of the view so the rail can take it. A close the operator made (×) docks the panel back to
     // its tab without opening the rail: a floating panel with no window would be reachable from nowhere.
-    private void _OnWindowClosed(string panelId, DockPanelWindow window)
+    private async Task _OnWindowClosedAsync(string panelId, DockPanelWindow window)
     {
         _windows.Remove(panelId);
         window.ReleaseView();
@@ -161,7 +165,20 @@ public sealed class DockPanelHost
         if (!_closingWithTheCockpit && _cockpit.IsDockPanelFloating(panelId))
         {
             _cockpit.SetDockPanelFloating(panelId, false);
-            _ = _cockpit.PersistDockStandAsync();
+            await _cockpit.PersistDockStandAsync().ConfigureAwait(true);
+        }
+    }
+
+    // The window's events are the callers here and cannot await, so a failed move or write is logged, never lost.
+    private static async Task _LoggedAsync(Func<Task> work, string failure)
+    {
+        try
+        {
+            await work().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            Program.Services?.GetService<ILogger<DockPanelHost>>()?.LogWarning(exception, failure);
         }
     }
 
