@@ -35,10 +35,22 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         var projects = await host.GetProjectsAsync().ConfigureAwait(false);
         var settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
         var now = DateTimeOffset.Now;
-        var attention = AttentionTime.Compute(timeline, entries, AttentionSettings.Default, now < request.To ? now : request.To);
+        var until = now < request.To ? now : request.To;
+        var attention = AttentionTime.Compute(timeline, entries, AttentionSettings.Default, until);
+        var historicalMeasured = AttentionTime.MeasuredFromDays(timeline.Days, AttentionSettings.Default);
+        var agentPerProject = AttentionTime.AgentWithoutYouPerProject(timeline, AttentionSettings.Default.BlockLength, until);
         var days = _OverviewDays(request, timeline, entries, now);
         var tickets = _OverviewTickets(request, timeline, now);
-        return new ProductivityOverviewSnapshot(attention, days, tickets, settings.ScheduleMinutes, entries, timeline, projects);
+        return new ProductivityOverviewSnapshot(
+            attention,
+            days,
+            tickets,
+            historicalMeasured,
+            agentPerProject,
+            settings.ScheduleMinutes,
+            entries,
+            timeline,
+            projects);
     }
 
     private static IReadOnlyList<ProductivityTicketTime> _OverviewTickets(
@@ -47,7 +59,7 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         DateTimeOffset now)
     {
         var result = timeline.Lines
-            .Where(line => !string.IsNullOrWhiteSpace(line.Ticket))
+            .Where(line => string.IsNullOrWhiteSpace(line.Ticket) is false)
             .GroupBy(line => line.Ticket ?? string.Empty, StringComparer.Ordinal)
             .Select(group =>
             {
@@ -61,7 +73,7 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
                     group.Key,
                     lines.Select(line => line.ProjectId).LastOrDefault(project => project is not null),
                     attention.YourTime,
-                    lines.Select(line => line.Statusline).LastOrDefault(status => !string.IsNullOrWhiteSpace(status)));
+                    lines.Select(line => line.Statusline).LastOrDefault(status => string.IsNullOrWhiteSpace(status) is false));
             })
             .ToDictionary(ticket => ticket.Ticket, StringComparer.Ordinal);
         foreach (var day in timeline.Days)
@@ -82,21 +94,36 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         DateTimeOffset now)
     {
         var result = new List<ProductivityOverviewDay>();
-        for (var from = request.From; from < request.To; from = from.AddDays(1))
+        for (var day = DateOnly.FromDateTime(request.From.LocalDateTime); ; day = day.AddDays(1))
         {
-            var to = from.AddDays(1) < request.To ? from.AddDays(1) : request.To;
-            var day = DateOnly.FromDateTime(from.LocalDateTime);
+            var midnight = _AtLocalTime(day);
+            var from = midnight < request.From ? request.From : midnight;
+            if (from >= request.To)
+            {
+                break;
+            }
+
+            var next = _AtLocalTime(day.AddDays(1));
+            var to = next < request.To ? next : request.To;
             var dayTimeline = new CockpitTimeline(
                 [.. timeline.Lines.Where(line => line.At >= from && line.At < to)],
                 [.. timeline.Usage.Where(usage => usage.RecordedAt >= from && usage.RecordedAt < to)],
                 [.. timeline.Days.Where(value => value.Day == day)]);
             var dayEntries = entries.Where(entry => entry.StartedAt >= from && entry.StartedAt < to).ToList();
+            var historical = AttentionTime.MeasuredFromDays(dayTimeline.Days, AttentionSettings.Default);
             result.Add(new ProductivityOverviewDay(
                 day,
-                AttentionTime.Compute(dayTimeline, dayEntries, AttentionSettings.Default, now < to ? now : to)));
+                AttentionTime.Compute(dayTimeline, dayEntries, AttentionSettings.Default, now < to ? now : to),
+                TimeSpan.FromTicks(historical.Sum(project => project.Time.Ticks))));
         }
 
         return result;
+    }
+
+    private static DateTimeOffset _AtLocalTime(DateOnly date)
+    {
+        var local = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
     }
 
     private async Task<ProductivitySnapshot> _SnapshotAsync(ProductivitySnapshotRequest request)

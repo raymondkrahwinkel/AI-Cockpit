@@ -217,6 +217,39 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Equal("8u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
         Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
         _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
+
+        var historicalDay = _Local(2025, 1, 6);
+        _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
+        _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
+        _Click(overviewScreen, "ApplyCustomRange");
+        await _Until(
+            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "3u00",
+            "the historical aggregate including agent time");
+        Assert.Equal("geen prijs", _Control<SharedParts.StatTile>(overviewScreen, "CostTile").Value);
+        Assert.Contains("legacy-model", _Texts(overviewScreen));
+        Assert.Contains("3u00", _Texts(overviewScreen));
+
+        _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay.AddDays(1);
+        _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
+        _Click(overviewScreen, "ApplyCustomRange");
+        await _Until(
+            () => _Texts(overviewScreen).Contains("De begindatum moet op of vóór de einddatum liggen."),
+            "custom range validation");
+        Assert.Contains("ma 6 – ma 6 jan 2025", _Texts(overviewScreen));
+        _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
+        _Click(overviewScreen, "ApplyCustomRange");
+        await _Until(
+            () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "3u00",
+            "the valid range after validation");
+
+        var dst = await channel.InvokeAsync(
+            "productivity.overview.snapshot",
+            JsonSerializer.SerializeToElement(
+                new { from = _Local(2026, 3, 23), to = _Local(2026, 4, 7) }));
+        var transitionDay = dst.GetProperty("days").EnumerateArray().Single(day => day.GetProperty("day").GetString() == "2026-03-30");
+        Assert.Equal(
+            TimeSpan.FromMinutes(10),
+            TimeSpan.Parse(transitionDay.GetProperty("yourTime").GetString() ?? string.Empty));
     });
 
     private static DateTimeOffset _Local(int year, int month, int day)
@@ -340,6 +373,19 @@ public sealed class ProductivityHoursJourneyTests
     {
         public Task<CockpitTimeline> QueryAsync(DateTimeOffset from, DateTimeOffset to, CockpitTimelineFilter? filter = null, CancellationToken cancellationToken = default)
         {
+            if (from.Date == new DateTime(2025, 1, 6))
+            {
+                return Task.FromResult(new CockpitTimeline(
+                    [],
+                    [],
+                    [new CockpitTimelineDay("legacy-session", new DateOnly(2025, 1, 6), "syn-portal", "legacy-run", ["SYN-100"], TimeSpan.FromHours(2), TimeSpan.Zero, 6, 100, 50, 0, 0, 0, 1, "legacy-model")]));
+            }
+
+            if (from.Date == new DateTime(2026, 3, 23))
+            {
+                return Task.FromResult(new CockpitTimeline([_Act(_Local(2026, 3, 30).AddMinutes(30), "syn-api")], [], []));
+            }
+
             if (from.Date == new DateTime(2026, 10, 19))
             {
                 return Task.FromResult(_Week43(from, to));

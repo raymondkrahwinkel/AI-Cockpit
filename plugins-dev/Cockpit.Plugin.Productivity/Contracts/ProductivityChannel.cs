@@ -38,16 +38,23 @@ internal sealed record ProductivityOverviewSnapshot(
     AttentionTime Attention,
     IReadOnlyList<ProductivityOverviewDay> Days,
     IReadOnlyList<ProductivityTicketTime> Tickets,
+    IReadOnlyList<ProjectTime> HistoricalMeasuredPerProject,
+    IReadOnlyList<ProjectTime> AgentWithoutYouPerProject,
     int[] ScheduleMinutes,
     IReadOnlyList<CockpitTimeEntry> Entries,
     CockpitTimeline Timeline,
     IReadOnlyList<PluginProjectInfo> Projects)
 {
-    public TimeSpan YourTime => Attention.YourTime;
-    public TimeSpan WithAgentWithoutYou => Attention.YourTime + Attention.AgentWithoutYou;
+    public TimeSpan YourTime => Attention.YourTime + _Sum(HistoricalMeasuredPerProject.Select(project => project.Time));
+    public TimeSpan WithAgentWithoutYou => YourTime + _Sum(AgentWithoutYouPerProject.Select(project => project.Time));
+
+    private static TimeSpan _Sum(IEnumerable<TimeSpan> values) => TimeSpan.FromTicks(values.Sum(value => value.Ticks));
 }
 
-internal sealed record ProductivityOverviewDay(DateOnly Day, AttentionTime Attention);
+internal sealed record ProductivityOverviewDay(DateOnly Day, AttentionTime Attention, TimeSpan HistoricalMeasured)
+{
+    public TimeSpan YourTime => Attention.YourTime + HistoricalMeasured;
+}
 
 internal sealed record ProductivityTicketTime(
     string Ticket,

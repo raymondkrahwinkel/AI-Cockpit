@@ -9,6 +9,10 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TimeProvider _time = time;
+    private DateOnly _lastValidFrom = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime));
+    private DateOnly _lastValidTo = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime)).AddDays(4);
+    private string _lastValidRange = "Werkweek";
+    private bool _disposed;
 
     public event Action? Changed;
 
@@ -53,10 +57,23 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 
     public async Task SetCustomRangeAsync(DateOnly from, DateOnly to)
     {
+        if (from > to)
+        {
+            Error = "De begindatum moet op of vóór de einddatum liggen.";
+            _PublishChanged();
+            return;
+        }
+
         SelectedRange = "Eigen bereik";
-        From = from <= to ? from : to;
-        To = from <= to ? to : from;
+        From = from;
+        To = to;
         await RefreshAsync().ConfigureAwait(false);
+    }
+
+    public void ReportMissingCustomRange()
+    {
+        Error = "Kies zowel een begin- als einddatum.";
+        _PublishChanged();
     }
 
     public async Task MoveAsync(int direction)
@@ -85,16 +102,27 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 
     public async Task RefreshAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
             var request = new ProductivityOverviewRequest(_AtLocalTime(From), _AtLocalTime(To.AddDays(1)));
             Snapshot = await _AskAsync<ProductivityOverviewSnapshot>(ProductivityChannel.Overview, request).ConfigureAwait(false);
             Error = null;
+            _lastValidFrom = From;
+            _lastValidTo = To;
+            _lastValidRange = SelectedRange;
         }
         catch (Exception exception)
         {
             Error = exception.Message;
+            From = _lastValidFrom;
+            To = _lastValidTo;
+            SelectedRange = _lastValidRange;
         }
         finally
         {
@@ -103,7 +131,11 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
         }
     }
 
-    public void Dispose() => _gate.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        Changed = null;
+    }
 
     private async Task<T> _AskAsync<T>(string action, object request)
     {
@@ -124,6 +156,11 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 
     private void _PublishChanged()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (Dispatcher.UIThread.CheckAccess())
         {
             Changed?.Invoke();

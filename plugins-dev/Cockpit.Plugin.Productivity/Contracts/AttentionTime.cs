@@ -42,6 +42,41 @@ internal sealed record AttentionTime(
     public static IReadOnlyList<ProjectTime> MeasuredFromDays(IEnumerable<CockpitTimelineDay> days, AttentionSettings settings) =>
         [.. days.GroupBy(day => day.ProjectId).Select(group => new ProjectTime(group.Key, settings.BlockLength * group.Sum(day => day.OperatorActions))).OrderByDescending(project => project.Time)];
 
+    public static IReadOnlyList<ProjectTime> AgentWithoutYouPerProject(
+        CockpitTimeline timeline,
+        TimeSpan blockLength,
+        DateTimeOffset until)
+    {
+        const string none = "";
+        var result = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
+        var measured = _Blocks(timeline.Lines, blockLength);
+        foreach (var span in _Subtract(_Busy(timeline.Lines, until), measured))
+        {
+            var pane = span.Owner ?? none;
+            var changes = timeline.Lines
+                .Where(line => line.PaneId == pane && line.ProjectId is not null && line.At < span.End)
+                .OrderBy(line => line.At)
+                .ToList();
+            var project = changes.LastOrDefault(line => line.At <= span.Start)?.ProjectId ?? none;
+            var cursor = span.Start;
+            foreach (var change in changes.Where(line => line.At > span.Start))
+            {
+                _Add(result, project, change.At - cursor);
+                project = change.ProjectId ?? none;
+                cursor = change.At;
+            }
+
+            _Add(result, project, span.End - cursor);
+        }
+
+        foreach (var day in timeline.Days)
+        {
+            _Add(result, day.ProjectId ?? none, day.AgentTime);
+        }
+
+        return [.. result.Select(pair => new ProjectTime(pair.Key.Length == 0 ? null : pair.Key, pair.Value)).OrderByDescending(project => project.Time)];
+    }
+
     public static AttentionTime Compute(
         CockpitTimeline timeline,
         IReadOnlyList<CockpitTimeEntry> ownEntries,
@@ -179,4 +214,7 @@ internal sealed record AttentionTime(
     }
 
     private static TimeSpan _Sum(IEnumerable<TimeSpan> values) => TimeSpan.FromTicks(values.Sum(value => value.Ticks));
+
+    private static void _Add(Dictionary<string, TimeSpan> values, string key, TimeSpan value) =>
+        values[key] = values.GetValueOrDefault(key) + value;
 }

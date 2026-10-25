@@ -32,13 +32,19 @@ internal sealed class OverviewWorkspaceBody : UserControl
     {
         _body.Children.Clear();
         _body.Children.Add(_Header());
+        _body.Children.Add(_RangeCard());
+        if (_controller.Error is { } error)
+        {
+            _body.Children.Add(Ui.Card(Ui.Hint(error), 14));
+            return;
+        }
+
         if (_controller.Snapshot is not { } snapshot)
         {
             _body.Children.Add(Ui.Card(Ui.Hint(_controller.Error ?? "Overzicht laden…"), 14));
             return;
         }
 
-        _body.Children.Add(_RangeCard());
         _body.Children.Add(_Tiles(snapshot, _controller.IncludeAgentWithoutYou, _controller.From, _controller.To));
         _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
         _body.Children.Add(_Entries(snapshot));
@@ -133,6 +139,10 @@ internal sealed class OverviewWorkspaceBody : UserControl
             {
                 await _controller.SetCustomRangeAsync(DateOnly.FromDateTime(from.Date), DateOnly.FromDateTime(to.Date));
             }
+            else
+            {
+                _controller.ReportMissingCustomRange();
+            }
         };
         var custom = new StackPanel
         {
@@ -147,9 +157,17 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private static Control _Tiles(ProductivityOverviewSnapshot snapshot, bool includeAgent, DateOnly from, DateOnly to)
     {
         var tiles = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*"), ColumnSpacing = 10 };
-        var measured = snapshot.Attention.Measured - snapshot.Attention.Overlap;
-        var sessions = snapshot.Attention.Agents.Select(span => span.Owner).Where(owner => owner is not null).Distinct(StringComparer.Ordinal).Count();
+        var historicalMeasured = TimeSpan.FromTicks(snapshot.HistoricalMeasuredPerProject.Sum(project => project.Time.Ticks));
+        var measured = snapshot.Attention.Measured - snapshot.Attention.Overlap + historicalMeasured;
+        var sessions = snapshot.Attention.Agents.Select(span => span.Owner)
+            .Concat(snapshot.Timeline.Days.Select(day => day.PaneId))
+            .Where(owner => owner is not null)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
         var cost = snapshot.Timeline.Usage.Sum(usage => usage.CostUsd) + snapshot.Timeline.Days.Sum(day => day.ReportedCostUsd);
+        var tokens = snapshot.Timeline.Usage.Sum(usage => (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens)
+            + snapshot.Timeline.Days.Sum(day => (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens);
+        var costText = cost == 0 && tokens > 0 ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture);
         var schedule = _ScheduledMinutes(snapshot.ScheduleMinutes, from, to);
         var values = new[]
         {
@@ -178,8 +196,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             {
                 Name = "CostTile",
                 Label = "Kosten",
-                Value = cost.ToString("$0.00", CultureInfo.InvariantCulture),
-                Detail = $"{cost.ToString("$0.##", CultureInfo.InvariantCulture)} gemeld",
+                Value = costText,
+                Detail = costText == "geen prijs" ? $"{_Tokens(tokens)} tokens · geen tarief" : $"{cost.ToString("$0.##", CultureInfo.InvariantCulture)} gemeld",
             },
             new StatTile
             {
@@ -264,7 +282,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 {
                     return new GroupedBarDatum(
                         day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch),
-                        day.Attention.YourTime.TotalHours,
+                        day.YourTime.TotalHours,
                         day.Attention.AgentTime.TotalHours);
                 }),
             ],
@@ -365,7 +383,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             row.Children.Add(chart);
             var total = new TextBlock
             {
-                Text = Ui.Duration(project.Measured + project.Own),
+                Text = Ui.Duration(project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero)),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 FontWeight = FontWeight.SemiBold,
             };
@@ -381,24 +399,16 @@ internal sealed class OverviewWorkspaceBody : UserControl
     {
         const string none = "";
         var names = snapshot.Projects.ToDictionary(project => project.Id, project => project.Name, StringComparer.Ordinal);
-        var measured = snapshot.Attention.MeasuredPerProject.ToDictionary(project => project.ProjectId ?? none, project => project.Time, StringComparer.Ordinal);
+        var measured = snapshot.Attention.MeasuredPerProject
+            .Concat(snapshot.HistoricalMeasuredPerProject)
+            .GroupBy(project => project.ProjectId ?? none, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(project => project.Time.Ticks)), StringComparer.Ordinal);
         var own = snapshot.Entries
             .GroupBy(entry => entry.ProjectId ?? none, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(entry => entry.Duration.Ticks)), StringComparer.Ordinal);
-        var agent = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
-        if (includeAgent)
-        {
-            foreach (var session in snapshot.Attention.AgentWithoutYouPerSession)
-            {
-                var id = snapshot.Timeline.Lines
-                    .Where(line => line.PaneId == session.Key && line.ProjectId is not null)
-                    .OrderBy(line => line.At)
-                    .LastOrDefault()?.ProjectId
-                    ?? snapshot.Timeline.Days.LastOrDefault(day => day.PaneId == session.Key)?.ProjectId
-                    ?? none;
-                agent[id] = agent.GetValueOrDefault(id) + session.Value;
-            }
-        }
+        var agent = includeAgent
+            ? snapshot.AgentWithoutYouPerProject.ToDictionary(project => project.ProjectId ?? none, project => project.Time, StringComparer.Ordinal)
+            : new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
 
         return measured.Keys.Concat(own.Keys).Concat(agent.Keys).Distinct(StringComparer.Ordinal)
             .Select(id =>
@@ -430,20 +440,44 @@ internal sealed class OverviewWorkspaceBody : UserControl
         var active = snapshot.Attention.Agents
             .GroupBy(span => span.Owner ?? string.Empty, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(span => span.Duration.Ticks)), StringComparer.Ordinal);
-        foreach (var usage in snapshot.Timeline.Usage.GroupBy(value => value.PaneId, StringComparer.Ordinal))
+        foreach (var day in snapshot.Timeline.Days)
         {
-            var tokens = usage.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens);
-            var cost = usage.Sum(value => value.CostUsd);
+            active[day.PaneId] = active.GetValueOrDefault(day.PaneId) + day.AgentTime;
+        }
+
+        var rawUsage = snapshot.Timeline.Usage.GroupBy(value => value.PaneId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        var historical = snapshot.Timeline.Days.GroupBy(value => value.PaneId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        var sessions = rawUsage.Keys.Concat(historical.Keys).Concat(active.Keys).Distinct(StringComparer.Ordinal).ToList();
+        foreach (var session in sessions)
+        {
+            var usage = rawUsage.GetValueOrDefault(session) ?? [];
+            var days = historical.GetValueOrDefault(session) ?? [];
+            var tokens = usage.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens)
+                + days.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens);
+            var cost = usage.Sum(value => value.CostUsd) + days.Sum(value => value.ReportedCostUsd);
+            var model = usage.Select(value => value.Model)
+                .Concat(days.Select(value => value.Model))
+                .LastOrDefault(value => string.IsNullOrWhiteSpace(value) is false)
+                ?? "onbekend";
+            var withoutYou = snapshot.Attention.AgentWithoutYouPerSession.GetValueOrDefault(session)
+                + TimeSpan.FromTicks(days.Sum(value => value.AgentTime.Ticks));
             body.Children.Add(_TableRow(
                 [
-                    usage.Key,
-                    usage.Select(value => value.Model).LastOrDefault(model => !string.IsNullOrWhiteSpace(model)) ?? "onbekend",
-                    Ui.Duration(active.GetValueOrDefault(usage.Key)),
-                    Ui.Duration(snapshot.Attention.AgentWithoutYouPerSession.GetValueOrDefault(usage.Key)),
+                    session,
+                    model,
+                    Ui.Duration(active.GetValueOrDefault(session)),
+                    Ui.Duration(withoutYou),
                     _Tokens(tokens),
                     cost == 0 && tokens > 0 ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
                 "2*,*,70,80,80,80"));
+        }
+
+        if (sessions.Count == 0)
+        {
+            body.Children.Add(Ui.Hint("Geen agents in dit bereik."));
         }
 
         return Ui.Card(body, 14);
@@ -474,6 +508,11 @@ internal sealed class OverviewWorkspaceBody : UserControl
                     Ui.Status(entry),
                 ],
                 "80,*,160,70,90"));
+        }
+
+        if (snapshot.Entries.Count == 0)
+        {
+            body.Children.Add(Ui.Hint("Geen eigen regels in dit bereik."));
         }
 
         return Ui.Card(body, 14);
