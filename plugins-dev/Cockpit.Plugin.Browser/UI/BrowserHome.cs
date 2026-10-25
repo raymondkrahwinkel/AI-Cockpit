@@ -24,10 +24,7 @@ internal sealed class BrowserHome
         shell.PlacementRequested += () =>
         {
             MoveTo(Place == BrowserPlace.Tab ? BrowserPlace.Rail : BrowserPlace.Tab);
-            if (_attached.Any(slot => slot.Place == Place) == false)
-            {
-                MovedOutOfSight?.Invoke(Place);
-            }
+            Moved?.Invoke(Place);
         };
     }
 
@@ -35,8 +32,8 @@ internal sealed class BrowserHome
 
     public BrowserPlace Place { get; private set; } = BrowserPlace.Tab;
 
-    // The operator moved the browser to a place that is not on screen, e.g. a collapsed rail.
-    public event Action<BrowserPlace>? MovedOutOfSight;
+    // The operator moved the browser; the UI part brings that place on screen (the rail, or the tab).
+    public event Action<BrowserPlace>? Moved;
 
     public BrowserSlot CreateSlot(BrowserPlace place) => new(this, place);
 

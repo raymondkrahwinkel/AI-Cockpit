@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Material.Icons;
@@ -8,10 +9,13 @@ using Material.Icons;
 namespace Cockpit.Plugin.Browser.UI;
 
 // The UI half of the browser plugin: the engine's version in the settings (AC-1727) and Raymond's browser as a tab
-// (AC-1711). Nothing touches CEF until the browser is first opened; disposing shuts the engine down on the UI thread.
+// and in the rail, one browser in either place (AC-1711). Nothing touches CEF until the browser is first opened;
+// disposing shuts the engine down on the UI thread.
 public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 {
     public const string WorkspaceTypeId = "browser.tab";
+
+    public const string DockPanelId = "browser.rail";
 
     private BrowserHome? _home;
 
@@ -25,6 +29,13 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         {
             IconKind = MaterialIconKind.Web,
             Description = "Browse the web with your own profile",
+        });
+
+        // KeepAlive: one slot for the plugin's lifetime, so collapsing the rail or floating it never rebuilds the page.
+        host.AddDockPanel(new DockPanelRegistration(DockPanelId, "Browser", MaterialIconKind.Web, () => _Home(host).CreateSlot(BrowserPlace.Rail))
+        {
+            KeepAlive = true,
+            CanFloat = true,
         });
     }
 
@@ -46,9 +57,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             }
         });
         _home = new BrowserHome(shell);
-        _home.MovedOutOfSight += place => host.ShowToast(place == BrowserPlace.Rail
-            ? "The browser is in the rail: open Browser there to see it"
-            : "The browser is back in its tab: open the Browser tab to see it");
+        _home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
         return _home;
     }
 }
