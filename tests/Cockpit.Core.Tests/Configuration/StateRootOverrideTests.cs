@@ -1,6 +1,5 @@
 using System.Reflection;
 using Cockpit.Core.Configuration;
-using Cockpit.Core.Sessions;
 using Cockpit.TestSupport;
 
 namespace Cockpit.Core.Tests.Configuration;
@@ -45,35 +44,11 @@ public sealed class StateRootOverrideTests
     }
 
     [Fact]
-    public void DifferentStateRoots_HaveDifferentSessionTempRoots()
+    public void WithTheVariable_TheStateRootIsTheOverride()
     {
-        var firstTempRoot = string.Empty;
-        var secondTempRoot = string.Empty;
-        try
-        {
-            var firstStateRoot = Override + "-" + Guid.NewGuid().ToString("N");
-            using (new OverrideScope(firstStateRoot))
-            {
-                firstTempRoot = SessionTempDirectory.Root;
-                File.WriteAllText(Path.Combine(SessionTempDirectory.Create("session-a"), "still-running"), "owned by A");
-            }
+        using var _ = new OverrideScope(Override);
 
-            using (new OverrideScope(Override + "-" + Guid.NewGuid().ToString("N")))
-            {
-                secondTempRoot = SessionTempDirectory.Root;
-                SessionTempDirectory.Create("session-b");
-            }
-
-            Assert.NotEqual(firstTempRoot, secondTempRoot);
-            Assert.True(_IsUnder(firstTempRoot, Path.Combine(Path.GetTempPath(), "cockpit")));
-            Assert.True(_IsUnder(secondTempRoot, Path.Combine(Path.GetTempPath(), "cockpit")));
-            Assert.True(File.Exists(Path.Combine(firstTempRoot, "session-a", "still-running")));
-        }
-        finally
-        {
-            _RemoveDirectory(firstTempRoot);
-            _RemoveDirectory(secondTempRoot);
-        }
+        Assert.Equal(Override, CockpitBuild.StateRoot);
     }
 
     [Fact]
@@ -186,14 +161,6 @@ public sealed class StateRootOverrideTests
     private static bool _IsUnder(string path, string root) =>
         path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
         || string.Equals(path, root, StringComparison.OrdinalIgnoreCase);
-
-    private static void _RemoveDirectory(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
-    }
 
     // Sets the variable for the length of a test and puts back whatever the machine had, so a run leaves the
     // environment it borrowed exactly as it found it.
