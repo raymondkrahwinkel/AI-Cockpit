@@ -20,15 +20,6 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
     // template (a measure/layout pass) — constructing the control alone is not enough (BuildTraps' "add-a-row"
     // lesson applies just as much to reading a freshly-built control), so every check below shows the button in a
     // real window first.
-    [Fact]
-    public void NoBadge_RendersNoPill_ExactlyLikeBeforeAC516() => HeadlessAvalonia.Run(() =>
-    {
-        var launcher = new PluginLauncherButton("Workflows", () => { });
-        using var shown = _Show(launcher);
-
-        Assert.Empty(launcher.GetVisualDescendants().OfType<Border>());
-    });
-
     [Theory]
     [InlineData(0, "0")]
     [InlineData(3, "3")]
@@ -102,6 +93,10 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
     [Fact]
     public void MeasuredWidths_NoBadge_OneDigit_ThreeDigits_AndTheWidestTwoCounterForm() => HeadlessAvalonia.Run(() =>
     {
+        var launcherWithoutBadge = new PluginLauncherButton("Workflows", () => { });
+        using var shownWithoutBadge = _Show(launcherWithoutBadge);
+        Assert.Empty(launcherWithoutBadge.GetVisualDescendants().OfType<Border>());
+
         double Measure(SideMenuButtonBadge? badge)
         {
             var launcher = new PluginLauncherButton("Open PR's", () => { }, badge: badge);
