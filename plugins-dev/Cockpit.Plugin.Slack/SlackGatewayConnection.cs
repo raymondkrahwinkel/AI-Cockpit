@@ -122,7 +122,8 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         string? channelType,
         string expectedChannel) =>
         botId is null
-        && (channel != expectedChannel || channelType != "im")
+        && channel == expectedChannel
+        && channelType == "im"
         && (subtype is null || !_ignoredSubtypes.Contains(subtype));
 
     // A message arrived on the socket.
