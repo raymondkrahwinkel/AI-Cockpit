@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Discord;
 
 // Owns the Discord.NET socket connection for one open assistant channel (AC-1024), wiring inbound messages and
 // button clicks into a `DiscordChannelBridge`. A bad token fails at `LoginAsync`, before `StartAsync` runs, so it is
-// reported once with no reconnect loop. A channel id of 0 means direct messages with the one allowed account (AC-1360).
+// reported once with no reconnect loop. Messages are exchanged only through DMs with the linked account.
 internal sealed class DiscordGatewayConnection : IDisposable
 {
     private readonly DiscordSocketClient _client;
