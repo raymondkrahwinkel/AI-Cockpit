@@ -8,6 +8,8 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
+    <!-- 0.108.0: a plugin side-menu launcher may request a Material icon and set its badge tone
+         (AC-1722, Cockpit.Plugins.Abstractions 3.19.0); a plugin that uses either sets minHostVersion 0.108.0. -->
     <!-- 0.107.0: host-owned time entries and textual side-menu badges (AC-1729, Cockpit.Plugins.Abstractions 3.18.0);
          a plugin that uses either sets minHostVersion 0.107.0. -->
     <!-- 0.106.0: channel plugins migrate legacy channel and broad-audience settings to one linked DM account
@@ -336,7 +338,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.107.0</VersionPrefix>
+    <VersionPrefix>0.108.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

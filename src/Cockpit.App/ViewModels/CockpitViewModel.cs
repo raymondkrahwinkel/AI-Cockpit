@@ -33,6 +33,7 @@ using Cockpit.Core.Abstractions.QuickNotes;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Hotkeys;
 using Cockpit.Core.QuickNotes;
+using Material.Icons;
 using Cockpit.Core.Screenshots;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Usage;
@@ -662,6 +663,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // nullable badge into the call above) so the plain path above stays exactly what it was.
     void IPluginContributionSink.AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge)));
+
+    void IPluginContributionSink.AddPluginSideButton(
+        string pluginId,
+        string title,
+        Action onInvoke,
+        SideMenuButtonBadge badge,
+        MaterialIconKind iconKind) =>
+        _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge, iconKind)));
 
     void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
