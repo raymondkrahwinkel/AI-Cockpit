@@ -82,6 +82,8 @@ internal static class TabLookAlong
                 new ConsentChoice("tab", "Which tab", [.. tabs.Select(tab => new ConsentOption(tab.Id, tab.Title, tab.Address, Selected: tab.Id == selected))]),
             ],
             ApproveLabel = "Share this tab",
+            Inline = true,
+            OtherLabel = "Other tab…",
             Never = ["Cookies and storage", "passwords and autofill", "other tabs"],
         };
     }
