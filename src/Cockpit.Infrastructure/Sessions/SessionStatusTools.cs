@@ -32,7 +32,9 @@ internal sealed class SessionStatusTools(
     IConsentBroker? consent = null,
     IElevatedCommandRunner? elevated = null,
     // AC-1535: null only in a test graph that never queues; without a queue every run starts at once.
-    HeavyRunQueue? queue = null)
+    HeavyRunQueue? queue = null,
+    // AC-1717: null only in a test graph that keeps no session timeline.
+    SessionTimelineRecorder? timeline = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -69,6 +71,8 @@ internal sealed class SessionStatusTools(
                 new { ok = false, error = "No session matched that id — pass the COCKPIT_PANE_ID from this session's own environment as `session`." },
                 SerializerOptions);
         }
+
+        timeline?.RecordStatusline(caller, status ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(name))
         {

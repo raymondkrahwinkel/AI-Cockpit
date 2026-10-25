@@ -543,7 +543,21 @@
          and persists a user-visible notice. A plugin that calls it sets minHostVersion 0.106.0. Additive; still v3. -->
     <!-- 3.18.0 (AC-1729): added the host-owned ICockpitTimeEntries contract and textual side-menu badges. A plugin
          that uses either sets minHostVersion 0.107.0. Additive; the major and abstractionsVersion stay 3. -->
-    <Version>3.18.0</Version>
+    <!-- 3.19.0 (AC-1724): added ICockpitActions.SendPromptToSessionAsync, a prompt into a running session behind the
+         host's own confirmation card. A plugin that calls it sets minHostVersion 0.108.0. Additive; still v3. -->
+    <!-- 3.20.0 (AC-1685): ICockpitHost.CurrentMcpCaller with McpCaller/McpCallerKind, the transport-verified caller's
+         kind (assistant, session or remote) and connect-key label. A plugin that reads it sets minHostVersion 0.109.0;
+         an older host answers null, which an owner-only tool refuses. Additive; the major and abstractionsVersion stay 3. -->
+    <!-- 3.21.0 (AC-1730): CapabilityCatalog gains `time.entries`, CapabilityCatalog.TimeEntries and Find. A manifest
+         names catalogue ids under `capabilities`; ICockpitHost.TimeEntries now needs `time.entries` and throws
+         UnauthorizedAccessException without it. Additive to the SDK surface; the major and abstractionsVersion stay 3. -->
+    <!-- 3.22.0 (AC-1710): in step with Cockpit.Plugins.Abstractions.UI 3.4.0 — DockPanelRegistration.KeepAlive and
+         CanFloat. A plugin that relies on either sets minHostVersion 0.111.0. Additive; still v3. -->
+    <!-- 3.23.0 (AC-1737): added PluginProjectInfo, ICockpitHost.GetProjectsAsync and GetSessionProjectIdAsync, the
+         projects as id and name and a pane's project. A plugin that calls them sets minHostVersion 0.112.0. Additive. -->
+    <!-- 3.24.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.6.0 — ICockpitUiHost.OpenDockPanelAsync (default
+         no-op). A plugin that calls it sets minHostVersion 0.113.0. Additive; still v3. -->
+    <Version>3.24.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

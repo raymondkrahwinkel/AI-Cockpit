@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Collections.Specialized;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.UI;
 using Avalonia.Threading;
@@ -988,11 +987,54 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static double _DockRailMaximum(double windowWidth, double sidebarWidth) =>
         Math.Max(LayoutSettings.MinDockRailWidth, windowWidth - sidebarWidth - LayoutSettings.MinWorkspaceWidth);
 
-    // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). Nothing
-    // sets this true yet — the field round-trips through LayoutSettings from day one so that sub does not have
-    // to hunt down every save call site below.
-    [ObservableProperty]
-    private bool _assistantDocked;
+    // AC-1710: the panels standing in their own window, by id. The assistant starts there, as it did before it had
+    // a rail (AC-950); every other panel starts docked.
+    private readonly HashSet<string> _floatingDockPanelIds = [AssistantIndicatorCoordinator.DockPanelId];
+
+    // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]) — since
+    // AC-1710 the assistant's row in the generic floating stand rather than a field of its own.
+    public bool AssistantDocked
+    {
+        get => !IsDockPanelFloating(AssistantIndicatorCoordinator.DockPanelId);
+        set => SetDockPanelFloating(AssistantIndicatorCoordinator.DockPanelId, !value);
+    }
+
+    public bool IsDockPanelFloating(string panelId) => _floatingDockPanelIds.Contains(panelId);
+
+    // AC-1710: where a dock panel stands, decided in one place for the rail, the assistant and every plugin.
+    public DockPanelHost DockHost => _dockHost ??= new DockPanelHost(
+        this,
+        _dockPanelRegistry,
+        () => Program.Services?.GetService(typeof(Cockpit.Core.Abstractions.Layout.IWindowBoundsStore)) as Cockpit.Core.Abstractions.Layout.IWindowBoundsStore);
+
+    private DockPanelHost? _dockHost;
+
+    internal Task PersistDockStandAsync() => _layoutSettingsStore is null ? Task.CompletedTask : _PersistLayoutSettingsAsync();
+
+    // The rail header's ⧉ (AC-1710): the open panel into its own window.
+    [RelayCommand]
+    private Task UndockOpenDockPanel() =>
+        EffectiveOpenDockPanelId is { } panelId ? DockHost.ShowInAsync(panelId, floating: true) : Task.CompletedTask;
+
+    // Only the stand: `DockPanelHost.ShowInAsync` is what moves a view, and the one caller besides the layout load.
+    internal void SetDockPanelFloating(string panelId, bool floating)
+    {
+        if (!(floating ? _floatingDockPanelIds.Add(panelId) : _floatingDockPanelIds.Remove(panelId)))
+        {
+            return;
+        }
+
+        _OnFloatingDockPanelsChanged();
+    }
+
+    private void _OnFloatingDockPanelsChanged()
+    {
+        OnPropertyChanged(nameof(AssistantDocked));
+        OnPropertyChanged(nameof(DockPanels));
+        OnPropertyChanged(nameof(HasDockPanels));
+        OnPropertyChanged(nameof(ShowDockRail));
+        OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
+    }
 
     // AC-962: how wide the assistant's drop zone is drawn along this window's right edge while its floating chat
     // is being dragged — the overlap between the screen band the rail belongs to and this window. Zero means no
@@ -1115,7 +1157,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // session would leave the assistant tab open there too, on a rail the operator had closed.
     public string? EffectiveOpenDockPanelId => SimpleView
         ? SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
-        : OpenDockPanelId;
+        : OpenDockPanelId is { } id && !IsDockPanelFloating(id) ? id : null; // AC-1710: floating is not open here
 
     partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
     {
@@ -1291,7 +1333,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // What the rail's tab strip lists — read straight off the registry rather than copied into a collection of
     // our own, the same reasoning `WorkspacesViewModel.AvailableWidgets` follows.
-    public IReadOnlyList<DockPanelRegistration> DockPanels => _dockPanelRegistry?.Panels ?? [];
+    // AC-1710: less the panels standing in their own window — a tab for one would only open a second.
+    public IReadOnlyList<DockPanelRegistration> DockPanels =>
+        _dockPanelRegistry?.Panels.Where(panel => !IsDockPanelFloating(panel.Id)).ToList() ?? [];
+
+    // The view the rail shows for a panel id, or null when nothing registered it (AC-960 criterion 6).
+    public Avalonia.Controls.Control? DockPanelViewFor(string panelId) =>
+        _dockPanelRegistry is { } registry && registry.Panels.FirstOrDefault(panel => panel.Id == panelId) is { } panel
+            ? registry.ViewFor(panel)
+            : null;
 
     // Whether the rail has anything to offer at all. With no panel registered there is nothing to click, and a
     // 40px strip of empty chrome against the right edge is worse than no rail — so the whole column stands down
@@ -5169,7 +5219,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
-        AssistantDocked = settings.AssistantDocked;
+
+        // AC-1710: a file from before the floating stand carries only the assistant's own flag.
+        _floatingDockPanelIds.Clear();
+        _floatingDockPanelIds.UnionWith(settings.FloatingDockPanelIds
+            ?? (settings.AssistantDocked ? [] : [AssistantIndicatorCoordinator.DockPanelId]));
+        _OnFloatingDockPanelsChanged();
+        _dockHost?.RestoreIfStarted();
         OpenInSimpleView = settings.OpenInSimpleView;
         ThemeMode = settings.ThemeMode;
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow;
@@ -5196,6 +5252,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
+        FloatingDockPanelIds = [.. _floatingDockPanelIds.Order(StringComparer.Ordinal)],
         OpenInSimpleView = OpenInSimpleView,
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,
@@ -7649,17 +7706,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return true;
     }
 
-    // The shape a ticket id takes everywhere this codebase already writes one by hand ("AC-13", "AC-544") — two or more
-    // uppercase letters, a dash, digits — kept as the one pattern every brief-seeded statusline is read against
-    // (AC-544) rather than reinvented per caller (AC-251).
-    private static readonly Regex _TicketIdPattern = new(@"^[A-Z]{2,}-\d+\b", RegexOptions.Compiled);
-
     // Lets a host-side spawn path seed a fresh session's statusline deterministically, from what it already knows,
     // instead of leaving the line blank until (or unless) the agent inside calls `set_status` itself (AC-544, AC-13).
-    private static string? _TicketFromBrief(string? text) =>
-        !string.IsNullOrWhiteSpace(text) && _TicketIdPattern.Match(text.TrimStart()) is { Success: true } match
-            ? match.Value
-            : null;
+    private static string? _TicketFromBrief(string? text) => TicketId.At(text);
 
     // A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
     // own `set_status`, a plugin acting on its embedded pane, and a consent routed to it all reach it (AC-152),

@@ -14,6 +14,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
@@ -270,8 +271,9 @@ public class PluginBackendHostTests
     }
 
     // AC-1520: the rewrite touches only references under the plugin's own scheme, leaves the rest of cockpit.json as it was, and a second pass changes nothing.
+    // AC-1737: on the same store, the reads list every project (neither has a folder) by id and name, and resolve a pane's project.
     [Fact]
-    public async Task RewriteProjectReferencesAsync_ChangesOnlyTheNamedSchemesReferences_AndASecondPassChangesNothing()
+    public async Task ProjectReads_ListEveryProjectAndAPanesProject_AndTheRewriteChangesOnlyTheNamedSchemesReferences()
     {
         var path = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"), "cockpit.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -284,7 +286,18 @@ public class PluginBackendHostTests
         await store.SaveAsync(await store.LoadAsync());
         var before = await File.ReadAllTextAsync(path);
         var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), new SharedProjectSourceRegistry());
-        var host = _Host(new SessionRegistry(), _InlineLauncher(), services => services.AddSingleton<IProjectStore>(store).AddSingleton<IProjectEditor>(catalog));
+        var registry = new SessionRegistry();
+        var pane = _Pane(PaneId, "Echo");
+        pane.ProjectId.Returns("b");
+        registry.Register(pane);
+        registry.Register(_Pane("pane-2", "Echo"));
+        var host = _Host(registry, _InlineLauncher(), services => services.AddSingleton<IProjectStore>(store).AddSingleton<IProjectEditor>(catalog));
+
+        Assert.Equal([new PluginProjectInfo("a", "A"), new PluginProjectInfo("b", "B")], await host.GetProjectsAsync());
+        Assert.Equal("b", await host.GetSessionProjectIdAsync(PaneId, CancellationToken.None));
+        Assert.Null(await host.GetSessionProjectIdAsync("pane-2", CancellationToken.None));
+        Assert.Null(await host.GetSessionProjectIdAsync("pane-9", CancellationToken.None));
+
         Func<string, string?> rewrite = value => value.StartsWith("cockpit", StringComparison.Ordinal) ? "wispslate/" + value : null;
 
         var first = await host.RewriteProjectReferencesAsync("depot", rewrite);

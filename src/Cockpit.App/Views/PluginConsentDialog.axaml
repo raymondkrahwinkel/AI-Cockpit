@@ -49,6 +49,18 @@
                                FontSize="11" TextWrapping="Wrap"/>
                 </StackPanel>
 
+                <!-- AC-1730: what this plugin asks for beyond the standing terms below, one sentence per capability. -->
+                <StackPanel Spacing="2" IsVisible="{Binding HasCapabilities}">
+                    <TextBlock Text="Also asks for" Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
+                    <ItemsControl ItemsSource="{Binding CapabilityLines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontSize="12" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
                 <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                         CornerRadius="{StaticResource CockpitControlRadius}" Padding="12">

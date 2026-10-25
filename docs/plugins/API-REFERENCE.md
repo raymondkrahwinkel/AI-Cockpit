@@ -64,7 +64,7 @@ else changed: a member that stayed keeps its name and signature.
    Moved off `ICockpitHost`: `AddSettings`, `ShowSettingsAsync`, `HasSettings`, `OnSettingsSaved`,
    `AddSideMenuButton`, `AddSideMenuButtonWithBadge`, `AddSideMenuSection`, `AddSessionHeaderItem`,
    `AddSessionBanner`, `AddSessionHeaderAction`, `AddToolbarAction`, `AddShortcut`, `AddConversationPicker`,
-   `AddWidget`, `AddDockPanel`, `AddCompanionTool`, `AddWorkspaceType`, `OpenWorkspaceAsync`, `ShowDialogAsync`,
+   `AddWidget`, `AddDockPanel`, `OpenDockPanelAsync`, `AddCompanionTool`, `AddWorkspaceType`, `OpenWorkspaceAsync`, `ShowDialogAsync`,
    `ShowNewSessionDialogAsync`, `CreateMarkdownView`, `CreateHelpHint`, `OpenHelp`, `HasHelp`. The `Widgets`,
    `CompanionTools` and `WorkspaceTypes` lists are gone with them.
 5. **The active session is the window's.** Gone from `ICockpitActions`: `SetClipboardTextAsync`, `ConfirmAsync`,
@@ -90,6 +90,10 @@ The transitional route, one entry type that is both `ICockpitPlugin` and `ICockp
 with every member below grouped into the unit a manifest declares and an operator grants. It is also the
 discovery list: if a contribution point is not in this table, it does not exist.
 
+**Declared in the manifest (host 0.110.0+).** A plugin lists the ids it asks for under `capabilities` in
+`plugin.json`; the consent dialog and the plugin list show each one's summary, and an unknown id is refused. Only
+`time.entries` is enforced today — see [the trust boundary](PLUGIN-SDK.md#the-trust-boundary).
+
 **Host-only.** The catalogue describes the host's own surface, so only the host can add to it — see
 [AC-474](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-474).
 
@@ -107,7 +111,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSettings`, `ICockpitUiHost.ShowSettingsAsync`, `ICockpitUiHost.HasSettings`, `ICockpitUiHost.OnSettingsSaved` |
 | `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSideMenuButton`, `ICockpitUiHost.AddSideMenuSection`, `ICockpitUiHost.AddSideMenuButtonWithBadge` |
 | `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitUiHost.AddToolbarAction`, `ICockpitUiHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.AddCompanionTool` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
@@ -123,14 +127,14 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
 | `profiles.read` | Reading the configured profiles | Sensitive | 0.3.0 | — | `ICockpitHost.GetProfilesAsync` |
-| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
+| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitHost.CurrentMcpCaller`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveProjectId`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
 | `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionStatuslineAsync`, `ICockpitHost.SetSessionName`, `ICockpitHost.SetSessionNameAsync`, `ICockpitHost.SuggestSessionName` |
 | `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitUiHost.ShowNewSessionDialogAsync` |
 | `workflows.steps` | Steps and templates for workflows | Sensitive | 0.3.0 | — | `ICockpitHost.AddWorkflowStep`, `ICockpitHost.WorkflowSteps`, `ICockpitHost.AddWorkflowTemplate`, `ICockpitHost.WorkflowTemplates` |
 | `workflows.trigger-observe` | Watching workflow triggers | Sensitive | 0.3.0 | `typeId` | `ICockpitHost.WorkflowTriggerRaised` |
 | `autopilot.templates` | Autopilot templates | Sensitive | 0.5.0 | — | `ICockpitHost.RegisterAutopilotTemplate`, `ICockpitHost.RegisteredAutopilotTemplates` |
 | `projects.fields` | Fields on a project | Sensitive | 0.7.0 | — | `ICockpitHost.AddProjectField`, `ICockpitHost.ProjectFields`, `ICockpitHost.ClaimProjectOwnership`, `ICockpitHost.GetProjectFieldOwnership` |
-| `projects.read` | Reading project field values | Sensitive | 0.7.0 | `key` | `ICockpitHost.GetProjectFieldValueAsync`, `ICockpitHost.GetProjectFieldValuesAsync` |
+| `projects.read` | Reading project field values | Sensitive | 0.7.0 | `key` | `ICockpitHost.GetProjectFieldValueAsync`, `ICockpitHost.GetProjectFieldValuesAsync`, `ICockpitHost.GetProjectsAsync`, `ICockpitHost.GetSessionProjectIdAsync`, `ICockpitUiHost.GetProjectsAsync` |
 | `projects.memory-source` | Offering a project memory source | Sensitive | 0.10.0 | `scheme` | `ICockpitHost.AddProjectMemorySource`, `ICockpitHost.RemoveProjectMemorySource`, `ICockpitHost.ProjectMemorySources`, `ICockpitHost.AddProjectMemorySourceFamily`, `ICockpitHost.RewriteProjectReferencesAsync` |
 | `projects.memory-read` | Reading project memory | Sensitive | 0.22.0 | — | `ICockpitHost.GetProjectMemoryRowsAsync` |
 | `projects.shared-source` | Offering shared projects | Sensitive | 0.19.0 | `key` | `ICockpitHost.AddSharedProjectSource`, `ICockpitHost.RemoveSharedProjectSource`, `ICockpitHost.SharedProjectSources` |
@@ -142,13 +146,14 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `workflows.trigger-raise` | Starting a workflow | Dangerous | 0.3.0 | `typeId` | `ICockpitHost.RaiseWorkflowTrigger` |
 | `sessions.start` | Starting sessions | Dangerous | 0.3.0 | `profileLabel` | `ICockpitActions.StartSessionAsync` |
 | `sessions.delegate` | Handing work to a profile | Dangerous | 0.3.0 | `profileLabel`, `permission` | `ICockpitActions.DelegateAsync` |
-| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession` |
+| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.SendPromptToSessionAsync` |
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
 | `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync` |
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
+| `time.entries` | Your own time entries | Sensitive | 0.107.0 | — | `ICockpitHost.TimeEntries` |
 | `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
 | `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
 
@@ -228,7 +233,8 @@ public interface ICockpitPluginUi
   and `ActiveSessionChanged` live on the UI host, next to `SetClipboardTextAsync` and `ConfirmAsync`. A backend
   part has no active session: the UI part passes the pane id along when it asks the backend to act. A backend
   part that needs where a pane works reads `Sessions.GetWorkingDirectory(paneId)` (AC-1397, host 0.42.0), null
-  for an unknown pane. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
+  for an unknown pane. The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
+  asks `GetSessionProjectIdAsync(paneId)`, and both find the name in `GetProjectsAsync()`. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
   A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.44.0),
   which answers false for an unknown pane or one without an input, so the caller can say so.
@@ -294,6 +300,8 @@ public interface ICockpitHost
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; } // default []
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
+    Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync();   // default returns []
+    Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken = default); // default null
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);        // default no-op
     void AddSessionHeaderAction(PluginSessionAction action);                     // default no-op
@@ -544,6 +552,52 @@ public interface IWidgetContext
   so a widget can follow the active session's working directory or output without the core knowing what it is.
 - `RefreshRequested` — raised when the host asks this instance to refresh, including after its settings are
   saved. A widget polling on its own timer can ignore it; one showing a snapshot should re-read.
+
+### `void AddDockPanel(DockPanelRegistration registration)` {#void-adddockpaneldockpanelregistration-registration}
+Registers a panel for the right-hand **dock rail**. It appears as a tab, and opening the tab shows the
+registration's view. The rail owns width and collapse. No-op on a server, which has no rail. See
+[`DockPanelRegistration`](#dockpanelregistration).
+```csharp
+host.AddDockPanel(new DockPanelRegistration("my-plugin.browser", "Browser", MaterialIconKind.Web, () => new BrowserView())
+{
+    KeepAlive = true,   // one view instance, kept across collapse, tab switches and moving windows
+    CanFloat = true,    // ⧉ in the rail header; "Dock back" in its own window
+});
+```
+
+### `DockPanelRegistration` {#dockpanelregistration}
+```csharp
+public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView)
+{
+    public DockPanelBadge? Badge { get; init; }
+    public bool KeepAlive { get; init; }   // SDK 3.22.0, host 0.111.0
+    public bool CanFloat { get; init; }    // SDK 3.22.0, host 0.111.0
+}
+```
+- `Id` — stable and namespaced. It is persisted as the open panel, and for a floating panel as its stand and
+  the key of its window's bounds, so treat it as an API surface. The first registration of an id wins.
+- `CreateView` — builds the panel's view on the UI thread: each time the panel opens, or **once** with
+  `KeepAlive`.
+- `Badge` — an optional count on the tab for what waits on the operator; null draws none.
+- `KeepAlive` — the host builds the view once and keeps that instance across collapsing the rail, switching
+  tabs and moving between the rail and a window. Use it for a view whose state must survive being hidden (a
+  page, a playing video). The view is moved, not copied: it leaves one host before the other takes it.
+- `CanFloat` — the rail header shows ⧉, which moves the panel into its own window. That window carries
+  "⇤ Dock back". While floating, the panel has no tab in the rail. Closing the window (×) puts the tab back
+  without opening the rail. The stand (docked or floating) and the window's bounds survive a restart, and a
+  panel left floating reopens in its window. Combine it with `KeepAlive` to move the same instance; without it,
+  each move builds a new view.
+- Available in SDK 3.22.0 and host 0.111.0. A plugin that relies on either option sets `minHostVersion` to
+  `0.111.0`; an older host ignores them, so the panel then rebuilds on each opening and cannot float.
+
+### `Task OpenDockPanelAsync(string panelId)` {#task-opendockpanelasyncstring-panelid}
+Shows a dock panel **this plugin** registered: opens it in the rail, or raises its window when it floats. A panel
+another plugin registered, or an unknown id, does nothing; so does a server, which has no rail. Use it for a button
+that moves your view into the rail ("Dock in the rail"). SDK 3.24.0, host 0.113.0; an older host does nothing,
+so a plugin that relies on it sets `minHostVersion` to `0.113.0`.
+```csharp
+await host.OpenDockPanelAsync("my-plugin.browser");
+```
 
 ### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
 Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory
@@ -920,6 +974,25 @@ var claudeConfigDirs = profiles
     .Select(profile => profile.ConfigDirectory);
 ```
 
+### `Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()` {#taskireadonlylistpluginprojectinfo-getprojectsasync}
+The cockpit's **projects** (AC-1737, Abstractions 3.23.0, host 0.112.0), as `PluginProjectInfo(string Id, string Name)`,
+in the operator's order and including the projects with no folder — the same list `list_projects` answers.
+- Store the `Id`; it is stable. The `Name` is the operator's and can change, so look it up again when you show it.
+- Read **fresh on every call**. A backend part on a server gets that server's projects; so does
+  `ICockpitUiHost.GetProjectsAsync()` in a view opened for a server.
+- Default returns an empty list. Capability `projects.read`.
+
+### `Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken)` {#taskstring-getsessionprojectidasyncstring-paneid-cancellationtoken-cancellationtoken}
+The id of the project the session `paneId` belongs to (AC-1737), or null when it has no project or there is no such
+session. The backend has no selected session: pass `CurrentMcpCallerPaneId`, or the pane id your UI part sent. A UI
+part reads the selected session's project as `ICockpitUiHost.ActiveProjectId`; `ActiveSessionChanged` fires when it
+moves. Default null.
+
+```csharp
+var projectId = ui.ActiveProjectId;
+var name = (await ui.GetProjectsAsync()).FirstOrDefault(project => project.Id == projectId)?.Name;
+```
+
 ### `void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)` {#void-showtoaststring-message-plugintoastseverity-severity-string-actionlabel-action-onaction}
 A transient **in-app notification** in the cockpit — how you tell the operator that something happened while
 they were working somewhere else in the app. `actionLabel` and `onAction` are supplied together to give the
@@ -1279,8 +1352,20 @@ public interface ICockpitActions
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
                                TimeSpan? timeout, string? permission,
                                Action<string> taskStarted);                                  // default: the above
+    Task SendPromptToSessionAsync(string paneId, string prompt, string reason);              // default throws
 }
 ```
+
+### `Task SendPromptToSessionAsync(string paneId, string prompt, string reason)` {#task-sendprompttosessionasyncstring-paneid-string-prompt-string-reason}
+Available in SDK 3.19.0 and host 0.108.0 (AC-1724). Submits `prompt` as a turn in the running agent session
+`paneId`, on an SDK and a TTY pane alike, once the operator has approved it on the host's own confirmation card. That
+card sits on the target session and shows your plugin, the session, `reason` and the prompt word for word. It is never
+remembered, the consent bypass in Options does not reach it, and no overload goes around it.
+
+Throws `InvalidOperationException` with "Declined by the operator." when the operator cancels, and also when the pane is
+not an agent session (a terminal, the assistant's own pane, a pane that closed). A session in the middle of a turn gets
+the prompt after that turn; one still starting holds it until it can take it. The consent audit records the decision
+with your plugin id, the pane and a SHA-256 of the text. The default throws `NotSupportedException`.
 
 ### `Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)` {#taskstring-delegateasyncstring-profilelabel-string-prompt-string-workingdirectory--null-timespan-timeout--null}
 Hands work to another profile as a **background task** and waits for what it produces (#67) — the cockpit's own

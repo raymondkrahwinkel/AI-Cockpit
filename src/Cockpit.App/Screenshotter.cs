@@ -21,6 +21,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -453,6 +454,8 @@ internal static partial class Screenshotter
         ["session-consent-plain-developer"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentSession(ReadingLevel.Developer) },
         // The fallback: a command that cannot be restated from itself keeps the raw call rather than a guess.
         ["session-consent-plain-fallback"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentFallbackSession() },
+        // AC-1724: a plugin's prompt into a running session, on the host's own card on that session's pane.
+        ["session-consent-plugin-prompt"] = (width, height) => new Window { Width = width, Height = height, Content = _PluginPromptConsentSession() },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -527,7 +530,8 @@ internal static partial class Screenshotter
         {
             DataContext = new ViewModels.PluginConsentInfo(
                 "GitHub Issues", "1.8.0", "Cockpit", "/home/you/.config/Cockpit/plugins/github-issues",
-                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2"),
+                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2",
+                [CapabilityCatalog.TimeEntries]),
         },
         ["restore-selection"] = (_, _) => _RestoreSelection(),
         ["schedule-resume"] = (_, _) => new ScheduleResumeDialog { DataContext = new ViewModels.ScheduleResumeDialogViewModel() },
@@ -593,6 +597,10 @@ internal static partial class Screenshotter
         ["dock-panel-pull-requests-min"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MinDockRailWidth),
         ["dock-panel-pull-requests-max"] = (width, _) => _DockRailWithPullRequestsPanel(ViewModels.CockpitViewModel.ClampDockRailWidth(double.MaxValue, width, Cockpit.Core.Layout.LayoutSettings.DefaultSidebarWidth)),
         ["dock-rail-collapsed-two-tabs"] = (_, _) => _DockRailCollapsedWithTwoTabs(),
+        // AC-1710 (mockup AC-1708 screens 2 and 3): a KeepAlive + CanFloat panel docked beside the assistant, with
+        // the rail header's undock button, and the same panel standing in its own window with "Dock back".
+        ["dock-panel-keepalive"] = (_, _) => _DockRailWithKeptPanel(),
+        ["dock-panel-floating"] = (_, _) => new Docking.DockPanelWindow(_KeptDockPanel(), _KeptDockPanelView(), boundsStore: null),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -2142,6 +2150,26 @@ internal static partial class Screenshotter
         "Let me clear out what is left over.",
         """{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""");
 
+    private static SessionView _PluginPromptConsentSession()
+    {
+        var viewModel = new SessionViewModel { Title = "werkagent" };
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "The tests are green; the branch is pushed." });
+        viewModel.PendingConsent = new ViewModels.ConsentPromptViewModel(
+            new ConsentQuestion(
+                Guid.NewGuid(),
+                Cockpit.Infrastructure.Plugins.PluginScopedActions.PromptCard(
+                    "time-tracking",
+                    "Time tracking",
+                    "pane-werkagent",
+                    "werkagent",
+                    "Book today's hours in YouTrack: AC-1724 2h30 (plugin prompt contract), AC-1717 45m (review).",
+                    "You chose \"Give to an agent\" on today's time proposal"),
+                CanRemember: false),
+            new _NoConsentPrompts());
+
+        return new SessionView { DataContext = viewModel };
+    }
+
     private static SessionView _ConsentSession(ReadingLevel level, string leadIn, string input)
     {
         var viewModel = new SessionViewModel { Title = "invoices", ReadingLevel = level };
@@ -2968,6 +2996,47 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
+    // AC-1710: a placeholder panel that keeps its view and can float, open in the rail beside the assistant's tab.
+    private static Window _DockRailWithKeptPanel()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        panels.Register(_KeptDockPanel());
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            AssistantDocked = true,
+            OpenDockPanelId = "sample.kept",
+            DockRailWidth = 460,
+        };
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _KeptDockPanel() =>
+        new("sample.kept", "Browser", Material.Icons.MaterialIconKind.Web, _KeptDockPanelView)
+        {
+            KeepAlive = true,
+            CanFloat = true,
+        };
+
+    // Stands in for what a plugin keeps alive (AC-1711's browser): a surface with state that must survive a move.
+    private static Control _KeptDockPanelView() => new Border
+    {
+        Margin = new Thickness(12),
+        Child = new StackPanel
+        {
+            Spacing = 6,
+            Margin = new Thickness(16),
+            Children =
+            {
+                new TextBlock { Text = "Placeholder view", FontSize = 15, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                new TextBlock { Text = "Kept alive: the same instance in the rail and in its own window.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+            },
+        },
+    };
+
     // AC-960: nothing open, so the rail is the 40px tab strip — with both the Assistant's tab (AC-953) and a
     // plugin's, proving the strip holds more than one without a real Assistant session behind it.
     private static Window _DockRailCollapsedWithTwoTabs()
@@ -2977,7 +3046,8 @@ internal static partial class Screenshotter
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         panels.Register(_PullRequestsDockPanel());
 
-        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels);
+        // AC-1710: an undocked assistant has no tab, and a fresh cockpit starts with it undocked.
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels) { AssistantDocked = true };
 
         return new MainWindow { DataContext = cockpit };
     }

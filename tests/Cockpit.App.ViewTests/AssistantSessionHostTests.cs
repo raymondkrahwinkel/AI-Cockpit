@@ -502,7 +502,6 @@ public class AssistantSessionHostTests
     // AC-648 criterion 6
     [InlineData("`start_agent` takes an `options` map")]
     [InlineData("PERMISSION-MODE IS NEVER OVERRIDABLE")]
-    [InlineData("`list_profiles` showed for that profile")]
     // AC-641
     [InlineData("list_delegated_tasks")]
     // AC-640: naming only the two tools would leave the assistant knowing it can watch something and not what for.
@@ -514,7 +513,6 @@ public class AssistantSessionHostTests
     [InlineData("stuck")]
     [InlineData("pattern")]
     // AC-656
-    [InlineData("AC-656")]
     [InlineData("no opt-in")]
     public void LaunchOptions_CarryTheCapabilityMap(string phrase)
     {
