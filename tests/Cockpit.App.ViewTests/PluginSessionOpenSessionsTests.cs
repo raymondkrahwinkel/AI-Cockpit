@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
@@ -25,16 +26,20 @@ public class PluginSessionOpenSessionsTests
     public void OpenSessions_ListsEveryOrdinarySession_ByPaneIdAndTitle() => HeadlessAvalonia.Run(() =>
     {
         var cockpit = _Cockpit();
-        var one = new SessionViewModel { Title = "Session 1" };
-        var two = new SessionViewModel { Title = "Session 2" };
+        var one = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work", SessionStatus = SessionStatus.Busy };
+        var two = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "personal", SessionStatus = SessionStatus.Idle };
         cockpit.Sessions.Add(one);
         cockpit.Sessions.Add(two);
 
         var observer = new PluginSessionObserver(cockpit);
 
         Assert.Equal(
-            new[] { (one.PaneId, "Session 1"), (two.PaneId, "Session 2") },
-            observer.OpenSessions.Select(session => (session.PaneId, session.Name)));
+            new (string PaneId, string Name, string? ProfileLabel, string? Status)[]
+            {
+                (one.PaneId, "Session 1", "work", "Busy"),
+                (two.PaneId, "Session 2", "personal", "Idle"),
+            },
+            observer.OpenSessions.Select(session => (session.PaneId, session.Name, session.ProfileLabel, session.Status)));
     });
 
     [Fact]

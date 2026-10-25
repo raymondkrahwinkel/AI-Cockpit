@@ -28,9 +28,17 @@ public sealed class PluginBackendSessionObserver : ICockpitSessionObserver
     }
 
     public IReadOnlyList<OpenCockpitSession> OpenSessions =>
-        [.. _registry.All.Select(session => new OpenCockpitSession(session.PaneId, session.Title)),
+        [.. _registry.All.Select(session => new OpenCockpitSession(
+            session.PaneId,
+            session.Title,
+            session.ActiveProfileLabel,
+            session.SessionStatus.ToString())),
             .. _registry.Assistant is { } assistant
-                ? [new OpenCockpitSession(assistant.PaneId, assistant.Title)]
+                ? [new OpenCockpitSession(
+                    assistant.PaneId,
+                    assistant.Title,
+                    assistant.ActiveProfileLabel,
+                    assistant.SessionStatus.ToString())]
                 : Array.Empty<OpenCockpitSession>()];
 
     public event EventHandler<SessionOutputText>? OutputProduced;

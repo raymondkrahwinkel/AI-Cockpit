@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: plugins that offer a running-session picker can show each session's profile and whether it is busy, waiting,
+  done or idle instead of making you choose from names alone.
 - added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
   for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
   installing something that cannot start.
