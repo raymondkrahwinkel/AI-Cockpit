@@ -359,7 +359,7 @@ public sealed partial class ProviderStepViewModel : ObservableObject
             var choices = selectedRows.Select(row => new FirstRunProviderChoice(row.Row.Id, row.Row.Name)).ToList();
             var claude = choices.FirstOrDefault(choice => choice.Id == "claude-provider");
             await _wizardState.SaveResumeStateAsync(new FirstRunWizardResumeState(
-                StartAtOrder: 20,
+                StartAtOrder: 25,
                 StartChoiceId: _startChoiceId?.Invoke() ?? "start-fresh",
                 Providers: choices,
                 AssistantProviderId: claude is null ? null : ClaudePluginProfile.ProviderId,
