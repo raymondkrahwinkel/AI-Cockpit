@@ -73,6 +73,19 @@ public sealed class FirstStartJourney
                     {
                         var assistant = services.GetServices<IFirstRunWizardStep>().OfType<AssistantStep>().Single();
                         wizard.NextCommand.Execute(null);
+
+                        // AC-1671: on "What you have" Next waits while something is ticked and not installed; Back stays, unticking frees it.
+                        var providers = services.GetServices<IFirstRunWizardStep>().OfType<ProviderStep>().Single().ViewModel ?? throw new InvalidOperationException("The provider step has no view model.");
+                        var claude = new Cockpit.App.ViewModels.Onboarding.ProviderPickerRowViewModel(
+                            new Cockpit.App.ViewModels.StorePluginRowViewModel(new Cockpit.Core.Plugins.PluginStoreEntry("claude-provider", "Claude Code", "d", "Cockpit", "1.0.0", []), Cockpit.Core.Plugins.PluginStoreConfig.Remote("url"), null),
+                            Cockpit.App.ViewModels.Onboarding.ProviderDetectionState.NotApplicable);
+                        providers.Providers.Add(claude);
+                        claude.IsSelected = true;
+                        Assert.False(wizard.NextCommand.CanExecute(null));
+                        Assert.True(wizard.BackCommand.CanExecute(null));
+                        claude.IsSelected = false;
+                        Assert.True(wizard.NextCommand.CanExecute(null));
+                        providers.Providers.Clear();
                         wizard.NextCommand.Execute(null);
                         assistant.ViewModel.AssistantOptions.IsEnabled = true;
                         Assert.False(wizard.NextCommand.CanExecute(null));

@@ -31,6 +31,18 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
         // found, not incompatible, starts checked — Skip/Next must be free to leave it exactly that, a suggestion
         // nobody acted on.
         IsSelected = detection == ProviderDetectionState.Found && !row.IsIncompatible && !row.IsInstalled;
+        _touched = false;
+    }
+
+    // A suggestion starts ticked; only a tick the operator made counts as a choice (AC-510[b] criterion 4).
+    private bool _touched;
+
+    public bool IsChosen => IsSelected && _touched;
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        _touched = true;
+        OnPropertyChanged(nameof(IsChosen));
     }
 
     public StorePluginRowViewModel Row { get; }

@@ -24,6 +24,8 @@ internal sealed class ProviderStep(
     // The one the latest wizard was built over; the assistant step reads what was chosen here from it.
     internal ProviderStepViewModel? ViewModel { get; private set; }
 
+    public string? NextBlockedReason => ViewModel?.NextBlockedReason;
+
     public Control BuildContent()
     {
         ViewModel = new ProviderStepViewModel(storeConfigStore, storeClient, provisioningService, plugins);

@@ -125,10 +125,12 @@ public class AssistantStepViewModelTests
             new StorePluginRowViewModel(new PluginStoreEntry("claude-provider", "Claude Code", "d", "Cockpit", "1.0.0", []), PluginStoreConfig.Remote("url"), null),
             ProviderDetectionState.NotApplicable) { IsSelected = true };
         providers.Providers.Add(claude);
+        Assert.Equal("Press Install for what you ticked, or untick it.", providers.NextBlockedReason);
         var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
         Assert.False(withChoice.OnlyLocalProvidersAvailable);
         Assert.Contains("Claude Code (ticked, not installed yet", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);
         claude.IsSelected = false;
+        Assert.Null(providers.NextBlockedReason);
         withChoice.RefreshChosenProviders();
         Assert.True(withChoice.OnlyLocalProvidersAvailable);
 

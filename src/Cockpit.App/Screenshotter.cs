@@ -717,6 +717,8 @@ internal static partial class Screenshotter
 
         // AC-1671: the assistant on, no profile yet, and two providers chosen in the previous step: Next is off with its reason.
         ["first-run-assistant-chosen"] = (_, _) => _AssistantWithChosenProviders(),
+        // AC-1671: "What you have" with a provider ticked and not installed: Next is off with its reason, Skip stays.
+        ["first-run-provider-ticked"] = (_, _) => _ProviderStepTicked(),
 
         // Stage provider availability states directly so this headless scene does not depend on a store fetch
         // (AC-510[b]).
@@ -839,6 +841,32 @@ internal static partial class Screenshotter
             {
             }
         }
+    }
+
+    private static Window _ProviderStepTicked()
+    {
+        var view = _ProviderStepCatalogue();
+        var viewModel = (ViewModels.Onboarding.ProviderStepViewModel)(view.DataContext ?? throw new InvalidOperationException("The provider step has no view model."));
+        // Found rows start ticked as a suggestion; the operator ticking Codex is the choice that holds Next.
+        viewModel.Providers[2].IsSelected = true;
+
+        return new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([new _SceneProviderStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+    }
+
+    private sealed class _SceneProviderStep(ViewModels.Onboarding.ProviderStepViewModel viewModel) : Views.Onboarding.IFirstRunWizardStep
+    {
+        public int Order => 20;
+
+        public string Title => "What you have";
+
+        public bool IsSkipped => false;
+
+        public string? NextBlockedReason => viewModel.NextBlockedReason;
+
+        public Control BuildContent() => new Views.Onboarding.ProviderStepView { DataContext = viewModel };
     }
 
     private static Window _AssistantWithChosenProviders()

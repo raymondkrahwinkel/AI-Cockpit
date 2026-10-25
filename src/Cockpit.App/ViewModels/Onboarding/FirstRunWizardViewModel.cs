@@ -94,6 +94,11 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
             choice.ViewModel.AnswersChanged += (_, _) => RefreshSkips();
         }
 
+        if (ordered.OfType<ProviderStep>().FirstOrDefault()?.ViewModel is { } providers)
+        {
+            providers.NextBlockedChanged += (_, _) => RefreshSkips();
+        }
+
         if (ordered.OfType<AssistantStep>().FirstOrDefault() is { } assistant)
         {
             assistant.ViewModel.NextBlockedChanged += (_, _) => RefreshSkips();
