@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
+  for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
+  installing something that cannot start.
 - added: a consent card can ask you to pick, for example which session and what an agent may do, and over the whole
   window when it belongs to no session. Such a card always waits for you: it is never remembered or skipped, and
   Escape or a timeout refuses it.
