@@ -63,7 +63,7 @@ internal sealed class TabGrantRegistry
     {
         lock (_gate)
         {
-            return _grants.Values.FirstOrDefault(grant => grant.TabId == tabId && grant.Paused == false);
+            return _grants.TryGetValue((paneId, tabId), out var grant) && grant.Paused == false ? grant : null;
         }
     }
 
