@@ -35,7 +35,67 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         var projects = await host.GetProjectsAsync().ConfigureAwait(false);
         var now = DateTimeOffset.Now;
         var attention = AttentionTime.Compute(timeline, entries, AttentionSettings.Default, now < request.To ? now : request.To);
-        return new ProductivityOverviewSnapshot(attention, entries, timeline, projects);
+        var days = _OverviewDays(request, timeline, entries, now);
+        var tickets = _OverviewTickets(request, timeline, now);
+        return new ProductivityOverviewSnapshot(attention, days, tickets, [], entries, timeline, projects);
+    }
+
+    private static IReadOnlyList<ProductivityTicketTime> _OverviewTickets(
+        ProductivityOverviewRequest request,
+        CockpitTimeline timeline,
+        DateTimeOffset now)
+    {
+        var result = timeline.Lines
+            .Where(line => !string.IsNullOrWhiteSpace(line.Ticket))
+            .GroupBy(line => line.Ticket ?? string.Empty, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var lines = group.OrderBy(line => line.At).ToList();
+                var attention = AttentionTime.Compute(
+                    new CockpitTimeline(lines, [], []),
+                    [],
+                    AttentionSettings.Default,
+                    now < request.To ? now : request.To);
+                return new ProductivityTicketTime(
+                    group.Key,
+                    lines.Select(line => line.ProjectId).LastOrDefault(project => project is not null),
+                    attention.YourTime,
+                    lines.Select(line => line.Statusline).LastOrDefault(status => !string.IsNullOrWhiteSpace(status)));
+            })
+            .ToDictionary(ticket => ticket.Ticket, StringComparer.Ordinal);
+        foreach (var day in timeline.Days)
+        {
+            foreach (var ticket in day.Tickets)
+            {
+                result.TryAdd(ticket, new ProductivityTicketTime(ticket, day.ProjectId, TimeSpan.Zero, null));
+            }
+        }
+
+        return [.. result.Values.OrderByDescending(ticket => ticket.Time).ThenBy(ticket => ticket.Ticket, StringComparer.Ordinal)];
+    }
+
+    private static IReadOnlyList<ProductivityOverviewDay> _OverviewDays(
+        ProductivityOverviewRequest request,
+        CockpitTimeline timeline,
+        IReadOnlyList<CockpitTimeEntry> entries,
+        DateTimeOffset now)
+    {
+        var result = new List<ProductivityOverviewDay>();
+        for (var from = request.From; from < request.To; from = from.AddDays(1))
+        {
+            var to = from.AddDays(1) < request.To ? from.AddDays(1) : request.To;
+            var day = DateOnly.FromDateTime(from.LocalDateTime);
+            var dayTimeline = new CockpitTimeline(
+                [.. timeline.Lines.Where(line => line.At >= from && line.At < to)],
+                [.. timeline.Usage.Where(usage => usage.RecordedAt >= from && usage.RecordedAt < to)],
+                [.. timeline.Days.Where(value => value.Day == day)]);
+            var dayEntries = entries.Where(entry => entry.StartedAt >= from && entry.StartedAt < to).ToList();
+            result.Add(new ProductivityOverviewDay(
+                day,
+                AttentionTime.Compute(dayTimeline, dayEntries, AttentionSettings.Default, now < to ? now : to)));
+        }
+
+        return result;
     }
 
     private async Task<ProductivitySnapshot> _SnapshotAsync(ProductivitySnapshotRequest request)

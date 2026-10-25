@@ -36,6 +36,9 @@ internal sealed record ProductivityOverviewRequest(DateTimeOffset From, DateTime
 
 internal sealed record ProductivityOverviewSnapshot(
     AttentionTime Attention,
+    IReadOnlyList<ProductivityOverviewDay> Days,
+    IReadOnlyList<ProductivityTicketTime> Tickets,
+    int[] ScheduleMinutes,
     IReadOnlyList<CockpitTimeEntry> Entries,
     CockpitTimeline Timeline,
     IReadOnlyList<PluginProjectInfo> Projects)
@@ -43,6 +46,14 @@ internal sealed record ProductivityOverviewSnapshot(
     public TimeSpan YourTime => Attention.YourTime;
     public TimeSpan WithAgentWithoutYou => Attention.YourTime + Attention.AgentWithoutYou;
 }
+
+internal sealed record ProductivityOverviewDay(DateOnly Day, AttentionTime Attention);
+
+internal sealed record ProductivityTicketTime(
+    string Ticket,
+    string? ProjectId,
+    TimeSpan Time,
+    string? Statusline);
 
 internal sealed record ProductivitySaveRequest(
     Guid? Id,

@@ -18,6 +18,7 @@ using Material.Icons;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using NSubstitute;
 using UiParts = productivityUi::Cockpit.Plugin.Productivity.UI;
+using SharedParts = productivityUi::Cockpit.Plugin.Shared.UI;
 
 namespace Cockpit.App.ViewTests;
 
@@ -56,18 +57,31 @@ public sealed class ProductivityHoursJourneyTests
         ui.SetClipboardTextAsync(Arg.Do<string>(text => copied = text)).Returns(Task.CompletedTask);
         var badge = new SideMenuButtonBadge();
         Action? open = null;
+        Action? openOverview = null;
         Func<Control>? sidebarFactory = null;
-        WorkspaceTypeRegistration? workspace = null;
+        var menuItems = new List<string>();
+        var workspaces = new Dictionary<string, WorkspaceTypeRegistration>(StringComparer.Ordinal);
         ui.AddSideMenuButtonWithBadge("Uren", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
+        menuItems.Add("Uren");
+        ui.When(host => host.AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>()))
+            .Do(call =>
+            {
+                menuItems.Add(call.ArgAt<string>(0));
+                openOverview = call.ArgAt<Action>(1);
+            });
         ui.When(host => host.AddSideMenuSection("Tijd", Arg.Any<Func<Control>>()))
             .Do(call => sidebarFactory = call.Arg<Func<Control>>());
         ui.When(host => host.AddWorkspaceType(Arg.Any<WorkspaceTypeRegistration>()))
-            .Do(call => workspace = call.Arg<WorkspaceTypeRegistration>());
+            .Do(call =>
+            {
+                var registration = call.Arg<WorkspaceTypeRegistration>();
+                workspaces[registration.Id] = registration;
+            });
 
         new UiParts.ProductivityUi().InitializeUi(ui);
         (open ?? throw new InvalidOperationException("No Uren button."))();
         await ui.Received(1).OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId);
-        var registration = workspace ?? throw new InvalidOperationException("No Uren workspace type.");
+        var registration = workspaces[UiParts.ProductivityUi.WorkspaceTypeId];
         var screen = registration.CreateBody(Substitute.For<IWorkspaceContext>());
         using var scene = RenderedScene.Show(screen, 1280, 820);
         await _Until(() => badge.Text == "0u10 vandaag", "the initial badge with ten measured minutes");
@@ -170,6 +184,20 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains(
             overview.GetProperty("timeline").GetProperty("usage").EnumerateArray(),
             usage => usage.GetProperty("inputTokens").GetInt32() > 0 && usage.GetProperty("costUsd").GetDouble() == 0);
+
+        Assert.Equal(["Uren", "Overzicht"], menuItems);
+        (openOverview ?? throw new InvalidOperationException("No Overzicht button."))();
+        await ui.Received(1).OpenWorkspaceAsync("workspace.productivity.overview");
+        var overviewScreen = workspaces["workspace.productivity.overview"].CreateBody(Substitute.For<IWorkspaceContext>());
+        using var overviewScene = RenderedScene.Show(overviewScreen, 1280, 900);
+        await _Until(
+            () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "31u00",
+            "the week overview");
+        Assert.Contains("Overzicht", _Texts(overviewScreen));
+        Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
+        Assert.Contains("Tijd per project", _Texts(overviewScreen));
+        Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
+        Assert.Contains("geen prijs", _Texts(overviewScreen));
     });
 
     private static DateTimeOffset _Local(int year, int month, int day)
