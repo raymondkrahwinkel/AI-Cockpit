@@ -34,7 +34,7 @@ internal static class ControlPolicy
         }
 
         var sameOrigin = SameOrigin(url, controlOrigin);
-        if (false)
+        if (mainFrame && fromHost == false && sameOrigin == false)
         {
             return Verdict.Drop;
         }
