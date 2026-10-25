@@ -10,7 +10,7 @@ namespace Cockpit.Infrastructure.Sessions;
 
 // AC-1717: the host's one source of time per session. Follows `registry.All` like the StallNudger, without its filter
 // on StartedByTheAssistant; the assistant is not in `All` and counts as no work. Lines are written in the order they
-// happened. Status follows LiveStateChanged, which a TTY pane does not raise (AC-294).
+// happened. Status follows LiveStateChanged, on a TTY pane raised by the desktop handle from the pane's own status.
 internal sealed class SessionTimelineRecorder : ISingletonService, IDisposable
 {
     private readonly SessionTimelineLog _log;

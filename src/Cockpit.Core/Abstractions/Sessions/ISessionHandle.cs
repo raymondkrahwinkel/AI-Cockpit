@@ -292,7 +292,7 @@ public interface ISessionHandle
 
     /// <summary>
     /// Raised with the new <see cref="LiveState"/> whenever it changes (AC-1437), outside the handle's own lock.
-    /// Never raised by a handle whose session keeps no host-owned fold, such as a TTY pane or a plain terminal.
+    /// A TTY pane raises it for its status only (AC-1717); a plain terminal never does.
     /// </summary>
     event Action<SessionLiveState>? LiveStateChanged
     {
