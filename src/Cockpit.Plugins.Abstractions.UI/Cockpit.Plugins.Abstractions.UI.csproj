@@ -17,7 +17,9 @@
          host's copy. -->
     <!-- 3.3.0 (AC-1511): ICockpitUiHost.AddServerSettings (default no-op), a view for a server the plugin is installed
          on, with a channel to its backend part there. A plugin that calls it sets minHostVersion 0.92.0. -->
-    <Version>3.3.0</Version>
+    <!-- 3.4.0 (AC-1710): DockPanelRegistration.KeepAlive and CanFloat (init, default false). A plugin that relies on
+         either sets minHostVersion 0.111.0; an older host ignores them. -->
+    <Version>3.4.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

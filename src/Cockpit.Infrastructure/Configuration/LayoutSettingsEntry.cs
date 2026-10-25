@@ -25,6 +25,8 @@ internal sealed class LayoutSettingsEntry
 
     public bool AssistantDocked { get; set; }
 
+    public List<string>? FloatingDockPanelIds { get; set; }
+
     public bool CompanionWindowVisible { get; set; }
 
     public bool OpenInSimpleView { get; set; }
@@ -43,6 +45,7 @@ internal sealed class LayoutSettingsEntry
         DockRailWidth = settings.DockRailWidth,
         OpenDockPanelId = settings.OpenDockPanelId,
         AssistantDocked = settings.AssistantDocked,
+        FloatingDockPanelIds = settings.FloatingDockPanelIds?.ToList(),
         CompanionWindowVisible = settings.CompanionWindowVisible,
         OpenInSimpleView = settings.OpenInSimpleView,
         ThemeMode = settings.ThemeMode,
@@ -60,6 +63,7 @@ internal sealed class LayoutSettingsEntry
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
         AssistantDocked = AssistantDocked,
+        FloatingDockPanelIds = FloatingDockPanelIds,
         CompanionWindowVisible = CompanionWindowVisible,
         OpenInSimpleView = OpenInSimpleView,
         ThemeMode = ThemeMode,
