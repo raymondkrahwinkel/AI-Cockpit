@@ -8,7 +8,7 @@ plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	173
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 plugins-dev/Cockpit.Plugin.Depot.Tests	225
 plugins-dev/Cockpit.Plugin.Diagram.Tests	115
-plugins-dev/Cockpit.Plugin.Discord.Tests	46
+plugins-dev/Cockpit.Plugin.Discord.Tests	42
 plugins-dev/Cockpit.Plugin.Docker.Tests	22
 plugins-dev/Cockpit.Plugin.FanOut.Tests	1
 plugins-dev/Cockpit.Plugin.GeminiProvider.Tests	21
