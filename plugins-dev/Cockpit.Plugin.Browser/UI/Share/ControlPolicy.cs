@@ -27,7 +27,7 @@ internal static class ControlPolicy
     // to another origin is dropped. Sending a held one continues that very request, so nothing else rides along.
     public static Verdict Navigation(string? controlOrigin, string method, bool formSubmit, string url)
     {
-        if (controlOrigin is null || (formSubmit == false && string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)))
+        if (controlOrigin is null || string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
         {
             return Verdict.Allow;
         }
