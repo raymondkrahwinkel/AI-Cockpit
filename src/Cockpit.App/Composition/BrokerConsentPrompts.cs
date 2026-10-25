@@ -25,4 +25,7 @@ internal sealed class BrokerConsentPrompts : IConsentPrompts, ISingletonService
         _broker.RequestConsentAsync(request, cancellationToken);
 
     public void Respond(Guid promptId, ConsentOutcome outcome, bool remember) => _broker.Respond(promptId, outcome, remember);
+
+    public void Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen) =>
+        _broker.Respond(promptId, outcome, remember, chosen);
 }

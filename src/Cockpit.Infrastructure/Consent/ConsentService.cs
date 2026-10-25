@@ -35,7 +35,10 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             request = request with { Source = request.Source with { PaneId = verifiedPaneId } };
         }
 
-        if (cancellationToken.IsCancellationRequested)
+        // AC-1714: only the operator can pick, so a request with choices never resolves without its card — pre-approved,
+        // bypassed or remembered would each have to invent the answer. The bypass and remember checks below skip it.
+        var hasChoices = request.Choices is { Count: > 0 };
+        if (cancellationToken.IsCancellationRequested || (hasChoices && request.PreApprovedBy is not null))
         {
             return await _FailClosedAsync(request).ConfigureAwait(false);
         }
@@ -57,6 +60,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         // AC-1335: an elevated command is never put to the policy at all — the card is the only place the operator
         // sees the command line before Windows asks about "PowerShell". AC-1724: nor is a plugin's prompt into a session.
         if (verifiedPaneId is not null
+            && !hasChoices
             && sourceKey != ConsentSourceCatalog.ElevatedCommand
             && request.Source.Label != ConsentSourceCatalog.PluginPrompt
             && bypassPolicy?.ShouldBypass(verifiedPaneId, sourceKey, request.Risk != ConsentRisk.LowRisk) == true)
@@ -67,7 +71,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
 
         // A remembered scope skips the prompt — but only for the low-risk class, so a single earlier approval can
         // never let a later dangerous call ride along on it.
-        if (request.Risk == ConsentRisk.LowRisk && _remembered.ContainsKey(_Key(request)))
+        if (request.Risk == ConsentRisk.LowRisk && !hasChoices && _remembered.ContainsKey(_Key(request)))
         {
             await _RecordAsync(request, ConsentOutcome.Approved, remembered: true).ConfigureAwait(false);
             return new ConsentDecision(ConsentOutcome.Approved, Remembered: true);
@@ -82,7 +86,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
 
         // "Remember" is offered only for a low-risk action that asked for it; the broker decides this, not the
         // caller, so a request cannot make its own dangerous action rememberable by setting the flag.
-        var canRemember = request.AllowRemember && request.Risk == ConsentRisk.LowRisk;
+        var canRemember = request.AllowRemember && request.Risk == ConsentRisk.LowRisk && !hasChoices;
 
         var id = Guid.NewGuid();
         var pending = new _Pending(request, canRemember);
@@ -99,11 +103,20 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         return await pending.Completion.Task.ConfigureAwait(false);
     }
 
-    public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
+    public void Respond(Guid promptId, ConsentOutcome outcome, bool remember) => Respond(promptId, outcome, remember, chosen: null);
+
+    public void Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
     {
         if (!_pending.TryRemove(promptId, out var pending))
         {
             return;
+        }
+
+        // An approval of a request with choices stands only with a valid pick for every choice; anything else is a denial.
+        chosen = outcome == ConsentOutcome.Approved ? _ValidChoices(pending.Request, chosen) : null;
+        if (pending.Request.Choices is { Count: > 0 } && chosen is null)
+        {
+            outcome = ConsentOutcome.Denied;
         }
 
         var remembered = outcome == ConsentOutcome.Approved && remember && pending.CanRemember;
@@ -112,31 +125,63 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             _remembered[_Key(pending.Request)] = 0;
         }
 
-        _Finish(pending, promptId, outcome, remembered);
+        _Finish(pending, promptId, outcome, remembered, chosen);
+    }
+
+    // The pick as the request offered it, or null when any choice is unanswered, over-answered or answered with a
+    // value that was not offered or not enabled — the UI is trusted to show the card, not to report what was on it.
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>>? _ValidChoices(
+        ConsentRequest request, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
+    {
+        if (request.Choices is not { Count: > 0 } choices || chosen is null)
+        {
+            return null;
+        }
+
+        var valid = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var choice in choices)
+        {
+            if (!chosen.TryGetValue(choice.Key, out var picked) || picked.Count == 0 || (picked.Count > 1 && !choice.AllowMultiple))
+            {
+                return null;
+            }
+
+            var offered = choice.Options.Where(option => option.Enabled).Select(option => option.Value).ToHashSet(StringComparer.Ordinal);
+            if (picked.Distinct(StringComparer.Ordinal).Count() != picked.Count || picked.Any(value => !offered.Contains(value)))
+            {
+                return null;
+            }
+
+            valid[choice.Key] = picked.ToArray();
+        }
+
+        return valid;
     }
 
     private void _Cancel(Guid promptId)
     {
         if (_pending.TryRemove(promptId, out var pending))
         {
-            _Finish(pending, promptId, ConsentOutcome.Denied, remembered: false);
+            _Finish(pending, promptId, ConsentOutcome.Denied, remembered: false, chosen: null);
         }
     }
 
-    private void _Finish(_Pending pending, Guid promptId, ConsentOutcome outcome, bool remembered)
+    private void _Finish(
+        _Pending pending, Guid promptId, ConsentOutcome outcome, bool remembered, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
     {
         pending.CtRegistration.Dispose();
         PromptClosed?.Invoke(this, promptId);   // take the banner down at once
-        _ = _ResolveAsync(pending, outcome, remembered);
+        _ = _ResolveAsync(pending, outcome, remembered, chosen);
     }
 
     // The caller's decision resolves only after the audit line is flushed — the same order the remembered and
     // fail-closed paths already take — so a crash can't leave the operator having acted on a decision the
     // append-only trail never recorded.
-    private async Task _ResolveAsync(_Pending pending, ConsentOutcome outcome, bool remembered)
+    private async Task _ResolveAsync(
+        _Pending pending, ConsentOutcome outcome, bool remembered, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen)
     {
-        await _RecordAsync(pending.Request, outcome, remembered).ConfigureAwait(false);
-        pending.Completion.TrySetResult(new ConsentDecision(outcome, remembered));
+        await _RecordAsync(pending.Request, outcome, remembered, chosen: chosen).ConfigureAwait(false);
+        pending.Completion.TrySetResult(new ConsentDecision(outcome, remembered) { Chosen = chosen });
     }
 
     private async Task<ConsentDecision> _FailClosedAsync(ConsentRequest request)
@@ -145,7 +190,9 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         return ConsentDecision.Denied;
     }
 
-    private Task _RecordAsync(ConsentRequest request, ConsentOutcome outcome, bool remembered, bool bypassed = false)
+    private Task _RecordAsync(
+        ConsentRequest request, ConsentOutcome outcome, bool remembered, bool bypassed = false,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen = null)
     {
         var entry = new ConsentAuditEntry(
             DateTimeOffset.UtcNow,
@@ -156,7 +203,9 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
             request.Source.PluginId,
             request.Scope,
             request.Action,
-            remembered);
+            remembered,
+            chosen is null ? null : string.Join("; ", chosen.Select(pair => $"{pair.Key}={string.Join(",", pair.Value)}")),
+            request.PreApprovedBy);
 
         return auditLog.RecordAsync(entry);
     }
