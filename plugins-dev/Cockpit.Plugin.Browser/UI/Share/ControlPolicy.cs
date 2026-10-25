@@ -39,7 +39,7 @@ internal static class ControlPolicy
             return Verdict.Drop;
         }
 
-        if (string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
+        if (formSubmit == false && string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
         {
             return Verdict.Allow;
         }
