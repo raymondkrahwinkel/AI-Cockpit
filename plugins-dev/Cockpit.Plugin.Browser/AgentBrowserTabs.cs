@@ -65,7 +65,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         }
 
         // Closing the socket ends the screencast with it; no frame is asked for or acknowledged after this.
-        _ = watch;
+        watch?.Connection.Dispose();
     }
 
     public bool TakeOver(string paneId) => browsers.SetOperatorDrives(paneId, true);
