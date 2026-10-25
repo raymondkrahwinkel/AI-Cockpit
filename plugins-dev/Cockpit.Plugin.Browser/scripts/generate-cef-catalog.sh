@@ -40,9 +40,25 @@ PY
   curl -fsS -o "$work/$platform.tar.bz2" "$base/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$name")"
   [ "$(sha1sum "$work/$platform.tar.bz2" | cut -d' ' -f1)" = "$sha1" ] || { echo "SHA-1 of $name differs from the index" >&2; exit 1; }
   sha256="$(sha256sum "$work/$platform.tar.bz2" | cut -d' ' -f1)"
+  # What lands on disk: Release/ and Resources/ without the build-only files, as CefRuntimeCache unpacks them.
+  unpacked="$(python3 - "$work/$platform.tar.bz2" <<'PY'
+import sys, tarfile
+total = 0
+with tarfile.open(sys.argv[1], "r:bz2") as t:
+    for m in t:
+        parts = m.name.split("/", 2)
+        if len(parts) < 3 or parts[1] not in ("Release", "Resources") or not m.isfile():
+            continue
+        low = parts[2].lower()
+        if "/" not in low and (low.endswith(".lib") or (low.startswith("bootstrap") and low.endswith(".exe"))):
+            continue
+        total += m.size
+print(total)
+PY
+)"
   url="$base/$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$name")"
   entries="$entries$separator
-    \"$rid\": { \"url\": \"$url\", \"size\": $size, \"sha256\": \"$sha256\" }"
+    \"$rid\": { \"url\": \"$url\", \"size\": $size, \"unpackedSize\": $unpacked, \"sha256\": \"$sha256\" }"
   separator=","
 done
 

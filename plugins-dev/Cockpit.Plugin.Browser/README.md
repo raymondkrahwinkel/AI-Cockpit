@@ -21,7 +21,8 @@ The plugin does not contain CEF. On the first opening of the browser, `CefRuntim
   names no CEF and the server does not load the UI assembly.
 
 Platforms: `win-x64`, `win-arm64`, `osx-arm64`, `osx-x64`, `linux-x64`, `linux-arm64`. macOS is catalogued but has
-not been tried on hardware; Linux libraries are not stripped.
+not been tried on hardware. The Linux runtime is not stripped (about 1.5 GB on disk for x64); the catalog carries
+both the download and the unpacked size per platform, and `CefRuntimePackage.DownloadText` states both.
 
 ## Update policy
 
@@ -39,8 +40,8 @@ not been tried on hardware; Linux libraries are not stripped.
 
 1. Raise `CefGlue.Next.Core` to the new CEF version (when the binding exists in the UI project).
 2. Regenerate the catalog: `bash scripts/generate-cef-catalog.sh <cef-version> <empty work dir>`. It reads the
-   official index, downloads every minimal archive (about 1.4 GB), checks the index's SHA-1, and writes our own
-   SHA-256 into `UI/Runtime/cef-catalog.json`. Delete the work dir afterwards.
+   official index, downloads every minimal archive (about 1.4 GB), checks the index's SHA-1, measures the unpacked
+   size, and writes our own SHA-256 into `UI/Runtime/cef-catalog.json`. Delete the work dir afterwards.
 3. Raise `version` in `plugin.json`.
 4. Try it per platform (hand test or CI smoke): first opening fetches, a second start fetches nothing, the old
    version directory is gone.

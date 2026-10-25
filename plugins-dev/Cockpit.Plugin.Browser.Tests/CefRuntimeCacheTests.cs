@@ -20,7 +20,7 @@ public class CefRuntimeCacheTests
             var served = _Archive("cef/Release/libcef.dll");
             var catalog = new CefRuntimeCatalog(
                 "1.0.0", "1.0.0.0", new DateOnly(2026, 10, 5),
-                new Dictionary<string, CefRuntimePackage> { ["win-x64"] = new("https://example.invalid/cef.tar.bz2", served.Length, new string('0', 64)) });
+                new Dictionary<string, CefRuntimePackage> { ["win-x64"] = new("https://example.invalid/cef.tar.bz2", served.Length, served.Length, new string('0', 64)) });
             var cache = new CefRuntimeCache(root, new HttpClient(new FixedBytesHandler(served)));
 
             var result = await cache.EnsureAvailableAsync(catalog, "win-x64", null, CancellationToken.None);

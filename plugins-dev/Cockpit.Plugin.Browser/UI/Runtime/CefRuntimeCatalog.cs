@@ -3,7 +3,16 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Browser.UI.Runtime;
 
-internal sealed record CefRuntimePackage(string Url, long Size, string Sha256);
+internal sealed record CefRuntimePackage(string Url, long Size, long UnpackedSize, string Sha256)
+{
+    // The text for the prompt before the first download. Both sizes, since the Linux runtime is not stripped
+    // and takes about five times its download on disk.
+    public string DownloadText => $"Browser engine: download ≈ {_Format(Size)}, ≈ {_Format(UnpackedSize)} on disk";
+
+    private static string _Format(long bytes) => bytes >= 1_000_000_000
+        ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{bytes / 1e9:F1} GB")
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{bytes / 1_000_000} MB");
+}
 
 // The one CEF this plugin version works with, per platform (AC-1727). It is embedded in the UI assembly, so the
 // plugin's own hash covers the URLs and checksums: trusting the plugin means trusting exactly these archives.

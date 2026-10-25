@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using Cockpit.Core.Configuration;
 using SharpCompress.Compressors.BZip2;
 
@@ -15,7 +16,7 @@ internal sealed record CefRuntimeResult(string? Directory, string? Failure);
 // Fetches the CEF runtime on first use (AC-1727), after `WhisperRuntimeCache`. Unlike Whisper's, the archive is
 // checked against a pinned SHA-256 before it is unpacked, and a failure is returned instead of falling back:
 // there is no bundled CEF to fall back to.
-internal sealed class CefRuntimeCache
+internal sealed partial class CefRuntimeCache
 {
     private static readonly HttpClient SharedClient = new() { Timeout = TimeSpan.FromMinutes(2) };
 
@@ -211,12 +212,17 @@ internal sealed class CefRuntimeCache
 
         foreach (var directory in Directory.EnumerateDirectories(root))
         {
-            if (!string.Equals(Path.GetFileName(directory), keepVersion, StringComparison.Ordinal))
+            // Only what looks like a CEF version (154.0.34): anything else under the root is not ours to delete.
+            var name = Path.GetFileName(directory);
+            if (CefVersionName().IsMatch(name) && !string.Equals(name, keepVersion, StringComparison.Ordinal))
             {
                 _DeleteQuietly(directory);
             }
         }
     }
+
+    [GeneratedRegex(@"^\d+\.\d+\.\d+$")]
+    private static partial Regex CefVersionName();
 
     // The library the loader opens first; its presence in a directory that was moved in whole means "cached".
     private static bool _IsComplete(string directory, string rid) => rid.StartsWith("osx", StringComparison.Ordinal)
