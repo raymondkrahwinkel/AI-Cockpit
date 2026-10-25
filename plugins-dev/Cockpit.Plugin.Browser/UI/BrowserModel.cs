@@ -37,6 +37,16 @@ internal sealed class BrowserTab
 
     public event Action? Changed;
 
+    // A headless scene's tab: what the page would have reported, set at once.
+    internal BrowserTab Staged(string title, bool audible = false, bool muted = false, bool codecUnsupported = false)
+    {
+        Title = title;
+        IsAudible = audible;
+        CodecUnsupported = codecUnsupported;
+        View.SetMuted(muted);
+        return this;
+    }
+
     public void ToggleMute() => _Update(() => View.SetMuted(View.IsMuted == false));
 
     public void Navigate(string address)
@@ -68,15 +78,27 @@ internal sealed class BrowserModel(BrowserEngine engine)
     // The tab list or the active tab changed; a change inside a tab comes through BrowserTab.Changed.
     public event Action? Changed;
 
-    public BrowserTab NewTab(string address = StartAddress)
+    // Only on a running engine: without one, a new tab would ask CEF for a browser it cannot create.
+    public void NewTab(string address = StartAddress)
     {
+        if (Engine.State != BrowserEngineState.Ready)
+        {
+            return;
+        }
+
         var view = new CefBrowserView(Engine, address, Engine.RaymondProfile);
         var tab = new BrowserTab(view, address);
         view.PopupRequested += url => NewTab(url);
         _tabs.Add(tab);
         Active = tab;
         Changed?.Invoke();
-        return tab;
+    }
+
+    internal void AddStaged(BrowserTab tab)
+    {
+        _tabs.Add(tab);
+        Active ??= tab;
+        Changed?.Invoke();
     }
 
     public void Activate(BrowserTab tab)

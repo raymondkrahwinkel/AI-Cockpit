@@ -43,6 +43,17 @@ internal sealed class BrowserEngine
         _rootCachePath = rootCachePath;
     }
 
+    // A headless scene's engine: held in one state, never fetching, never touching CEF.
+    internal static BrowserEngine ForScene(BrowserEngineState state, string? reason = null, CefRuntimeProgress? progress = null, string? downloadText = null) =>
+        new((_, _) => new TaskCompletionSource<CefRuntimeResult>().Task, string.Empty, string.Empty)
+        {
+            State = state,
+            Reason = reason,
+            Progress = progress,
+            DownloadText = downloadText,
+            _start = Task.CompletedTask,
+        };
+
     public static BrowserEngine Shared { get; } = new(
         (progress, token) =>
         {

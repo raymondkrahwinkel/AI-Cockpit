@@ -52,6 +52,17 @@ internal sealed class CefBrowserView : Control
         CefBrowserHost.CreateBrowser(info, new Client(this), new CefBrowserSettings { WindowlessFrameRate = 60 }, url, null, profile);
     }
 
+    // A headless scene's page: CEF does not run there, so the page area says so instead of painting.
+    private CefBrowserView(BrowserEngine engine)
+    {
+        _engine = engine;
+        IsScenePlaceholder = true;
+    }
+
+    internal static CefBrowserView ForScene(BrowserEngine engine) => new(engine);
+
+    internal bool IsScenePlaceholder { get; }
+
     public event Action<string>? AddressChanged;
 
     public event Action<string>? TitleChanged;
@@ -129,6 +140,15 @@ internal sealed class CefBrowserView : Control
 
     public override void Render(DrawingContext context)
     {
+        if (IsScenePlaceholder)
+        {
+            context.FillRectangle(new SolidColorBrush(Color.Parse("#1B1D24")), new Rect(Bounds.Size));
+            var text = new FormattedText("Page placeholder · CEF does not run in a headless scene", System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, Typeface.Default, 13, new SolidColorBrush(Color.Parse("#8A90A0")));
+            context.DrawText(text, new Point((Bounds.Width - text.Width) / 2, (Bounds.Height - text.Height) / 2));
+            return;
+        }
+
         context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
         if (_bitmap is not null)
         {

@@ -15,6 +15,9 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     private BrowserHome? _home;
 
+    // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not part of the plugin contract.
+    public static IReadOnlyDictionary<string, Func<Control>> Scenes => BrowserScenes.All;
+
     public void InitializeUi(ICockpitUiHost host)
     {
         host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load()));

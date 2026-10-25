@@ -178,6 +178,8 @@ means a quick, one-click restart rather than a hand copy and restart. This only 
 DEBUG build, and it only refreshes a plugin you already installed — it never installs one on its own, and it
 never touches a plugin you disabled or one the store already updated past your source.
 
+Headless renders of your own views: give your `uiEntryType` a `public static IReadOnlyDictionary<string, Func<Control>> Scenes`, build the plugin, and run `dotnet run --project src/Cockpit.App -- --screenshot out.png --scene plugin:<name>`. It is a dev hook for `--screenshot` only, not part of the plugin contract: a plugin without the table simply offers no scenes, and an unknown name fails with the list of known ones.
+
 ### Scaffold a new plugin {#scaffold-a-new-plugin}
 
 The `dotnet new` template lives in [`templates/cockpit-plugin`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/templates/cockpit-plugin). Install it

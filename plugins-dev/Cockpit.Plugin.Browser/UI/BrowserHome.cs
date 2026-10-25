@@ -80,7 +80,8 @@ internal sealed class BrowserHome
         owner?.ShowShell();
         Shell.SetPlacement(
             Place == BrowserPlace.Tab ? "Dock in rail" : "Back to tab",
-            Place == BrowserPlace.Tab ? MaterialIconKind.DockRight : MaterialIconKind.DockWindow);
+            Place == BrowserPlace.Tab ? MaterialIconKind.DockRight : MaterialIconKind.DockWindow,
+            compact: Place == BrowserPlace.Rail);
     }
 }
 

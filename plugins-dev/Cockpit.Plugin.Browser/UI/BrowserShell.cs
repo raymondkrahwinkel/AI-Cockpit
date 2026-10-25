@@ -24,6 +24,7 @@ internal sealed class BrowserShell : UserControl
     private readonly ContentControl _page = new();
     private readonly Button _placement;
     private BrowserTab? _watched;
+    private bool _compact;
 
     public BrowserShell(BrowserModel model, Action<string> openExternally)
     {
@@ -132,7 +133,7 @@ internal sealed class BrowserShell : UserControl
 
         _model.Changed += _Refresh;
         _model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(_OnEngineChanged);
-        SetPlacement("Dock in rail", MaterialIconKind.DockRight);
+        SetPlacement("Dock in rail", MaterialIconKind.DockRight, compact: false);
         _Refresh();
     }
 
@@ -140,13 +141,20 @@ internal sealed class BrowserShell : UserControl
 
     public event Action? PlacementRequested;
 
-    public void SetPlacement(string label, MaterialIconKind icon) =>
-        _placement.Content = new StackPanel
+    // Compact in the rail (mockup screen 2): the button keeps its icon, the tabs narrow.
+    public void SetPlacement(string label, MaterialIconKind icon, bool compact)
+    {
+        _compact = compact;
+        ToolTip.SetTip(_placement, label);
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new MaterialIcon { Kind = icon, Width = 14, Height = 14 } } };
+        if (compact == false)
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            Children = { new MaterialIcon { Kind = icon, Width = 14, Height = 14 }, new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center } },
-        };
+            content.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+        }
+
+        _placement.Content = content;
+        _Refresh();
+    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -187,15 +195,27 @@ internal sealed class BrowserShell : UserControl
         _back.IsEnabled = tab?.CanGoBack ?? false;
         _forward.IsEnabled = tab?.CanGoForward ?? false;
         _reload.IsEnabled = tab is not null;
-        _address.IsEnabled = ready && tab is not null;
+        _address.IsReadOnly = (ready && tab is not null) == false;
         if (tab is not null && _address.IsFocused == false)
         {
-            _address.Text = tab.Address == BrowserModel.StartAddress ? string.Empty : tab.Address;
+            _address.Text = _Display(tab.Address);
         }
 
         _lock.Kind = tab?.Address.StartsWith("https://", StringComparison.Ordinal) ?? false ? MaterialIconKind.Lock : MaterialIconKind.Web;
         _codecBar.IsVisible = tab?.CodecUnsupported ?? false;
         _page.Content = ready && tab is not null ? tab.View : EngineStatusView.For(_model.Engine);
+    }
+
+    // As the mockup shows it while the field is not being edited: no scheme, no "www.".
+    private static string _Display(string address)
+    {
+        if (address == BrowserModel.StartAddress)
+        {
+            return string.Empty;
+        }
+
+        var shown = address.StartsWith("https://", StringComparison.Ordinal) ? address["https://".Length..] : address;
+        return shown.StartsWith("www.", StringComparison.Ordinal) ? shown["www.".Length..] : shown;
     }
 
     private void _RebuildTabs()
@@ -230,7 +250,7 @@ internal sealed class BrowserShell : UserControl
 
         var chip = new Border
         {
-            Width = 200,
+            Width = _compact ? 140 : 200,
             Height = 28,
             Padding = new Thickness(6, 0, 2, 0),
             CornerRadius = new CornerRadius(6, 6, 0, 0),
