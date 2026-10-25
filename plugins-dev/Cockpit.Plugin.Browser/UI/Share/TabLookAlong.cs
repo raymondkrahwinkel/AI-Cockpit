@@ -24,7 +24,6 @@ internal static class TabLookAlong
             return refuse("There is no browser tab open to look at.");
         }
 
-        _ = await shareAndRead(tabs[0].Id);
         ConsentDecision decision;
         try
         {
