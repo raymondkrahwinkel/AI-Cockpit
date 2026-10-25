@@ -16,14 +16,13 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
 {
     // AC-1544: where another plugin's message can go — never an arbitrary id, only what the access settings allow.
     public const string DirectMessageTarget = "dm";
-    public const string ChannelTarget = "channel";
 
     public PluginMetadata Metadata { get; } = new(
         Id: "discord",
         DisplayName: "Discord",
         Author: "Cockpit",
         Description: "Talk to your assistant from Discord — a second door onto the same conversation the chat " +
-            "window shows. Connects with a bot token over Discord.NET, in direct messages or one channel; consent " +
+            "window shows. Connects with a bot token over Discord.NET in direct messages; consent " +
             "prompts relay as Approve/Deny buttons with a \"type JA/NEE\" text fallback. Adds a flow step that " +
             "DMs you.");
 
@@ -44,6 +43,11 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
         _host = host;
         _settings = new DiscordChannelSettings(host.Storage);
         host.AddHealthSection(_health);
+
+        if (AssistantChannelStorage.MigrateToSingleUser(host.Storage, DiscordChannelSettings.ChannelIdKey) is { } notice)
+        {
+            host.ShowToast($"Discord: {notice}", PluginToastSeverity.Information);
+        }
 
         // AC-1394: the settings view itself, and the AddSettings/OnSettingsSaved registrations that put it in
         // front of the operator, moved to DiscordUi.InitializeUi — this reconnect is what the UI part's own
@@ -84,14 +88,6 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
             return;
         }
 
-        // AC-1360: direct messages are for the one allowed account only. The settings view refuses anything else,
-        // so this is a stored value from before that rule — said out loud, and nothing opens.
-        if (settings.ChannelId == 0 && configured.Access.Audience != AssistantChannelAudience.SingleUser)
-        {
-            host.ShowToast("Discord: direct messages are for a single account only — enter a channel id in the settings.", PluginToastSeverity.Error);
-            return;
-        }
-
         // AC-1074: same gap as Slack's — the shape check runs on save, so an id stored before it survives every load
         // and then matches nothing Discord can ever send. Said out loud here; the relay still opens.
         if (DiscordUserId.ValidateAll(configured.Access.UserIds) is { } accessError)
@@ -117,7 +113,6 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
         _connection = new DiscordGatewayConnection(
             gateway,
             settings.BotToken,
-            settings.ChannelId,
             configured.Access,
             () => settings.Access?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly,
             _health,
@@ -133,11 +128,6 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
             if (_settings?.Access?.Access is { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 })
             {
                 targets.Add(new OperatorMessageTarget(DirectMessageTarget, "Direct message to you"));
-            }
-
-            if (_settings is { ChannelId: not 0 })
-            {
-                targets.Add(new OperatorMessageTarget(ChannelTarget, "The Discord channel"));
             }
 
             return targets;

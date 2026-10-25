@@ -8,16 +8,12 @@ namespace Cockpit.Plugin.Discord.Settings;
 // access, so a settings save takes effect without a restart.
 internal sealed class DiscordChannelSettings(IPluginStorage storage)
 {
+    public const string ChannelIdKey = "discordChannelId";
+
     public string? BotToken
     {
         get => AssistantChannelStorage.LoadBotToken(storage);
         set => AssistantChannelStorage.SaveBotToken(storage, value ?? string.Empty);
-    }
-
-    public ulong ChannelId
-    {
-        get => ulong.TryParse(storage.Get<string>("discordChannelId"), out var id) ? id : 0;
-        set => storage.Set("discordChannelId", value.ToString());
     }
 
     public (AssistantChannelAccess Access, AssistantChannelVerbosity Verbosity)? Access => AssistantChannelStorage.Load(storage);
