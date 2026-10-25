@@ -35,6 +35,8 @@
     <!-- The CEF archives are .tar.bz2 and the BCL has no bzip2. Shipped with the plugin, so the host's copy
          (Infrastructure) is not relied on. -->
     <PackageReference Include="SharpCompress" Version="0.49.1" />
+    <!-- The bare binding only (AC-1709 route c); its version is the CEF version of Runtime/cef-catalog.json. -->
+    <PackageReference Include="CefGlue.Next.Core" Version="154.8037.98" />
   </ItemGroup>
 
   <ItemGroup>

@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);UI\**;Subprocess\**</DefaultItemExcludes>
     <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
   </PropertyGroup>
 
@@ -20,6 +20,8 @@
     </ProjectReference>
     <!-- Keeps the plugin's own Configuration on the UI part (see GitStatus, AC-1392). -->
     <ProjectReference Include="UI\Cockpit.Plugin.Browser.UI.csproj" ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="Subprocess\Cockpit.Plugin.Browser.Subprocess.csproj" ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
