@@ -1351,7 +1351,7 @@ True when a session is selected (so `InjectIntoActiveSessionAsync` will land). C
 
 ## `ICockpitTimeEntries` {#icockpittimeentries}
 
-Available in SDK 3.17.0 and host 0.101.0. Manual entries and stopped stopwatches are retained in the host's
+Available in SDK 3.18.0 and host 0.107.0. Manual entries and stopped stopwatches are retained in the host's
 append-only `own-time-entries.jsonl`. Reads use a half-open range (`from <= StartedAt < to`). Only `Open` entries
 may be changed or deleted. `MarkOfferedAsync` freezes them; `Booked` stays frozen and `Skipped` returns to `Open`.
 

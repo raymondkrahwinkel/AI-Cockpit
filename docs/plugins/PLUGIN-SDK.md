@@ -1157,7 +1157,7 @@ app-wide styles or `ResourceDictionary` merges; scope any styling to your own ro
 
 `host.TimeEntries` is the host-owned log of the operator's own time. It supports manual entries, one persistent
 stopwatch, day-range reads, and the offered/booked lifecycle. It needs no capability because it exposes only the
-operator's own entries, not the session timeline. A plugin that uses it sets `minHostVersion` to `0.101.0`.
+operator's own entries, not the session timeline. A plugin that uses it sets `minHostVersion` to `0.107.0`.
 
 ```csharp
 public void Initialize(ICockpitHost host)
