@@ -44,6 +44,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Runtime\cef-catalog.json" LogicalName="cef-catalog.json" />
+    <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

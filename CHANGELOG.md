@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: in the Browser plugin you can share the tab you are looking at with one agent session, after you pick that
+  session on a card. The agent can then read only that tab (address, title, text and a screenshot), never cookies or
+  other tabs; every read is logged, a bar says who is watching, and **Stop sharing** ends it at once. If the tab moves
+  to another site, sharing pauses until you say to keep sharing there.
 - added: a consent card can ask you to pick, for example which session and what an agent may do, and over the whole
   window when it belongs to no session. Such a card always waits for you: it is never remembered or skipped, and
   Escape or a timeout refuses it.
