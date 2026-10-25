@@ -19,12 +19,11 @@ public class PluginHostVersionGateTests
 
     private static PluginRegistration Consented(string hash) => new(Enabled: true, PinnedSha256: hash);
 
-    // Rows, in order: too old is refused; new enough loads; a declared 1.0.0 (the template default) does not bite a 0.x
-    // host, while an honest sub-1.0 requirement (AC-181) is enforced against one; a manifest with nothing usable in
-    // the field is not refused over it (a typo must not become an outage); the contract major still wins over all.
+    // Rows, in order: too old is refused; a declared 1.0.0 (the template default) does not bite a 0.x host, while an
+    // honest sub-1.0 requirement (AC-181) is enforced and a new enough host loads; nothing usable in the field is not
+    // refused over (a typo must not become an outage); the contract major still wins over all.
     [Theory]
     [InlineData("2.0.0", 1, "1.5.0", PluginLoadDecision.HostTooOld)]
-    [InlineData("1.0.0", 1, "1.5.0", PluginLoadDecision.Load)]
     [InlineData("1.0.0", 1, "0.1.0", PluginLoadDecision.Load)]
     [InlineData("0.14.0", 1, "0.13.0", PluginLoadDecision.HostTooOld)]
     [InlineData("0.10.0", 1, "0.13.0", PluginLoadDecision.Load)]

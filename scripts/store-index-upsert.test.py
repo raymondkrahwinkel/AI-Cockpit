@@ -176,6 +176,33 @@ for case in FIELD_LOSS_CASES:
         else:
             print(f"ok: {name}")
 
+# --- AC-1740: --package writes a `packages` object whose win-x64 zip `path`/`sha256` repeat, and a version
+# already in the index stays byte-for-byte what it was ---
+
+with tempfile.TemporaryDirectory() as td:
+    index_path = Path(td) / "index.json"
+    index_path.write_text(json.dumps({"plugins": []}))
+    package_argv = [
+        "store-index-upsert.py", "--index", str(index_path), "--id", "browser", "--name", "Browser",
+        "--version", "1.0.0", "--published", "2026-10-25",
+        "--package", "win-x64=browser/browser-1.0.0-win-x64.zip:aa11",
+        "--package", "linux-x64=browser/browser-1.0.0-linux-x64.zip:bb22",
+    ]
+    old_argv = sys.argv
+    sys.argv = package_argv
+    try:
+        rc = upsert.main()
+        first = index_path.read_bytes()
+        rerun_rc = upsert.main()
+    finally:
+        sys.argv = old_argv
+
+    version = json.loads(first)["plugins"][0]["versions"][0]
+    check("--package publishes", rc, upsert.EXIT_OK)
+    check("--package sets path/sha256 to the win-x64 package", (version["path"], version["sha256"]), ("browser/browser-1.0.0-win-x64.zip", "aa11"))
+    check("--package writes every rid", sorted(version["packages"]), ["linux-x64", "win-x64"])
+    check("a version with packages is immutable on republish", (rerun_rc, index_path.read_bytes() == first), (upsert.EXIT_ALREADY_PRESENT, True))
+
 if failures:
     print(f"\n{len(failures)} test(s) failed:", file=sys.stderr)
     for f in failures:
