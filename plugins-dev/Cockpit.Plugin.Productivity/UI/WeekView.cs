@@ -426,6 +426,8 @@ internal static class WeekView
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             FontStyle = cell.Edited ? FontStyle.Italic : FontStyle.Normal,
+            FontSize = 14,
+            FontWeight = FontWeight.Normal,
             Flyout = flyout,
         };
         ToolTip.SetTip(button, string.IsNullOrEmpty(cell.Description) ? "Klik om aan te passen" : cell.Description);
