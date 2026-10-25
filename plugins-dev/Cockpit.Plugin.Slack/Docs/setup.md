@@ -7,7 +7,7 @@ icon: 💬
 
 Five things need to be true before the two tokens in this plugin's settings work: an app exists, Socket
 Mode is on (that is where the app-level token comes from), Interactivity is on, the bot has the scopes it
-needs and is installed to your workspace, and it is in your channel. This page walks through all five in
+needs and is installed to your workspace, and its Messages Tab is enabled. This page walks through all five in
 order. The same walkthrough is also in the repo as this plugin's `README.md`, for whoever's reading it
 outside the app.
 
@@ -40,11 +40,10 @@ click never reaches this plugin, and only the "type JA/NEE" text fallback keeps 
 ## 4. Choose bot scopes and install the app {#install}
 
 Open **OAuth & Permissions** in the left-hand sidebar. Under **Scopes → Bot Token Scopes**, add at least
-`chat:write` (to post), `channels:history` (to read the channel back — use `groups:history` instead if
-your channel is private) and `files:read` (to fetch an image sent along with a message). Then, still on
-**Event Subscriptions**, turn subscriptions on and add the `message.channels` bot event (`message.groups`
-for a private channel) — this is what makes Slack deliver messages over the socket at all, Interactivity
-notwithstanding.
+`chat:write` (to post), `im:history` (to receive DMs), `im:write` (to open the owner's DM) and `files:read`
+(to fetch an image sent along with a message). Then, under **Event Subscriptions**, turn subscriptions on
+and add the `message.im` bot event. That event is what makes Slack deliver DMs over the socket at all,
+Interactivity notwithstanding.
 
 `files:read` is the one to double-check, because forgetting it fails in a way that looks like nothing at
 all. A Slack file lives behind a private URL that only answers to the bot token; without the scope Slack
@@ -58,14 +57,18 @@ Press **Install to Workspace** at the top of **OAuth & Permissions**, and author
 token — starting with `xoxb-` — shown as **Bot User OAuth Token**; copy it into this plugin's **Bot token**
 field.
 
-## 5. Invite the bot to the channel and find its id {#channel-id}
+If this app was already installed for Slack 1.x, **reinstall and authorize it again after adding these scopes
+and the event**. An existing installation does not receive new permissions automatically; without that step,
+no DMs arrive.
 
-In Slack, open the channel to relay into and invite the bot the same way you would invite a person (`/invite
-@your-bot-name`, or through the channel's member list). Then open the channel details and copy its **Channel
-ID** (it looks like `C0123456789`) into this plugin's **Channel id** field.
+## 5. Enable direct messages {#direct-messages}
+
+Open **App Home** in the Slack app settings, enable the **Messages Tab**, and allow users to send messages from
+it. In Slack, open the app from **Apps** and send it a direct message. Cockpit opens that same DM for outgoing
+answers; there is no channel id to configure.
 
 ## Your responsibility, not this plugin's {#terms-of-service}
 
-This plugin connects a bot account you control to a channel you control. Whether doing so — and who you let
-talk to your assistant through it — is consistent with Slack's own terms of service and API guidelines is for
-you to check, not something this plugin verifies on your behalf.
+This plugin connects a bot account you control to the DM of the one member id you link. Whether doing so is
+consistent with Slack's own terms of service and API guidelines is for you to check, not something this plugin
+verifies on your behalf.

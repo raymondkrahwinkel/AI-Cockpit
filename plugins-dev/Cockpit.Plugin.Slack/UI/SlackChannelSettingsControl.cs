@@ -9,110 +9,34 @@ using Cockpit.Plugin.Slack.Settings;
 
 namespace Cockpit.Plugin.Slack.UI;
 
-// The plugin's settings view (opened from the gear in the plugin manager): AC-1023 §3's three-level access
-// model verbatim (the warning texts are AssistantChannelAccess's own constants), the bot/app-level tokens and
-// channel id, and the verbosity picker (AC-669 §1.4).
+// One linked owner is the complete authorization UI. The tokens and verbosity remain independently editable.
 internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly SlackChannelSettings _settings;
-
-    private readonly RadioButton _singleUserOption;
-    private readonly RadioButton _specificUsersOption;
-    private readonly RadioButton _everyoneOption;
-
-    private readonly TextBox _singleUserId;
-    private readonly TextBox _specificUserIds;
-    private readonly CheckBox _specificUsersWarningAck;
-    private readonly TextBox _everyoneConfirmation;
-
+    private readonly TextBox _userId;
     private readonly ComboBox _verbosity;
     private readonly TextBox _botToken;
     private readonly TextBox _appLevelToken;
-    private readonly TextBox _channelId;
     private readonly TextBlock _errorText;
-    private readonly TextBlock _notConfiguredText;
+    private readonly TextBlock _linkText;
+    private readonly TextBlock _migrationNoticeText;
 
     public SlackChannelSettingsControl(ICockpitUiHost host, SlackChannelSettings settings)
     {
         _settings = settings;
         var current = settings.Access;
 
-        _singleUserOption = new RadioButton { GroupName = "audience", Content = "Only this one Slack account" };
-        _specificUsersOption = new RadioButton { GroupName = "audience", Content = "Several specific Slack accounts" };
-        _everyoneOption = new RadioButton { GroupName = "audience", Content = "Everyone in this channel" };
-
-        _singleUserId = new TextBox { PlaceholderText = "U0123ABCDEF" };
-        var singleUserIdHint = new TextBlock
+        _userId = new TextBox
+        {
+            Text = current?.Access.UserIds.FirstOrDefault() ?? string.Empty,
+            PlaceholderText = "U0123ABCDEF",
+        };
+        var userIdHint = new TextBlock
         {
             Text = "Not your Slack name — the member id. " + SlackUserId.HowToFind,
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.8,
-        };
-        _specificUserIds = new TextBox
-        {
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 60,
-            PlaceholderText = "One Slack member id per line",
-        };
-        var specificUserIdsHint = new TextBlock
-        {
-            Text = "Not Slack names — member ids. " + SlackUserId.HowToFind,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Opacity = 0.8,
-        };
-        var specificUsersWarningText = new TextBlock
-        {
-            Text = AssistantChannelAccess.MultipleUsersWarning,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Opacity = 0.8,
-        };
-        _specificUsersWarningAck = new CheckBox { Content = "I understand" };
-
-        var everyoneWarningText = new TextBlock
-        {
-            Text = AssistantChannelAccess.EveryoneWarning,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Opacity = 0.8,
-        };
-        _everyoneConfirmation = new TextBox { PlaceholderText = AssistantChannelAccess.EveryoneConfirmationPhrase };
-
-        switch (current?.Access.Audience)
-        {
-            case AssistantChannelAudience.SpecificUsers:
-                _specificUsersOption.IsChecked = true;
-                _specificUserIds.Text = string.Join('\n', current.Value.Access.UserIds);
-                break;
-            case AssistantChannelAudience.Everyone:
-                _everyoneOption.IsChecked = true;
-                break;
-            default:
-                _singleUserOption.IsChecked = true;
-                _singleUserId.Text = current?.Access.UserIds.FirstOrDefault() ?? string.Empty;
-                break;
-        }
-
-        var audiencePanel = new StackPanel
-        {
-            Spacing = 6,
-            Children =
-            {
-                _singleUserOption,
-                _singleUserId,
-                singleUserIdHint,
-                _specificUsersOption,
-                specificUsersWarningText,
-                _specificUserIds,
-                specificUserIdsHint,
-                _specificUsersWarningAck,
-                _everyoneOption,
-                everyoneWarningText,
-                _everyoneConfirmation,
-            },
         };
 
         _verbosity = new ComboBox
@@ -123,28 +47,33 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
                 "B — everything, tool use included",
                 "C — short status lines instead of full tool traffic",
             },
-            SelectedIndex = (int)(current?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly),
+            SelectedIndex = (int)settings.Verbosity,
         };
 
         _botToken = new TextBox { Text = settings.BotToken, PasswordChar = '•', PlaceholderText = "Slack bot token (xoxb-…)" };
         _appLevelToken = new TextBox { Text = settings.AppLevelToken, PasswordChar = '•', PlaceholderText = "Slack app-level token (xapp-…)" };
-        _channelId = new TextBox { Text = settings.ChannelId, PlaceholderText = "Slack channel id to relay into (e.g. C0123456789)" };
-
-        _errorText = new TextBlock { Foreground = _Brush("CockpitStatusErrorBrush"), TextWrapping = TextWrapping.Wrap, IsVisible = false };
-
-        // AC-1084: what a never-configured install says for itself, on its own page. Not an error colour — it
-        // reports a state the operator chose by installing and has not finished, not something that went wrong.
-        _notConfiguredText = new TextBlock
+        _errorText = new TextBlock
         {
-            Text = "Not set up yet. Nothing is relayed to Slack until a bot token, an app-level token and a channel id are saved here.",
+            Foreground = _Brush("CockpitStatusErrorBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = false,
+        };
+        _linkText = new TextBlock
+        {
+            Text = "Link your own account to receive messages.",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Opacity = 0.8,
-            IsVisible = false,
+            IsVisible = string.IsNullOrWhiteSpace(_userId.Text),
+        };
+        _migrationNoticeText = new TextBlock
+        {
+            Text = settings.MigrationNotice ?? string.Empty,
+            Foreground = _Brush("CockpitStatusErrorBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            IsVisible = settings.MigrationNotice is not null,
         };
 
-        // AC-1032/AC-1033: the `?` beside the heading, pointing at this plugin's own setup walkthrough —
-        // creating the app, Socket Mode, Interactivity, bot scopes/install, inviting the bot to the channel.
         var botConnectionHeading = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -164,112 +93,62 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
                 Spacing = 10,
                 Children =
                 {
-                    _notConfiguredText,
-                    new TextBlock { Text = "Who may talk to the assistant here?", FontWeight = FontWeight.Bold },
-                    audiencePanel,
+                    _migrationNoticeText,
+                    _linkText,
+                    new TextBlock { Text = "Your Slack member id", FontWeight = FontWeight.Bold },
+                    _userId,
+                    userIdHint,
                     new TextBlock { Text = "How much of the conversation to relay", FontWeight = FontWeight.Bold, Margin = new Thickness(0, 8, 0, 0) },
                     _verbosity,
                     botConnectionHeading,
                     _botToken,
                     _appLevelToken,
-                    _channelId,
                     _errorText,
                 },
             },
         };
-
-        _notConfiguredText.IsVisible = _IsBlank;
     }
 
-    // AC-1084: nothing entered and nothing stored — the line `ClusterRowControl.IsBlank` draws for a Kubernetes
-    // row. Only the fields that make the channel work, so a stray verbosity pick cannot turn a fresh install back
-    // into a refusing one; the audience radio does count, so picking "everyone" and typing nothing still refuses.
     private bool _IsBlank =>
         _settings.Access is null
-        && _singleUserOption.IsChecked == true
-        && string.IsNullOrWhiteSpace(_singleUserId.Text)
-        && string.IsNullOrWhiteSpace(_specificUserIds.Text)
-        && string.IsNullOrWhiteSpace(_everyoneConfirmation.Text)
+        && string.IsNullOrWhiteSpace(_userId.Text)
         && string.IsNullOrWhiteSpace(_botToken.Text)
-        && string.IsNullOrWhiteSpace(_appLevelToken.Text)
-        && string.IsNullOrWhiteSpace(_channelId.Text);
+        && string.IsNullOrWhiteSpace(_appLevelToken.Text);
 
     public bool TryStage(out Action? commit, out string? error)
     {
         commit = null;
 
-        // AC-1084: a plugin installed but never set up is not an invalid one. Staging with no commit is how the
-        // host reads "nothing to save" (PluginSettingsStaging), so a fresh install neither writes nor blocks the
-        // operator's Apply — while a half-filled one drops through to the checks below exactly as before.
         if (_IsBlank)
         {
-            _notConfiguredText.IsVisible = true;
+            _linkText.IsVisible = true;
             _errorText.IsVisible = false;
             error = null;
             return true;
         }
 
-        _notConfiguredText.IsVisible = false;
-
-        // AC-1048: caught here, before AssistantChannelAccess even sees the value — a display name or anything
-        // else that is not a Slack member id is refused with what the field actually needs, not just "invalid".
-        if (_singleUserOption.IsChecked == true && !string.IsNullOrWhiteSpace(_singleUserId.Text)
-            && SlackUserId.Validate(_singleUserId.Text.Trim()) is { } singleUserIdError)
+        var userId = _userId.Text?.Trim() ?? string.Empty;
+        if (SlackUserId.Validate(userId) is { } userIdError)
         {
-            return _Fail(out commit, out error, singleUserIdError);
+            return _Fail(out commit, out error, userIdError);
         }
 
-        if (_specificUsersOption.IsChecked == true)
+        var result = AssistantChannelAccess.ForSingleUser(userId);
+        if (result.Access is not { } access)
         {
-            foreach (var userId in _ParseUserIds(_specificUserIds.Text))
-            {
-                if (SlackUserId.Validate(userId) is { } listUserIdError)
-                {
-                    return _Fail(out commit, out error, listUserIdError);
-                }
-            }
+            return _Fail(out commit, out error, result.Error ?? "A Slack member id is required.");
         }
 
-#pragma warning disable CS0618 // AC-1682 replaces Slack's legacy wider-audience UI.
-        var result = _singleUserOption.IsChecked == true
-            ? AssistantChannelAccess.ForSingleUser(_singleUserId.Text ?? string.Empty)
-            : _specificUsersOption.IsChecked == true
-                ? AssistantChannelAccess.ForUsers(_ParseUserIds(_specificUserIds.Text), _specificUsersWarningAck.IsChecked == true)
-                : AssistantChannelAccess.ForEveryone(_everyoneConfirmation.Text ?? string.Empty);
-#pragma warning restore CS0618
-
-        if (!result.Ok)
-        {
-            return _Fail(out commit, out error, result.Error!);
-        }
-
-        if (string.IsNullOrWhiteSpace(_botToken.Text))
-        {
-            return _Fail(out commit, out error, "A bot token is required.");
-        }
-
-        if (string.IsNullOrWhiteSpace(_appLevelToken.Text))
-        {
-            return _Fail(out commit, out error, "An app-level token is required for Socket Mode.");
-        }
-
-        if (string.IsNullOrWhiteSpace(_channelId.Text))
-        {
-            return _Fail(out commit, out error, "A Slack channel id is required.");
-        }
-
-        var access = result.Access!;
         var verbosity = (AssistantChannelVerbosity)_verbosity.SelectedIndex;
-        var botToken = _botToken.Text.Trim();
-        var appLevelToken = _appLevelToken.Text.Trim();
-        var channelId = _channelId.Text.Trim();
-
+        var botToken = _botToken.Text?.Trim() ?? string.Empty;
+        var appLevelToken = _appLevelToken.Text?.Trim() ?? string.Empty;
         commit = () =>
         {
             _settings.SaveAccess(access, verbosity);
             _settings.BotToken = botToken;
             _settings.AppLevelToken = appLevelToken;
-            _settings.ChannelId = channelId;
+            _migrationNoticeText.IsVisible = false;
+            _linkText.IsVisible = false;
         };
 
         error = null;
@@ -283,15 +162,10 @@ internal sealed class SlackChannelSettingsControl : UserControl, IPluginSettings
         error = message;
         _errorText.Text = message;
         _errorText.IsVisible = true;
+        _linkText.IsVisible = string.IsNullOrWhiteSpace(_userId.Text);
         return false;
     }
 
-    private static IReadOnlyList<string> _ParseUserIds(string? text) =>
-        [.. (text ?? string.Empty).Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
-
-    // AC-334/AC-337: a plugin's own theme lookup rather than a hardcoded Brushes.X — a colour lives in
-    // Theme.axaml, and each plugin keeps this tiny copy since Cockpit.Plugins.Abstractions.Theming.ThemeBrush is
-    // internal SDK plumbing, not part of the plugin contract (same pattern as DiscordChannelSettingsControl).
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }
