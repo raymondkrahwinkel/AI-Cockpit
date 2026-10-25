@@ -11,6 +11,12 @@ namespace Cockpit.Plugins.Abstractions.Capabilities;
 /// </remarks>
 public static class CapabilityCatalog
 {
+    /// <summary>
+    /// The one capability the host enforces today (AC-1730): without it in <c>plugin.json</c>,
+    /// <see cref="ICockpitHost.TimeEntries"/> throws <see cref="UnauthorizedAccessException"/>.
+    /// </summary>
+    public const string TimeEntries = "time.entries";
+
     // Ordered risk-first so "what does this plugin actually get" is answerable by reading down the list, and
     // so the generated table in docs/plugins/API-REFERENCE.md reads the same way.
     public static IReadOnlyList<PluginCapability> All { get; } =
@@ -435,6 +441,15 @@ public static class CapabilityCatalog
             [new("cliName", "The managed CLI the plugin may install and resolve.")]),
 
         new(
+            TimeEntries,
+            "Your own time entries",
+            "Reads and changes the hours you log yourself and your stopwatch — your time, not your sessions'.",
+            CapabilityRisk.Sensitive,
+            "0.107.0",
+            ["ICockpitHost.TimeEntries"],
+            []),
+
+        new(
             "assistant.notify",
             "Leaving a message for the assistant",
             "Puts a message in the cockpit-assistant's inbox — read as data from the plugin, never as an operator instruction, but still text put in front of the assistant.",
@@ -452,4 +467,7 @@ public static class CapabilityCatalog
             ["ICockpitHost.OpenAssistantChannel"],
             []),
     ];
+
+    /// <summary>The capability with this id, or <see langword="null"/> when the host does not know it.</summary>
+    public static PluginCapability? Find(string id) => All.FirstOrDefault(capability => capability.Id == id);
 }

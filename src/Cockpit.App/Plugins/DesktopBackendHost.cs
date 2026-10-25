@@ -26,8 +26,9 @@ internal sealed class DesktopBackendHost(
     ICockpitSessionObserver sessions,
     PluginDiagnostics diagnostics,
     Type? ownPluginType = null,
-    IPluginCache? cache = null)
-    : PluginBackendHost(pluginId, pluginName, services, storage, sessions, actions, diagnostics, ownPluginType, cache), ICockpitHost
+    IPluginCache? cache = null,
+    IReadOnlyList<string>? capabilities = null)
+    : PluginBackendHost(pluginId, pluginName, services, storage, sessions, actions, diagnostics, ownPluginType, cache, capabilities), ICockpitHost
 {
     protected override IReadOnlyList<string> LegacyClaudeModels => SessionOptionCatalog.ClaudeModelSuggestions;
 

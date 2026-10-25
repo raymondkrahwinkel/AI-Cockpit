@@ -568,7 +568,8 @@ public sealed class CockpitBackend
             actions,
             diagnostics,
             plugin.GetType(),
-            cache.CreateFor(discovered.FolderId));
+            cache.CreateFor(discovered.FolderId),
+            discovered.Manifest.Capabilities);
     }
 
     // AC-1378/AC-1439: the one launcher everywhere; without a frontend it keeps the desks as saved and hosts its sessions

@@ -28,7 +28,8 @@ public interface ICockpitHost
     IPluginStorage Storage { get; }
 
     /// <summary>
-    /// The operator's own time entries. No capability is required because this is the operator's own data.
+    /// The operator's own time entries. Needs <c>"capabilities": ["time-entries.read-write"]</c> in
+    /// <c>plugin.json</c>; without it the host throws <see cref="UnauthorizedAccessException"/> naming the capability.
     /// </summary>
     ICockpitTimeEntries TimeEntries => UnavailableCockpitTimeEntries.Instance;
 

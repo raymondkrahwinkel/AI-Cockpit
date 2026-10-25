@@ -62,8 +62,9 @@ what a plugin may do; this describes what stops it, and — more usefully — wh
 ### The decision, and its date
 
 **Informed consent, not a sandbox (2026-07-28).** A plugin runs in-process with the same rights as the
-operator: your account, your file system, your network. There is no capability restriction, no per-API
-permission prompt, and no process isolation. .NET cannot give an in-process plugin a security boundary, so
+operator: your account, your file system, your network. There is no per-API permission prompt and no process
+isolation; capabilities are declared in the manifest and shown at consent, and one of them is enforced (below).
+Everything else a plugin can do, it can do without declaring it. .NET cannot give an in-process plugin a security boundary, so
 the choice was between moving plugins out-of-process behind a broker and being honest that there is no wall.
 The broker route was **declined** and is not a direction this design is working towards.
 
@@ -82,6 +83,13 @@ the protection, and why the list below of what is **not** covered is the more im
   assembly (`PluginClosureHash.OfInstalledFolderAsync`, verified on each discovery pass in
   `PluginDiscovery.cs`). Swapping a dependency re-prompts exactly as rebuilding the plugin does.
 - **The abstractions major-version gate.** A mismatch is refused outright, before any plugin code runs.
+- **Declared capabilities (host 0.110.0+, AC-1730).** `plugin.json` names ids from
+  [`CapabilityCatalog`](API-REFERENCE.md#capabilities) under `capabilities`. An id the host does not know keeps
+  the plugin from loading, with the id in the Plugins manager. Every declared id is shown, in the catalogue's
+  own sentence, in the consent dialog and the plugin list; since the closure hash covers `plugin.json`, adding
+  one later asks for consent again. Only `time.entries` is **enforced**: without it, `host.TimeEntries`
+  throws `UnauthorizedAccessException` naming the capability. The other ids are shown, not enforced — and
+  `host.Services` still resolves anything, which is point 2 below in another form.
 - **Mount authorization on the MCP endpoints the cockpit hosts for you.** A session reaches exactly the
   endpoints its own launch mounted for it, checked server-side on the already-verified caller identity and
   fail-closed (`McpEndpointAuthorization.Allows`, `SessionMcpMounts.IsMounted`). Before this landed, the
@@ -1027,6 +1035,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `uiEntryType` | no | Fully-qualified UI entry type; omit to let the host find the single `ICockpitPluginUi` in the UI assembly. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
+| `capabilities` | no | Ids from [`CapabilityCatalog`](API-REFERENCE.md#capabilities) the plugin asks for (`["time.entries"]`), shown at consent and in the Plugins manager. An unknown id keeps the plugin from loading. `time.entries` is required for `host.TimeEntries`. Host 0.110.0+; see [the trust boundary](#the-trust-boundary). |
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
 | `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. This covers a host **theme resource or control style class** your plugin looks up by name too, not just an SDK member — see "Theme tokens and control classes" below; that dependency has no compiler to catch you if you forget it. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
@@ -1189,8 +1198,9 @@ It differs from `host.SendToSessionAsync`: that one types into a session without
 prompt, so it is the one to use for text the operator has not already seen.
 
 `host.TimeEntries` is the host-owned log of the operator's own time. It supports manual entries, one persistent
-stopwatch, day-range reads, and the offered/booked lifecycle. It needs no capability because it exposes only the
-operator's own entries, not the session timeline. A plugin that uses it sets `minHostVersion` to `0.107.0`.
+stopwatch, day-range reads, and the offered/booked lifecycle. It needs `"capabilities": ["time.entries"]` in
+`plugin.json` (AC-1730): without it the getter throws `UnauthorizedAccessException`. A plugin that uses it sets
+`minHostVersion` to `0.110.0`.
 
 ```csharp
 public void Initialize(ICockpitHost host)

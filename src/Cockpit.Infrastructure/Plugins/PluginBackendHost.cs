@@ -20,6 +20,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Health;
@@ -50,7 +51,8 @@ public class PluginBackendHost(
     ICockpitActions actions,
     PluginDiagnostics diagnostics,
     Type? ownPluginType = null,
-    IPluginCache? cache = null) : ICockpitHost
+    IPluginCache? cache = null,
+    IReadOnlyList<string>? capabilities = null) : ICockpitHost
 {
     // Without a cache file behind it — a test host — the plugin still gets a cache, one that lives as long as
     // this host does. `Cache` is never null (AC-1294).
@@ -74,7 +76,12 @@ public class PluginBackendHost(
 
     public IPluginStorage Storage => storage;
 
-    public ICockpitTimeEntries TimeEntries => services.GetRequiredService<ICockpitTimeEntries>();
+    // AC-1730: the operator's own time is handed only to a plugin whose consented manifest asks for it; any other
+    // plugin gets a refusal that names the missing capability, never an empty log.
+    public ICockpitTimeEntries TimeEntries => (capabilities ?? []).Contains(CapabilityCatalog.TimeEntries)
+        ? services.GetRequiredService<ICockpitTimeEntries>()
+        : throw new UnauthorizedAccessException(
+            $"Plugin '{pluginId}' needs the capability '{CapabilityCatalog.TimeEntries}' in its plugin.json to use the operator's time entries.");
 
     public IPluginCache Cache => _cache;
 

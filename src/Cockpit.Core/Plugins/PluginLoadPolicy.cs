@@ -10,7 +10,8 @@ public static class PluginLoadPolicy
         int hostAbstractionsMajor,
         PluginRegistration? saved,
         string currentSha256,
-        Version? hostVersion = null)
+        Version? hostVersion = null,
+        Func<string, bool>? isKnownCapability = null)
     {
         if (manifest.AbstractionsVersion != hostAbstractionsMajor)
         {
@@ -23,6 +24,13 @@ public static class PluginLoadPolicy
         if (!MeetsMinHostVersion(manifest.MinHostVersion, hostVersion))
         {
             return PluginLoadDecision.HostTooOld;
+        }
+
+        // AC-1730: before consent, so the operator is never asked to approve a grant this host cannot name.
+        // The catalogue lives in the plugin SDK, which Core does not reference, so the caller supplies the lookup.
+        if (isKnownCapability is not null && !manifest.Capabilities.All(isKnownCapability))
+        {
+            return PluginLoadDecision.UnknownCapability;
         }
 
         if (saved is null)

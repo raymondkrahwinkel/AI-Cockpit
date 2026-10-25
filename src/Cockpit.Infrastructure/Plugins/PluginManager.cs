@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Capabilities;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -143,6 +144,17 @@ public sealed class PluginManager(
                 diagnostics.Record(
                     candidate.FolderId, candidate.Manifest.Name, "load",
                     "This plugin needs a newer version of the app than you are running — update the app to use it.",
+                    PluginIssueSeverity.Warning);
+                break;
+
+            case PluginLoadDecision.UnknownCapability:
+                var unknown = string.Join(", ", candidate.Manifest.Capabilities.Where(id => CapabilityCatalog.Find(id) is null));
+                logger.LogWarning(
+                    "Plugin {PluginId} asks for a capability this cockpit does not know ({Capabilities}) and was not loaded.",
+                    candidate.FolderId, unknown);
+                diagnostics.Record(
+                    candidate.FolderId, candidate.Manifest.Name, "load",
+                    $"This plugin asks for a capability this app does not know ({unknown}) — update the app or the plugin.",
                     PluginIssueSeverity.Warning);
                 break;
 
