@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
+  for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
+  installing something that cannot start.
 - added: in the Browser plugin you can share the tab you are looking at with one agent session, after you pick that
   session on a card. The agent can then read only that tab (address, title, text and a screenshot), never cookies or
   other tabs; every read is logged, a bar says who is watching, and **Stop sharing** ends it at once. If the tab moves

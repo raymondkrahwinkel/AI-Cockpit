@@ -1600,6 +1600,7 @@ offer theirs.
 | `minHostVersion` | yes | The oldest cockpit this build works against — same meaning and same gate as the manifest field: enforced from host 1.0 onwards, ignored while the host is 0.x. Keep it in step with the `plugin.json` inside the zip; a catalogue that promises one thing and a manifest that says another is a bug report waiting to happen. |
 | `sha256` | no (recommended) | Hex-lowercase SHA-256 of the zip. A mismatch on download is rejected before the zip is ever handed to the installer. |
 | `notes` | no | Shown as this version's changelog line in the detail panel. |
+| `packages` | no | One zip per platform, for a plugin that ships native parts: `{ "win-x64": { "path": …, "sha256": … }, "linux-x64": … }`, keyed by .NET runtime identifier. A cockpit (0.118.0 and later) downloads the package for its own RID; with `packages` but none for its RID it shows the plugin as incompatible ("No package for osx-arm64") and downloads nothing. Without `packages`, `path` is used as always. `path`/`sha256` stay required and repeat the `win-x64` package; set `minHostVersion` to `0.118.0` so an older cockpit never sees the version. |
 
 Compute a zip's checksum with `(Get-FileHash plugin.zip -Algorithm SHA256).Hash.ToLower()` (PowerShell) or
 `sha256sum plugin.zip`. A typical repo layout, one folder per plugin id:
