@@ -24,9 +24,15 @@ public abstract class ChartControl : Control
             return brush;
         }
 
-        return ActualThemeVariant == ThemeVariant.Dark && key is "ThemeForegroundBrush" or "ThemeAccentForegroundBrush"
+        var variant = Application.Current?.RequestedThemeVariant ?? ActualThemeVariant;
+        return variant == ThemeVariant.Dark && key is "ThemeForegroundBrush" or "ThemeAccentForegroundBrush"
             ? Brushes.White
             : fallback;
+    }
+
+    protected ChartControl()
+    {
+        ActualThemeVariantChanged += (_, _) => InvalidateVisual();
     }
 
     protected void Empty(DrawingContext context, Rect bounds)
