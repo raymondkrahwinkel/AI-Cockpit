@@ -33,6 +33,7 @@ using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Usage;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions;
 
@@ -269,6 +270,9 @@ public sealed class CockpitBackend
         // AC-1706: and nudge a session the assistant started once when a turn ends without a closing; that wake above
         // turns the nudge into its turn.
         Services.GetService<StallNudger>()?.Start(sessionRegistry);
+
+        // AC-1719: first fold what is older than 90 days into day aggregates, before the recorder reads or appends.
+        Services.GetService<SessionDayRetention>()?.Run();
 
         // AC-1717: and keep every session's busy/idle, operator actions and statuslines in `session-timeline.jsonl`.
         Services.GetService<SessionTimelineRecorder>()?.Start(sessionRegistry);
