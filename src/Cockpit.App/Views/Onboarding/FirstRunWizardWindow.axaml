@@ -44,8 +44,13 @@
             <Button Grid.Column="0" Content="Skip" Command="{Binding SkipCommand}"
                     Background="Transparent" BorderThickness="0"
                     Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-            <TextBlock Grid.Column="1" Text="{Binding StepProgressLabel}" FontSize="12" VerticalAlignment="Center"
-                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0">
+                <TextBlock Text="{Binding StepProgressLabel}" FontSize="12"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <TextBlock Name="NextBlockedReason" Text="{Binding NextBlockedReason}" FontSize="11" TextWrapping="Wrap"
+                           IsVisible="{Binding NextBlockedReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+            </StackPanel>
             <Button Grid.Column="2" Content="Back" Command="{Binding BackCommand}" Margin="0,0,8,0"/>
             <Button Grid.Column="3" Content="Next" Classes="Accent" Command="{Binding NextCommand}"/>
         </Grid>

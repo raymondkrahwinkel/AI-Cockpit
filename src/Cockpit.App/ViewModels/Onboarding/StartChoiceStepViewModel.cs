@@ -56,6 +56,22 @@ public sealed partial class StartChoiceStepViewModel : ObservableObject, IDispos
 
     public bool AnswersWorkKind => Selected.AnswersWorkKind;
 
+    // A plugin's route is a choice that is made when it has done its work (a manifest applied); until then Next would
+    // walk past it, and the operator would think it was made.
+    public string? NextBlockedReason =>
+        Selected.OfferedBy.Length > 0 && !_settled.Contains(Selected.Id)
+            ? "Finish this choice first, or pick another way to start."
+            : null;
+
+    private readonly HashSet<string> _settled = [];
+
+    // Called by the host once the picked route did what it offered; Next may go on.
+    public void SettleSelected()
+    {
+        _settled.Add(Selected.Id);
+        AnswersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
 
     // Raised when the picked choice changes whether the work-kind step has anything left to ask.
     public event EventHandler? AnswersChanged;

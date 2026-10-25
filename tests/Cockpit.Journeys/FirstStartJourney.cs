@@ -149,12 +149,90 @@ public sealed class FirstStartJourney
                 Assert.Contains(HeadlessAvalonia.Run(() => restarted.Cockpit.Toasts.Select(toast => toast.Message).ToList()),
                     message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
             });
+
+            // AC-1670: an organisation that only has ids in its manifest is still named, what the setup holds is listed
+            // before the choice, nothing collapses, Next waits for the choice, and the outcome stays on screen after it.
+            await Step.Run("a third machine sees what its organisation sets up, sets it up and reads the outcome", async () =>
+            {
+                var space = new _AccountSpace([], OrganisationManifest);
+                await using var depot = await LoopbackHttpServer.StartAsync(space.HandleAsync);
+                await using var cockpit = JourneyHost.Desktop(stateRoot: Directory.CreateDirectory(Path.Combine(work, "organisation")).FullName, configure: services =>
+                {
+                    services.AddSingleton<IMcpOAuthCoordinator>(provider => new _SignedInOnClick(provider.GetRequiredService<IMcpOAuthTokenStore>(), depot.BaseUrl));
+                });
+                var services = cockpit.Services;
+                HeadlessAvalonia.Run(CockpitApp.InitializeFirstStart);
+
+                var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    _ = services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+                    return Task.CompletedTask;
+                });
+                var window = await opened.Task.WaitAsync(Until.Ceiling);
+                var choice = services.GetServices<IFirstRunWizardStep>().OfType<StartChoiceStep>().Single();
+                var (wizard, view) = HeadlessAvalonia.Run(() =>
+                {
+                    var wizard = (FirstRunWizardViewModel)(window.DataContext ?? throw new InvalidOperationException("The wizard has no view model."));
+                    wizard.NextCommand.Execute(null);
+                    choice.ViewModel.ChooseCommand.Execute(choice.ViewModel.Options[2]);
+                    return (wizard, choice.ViewModel.SelectedContent ?? throw new InvalidOperationException("The Depot route shows nothing."));
+                });
+                Assert.False(HeadlessAvalonia.Run(() => wizard.NextCommand.CanExecute(null)));
+
+                await HeadlessAvalonia.RunAsync(async () =>
+                {
+                    _Named<TextBox>(view, "DepotFirstStartUrl").Text = depot.BaseUrl;
+                    var status = _Named<TextBlock>(view, "DepotFirstStartStatus");
+                    _Named<Button>(view, "DepotFirstStartSignIn").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    await Until.Holds(status, () => status.Text?.StartsWith("Signed in to", StringComparison.Ordinal) == true);
+
+                    view.GetLogicalDescendants().OfType<Button>().First(button => button.Name == "DepotFirstStartSetUpOrganization").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    await Until.LayoutHolds(view, () => view.GetLogicalDescendants().OfType<Button>().Any(button => button.Name == "DepotFirstStartAgree" && button.IsEffectivelyVisible));
+                    var agree = _Named<Button>(view, "DepotFirstStartAgree");
+                    var shown = string.Join(" | ", view.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text));
+                    Assert.Contains("from Acme", shown);
+                    Assert.Contains("Profiles (1): Acme dev", shown);
+                    Assert.Contains("Settings (2)", shown);
+                    Assert.DoesNotContain(OrganisationId, shown);
+                    Assert.DoesNotContain("From:", shown);
+
+                    // A click on the summary collapses nothing: the screen stays the one that asks.
+                    var summary = view.GetLogicalDescendants().OfType<TextBlock>().First(text => text.Text?.StartsWith("Profiles", StringComparison.Ordinal) == true);
+                    summary.RaiseEvent(new RoutedEventArgs(Avalonia.Input.InputElement.TappedEvent));
+                    Assert.True(agree.IsEffectivelyVisible);
+                    Assert.False(wizard.NextCommand.CanExecute(null));
+                    Assert.True(wizard.BackCommand.CanExecute(null));
+
+                    agree.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var outcome = _Named<TextBlock>(view, "DepotFirstStartOutcome");
+                    await Until.Holds(outcome, () => outcome.Text?.StartsWith("Set up: 1 profile, 2 settings.", StringComparison.Ordinal) == true);
+                    Assert.True(outcome.IsEffectivelyVisible);
+                    Assert.True(wizard.NextCommand.CanExecute(null));
+                });
+            });
         }
         finally
         {
             JourneyHost.RemoveStateRoot(work);
         }
     }
+
+    private const string OrganisationId = "019f4da0d22e77d79401467fffa3c1ad";
+
+    // What Depot issues: the issuer carries ids only.
+    private const string OrganisationManifest = """
+        {
+          "format": "cockpit.provision", "formatVersion": 1,
+          "issuer": { "kind": "depot", "organization": { "id": "019f4da0d22e77d79401467fffa3c1ad" }, "profile": { "id": "019f4da0d22e77d79401467fffa3c1ae" } },
+          "settings": {
+            "terminal.fontSize":  { "value": 15,  "mode": "default", "by": "org" },
+            "layout.sidebarWidth": { "value": 300, "mode": "default", "by": "org" }
+          },
+          "profiles": { "items": [ { "id": "acme-dev", "label": "Acme dev", "by": "org", "provider": { "id": "claude-provider", "model": "claude-sonnet-5-5" } } ] }
+        }
+        """;
 
     // A cockpit with a sidebar width of its own. Its Depot sign-in is seeded after the build, so the bundled plugin installs.
     private const string MadeElsewhere = """{"Layout":{"SidebarWidth":333}}""";
@@ -206,7 +284,7 @@ public sealed class FirstStartJourney
     }
 
     // Depot's /cockpit/backups (DEP-168) holding one backup; /cockpit/manifest is not there, as on a Depot without DEP-266.
-    private sealed class _AccountSpace(byte[] backup)
+    private sealed class _AccountSpace(byte[] backup, string? manifest = null)
     {
         public const string Bearer = "journey-first-start-bearer";
 
@@ -227,6 +305,24 @@ public sealed class FirstStartJourney
             else if (path == "/cockpit/backups")
             {
                 await context.Response.WriteAsJsonAsync(new[] { new { id = Id, size = backup.LongLength, sha256 = "", createdAt = DateTime.UtcNow } });
+            }
+            else if (path == "/cockpit/manifest" && manifest is not null)
+            {
+                if (context.Request.Query.ContainsKey("org"))
+                {
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(manifest);
+                }
+                else
+                {
+                    context.Response.StatusCode = 300;
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        format = "cockpit.provision.choice",
+                        formatVersion = 1,
+                        organizations = new[] { new { slug = "acme", name = "Acme" }, new { slug = "other", name = "Other" } },
+                    });
+                }
             }
             else if (path == $"/cockpit/backups/{Id}")
             {

@@ -117,11 +117,18 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     [ObservableProperty]
     private bool _isLastStep;
 
+    // Why Next is off on this step; empty when it is on.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(NextCommand))]
+    private string _nextBlockedReason = "";
+
     [ObservableProperty]
     private string _stepProgressLabel = "";
 
     // Raised when the operator is done with the wizard — Skip, or Next on the last step. The window closes on this.
     public event EventHandler? RequestClose;
+
+    private bool CanGoNext() => NextBlockedReason.Length == 0;
 
     [RelayCommand(CanExecute = nameof(CanGoBack))]
     private void Back()
@@ -131,7 +138,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         _ApplyPosition();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanGoNext))]
     private void Next()
     {
         if (IsLastStep)
@@ -194,6 +201,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         var position = navigable.IndexOf(_current);
         CurrentStepContent = _stepContents[_current];
         CanGoBack = position > 0;
+        NextBlockedReason = _steps[_current].NextBlockedReason ?? "";
         IsLastStep = position == navigable.Count - 1;
 
         // Skipped steps are not steps: they are left out of both numbers. A planned slot nothing is registered for

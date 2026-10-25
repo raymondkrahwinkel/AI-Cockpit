@@ -27,6 +27,11 @@ public interface IFirstRunWizardStep
     bool IsSkipped { get; }
 
     /// <summary>
+    /// Why Next does nothing on this step right now, shown beside the buttons; null when Next may go on.
+    /// </summary>
+    string? NextBlockedReason => null;
+
+    /// <summary>
     /// This step's own content, built once when the wizard opens.
     /// </summary>
     Control BuildContent();

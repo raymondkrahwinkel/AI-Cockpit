@@ -27,6 +27,8 @@ internal sealed class DepotFirstStartView : UserControl
     private readonly TextBlock _outcome = new() { Name = "DepotFirstStartOutcome", FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private DepotFirstStartAnswer? _answer;
     private TaskCompletionSource<bool>? _agreed;
+    private readonly List<Control> _setAside = [];
+    private string? _organizationName;
 
     public DepotFirstStartView(IFirstStartHost host)
     {
@@ -146,6 +148,7 @@ internal sealed class DepotFirstStartView : UserControl
     private async Task _SetUpAsync(DepotFirstStartCandidate? organization = null)
     {
         var manifest = _answer?.Manifest;
+        _organizationName = organization?.Name;
         if (organization is not null && _answer?.TargetId is { } targetId)
         {
             _restore.IsEnabled = false;
@@ -186,9 +189,13 @@ internal sealed class DepotFirstStartView : UserControl
             var report = await _host.ApplyManifestAsync(manifest, _AskAsync).ConfigureAwait(true);
             _outcome.Text = string.Join("\n", report);
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _outcome.Text = $"Nothing was set up: {exception.Message}";
+        }
         finally
         {
-            _consent.IsVisible = false;
+            _ShowConsent(false);
             _restore.IsEnabled = _answer?.Backups is { Count: > 0 };
             _setUp.IsEnabled = true;
         }
@@ -198,21 +205,49 @@ internal sealed class DepotFirstStartView : UserControl
     private Task<bool> _AskAsync(IReadOnlyList<string> lines)
     {
         _agreed = new TaskCompletionSource<bool>();
-        var agree = new Button { Name = "DepotFirstStartAgree", Content = "Set it up" };
+        var agree = new Button { Name = "DepotFirstStartAgree", Content = "Set it up", Classes = { "Accent" } };
         var cancel = new Button { Content = "Cancel", Margin = new Thickness(8, 0, 0, 0) };
         agree.Click += (_, _) => _agreed.TrySetResult(true);
         cancel.Click += (_, _) => _agreed.TrySetResult(false);
 
         _consent.Children.Clear();
-        _consent.Children.Add(_Hint("This sets up your cockpit:"));
-        foreach (var line in lines)
+        // The host's "From:" line names what the manifest says; the chosen organisation says it better, and says it once.
+        var from = lines.Any(line => line.StartsWith("From:", StringComparison.Ordinal));
+        _consent.Children.Add(_Hint(
+            _organizationName is not null ? $"This sets up your cockpit from {_organizationName}:"
+            : from ? "This sets up your cockpit:"
+            : "This sets up your cockpit from your organisation and profile:"));
+        foreach (var line in lines.Where(line => _organizationName is null || !line.StartsWith("From:", StringComparison.Ordinal)))
         {
             _consent.Children.Add(new TextBlock { Text = line, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         }
 
         _consent.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0), Children = { agree, cancel } });
-        _consent.IsVisible = true;
+        _ShowConsent(true);
         return _agreed.Task;
+    }
+
+    // The consent is the one thing on screen while it asks: the choices step aside, so the primary action is not below the fold.
+    private void _ShowConsent(bool on)
+    {
+        _consent.IsVisible = on;
+        if (on)
+        {
+            foreach (var choice in new Control[] { _restore, _setUp, _organizations }.Where(choice => choice.IsVisible))
+            {
+                choice.IsVisible = false;
+                _setAside.Add(choice);
+            }
+
+            return;
+        }
+
+        foreach (var choice in _setAside)
+        {
+            choice.IsVisible = true;
+        }
+
+        _setAside.Clear();
     }
 
     private static StackPanel _Choice(string title, string detail) => new()

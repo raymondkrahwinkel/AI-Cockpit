@@ -250,6 +250,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the first start says what "Set up from my profile and organisation" installs.** The screen before "Set it up" names
+  your organisation instead of an id and lists the plugins, profiles, projects and settings it brings, with counts and
+  names. After "Set it up" it says what was set up, or why nothing was, and Next waits until you have made that choice.
+
 - fixed: **a restored Depot connection asks for its sign-in once, and stays until you answer.** After a restore the
   notice names the connection, stays on screen with a **Sign in** button that opens the Depot settings, and the
   startup check no longer says it a second time. A cockpit that never was a node no longer asks for a node secret.
