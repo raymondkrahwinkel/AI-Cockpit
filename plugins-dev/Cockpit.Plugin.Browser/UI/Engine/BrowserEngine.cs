@@ -101,6 +101,7 @@ internal sealed class BrowserEngine
         catch (Exception exception)
         {
             _Set(BrowserEngineState.Unavailable, $"The browser engine could not start: {exception.Message}");
+            throw;
         }
     }
 
@@ -132,6 +133,7 @@ internal sealed class BrowserEngine
     internal static CefSettings CreateSettings(string runtimeDir, string subprocessPath, string rootCachePath) => new()
     {
         MultiThreadedMessageLoop = true,
+        RemoteDebuggingPort = 9333,
         WindowlessRenderingEnabled = true,
         NoSandbox = true,
         CommandLineArgsDisabled = true,
