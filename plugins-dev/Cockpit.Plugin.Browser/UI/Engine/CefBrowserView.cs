@@ -26,8 +26,20 @@ internal sealed class CefBrowserView : Control
         ['play','pause','ended','volumechange','emptied'].forEach(t=>window.addEventListener(t,audible,true));
         window.addEventListener('error',e=>{const t=e.target;const m=t&&t.tagName==='SOURCE'?t.parentElement:t;if(m&&(m.tagName==='VIDEO'||m.tagName==='AUDIO')&&m.error&&m.error.code===4)say('codec');},true);
         const r=navigator.requestMediaKeySystemAccess;if(r){navigator.requestMediaKeySystemAccess=function(){return r.apply(this,arguments).catch(x=>{say('codec');throw x;});};}
+        window.addEventListener('submit',e=>{if(!window.__cockpitHold)return;if(window.__cockpitRelease){window.__cockpitRelease=0;return;}
+        e.preventDefault();e.stopImmediatePropagation();const f=e.target,s=e.submitter;window.__cockpitHeld=[f,s];
+        say('submit:'+((s&&s.getAttribute('formmethod'))||f.getAttribute('method')||'get').toLowerCase()+' '+((s&&s.formAction)||f.action));},true);
         })();
         """;
+
+    // AC-1728: sends the held form, once, past the hold above.
+    private const string ReleaseHeldScript =
+        "(()=>{const h=window.__cockpitHeld;window.__cockpitHeld=null;if(h){window.__cockpitRelease=1;h[0].requestSubmit(h[1]||undefined);}})()";
+
+    // AC-1728: while an agent controls this tab, every form submission waits for the operator, and POST navigations
+    // that did not come from a released form are cancelled. The page cannot tell the agent's submit from Raymond's.
+    private volatile bool _controlled;
+    private int _postAllowed;
 
     private readonly object _gate = new();
     private readonly BrowserEngine _engine;
@@ -85,6 +97,29 @@ internal sealed class CefBrowserView : Control
 
     // AC-1728: the operator's own click or key in this view, so an agent controlling the tab pauses for him.
     public event Action? OperatorInput;
+
+    // AC-1728: a form submission held while the tab is controlled, as "<method> <target address>".
+    public event Action<string>? SubmitHeld;
+
+    public bool Controlled
+    {
+        get => _controlled;
+        set
+        {
+            _controlled = value;
+            _OnHost(_ => _browser?.GetMainFrame()?.ExecuteJavaScript(_HoldScript(value), string.Empty, 0));
+        }
+    }
+
+    public void ReleaseHeldSubmit()
+    {
+        Interlocked.Exchange(ref _postAllowed, 1);
+        _OnHost(_ => _browser?.GetMainFrame()?.ExecuteJavaScript(ReleaseHeldScript, string.Empty, 0));
+    }
+
+    public void DropHeldSubmit() => _OnHost(_ => _browser?.GetMainFrame()?.ExecuteJavaScript("window.__cockpitHeld=null;", string.Empty, 0));
+
+    private static string _HoldScript(bool hold) => $"window.__cockpitHold={(hold ? 1 : 0)};";
 
     public bool IsMuted { get; private set; }
 
@@ -493,6 +528,10 @@ internal sealed class CefBrowserView : Control
             {
                 AudibleChanged?.Invoke(marker.EndsWith('1'));
             }
+            else if (marker.StartsWith("submit:", StringComparison.Ordinal) && _controlled)
+            {
+                SubmitHeld?.Invoke(marker["submit:".Length..]);
+            }
         });
     }
 
@@ -528,6 +567,12 @@ internal sealed class CefBrowserView : Control
         private readonly LifeSpanHandler _lifeSpan = new(owner);
         private readonly DisplayHandler _display = new(owner);
         private readonly LoadHandler _load = new(owner);
+        private readonly RequestHandler _request = new(owner);
+        private readonly DialogHandler _dialog = new(owner);
+
+        protected override CefRequestHandler GetRequestHandler() => _request;
+
+        protected override CefDialogHandler GetDialogHandler() => _dialog;
 
         protected override CefRenderHandler GetRenderHandler() => _render;
 
@@ -536,6 +581,41 @@ internal sealed class CefBrowserView : Control
         protected override CefDisplayHandler GetDisplayHandler() => _display;
 
         protected override CefLoadHandler GetLoadHandler() => _load;
+    }
+
+    // AC-1728: the backstop for a POST that no held form released, such as form.submit() from a script.
+    private sealed class RequestHandler(CefBrowserView owner) : CefRequestHandler
+    {
+        protected override bool OnBeforeBrowse(CefBrowser browser, CefFrame frame, CefRequest request, bool userGesture, bool isRedirect)
+        {
+            if (frame.IsMain == false)
+            {
+                return false;
+            }
+
+            var released = Interlocked.Exchange(ref owner._postAllowed, 0) == 1;
+            return owner._controlled && released == false && string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Null keeps CEF's default handling of every resource load.
+        protected override CefResourceRequestHandler? GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request,
+            bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) => null;
+    }
+
+    // AC-1728: no file picker opens while an agent controls the tab, so a click cannot hand it a file.
+    private sealed class DialogHandler(CefBrowserView owner) : CefDialogHandler
+    {
+        protected override bool OnFileDialog(CefBrowser browser, CefFileDialogMode mode, string title, string defaultFilePath,
+            string[] acceptFilters, string[] acceptExtensions, string[] acceptDescriptions, CefFileDialogCallback callback)
+        {
+            if (owner._controlled == false)
+            {
+                return false;
+            }
+
+            callback.Cancel();
+            return true;
+        }
     }
 
     private sealed class LifeSpanHandler(CefBrowserView owner) : CefLifeSpanHandler
@@ -637,7 +717,7 @@ internal sealed class CefBrowserView : Control
         {
             if (frame.IsMain)
             {
-                frame.ExecuteJavaScript(PageHooks, frame.Url, 0);
+                frame.ExecuteJavaScript(PageHooks + _HoldScript(owner._controlled), frame.Url, 0);
                 _OnUi(() => owner.AudibleChanged?.Invoke(false));
             }
         }

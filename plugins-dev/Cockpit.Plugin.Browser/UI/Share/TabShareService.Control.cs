@@ -12,6 +12,8 @@ internal sealed partial class TabShareService
 
     private const int MaxTyped = 2_000;
 
+    private readonly Dictionary<string, string> _heldForms = [];
+
     private const string NoControl =
         "You do not control this tab: it was not shared with your session for control, sharing was stopped, the tab moved to another site, or the operator took over. Ask again with request_tab_control.";
 
@@ -162,6 +164,77 @@ internal sealed partial class TabShareService
         && string.Equals(TabGrantRegistry.OriginOf(tab.Address), grant.Origin, StringComparison.OrdinalIgnoreCase)
             ? (tab, grant)
             : null;
+
+    // A form held in a controlled tab, per tab id, as "<method> <target address>"; the bar asks Raymond about it.
+    public IReadOnlyDictionary<string, string> HeldForms => _heldForms;
+
+    public event Action? HeldFormsChanged;
+
+    // Only while the tab is still controlled and the form still targets the granted origin.
+    public void SendHeldForm(string tabId)
+    {
+        if (_heldForms.Remove(tabId, out var submit) && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab)
+        {
+            var grant = Grants.ForTab(tabId).FirstOrDefault(grant => grant.Controls);
+            if (grant is not null && _SameOrigin(_Target(submit), grant.Origin))
+            {
+                tab.View.ReleaseHeldSubmit();
+            }
+            else
+            {
+                tab.View.DropHeldSubmit();
+            }
+
+            HeldFormsChanged?.Invoke();
+        }
+    }
+
+    public void DropHeldForm(string tabId)
+    {
+        if (_heldForms.Remove(tabId) && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab)
+        {
+            tab.View.DropHeldSubmit();
+            HeldFormsChanged?.Invoke();
+        }
+    }
+
+    // A submission to another origin is dropped without asking; one to the granted origin waits for Raymond.
+    private void _SubmitHeld(BrowserTab tab, string submit)
+    {
+        var grant = Grants.ForTab(tab.Id).FirstOrDefault(grant => grant.Controls);
+        if (grant is not null && _SameOrigin(_Target(submit), grant.Origin))
+        {
+            _heldForms[tab.Id] = submit;
+        }
+        else
+        {
+            _heldForms.Remove(tab.Id);
+            tab.View.DropHeldSubmit();
+        }
+
+        HeldFormsChanged?.Invoke();
+    }
+
+    // The view holds forms and refuses file pickers exactly while its tab has a controller.
+    private void _SyncControlled()
+    {
+        foreach (var tab in _model.Tabs)
+        {
+            var controlled = Grants.ForTab(tab.Id).Any(grant => grant.Controls);
+            if (tab.View.Controlled != controlled)
+            {
+                tab.View.Controlled = controlled;
+            }
+
+            if (controlled == false && _heldForms.Remove(tab.Id))
+            {
+                tab.View.DropHeldSubmit();
+                HeldFormsChanged?.Invoke();
+            }
+        }
+    }
+
+    private static string _Target(string submit) => submit[(submit.IndexOf(' ') + 1)..];
 
     // Raymond's own click or key in a controlled tab pauses the agent there until he gives control back.
     private void _OperatorInput(BrowserTab tab)

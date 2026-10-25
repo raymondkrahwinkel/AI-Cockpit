@@ -46,6 +46,7 @@ internal sealed partial class TabShareService : IDisposable
         }));
         model.TabClosed += tab => Grants.TabClosed(tab.Id);
         model.Changed += _WatchNavigation;
+        Grants.Changed += () => Dispatcher.UIThread.Post(_SyncControlled);
     }
 
     public TabGrantRegistry Grants { get; }
@@ -209,6 +210,7 @@ internal sealed partial class TabShareService : IDisposable
         foreach (var tab in _model.Tabs.Where(tab => _watched.Add(tab.Id)))
         {
             tab.View.OperatorInput += () => _OperatorInput(tab);
+            tab.View.SubmitHeld += submit => _SubmitHeld(tab, submit);
             tab.Changed += () =>
             {
                 if (Grants.ForTab(tab.Id).Count > 0)

@@ -24,6 +24,14 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   (`browser_list_shared_tabs`, `browser_read_tab`, `browser_screenshot_tab`) answers only the transport-verified
   caller, reads in-process through `ExecuteDevToolsMethod`, and writes each read to `consent-audit.jsonl` as a
   Bypassed line with `PreApprovedBy: tab grant <id>`. No tool touches cookies, storage, other tabs or DevTools.
+- **Controlling a shared tab (AC-1728):** `request_tab_control(reason, tabId?)` opens the same card on the asking
+  session's behalf with Control picked; a control grant sits on the same (session, tab) key, and a tab has one
+  controller. `browser_click`, `browser_type`, `browser_press_key`, `browser_scroll` and `browser_navigate` (same origin
+  only) go in through CEF's OSR input (`SendMouseClickEvent`, `SendKeyEvent`), never DevTools `Input.*` or a port,
+  and each lands in the consent audit with typed text cut short and masked in a password field. The operator's own
+  click or key takes over. While a tab is controlled, every form submission is held for the operator (another origin
+  is dropped), an unreleased main-frame POST is cancelled, and no file picker opens; a page's own `fetch` is not
+  covered.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
   `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
