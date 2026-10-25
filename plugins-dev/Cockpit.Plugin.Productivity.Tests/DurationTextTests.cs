@@ -4,20 +4,12 @@ namespace Cockpit.Plugin.Productivity.Tests;
 
 public sealed class DurationTextTests
 {
-    [Theory]
-    [InlineData("0:15", 15)]
-    [InlineData("1,5u", 90)]
-    public void Parse_AcceptsClockMinutesAndDutchOrInvariantHours(string text, int? expectedMinutes)
+    [Fact]
+    public void Parse_AcceptsClockMinutesAndDutchOrInvariantHours()
     {
-        var parsed = DurationText.Parse(text);
-
-        if (expectedMinutes is null)
+        foreach (var (text, expectedMinutes) in new[] { ("0:15", 15), ("1,5u", 90) })
         {
-            Assert.Null(parsed);
-        }
-        else
-        {
-            Assert.Equal(TimeSpan.FromMinutes(expectedMinutes.Value), parsed);
+            Assert.Equal(TimeSpan.FromMinutes(expectedMinutes), DurationText.Parse(text));
         }
     }
 }

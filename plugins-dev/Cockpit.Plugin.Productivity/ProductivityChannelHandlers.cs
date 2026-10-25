@@ -7,6 +7,8 @@ namespace Cockpit.Plugin.Productivity;
 
 internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTimeEntries timeEntries)
 {
+    private readonly WeekOfferSender _offers = new(host.Actions, host.Sessions, timeEntries, host.Storage, TimeProvider.System);
+
     public IReadOnlyList<IDisposable> Register() =>
     [
         _Handle<ProductivitySnapshotRequest, ProductivitySnapshot>(ProductivityChannel.Snapshot, _SnapshotAsync),
@@ -26,6 +28,8 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
             timeEntries.UpdateStopwatchAsync(request.Description, request.ProjectId)),
         _Handle<object, CockpitTimeEntry>(ProductivityChannel.StopStopwatch, _ => timeEntries.StopStopwatchAsync()),
         _Handle<ProductivityWeekRequest, WeekProposal>(ProductivityChannel.Week, _WeekAsync),
+        _Handle<WeekOfferOptionsRequest, WeekOfferOptions>(ProductivityChannel.WeekOfferOptions, _OfferOptionsAsync),
+        _Handle<WeekOfferSendRequest, WeekOfferSendResult>(ProductivityChannel.SendWeekOffer, _offers.SendAsync),
     ];
 
     private async Task<ProductivityOverviewSnapshot> _OverviewAsync(ProductivityOverviewRequest request)
@@ -122,7 +126,6 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         return new ProductivitySnapshot(entries, today.YourTime, stopwatch, day);
     }
 
-    // Frozen project cells have no store yet; AC-1725 offers them and decides where they live.
     private async Task<WeekProposal> _WeekAsync(ProductivityWeekRequest request)
     {
         var settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
@@ -148,8 +151,33 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
                 tickets));
         }
 
-        var overrides = host.Storage.Get<CellOverride[]>(CellOverride.StorageKey(DateOnly.FromDateTime(request.DayStarts[0].LocalDateTime))) ?? [];
-        return WeekProposal.Build(days, settings, [], names, overrides);
+        var weekStart = DateOnly.FromDateTime(request.DayStarts[0].LocalDateTime);
+        var overrides = host.Storage.Get<CellOverride[]>(CellOverride.StorageKey(weekStart)) ?? [];
+        var frozen = (host.Storage.Get<FrozenProjectCell[]>(FrozenProjectCell.StorageKey(weekStart)) ?? [])
+            .Select(cell => cell.ToProposalCell())
+            .ToList();
+        return WeekProposal.Build(days, settings, frozen, names, overrides);
+    }
+
+    private async Task<WeekOfferOptions> _OfferOptionsAsync(WeekOfferOptionsRequest request)
+    {
+        var sessions = host.Sessions.OpenSessions
+            .Where(session => string.Equals(session.PaneId, "cockpit-assistant", StringComparison.Ordinal) == false)
+            .Select(session => new WeekOfferChoice(
+                WeekOfferDestination.Session(session.PaneId, session.Name),
+                session.ProfileLabel,
+                session.Status))
+            .ToList();
+        var profiles = (await host.GetProfilesAsync().ConfigureAwait(false))
+            .Select(profile => new WeekOfferChoice(WeekOfferDestination.Profile(profile.Label)))
+            .ToList();
+        var remembered = host.Storage.Get<WeekOfferDestination>(WeekOfferDestination.StorageKey(request.ProjectId));
+        if (remembered is not null && sessions.Concat(profiles).All(choice => choice.Destination.Kind != remembered.Kind || string.Equals(choice.Destination.Id, remembered.Id, StringComparison.Ordinal) == false))
+        {
+            remembered = null;
+        }
+
+        return new WeekOfferOptions(sessions, profiles, remembered);
     }
 
     // ponytail: a session busy across the range start counts from its first line in range; query earlier if agent time matters there.

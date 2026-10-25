@@ -8,47 +8,43 @@ public sealed class AttentionTimeTests
 {
     private static readonly DateTimeOffset Monday = new(2026, 10, 19, 8, 0, 0, TimeSpan.FromHours(2));
 
-    [Theory]
-    [InlineData(1, 2295, 1565, 315, 20, false, 1860, 1860, 2295, 730)]
-    [InlineData(1, 2295, 1565, 315, 20, true, 1860, 2590, 2295, 730)]
-    [InlineData(3, 60, 20, 0, 0, false, 20, 20, 180, 40)]
-    public void Compute_CountsOverlapOnceAndKeepsAgentTimeBeside(
-        int sessions,
-        int busyMinutes,
-        int measuredMinutes,
-        int ownMinutes,
-        int overlapMinutes,
-        bool countAgentWithoutYou,
-        int expectedYourMinutes,
-        int expectedTotalMinutes,
-        int expectedAgentMinutes,
-        int expectedWithoutYouPerSessionMinutes)
+    [Fact]
+    public void Compute_CountsOverlapOnceAndKeepsAgentTimeBeside()
     {
-        // Actions every 5 minutes keep one block open; the last one adds the 10-minute block length.
-        var lines = Enumerable.Range(0, ((measuredMinutes - 10) / 5) + 1)
-            .Select(step => _Line(CockpitTimelineKind.Operator, Monday.AddMinutes(step * 5), "you"))
-            .ToList();
-        for (var session = 0; session < sessions; session++)
+        var cases = new[]
         {
-            lines.Add(_Line(CockpitTimelineKind.Status, Monday, $"agent-{session}", CockpitTimelineStatus.Busy));
-            lines.Add(_Line(CockpitTimelineKind.Status, Monday.AddMinutes(busyMinutes), $"agent-{session}", CockpitTimelineStatus.Idle));
+            (Sessions: 1, Busy: 2295, Measured: 1565, Own: 315, Overlap: 20, CountWithoutYou: false, Your: 1860, Total: 1860, Agent: 2295, WithoutYou: 730),
+            (Sessions: 1, Busy: 2295, Measured: 1565, Own: 315, Overlap: 20, CountWithoutYou: true, Your: 1860, Total: 2590, Agent: 2295, WithoutYou: 730),
+            (Sessions: 3, Busy: 60, Measured: 20, Own: 0, Overlap: 0, CountWithoutYou: false, Your: 20, Total: 20, Agent: 180, WithoutYou: 40),
+        };
+        foreach (var item in cases)
+        {
+            // Actions every 5 minutes keep one block open; the last one adds the 10-minute block length.
+            var lines = Enumerable.Range(0, ((item.Measured - 10) / 5) + 1)
+                .Select(step => _Line(CockpitTimelineKind.Operator, Monday.AddMinutes(step * 5), "you"))
+                .ToList();
+            for (var session = 0; session < item.Sessions; session++)
+            {
+                lines.Add(_Line(CockpitTimelineKind.Status, Monday, $"agent-{session}", CockpitTimelineStatus.Busy));
+                lines.Add(_Line(CockpitTimelineKind.Status, Monday.AddMinutes(item.Busy), $"agent-{session}", CockpitTimelineStatus.Idle));
+            }
+
+            CockpitTimeEntry[] own = item.Own == 0
+                ? []
+                : [new(Guid.NewGuid(), "Eigen regel", Monday.AddMinutes(item.Measured - item.Overlap), TimeSpan.FromMinutes(item.Own), "cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open)];
+
+            var time = AttentionTime.Compute(
+                new CockpitTimeline(lines, [], []),
+                own,
+                AttentionSettings.Default with { CountAgentWithoutYou = item.CountWithoutYou },
+                Monday.AddDays(7));
+
+            Assert.Equal(TimeSpan.FromMinutes(item.Your), time.YourTime);
+            Assert.Equal(TimeSpan.FromMinutes(item.Total), time.Total);
+            Assert.Equal(TimeSpan.FromMinutes(item.Agent), time.AgentTime);
+            Assert.Equal(item.Sessions, time.AgentWithoutYouPerSession.Count);
+            Assert.All(time.AgentWithoutYouPerSession.Values, value => Assert.Equal(TimeSpan.FromMinutes(item.WithoutYou), value));
         }
-
-        CockpitTimeEntry[] own = ownMinutes == 0
-            ? []
-            : [new(Guid.NewGuid(), "Eigen regel", Monday.AddMinutes(measuredMinutes - overlapMinutes), TimeSpan.FromMinutes(ownMinutes), "cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open)];
-
-        var time = AttentionTime.Compute(
-            new CockpitTimeline(lines, [], []),
-            own,
-            AttentionSettings.Default with { CountAgentWithoutYou = countAgentWithoutYou },
-            Monday.AddDays(7));
-
-        Assert.Equal(TimeSpan.FromMinutes(expectedYourMinutes), time.YourTime);
-        Assert.Equal(TimeSpan.FromMinutes(expectedTotalMinutes), time.Total);
-        Assert.Equal(TimeSpan.FromMinutes(expectedAgentMinutes), time.AgentTime);
-        Assert.Equal(sessions, time.AgentWithoutYouPerSession.Count);
-        Assert.All(time.AgentWithoutYouPerSession.Values, value => Assert.Equal(TimeSpan.FromMinutes(expectedWithoutYouPerSessionMinutes), value));
     }
 
     [Fact]
