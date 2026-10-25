@@ -190,9 +190,16 @@ internal sealed class SessionTimelineRecorder : ISingletonService, IDisposable
 
         var stoppedAt = recent[0].At;
         var lastStatus = new Dictionary<string, SessionTimelineEntry>(StringComparer.Ordinal);
+        var lastTicket = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var entry in recent)
         {
-            if (entry.PaneId is { } paneId && entry.Kind is SessionTimelineKind.Status or SessionTimelineKind.Closed)
+            if (entry.PaneId is not { } paneId)
+            {
+                continue;
+            }
+
+            lastTicket.TryAdd(paneId, entry.Ticket);
+            if (entry.Kind is SessionTimelineKind.Status or SessionTimelineKind.Closed)
             {
                 lastStatus.TryAdd(paneId, entry);
             }
@@ -200,7 +207,14 @@ internal sealed class SessionTimelineRecorder : ISingletonService, IDisposable
 
         foreach (var open in lastStatus.Values.Where(entry => entry.Kind == SessionTimelineKind.Status && _IsOpen(entry.Status)))
         {
-            await _log.RecordAsync(open with { Kind = SessionTimelineKind.Closed, At = stoppedAt, Status = null }).ConfigureAwait(false);
+            var closed = open with
+            {
+                Kind = SessionTimelineKind.Closed,
+                At = stoppedAt,
+                Status = null,
+                Ticket = lastTicket.GetValueOrDefault(open.PaneId ?? string.Empty),
+            };
+            await _log.RecordAsync(closed).ConfigureAwait(false);
         }
     }
 
