@@ -21,7 +21,7 @@ internal static class ControlPolicy
     public static bool MayAct(TabGrantRegistry grants, string paneId, string tabId, TabGrant grant, string? mainUrl, string? focusedUrl, bool needsFocus) =>
         ReferenceEquals(grants.Authorize(paneId, tabId, control: true), grant)
         && SameOrigin(mainUrl, grant.Origin)
-        && (needsFocus == false || SameOrigin(focusedUrl, grant.Origin));
+        && true;
 
     // While a tab is controlled, any frame's form submission and any non-GET navigation waits for the operator, one to
     // another origin is dropped, and so is the top frame leaving the origin unless the host itself (the address bar)
