@@ -23,7 +23,9 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
             return new PluginProvisionResult(PluginProvisionOutcome.Incompatible, request.Id, request.Name, reason, Warning: null, FolderId: null, Sha256: null);
         }
 
-        var download = await storeClient.DownloadZipAsync(request.Store, request.Version.Path, request.Version.Sha256, cancellationToken).ConfigureAwait(false);
+        // Non-null here: the gate above refuses a version with no package for this RID (AC-1740).
+        var package = request.Version.PackageFor()!;
+        var download = await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false);
         if (!download.IsSuccess || download.ZipPath is null)
         {
             return new PluginProvisionResult(PluginProvisionOutcome.Failed, request.Id, request.Name, download.Error ?? "Download failed.", Warning: null, FolderId: null, Sha256: null);

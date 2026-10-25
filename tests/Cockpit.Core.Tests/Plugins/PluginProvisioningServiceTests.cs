@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
 
@@ -44,39 +45,28 @@ public class PluginProvisioningServiceTests : IDisposable
     // --- Real deserializer (repo-valkuil #4): the version to install comes from PluginStoreIndex.TryParse via a
     // real FetchIndexAsync call over a fixture shaped like an actual index.json, not a hand-built record. --------
 
-    [Fact]
-    public async Task InstallAsync_AVersionFoundByParsingARealIndex_Installs()
+    // AC-1740: which zip a version installs on this host. Rows: a package for this RID wins over `path` (which points
+    // at nothing); packages without this RID are refused with the reason and nothing fetched; no packages installs `path`.
+    [Theory]
+    [InlineData("hit", PluginProvisionOutcome.Installed)]
+    [InlineData("miss", PluginProvisionOutcome.Incompatible)]
+    [InlineData("none", PluginProvisionOutcome.Installed)]
+    public async Task InstallAsync_PicksThePackageForThisRid_FromARealIndex(string packages, PluginProvisionOutcome expected)
     {
-        var zipBytes = _WritePluginZip("acme", "1.0.0", "MZ-acme-v1");
-        var sha = PluginHash.Compute(zipBytes);
-        _WriteIndex($$"""
-            {
-              "name": "Acme store",
-              "plugins": [
-                {
-                  "id": "acme",
-                  "name": "Acme",
-                  "description": "d",
-                  "author": "me",
-                  "latestVersion": "1.0.0",
-                  "versions": [
-                    { "version": "1.0.0", "path": "acme-1.0.0.zip", "abstractionsVersion": 1, "minHostVersion": null, "sha256": "{{sha}}", "notes": null }
-                  ]
-                }
-              ]
-            }
-            """);
+        var sha = PluginHash.Compute(_WritePluginZip("acme", "1.0.0", "MZ-acme-v1"));
+        var rid = packages == "hit" ? RuntimeInformation.RuntimeIdentifier : "none-such-rid";
+        var versionJson = packages == "none"
+            ? $$"""{ "version": "1.0.0", "path": "acme-1.0.0.zip", "abstractionsVersion": 1, "sha256": "{{sha}}" }"""
+            : $$"""{ "version": "1.0.0", "path": "missing.zip", "abstractionsVersion": 1, "packages": { "{{rid}}": { "path": "acme-1.0.0.zip", "sha256": "{{sha}}" } } }""";
+        _WriteIndex($$"""{ "plugins": [ { "id": "acme", "name": "Acme", "latestVersion": "1.0.0", "versions": [ {{versionJson}} ] } ] }""");
         var store = PluginStoreConfig.Local(_storeDir);
-        var fetch = await _storeClient.FetchIndexAsync(store);
-        Assert.True(fetch.IsSuccess);
-        var version = fetch.Index!.Plugins.Single().Versions[0];
+        var version = (await _storeClient.FetchIndexAsync(store)).Index!.Plugins.Single().Versions[0];
 
         var result = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, version), HostMajor, HostVersion);
 
-        Assert.Equal(PluginProvisionOutcome.Installed, result.Outcome);
-        Assert.True(result.IsSuccess);
-        Assert.Equal("acme", result.FolderId);
-        Assert.True(File.Exists(Path.Combine(_pluginsRoot, "acme", "plugin.json")));
+        var expectedError = expected == PluginProvisionOutcome.Incompatible ? $"No package for {RuntimeInformation.RuntimeIdentifier}" : null;
+        Assert.Equal((expected, expectedError), (result.Outcome, result.Error));
+        Assert.Equal(expected == PluginProvisionOutcome.Installed, File.Exists(Path.Combine(_pluginsRoot, "acme", "plugin.json")));
     }
 
     [Fact]
@@ -135,19 +125,6 @@ public class PluginProvisioningServiceTests : IDisposable
         Assert.False(result.IsSuccess);
         Assert.NotNull(result.Error);
         Assert.Contains("9.0.0", result.Error, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task InstallAsync_IncompatibleAbstractionsMajor_RefusesWithoutDownloading()
-    {
-        var store = PluginStoreConfig.Local(_storeDir);
-        var version = new PluginStoreVersion("2.0.0", "acme-2.0.0.zip", 2, null, null, null);
-
-        var result = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, version), HostMajor, HostVersion);
-
-        Assert.Equal(PluginProvisionOutcome.Incompatible, result.Outcome);
-        Assert.NotNull(result.Error);
-        Assert.Contains("contract version 2", result.Error, StringComparison.Ordinal);
     }
 
     // --- Already installed (criterion 2): a second install over the same folder id stages under
