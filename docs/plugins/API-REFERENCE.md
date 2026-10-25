@@ -111,7 +111,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSettings`, `ICockpitUiHost.ShowSettingsAsync`, `ICockpitUiHost.HasSettings`, `ICockpitUiHost.OnSettingsSaved` |
 | `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSideMenuButton`, `ICockpitUiHost.AddSideMenuSection`, `ICockpitUiHost.AddSideMenuButtonWithBadge` |
 | `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitUiHost.AddToolbarAction`, `ICockpitUiHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.AddCompanionTool` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.SetStatusText`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
@@ -603,6 +603,14 @@ that moves your view into the rail ("Dock in the rail"). SDK 3.24.0, host 0.113.
 so a plugin that relies on it sets `minHostVersion` to `0.113.0`.
 ```csharp
 await host.OpenDockPanelAsync("my-plugin.browser");
+```
+
+### `void SetStatusText(string? text)` {#void-setstatustextstring-text}
+Shows one line of **this plugin's** text in the status bar, at the right next to the supervised-activity counters,
+in the faint status colour. A new call replaces the plugin's line, keeping its spot; null or blank removes it. Text
+longer than 120 characters is cut. A server and an older host show nothing. SDK 3.27.0, host 0.116.0.
+```csharp
+host.SetStatusText($"Browser · profile Raymond · {tabs.Count} tabs");
 ```
 
 ### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
