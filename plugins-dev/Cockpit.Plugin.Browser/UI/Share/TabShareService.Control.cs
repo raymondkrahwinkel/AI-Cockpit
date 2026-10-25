@@ -25,13 +25,15 @@ internal sealed partial class TabShareService
         "(()=>{const e=document.querySelector(%SELECTOR%);if(!e)return null;e.scrollIntoView({block:'center',inline:'center'});"
         + "const r=e.getBoundingClientRect();return JSON.stringify({x:r.left+r.width/2,y:r.top+r.height/2});})()";
 
-    private const string FocusIsPasswordScript = "(()=>{const e=document.activeElement;return !!e&&e.type==='password'})()";
+    // The focused field as tag, type and name, for the audit; never its value.
+    private const string FocusedFieldScript =
+        "(()=>{const e=document.activeElement;if(!e)return '';return e.tagName.toLowerCase()+(e.type?'['+e.type+']':'')+(e.name?' '+e.name:'')})()";
 
-    // What one action did, as the audit and the bar say it: typed text cut short, and never shown for a password field.
-    public static string Describe(string tool, string? text, double? x, double? y, string? selector, bool password) => tool switch
+    // What one action did, as the audit and the bar say it. Typed text is never in it, only its length and the field.
+    public static string Describe(string tool, string? text, double? x, double? y, string? selector, string? field) => tool switch
     {
         "click" => selector is null ? $"click at {x:0},{y:0}" : $"click {_Short(selector, 80)}",
-        "type" => password ? "type •••• into a password field" : $"type \"{_Short(text ?? string.Empty, 40)}\"",
+        "type" => $"type {text?.Length ?? 0} characters" + (string.IsNullOrEmpty(field) ? string.Empty : $" into {_Short(field, 40)}"),
         "key" => $"press {text}",
         "scroll" => $"scroll {x:0},{y:0}",
         "navigate" => $"navigate to {_Short(text ?? string.Empty, 120)}",
@@ -51,7 +53,8 @@ internal sealed partial class TabShareService
         }
 
         double? x = request.X, y = request.Y;
-        var password = false;
+        string? field = null;
+        string? frames = null;
         if (request.Tool == "click" && request.Selector is { } selector)
         {
             if (_Point(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(LocateScript.Replace("%SELECTOR%", JsonSerializer.Serialize(selector))))) is not { } point)
@@ -62,42 +65,44 @@ internal sealed partial class TabShareService
             (x, y) = point;
         }
 
-        if (request.Tool == "click" && (x is null || y is null || await _LandsInTopDocumentAsync(tab, (int)x, (int)y) == false))
+        // The frames are noted before the hit test and compared again on CEF's thread right before the click, so a frame
+        // added under the point in between refuses it.
+        if (request.Tool == "click")
+        {
+            frames = await tab.View.FrameSignatureAsync();
+        }
+
+        if (request.Tool == "click" && (x is null || y is null || frames is null || await _LandsInTopDocumentAsync(tab, (int)x, (int)y) == false))
         {
             return _Refuse(request, "That point is not on this site's own page: it is in a frame, or on nothing. Control covers the top page only.");
         }
 
         if (request.Tool == "type")
         {
-            password = await _MaybePasswordAsync(tab);
+            field = TabReader.Text(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(FocusedFieldScript)));
         }
 
         // Decided again on CEF's UI thread right before the input: the same grant, the same origin, and for keys a
         // focused frame on that origin. The answer, and so the audit line, comes only after the input went in.
         var needsFocus = request.Tool is "type" or "key";
         bool Gate(string? mainUrl, string? focusedUrl) => ControlPolicy.MayAct(Grants, request.PaneId, tabId, grant, mainUrl, focusedUrl, needsFocus);
-        var (done, refusal) = await _ActAsync(request, tab, grant, x, y, Gate);
+        var (done, refusal) = await _ActAsync(request, tab, grant, x, y, Gate, frames);
         if (done == false)
         {
             return _Refuse(request, refusal ?? NoControl);
         }
 
-        if (request.Tool == "type")
-        {
-            password |= await _MaybePasswordAsync(tab);
-        }
-
-        var action = Describe(request.Tool, request.Text, x, y, request.Selector, password);
+        var action = Describe(request.Tool, request.Text, x, y, request.Selector, field);
         Grants.MarkAction(grant, action);
         return new TabShareAnswer(request.Id, true, Origin: grant.Origin, Url: tab.Address, Title: tab.Title, Action: action);
     }
 
-    private static async Task<(bool Done, string? Refusal)> _ActAsync(TabShareRequest request, BrowserTab tab, TabGrant grant, double? x, double? y, Func<string?, string?, bool> gate)
+    private static async Task<(bool Done, string? Refusal)> _ActAsync(TabShareRequest request, BrowserTab tab, TabGrant grant, double? x, double? y, Func<string?, string?, bool> gate, string? frames)
     {
         switch (request.Tool)
         {
-            case "click":
-                return (await tab.View.AgentClick((int)x!.Value, (int)y!.Value, gate), null);
+            case "click" when x is { } left && y is { } top && frames is { } signature:
+                return (await tab.View.AgentClick((int)left, (int)top, gate, signature), null);
             case "type" when request.Text is { Length: > 0 and <= MaxTyped } text:
                 return (await tab.View.AgentType(text, gate), null);
             case "key" when request.Text is { } key:
@@ -130,10 +135,6 @@ internal sealed partial class TabShareService
         var described = await _DevToolsAsync(tab, "DOM.describeNode", new Dictionary<string, object> { ["backendNodeId"] = backendNodeId });
         return ControlPolicy.ClickTarget(node, frames, described);
     }
-
-    // Asked before and after the keys go in; either answer that is not a clear no masks the typed text.
-    private static async Task<bool> _MaybePasswordAsync(BrowserTab tab) =>
-        _MaybePassword(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(FocusIsPasswordScript)));
 
     private static int? _BackendNodeId(string? result)
     {
@@ -247,22 +248,32 @@ internal sealed partial class TabShareService
         {
             var origin = Grants.ForTab(tab.Id).FirstOrDefault(grant => grant.Controls)?.Origin;
             tab.View.ControlOrigin = origin;
-            if (origin is null && _heldForms.Remove(tab.Id))
+            if (origin is null)
             {
-                tab.View.DropHeldSubmit();
-                HeldFormsChanged?.Invoke();
+                _DropHeld(tab);
             }
         }
     }
 
     private static string _Target(string submit) => submit[(submit.IndexOf(' ') + 1)..];
 
-    // Raymond's own click or key in a controlled tab pauses the agent there until he gives control back.
+    // Raymond's own click or key in a controlled tab pauses the agent there until he gives control back, and drops
+    // whatever submission was waiting, so nothing the agent started can be sent on his later click.
     private void _OperatorInput(BrowserTab tab)
     {
         if (Grants.ForTab(tab.Id).Any(grant => grant.Controls && grant.OperatorHolds == false))
         {
             Grants.TakeOver(tab.Id);
+            _DropHeld(tab);
+        }
+    }
+
+    private void _DropHeld(BrowserTab tab)
+    {
+        tab.View.DropHeldSubmit();
+        if (_heldForms.Remove(tab.Id))
+        {
+            HeldFormsChanged?.Invoke();
         }
     }
 
@@ -280,22 +291,6 @@ internal sealed partial class TabShareService
 
         using var document = JsonDocument.Parse(json);
         return (document.RootElement.GetProperty("x").GetDouble(), document.RootElement.GetProperty("y").GetDouble());
-    }
-
-    // Fails closed: only a clear "not a password field" shows the typed text in the audit.
-    private static bool _MaybePassword(string? evaluateResult)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(evaluateResult ?? "{}");
-            return (document.RootElement.TryGetProperty("result", out var result)
-                && result.TryGetProperty("value", out var value)
-                && value.ValueKind == JsonValueKind.False) == false;
-        }
-        catch (JsonException)
-        {
-            return true;
-        }
     }
 
     private static string _Short(string text, int max) => text.Length > max ? text[..max] + "…" : text;

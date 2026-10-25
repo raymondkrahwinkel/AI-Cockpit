@@ -139,10 +139,10 @@ internal sealed class CefBrowserView : Control
     // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host. The
     // gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses, and the task
     // says whether the input went in. Coordinates are the page's CSS pixels at 100% zoom.
-    public Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate)
+    public Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate, string frames)
     {
         var mouse = new CefMouseEvent(x, y, CefEventFlags.None);
-        return _Agent(gate, host =>
+        return _Agent((main, focused) => gate(main, focused) && _FrameSignature() == frames, host =>
         {
             host.SetFocus(true);
             host.SendMouseMoveEvent(mouse, false);
@@ -184,6 +184,23 @@ internal sealed class CefBrowserView : Control
     }
 
     public Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => _Agent(gate, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
+
+    // The browser's frames as one string, read on CEF's UI thread; null when there is no browser.
+    public Task<string?> FrameSignatureAsync()
+    {
+        var done = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_browser is null)
+        {
+            done.SetResult(null);
+            return done.Task;
+        }
+
+        CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => done.TrySetResult(_FrameSignature())));
+        return done.Task;
+    }
+
+    private string? _FrameSignature() =>
+        _browser is { } browser ? string.Join(",", browser.GetFrameIdentifiers().Order(StringComparer.Ordinal)) : null;
 
     private Task<bool> _Agent(Func<string?, string?, bool> gate, Action<CefBrowserHost> input)
     {
@@ -614,9 +631,9 @@ internal sealed class CefBrowserView : Control
 
         protected override CefReturnValue OnBeforeResourceLoad(CefBrowser browser, CefFrame frame, CefRequest request, CefCallback callback)
         {
-            var formSubmit = (request.TransitionType & CefTransitionType.SourceMask) == CefTransitionType.FormSubmit;
+            var source = request.TransitionType & CefTransitionType.SourceMask;
             var (method, url) = (request.Method, request.Url);
-            switch (ControlPolicy.Navigation(owner._controlOrigin, method, formSubmit, url))
+            switch (ControlPolicy.Navigation(owner._controlOrigin, method, source == CefTransitionType.FormSubmit, url, frame.IsMain, source == CefTransitionType.Explicit))
             {
                 case ControlPolicy.Verdict.Drop:
                     return CefReturnValue.Cancel;

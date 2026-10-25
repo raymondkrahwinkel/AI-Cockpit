@@ -40,12 +40,12 @@ public class TabControlTests
         Assert.Null(grants.Authorize("pane-a", "tab-1", control: true));
 
         // Criterion 5: the audit line of a typed text shows it, except in a password field.
-        Assert.Equal("type \"hello\"", TabShareService.Describe("type", "hello", null, null, null, password: false));
-        Assert.DoesNotContain("test-only-secret", TabShareService.Describe("type", "test-only-secret", null, null, null, password: true));
+        Assert.Equal("type 5 characters into input[text] q", TabShareService.Describe("type", "hello", null, null, null, "input[text] q"));
+        Assert.DoesNotContain("test-only-secret", TabShareService.Describe("type", "test-only-secret", null, null, null, "input[password]"));
 
         // Review 1: the gate on CEF's thread holds only the very grant that authorized the action.
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Control);
-        var grant = grants.Authorize("pane-a", "tab-1", control: true)!;
+        var grant = grants.Authorize("pane-a", "tab-1", control: true) ?? throw new InvalidOperationException("no grant");
         const string page = "https://github.com/pr/1";
         Assert.True(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, page, needsFocus: true));
         grants.Stop("tab-1");
@@ -53,7 +53,7 @@ public class TabControlTests
         Assert.False(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, page, needsFocus: true));
 
         // Review 2: keys never go to a focused frame of another site, and a click never lands in a frame.
-        grant = grants.Authorize("pane-a", "tab-1", control: true)!;
+        grant = grants.Authorize("pane-a", "tab-1", control: true) ?? throw new InvalidOperationException("no grant");
         Assert.False(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, "https://evil.example/frame", needsFocus: true));
         const string tree = """{"frameTree":{"frame":{"id":"MAIN"}}}""";
         Assert.True(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"MAIN"}""", tree, """{"node":{"nodeName":"BUTTON"}}"""));
@@ -61,12 +61,16 @@ public class TabControlTests
         Assert.False(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"CHILD"}""", tree, """{"node":{"nodeName":"BUTTON"}}"""));
 
         // Reviews 3 and 4: decided in CEF, not the page. Any form submission waits, GET or POST, a script's POST too, and
-        // another site is dropped; a plain link is not held, and nothing is held without a controller.
+        // another site is dropped, the top frame leaving the origin included; a plain same-site link is not held, a
+        // frame may load another site, the address bar may leave, and nothing is held without a controller.
         const string origin = "https://github.com";
-        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "GET", formSubmit: true, "https://github.com/search?q=x"));
-        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "POST", formSubmit: false, "https://github.com/merge"));
-        Assert.Equal(ControlPolicy.Verdict.Drop, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://evil.example/collect"));
-        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://github.com/pr/2"));
-        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(null, "POST", formSubmit: true, "https://github.com/merge"));
+        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "GET", formSubmit: true, "https://github.com/search?q=x", mainFrame: true, fromHost: false));
+        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "POST", formSubmit: false, "https://github.com/merge", mainFrame: true, fromHost: false));
+        Assert.Equal(ControlPolicy.Verdict.Drop, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://evil.example/collect", mainFrame: false, fromHost: false));
+        Assert.Equal(ControlPolicy.Verdict.Drop, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://evil.example/?d=secret", mainFrame: true, fromHost: false));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://github.com/pr/2", mainFrame: true, fromHost: false));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://youtube.com/embed/x", mainFrame: false, fromHost: false));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://news.example", mainFrame: true, fromHost: true));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(null, "POST", formSubmit: true, "https://github.com/merge", mainFrame: true, fromHost: false));
     }
 }

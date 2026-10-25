@@ -23,16 +23,28 @@ internal static class ControlPolicy
         && SameOrigin(mainUrl, grant.Origin)
         && (needsFocus == false || SameOrigin(focusedUrl, grant.Origin));
 
-    // While a tab is controlled, any frame's form submission and any non-GET navigation waits for the operator, and one
-    // to another origin is dropped. Sending a held one continues that very request, so nothing else rides along.
-    public static Verdict Navigation(string? controlOrigin, string method, bool formSubmit, string url)
+    // While a tab is controlled, any frame's form submission and any non-GET navigation waits for the operator, one to
+    // another origin is dropped, and so is the top frame leaving the origin unless the host itself (the address bar)
+    // sent it there. Sending a held one continues that very request, so nothing else rides along.
+    public static Verdict Navigation(string? controlOrigin, string method, bool formSubmit, string url, bool mainFrame, bool fromHost)
     {
-        if (controlOrigin is null || (formSubmit == false && string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)))
+        if (controlOrigin is null)
         {
             return Verdict.Allow;
         }
 
-        return SameOrigin(url, controlOrigin) ? Verdict.Hold : Verdict.Drop;
+        var sameOrigin = SameOrigin(url, controlOrigin);
+        if (mainFrame && fromHost == false && sameOrigin == false)
+        {
+            return Verdict.Drop;
+        }
+
+        if (formSubmit == false && string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
+        {
+            return Verdict.Allow;
+        }
+
+        return sameOrigin ? Verdict.Hold : Verdict.Drop;
     }
 
     // A click lands only on an element of the tab's own top document: never in a frame, never on a frame's owner.
