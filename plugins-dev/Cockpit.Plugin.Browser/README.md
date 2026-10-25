@@ -17,7 +17,7 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 - **Codecs:** VP9, AV1 and Opus play (YouTube); H.264, AAC, HEVC and Widevine do not. A page that asks for one gets
   a bar with "Open in system browser".
 - **macOS is off** until a Mac hand test (helper apps, `CefAppProtocol`, signing).
-- **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-rail`, `browser-codec`,
+- **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
   `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## How the engine arrives

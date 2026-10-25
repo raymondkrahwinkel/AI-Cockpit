@@ -27,8 +27,6 @@ internal sealed class BrowserShell : UserControl
     private readonly Button _placement;
     private BrowserTab? _watched;
     private bool _compact;
-    private string _placementLabel = string.Empty;
-    private MaterialIconKind _placementIcon;
 
     public BrowserShell(BrowserModel model, Action<string> openExternally)
     {
@@ -66,8 +64,8 @@ internal sealed class BrowserShell : UserControl
             Child = new DockPanel { Children = { _Docked(_lock, Dock.Left), new Grid { Children = { _address, _addressShown } } } },
         }.Themed(Border.BackgroundProperty, "CockpitInsetBgBrush");
 
-        _placement = new Button { Classes = { "Compact", "Subtle" }, VerticalAlignment = VerticalAlignment.Center };
-        _placement.Click += (_, _) => PlacementRequested?.Invoke();
+        _placement = _IconButton(MaterialIconKind.KeyboardReturn, "Back to tab", () => PlacementRequested?.Invoke());
+        _placement.Margin = new Thickness(6, 0, 0, 0);
 
         var more = _IconButton(MaterialIconKind.DotsHorizontal, "More", () => { });
         more.Flyout = new MenuFlyout
@@ -101,7 +99,6 @@ internal sealed class BrowserShell : UserControl
             {
                 _Docked(profile, Dock.Left),
                 _Docked(more, Dock.Right),
-                _Docked(_placement, Dock.Right),
                 new ScrollViewer
                 {
                     HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Hidden,
@@ -117,6 +114,7 @@ internal sealed class BrowserShell : UserControl
             Children =
             {
                 _Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { _back, _forward, _reload } }, Dock.Left),
+                _Docked(_placement, Dock.Right),
                 addressField,
             },
         };
@@ -139,20 +137,18 @@ internal sealed class BrowserShell : UserControl
 
         _model.Changed += _Refresh;
         _model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(_OnEngineChanged);
-        SetPlacement("Dock in rail", MaterialIconKind.DockRight);
+        ShowBackToTab(false);
         _Refresh();
     }
 
     public Action<string> OpenExternally { get; }
 
+    public BrowserModel Model => _model;
+
     public event Action? PlacementRequested;
 
-    public void SetPlacement(string label, MaterialIconKind icon)
-    {
-        _placementLabel = label;
-        _placementIcon = icon;
-        _ApplyPlacement();
-    }
+    // Mockup screen 2: in the rail (and its own window) the way back sits at the end of the address bar.
+    public void ShowBackToTab(bool visible) => _placement.IsVisible = visible;
 
     // Compact by width, not by place: narrow in the rail (mockup screen 2), full tabs in its own window (screen 3).
     protected override void OnSizeChanged(SizeChangedEventArgs e)
@@ -162,21 +158,8 @@ internal sealed class BrowserShell : UserControl
         if (compact != _compact)
         {
             _compact = compact;
-            _ApplyPlacement();
+            _Refresh();
         }
-    }
-
-    private void _ApplyPlacement()
-    {
-        ToolTip.SetTip(_placement, _placementLabel);
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new MaterialIcon { Kind = _placementIcon, Width = 14, Height = 14 } } };
-        if (_compact == false)
-        {
-            content.Children.Add(new TextBlock { Text = _placementLabel, VerticalAlignment = VerticalAlignment.Center });
-        }
-
-        _placement.Content = content;
-        _Refresh();
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

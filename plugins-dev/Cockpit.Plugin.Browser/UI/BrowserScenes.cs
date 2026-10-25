@@ -6,6 +6,9 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Workspaces;
+using Material.Icons;
 
 namespace Cockpit.Plugin.Browser.UI;
 
@@ -29,6 +32,19 @@ internal static class BrowserScenes
             BrowserEngineState.Unavailable,
             "The downloaded CEF runtime does not match its pinned checksum (expected c81c34d048d8…, got 5e0f1a92c7b3…) and was discarded.")),
     };
+
+    // The browser as a workspace in Cockpit's main window, with its header button and status text (mockup screen 1).
+    public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> Workspaces { get; } =
+        new Dictionary<string, Func<(WorkspaceTypeRegistration, string?)>>
+        {
+            ["browser-workspace"] = () => (
+                new WorkspaceTypeRegistration(BrowserUi.WorkspaceTypeId, "Browser", _ => _Shell(BrowserPlace.Tab))
+                {
+                    IconKind = MaterialIconKind.Web,
+                    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
+                },
+                BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3)),
+        };
 
     private static Control _Shell(BrowserPlace place, bool codecUnsupported = false)
     {

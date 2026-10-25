@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Material.Icons;
 
 namespace Cockpit.Plugin.Browser.UI;
 
@@ -23,7 +22,7 @@ internal sealed class BrowserHome
         Shell = shell;
         shell.PlacementRequested += () =>
         {
-            MoveTo(Place == BrowserPlace.Tab ? BrowserPlace.Rail : BrowserPlace.Tab);
+            MoveTo(BrowserPlace.Tab);
             Moved?.Invoke(Place);
         };
     }
@@ -34,6 +33,16 @@ internal sealed class BrowserHome
 
     // The operator moved the browser; the UI part brings that place on screen (the rail, or the tab).
     public event Action<BrowserPlace>? Moved;
+
+    // The place or the slots on screen changed; the status text follows it.
+    public event Action? Changed;
+
+    // The host's header button: the browser into the rail, then the rail on screen.
+    public void DockInRail()
+    {
+        MoveTo(BrowserPlace.Rail);
+        Moved?.Invoke(Place);
+    }
 
     public BrowserSlot CreateSlot(BrowserPlace place) => new(this, place);
 
@@ -75,9 +84,10 @@ internal sealed class BrowserHome
         }
 
         owner?.ShowShell();
-        Shell.SetPlacement(
-            Place == BrowserPlace.Tab ? "Dock in rail" : "Back to tab",
-            Place == BrowserPlace.Tab ? MaterialIconKind.DockRight : MaterialIconKind.DockWindow);
+
+        // "Dock in the rail" is the host's header button (HeaderActions); in the rail the shell offers the way back.
+        Shell.ShowBackToTab(Place == BrowserPlace.Rail);
+        Changed?.Invoke();
     }
 }
 
