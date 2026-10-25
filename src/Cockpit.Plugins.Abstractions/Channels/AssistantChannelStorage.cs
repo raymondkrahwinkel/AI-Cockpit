@@ -100,7 +100,7 @@ public static class AssistantChannelStorage
         }
 
         string notice;
-        if ((audience is AssistantChannelAudience.SingleUser or AssistantChannelAudience.SpecificUsers) && userIds.Length == 1)
+        if (userIds.Length > 0)
         {
             storage.Set(_AudienceKey, AssistantChannelAudience.SingleUser.ToString());
             storage.Set(_UserIdsKey, userIds);
