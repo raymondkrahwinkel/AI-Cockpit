@@ -9,12 +9,21 @@ namespace Cockpit.App.Services;
 // Opens the first-run wizard shell (AC-509) and marks it complete once the window closes — Skip, Next, or a
 // dismissal all reach the same `Closed` event. Also the Help menu's "Run setup again" route (AC-512), which
 // re-walks the steps without undoing an earlier run. The startup gate is separate — see `App._ShowOnboardingWizard`.
-internal sealed class FirstRunWizardService(IEnumerable<IFirstRunWizardStep> steps, IFirstRunWizardStateStore stateStore)
+internal sealed class FirstRunWizardService(
+    IEnumerable<IFirstRunWizardStep> steps,
+    IFirstRunWizardStateStore stateStore,
+    DeferredAssistantProfileCoordinator? deferredAssistant = null)
     : IFirstRunWizard, ISingletonService
 {
     public async Task ShowAsync(CancellationToken cancellationToken = default)
     {
-        var viewModel = new FirstRunWizardViewModel([.. steps], FirstRunWizardViewModel.EpicPlan);
+        IFirstRunWizardStep[] wizardSteps = [.. steps];
+        var resume = await stateStore.GetResumeStateAsync(cancellationToken);
+        FirstRunWizardResume.Apply(wizardSteps, resume, deferredAssistant);
+        var viewModel = new FirstRunWizardViewModel(
+            wizardSteps,
+            FirstRunWizardViewModel.EpicPlan,
+            resume?.StartAtOrder);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
 
         var completion = new TaskCompletionSource();
@@ -39,6 +48,11 @@ internal sealed class FirstRunWizardService(IEnumerable<IFirstRunWizardStep> ste
 
         await completion.Task;
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (wizardSteps.OfType<ProviderStep>().Any(step => step.ViewModel?.RestartRequested == true))
+        {
+            return;
+        }
 
         await stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current, cancellationToken);
     }

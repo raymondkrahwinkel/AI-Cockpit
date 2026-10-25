@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
@@ -11,7 +12,11 @@ internal sealed class ProviderStep(
     IPluginStoreConfigStore storeConfigStore,
     IPluginStoreClient storeClient,
     IPluginProvisioningService provisioningService,
-    IPluginAdministration plugins) : IFirstRunWizardStep, ISingletonService
+    IPluginAdministration plugins,
+    ISessionDialogService dialogs,
+    IFirstRunWizardStateStore wizardState,
+    IAppRestartService restart,
+    StartChoiceStep startChoice) : IFirstRunWizardStep, ISingletonService
 {
     public int Order => 20;
 
@@ -24,11 +29,31 @@ internal sealed class ProviderStep(
     // The one the latest wizard was built over; the assistant step reads what was chosen here from it.
     internal ProviderStepViewModel? ViewModel { get; private set; }
 
+    private FirstRunWizardResumeState? _resumeState;
+
+    internal void Restore(FirstRunWizardResumeState state)
+    {
+        _resumeState = state;
+        ViewModel?.Restore(state);
+    }
+
     public string? NextBlockedReason => ViewModel?.NextBlockedReason;
 
     public Control BuildContent()
     {
-        ViewModel = new ProviderStepViewModel(storeConfigStore, storeClient, provisioningService, plugins);
+        ViewModel = new ProviderStepViewModel(
+            storeConfigStore,
+            storeClient,
+            provisioningService,
+            plugins,
+            dialogs,
+            wizardState,
+            restart,
+            () => startChoice.ViewModel.Selected.Id);
+        if (_resumeState is not null)
+        {
+            ViewModel.Restore(_resumeState);
+        }
 
         return new ProviderStepView { DataContext = ViewModel };
     }

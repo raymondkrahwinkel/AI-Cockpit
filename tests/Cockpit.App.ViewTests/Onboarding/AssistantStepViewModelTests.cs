@@ -125,7 +125,7 @@ public class AssistantStepViewModelTests
             new StorePluginRowViewModel(new PluginStoreEntry("claude-provider", "Claude Code", "d", "Cockpit", "1.0.0", []), PluginStoreConfig.Remote("url"), null),
             ProviderDetectionState.Found);
         providers.Providers.Add(claude);
-        Assert.Equal("Press Install for what you ticked, or untick it.", providers.NextBlockedReason);
+        Assert.Equal("Press Install and restart for what you ticked, or untick it.", providers.NextBlockedReason);
         var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
         Assert.False(withChoice.OnlyLocalProvidersAvailable);
         Assert.Contains("Claude Code (ticked, not installed yet", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);

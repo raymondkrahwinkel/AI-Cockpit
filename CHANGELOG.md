@@ -250,6 +250,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **Claude Code carries through first start.** "Install and restart" now installs and asks for permission in
+  the setup itself, returns to "Your assistant" with Claude Code selected, and creates that assistant profile once
+  Claude Code has started; opening Options is no longer part of setup.
 - fixed: **Claude Code is found in its native install location.** First start and new Claude sessions now find the
   launcher in `~/.local/bin` even when a GUI launch does not carry that directory on `PATH`.
 - fixed: **the assistant step counts the providers you chose.** A provider ticked in "What you have" is listed on "Your

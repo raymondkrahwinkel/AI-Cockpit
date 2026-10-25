@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Profiles;
 
@@ -15,6 +16,8 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginRegistrations? _registry;
     private readonly Func<ProviderStepViewModel?>? _chosenProviders;
+    private readonly Task _refreshTask;
+    private FirstRunWizardResumeState? _resumeState;
 
     public AssistantOptionsViewModel AssistantOptions { get; }
 
@@ -37,9 +40,21 @@ public sealed partial class AssistantStepViewModel : ObservableObject
 
     public bool HasChosenProviders => ChosenProviders.Count > 0;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDeferredAssistant), nameof(DeferredAssistantMessage))]
+    private string? _deferredAssistantName;
+
+    public bool HasDeferredAssistant => !string.IsNullOrWhiteSpace(DeferredAssistantName);
+
+    public string DeferredAssistantMessage => HasDeferredAssistant
+        ? $"{DeferredAssistantName} will be your assistant when setup is finished."
+        : string.Empty;
+
     // Why Next is off: the assistant is on and has no profile to run as. Skip and switching it off stay possible.
     public string? NextBlockedReason =>
-        AssistantOptions.IsEnabled && string.IsNullOrEmpty(AssistantOptions.ProfileLabel) ? "Pick a profile, or turn the assistant off." : null;
+        AssistantOptions.IsEnabled && string.IsNullOrEmpty(AssistantOptions.ProfileLabel) && !HasDeferredAssistant
+            ? "Pick a profile, or turn the assistant off."
+            : null;
 
     public event EventHandler? NextBlockedChanged;
 
@@ -47,13 +62,18 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     public void RefreshChosenProviders()
     {
         ChosenProviders.Clear();
-        foreach (var line in _chosenProviders?.Invoke()?.ChosenProviderLines ?? [])
+        var lines = _resumeState is { Providers.Count: > 0 } state
+            ? state.Providers
+                .Where(provider => !string.Equals(provider.Name, state.AssistantProviderName, StringComparison.Ordinal))
+                .Select(provider => provider.Name)
+            : _chosenProviders?.Invoke()?.ChosenProviderLines ?? [];
+        foreach (var line in lines)
         {
             ChosenProviders.Add(line);
         }
 
         OnPropertyChanged(nameof(HasChosenProviders));
-        OnlyLocalProvidersAvailable = ChosenProviders.Count == 0 && (_registry is null || _registry.SessionProviders.Count == 0);
+        OnlyLocalProvidersAvailable = !HasDeferredAssistant && ChosenProviders.Count == 0 && (_registry is null || _registry.SessionProviders.Count == 0);
     }
 
     // Design-time/previewer constructor.
@@ -82,7 +102,26 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         };
         RefreshChosenProviders();
 
-        _ = AssistantOptions.RefreshAsync();
+        _refreshTask = AssistantOptions.RefreshAsync();
+    }
+
+    internal void Restore(FirstRunWizardResumeState state)
+    {
+        _resumeState = state;
+        DeferredAssistantName = state.AssistantProviderName;
+        AssistantOptions.IsEnabled = HasDeferredAssistant;
+        RefreshChosenProviders();
+        _ = _RestoreAfterRefreshAsync();
+    }
+
+    private async Task _RestoreAfterRefreshAsync()
+    {
+        await _refreshTask.ConfigureAwait(true);
+        if (HasDeferredAssistant)
+        {
+            AssistantOptions.IsEnabled = true;
+            NextBlockedChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     // Opens the same dialog Options → Voice → Assistant's "Choose profile…" button opens (AC-546) — never a

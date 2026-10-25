@@ -25,6 +25,8 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
 
     internal AssistantStepViewModel ViewModel { get; }
 
+    internal void Restore(FirstRunWizardResumeState state) => ViewModel.Restore(state);
+
     public int Order => 25;
 
     // Matches the epic's own label for this slot (AC-509's EpicPlan).

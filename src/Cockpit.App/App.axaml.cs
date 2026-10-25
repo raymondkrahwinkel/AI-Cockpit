@@ -198,9 +198,26 @@ public partial class App : Application
     {
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
         IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
+        FirstRunWizardResumeState? resume = null;
+        try
+        {
+            resume = stateStore.GetResumeStateAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Reading the first-run wizard resume state failed; setup will start without it.");
+            // A damaged hand-off must not keep first start from opening; the operator can make the choices again.
+        }
+
+        FirstRunWizardResume.Apply(
+            steps,
+            resume,
+            Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>());
 
         // AC-1505: a failed --provision lands on slot 10 with its reason, on the choice step (AC-1504).
-        int? startAtOrder = null;
+        int? startAtOrder = resume?.StartAtOrder;
         if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<StartChoiceStep>().FirstOrDefault() is { } choiceStep)
         {
             choiceStep.Notice = provisioningFailure;
@@ -703,6 +720,35 @@ public partial class App : Application
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
         // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
+        _ApplyDeferredAssistantProfile();
+    }
+
+    private static void _ApplyDeferredAssistantProfile()
+    {
+        var coordinator = Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>();
+        var pendingAssistantName = coordinator.PendingAssistantName;
+        var assistantName = string.IsNullOrWhiteSpace(pendingAssistantName)
+            ? "The selected assistant"
+            : pendingAssistantName;
+        try
+        {
+            if (!coordinator.ApplyAsync().GetAwaiter().GetResult())
+            {
+                Program.Services.GetRequiredService<IToastService>().Show(
+                    $"{assistantName} could not be started. Run setup again and try again.",
+                    ToastSeverity.Error);
+            }
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Applying the deferred first-run assistant profile for {AssistantName} failed.",
+                assistantName);
+            Program.Services.GetRequiredService<IToastService>().Show(
+                $"{assistantName} could not be set as your assistant. Run setup again and try again.",
+                ToastSeverity.Error);
+        }
     }
 
     // AC-1503: what a restore left empty, one toast each so every line has its own button. The button opens the plugin's

@@ -181,6 +181,11 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
             return;
         }
 
+        if (_steps.OfType<ProviderStep>().Any(step => step.ViewModel?.RestartRequested == true))
+        {
+            return;
+        }
+
         await stateStore.MarkCompletedAsync(FirstRunWizardVersion.Current);
         startCockpit();
     }

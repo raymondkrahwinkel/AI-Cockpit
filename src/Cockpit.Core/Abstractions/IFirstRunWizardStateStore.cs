@@ -15,4 +15,16 @@ public interface IFirstRunWizardStateStore
     /// Records that the operator finished or dismissed the wizard at the given content version.
     /// </summary>
     Task MarkCompletedAsync(int version, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The temporary choices saved for a wizard-requested restart, or null during an ordinary first run.
+    /// </summary>
+    Task<FirstRunWizardResumeState?> GetResumeStateAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<FirstRunWizardResumeState?>(null);
+
+    /// <summary>
+    /// Saves the choices only after installation and consent both succeeded.
+    /// </summary>
+    Task SaveResumeStateAsync(FirstRunWizardResumeState state, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

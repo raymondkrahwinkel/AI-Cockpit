@@ -6,16 +6,21 @@ using Avalonia.Threading;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
+using Cockpit.App.Views;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.ViewTests;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
+using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.TestSupport;
 using CockpitApp = Cockpit.App.App;
 
@@ -36,6 +41,118 @@ public sealed class FirstStartJourney
         var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-first-start-{Guid.NewGuid():N}")).FullName;
         try
         {
+            await Step.Run("Claude is installed and approved, then the restarted wizard resumes with it as the assistant", async () =>
+            {
+                var stateRoot = Directory.CreateDirectory(Path.Combine(work, "claude-assistant")).FullName;
+                var restarts = new _Restarts();
+                Task firstShown = Task.CompletedTask;
+                await using (var first = JourneyHost.Desktop(
+                    root => File.WriteAllText(CockpitConfigPath.For(root), """{"SeededBundledPlugins":["claude-provider"]}"""),
+                    stateRoot,
+                    services =>
+                    {
+                        services.AddSingleton<IPluginProvisioningService>(new _ClaudeProvisioner());
+                        services.AddSingleton<IAppRestartService>(restarts);
+                    }))
+                {
+                    var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
+                    await HeadlessAvalonia.RunAsync(() =>
+                    {
+                        firstShown = first.Services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+                        return Task.CompletedTask;
+                    });
+                    var window = await opened.Task.WaitAsync(Until.Ceiling);
+                    var wizard = HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(window.DataContext));
+                    var providers = first.Services.GetServices<IFirstRunWizardStep>().OfType<ProviderStep>().Single();
+                    var dialogs = Assert.IsType<SessionDialogService>(first.Services.GetRequiredService<ISessionDialogService>());
+                    dialogs.OwnerWindow = () => window;
+
+                    await HeadlessAvalonia.RunAsync(() =>
+                    {
+                        wizard.NextCommand.Execute(null);
+                        wizard.NextCommand.Execute(null);
+                        var viewModel = providers.ViewModel ?? throw new InvalidOperationException("The provider step has no view model.");
+                        viewModel.Providers.Clear();
+                        var version = new PluginStoreVersion("1.0.0", "claude-provider.zip", 3, null, null, null);
+                        var entry = new PluginStoreEntry(
+                            "claude-provider", "Claude Code", "Claude on this machine", "Cockpit", "1.0.0", [version], PluginStoreEntry.ProviderCategory);
+                        viewModel.Providers.Add(new ProviderPickerRowViewModel(
+                            new Cockpit.App.ViewModels.StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.invalid"), null),
+                            ProviderDetectionState.Found));
+                        return Task.CompletedTask;
+                    });
+
+                    var consentOpened = new TaskCompletionSource<PluginConsentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var consentWatch = Window.WindowOpenedEvent.AddClassHandler<PluginConsentDialog>((dialog, _) => consentOpened.TrySetResult(dialog));
+                    var install = HeadlessAvalonia.RunAsync(async () =>
+                    {
+                        var viewModel = providers.ViewModel ?? throw new InvalidOperationException("The provider step has no view model.");
+                        await viewModel.InstallSelectedCommand.ExecuteAsync(null);
+                    });
+                    if (await Task.WhenAny(consentOpened.Task, install) == install)
+                    {
+                        await install;
+                        var message = providers.ViewModel?.SummaryMessage ?? "The provider step has no message.";
+                        throw new InvalidOperationException($"The consent question did not open: {message}");
+                    }
+
+                    var consent = await consentOpened.Task.WaitAsync(Until.Ceiling);
+                    await HeadlessAvalonia.RunAsync(() =>
+                    {
+                        consent.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Enable"))
+                            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        return Task.CompletedTask;
+                    });
+                    await install;
+
+                    Assert.True(restarts.Asked);
+                    HeadlessAvalonia.Run(window.Close);
+                    await firstShown.WaitAsync(Until.Ceiling);
+                    var saved = Assert.IsType<FirstRunWizardResumeState>(
+                        await first.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync());
+                    Assert.Equal(25, saved.StartAtOrder);
+                    Assert.Equal("claude", saved.AssistantProviderId);
+                    Assert.Equal(["claude-provider"], saved.Providers.Select(provider => provider.Id));
+                }
+
+                await using var restarted = JourneyHost.Desktop(stateRoot: stateRoot);
+                var resumedOpened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var resumedWatch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => resumedOpened.TrySetResult(wizard));
+                Task resumedShown = Task.CompletedTask;
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    resumedShown = restarted.Services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+                    return Task.CompletedTask;
+                });
+                var resumedWindow = await resumedOpened.Task.WaitAsync(Until.Ceiling);
+                var resumedWizard = HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(resumedWindow.DataContext));
+                var assistant = restarted.Services.GetServices<IFirstRunWizardStep>().OfType<AssistantStep>().Single().ViewModel;
+                await Until.Holds(assistant, () => assistant.AssistantOptions.IsEnabled && assistant.DeferredAssistantName == "Claude Code");
+                Assert.Equal("Your assistant", HeadlessAvalonia.Run(() => resumedWizard.StepBar.Single(step => step.IsCurrent).Title));
+                Assert.DoesNotContain("Claude Code", assistant.ChosenProviders);
+                Assert.False(assistant.OnlyLocalProvidersAvailable);
+
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    while (!resumedWizard.IsLastStep)
+                    {
+                        resumedWizard.NextCommand.Execute(null);
+                    }
+
+                    resumedWizard.NextCommand.Execute(null);
+                    Dispatcher.UIThread.RunJobs();
+                    return Task.CompletedTask;
+                });
+                await resumedShown.WaitAsync(Until.Ceiling);
+                Assert.Null(await restarted.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync());
+
+                await restarted.StartDesktopAsync();
+                var slot = await restarted.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync();
+                Assert.Equal(ClaudePluginProfile.ProviderId, Assert.IsType<PluginProviderConfig>(slot.Profile?.ProviderConfig).ProviderId);
+                Assert.True((await restarted.Services.GetRequiredService<IAssistantSettingsStore>().LoadAsync()).IsEnabled);
+            });
+
             var archive = Path.Combine(work, "made-elsewhere.zip");
             await Step.Run("a fresh machine starts fresh and backs its cockpit up", async () =>
             {
@@ -239,6 +356,36 @@ public sealed class FirstStartJourney
         finally
         {
             JourneyHost.RemoveStateRoot(work);
+        }
+    }
+
+    private sealed class _ClaudeProvisioner : IPluginProvisioningService
+    {
+        public Task<PluginProvisionResult> InstallAsync(
+            PluginProvisionRequest request,
+            int hostAbstractionsMajor,
+            Version? hostVersion = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(_Install(request));
+
+        public Task<PluginProvisionBatchResult> InstallManyAsync(
+            IReadOnlyList<PluginProvisionRequest> requests,
+            int hostAbstractionsMajor,
+            Version? hostVersion = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PluginProvisionBatchResult([.. requests.Select(_Install)]));
+
+        private static PluginProvisionResult _Install(PluginProvisionRequest request)
+        {
+            var source = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName, request.Id);
+            var target = Directory.CreateDirectory(Path.Combine(PluginBootstrap.PluginsRoot, request.Id)).FullName;
+            foreach (var file in Directory.EnumerateFiles(source))
+            {
+                File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
+            }
+
+            return new PluginProvisionResult(
+                PluginProvisionOutcome.Installed, request.Id, request.Name, null, null, request.Id, "journey-sha");
         }
     }
 
