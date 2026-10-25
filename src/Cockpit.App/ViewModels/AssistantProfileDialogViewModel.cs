@@ -68,8 +68,6 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
     public bool IsFirstRunSetup => _setup is not null;
 
-    public bool ShowAdvancedProfileFields => !IsFirstRunSetup;
-
     public bool CanSetUpLater => IsFirstRunSetup && Profile.SelectedProvider.PluginProviderId is { Length: > 0 };
 
     public bool ShowSave => !IsFirstRunSetup || !Profile.IsPluginProviderMissing;
