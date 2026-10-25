@@ -44,6 +44,8 @@ internal sealed class CockpitUiHost(
 {
     public IPluginUiChannel Channel { get; } = new UiChannel(services.GetRequiredService<PluginChannelHub>(), pluginId);
 
+    private readonly HashSet<string> _ownDockPanelIds = [];
+
     public IPluginStorage Storage => host.Storage;
 
     public void AddSettings(Func<Control> createView) =>
@@ -140,6 +142,28 @@ internal sealed class CockpitUiHost(
         if (!services.GetRequiredService<IDockPanelRegistry>().Register(registration))
         {
             _Logger()?.LogWarning("Dock panel '{DockPanelId}' is already contributed by another plugin; this registration is ignored", registration.Id);
+            return;
+        }
+
+        _ownDockPanelIds.Add(registration.Id);
+    }
+
+    // Only this plugin's own panels: a plugin cannot pull another's panel into view. Floating stays floating.
+    public async Task OpenDockPanelAsync(string panelId)
+    {
+        if (!_ownDockPanelIds.Contains(panelId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        {
+            return;
+        }
+
+        try
+        {
+            await UiThreadCall.DispatchAsync(() => cockpit.DockHost.ShowInAsync(panelId, cockpit.IsDockPanelFloating(panelId)));
+        }
+        catch (UiUnavailableException exception)
+        {
+            _Logger()?.LogWarning(exception, "Opening dock panel '{DockPanelId}' for plugin '{PluginId}' gave up waiting for the UI thread", panelId, pluginId);
+            throw;
         }
     }
 

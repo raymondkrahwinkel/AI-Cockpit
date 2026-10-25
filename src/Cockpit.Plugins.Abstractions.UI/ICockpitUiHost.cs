@@ -132,6 +132,12 @@ public interface ICockpitUiHost
     void AddDockPanel(DockPanelRegistration registration);
 
     /// <summary>
+    /// Shows a dock panel this plugin registered: opened in the rail, or its window raised when it floats. Does nothing
+    /// for a panel another plugin registered or an unknown id. Host 0.113.0 and later; an older host does nothing.
+    /// </summary>
+    Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
+
+    /// <summary>
     /// Contributes a tool to the companion window.
     /// </summary>
     void AddCompanionTool(CompanionToolRegistration registration);

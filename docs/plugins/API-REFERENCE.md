@@ -64,7 +64,7 @@ else changed: a member that stayed keeps its name and signature.
    Moved off `ICockpitHost`: `AddSettings`, `ShowSettingsAsync`, `HasSettings`, `OnSettingsSaved`,
    `AddSideMenuButton`, `AddSideMenuButtonWithBadge`, `AddSideMenuSection`, `AddSessionHeaderItem`,
    `AddSessionBanner`, `AddSessionHeaderAction`, `AddToolbarAction`, `AddShortcut`, `AddConversationPicker`,
-   `AddWidget`, `AddDockPanel`, `AddCompanionTool`, `AddWorkspaceType`, `OpenWorkspaceAsync`, `ShowDialogAsync`,
+   `AddWidget`, `AddDockPanel`, `OpenDockPanelAsync`, `AddCompanionTool`, `AddWorkspaceType`, `OpenWorkspaceAsync`, `ShowDialogAsync`,
    `ShowNewSessionDialogAsync`, `CreateMarkdownView`, `CreateHelpHint`, `OpenHelp`, `HasHelp`. The `Widgets`,
    `CompanionTools` and `WorkspaceTypes` lists are gone with them.
 5. **The active session is the window's.** Gone from `ICockpitActions`: `SetClipboardTextAsync`, `ConfirmAsync`,
@@ -111,7 +111,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSettings`, `ICockpitUiHost.ShowSettingsAsync`, `ICockpitUiHost.HasSettings`, `ICockpitUiHost.OnSettingsSaved` |
 | `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSideMenuButton`, `ICockpitUiHost.AddSideMenuSection`, `ICockpitUiHost.AddSideMenuButtonWithBadge` |
 | `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitUiHost.AddToolbarAction`, `ICockpitUiHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.AddCompanionTool` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
@@ -429,7 +429,7 @@ badge.Text = "4h30 today";
 badge.Tone = SideMenuButtonBadgeTone.Success;
 ```
 
-The icon/tone overload requires SDK 3.24.0 and `minHostVersion` 0.113.0. Older plugins using the original
+The icon/tone overload requires SDK 3.25.0 and `minHostVersion` 0.114.0. Older plugins using the original
 overload remain accent-blue and require no change.
 
 ### `void AddSideMenuSection(string title, Func<Control> createView)` {#void-addsidemenusectionstring-title-funccontrol-createview}
@@ -603,6 +603,15 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
   each move builds a new view.
 - Available in SDK 3.22.0 and host 0.111.0. A plugin that relies on either option sets `minHostVersion` to
   `0.111.0`; an older host ignores them, so the panel then rebuilds on each opening and cannot float.
+
+### `Task OpenDockPanelAsync(string panelId)` {#task-opendockpanelasyncstring-panelid}
+Shows a dock panel **this plugin** registered: opens it in the rail, or raises its window when it floats. A panel
+another plugin registered, or an unknown id, does nothing; so does a server, which has no rail. Use it for a button
+that moves your view into the rail ("Dock in the rail"). SDK 3.24.0, host 0.113.0; an older host does nothing,
+so a plugin that relies on it sets `minHostVersion` to `0.113.0`.
+```csharp
+await host.OpenDockPanelAsync("my-plugin.browser");
+```
 
 ### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
 Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory
