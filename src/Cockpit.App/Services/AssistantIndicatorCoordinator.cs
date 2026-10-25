@@ -107,20 +107,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         _cockpit.AssistantFloatingCardOpened += async row => await _OpenRowAsync(row).ConfigureAwait(true);
         Indicator.ListeningModeSelected += (_, mode) => _ = _ApplyListeningModeAsync(mode);
 
-        // AC-953: dock-panel registration follows the dock stand rather than standing permanently, driven off
-        // the property (not just the swap) because the stand also arrives later, from the layout restore.
-        _cockpit.PropertyChanged += (_, e) =>
-        {
-            // AC-1303: the Simple stand docks the assistant by picking a session rather than by the operator
-            // setting the dock stand, so that is a second way the rail comes to need this tab.
-            if (e.PropertyName is nameof(CockpitViewModel.AssistantDocked)
-                or nameof(CockpitViewModel.SimpleStandDocksTheAssistant))
-            {
-                _ApplyDockRegistration();
-            }
-        };
-
-        _ApplyDockRegistration();
+        _RegisterDockPanel();
 
         // AC-1301: the Simple stand builds its conversation column from this, the same way the rail builds its
         // panel from `DockPanelRegistration.CreateView` — a factory rather than a binding, because what stands
@@ -434,36 +421,21 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         return chat;
     }
 
-    // Whether the rail offers an Assistant tab at all: only while the assistant actually stands there.
-    private void _ApplyDockRegistration()
+    // AC-1710: registered once, on the generic contract. Where it stands is the host's floating stand, which also
+    // takes the tab out of the rail while the assistant is a window; the window itself stays this coordinator's own.
+    private void _RegisterDockPanel()
     {
-        if (_dockPanels is not { } panels)
+        _cockpit.DockHost.UseOwnWindow(DockPanelId, _ShowChatWindow, () => _chatWindow?.Close());
+
+        _dockPanels?.Register(new DockPanelRegistration(
+            DockPanelId,
+            "Assistant",
+            MaterialIconKind.Creation,
+            _CreateDockedChatView)
         {
-            return;
-        }
-
-        if (_cockpit.AssistantDocked || _cockpit.SimpleStandDocksTheAssistant)
-        {
-            panels.Register(new DockPanelRegistration(
-                DockPanelId,
-                "Assistant",
-                MaterialIconKind.Creation,
-                _CreateDockedChatView)
-            {
-                Badge = _questionsBadge,
-            });
-
-            return;
-        }
-
-        panels.Unregister(DockPanelId);
-
-        // A tab that is gone cannot leave its panel open behind it — that would hold the rail expanded onto a
-        // registration the rail can no longer resolve, which draws as an empty rail beside the floating window.
-        if (_cockpit.OpenDockPanelId == DockPanelId)
-        {
-            _cockpit.OpenDockPanelId = null;
-        }
+            Badge = _questionsBadge,
+            CanFloat = true,
+        });
     }
 
     // AC-1013: the rail is the only caller of this factory, so being built by it *is* being docked. Two routes
@@ -539,9 +511,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         WindowActivation.BringToFront(_chatWindow);
     }
 
-    // AC-953: the single place that decides where the chat stands, so no route leaves two on screen. Callers say
-    // which host they want (idempotent). Old host torn down first, new one built after, so the leaving view
-    // writes its scroll position before the arriving view reads it — build-then-tear-down would read it stale.
+    // AC-953: which host the chat stands in — since AC-1710 decided by `DockPanelHost.ShowInAsync`, the one place
+    // for every dock panel. Only the chat's own flags are set here, first, so a window closed by that move reads as
+    // a hand-over to the rail and not as the operator letting go of the conversation.
     private async Task _ShowInAsync(bool docked)
     {
         if (_chatViewModel is { } chat)
@@ -553,34 +525,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             chat.IsSimpleViewHost = false;
         }
 
-        if (docked)
-        {
-            _chatWindow?.Close();
-
-            if (!_cockpit.AssistantDocked || _cockpit.OpenDockPanelId != DockPanelId)
-            {
-                await _cockpit.SetAssistantDockedAsync(true, DockPanelId).ConfigureAwait(true);
-            }
-
-            // Docked, "show the chat" also means putting the cockpit in front of whatever the operator was
-            // looking at — the floating window's own Show + BringToFront, on the window it lives in now.
-            if (Avalonia.Application.Current?.ApplicationLifetime
-                is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
-            {
-                WindowActivation.BringToFront(main);
-            }
-
-            return;
-        }
-
-        // Closing the panel is what detaches the docked view, and that is what hands its scroll position to the
-        // one the window is about to build.
-        if (_cockpit.AssistantDocked || _cockpit.OpenDockPanelId == DockPanelId)
-        {
-            await _cockpit.SetAssistantDockedAsync(false, null).ConfigureAwait(true);
-        }
-
-        _ShowChatWindow();
+        await _cockpit.DockHost.ShowInAsync(DockPanelId, floating: !docked).ConfigureAwait(true);
     }
 
     // The header's Dock/Undock button: the other host, whichever this is.

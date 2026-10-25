@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a dock-rail panel from a plugin can keep its view while you collapse the rail or switch tabs, and can be
+  undocked (⧉ in the rail header) into its own window with **⇤ Dock back** to return it. Whether it floats and where its
+  window stood survive a restart. The assistant docks and undocks through the same mechanism, behaving as before.
 - added: a plugin names what it asks for under `capabilities` in its `plugin.json`; the consent dialog and the plugin
   list say each one in plain words, and a name the cockpit does not know keeps the plugin from loading, with the
   reason in the plugin list. Your own time entries now go only to a plugin that asks for `time.entries`.

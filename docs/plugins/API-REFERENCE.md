@@ -550,6 +550,43 @@ public interface IWidgetContext
 - `RefreshRequested` — raised when the host asks this instance to refresh, including after its settings are
   saved. A widget polling on its own timer can ignore it; one showing a snapshot should re-read.
 
+### `void AddDockPanel(DockPanelRegistration registration)` {#void-adddockpaneldockpanelregistration-registration}
+Registers a panel for the right-hand **dock rail**. It appears as a tab, and opening the tab shows the
+registration's view. The rail owns width and collapse. No-op on a server, which has no rail. See
+[`DockPanelRegistration`](#dockpanelregistration).
+```csharp
+host.AddDockPanel(new DockPanelRegistration("my-plugin.browser", "Browser", MaterialIconKind.Web, () => new BrowserView())
+{
+    KeepAlive = true,   // one view instance, kept across collapse, tab switches and moving windows
+    CanFloat = true,    // ⧉ in the rail header; "Dock back" in its own window
+});
+```
+
+### `DockPanelRegistration` {#dockpanelregistration}
+```csharp
+public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView)
+{
+    public DockPanelBadge? Badge { get; init; }
+    public bool KeepAlive { get; init; }   // SDK 3.22.0, host 0.111.0
+    public bool CanFloat { get; init; }    // SDK 3.22.0, host 0.111.0
+}
+```
+- `Id` — stable and namespaced. It is persisted as the open panel, and for a floating panel as its stand and
+  the key of its window's bounds, so treat it as an API surface. The first registration of an id wins.
+- `CreateView` — builds the panel's view on the UI thread: each time the panel opens, or **once** with
+  `KeepAlive`.
+- `Badge` — an optional count on the tab for what waits on the operator; null draws none.
+- `KeepAlive` — the host builds the view once and keeps that instance across collapsing the rail, switching
+  tabs and moving between the rail and a window. Use it for a view whose state must survive being hidden (a
+  page, a playing video). The view is moved, not copied: it leaves one host before the other takes it.
+- `CanFloat` — the rail header shows ⧉, which moves the panel into its own window. That window carries
+  "⇤ Dock back". While floating, the panel has no tab in the rail. Closing the window (×) puts the tab back
+  without opening the rail. The stand (docked or floating) and the window's bounds survive a restart, and a
+  panel left floating reopens in its window. Combine it with `KeepAlive` to move the same instance; without it,
+  each move builds a new view.
+- Available in SDK 3.22.0 and host 0.111.0. A plugin that relies on either option sets `minHostVersion` to
+  `0.111.0`; an older host ignores them, so the panel then rebuilds on each opening and cannot float.
+
 ### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
 Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory
 builds, one level below a widget: where `AddWidget` fills a Dashboard cell, this fills a slot in a window

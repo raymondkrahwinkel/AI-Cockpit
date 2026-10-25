@@ -8,6 +8,8 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
+    <!-- 0.111.0: dock panels that keep their view and float into their own window (AC-1710, Cockpit.Plugins.Abstractions
+         3.22.0); a plugin that relies on either sets minHostVersion 0.111.0. -->
     <!-- 0.110.0: plugin.json `capabilities`, checked against CapabilityCatalog, shown at consent and in the plugin list;
          ICockpitHost.TimeEntries needs `time.entries` (AC-1730, Cockpit.Plugins.Abstractions 3.21.0). A plugin that
          declares capabilities sets minHostVersion 0.110.0. -->
@@ -343,7 +345,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.110.0</VersionPrefix>
+    <VersionPrefix>0.111.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

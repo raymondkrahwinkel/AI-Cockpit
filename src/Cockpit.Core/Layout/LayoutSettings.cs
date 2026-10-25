@@ -44,6 +44,10 @@ public sealed record LayoutSettings
     // separate field from `OpenDockPanelId`: the assistant can be docked while the rail itself is collapsed.
     public bool AssistantDocked { get; init; }
 
+    // AC-1710: the dock panels standing in their own window instead of the rail, by `DockPanelRegistration.Id`. Null
+    // in a file written before it existed, which reads `AssistantDocked` instead; that one is still written beside it.
+    public IReadOnlyList<string>? FloatingDockPanelIds { get; init; }
+
     // Whether the companion window (AC-237) was left open, so it reopens on the next launch instead of
     // requiring the tray toggle every time.
     public bool CompanionWindowVisible { get; init; }
