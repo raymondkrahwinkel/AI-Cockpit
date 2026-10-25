@@ -27,7 +27,7 @@ internal static class ControlPolicy
     // another origin is dropped, and only the one request the operator released goes through, matched on method and URL.
     public static Verdict Navigation(string? controlOrigin, string method, bool formSubmit, string url, (string Method, string Url)? released)
     {
-        if (controlOrigin is null || (formSubmit == false && string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)))
+        if (controlOrigin is null || string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
         {
             return Verdict.Allow;
         }
