@@ -5906,12 +5906,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var paneId = await _LaunchSessionFromResultAsync(result);
 
-        // The prompt goes in after the session exists, through the same seam a plugin's inject uses — a session that
-        // is not up yet cannot be typed into, and pretending otherwise loses the prompt. Target the started pane by its
-        // id rather than "the last one added", so a session opened concurrently cannot catch the prompt by accident.
+        // Hold the prompt until the started pane is ready, then submit it as the first turn. Target by pane id so a
+        // concurrently opened session cannot catch the prompt.
         if (paneId is not null && !string.IsNullOrWhiteSpace(prompt))
         {
-            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(prompt);
+            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.SubmitPromptWhenReady(prompt);
         }
 
         return name;
