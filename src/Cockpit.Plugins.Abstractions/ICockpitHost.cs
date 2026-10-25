@@ -606,6 +606,25 @@ public interface ICockpitHost
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
 
     /// <summary>
+    /// The cockpit's projects (AC-1737), in the operator's order, including the ones with no folder. Read fresh on
+    /// every call. On a server, that server's projects.
+    /// </summary>
+    /// <remarks>
+    /// Default returns an empty list so existing implementations keep compiling untouched.
+    /// </remarks>
+    Task<IReadOnlyList<Projects.PluginProjectInfo>> GetProjectsAsync() => Task.FromResult<IReadOnlyList<Projects.PluginProjectInfo>>([]);
+
+    /// <summary>
+    /// The id of the project the session <paramref name="paneId"/> belongs to (AC-1737), or null when it has none or
+    /// there is no such session. Its name is in <see cref="GetProjectsAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// The backend has no selected session: pass <see cref="CurrentMcpCallerPaneId"/>, or the pane the UI part sent.
+    /// Default null so existing implementations keep compiling untouched.
+    /// </remarks>
+    Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
+    /// <summary>
     /// Shows a transient in-app toast in the cockpit (#61) — how a plugin tells the operator that something
     /// happened while they were working elsewhere in the app.
     /// </summary>

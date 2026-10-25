@@ -198,7 +198,7 @@ public static class CapabilityCatalog
             "Reads which sessions are open, what they are doing, and which pane an MCP call arrived from.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitHost.CurrentMcpCaller", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
+            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitHost.CurrentMcpCaller", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveProjectId", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
             [new("paneId", "The session pane the plugin may observe.")]),
 
         new(
@@ -258,10 +258,10 @@ public static class CapabilityCatalog
         new(
             "projects.read",
             "Reading project field values",
-            "Reads what the operator filled in on a project — repository paths, tracker keys, whatever other plugins put there.",
+            "Reads which projects there are and which one a session belongs to, and what the operator filled in on a project — repository paths, tracker keys, whatever other plugins put there.",
             CapabilityRisk.Sensitive,
             "0.7.0",
-            ["ICockpitHost.GetProjectFieldValueAsync", "ICockpitHost.GetProjectFieldValuesAsync"],
+            ["ICockpitHost.GetProjectFieldValueAsync", "ICockpitHost.GetProjectFieldValuesAsync", "ICockpitHost.GetProjectsAsync", "ICockpitHost.GetSessionProjectIdAsync", "ICockpitUiHost.GetProjectsAsync"],
             [new("key", "The project field key the plugin may read.")]),
 
         new(

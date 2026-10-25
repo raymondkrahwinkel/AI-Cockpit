@@ -127,14 +127,14 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
 | `profiles.read` | Reading the configured profiles | Sensitive | 0.3.0 | — | `ICockpitHost.GetProfilesAsync` |
-| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitHost.CurrentMcpCaller`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
+| `sessions.observe` | Watching the running sessions | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.Sessions`, `ICockpitHost.CurrentMcpCallerPaneId`, `ICockpitHost.CurrentMcpCaller`, `ICockpitUiHost.ActivePaneId`, `ICockpitUiHost.ActiveSessionWorkingDirectory`, `ICockpitUiHost.ActiveProjectId`, `ICockpitUiHost.ActiveSessionUsage`, `ICockpitUiHost.ActiveSessionChanged`, `ICockpitUiHost.ActiveSessionUsageChanged` |
 | `sessions.annotate` | Naming a session | Sensitive | 0.3.0 | `paneId` | `ICockpitHost.SetSessionStatusline`, `ICockpitHost.SetSessionStatuslineAsync`, `ICockpitHost.SetSessionName`, `ICockpitHost.SetSessionNameAsync`, `ICockpitHost.SuggestSessionName` |
 | `sessions.compose` | Proposing a new session | Sensitive | 0.3.0 | — | `ICockpitUiHost.ShowNewSessionDialogAsync` |
 | `workflows.steps` | Steps and templates for workflows | Sensitive | 0.3.0 | — | `ICockpitHost.AddWorkflowStep`, `ICockpitHost.WorkflowSteps`, `ICockpitHost.AddWorkflowTemplate`, `ICockpitHost.WorkflowTemplates` |
 | `workflows.trigger-observe` | Watching workflow triggers | Sensitive | 0.3.0 | `typeId` | `ICockpitHost.WorkflowTriggerRaised` |
 | `autopilot.templates` | Autopilot templates | Sensitive | 0.5.0 | — | `ICockpitHost.RegisterAutopilotTemplate`, `ICockpitHost.RegisteredAutopilotTemplates` |
 | `projects.fields` | Fields on a project | Sensitive | 0.7.0 | — | `ICockpitHost.AddProjectField`, `ICockpitHost.ProjectFields`, `ICockpitHost.ClaimProjectOwnership`, `ICockpitHost.GetProjectFieldOwnership` |
-| `projects.read` | Reading project field values | Sensitive | 0.7.0 | `key` | `ICockpitHost.GetProjectFieldValueAsync`, `ICockpitHost.GetProjectFieldValuesAsync` |
+| `projects.read` | Reading project field values | Sensitive | 0.7.0 | `key` | `ICockpitHost.GetProjectFieldValueAsync`, `ICockpitHost.GetProjectFieldValuesAsync`, `ICockpitHost.GetProjectsAsync`, `ICockpitHost.GetSessionProjectIdAsync`, `ICockpitUiHost.GetProjectsAsync` |
 | `projects.memory-source` | Offering a project memory source | Sensitive | 0.10.0 | `scheme` | `ICockpitHost.AddProjectMemorySource`, `ICockpitHost.RemoveProjectMemorySource`, `ICockpitHost.ProjectMemorySources`, `ICockpitHost.AddProjectMemorySourceFamily`, `ICockpitHost.RewriteProjectReferencesAsync` |
 | `projects.memory-read` | Reading project memory | Sensitive | 0.22.0 | — | `ICockpitHost.GetProjectMemoryRowsAsync` |
 | `projects.shared-source` | Offering shared projects | Sensitive | 0.19.0 | `key` | `ICockpitHost.AddSharedProjectSource`, `ICockpitHost.RemoveSharedProjectSource`, `ICockpitHost.SharedProjectSources` |
@@ -233,7 +233,8 @@ public interface ICockpitPluginUi
   and `ActiveSessionChanged` live on the UI host, next to `SetClipboardTextAsync` and `ConfirmAsync`. A backend
   part has no active session: the UI part passes the pane id along when it asks the backend to act. A backend
   part that needs where a pane works reads `Sessions.GetWorkingDirectory(paneId)` (AC-1397, host 0.42.0), null
-  for an unknown pane. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
+  for an unknown pane. The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
+  asks `GetSessionProjectIdAsync(paneId)`, and both find the name in `GetProjectsAsync()`. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
   A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.44.0),
   which answers false for an unknown pane or one without an input, so the caller can say so.
@@ -299,6 +300,8 @@ public interface ICockpitHost
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; } // default []
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
+    Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync();   // default returns []
+    Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken = default); // default null
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);        // default no-op
     void AddSessionHeaderAction(PluginSessionAction action);                     // default no-op
@@ -960,6 +963,25 @@ var profiles = await host.GetProfilesAsync();
 var claudeConfigDirs = profiles
     .Where(profile => profile.Provider == "ClaudeCli" && profile.ConfigDirectory.Length > 0)
     .Select(profile => profile.ConfigDirectory);
+```
+
+### `Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()` {#taskireadonlylistpluginprojectinfo-getprojectsasync}
+The cockpit's **projects** (AC-1737, Abstractions 3.23.0, host 0.112.0), as `PluginProjectInfo(string Id, string Name)`,
+in the operator's order and including the projects with no folder — the same list `list_projects` answers.
+- Store the `Id`; it is stable. The `Name` is the operator's and can change, so look it up again when you show it.
+- Read **fresh on every call**. A backend part on a server gets that server's projects; so does
+  `ICockpitUiHost.GetProjectsAsync()` in a view opened for a server.
+- Default returns an empty list. Capability `projects.read`.
+
+### `Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken)` {#taskstring-getsessionprojectidasyncstring-paneid-cancellationtoken-cancellationtoken}
+The id of the project the session `paneId` belongs to (AC-1737), or null when it has no project or there is no such
+session. The backend has no selected session: pass `CurrentMcpCallerPaneId`, or the pane id your UI part sent. A UI
+part reads the selected session's project as `ICockpitUiHost.ActiveProjectId`; `ActiveSessionChanged` fires when it
+moves. Default null.
+
+```csharp
+var projectId = ui.ActiveProjectId;
+var name = (await ui.GetProjectsAsync()).FirstOrDefault(project => project.Id == projectId)?.Name;
 ```
 
 ### `void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)` {#void-showtoaststring-message-plugintoastseverity-severity-string-actionlabel-action-onaction}
