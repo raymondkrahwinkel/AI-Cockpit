@@ -25,9 +25,9 @@ public static class McpRequestContext
     public static McpCaller? CurrentCaller => Current.Value switch
     {
         null => null,
-        var paneId when CurrentNode.Value is { } node => new McpCaller(paneId, McpCallerKind.Remote, null),
+        var paneId when CurrentNode.Value is { } node => new McpCaller(paneId, McpCallerKind.Remote, node.ByConnectKey ? node.Label : null),
         NodeCallerIdentity.PaneId => new McpCaller(NodeCallerIdentity.PaneId, McpCallerKind.Remote),
-        AssistantIdentity.PaneId => new McpCaller(AssistantIdentity.PaneId, McpCallerKind.Session),
+        AssistantIdentity.PaneId => new McpCaller(AssistantIdentity.PaneId, McpCallerKind.Assistant),
         var paneId => new McpCaller(paneId, McpCallerKind.Session),
     };
 
