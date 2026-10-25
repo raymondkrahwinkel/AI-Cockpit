@@ -45,7 +45,7 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
                 "B — everything, tool use included",
                 "C — short status lines instead of full tool traffic",
             },
-            SelectedIndex = (int)(current?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly),
+            SelectedIndex = (int)settings.Verbosity,
         };
 
         _botToken = new TextBox { Text = settings.BotToken, PasswordChar = '•', PlaceholderText = "Discord bot token" };
