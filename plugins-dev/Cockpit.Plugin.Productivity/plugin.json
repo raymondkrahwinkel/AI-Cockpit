@@ -1,13 +1,13 @@
 {
   "id": "productivity",
   "name": "Productivity",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "entryAssembly": "Cockpit.Plugin.Productivity.dll",
   "entryType": "Cockpit.Plugin.Productivity.ProductivityPlugin",
   "uiAssembly": "Cockpit.Plugin.Productivity.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Productivity.UI.ProductivityUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.115.0",
+  "minHostVersion": "0.120.0",
   "capabilities": ["time.entries", "timeline.read-all"],
   "description": "Record your own time with quick entries or one persistent stopwatch, and review it by day beside the time measured from your sessions.",
   "author": "Cockpit"

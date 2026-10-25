@@ -300,6 +300,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // (only while it has activities) and a panel with a Kill per item.
     public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
 
+    // AC-1711: at most one line of text per plugin in the status bar, in the order the plugins first set one.
+    public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
+
+    // Replaced in place, so a plugin's text keeps its spot; null or blank removes it. Long text is cut, not wrapped.
+    internal void SetPluginStatusText(string pluginId, string? text) => _OnUiThread(() =>
+    {
+        var existing = PluginStatusTexts.FirstOrDefault(entry => entry.PluginId == pluginId);
+        var index = existing is null ? -1 : PluginStatusTexts.IndexOf(existing);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            if (index >= 0)
+            {
+                PluginStatusTexts.RemoveAt(index);
+            }
+
+            return;
+        }
+
+        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text);
+        if (index >= 0)
+        {
+            PluginStatusTexts[index] = entry;
+        }
+        else
+        {
+            PluginStatusTexts.Add(entry);
+        }
+    });
+
+    private const int PluginStatusTextMaxLength = 120;
+
     // Sessions-toolbar buttons contributed by plugins (AC-91) — global quick actions shown next to the workspace gear.
     public ObservableCollection<PluginToolbarAction> PluginToolbarActions { get; } = [];
 
@@ -1255,6 +1286,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // for one conversation, so a request on any other session would sit there unseen — the panels stand has the
     // sidebar's hand for that (AC-47) and needs none of this.
     public ObservableCollection<SessionPanelViewModel> SimpleConsentAlerts { get; } = [];
+
+    // AC-1714: the one open card with choices that belongs to no session, shown over the whole window.
+    [ObservableProperty]
+    private ConsentPromptViewModel? _windowConsent;
 
     // Whether there is anything to show, so the notification can be animated open rather than toggled visible.
     public bool HasSimpleConsentAlerts => SimpleConsentAlerts.Count > 0;
@@ -3620,6 +3655,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Dispatcher.UIThread.Post(() =>
         {
+            // AC-1714: a card with choices that names no session goes over the whole window, one at a time.
+            if (prompt.Request.Source.PaneId is null && prompt.Request.Choices is { Count: > 0 })
+            {
+                if (WindowConsent is not null || _consentPrompts is not { } windowConsent)
+                {
+                    _consentPrompts?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
+                    return;
+                }
+
+                WindowConsent = new ConsentPromptViewModel(prompt, windowConsent);
+                return;
+            }
+
             // Either way, if there is nowhere to show it, deny — never hang.
             var pane = prompt.Request.Source.PaneId is { } paneId
                 ? _ConsentPanes().FirstOrDefault(session => session.PaneId == paneId)
@@ -3691,6 +3739,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             if (_ConsentPanes().FirstOrDefault(session => session.PendingConsent?.Id == promptId) is { } pane)
             {
                 pane.PendingConsent = null;
+            }
+
+            if (WindowConsent?.Id == promptId)
+            {
+                WindowConsent = null;
             }
 
             _RefreshSimpleConsentAlerts();
