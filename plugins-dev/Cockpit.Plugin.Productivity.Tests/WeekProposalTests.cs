@@ -28,7 +28,7 @@ public sealed class WeekProposalTests
             new Dictionary<string, string[]>());
         var settings = WeekSettings.Default with { ScheduleMinutes = [schedule, 0, 0, 0, 0, 0, 0] };
 
-        var proposal = WeekProposal.Build([day], settings, [], Names);
+        var proposal = WeekProposal.Build([day], settings, [], Names, []);
 
         Assert.Equal(
             _Minutes(expected),
@@ -39,7 +39,7 @@ public sealed class WeekProposalTests
     }
 
     [Fact]
-    public void OpenLines_LeaveBookedAndPrivateOutAndWarnWhenALaterEntryTopsABookedDay()
+    public void OpenLines_LeaveBookedAndPrivateOutKeepEditsAndWarnAboveTheSchedule()
     {
         var days = Enumerable.Range(0, 5).Select(offset => Week42.AddDays(offset)).ToArray();
         var entries = new[]
@@ -62,12 +62,15 @@ public sealed class WeekProposalTests
             new Dictionary<string, string[]>())).ToList();
         var settings = WeekSettings.Default with { PrivateProjects = ["ai-cockpit"] };
 
-        var proposal = WeekProposal.Build(input, settings, frozen, Names);
+        // An edit holds on an open cell and the rest of the day goes to the other project; on a booked cell it is ignored.
+        CellOverride[] edits = [new(days[3], "syn-api", 210, "SYN-390 demo"), new(days[4], "syn-portal", 60, null)];
+
+        var proposal = WeekProposal.Build(input, settings, frozen, Names, edits);
 
         var open = proposal.OpenLines;
         Assert.Equal(new[] { "Demo nieuwe module", "Nabellen Acme", "syn-portal", "syn-api" }, open.Select(line => line.Label));
         Assert.Equal(new[] { days[3] }, open.Where(line => line.Own == false).SelectMany(line => line.Cells).Select(cell => cell.Day).Distinct());
-        Assert.Equal(new[] { 240, 180 }, open.Where(line => line.Own == false).Select(line => (int)line.Cells.Single().Time.TotalMinutes));
+        Assert.Equal(new[] { 210, 210 }, open.Where(line => line.Own == false).Select(line => (int)line.Cells.Single().Time.TotalMinutes));
         Assert.DoesNotContain(proposal.Lines, line => line.ProjectId == "ai-cockpit");
         Assert.All(proposal.Days, day => Assert.Equal(TimeSpan.FromMinutes(440), day.Measured));
         Assert.Equal(new[] { days[4] }, proposal.Days.Where(day => day.OverSchedule).Select(day => day.Day));

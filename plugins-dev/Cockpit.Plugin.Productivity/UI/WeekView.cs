@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.TimeTracking;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
@@ -25,7 +26,8 @@ internal static class WeekView
         bool thisWeek,
         int weekNumber,
         Action<DateOnly> openDay,
-        Action copy)
+        Action copy,
+        Action<CellOverride?, DateOnly, string> edit)
     {
         var body = new StackPanel { Spacing = 12 };
         if (thisWeek)
@@ -47,7 +49,7 @@ internal static class WeekView
                 new Run(". Dezelfde weergave als nu, met het voorstel en de status van toen. Ruwe tijdlijn tot 90 dagen terug, daarna dagtotalen per project; eigen regels en terugmeldingen blijven altijd bewaard.")), 14));
         }
 
-        body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy));
+        body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy, edit));
         return body;
     }
 
@@ -169,7 +171,7 @@ internal static class WeekView
         }, 14);
     }
 
-    private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy)
+    private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy, Action<CellOverride?, DateOnly, string> edit)
     {
         var days = week.VisibleDays;
         var columns = "*," + string.Join(',', days.Select(_ => "62")) + ",62,250";
@@ -239,6 +241,15 @@ internal static class WeekView
 
             _Cell(row, label, 0, 0);
             _Values(row, [.. days.Select(day => WeekProposal.Cell(line, day.Day)), WeekProposal.Text(TimeSpan.FromTicks(line.Cells.Sum(cell => cell.Time.Ticks)))], line.Own ? Waiting : null);
+            for (var index = 0; index < days.Count && line.Own == false; index++)
+            {
+                if (line.ProjectId is { } projectId && line.Cells.SingleOrDefault(cell => cell.Day == days[index].Day) is { Status: CockpitTimeEntryStatus.Open } cell)
+                {
+                    row.Children.Remove(row.Children.Single(child => Grid.GetColumn(child) == index + 1));
+                    _Cell(row, _EditableCell(cell, projectId, edit), 0, index + 1);
+                }
+            }
+
             _Cell(row, _Status(line), 0, days.Count + 2);
             var border = _Line(row);
             if (line.Own)
@@ -365,6 +376,60 @@ internal static class WeekView
         Grid.SetColumn(soon, 3);
         footer.Children.Add(soon);
         return footer;
+    }
+
+    // An open project cell: its duration and description, kept as the operator's own until "Herstel".
+    private static Control _EditableCell(ProposalCell cell, string projectId, Action<CellOverride?, DateOnly, string> edit)
+    {
+        var duration = new TextBox { Name = "CellDuration", Text = WeekProposal.Text(cell.Time), Width = 80 };
+        var description = new TextBox { Name = "CellDescription", Text = cell.Description ?? string.Empty, Width = 280, PlaceholderText = "Omschrijving" };
+        var error = Ui.Hint(string.Empty);
+        var save = new Button { Name = "SaveCell", Content = "Opslaan", Classes = { "Accent", "Compact" } };
+        var reset = new Button { Content = "Herstel berekening", Classes = { "Compact" }, IsVisible = cell.Edited };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { duration, description } },
+                    error,
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { save, reset } },
+                },
+            },
+        };
+        save.Click += (_, _) =>
+        {
+            if (DurationText.Parse(duration.Text ?? string.Empty) is not { } time)
+            {
+                error.Text = "Voer een geldige duur in, bijvoorbeeld 4:15.";
+                return;
+            }
+
+            flyout.Hide();
+            edit(new CellOverride(cell.Day, projectId, (int)time.TotalMinutes, description.Text), cell.Day, projectId);
+        };
+        reset.Click += (_, _) =>
+        {
+            flyout.Hide();
+            edit(null, cell.Day, projectId);
+        };
+
+        var button = new Button
+        {
+            Name = "EditCell",
+            Content = WeekProposal.Text(cell.Time),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontStyle = cell.Edited ? FontStyle.Italic : FontStyle.Normal,
+            Flyout = flyout,
+        };
+        ToolTip.SetTip(button, string.IsNullOrEmpty(cell.Description) ? "Klik om aan te passen" : cell.Description);
+        return button;
     }
 
     private static void _Values(Grid row, IReadOnlyList<string> values, string? brush)

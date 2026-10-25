@@ -67,7 +67,8 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
                 tickets));
         }
 
-        return WeekProposal.Build(days, settings, [], names);
+        var overrides = host.Storage.Get<CellOverride[]>(CellOverride.StorageKey(DateOnly.FromDateTime(request.DayStarts[0].LocalDateTime))) ?? [];
+        return WeekProposal.Build(days, settings, [], names, overrides);
     }
 
     // ponytail: a session busy across the range start counts from its first line in range; query earlier if agent time matters there.

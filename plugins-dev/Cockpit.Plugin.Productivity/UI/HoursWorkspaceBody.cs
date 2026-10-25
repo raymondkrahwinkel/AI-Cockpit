@@ -129,6 +129,14 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
     }
 
+    private async Task _EditCellAsync(CellOverride? edit, DateOnly day, string projectId)
+    {
+        var key = CellOverride.StorageKey(_controller.WeekStart);
+        var others = (_host.Storage.Get<CellOverride[]>(key) ?? []).Where(cell => cell.Day != day || cell.ProjectId != projectId);
+        _host.Storage.Set<CellOverride[]>(key, edit is null ? [.. others] : [.. others, edit]);
+        await _controller.RefreshAsync();
+    }
+
     private Control _Header(Button previous, Button next)
     {
         var segments = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _dayMode, _weekMode } };
@@ -379,7 +387,8 @@ internal sealed class HoursWorkspaceBody : UserControl
                 _controller.IsThisWeek,
                 ISOWeek.GetWeekOfYear(_controller.WeekStart.ToDateTime(TimeOnly.MinValue)),
                 day => _ = _controller.ShowWeekAsync(false, day),
-                () => _ = _CopyAsync())
+                () => _ = _CopyAsync(),
+                (edit, day, projectId) => _ = _EditCellAsync(edit, day, projectId))
             : null;
         _formDay.Text = "legt vast op " + (_controller.IsToday ? "vandaag, " : string.Empty) + date.ToString("ddd d MMM", Dutch);
         _rulesTitle.Text = _controller.IsToday

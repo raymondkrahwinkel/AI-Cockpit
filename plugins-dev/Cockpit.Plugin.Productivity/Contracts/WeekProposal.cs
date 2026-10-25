@@ -27,7 +27,15 @@ internal sealed record ProposalCell(
     CockpitTimeEntryStatus Status,
     string? ProjectId = null,
     DateTimeOffset? OfferedAt = null,
-    string? OutcomeReason = null);
+    string? OutcomeReason = null,
+    string? Description = null,
+    bool Edited = false);
+
+// The operator's own value for an open project cell; null keeps the computed duration or the tickets of that day.
+internal sealed record CellOverride(DateOnly Day, string ProjectId, int? Minutes, string? Description)
+{
+    public static string StorageKey(DateOnly weekStart) => $"week.{weekStart:yyyy-MM-dd}";
+}
 
 internal sealed record ProposalLine(string Label, string? ProjectId, Guid? EntryId, string Detail, IReadOnlyList<ProposalCell> Cells)
 {
@@ -53,11 +61,12 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
         IReadOnlyList<WeekDayInput> days,
         WeekSettings settings,
         IReadOnlyList<ProposalCell> frozen,
-        IReadOnlyDictionary<string, string> projectNames)
+        IReadOnlyDictionary<string, string> projectNames,
+        IReadOnlyList<CellOverride> overrides)
     {
         var isPrivate = settings.PrivateProjects.ToHashSet(StringComparer.Ordinal);
         var lines = new List<ProposalLine>();
-        foreach (var entry in days.SelectMany(day => day.Entries).Where(entry => entry.ProjectId is null || !isPrivate.Contains(entry.ProjectId)).OrderBy(entry => entry.StartedAt))
+        foreach (var entry in days.SelectMany(day => day.Entries).Where(entry => entry.ProjectId is null || isPrivate.Contains(entry.ProjectId) == false).OrderBy(entry => entry.StartedAt))
         {
             lines.Add(new ProposalLine(
                 entry.Description,
@@ -74,12 +83,29 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
             var schedule = settings.Schedule(day.Day);
             var own = _Sum(lines.Where(line => line.Own).SelectMany(line => line.Cells).Where(cell => cell.Day == day.Day).Select(cell => cell.Time));
             var kept = frozen.Where(cell => cell.Day == day.Day && cell.ProjectId is not null && cell.Status != CockpitTimeEntryStatus.Open).ToList();
-            var free = schedule - own - _Sum(kept.Select(cell => cell.Time));
+            var dayOverrides = overrides
+                .Where(edit => edit.Day == day.Day && isPrivate.Contains(edit.ProjectId) == false && kept.All(cell => cell.ProjectId != edit.ProjectId))
+                .ToDictionary(edit => edit.ProjectId, StringComparer.Ordinal);
+            var edited = dayOverrides.Values
+                .Where(edit => edit.Minutes is > 0)
+                .Select(edit => new ProposalCell(day.Day, TimeSpan.FromMinutes(edit.Minutes ?? 0), CockpitTimeEntryStatus.Open, edit.ProjectId, Edited: true))
+                .ToList();
+
+            // Edited cells hold their minutes; the rest of the day is split over the projects nobody edited.
+            var free = schedule - own - _Sum(kept.Concat(edited).Select(cell => cell.Time));
             var weights = day.Measured
-                .Where(project => project.ProjectId is { } id && !isPrivate.Contains(id) && kept.All(cell => cell.ProjectId != id) && project.Time > TimeSpan.Zero)
+                .Where(project => project.ProjectId is { } id && isPrivate.Contains(id) == false && kept.All(cell => cell.ProjectId != id) && (dayOverrides.TryGetValue(id, out var edit) && edit.Minutes is not null) == false && project.Time > TimeSpan.Zero)
                 .ToList();
             var shares = _Distribute(free > TimeSpan.Zero ? (int)free.TotalMinutes : 0, weights, settings.RoundingMinutes);
-            foreach (var cell in kept.Concat(shares.Select(share => new ProposalCell(day.Day, TimeSpan.FromMinutes(share.Minutes), CockpitTimeEntryStatus.Open, share.ProjectId))))
+            var open = edited.Concat(shares.Select(share => new ProposalCell(day.Day, TimeSpan.FromMinutes(share.Minutes), CockpitTimeEntryStatus.Open, share.ProjectId)))
+                .Select(cell => cell with
+                {
+                    Description = dayOverrides.TryGetValue(cell.ProjectId ?? string.Empty, out var edit) && edit.Description is { } text
+                        ? text
+                        : string.Join(", ", day.Tickets.TryGetValue(cell.ProjectId ?? string.Empty, out var worked) ? worked : []),
+                })
+                .ToList();
+            foreach (var cell in kept.Concat(open))
             {
                 var projectId = cell.ProjectId ?? string.Empty;
                 if (projectCells.TryGetValue(projectId, out var cells))
@@ -95,7 +121,7 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
             totals.Add(new ProposalDay(
                 day.Day,
                 schedule,
-                own + _Sum(kept.Select(cell => cell.Time)) + TimeSpan.FromMinutes(shares.Sum(share => share.Minutes)),
+                own + _Sum(kept.Concat(open).Select(cell => cell.Time)),
                 _Sum(day.Measured.Select(project => project.Time))));
         }
 
