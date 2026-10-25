@@ -1,7 +1,10 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -13,14 +16,15 @@ namespace Cockpit.Infrastructure.Plugins;
 internal sealed class SessionResourceResolver(
     ISessionResourceProviderRegistry registry,
     ISessionProjectResolver projects,
-    ILogger<SessionResourceResolver> logger)
+    ILogger<SessionResourceResolver> logger,
+    IMcpServerCatalog? mcpServerCatalog = null)
     : ISessionResourceResolver, ISingletonService
 {
     // Long enough that a plugin reading what it already holds is never cut off, short enough that a hung one costs
     // the operator a noticeable pause rather than a session that never opens.
     private static readonly TimeSpan AskTimeout = TimeSpan.FromSeconds(5);
 
-    public async Task<SessionResources> ResolveAsync(string? paneId, CancellationToken cancellationToken = default)
+    public async Task<SessionResources> ResolveAsync(string? paneId, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default)
     {
         var providers = registry.Providers;
         if (providers.Count == 0 || string.IsNullOrEmpty(paneId))
@@ -28,7 +32,11 @@ internal sealed class SessionResourceResolver(
             return SessionResources.Empty;
         }
 
-        var request = new SessionResourceRequest(paneId, await projects.ProjectIdOfAsync(paneId, cancellationToken).ConfigureAwait(false));
+        var projectId = await projects.ProjectIdOfAsync(paneId, cancellationToken).ConfigureAwait(false);
+        var request = new SessionResourceRequest(paneId, projectId)
+        {
+            McpServers = await _MountedServersAsync(projectId, enabledMcpServerNames, cancellationToken).ConfigureAwait(false),
+        };
 
         var contributions = new List<SessionResources>(providers.Count);
         foreach (var provider in providers)
@@ -55,6 +63,35 @@ internal sealed class SessionResourceResolver(
         }
 
         return resources;
+    }
+
+    // The servers this launch will mount, narrowed the way both routes narrow them, so a plugin sees what the session
+    // gets. Null when there is no catalog or it cannot be read: unknown, never an empty "none".
+    private async Task<IReadOnlyList<SessionResourceMcpServer>?> _MountedServersAsync(
+        string? projectId,
+        IReadOnlySet<string>? enabledMcpServerNames,
+        CancellationToken cancellationToken)
+    {
+        if (mcpServerCatalog is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var registry = await mcpServerCatalog.GetServersForProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+            return
+            [
+                .. McpServerRegistryFilter.ApplySessionSelection(registry, enabledMcpServerNames)
+                    .Where(McpConfigFile.IsAgentEligible)
+                    .Select(server => new SessionResourceMcpServer(server.Name, server.Command, server.Args)),
+            ];
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Could not read the MCP registry to tell plugins which servers the session mounts.");
+            return null;
+        }
     }
 
     // One plugin's answer. Host-controlled keys are reported here but not removed here: dropping them is the merge's

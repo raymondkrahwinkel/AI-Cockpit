@@ -14,5 +14,8 @@ public interface ISessionResourceResolver
     /// cref="SessionResources.Empty"/> when none has anything (including a project-less pane). Never throws: a
     /// failing plugin is left out and logged — fixable afterwards, unlike a start refused by a misbehaving plugin.
     /// </summary>
-    Task<SessionResources> ResolveAsync(string? paneId, CancellationToken cancellationToken = default);
+    /// <param name="paneId">The pane the session starts in.</param>
+    /// <param name="enabledMcpServerNames">The session's effective MCP selection (null: no restriction), so a plugin can be told which servers it mounts.</param>
+    /// <param name="cancellationToken">Cancels the ask.</param>
+    Task<SessionResources> ResolveAsync(string? paneId, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default);
 }

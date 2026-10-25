@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
+  on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
+  Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
 - added: a session the assistant started that ends a turn without saying done, blocked or asking, gets one nudge
   to carry on; stalling again tells the assistant (`stalled`, with its last lines) instead of nudging twice. Ending on a
   notify, an open question or permission, or a run still going counts as a closing. Sessions you start yourself are left alone.
