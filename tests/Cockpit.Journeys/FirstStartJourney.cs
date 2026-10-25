@@ -53,12 +53,26 @@ public sealed class FirstStartJourney
                         var bundledRoot = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName);
                         var seeded = Directory.EnumerateDirectories(bundledRoot)
                             .Select(directory => new DirectoryInfo(directory).Name)
-                            .Where(id => id is not ("claude-provider" or "cli-agent-provider"))
+                            .Where(id => id != "claude-provider")
                             .Select(id => JsonValue.Create(id))
                             .ToArray();
+                        var codexTarget = Path.Combine(root, "plugins", "cli-agent-provider");
+                        _ProviderProvisioner._CopyPlugin(Path.Combine(bundledRoot, "cli-agent-provider"), codexTarget);
+                        var codexSha256 = PluginClosureHash.OfInstalledFolderAsync(codexTarget).GetAwaiter().GetResult();
                         File.WriteAllText(
                             CockpitConfigPath.For(root),
-                            new JsonObject { ["SeededBundledPlugins"] = new JsonArray(seeded) }.ToJsonString());
+                            new JsonObject
+                            {
+                                ["SeededBundledPlugins"] = new JsonArray(seeded),
+                                ["Plugins"] = new JsonObject
+                                {
+                                    ["cli-agent-provider"] = new JsonObject
+                                    {
+                                        ["Enabled"] = true,
+                                        ["PinnedSha256"] = codexSha256,
+                                    },
+                                },
+                            }.ToJsonString());
 
                         _ProviderProvisioner._CopyPlugin(
                             Path.Combine(bundledRoot, "gemini-provider"),
@@ -72,6 +86,13 @@ public sealed class FirstStartJourney
                 {
                     await cockpit.StartDesktopAsync();
                 }
+
+                var installed = await cockpit.Services.GetRequiredService<IPluginAdministration>().GetInstalledAsync();
+                var codex = installed.Single(plugin => plugin.Discovered.FolderId == "cli-agent-provider");
+                var codexRegistration = Assert.IsType<PluginRegistration>(codex.Registration);
+                Assert.True(codexRegistration.Enabled);
+                Assert.Equal(codex.Discovered.Sha256, codexRegistration.PinnedSha256);
+                Assert.Null(installed.Single(plugin => plugin.Discovered.FolderId == "gemini-provider").Registration);
 
                 var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
@@ -110,14 +131,27 @@ public sealed class FirstStartJourney
                 });
                 var profileDialog = await profileOpened.Task.WaitAsync(Until.Ceiling);
                 var profileViewModel = HeadlessAvalonia.Run(() => Assert.IsType<AssistantProfileDialogViewModel>(profileDialog.DataContext));
-                var providerOptions = profileViewModel.Profile.Providers.Select(option => option.Label).ToList();
-                Assert.Equal(["Ollama", "LM Studio", "Claude", "Codex (CLI)"], providerOptions);
-                Assert.DoesNotContain("Gemini", providerOptions);
-                Assert.DoesNotContain("OpenAI", providerOptions);
+                var providerPicker = HeadlessAvalonia.Run(() => profileDialog.GetLogicalDescendants().OfType<ComboBox>()
+                    .Single(combo => ReferenceEquals(combo.ItemsSource, profileViewModel.Profile.Providers)));
+                var providerOptions = profileViewModel.Profile.Providers.ToList();
+                Assert.Equal(["Ollama", "LM Studio", "Claude", "Codex (CLI)"], providerOptions.Select(option => option.Label));
+                Assert.DoesNotContain("Gemini", providerOptions.Select(option => option.Label));
+                Assert.DoesNotContain("OpenAI", providerOptions.Select(option => option.Label));
                 Assert.False(restarts.Asked);
 
-                HeadlessAvalonia.Run(profileDialog.Close);
+                HeadlessAvalonia.Run(() =>
+                {
+                    providerPicker.SelectedItem = providerOptions.Single(option => option.Label == "Codex (CLI)");
+                    Dispatcher.UIThread.RunJobs();
+                });
+                Assert.True(profileViewModel.CanSetUpLater);
+                await HeadlessAvalonia.RunAsync(() => profileViewModel.SetUpLaterCommand.ExecuteAsync(null));
                 await profileShown.WaitAsync(Until.Ceiling);
+                Assert.True(assistant.AssistantOptions.IsEnabled);
+                var slot = await cockpit.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync();
+                Assert.Equal(
+                    "cli-agent-provider.codex",
+                    Assert.IsType<PluginProviderConfig>(slot.Profile?.ProviderConfig).ProviderId);
                 HeadlessAvalonia.Run(window.Close);
                 await shown.WaitAsync(Until.Ceiling);
             });
@@ -266,6 +300,28 @@ public sealed class FirstStartJourney
                 var providerOptions = HeadlessAvalonia.Run(() => providerPicker.ItemsSource?.Cast<SessionProviderOption>().ToList() ?? []);
                 Assert.Equal(["Ollama", "LM Studio", "Gemini", "OpenAI", "Codex (CLI)", "Claude"], providerOptions.Select(option => option.Label));
                 Assert.Null(HeadlessAvalonia.Run(() => providerPicker.SelectedItem));
+                HeadlessAvalonia.Run(() =>
+                {
+                    providerPicker.SelectedItem = providerOptions.Single(option => option.Label == "Claude");
+                    Dispatcher.UIThread.RunJobs();
+                });
+                await HeadlessAvalonia.RunAsync(() => profileViewModel.SetUpLaterCommand.ExecuteAsync(null));
+                await profileShown.WaitAsync(Until.Ceiling);
+                Assert.Equal(
+                    "claude",
+                    Assert.IsType<PluginProviderConfig>((await restarted.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync()).Profile?.ProviderConfig).ProviderId);
+
+                profileOpened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    profileShown = assistant.EditProfileCommand.ExecuteAsync(null);
+                    return Task.CompletedTask;
+                });
+                profileDialog = await profileOpened.Task.WaitAsync(Until.Ceiling);
+                profileViewModel = HeadlessAvalonia.Run(() => Assert.IsType<AssistantProfileDialogViewModel>(profileDialog.DataContext));
+                providerPicker = HeadlessAvalonia.Run(() => profileDialog.GetLogicalDescendants().OfType<ComboBox>()
+                    .Single(combo => ReferenceEquals(combo.ItemsSource, profileViewModel.Profile.Providers)));
+                providerOptions = HeadlessAvalonia.Run(() => providerPicker.ItemsSource?.Cast<SessionProviderOption>().ToList() ?? []);
                 HeadlessAvalonia.Run(() =>
                 {
                     providerPicker.SelectedItem = providerOptions.Single(option => option.Label == "Gemini");
