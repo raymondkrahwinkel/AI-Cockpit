@@ -157,7 +157,7 @@ public class AssistantStepViewModelTests
         Assert.Equal("Press Install and restart for what you ticked, or untick it.", providers.NextBlockedReason);
         var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
         Assert.False(withChoice.OnlyLocalProvidersAvailable);
-        Assert.Contains("Claude Code (ticked, not installed yet", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);
+        Assert.Contains("Claude Code (not added yet)", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);
         claude.IsSelected = false;
         Assert.Null(providers.NextBlockedReason);
         withChoice.RefreshChosenProviders();
