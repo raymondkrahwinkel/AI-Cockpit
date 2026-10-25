@@ -32,7 +32,7 @@ internal static class ControlPolicy
             return Verdict.Allow;
         }
 
-        if (released is { } one && string.Equals(one.Method, method, StringComparison.OrdinalIgnoreCase) && true)
+        if (released is { } one && string.Equals(one.Method, method, StringComparison.OrdinalIgnoreCase) && one.Url == url)
         {
             return Verdict.Allow;
         }
