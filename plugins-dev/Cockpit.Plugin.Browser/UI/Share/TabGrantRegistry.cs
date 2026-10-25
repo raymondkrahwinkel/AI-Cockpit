@@ -17,8 +17,13 @@ internal sealed class TabGrant(string paneId, string sessionName, string tabId, 
     // Raymond clicked or typed in the tab himself: control waits until he gives it back (AC-1728).
     public bool OperatorHolds { get; internal set; }
 
-    // What the agent last did in the tab, for the bar that says it is controlled.
+    // What the agent last did in the tab, and when, for the bar that says it is controlled.
     public string? LastAction { get; internal set; }
+
+    public DateTimeOffset? LastActionAt { get; internal set; }
+
+    // A submission CEF holds for the operator in this controlled tab, as "<method> <target address>".
+    public string? HeldSubmit { get; internal set; }
 
     public string Origin { get; internal set; } = origin;
 
@@ -95,7 +100,21 @@ internal sealed class TabGrantRegistry
 
     public void GiveBack(string tabId) => _Change(() => _Each(tabId, grant => grant.OperatorHolds = false));
 
-    public void MarkAction(TabGrant grant, string action) => _Change(() => grant.LastAction = action);
+    public void MarkAction(TabGrant grant, string action, DateTimeOffset at) => _Change(() => (grant.LastAction, grant.LastActionAt) = (action, at));
+
+    // The tab's held submission sits on its controller; a tab without one holds nothing.
+    public void Hold(string tabId, string submit) => _Change(() => _Each(tabId, grant => grant.HeldSubmit = grant.Controls ? submit : null));
+
+    public string? TakeHeld(string tabId)
+    {
+        string? held = null;
+        _Change(() => _Each(tabId, grant =>
+        {
+            held ??= grant.HeldSubmit;
+            grant.HeldSubmit = null;
+        }));
+        return held;
+    }
 
     public void MarkRead(TabGrant grant, DateTimeOffset at) => _Change(() => grant.LastRead = at);
 

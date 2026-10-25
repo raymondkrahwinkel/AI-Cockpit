@@ -473,6 +473,14 @@ internal sealed class BrowserShell : UserControl
         }
 
         var tabId = grants[0].TabId;
+        _shareBar.Themed(Border.BackgroundProperty, "CockpitStatusBusyChipTintBrush");
+        if (grants.FirstOrDefault(grant => grant.Controls) is { } controller && _model.Active is { } controlled)
+        {
+            _shareBar.Child = _ControlBar(controller, controlled);
+            _shareBar.Themed(Border.BackgroundProperty, controller.OperatorHolds && controller.HeldSubmit is null ? "CockpitAccentRingTintBrush" : "CockpitStatusWaitingChipTintBrush");
+            return;
+        }
+
         var stop = new Button { Content = "Stop sharing", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) }.Themed(Button.BorderBrushProperty, "CockpitStatusErrorBrush");
         stop.Click += (_, _) => _grants.Stop(tabId);
         var row = new DockPanel { Children = { _Docked(stop, Dock.Right) } };
@@ -512,6 +520,66 @@ internal sealed class BrowserShell : UserControl
         row.Children.Add(said);
         _shareBar.Child = row;
     }
+
+    // AC-1728, mockup v2 screens 10 to 12: who controls the tab and Stop; a held form with Send and Don't send; and
+    // Raymond's takeover with Give back. Stop ends the grant at once, so the next action is refused.
+    private Control _ControlBar(TabGrant controller, BrowserTab tab)
+    {
+        var stop = new Button { Content = "Stop", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) }.Themed(Button.BorderBrushProperty, "CockpitStatusErrorBrush");
+        stop.Click += (_, _) => _grants.Stop(tab.Id);
+
+        if (controller.HeldSubmit is { } held)
+        {
+            var space = held.IndexOf(' ');
+            var send = new Button { Content = "Send", Classes = { "Compact", "Accent" }, Margin = new Thickness(8, 0, 0, 0) };
+            send.Click += (_, _) => TabShareService.SendHeld(_grants, tab);
+            var dropIt = new Button { Content = "Don’t send", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) };
+            dropIt.Click += (_, _) => TabShareService.DropHeld(_grants, tab);
+            var line = _Said("Send this form?", $" {controller.SessionName} controls this tab · {held[..Math.Max(0, space)]} to ", "CockpitStatusWaitingBrush");
+            line.Inlines!.Add(new Run(_Short(held[(space + 1)..], 90)) { FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace") });
+            var note = new TextBlock
+            {
+                Text = "While an agent controls this tab, every form asks first, yours too: the browser cannot tell who sent it. Another site is refused without asking. Requests a page makes by script (fetch) are not covered.",
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 0),
+            }.Themed(TextBlock.ForegroundProperty, "CockpitTextFaintBrush");
+            var top = new DockPanel { Children = { _Docked(send, Dock.Right), _Docked(dropIt, Dock.Right), _Docked(_Dot("CockpitStatusWaitingBrush"), Dock.Left), line } };
+            return new StackPanel { Children = { top, note } };
+        }
+
+        if (controller.OperatorHolds)
+        {
+            var giveBack = new Button { Content = "Give back", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) };
+            giveBack.Click += (_, _) => _grants.GiveBack(tab.Id);
+            var took = _Said("You took over", $" · {controller.SessionName} waits and is refused until you give control back", "CockpitAccentBrush");
+            return new DockPanel { Children = { _Docked(stop, Dock.Right), _Docked(giveBack, Dock.Right), _Docked(_Dot("CockpitAccentBrush"), Dock.Left), took } };
+        }
+
+        var last = controller.LastAction is { } action && controller.LastActionAt is { } at
+            ? $" · last action: {action} · {_Ago(DateTimeOffset.Now - at)}"
+            : " · no action yet";
+        var hint = new TextBlock { Text = "Click or type in the page to take over", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) }
+            .Themed(TextBlock.ForegroundProperty, "CockpitTextFaintBrush");
+        var said = _Said($"Controlled by {controller.SessionName}", $" · within {_Host(controller.Origin)}{last}", "CockpitStatusWaitingBrush");
+        return new DockPanel { Children = { _Docked(stop, Dock.Right), _Docked(hint, Dock.Right), _Docked(_Dot("CockpitStatusWaitingBrush"), Dock.Left), said } };
+    }
+
+    private TextBlock _Said(string bold, string rest, string dotBrush)
+    {
+        var said = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Inlines = [] };
+        said.Inlines.Add(new Run(bold) { FontWeight = FontWeight.SemiBold });
+        var detail = new Run(rest);
+        detail.Bind(Run.ForegroundProperty, said.GetResourceObservable("CockpitTextSecondaryBrush"));
+        said.Inlines.Add(detail);
+        return said;
+    }
+
+    private static Border _Dot(string brush) =>
+        new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center }
+            .Themed(Border.BackgroundProperty, brush);
+
+    private static string _Short(string text, int max) => text.Length > max ? text[..max] + "…" : text;
 
     private static string _Host(string origin) => Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? uri.Host : origin;
 
@@ -569,11 +637,12 @@ internal sealed class BrowserShell : UserControl
             chip.Themed(Border.BackgroundProperty, "CockpitPanelBgBrush");
         }
 
-        // AC-1714, mockup screen 7: a shared tab carries a cyan line along its top.
-        if (_grants.ForTab(tab.Id).Count > 0)
+        // AC-1714, mockup screen 7: a shared tab carries a cyan line along its top; AC-1728, screen 10: amber while
+        // an agent controls it.
+        if (_grants.ForTab(tab.Id) is { Count: > 0 } tabGrants)
         {
             chip.BorderThickness = new Thickness(1, 2, 1, 0);
-            chip.Themed(Border.BorderBrushProperty, "CockpitStatusBusyBrush");
+            chip.Themed(Border.BorderBrushProperty, tabGrants.Any(grant => grant.Controls) ? "CockpitStatusWaitingBrush" : "CockpitStatusBusyBrush");
         }
 
         chip.PointerPressed += (_, e) =>

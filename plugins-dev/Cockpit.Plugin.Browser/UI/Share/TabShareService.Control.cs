@@ -13,7 +13,6 @@ internal sealed partial class TabShareService
 
     private const int MaxTyped = 2_000;
 
-    private readonly Dictionary<string, string> _heldForms = [];
 
     private const string NoControl =
         "You do not control this tab: it was not shared with your session for control, sharing was stopped, the tab moved to another site, or the operator took over. Ask again with request_tab_control.";
@@ -93,7 +92,7 @@ internal sealed partial class TabShareService
         }
 
         var action = Describe(request.Tool, request.Text, x, y, request.Selector, field);
-        Grants.MarkAction(grant, action);
+        Grants.MarkAction(grant, action, DateTimeOffset.Now);
         return new TabShareAnswer(request.Id, true, Origin: grant.Origin, Url: tab.Address, Title: tab.Title, Action: action);
     }
 
@@ -201,45 +200,28 @@ internal sealed partial class TabShareService
             ? (tab, grant)
             : null;
 
-    // A navigation held in a controlled tab, per tab id, as "<method> <target address>"; the bar asks Raymond about it.
-    public IReadOnlyDictionary<string, string> HeldForms => _heldForms;
-
-    public event Action? HeldFormsChanged;
-
-    // Sent again only while the tab is still controlled on the origin the held request targets.
-    public void SendHeldForm(string tabId)
+    // Send in the form bar: the held request goes on only while the tab still has a controller on its target's origin.
+    public static void SendHeld(TabGrantRegistry grants, BrowserTab tab)
     {
-        if (_heldForms.Remove(tabId, out var submit) && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab)
+        var held = grants.TakeHeld(tab.Id);
+        var origin = grants.ForTab(tab.Id).FirstOrDefault(grant => grant.Controls)?.Origin;
+        if (held is not null && origin is not null && ControlPolicy.SameOrigin(_Target(held), origin))
         {
-            var grant = Grants.ForTab(tabId).FirstOrDefault(grant => grant.Controls);
-            if (grant is not null && ControlPolicy.SameOrigin(_Target(submit), grant.Origin))
-            {
-                tab.View.ReleaseHeldSubmit();
-            }
-            else
-            {
-                tab.View.DropHeldSubmit();
-            }
-
-            HeldFormsChanged?.Invoke();
+            tab.View.ReleaseHeldSubmit();
+            return;
         }
+
+        tab.View.DropHeldSubmit();
     }
 
-    public void DropHeldForm(string tabId)
+    public static void DropHeld(TabGrantRegistry grants, BrowserTab tab)
     {
-        if (_heldForms.Remove(tabId) && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab)
-        {
-            tab.View.DropHeldSubmit();
-            HeldFormsChanged?.Invoke();
-        }
+        grants.TakeHeld(tab.Id);
+        tab.View.DropHeldSubmit();
     }
 
     // The view already held it in CEF; another origin never reaches this, it was cancelled there.
-    private void _SubmitHeld(BrowserTab tab, string method, string url)
-    {
-        _heldForms[tab.Id] = $"{method} {url}";
-        HeldFormsChanged?.Invoke();
-    }
+    private void _SubmitHeld(BrowserTab tab, string method, string url) => Grants.Hold(tab.Id, $"{method} {url}");
 
     // Each view holds submissions and refuses file pickers exactly while its tab has a controller, on its origin.
     private void _SyncControlled()
@@ -250,7 +232,7 @@ internal sealed partial class TabShareService
             tab.View.ControlOrigin = origin;
             if (origin is null)
             {
-                _DropHeld(tab);
+                DropHeld(Grants, tab);
             }
         }
     }
@@ -264,16 +246,7 @@ internal sealed partial class TabShareService
         if (Grants.ForTab(tab.Id).Any(grant => grant.Controls && grant.OperatorHolds == false))
         {
             Grants.TakeOver(tab.Id);
-            _DropHeld(tab);
-        }
-    }
-
-    private void _DropHeld(BrowserTab tab)
-    {
-        tab.View.DropHeldSubmit();
-        if (_heldForms.Remove(tab.Id))
-        {
-            HeldFormsChanged?.Invoke();
+            DropHeld(Grants, tab);
         }
     }
 

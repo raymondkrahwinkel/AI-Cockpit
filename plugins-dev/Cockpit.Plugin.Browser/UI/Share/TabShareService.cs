@@ -77,7 +77,7 @@ internal sealed partial class TabShareService : IDisposable
                 new ConsentChoice("mode", "What the agent may do",
                 [
                     new ConsentOption(Watch, "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
-                    new ConsentOption("control", "Control", "Click, type, scroll and navigate within this site.", Enabled: false) { Note = "not in this version" },
+                    new ConsentOption(Control, "Control", $"Watch, plus click, type, scroll and navigate, only within {origin}. Every form submission asks you again."),
                 ], AllowMultiple: true),
             ],
             ApproveLabel = "Share watching",
@@ -93,9 +93,10 @@ internal sealed partial class TabShareService : IDisposable
 
         var paneId = picked[0];
         var name = sessions.FirstOrDefault(session => session.PaneId == paneId)?.Name ?? paneId;
+        var mode = chosen.TryGetValue("mode", out var modes) && modes.Contains(Control) ? Control : Watch;
         if (_model.Tabs.Contains(tab))
         {
-            Grants.Share(paneId, name, tab.Id, origin, Watch);
+            Grants.Share(paneId, name, tab.Id, origin, mode);
         }
     }
 

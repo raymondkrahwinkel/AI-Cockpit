@@ -37,7 +37,7 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   the origin unless the address bar sent it; no file picker opens. While a submission waits, DevTools reads of that
   tab do not answer. A page's own `fetch` is not covered: a page of the granted origin could always send data itself.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
-  `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
+  `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-tab-controlled`, `browser-form-held`, `browser-took-over`, `browser-workspace-controlled`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## The agent profile (AC-1713)
 
