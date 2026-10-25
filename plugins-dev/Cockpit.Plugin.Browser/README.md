@@ -17,8 +17,14 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 - **Codecs:** VP9, AV1 and Opus play (YouTube); H.264, AAC, HEVC and Widevine do not. A page that asks for one gets
   a bar with "Open in system browser".
 - **macOS is off** until a Mac hand test (helper apps, `CefAppProtocol`, signing).
+- **Sharing a tab (AC-1714):** only from the browser, for the tab in view, through the host's consent card with
+  choices (with which session; watch). A grant is one session on one tab and ends on Stop sharing, closing the tab or
+  the session ending; a move to another origin pauses it until "Keep sharing on …". The `cockpit-browser` MCP
+  (`browser_list_shared_tabs`, `browser_read_tab`, `browser_screenshot_tab`) answers only the transport-verified
+  caller, reads in-process through `ExecuteDevToolsMethod`, and writes each read to `consent-audit.jsonl` as a
+  Bypassed line with `PreApprovedBy: tab grant <id>`. No tool touches cookies, storage, other tabs or DevTools.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
-  `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
+  `browser-shared`, `browser-share-paused`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## The agent profile (AC-1713)
 

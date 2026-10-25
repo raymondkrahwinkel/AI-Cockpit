@@ -4,7 +4,9 @@ using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.Plugin.Browser.UI.Engine;
+using Cockpit.Plugin.Browser.UI.Share;
 using Material.Icons;
 using Material.Icons.Avalonia;
 
@@ -35,15 +37,24 @@ internal sealed class BrowserShell : UserControl
     private readonly Border _codecBar;
     private readonly ContentControl _page = new();
     private readonly Button _placement;
+    private readonly Button _share;
+    private readonly Border _shareBar = new() { Padding = new Thickness(12, 6), IsVisible = false };
+    private readonly DispatcherTimer _lastReadTicker = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly TabGrantRegistry _grants;
+    private readonly Action<BrowserTab>? _shareRequested;
     private BrowserTab? _watched;
     private bool _compact;
 
-    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally)
+    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally, TabGrantRegistry? grants = null, Action<BrowserTab>? shareRequested = null)
     {
         _model = model;
         _agents = agents;
         _agentScreen = new AgentScreen(agents);
         OpenExternally = openExternally;
+        _grants = grants ?? new TabGrantRegistry();
+        _shareRequested = shareRequested;
+        _grants.Changed += () => Dispatcher.UIThread.Post(_Refresh);
+        _lastReadTicker.Tick += (_, _) => _RefreshShareBar();
 
         _back = _IconButton(MaterialIconKind.ArrowLeft, "Back", () => _model.Active?.View.GoBack());
         _forward = _IconButton(MaterialIconKind.ArrowRight, "Forward", () => _model.Active?.View.GoForward());
@@ -107,6 +118,23 @@ internal sealed class BrowserShell : UserControl
             },
         };
 
+        // AC-1714: sharing is always the operator's own act, from here, for the tab in view; the card asks with whom.
+        _share = new Button
+        {
+            Classes = { "Compact", "Subtle" },
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsVisible = shareRequested is not null,
+        };
+        ToolTip.SetTip(_share, "Share this tab with an agent…");
+        _share.Click += (_, _) =>
+        {
+            if (_model.Active is { } tab)
+            {
+                _shareRequested?.Invoke(tab);
+            }
+        };
+
         var addressRow = new DockPanel
         {
             Margin = new Thickness(8, 4, 8, 6),
@@ -115,6 +143,7 @@ internal sealed class BrowserShell : UserControl
                 _Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { _back, _forward, _reload } }, Dock.Left),
                 _Docked(_placement, Dock.Right),
                 _Docked(_agentLabel, Dock.Right),
+                _Docked(_share, Dock.Right),
                 addressField,
             },
         };
@@ -134,6 +163,7 @@ internal sealed class BrowserShell : UserControl
             {
                 _Docked(header, Dock.Top),
                 _Docked(hairline, Dock.Top),
+                _Docked(_shareBar.Themed(Border.BackgroundProperty, "CockpitStatusBusyChipTintBrush"), Dock.Top),
                 _Docked(_codecBar, Dock.Top),
                 _page,
             },
@@ -237,6 +267,9 @@ internal sealed class BrowserShell : UserControl
 
         _lock.Kind = tab?.Address.StartsWith("https://", StringComparison.Ordinal) ?? false ? MaterialIconKind.Lock : MaterialIconKind.Web;
         _codecBar.IsVisible = tab?.CodecUnsupported ?? false;
+        _share.IsEnabled = ready && tab is not null;
+        _share.Content = _ShareLabel();
+        _RefreshShareBar();
         _page.Content = ready && tab is not null ? tab.View : EngineStatusView.For(_model.Engine);
     }
 
@@ -416,6 +449,76 @@ internal sealed class BrowserShell : UserControl
         return shown.StartsWith("www.", StringComparison.Ordinal) ? shown["www.".Length..] : shown;
     }
 
+    private Control _ShareLabel()
+    {
+        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new MaterialIcon { Kind = MaterialIconKind.ShareVariantOutline, Width = 14, Height = 14 } } };
+        if (_compact == false)
+        {
+            label.Children.Add(new TextBlock { Text = "Share with agent…", VerticalAlignment = VerticalAlignment.Center });
+        }
+
+        return label;
+    }
+
+    // Mockup screen 7: with whom the tab in view is shared, when it was last read, and Stop sharing. A move to another
+    // site pauses it, and the bar then asks whether to keep sharing there.
+    private void _RefreshShareBar()
+    {
+        var grants = _model.Active is { } tab ? _grants.ForTab(tab.Id) : [];
+        _shareBar.IsVisible = grants.Count > 0;
+        _lastReadTicker.IsEnabled = grants.Count > 0;
+        if (grants.Count == 0)
+        {
+            return;
+        }
+
+        var tabId = grants[0].TabId;
+        var stop = new Button { Content = "Stop sharing", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) }.Themed(Button.BorderBrushProperty, "CockpitStatusErrorBrush");
+        stop.Click += (_, _) => _grants.Stop(tabId);
+        var row = new DockPanel { Children = { _Docked(stop, Dock.Right) } };
+
+        var paused = grants.FirstOrDefault(grant => grant.Paused);
+        if (paused?.MovedTo is { } movedTo)
+        {
+            var keep = new Button { Content = $"Keep sharing on {_Host(movedTo)}", Classes = { "Compact", "Accent" }, Margin = new Thickness(8, 0, 0, 0) };
+            keep.Click += (_, _) => _grants.KeepSharing(tabId);
+            row.Children.Add(_Docked(keep, Dock.Right));
+            row.Children.Add(new TextBlock
+            {
+                Text = $"Sharing paused: this tab moved from {_Host(paused.Origin)} to {_Host(movedTo)}",
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            _shareBar.Child = row;
+            return;
+        }
+
+        var lastRead = grants.Max(grant => grant.LastRead);
+        row.Children.Add(_Docked(new TextBlock
+        {
+            Text = lastRead is { } at ? $"last read {_Ago(DateTimeOffset.Now - at)}" : "not read yet",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+        }.Themed(TextBlock.ForegroundProperty, "CockpitTextSecondaryBrush"), Dock.Right));
+
+        var said = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Inlines = [] };
+        said.Inlines.Add(new Run("Shared with " + string.Join(", ", grants.Select(grant => grant.SessionName))) { FontWeight = FontWeight.SemiBold });
+        var detail = new Run(" · watching · this tab only · until you stop");
+        detail.Bind(Run.ForegroundProperty, said.GetResourceObservable("CockpitTextSecondaryBrush"));
+        said.Inlines.Add(detail);
+        var dot = new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center }
+            .Themed(Border.BackgroundProperty, "CockpitStatusBusyBrush");
+        row.Children.Add(_Docked(dot, Dock.Left));
+        row.Children.Add(said);
+        _shareBar.Child = row;
+    }
+
+    private static string _Host(string origin) => Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? uri.Host : origin;
+
+    private static string _Ago(TimeSpan elapsed) => elapsed.TotalSeconds < 60
+        ? $"{Math.Max(0, (int)elapsed.TotalSeconds)} s ago"
+        : elapsed.TotalMinutes < 60 ? $"{(int)elapsed.TotalMinutes} min ago" : $"{(int)elapsed.TotalHours} h ago";
+
     private void _RebuildTabs()
     {
         _tabStrip.Children.Clear();
@@ -464,6 +567,13 @@ internal sealed class BrowserShell : UserControl
         if (active)
         {
             chip.Themed(Border.BackgroundProperty, "CockpitPanelBgBrush");
+        }
+
+        // AC-1714, mockup screen 7: a shared tab carries a cyan line along its top.
+        if (_grants.ForTab(tab.Id).Count > 0)
+        {
+            chip.BorderThickness = new Thickness(1, 2, 1, 0);
+            chip.Themed(Border.BorderBrushProperty, "CockpitStatusBusyBrush");
         }
 
         chip.PointerPressed += (_, e) =>

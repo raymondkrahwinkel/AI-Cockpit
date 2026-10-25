@@ -6,6 +6,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using Cockpit.Plugin.Browser.UI.Share;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Material.Icons;
@@ -27,6 +28,9 @@ internal static class BrowserScenes
         ["browser-agents"] = () => _Shell(BrowserPlace.Tab, agentSide: true),
         ["browser-agents-driving"] = () => _Shell(BrowserPlace.Tab, agentSide: true, driving: true),
         ["browser-codec"] = () => _Shell(BrowserPlace.Tab, codecUnsupported: true),
+        // AC-1714, mockup screen 7: the active tab shared with one session, and the same tab after it moved to another site.
+        ["browser-shared"] = () => _Shell(BrowserPlace.Tab, share: Shared.Reading),
+        ["browser-share-paused"] = () => _Shell(BrowserPlace.Tab, share: Shared.Moved),
         ["browser-engine-download"] = () => _Empty(BrowserEngine.ForScene(
             BrowserEngineState.Fetching,
             progress: new CefRuntimeProgress("Downloading", 61_000_000, 172_752_666),
@@ -56,7 +60,14 @@ internal static class BrowserScenes
                 BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3, agentSide: true, agentTabs: 2)),
         };
 
-    private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false)
+    private enum Shared
+    {
+        None,
+        Reading,
+        Moved,
+    }
+
+    private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false, Shared share = Shared.None)
     {
         var engine = BrowserEngine.ForScene(BrowserEngineState.Ready);
         var model = new BrowserModel(engine);
@@ -72,7 +83,20 @@ internal static class BrowserScenes
             ],
             AgentLoginPicture.Render(1440, 745),
             (1440, 745));
-        var shell = new BrowserShell(model, agents, _ => { });
+                var grants = new TabGrantRegistry();
+        if (share != Shared.None)
+        {
+            var pr = model.Tabs[1];
+            model.Activate(pr);
+            grants.Share("pane-1714", "AC-1714 statusline", pr.Id, "https://github.com", TabShareService.Watch);
+            grants.MarkRead(grants.ForTab(pr.Id)[0], DateTimeOffset.Now.AddSeconds(-12));
+            if (share == Shared.Moved)
+            {
+                grants.Navigated(pr.Id, "https://accounts.google.com");
+            }
+        }
+
+        var shell = new BrowserShell(model, agents, _ => { }, grants, _ => { });
         if (agentSide)
         {
             shell.ShowAgents();

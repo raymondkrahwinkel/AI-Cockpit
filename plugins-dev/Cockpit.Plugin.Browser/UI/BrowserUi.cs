@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using Cockpit.Plugin.Browser.UI.Share;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.UI;
@@ -22,6 +23,8 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     private BrowserHome? _home;
     private AgentTabsModel? _agents;
+    private BrowserModel? _model;
+    private TabShareService? _share;
 
     // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not part of the plugin contract.
     public static IReadOnlyDictionary<string, Func<Control>> Scenes => BrowserScenes.All;
@@ -31,6 +34,9 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     public void InitializeUi(ICockpitUiHost host)
     {
         _agents = new AgentTabsModel(host.Channel);
+        // AC-1714: up front, so an agent asking before the browser was ever opened gets a refusal at once, not a timeout.
+        _model = new BrowserModel(BrowserEngine.Shared);
+        _share = new TabShareService(host, _model, new TabGrantRegistry());
         host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), host.Storage));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Browser", _ => _Home(host).CreateSlot(BrowserPlace.Tab))
         {
@@ -61,6 +67,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     public void Dispose()
     {
+        _share?.Dispose();
         _agents?.Dispose();
         BrowserEngine.Shared.Shutdown();
     }
@@ -80,13 +87,14 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
 
         BrowserShell? shell = null;
-        shell = new BrowserShell(new BrowserModel(BrowserEngine.Shared), _agents!, url =>
+        var share = _share!;
+        shell = new BrowserShell(_model!, _agents!, url =>
         {
             if (TopLevel.GetTopLevel(shell) is { } top)
             {
                 _ = top.Launcher.LaunchUriAsync(new Uri(url));
             }
-        });
+        }, share.Grants, tab => _ = share.ShareAsync(tab));
         var home = new BrowserHome(shell);
         home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
         void ShowStatus() => host.SetStatusText(StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, _agents!.Showing, _agents.Tabs.Count));

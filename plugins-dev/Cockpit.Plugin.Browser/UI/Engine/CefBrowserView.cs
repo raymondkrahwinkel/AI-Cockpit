@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -41,6 +42,9 @@ internal sealed class CefBrowserView : Control
     private volatile CefBrowser? _browser;
     private string? _pendingUrl;
     private volatile bool _closeRequested;
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<string?>> _devTools = new();
+    private int _devToolsId;
+    private CefRegistration? _devToolsObserver;
 
     public CefBrowserView(BrowserEngine engine, string url, CefRequestContext profile)
     {
@@ -105,6 +109,48 @@ internal sealed class CefBrowserView : Control
     }
 
     // Closing before CEF created the browser is answered in OnAfterCreated, so no browser is left without an owner.
+    // AC-1714: one DevTools method on this browser alone, in-process through CEF and without a debugging port. The
+    // JSON result, or null when the browser is gone or the method failed; the caller bounds the wait.
+    public Task<string?> DevToolsAsync(string method, IReadOnlyDictionary<string, object> parameters)
+    {
+        if (_browser is null)
+        {
+            return Task.FromResult<string?>(null);
+        }
+
+        var id = Interlocked.Increment(ref _devToolsId);
+        var pending = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _devTools[id] = pending;
+        _OnHost(host =>
+        {
+            _devToolsObserver ??= host.AddDevToolsMessageObserver(new DevToolsObserver(this));
+            var arguments = CefDictionaryValue.Create();
+            foreach (var (key, value) in parameters)
+            {
+                _ = value switch
+                {
+                    bool flag => arguments.SetBool(key, flag),
+                    int number => arguments.SetInt(key, number),
+                    _ => arguments.SetString(key, value.ToString() ?? string.Empty),
+                };
+            }
+
+            if (host.ExecuteDevToolsMethod(id, method, arguments) == 0)
+            {
+                _CompleteDevTools(id, null);
+            }
+        });
+        return pending.Task;
+    }
+
+    private void _CompleteDevTools(int id, string? result)
+    {
+        if (_devTools.TryRemove(id, out var pending))
+        {
+            pending.TrySetResult(result);
+        }
+    }
+
     public Task CloseAsync()
     {
         _engine.Unregister(this);
@@ -389,6 +435,27 @@ internal sealed class CefBrowserView : Control
         });
     }
 
+    // Only method results are wanted; raw messages and events pass through untouched.
+    private sealed class DevToolsObserver(CefBrowserView owner) : CefDevToolsMessageObserver
+    {
+        protected override bool OnDevToolsMessage(CefBrowser browser, nint message, int messageSize) => false;
+
+        protected override void OnDevToolsMethodResult(CefBrowser browser, int messageId, bool success, nint result, int resultSize) =>
+            owner._CompleteDevTools(messageId, success ? Marshal.PtrToStringUTF8(result, resultSize) : null);
+
+        protected override void OnDevToolsEvent(CefBrowser browser, string method, nint parameters, int parametersSize)
+        {
+        }
+
+        protected override void OnDevToolsAgentAttached(CefBrowser browser)
+        {
+        }
+
+        protected override void OnDevToolsAgentDetached(CefBrowser browser)
+        {
+        }
+    }
+
     private sealed class ActionTask(Action action) : CefTask
     {
         protected override void Execute() => action();
@@ -444,6 +511,12 @@ internal sealed class CefBrowserView : Control
         protected override void OnBeforeClose(CefBrowser browser)
         {
             owner._browser = null;
+            owner._devToolsObserver?.Dispose();
+            foreach (var id in owner._devTools.Keys)
+            {
+                owner._CompleteDevTools(id, null);
+            }
+
             owner._closed.TrySetResult();
         }
     }
