@@ -19,15 +19,6 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable) : IDispo
     // or null when there is no browser to start or it did not come up.
     public async Task<string?> StartAsync(string paneId, CancellationToken cancellationToken = default)
     {
-        lock (_gate)
-        {
-            if (_running.Values.FirstOrDefault(other => other.Endpoint is not null) is { } shared)
-            {
-                _running[paneId] = shared;
-                return shared.Endpoint;
-            }
-        }
-
         Stop(paneId);
         if (resolveExecutable() is not { } executable)
         {
