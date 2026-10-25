@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the Browser plugin lets you browse inside Cockpit with your own profile, as a tab or in the rail (also in its
+  own window), with tabs, an address bar, sound and mute per tab. YouTube plays; a page that needs a video format the
+  built-in browser lacks offers **Open in system browser**. The engine downloads once on first use. Off on macOS for now.
 - added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
   on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
   Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
