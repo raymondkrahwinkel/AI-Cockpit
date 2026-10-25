@@ -1278,6 +1278,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // sidebar's hand for that (AC-47) and needs none of this.
     public ObservableCollection<SessionPanelViewModel> SimpleConsentAlerts { get; } = [];
 
+    // AC-1714: the one open card with choices that belongs to no session, shown over the whole window.
+    [ObservableProperty]
+    private ConsentPromptViewModel? _windowConsent;
+
     // Whether there is anything to show, so the notification can be animated open rather than toggled visible.
     public bool HasSimpleConsentAlerts => SimpleConsentAlerts.Count > 0;
 
@@ -3643,6 +3647,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Dispatcher.UIThread.Post(() =>
         {
+            // AC-1714: a card with choices that names no session goes over the whole window, one at a time.
+            if (prompt.Request.Source.PaneId is null && prompt.Request.Choices is { Count: > 0 })
+            {
+                if (WindowConsent is not null || _consentPrompts is not { } windowConsent)
+                {
+                    _consentPrompts?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
+                    return;
+                }
+
+                WindowConsent = new ConsentPromptViewModel(prompt, windowConsent);
+                return;
+            }
+
             // Either way, if there is nowhere to show it, deny — never hang.
             var pane = prompt.Request.Source.PaneId is { } paneId
                 ? _ConsentPanes().FirstOrDefault(session => session.PaneId == paneId)
@@ -3714,6 +3731,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             if (_ConsentPanes().FirstOrDefault(session => session.PendingConsent?.Id == promptId) is { } pane)
             {
                 pane.PendingConsent = null;
+            }
+
+            if (WindowConsent?.Id == promptId)
+            {
+                WindowConsent = null;
             }
 
             _RefreshSimpleConsentAlerts();

@@ -456,6 +456,8 @@ internal static partial class Screenshotter
         ["session-consent-plain-fallback"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentFallbackSession() },
         // AC-1724: a plugin's prompt into a running session, on the host's own card on that session's pane.
         ["session-consent-plugin-prompt"] = (width, height) => new Window { Width = width, Height = height, Content = _PluginPromptConsentSession() },
+        // AC-1714: a card with choices that belongs to no session, as the window shows it — the browser's share card.
+        ["window-consent-choices"] = (width, height) => new Window { Width = width, Height = height, Content = _WindowConsentChoices() },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -2153,6 +2155,46 @@ internal static partial class Screenshotter
         ReadingLevel.Simple,
         "Let me clear out what is left over.",
         """{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""");
+
+    private static Border _WindowConsentChoices() =>
+        new()
+        {
+            Background = Avalonia.Application.Current!.FindResource("CockpitScrimBrush") as Avalonia.Media.IBrush,
+            Child = new ContentControl
+            {
+                Width = 520,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Content = new Controls.ConsentBanner
+                {
+                    DataContext = new ViewModels.ConsentPromptViewModel(
+                        new ConsentQuestion(
+                            Guid.NewGuid(),
+                            new ConsentRequest(
+                                "Share this tab with an agent",
+                                "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416 · profile Raymond (signed in)\nUntil you stop, the tab closes or the session ends.",
+                                new ConsentSource(null, "browser", "Browser"),
+                                "browser.share",
+                                ConsentRisk.Dangerous)
+                            {
+                                Choices =
+                                [
+                                    new ConsentChoice("session", "With", [
+                                        new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true),
+                                        new ConsentOption("pane-1720", "AC-1720 verify login · Claude")]),
+                                    new ConsentChoice("mode", "What the agent may do", [
+                                        new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
+                                        new ConsentOption("control", "Control", "Click, type, scroll and navigate within github.com. Every form submission asks again.", Enabled: false) { Note = "not in this version" }],
+                                        AllowMultiple: true),
+                                ],
+                                ApproveLabel = "Share watching",
+                                Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"],
+                            },
+                            CanRemember: false),
+                        new _NoConsentPrompts()),
+                },
+            },
+        };
 
     private static SessionView _PluginPromptConsentSession()
     {

@@ -937,6 +937,17 @@ Three rules keep the gate honest:
 It fails closed: with no consent surface, or a cancelled request, the answer is `Denied` — never a silent
 approval. Full type list in the [API reference](API-REFERENCE.md#taskconsentdecision-requestconsentasyncconsentrequest-request).
 
+**Let the operator pick.** Set `Choices` on the request (one `ConsentChoice` per question, a list or checkboxes)
+and read the picks from `decision.Chosen` by key. The card is then always shown: never remembered or bypassed, and
+`PreApprovedBy` turns it into a denial. An approval only carries values you offered and enabled. A request with
+choices and no `PaneId` shows over the whole window rather than on a session, as its own card: the first line of
+`Action` as its subject (an `https://` address gets a lock and its host in bold), `Never` as a red block, and
+`ApproveLabel` on the approve button. Needs minHostVersion 0.117.0.
+
+**Telling a bypass apart in the audit.** Every skipped card is a `Bypassed` line in `consent-audit.jsonl`.
+A line with `PreApprovedBy` set is your plugin's own policy (for example a grant the operator gave earlier),
+and a line without it is the operator's own bypass switch in Options.
+
 **Writing a workflow step? Don't call this by hand.** A contributed `IWorkflowStep` declares its risk once with
 `RequiredConsent` (#AC-38) and the engine runs the gate for you — with the run's origin in mind, so a step the
 operator started themselves is not made to approve their own action. See

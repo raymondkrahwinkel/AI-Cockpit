@@ -1082,14 +1082,25 @@ public sealed record ConsentRequest(
     string Scope,            // stable key for "remember", e.g. "workflow.http:GET"
     ConsentRisk Risk,        // LowRisk (rememberable) | Dangerous (asked every time)
     bool AllowRemember = false,
-    string? PreApprovedBy = null); // your own policy already decided — no card, logged as Bypassed (SDK 1.65.0)
+    string? PreApprovedBy = null) // your own policy already decided — no card, logged as Bypassed (SDK 1.65.0)
+{
+    public IReadOnlyList<ConsentChoice>? Choices { get; init; } // operator picks; always shown, never remembered (SDK 3.28.0, host 0.117.0)
+    public string? ApproveLabel { get; init; }        // the approve button on a card with choices, e.g. "Share watching"
+    public IReadOnlyList<string>? Never { get; init; } // what the approval never covers, a red block on that card
+}
 
+public sealed record ConsentChoice(string Key, string Label, IReadOnlyList<ConsentOption> Options, bool AllowMultiple = false);
+public sealed record ConsentOption(string Value, string Label, string? Detail = null, bool Selected = false, bool Enabled = true)
+{
+    public string? Note { get; init; } // a tag beside the label, e.g. "not in this version"
+}
 public sealed record ConsentSource(string? PaneId, string? PluginId, string Label);
 public enum ConsentRisk { LowRisk, Dangerous }
 public enum ConsentOutcome { Approved, Denied }
 public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = false)
 {
     public bool IsApproved { get; }   // Outcome == Approved
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Chosen { get; init; } // picks by choice key, approvals only
 }
 ```
 

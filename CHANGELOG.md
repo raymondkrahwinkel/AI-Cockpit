@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a consent card can ask you to pick, for example which session and what an agent may do, and over the whole
+  window when it belongs to no session. Such a card always waits for you: it is never remembered or skipped, and
+  Escape or a timeout refuses it.
 - added: a plugin can show one line of its own text in the status bar, such as the browser's "Browser · profile
   Raymond · 3 tabs", and replace or remove it as its state changes.
 - added: a plugin's workspace can put its own buttons on the workspace tab strip, shown only while that workspace is
