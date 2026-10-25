@@ -188,6 +188,7 @@ public sealed partial class AssistantStepViewModel : ObservableObject
             AssistantProviderId = provider.ProviderId,
             AssistantProviderName = providerName,
             AssistantConfigJson = string.IsNullOrWhiteSpace(provider.ConfigJson) ? "{}" : provider.ConfigJson,
+            AssistantOptionDefaults = profile.Defaults?.OptionDefaults,
         };
         if (state is not null)
         {
