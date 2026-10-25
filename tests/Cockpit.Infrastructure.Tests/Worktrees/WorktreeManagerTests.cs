@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.TestSupport;
@@ -11,8 +13,11 @@ namespace Cockpit.Infrastructure.Tests.Worktrees;
 /// is about what git actually does with an existing branch, a dirty tree, a detached head — and about the
 /// isolation two worktrees on one repository give each other.
 /// </summary>
+[Collection(WorktreeManagerTests.Alone)]
 public sealed class WorktreeManagerTests : IDisposable
 {
+    public const string Alone = "worktree-manager-state-root";
+
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-worktree-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly string _worktreesRoot;
@@ -227,18 +232,51 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task ReconcileAsync_RemovesAnOrphanedCleanWorktree_ButKeepsALiveOne()
+    public async Task ReconcileAsync_RemovesOnlyThisInstancesOrphans()
     {
         var orphan = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
         var live = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/live", _repo);
         _manager.Dispose();
-        using var restartedCockpit = new WorktreeManager(new WorktreeRegistryStore(_configPath), _worktreesRoot);
+        var previousStateRoot = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
+        var previousTemp = Environment.GetEnvironmentVariable("TEMP");
+        var previousTmp = Environment.GetEnvironmentVariable("TMP");
+        var previousTmpDir = Environment.GetEnvironmentVariable("TMPDIR");
+        var tempBase = Path.Combine(_tempRoot, "temp");
+        Directory.CreateDirectory(tempBase);
 
-        await restartedCockpit.ReconcileAsync([live.SessionId]);
+        try
+        {
+            Environment.SetEnvironmentVariable("TEMP", tempBase);
+            Environment.SetEnvironmentVariable("TMP", tempBase);
+            Environment.SetEnvironmentVariable("TMPDIR", tempBase);
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, Path.Combine(_tempRoot, "state-a"));
+            var marker = Path.Combine(SessionTempDirectory.Create("session-a"), "still-running");
+            File.WriteAllText(marker, "owned by A");
 
-        Assert.False(Directory.Exists(orphan.Path));
-        Assert.True(Directory.Exists(live.Path));
-        Assert.Equal(live.SessionId, Assert.Single((await restartedCockpit.ListAsync())).SessionId);
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, Path.Combine(_tempRoot, "state-b"));
+            var secondTempRoot = SessionTempDirectory.Root;
+            var secondSession = SessionTempDirectory.Create("session-b");
+            Assert.True(_IsInside(secondTempRoot, tempBase));
+            using var restartedCockpit = new WorktreeManager(
+                new WorktreeRegistryStore(_configPath),
+                _worktreesRoot,
+                sessionTempRoot: secondTempRoot);
+
+            await restartedCockpit.ReconcileAsync([live.SessionId]);
+
+            Assert.False(Directory.Exists(orphan.Path));
+            Assert.True(Directory.Exists(live.Path));
+            Assert.Equal(live.SessionId, Assert.Single((await restartedCockpit.ListAsync())).SessionId);
+            Assert.True(File.Exists(marker));
+            Assert.False(Directory.Exists(secondSession));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previousStateRoot);
+            Environment.SetEnvironmentVariable("TEMP", previousTemp);
+            Environment.SetEnvironmentVariable("TMP", previousTmp);
+            Environment.SetEnvironmentVariable("TMPDIR", previousTmpDir);
+        }
     }
 
     [Fact]
@@ -722,4 +760,14 @@ public sealed class WorktreeManagerTests : IDisposable
 
         return standardOutput.Trim();
     }
+
+    private static bool _IsInside(string path, string root)
+    {
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return Path.GetFullPath(path).StartsWith(normalizedRoot, comparison);
+    }
 }
+
+[CollectionDefinition(WorktreeManagerTests.Alone, DisableParallelization = true)]
+public sealed class WorktreeManagerStateRootCollection;
