@@ -75,10 +75,6 @@ internal sealed class SessionTimelineRecorder : ISingletonService, IDisposable
                 return;
             }
 
-            if (TicketId.At(statusline) is { } ticket)
-            {
-                _statuslineTickets[paneId] = ticket;
-            }
 
             _Append(_Entry(SessionTimelineKind.Statusline, handle) with { Statusline = statusline });
         }
