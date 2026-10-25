@@ -24,6 +24,9 @@ internal sealed class BrowserTab
 
     public CefBrowserView View { get; }
 
+    // AC-1714: what a grant and an agent name this tab by. Short and opaque; it says nothing about the page.
+    public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
+
     public string Title { get; private set; } = "New tab";
 
     public string Address { get; private set; }
@@ -87,6 +90,9 @@ internal sealed class BrowserModel(BrowserEngine engine)
     // The tab list or the active tab changed; a change inside a tab comes through BrowserTab.Changed.
     public event Action? Changed;
 
+    // AC-1714: a tab was closed, so whatever was shared of it ends now.
+    public event Action<BrowserTab>? TabClosed;
+
     // Only on a running engine: without one, a new tab would ask CEF for a browser it cannot create.
     public void NewTab(string address = StartAddress)
     {
@@ -125,6 +131,7 @@ internal sealed class BrowserModel(BrowserEngine engine)
         }
 
         _tabs.RemoveAt(index);
+        TabClosed?.Invoke(tab);
         _ = tab.View.CloseAsync();
         if (ReferenceEquals(Active, tab))
         {

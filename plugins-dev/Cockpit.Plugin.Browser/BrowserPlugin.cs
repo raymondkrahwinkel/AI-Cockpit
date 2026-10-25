@@ -11,6 +11,7 @@ public sealed class BrowserPlugin : ICockpitPlugin
 {
     private AgentBrowserHost? _browsers;
     private AgentBrowserTabs? _tabs;
+    private TabShareBridge? _share;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "browser",
@@ -45,11 +46,16 @@ public sealed class BrowserPlugin : ICockpitPlugin
             (name, payload) => host.Channel.Publish(name, JsonSerializer.SerializeToElement(payload)));
         _tabs = tabs;
         AgentChannel.Register(host.Channel, tabs);
+
+        // AC-1714: reading a tab the operator shared, answered by the UI half that holds the tabs and their grants.
+        _share = new TabShareBridge(host);
+        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share));
     }
 
     public void Dispose()
     {
         _tabs?.Dispose();
+        _share?.Dispose();
         _browsers?.Dispose();
     }
 }
