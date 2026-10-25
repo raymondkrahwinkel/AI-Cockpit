@@ -896,7 +896,7 @@ internal static partial class Screenshotter
             Children =
             {
                 new TextBlock { Text = "API key", FontSize = 11 },
-                new TextBox { PasswordChar = '•', Watermark = "Paste your Gemini API key" },
+                new TextBox { PasswordChar = '•', PlaceholderText = "Paste your Gemini API key" },
                 new TextBlock { Text = "Model", FontSize = 11 },
                 new AutoCompleteBox { PlaceholderText = "Type a model id" },
             },
