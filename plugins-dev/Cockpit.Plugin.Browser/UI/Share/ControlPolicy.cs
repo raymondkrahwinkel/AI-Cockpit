@@ -44,7 +44,7 @@ internal static class ControlPolicy
             return Verdict.Allow;
         }
 
-        return Verdict.Hold;
+        return sameOrigin ? Verdict.Hold : Verdict.Drop;
     }
 
     // A click lands only on an element of the tab's own top document: never in a frame, never on a frame's owner.
