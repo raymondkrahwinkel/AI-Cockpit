@@ -21,6 +21,9 @@ internal sealed class BrowserEngine
 {
     public const string SubprocessFileName = "Cockpit.Plugin.Browser.Subprocess";
 
+    // Its own folder (AC-1740): in the store zip it is a self-contained publish with a runtime of its own.
+    public const string SubprocessFolder = "Subprocess";
+
     private static readonly TimeSpan CloseBudget = TimeSpan.FromSeconds(5);
 
     private static string _libCefPath = string.Empty;
@@ -65,7 +68,7 @@ internal sealed class BrowserEngine
                 ? Task.FromResult(new CefRuntimeResult(null, "CEF publishes no browser engine for this processor."))
                 : new CefRuntimeCache(CefRuntimeCache.DefaultRoot).EnsureAvailableAsync(catalog, rid, progress, token);
         },
-        Path.Combine(Path.GetDirectoryName(typeof(BrowserEngine).Assembly.Location) ?? AppContext.BaseDirectory, _SubprocessExecutable()),
+        Path.Combine(Path.GetDirectoryName(typeof(BrowserEngine).Assembly.Location) ?? AppContext.BaseDirectory, SubprocessFolder, _SubprocessExecutable()),
         Path.Combine(CockpitBuild.StateRoot, "browser"))
     {
         DownloadText = CefRuntimeCatalog.CurrentRid() is { } rid && CefRuntimeCatalog.Load().Packages.TryGetValue(rid, out var package)

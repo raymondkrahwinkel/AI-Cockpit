@@ -58,6 +58,7 @@ on:
         type: choice
         options:
           - autopilot
+          - browser
           - claude-provider
           - cli-agent-provider
           - clock
@@ -106,7 +107,95 @@ permissions:
   contents: read
 
 jobs:
+  # AC-1740: a plugin whose store.json names `runtimeIdentifiers` ships one zip per RID, with a self-contained publish
+  # of its `subprocess` in each. Only the Windows RIDs need a Windows runner (the SDK embeds an app.manifest only
+  # there), so that job runs for such a plugin alone; every other plugin skips it and publishes exactly as before.
+  runtime-identifiers:
+    runs-on: ubuntu-latest
+    outputs:
+      dir: ${{ steps.rids.outputs.dir }}
+      all: ${{ steps.rids.outputs.all }}
+      windows: ${{ steps.rids.outputs.windows }}
+      others: ${{ steps.rids.outputs.others }}
+      subprocess: ${{ steps.rids.outputs.subprocess }}
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v7
+
+      - name: Read the plugin's runtime identifiers from its store.json
+        id: rids
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir=""
+          for f in plugins-dev/Cockpit.Plugin.*/plugin.json; do
+            if [ "$(jq -r '.id' "$f")" = "$PLUGIN" ]; then dir="$(dirname "$f")"; break; fi
+          done
+          if [ -z "$dir" ]; then
+            echo "::error::No plugin with id '$PLUGIN' found under plugins-dev/."
+            exit 1
+          fi
+
+          all=""
+          subprocess=""
+          if [ -f "$dir/store.json" ]; then
+            all="$(jq -r '.runtimeIdentifiers // [] | join(" ")' "$dir/store.json")"
+            subprocess="$(jq -r '.subprocess // empty' "$dir/store.json")"
+          fi
+          if [ -n "$all" ] && [ -z "$subprocess" ]; then
+            echo "::error::$dir/store.json names runtimeIdentifiers but no subprocess to publish per RID."
+            exit 1
+          fi
+
+          windows="$(printf '%s\n' $all | grep '^win-' | paste -sd' ' || true)"
+          others="$(printf '%s\n' $all | grep -v '^win-' | paste -sd' ' || true)"
+          {
+            echo "dir=$dir"
+            echo "all=$all"
+            echo "windows=$windows"
+            echo "others=$others"
+            echo "subprocess=$subprocess"
+          } >> "$GITHUB_OUTPUT"
+          echo "Runtime identifiers for '$PLUGIN': ${all:-none, one zip as always}"
+
+  package-windows:
+    needs: runtime-identifiers
+    if: needs.runtime-identifiers.outputs.windows != ''
+    runs-on: windows-latest
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Self-contained: a user's machine has no .NET, and Cockpit's own self-contained folder is no DOTNET_ROOT.
+      # arm64 is cross-published from this x64 runner, still on Windows, so it carries the manifest too.
+      - name: Publish the subprocess per Windows RID
+        env:
+          DIR: ${{ needs.runtime-identifiers.outputs.dir }}
+          RIDS: ${{ needs.runtime-identifiers.outputs.windows }}
+          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for rid in $RIDS; do
+            dotnet publish "$DIR/$(dirname "$SUBPROCESS")" --configuration Release -r "$rid" --self-contained -warnaserror -o "subprocess/$rid"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: subprocess-windows
+          path: subprocess/
+          if-no-files-found: error
+
   publish:
+    needs: [runtime-identifiers, package-windows]
+    # Runs when package-windows was skipped (every plugin without Windows RIDs) or passed; never after it failed.
+    if: ${{ !cancelled() && needs.runtime-identifiers.result == 'success' && needs.package-windows.result != 'failure' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -258,9 +347,31 @@ jobs:
         shell: bash
         run: dotnet build "${{ steps.resolve.outputs.dir }}" --configuration Release -warnaserror
 
+      - name: Download the Windows subprocess publishes
+        if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.windows != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: subprocess-windows
+          path: subprocess
+
+      - name: Publish the subprocess per other RID
+        if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.others != ''
+        env:
+          DIR: ${{ steps.resolve.outputs.dir }}
+          RIDS: ${{ needs.runtime-identifiers.outputs.others }}
+          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for rid in $RIDS; do
+            dotnet publish "$DIR/$(dirname "$SUBPROCESS")" --configuration Release -r "$rid" --self-contained -warnaserror -o "subprocess/$rid"
+          done
+
       # Zip everything the build produced except the .pdb, with plugin.json at the zip root (the layout the
       # installer expects). Shared assemblies are already kept out of the output by ExcludeAssets, so "zip
       # everything" ships the plugin and any real third-party dependency without shipping a host DLL.
+      # With runtime identifiers (AC-1740) there is one zip per RID, its subprocess folder swapped for that RID's
+      # publish; `rel`/`sha` are then the win-x64 zip, which the index's path/sha256 repeat.
       - name: Package the zip and hash it
         id: package
         if: steps.check.outputs.skip != 'true'
@@ -268,21 +379,64 @@ jobs:
           PLUGIN: ${{ inputs.plugin }}
           VERSION: ${{ steps.resolve.outputs.version }}
           DIR: ${{ steps.resolve.outputs.dir }}
+          RIDS: ${{ needs.runtime-identifiers.outputs.all }}
+          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
         shell: bash
         run: |
           out="$DIR/bin/Release/net10.0"
-          rel="$PLUGIN/$PLUGIN-$VERSION.zip"
-          dest="$GITHUB_WORKSPACE/store/$rel"
-          mkdir -p "$(dirname "$dest")"
-          rm -f "$dest"
 
-          ( cd "$out" && zip -r -X "$dest" . -x '*.pdb' >/dev/null )
+          if [ -z "$RIDS" ]; then
+            rel="$PLUGIN/$PLUGIN-$VERSION.zip"
+            dest="$GITHUB_WORKSPACE/store/$rel"
+            mkdir -p "$(dirname "$dest")"
+            rm -f "$dest"
 
-          sha="$(sha256sum "$dest" | cut -d' ' -f1)"
-          echo "Packaged $rel ($(du -h "$dest" | cut -f1)), sha256 $sha"
+            ( cd "$out" && zip -r -X "$dest" . -x '*.pdb' >/dev/null )
+
+            sha="$(sha256sum "$dest" | cut -d' ' -f1)"
+            echo "Packaged $rel ($(du -h "$dest" | cut -f1)), sha256 $sha"
+            {
+              echo "rel=$rel"
+              echo "sha=$sha"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set -euo pipefail
+          sub_dir="$(dirname "$SUBPROCESS")"
+          packages=""
+          rel=""
+          for rid in $RIDS; do
+            rid_rel="$PLUGIN/$PLUGIN-$VERSION-$rid.zip"
+            dest="$GITHUB_WORKSPACE/store/$rid_rel"
+            stage="$RUNNER_TEMP/package-$rid"
+            mkdir -p "$(dirname "$dest")"
+            rm -rf "$dest" "$stage"
+
+            cp -a "$out" "$stage"
+            rm -rf "${stage:?}/$sub_dir"
+            cp -a "subprocess/$rid" "$stage/$sub_dir"
+            case "$rid" in win-*) ;; *) chmod +x "$stage/$SUBPROCESS" ;; esac
+
+            ( cd "$stage" && zip -r -X "$dest" . -x '*.pdb' >/dev/null )
+
+            rid_sha="$(sha256sum "$dest" | cut -d' ' -f1)"
+            echo "Packaged $rid_rel ($(du -h "$dest" | cut -f1)), sha256 $rid_sha"
+            packages="$packages $rid=$rid_rel:$rid_sha"
+            if [ "$rid" = "win-x64" ]; then
+              rel="$rid_rel"
+              sha="$rid_sha"
+            fi
+          done
+
+          if [ -z "$rel" ]; then
+            echo "::error::runtimeIdentifiers has no win-x64, the package the index's path/sha256 repeat."
+            exit 1
+          fi
           {
             echo "rel=$rel"
             echo "sha=$sha"
+            echo "packages=${packages# }"
           } >> "$GITHUB_OUTPUT"
 
       - name: Update the store index.json
@@ -294,6 +448,7 @@ jobs:
           MIN_HOST: ${{ steps.resolve.outputs.min_host }}
           SHA: ${{ steps.package.outputs.sha }}
           REL: ${{ steps.package.outputs.rel }}
+          PACKAGES: ${{ steps.package.outputs.packages }}
           NOTES: ${{ inputs.notes }}
         shell: bash
         run: |
@@ -313,6 +468,7 @@ jobs:
           abs="$(jq -r '.abstractionsVersion // empty' "$MANIFEST")"
           if [ -n "$abs" ]; then args+=(--abstractions-version "$abs"); fi
           if [ -n "$NOTES" ]; then args+=(--notes "$NOTES"); fi
+          for package in $PACKAGES; do args+=(--package "$package"); done
           if [ -f "$DIR/store.json" ]; then
             args+=(--store-json "$DIR/store.json")
             echo "Using editorial fields from $DIR/store.json"
@@ -380,6 +536,17 @@ jobs:
 
           echo "Verified: $PLUGIN $VERSION · sha256 $actual · manifest and its named assemblies present · newest in the index."
 
+      # AC-1740: every per-RID zip against the index, statically: hashes, a self-contained subprocess, the Windows
+      # manifest and the exec bit. The same script runs locally before a change to this route is pushed.
+      - name: Verify the per-RID packages
+        if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.all != ''
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SUBPROCESS: ${{ needs.runtime-identifiers.outputs.subprocess }}
+        shell: bash
+        run: bash scripts/verify-plugin-packages.sh store "$PLUGIN" "$VERSION" "$SUBPROCESS"
+
       # Open a PR against the store repo rather than pushing to its main: publishing to a store users install
       # from is outward-facing, and the zip + index diff is exactly what a reviewer wants to see. Dry runs stop
       # before this. The PR body is built into a file so no interpolation lands in a shell string.
@@ -411,7 +578,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add "$PLUGIN/$PLUGIN-$VERSION.zip" index.json
+          # The one zip, or one per RID (AC-1740): both match $PLUGIN-$VERSION*.zip.
+          git add "$PLUGIN/$PLUGIN-$VERSION"*.zip index.json
           git commit -m "Publish $PLUGIN $VERSION"
           # A throwaway publish branch; force so a re-run after a failed attempt overwrites cleanly.
           git push --force origin "$branch"
