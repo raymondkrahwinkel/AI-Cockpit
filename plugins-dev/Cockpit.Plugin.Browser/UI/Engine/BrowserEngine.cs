@@ -30,6 +30,7 @@ internal sealed class BrowserEngine
     private readonly string _subprocessPath;
     private readonly string _rootCachePath;
     private readonly List<CefBrowserView> _views = [];
+    private readonly CancellationTokenSource _stopping = new();
     private Task? _start;
     private CefRequestContext? _raymondProfile;
 
@@ -106,7 +107,13 @@ internal sealed class BrowserEngine
                 Progress = value;
                 Changed?.Invoke(this, EventArgs.Empty);
             });
-            var runtime = await _fetchRuntime(progress, CancellationToken.None);
+            var runtime = await _fetchRuntime(progress, _stopping.Token);
+            if (_stopping.IsCancellationRequested)
+            {
+                _Set(BrowserEngineState.Unavailable, "The browser engine has shut down.");
+                return;
+            }
+
             if (runtime.Directory is null)
             {
                 _Set(BrowserEngineState.Unavailable, runtime.Failure ?? "The browser engine could not be fetched.");
@@ -116,6 +123,10 @@ internal sealed class BrowserEngine
             _Set(BrowserEngineState.Starting, null);
             _Initialize(runtime.Directory);
             _Set(BrowserEngineState.Ready, null);
+        }
+        catch (OperationCanceledException)
+        {
+            _Set(BrowserEngineState.Unavailable, "The browser engine has shut down.");
         }
         catch (Exception exception)
         {
@@ -183,12 +194,15 @@ internal sealed class BrowserEngine
             return;
         }
 
+        // A fetch still running when Cockpit closes must not start CEF afterwards (review AC-1711, finding 4).
+        _stopping.Cancel();
         if (State != BrowserEngineState.Ready)
         {
             return;
         }
 
-        var closing = _views.Select(view => view.CloseAsync()).ToArray();
+        // A copy: CloseAsync unregisters each view from _views while this walks it.
+        var closing = _views.ToArray().Select(view => view.CloseAsync()).ToArray();
         Task.WaitAll(closing, CloseBudget);
         _views.Clear();
         _raymondProfile = null;

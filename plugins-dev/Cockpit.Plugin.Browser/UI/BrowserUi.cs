@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
 using Cockpit.Plugins.Abstractions.Docking;
@@ -24,7 +26,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     public void InitializeUi(ICockpitUiHost host)
     {
-        host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load()));
+        host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), host.Storage));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Browser", _ => _Home(host).CreateSlot(BrowserPlace.Tab))
         {
             IconKind = MaterialIconKind.Web,
@@ -37,6 +39,13 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             KeepAlive = true,
             CanFloat = true,
         });
+
+        // First thing when Cockpit closes, ahead of the session teardown and its exit watchdog; Dispose stays the
+        // fallback for the tray's Quit, which does not raise this event (review AC-1711, finding 3).
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.ShutdownRequested += (_, _) => BrowserEngine.Shared.Shutdown();
+        }
     }
 
     public void Dispose() => BrowserEngine.Shared.Shutdown();

@@ -39,6 +39,7 @@ internal sealed class CefBrowserView : Control
     private double _scale = 1;
     private volatile CefBrowser? _browser;
     private string? _pendingUrl;
+    private volatile bool _closeRequested;
 
     public CefBrowserView(BrowserEngine engine, string url, CefRequestContext profile)
     {
@@ -100,15 +101,17 @@ internal sealed class CefBrowserView : Control
         _browser?.GetHost().SetAudioMuted(muted);
     }
 
+    // Closing before CEF created the browser is answered in OnAfterCreated, so no browser is left without an owner.
     public Task CloseAsync()
     {
         _engine.Unregister(this);
-        if (_browser is not { } browser)
+        _closeRequested = true;
+        if (IsScenePlaceholder)
         {
             return Task.CompletedTask;
         }
 
-        browser.GetHost().CloseBrowser(true);
+        _browser?.GetHost().CloseBrowser(true);
         return _closed.Task;
     }
 
@@ -402,6 +405,13 @@ internal sealed class CefBrowserView : Control
         {
             owner._browser = browser;
             var host = browser.GetHost();
+            // Posted, not called: closing inside OnAfterCreated crashed libcef (access violation, measured).
+            if (owner._closeRequested)
+            {
+                CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => host.CloseBrowser(true)));
+                return;
+            }
+
             host.SetAudioMuted(owner.IsMuted);
             host.WasResized();
             host.Invalidate(CefPaintElementType.View);
