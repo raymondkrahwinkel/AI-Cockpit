@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Input;
+using Avalonia.Styling;
 
 namespace Cockpit.Plugin.Shared.UI;
 
@@ -16,8 +17,17 @@ public abstract class ChartControl : Control
     public string EmptyText { get; set; } = "No data";
     public string? TooltipText { get; set; }
 
-    protected IBrush Brush(string key, IBrush fallback) =>
-        TryGetResource(key, ActualThemeVariant, out var value) && value is IBrush brush ? brush : fallback;
+    protected IBrush Brush(string key, IBrush fallback)
+    {
+        if (TryGetResource(key, ActualThemeVariant, out var value) && value is IBrush brush)
+        {
+            return brush;
+        }
+
+        return ActualThemeVariant == ThemeVariant.Dark && key is "ThemeForegroundBrush" or "ThemeAccentForegroundBrush"
+            ? Brushes.White
+            : fallback;
+    }
 
     protected void Empty(DrawingContext context, Rect bounds)
     {
@@ -33,6 +43,7 @@ public abstract class ChartControl : Control
 
     protected void Hatch(DrawingContext context, Rect rect)
     {
+        using var clip = context.PushClip(rect);
         var pen = new Pen(Brush("ThemeForegroundLowBrush", Brushes.Gray), 1);
         for (var offset = -rect.Height; offset < rect.Width; offset += 5)
         {
@@ -217,6 +228,7 @@ public sealed class RangePicker : ChartControl
             if (range == SelectedRange)
             {
                 context.DrawRectangle(Brush("ThemeAccentBrush", Brushes.DodgerBlue), null, new Rect(x - 5, Padding - 4, text.Width + 10, text.Height + 8));
+                text = new FormattedText(range, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, Brush("ThemeAccentForegroundBrush", Brushes.White));
             }
             context.DrawText(text, new Point(x, Padding));
             x += text.Width + 14;
