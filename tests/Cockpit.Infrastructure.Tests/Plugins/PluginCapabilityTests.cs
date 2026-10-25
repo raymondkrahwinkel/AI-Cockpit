@@ -28,6 +28,7 @@ public class PluginCapabilityTests
     {
         var json = $$"""{"id":"productivity","name":"Productivity","version":"1.0.0","entryAssembly":"P.dll","abstractionsVersion":3{{capabilities}}}""";
         Assert.True(PluginManifest.TryParse(json, out var manifest, out _));
+        Assert.NotNull(manifest);
         var registry = new SessionRegistry();
         return new PluginBackendHost(
             "productivity",
@@ -37,6 +38,6 @@ public class PluginCapabilityTests
             new PluginBackendSessionObserver(registry),
             new PluginBackendActions(Substitute.For<ISessionProfileStore>(), Substitute.For<IDelegationService>()),
             new PluginDiagnostics(),
-            capabilities: manifest!.Capabilities);
+            capabilities: manifest.Capabilities);
     }
 }
