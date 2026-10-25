@@ -19,8 +19,10 @@
          on, with a channel to its backend part there. A plugin that calls it sets minHostVersion 0.92.0. -->
     <!-- 3.4.0 (AC-1710): DockPanelRegistration.KeepAlive and CanFloat (init, default false). A plugin that relies on
          either sets minHostVersion 0.111.0; an older host ignores them. -->
-    <!-- 3.5.0 (AC-1722): ICockpitUiHost adds the icon-bearing side-menu badge overload. A plugin that uses it sets minHostVersion 0.112.0. -->
-    <Version>3.5.0</Version>
+    <!-- 3.5.0 (AC-1737): ICockpitUiHost.ActiveProjectId and GetProjectsAsync (both default), the selected session's
+         project and the projects. A plugin that reads them sets minHostVersion 0.112.0. -->
+    <!-- 3.6.0 (AC-1722): ICockpitUiHost adds the icon-bearing side-menu badge overload. A plugin that uses it sets minHostVersion 0.113.0. -->
+    <Version>3.6.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

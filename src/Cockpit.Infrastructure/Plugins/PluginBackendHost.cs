@@ -318,6 +318,16 @@ public class PluginBackendHost(
             .Select(resource => new ProjectMemoryRow(resource.Reference, resource.Label, resource.ReachesSessions))];
     }
 
+    // AC-1737: every project, the folderless ones too, as list_projects answers it.
+    public async Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()
+    {
+        var projects = await services.GetRequiredService<IProjectStore>().LoadAsync().ConfigureAwait(false);
+        return [.. projects.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
+    }
+
+    public Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken) =>
+        _ProjectOfAsync(paneId, cancellationToken);
+
     // No pane named means no project: the backend has no selected session. Which project a pane belongs to is one
     // question with one answer (AC-320); a host without that resolver asks the pane's own handle.
     private async Task<string?> _ProjectOfAsync(string? paneId, CancellationToken cancellationToken)

@@ -134,6 +134,8 @@ calling agent cannot delegate to what it cannot see.
   and/or MCP servers through a host facade.
 - The host owns the operator's time entries and one persistent stopwatch in `own-time-entries.jsonl`; plugins use the
   shared `ICockpitTimeEntries` contract instead of keeping a second copy in plugin settings.
+- A plugin can read the projects as id and name (`GetProjectsAsync`) and which project a session belongs to
+  (`ICockpitUiHost.ActiveProjectId`, `GetSessionProjectIdAsync`), on the desktop and on a server alike.
 - A plugin can hand a running session a prompt (`ICockpitActions.SendPromptToSessionAsync`), but only through the
   host's own confirmation card, which shows the plugin, the session, the reason and the text and is never skipped.
 - **Install from zip**, then **Review & enable**. First load requires explicit **consent** (name/version/author/path/

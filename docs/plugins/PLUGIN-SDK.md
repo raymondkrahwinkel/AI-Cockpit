@@ -208,6 +208,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Supervised activity | `host.AddSupervisedActivityProvider(source)` | A **status-bar counter** for long-running, agent-started background work (an open tunnel, a watch), shown only while something runs, opening a panel with the details and an **operator-only Kill per item**. The host owns the Kill — the agent cannot reach it. See [`AddSupervisedActivityProvider`](API-REFERENCE.md#void-addsupervisedactivityproviderisupervisedactivitysource-source). |
 | Conversation picker | `host.AddConversationPicker(registration)` | Lends your history-browsing to the **New-session dialog**: it grows a **Search…** button next to "resume by session id", which runs your picker. See [Conversation pickers](#conversation-pickers--let-the-operator-choose-a-conversation-to-resume). |
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
+| Read the projects | `host.GetProjectsAsync()`, `host.GetSessionProjectIdAsync(paneId)`, `ui.ActiveProjectId` | The cockpit's projects as id and name, and which one a session belongs to (AC-1737, host 0.112.0). Store the id, not the name or the folder: the operator can rename both. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
 | Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
 | Dock panel | `host.AddDockPanel(registration)` | Registers a panel for the right-hand **dock rail**; it appears as a tab, and opening it builds the registration's own view — once, with `KeepAlive`, which keeps that instance across collapse and tab switches. `CanFloat` adds an undock button that moves the panel into its own window and back; the stand survives a restart (host 0.111.0). No per-instance context — build your own from `host.Storage`/`host.Sessions` if you need one. See [`DockPanelRegistration`](API-REFERENCE.md#dockpanelregistration). |
@@ -264,6 +265,8 @@ public interface ICockpitHost
     void AddWorkspaceType(WorkspaceTypeRegistration registration); // a whole workspace surface the plugin draws
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
+    Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync();  // the projects, as id and name (AC-1737)
+    Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken = default); // a pane's project id
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
     McpCaller? CurrentMcpCaller { get; }                        // who is behind the MCP call being handled (AC-1685)
     void AddProjectField(ProjectFieldRegistration registration); // a field on the project editor (AC-317)
@@ -356,7 +359,7 @@ in a second copy of your UI part whose `host.Storage` is your plugin's storage o
 `host.Channel` reaches your backend part there. So keep every setting in `host.Storage` and every action in a
 channel call: a view that opens its own connection or file runs that on the desktop, not on the server. A
 stored credential reads `(set on the server)` there; sent back unchanged it is kept, and empty clears it.
-There, `GetMcpServerAuthStateAsync` and `GetProfilesAsync` answer for the server, and `SignInMcpServerAsync` signs the
+There, `GetMcpServerAuthStateAsync`, `GetProfilesAsync` and `GetProjectsAsync` answer for the server, and `SignInMcpServerAsync` signs the
 server in: the server runs the OAuth flow and keeps the token, the desktop only opens the browser and hands back the
 redirect. Call it the same way in both places.
 After each channel call, the copy rereads what your backend part wrote to storage, so a view that reads storage back
@@ -1144,7 +1147,7 @@ than warns.
 
 ### Side-menu icons and badge tones
 
-SDK 3.23.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
+SDK 3.24.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
 semantic tone. Existing launchers stay accent-blue; the new overload is additive.
 
 ```csharp
@@ -1154,7 +1157,7 @@ badge.Tone = SideMenuButtonBadgeTone.Success;
 ```
 
 The host owns the icon and pill rendering so plugins do not embed theme-specific colors. A plugin using the
-icon overload or `Tone` sets `minHostVersion` to `0.112.0`.
+icon overload or `Tone` sets `minHostVersion` to `0.113.0`.
 
 ### Theme tokens and control classes: declare them, nothing derives them for you {#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you}
 
