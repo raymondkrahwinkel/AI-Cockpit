@@ -79,10 +79,10 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         {
             var client = new UdpClient();
             client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            client.Client.Bind(new IPEndPoint(_localMulticastInterface ?? IPAddress.Any, _port));
+            var group = IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup);
+            client.Client.Bind(new IPEndPoint(_BindAddress(group), _port));
             BoundPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
 
-            var group = IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup);
             if (_localMulticastInterface is { } localInterface)
             {
                 client.JoinMulticastGroup(group, localInterface);
@@ -106,6 +106,16 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
             _logger.LogWarning(ex, "Could not start node discovery.");
         }
     }
+
+    // AC-1707 kept a one-interface responder off the wildcard, but Linux and macOS deliver a group datagram only to a
+    // socket bound to the wildcard or the group itself, never to one bound to a unicast address; Windows refuses a
+    // bind to the group and filters by the joined interface instead.
+    private IPAddress _BindAddress(IPAddress group) => _localMulticastInterface switch
+    {
+        null => IPAddress.Any,
+        var localInterface when OperatingSystem.IsWindows() => localInterface,
+        _ => group,
+    };
 
     // AC-1284: join per interface rather than letting the kernel pick one off the routing table — on a machine
     // with wired, Wi-Fi and bridges that was a guess and every other NIC stayed deaf. Same interface set

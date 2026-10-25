@@ -7,6 +7,7 @@ using Cockpit.App.ViewTests;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
@@ -80,8 +81,15 @@ public sealed class AssistantJourney
         {
             await Until.CollectionHolds(chat.ThreadItems, () => chat.ThreadItems.Any(item => item.ProjectId == depot.Id));
             chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.ProjectId == depot.Id);
+
+            // The turn is filed by what it names only at its end, which is drawn after the reply's row has landed.
+            var turnEnded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnTurnEnded(SessionTurnEnd end) => turnEnded.TrySetResult();
+            chat.Session!.TurnEnded += OnTurnEnded;
             chat.InputText = "and Depot?";
             await chat.SendCommand.ExecuteAsync(null);
+            await turnEnded.Task.WaitAsync(Until.Ceiling);
+            chat.Session.TurnEnded -= OnTurnEnded;
             await Until.CollectionHolds(transcript, () => transcript.Any(row => row.IsInboxRow && row.Text.Contains("WM-12", StringComparison.Ordinal))
                 && transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.EndsWith("and Depot?", StringComparison.Ordinal)));
         });
