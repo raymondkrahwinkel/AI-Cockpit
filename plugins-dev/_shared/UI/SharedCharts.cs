@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Input;
 
 namespace Cockpit.Plugin.Shared.UI;
 
@@ -12,10 +13,22 @@ public abstract class ChartControl : Control
 {
     protected const double Padding = 12;
 
-    protected static void Empty(DrawingContext context, Rect bounds)
+    public string EmptyText { get; set; } = "No data";
+    public string? TooltipText { get; set; }
+
+    protected IBrush Brush(string key, IBrush fallback) =>
+        TryGetResource(key, ActualThemeVariant, out var value) && value is IBrush brush ? brush : fallback;
+
+    protected void Empty(DrawingContext context, Rect bounds)
     {
-        var text = new FormattedText("geen data", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, Brushes.Gray);
+        var text = new FormattedText(EmptyText, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, Brush("ThemeForegroundLowBrush", Brushes.Gray));
         context.DrawText(text, new Point((bounds.Width - text.Width) / 2, (bounds.Height - text.Height) / 2));
+    }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        ToolTip.SetTip(this, TooltipText);
     }
 
     protected static void Hatch(DrawingContext context, Rect rect)
@@ -35,9 +48,17 @@ public sealed class StackedBarChartControl : ChartControl
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        if (Items.Count == 0 || Bounds.Width <= Padding * 2 || Bounds.Height <= Padding * 2) { Empty(context, Bounds); return; }
+        if (Items.Count == 0 || Bounds.Width <= Padding * 2 || Bounds.Height <= Padding * 2)
+        {
+            Empty(context, Bounds);
+            return;
+        }
         var max = Items.Max(item => item.Segments.Sum(segment => Math.Max(0, segment.Value)));
-        if (max <= 0) { Empty(context, Bounds); return; }
+        if (max <= 0)
+        {
+            Empty(context, Bounds);
+            return;
+        }
         var width = (Bounds.Width - Padding * 2) / Items.Count;
         for (var index = 0; index < Items.Count; index++)
         {
@@ -50,6 +71,8 @@ public sealed class StackedBarChartControl : ChartControl
                 context.DrawRectangle(new SolidColorBrush(segment.Color), null, rect);
                 if (segment.IsHatched) { Hatch(context, rect); }
             }
+            var label = new FormattedText(Items[index].Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 11, Brush("ThemeForegroundLowBrush", Brushes.Gray));
+            context.DrawText(label, new Point(Padding + index * width + 2, Bounds.Height - label.Height));
         }
     }
 }
@@ -63,9 +86,17 @@ public sealed class GroupedBarChartControl : ChartControl
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        if (Items.Count == 0 || Bounds.Width <= Padding * 2 || Bounds.Height <= Padding * 2) { Empty(context, Bounds); return; }
+        if (Items.Count == 0 || Bounds.Width <= Padding * 2 || Bounds.Height <= Padding * 2)
+        {
+            Empty(context, Bounds);
+            return;
+        }
         var max = Items.Max(item => Math.Max(item.First, item.Second));
-        if (max <= 0) { Empty(context, Bounds); return; }
+        if (max <= 0)
+        {
+            Empty(context, Bounds);
+            return;
+        }
         var group = (Bounds.Width - Padding * 2) / Items.Count;
         for (var i = 0; i < Items.Count; i++)
         {
@@ -74,6 +105,8 @@ public sealed class GroupedBarChartControl : ChartControl
             var second = Math.Max(0, Items[i].Second) / max * (Bounds.Height - Padding * 2);
             context.DrawRectangle(new SolidColorBrush(FirstColor), null, new Rect(Padding + i * group + 2, Bounds.Height - Padding - first, bar, first));
             context.DrawRectangle(new SolidColorBrush(SecondColor), null, new Rect(Padding + i * group + 4 + bar, Bounds.Height - Padding - second, bar, second));
+            var label = new FormattedText(Items[i].Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 11, Brush("ThemeForegroundLowBrush", Brushes.Gray));
+            context.DrawText(label, new Point(Padding + i * group + 2, Bounds.Height - label.Height));
         }
     }
 }
@@ -86,7 +119,11 @@ public sealed class HorizontalBarChartControl : ChartControl
     {
         base.Render(context);
         var total = Segments.Sum(segment => Math.Max(0, segment.Value));
-        if (total <= 0 || Bounds.Width <= Padding * 2 || Bounds.Height <= Padding * 2) { Empty(context, Bounds); return; }
+        if (total <= 0 || Bounds.Width <= Padding * 2 || Bounds.Height <= Padding * 2)
+        {
+            Empty(context, Bounds);
+            return;
+        }
         var x = Padding;
         foreach (var segment in Segments)
         {
@@ -107,7 +144,7 @@ public sealed class StatTile : ChartControl
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        var brush = Brushes.Gray;
+        var brush = Brush("ThemeForegroundLowBrush", Brushes.Gray);
         context.DrawText(new FormattedText(Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush), new Point(Padding, Padding));
         context.DrawText(new FormattedText(Value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 22, brush), new Point(Padding, Padding + 18));
         context.DrawText(new FormattedText(Detail, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush), new Point(Padding, Math.Max(Padding + 46, Bounds.Height - Padding - 12)));
@@ -118,11 +155,55 @@ public sealed class RangePicker : ChartControl
 {
     public IReadOnlyList<string> Ranges { get; set; } = ["Uur", "Dag", "Werkweek", "Week", "Maand", "Eigen bereik"];
     public string SelectedRange { get; set; } = "Dag";
+    public event EventHandler? Previous;
+    public event EventHandler? Next;
+    public event EventHandler<string>? SelectedRangeChanged;
+
+    public RangePicker()
+    {
+        Focusable = true;
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        var point = e.GetPosition(this);
+        if (point.X < 32)
+        {
+            Previous?.Invoke(this, EventArgs.Empty);
+        }
+        else if (point.X > Bounds.Width - 32)
+        {
+            Next?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            var index = Math.Clamp((int)((point.X - 32) / Math.Max(1, (Bounds.Width - 64) / Ranges.Count)), 0, Ranges.Count - 1);
+            SelectedRange = Ranges[index];
+            SelectedRangeChanged?.Invoke(this, SelectedRange);
+            InvalidateVisual();
+        }
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Key == Key.Left)
+        {
+            Previous?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Right)
+        {
+            Next?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        }
+    }
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        var labels = string.Join("   ", Ranges.Select(range => range == SelectedRange ? $"[{range}]" : range));
-        var text = new FormattedText($"‹  {labels}  ›", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, Brushes.Gray);
+        var labels = string.Join("   ", Ranges.Select(range => range == SelectedRange ? range.ToUpperInvariant() : range));
+        var text = new FormattedText($"‹  {labels}  ›", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, Brush("ThemeForegroundLowBrush", Brushes.Gray));
         context.DrawText(text, new Point(Padding, Math.Max(Padding, (Bounds.Height - text.Height) / 2)));
     }
 }
