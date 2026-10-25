@@ -42,11 +42,18 @@ internal static class TabLookAlong
                 : refuse("The operator did not share a tab. Do not ask again unless they invite you to.");
     }
 
-    // The address as the card's first line, kept to what fits: the host and the last path segment.
-    private static string Short(string address) =>
-        Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Host.Length > 0
-            ? uri.Host + (uri.AbsolutePath.Trim('/').Split('/') is { Length: > 1 } parts ? "/…/" + parts[^1] : uri.AbsolutePath.Length > 1 ? uri.AbsolutePath : string.Empty)
-            : address;
+    // The address as the card's first line, kept to what fits: scheme and host, then the last two path segments.
+    private static string Short(string address)
+    {
+        if (Uri.TryCreate(address, UriKind.Absolute, out var uri) == false || uri.Host.Length == 0)
+        {
+            return address;
+        }
+
+        var parts = uri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var path = parts.Length > 2 ? "/…/" + string.Join('/', parts[^2..]) : uri.AbsolutePath.TrimEnd('/');
+        return $"{uri.Scheme}://{uri.Host}{path}";
+    }
 
     // The card sits in the asker's own conversation (its pane is the source). The reason is the agent's own words and
     // is shown as such, never as the card's framing.
@@ -61,10 +68,11 @@ internal static class TabLookAlong
         }
 
         return new ConsentRequest(
-            "Look along on a browser tab?",
-            $"{subject} · your own profile, signed in\n"
+            "Look along on this tab?",
+            $"{subject} · your own profile\n"
             + (said.Length > 0 ? $"The session says: \"{said}\"\n" : string.Empty)
-            + "Watching only: address, title, page text and a screenshot of the one tab you pick.",
+            + "• I see: address, title, page text and a screenshot of only this tab\n"
+            + "• I control nothing",
             new ConsentSource(paneId, null, "Browser"),
             "browser.look-along",
             ConsentRisk.Dangerous)
@@ -74,7 +82,7 @@ internal static class TabLookAlong
                 new ConsentChoice("tab", "Which tab", [.. tabs.Select(tab => new ConsentOption(tab.Id, tab.Title, tab.Address, Selected: tab.Id == selected))]),
             ],
             ApproveLabel = "Share this tab",
-            Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "controlling the page"],
+            Never = ["Cookies and storage", "passwords and autofill", "other tabs"],
         };
     }
 }
