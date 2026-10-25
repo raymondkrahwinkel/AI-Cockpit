@@ -13,6 +13,8 @@ internal sealed record AttentionSpan(DateTimeOffset Start, DateTimeOffset End, s
     public TimeSpan Duration => End - Start;
 }
 
+internal sealed record ProjectTime(string? ProjectId, TimeSpan Time);
+
 // Your time (measured attention plus own entries, overlap once) and agent time beside it, never added to it
 // unless CountAgentWithoutYou asks for the agents' time outside your blocks.
 internal sealed record AttentionTime(
@@ -33,8 +35,8 @@ internal sealed record AttentionTime(
     public TimeSpan Total => CountAgentWithoutYou ? YourTime + AgentWithoutYou : YourTime;
 
     // Measured time the own entries did not claim, per project; a null key is time without a project.
-    public IReadOnlyList<(string? ProjectId, TimeSpan Time)> MeasuredPerProject =>
-        [.. You.GroupBy(span => span.Owner).Select(group => (group.Key, _Sum(group.Select(span => span.Duration)))).OrderByDescending(pair => pair.Item2)];
+    public IReadOnlyList<ProjectTime> MeasuredPerProject =>
+        [.. You.GroupBy(span => span.Owner).Select(group => new ProjectTime(group.Key, _Sum(group.Select(span => span.Duration)))).OrderByDescending(project => project.Time)];
 
     public static AttentionTime Compute(
         CockpitTimeline timeline,

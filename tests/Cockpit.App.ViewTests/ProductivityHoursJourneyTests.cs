@@ -21,7 +21,8 @@ using UiParts = productivityUi::Cockpit.Plugin.Productivity.UI;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-1722 layer 2 view journey: one real Productivity UI and backend channel over host-owned time entries.
+/// AC-1722 layer 2 view journey: one real Productivity UI and backend channel over host-owned time entries;
+/// AC-1731 adds the measured time from the session timeline beside them.
 /// </summary>
 [Collection("avalonia")]
 public sealed class ProductivityHoursJourneyTests
@@ -34,6 +35,7 @@ public sealed class ProductivityHoursJourneyTests
         var backend = Substitute.For<ICockpitHost>();
         backend.Channel.Returns(channel);
         backend.TimeEntries.Returns(timeEntries);
+        backend.Timeline.Returns(new _Timeline());
         using var plugin = new ProductivityPlugin();
         plugin.Initialize(backend);
 
@@ -58,7 +60,7 @@ public sealed class ProductivityHoursJourneyTests
         var registration = workspace ?? throw new InvalidOperationException("No Uren workspace type.");
         var screen = registration.CreateBody(Substitute.For<IWorkspaceContext>());
         using var scene = RenderedScene.Show(screen, 1280, 820);
-        await _Until(() => badge.Text == "0u00 vandaag", "the initial badge");
+        await _Until(() => badge.Text == "0u10 vandaag", "the initial badge with ten measured minutes");
         Assert.Equal(SideMenuButtonBadgeTone.Success, badge.Tone);
         var idleSidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
         using (var idleScene = RenderedScene.Show(idleSidebar, 360, 180))
@@ -75,7 +77,7 @@ public sealed class ProductivityHoursJourneyTests
 
         _Control<TextBox>(screen, "Duration").Text = "0:15";
         _Click(screen, "AddEntry");
-        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0u15 vandaag", "the added entry and badge");
+        await _Until(() => timeEntries.Entries.Count == 1 && badge.Text == "0u25 vandaag", "the added entry and badge, measured plus own");
         Assert.Equal("cockpit", timeEntries.Entries[0].ProjectId);
         _Render(scene.Window, "01-uren-dag.png");
 
@@ -100,6 +102,9 @@ public sealed class ProductivityHoursJourneyTests
             new CockpitTimeEntry(Guid.NewGuid(), "Geboekte regel", previousDay.AddHours(10), TimeSpan.FromMinutes(40), "cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Booked));
         _Click(screen, "PreviousDay");
         await _Until(() => _Texts(screen).Contains("Aangeboden regel") && _Texts(screen).Contains("Geboekte regel"), "the previous day");
+        await _Until(() => _Texts(screen).Contains("syn-api"), "the measured time of a day with timeline data");
+        Assert.Single(screen.GetVisualDescendants().OfType<Control>(), control => control.Name == "TimelineStrip");
+        Assert.Contains("syn-portal", _Texts(screen));
 
         _Control<TextBox>(screen, "Description").Text = "Vorige dag";
         _Control<TextBox>(screen, "Duration").Text = "0:30";
@@ -117,7 +122,7 @@ public sealed class ProductivityHoursJourneyTests
 
         _Click(screen, "Today");
         await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "returning to today");
-        Assert.Equal("0u40 vandaag", badge.Text);
+        Assert.Equal("0u50 vandaag", badge.Text);
     });
 
     private static T _Control<T>(Visual root, string name) where T : Control =>
@@ -227,6 +232,30 @@ public sealed class ProductivityHoursJourneyTests
             Task.CompletedTask;
 
         public void Seed(params CockpitTimeEntry[] entries) => Entries.AddRange(entries);
+    }
+
+    // Today: one action three hours ago, ten measured minutes clear of the entries made now. Before today: a
+    // morning on two projects, the first half covered by the seeded 09:00 entry, and one agent beside it.
+    private sealed class _Timeline : ICockpitTimelineReader
+    {
+        public Task<CockpitTimeline> QueryAsync(DateTimeOffset from, DateTimeOffset to, CockpitTimelineFilter? filter = null, CancellationToken cancellationToken = default)
+        {
+            var now = DateTimeOffset.Now;
+            var morning = from.AddHours(9);
+            CockpitTimelineLine[] lines = from <= now && now < to
+                ? [_Act(now.AddHours(-3), "cockpit")]
+                : [
+                    .. Enumerable.Range(0, 6).Select(step => _Act(morning.AddMinutes(step * 5), "syn-portal")),
+                    _Act(morning.AddHours(1), "syn-api"),
+                    _Act(morning.AddHours(1).AddMinutes(5), "syn-api"),
+                    new(CockpitTimelineKind.Status, morning, "agent", "syn-api", null, null, CockpitTimelineStatus.Busy, null, null),
+                    new(CockpitTimelineKind.Status, morning.AddMinutes(90), "agent", "syn-api", null, null, CockpitTimelineStatus.Idle, null, null),
+                ];
+            return Task.FromResult(new CockpitTimeline(lines, [], []));
+        }
+
+        private static CockpitTimelineLine _Act(DateTimeOffset at, string project) =>
+            new(CockpitTimelineKind.Operator, at, "you", project, null, null, null, CockpitOperatorAction.MessageSent, null);
     }
 
     private sealed class _Loopback : IPluginBackendChannel, IPluginUiChannel

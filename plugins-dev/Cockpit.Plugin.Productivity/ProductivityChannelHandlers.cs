@@ -33,7 +33,19 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
             ? entries
             : await timeEntries.ListAsync(request.TodayFrom, request.TodayTo).ConfigureAwait(false);
         var stopwatch = await timeEntries.GetRunningStopwatchAsync().ConfigureAwait(false);
-        return new ProductivitySnapshot(entries, TimeSpan.FromTicks(todayEntries.Sum(entry => entry.Duration.Ticks)), stopwatch);
+        var day = await _AttentionAsync(request.From, request.To, entries).ConfigureAwait(false);
+        var today = ReferenceEquals(todayEntries, entries)
+            ? day
+            : await _AttentionAsync(request.TodayFrom, request.TodayTo, todayEntries).ConfigureAwait(false);
+        return new ProductivitySnapshot(entries, today.YourTime, stopwatch, day);
+    }
+
+    // ponytail: a session busy across the range start counts from its first line in range; query earlier if agent time matters there.
+    private async Task<AttentionTime> _AttentionAsync(DateTimeOffset from, DateTimeOffset to, IReadOnlyList<CockpitTimeEntry> entries)
+    {
+        var timeline = await host.Timeline.QueryAsync(from, to).ConfigureAwait(false);
+        var now = DateTimeOffset.Now;
+        return AttentionTime.Compute(timeline, entries, AttentionSettings.Default, now < to ? now : to);
     }
 
     private IDisposable _Handle<TRequest, TResponse>(string action, Func<TRequest, Task<TResponse>> handle) =>

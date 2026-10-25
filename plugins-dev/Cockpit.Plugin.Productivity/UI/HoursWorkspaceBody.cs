@@ -34,6 +34,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     private readonly TextBlock _rulesTotal = Ui.Hint(string.Empty);
     private readonly StackPanel _running = new() { Spacing = 8 };
     private readonly StackPanel _rows = new() { Spacing = 0 };
+    private readonly ContentControl _measured = new() { Name = "MeasuredTime" };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Guid? _editingId;
     private bool _editingStopwatch;
@@ -81,7 +82,7 @@ internal sealed class HoursWorkspaceBody : UserControl
                 {
                     _Header(previous, next),
                     _EntryCard(),
-                    _RulesCard(),
+                    _DayColumns(),
                 },
             },
         };
@@ -186,6 +187,17 @@ internal sealed class HoursWorkspaceBody : UserControl
                 _running,
             },
         }, 14);
+    }
+
+    private Control _DayColumns()
+    {
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,470"), ColumnSpacing = 12 };
+        var rules = _RulesCard();
+        rules.VerticalAlignment = VerticalAlignment.Top;
+        columns.Children.Add(rules);
+        Grid.SetColumn(_measured, 1);
+        columns.Children.Add(_measured);
+        return columns;
     }
 
     private Control _RulesCard()
@@ -337,6 +349,9 @@ internal sealed class HoursWorkspaceBody : UserControl
         _reason.IsVisible = !string.IsNullOrEmpty(_reason.Text);
         _error.Text = _controller.Error ?? string.Empty;
         _error.IsVisible = _controller.Error is not null;
+        _measured.Content = MeasuredTimeCard.Build(
+            _controller.Day,
+            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}");
         _RenderRunning();
         _RenderRows();
     }

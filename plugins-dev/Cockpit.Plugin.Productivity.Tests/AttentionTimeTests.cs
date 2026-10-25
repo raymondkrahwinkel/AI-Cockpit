@@ -65,7 +65,7 @@ public sealed class AttentionTimeTests
 
         Assert.Equal(TimeSpan.FromMinutes(18), time.Measured);
         Assert.Equal(
-            new (string?, TimeSpan)[] { ("syn-portal", TimeSpan.FromMinutes(14)), ("syn-api", TimeSpan.FromMinutes(4)) },
+            new ProjectTime[] { new("syn-portal", TimeSpan.FromMinutes(14)), new("syn-api", TimeSpan.FromMinutes(4)) },
             time.MeasuredPerProject);
     }
 
