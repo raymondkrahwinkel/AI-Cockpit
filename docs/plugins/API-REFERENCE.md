@@ -92,7 +92,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 
 **Declared in the manifest (host 0.110.0+).** A plugin lists the ids it asks for under `capabilities` in
 `plugin.json`; the consent dialog and the plugin list show each one's summary, and an unknown id is refused. Only
-`time.entries` is enforced today — see [the trust boundary](PLUGIN-SDK.md#the-trust-boundary).
+`time.entries` and `timeline.read-all` are enforced today — see [the trust boundary](PLUGIN-SDK.md#the-trust-boundary).
 
 **Host-only.** The catalogue describes the host's own surface, so only the host can add to it — see
 [AC-474](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-474).
@@ -111,7 +111,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSettings`, `ICockpitUiHost.ShowSettingsAsync`, `ICockpitUiHost.HasSettings`, `ICockpitUiHost.OnSettingsSaved` |
 | `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSideMenuButton`, `ICockpitUiHost.AddSideMenuSection`, `ICockpitUiHost.AddSideMenuButtonWithBadge` |
 | `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitUiHost.AddToolbarAction`, `ICockpitUiHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.AddCompanionTool` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.SetStatusText`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
@@ -154,6 +154,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
 | `time.entries` | Your own time entries | Sensitive | 0.107.0 | — | `ICockpitHost.TimeEntries` |
+| `timeline.read-all` | The timeline of every session | Sensitive | 0.114.0 | — | `ICockpitHost.Timeline` |
 | `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
 | `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
 
@@ -279,6 +280,7 @@ public interface ICockpitHost
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
     ICockpitTimeEntries TimeEntries { get; }                                   // default unavailable
+    ICockpitTimelineReader Timeline { get; }                                   // default unavailable
     IPluginCache Cache { get; }                                                 // default in-memory
     void AddSettings(Func<Control> createView);
     void AddSettings(Func<Control> createView, string category);                  // default forwards above
@@ -383,8 +385,12 @@ Your per-plugin key/value store — see [`IPluginStorage`](#ipluginstorage). For
 fetch or compute again, use `Cache`.
 
 ### `ICockpitTimeEntries TimeEntries { get; }` {#icockpittimeentries-timeentries--get}
-The host-owned log of the operator's manual time entries and one persistent stopwatch. It needs no capability:
+The host-owned log of the operator's manual time entries and one persistent stopwatch. It needs `time.entries`:
 this is the operator's own data, not the all-sessions timeline. See [`ICockpitTimeEntries`](#icockpittimeentries).
+
+### `ICockpitTimelineReader Timeline { get; }` {#icockpittimelinereader-timeline--get}
+The timeline and usage of every session over a range. It needs `timeline.read-all`; without it the getter throws
+`UnauthorizedAccessException` naming the capability. See [`ICockpitTimelineReader`](#icockpittimelinereader).
 
 ### `IPluginCache Cache { get; }` {#iplugincache-cache--get}
 Your per-plugin cache, in a file of its own — see [`IPluginCache`](#iplugincache).
@@ -599,6 +605,14 @@ so a plugin that relies on it sets `minHostVersion` to `0.113.0`.
 await host.OpenDockPanelAsync("my-plugin.browser");
 ```
 
+### `void SetStatusText(string? text)` {#void-setstatustextstring-text}
+Shows one line of **this plugin's** text in the status bar, at the right next to the supervised-activity counters,
+in the faint status colour. A new call replaces the plugin's line, keeping its spot; null or blank removes it. Text
+longer than 120 characters is cut. A server and an older host show nothing. SDK 3.27.0, host 0.116.0.
+```csharp
+host.SetStatusText($"Browser · profile Raymond · {tabs.Count} tabs");
+```
+
 ### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
 Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory
 builds, one level below a widget: where `AddWidget` fills a Dashboard cell, this fills a slot in a window
@@ -674,8 +688,14 @@ host.AddWorkspaceType(new WorkspaceTypeRegistration("my-plugin.pipeline", "Pipel
 {
     Icon = "🚀",
     Description = "A whole workspace my plugin draws and drives.",
+    // SDK 3.26.0, host 0.115.0: buttons at the right of the tab strip, only while this workspace is active.
+    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => DockAsync())],
 });
 ```
+- `HeaderActions` — buttons the host draws on the workspace tab strip, only while a workspace of this type is the
+  active one. Use it for an action about this surface; a global action belongs in `AddToolbarAction`. An older
+  host ignores it, so a plugin that relies on it sets `minHostVersion` to `0.115.0`. A throwing action is
+  reported like a failed toolbar action.
 
 ### `IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }` {#ireadonlylistworkspacetyperegistration-workspacetypes--get}
 Every workspace type all plugins have contributed — what the tab strip's "+" menu reads. A plugin not building
@@ -689,6 +709,7 @@ public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWo
     public string Icon { get; init; } = "🧩";
     public MaterialIconKind? IconKind { get; init; }
     public string Description { get; init; } = string.Empty;
+    public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];   // SDK 3.26.0, host 0.115.0
 }
 ```
 - `Id` — stable, unique id for the workspace **type**, namespaced by your plugin (`"autopilot.run"`). It is
@@ -1465,6 +1486,34 @@ public interface ICockpitTimeEntries
 
 Starting a second stopwatch or changing a frozen entry throws `InvalidOperationException` with a user-facing
 reason. A restart does not stop the stopwatch: its id, description, project and start time live in the log.
+
+## `ICockpitTimelineReader` {#icockpittimelinereader}
+
+Available in SDK 3.25.0 and host 0.114.0 (AC-1720), behind `timeline.read-all`. Every session, not only the plugin's
+own; a plugin's live view of its own sessions is [`ICockpitSessionObserver`](#the-sessions-namespace--provider-plugins).
+
+```csharp
+public interface ICockpitTimelineReader
+{
+    Task<CockpitTimeline> QueryAsync(DateTimeOffset from, DateTimeOffset to,
+        CockpitTimelineFilter? filter = null, CancellationToken cancellationToken = default);
+}
+
+public sealed record CockpitTimelineFilter(string? ProjectId = null, string? PaneId = null, string? RunId = null);
+public sealed record CockpitTimeline(IReadOnlyList<CockpitTimelineLine> Lines,
+    IReadOnlyList<CockpitUsageDelta> Usage, IReadOnlyList<CockpitTimelineDay> Days);
+```
+
+- `Lines` and `Usage` use a half-open range (`from <= At < to`). A line is a status change, an operator action
+  (only its kind, never the message), a statusline, a closed interval or a cockpit stop.
+- `Usage` holds what each turn **added**: the difference from the same session's record before it, taken over the
+  whole history, so a range that starts mid-session does not count it from zero. A session's deltas sum to its
+  last running total.
+- `Days` holds the local days older than the 90-day raw retention, one per session and day, with agent time,
+  waiting time, operator actions and that day's usage. A session's day is in `Days` or in `Lines`/`Usage`, never
+  both, so nothing on the boundary day is counted twice.
+- `filter`: every field that is set must match. A usage record carries no project, so a project filter matches the
+  sessions whose timeline names it. A cockpit-stop line has no session and passes only an empty filter.
 
 ## `IPluginStorage` {#ipluginstorage}
 
