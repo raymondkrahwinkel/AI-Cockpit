@@ -21,7 +21,10 @@ public class AgentBrowserIsolationTests
 
         var endpointA = await EndpointAsync(provider, "pane-a", servers);
         var endpointB = await EndpointAsync(provider, "pane-b", servers);
-        var processes = new[] { browsers.ProcessIdFor("pane-a")!.Value, browsers.ProcessIdFor("pane-b")!.Value };
+        var (processA, processB) = (browsers.ProcessIdFor("pane-a"), browsers.ProcessIdFor("pane-b"));
+        Assert.NotNull(processA);
+        Assert.NotNull(processB);
+        var processes = new[] { processA.Value, processB.Value };
 
         try
         {
@@ -56,7 +59,9 @@ public class AgentBrowserIsolationTests
         var root = NewRoot();
         using var previous = new AgentBrowserHost(() => executable, root);
         await previous.StartAsync("pane-old");
-        var left = previous.ProcessIdFor("pane-old")!.Value;
+        var leftover = previous.ProcessIdFor("pane-old");
+        Assert.NotNull(leftover);
+        var left = leftover.Value;
 
         new AgentBrowserHost(() => executable, root).SweepStale();
 

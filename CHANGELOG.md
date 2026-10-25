@@ -257,6 +257,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: plugins can now be told which MCP servers a session mounts (`SessionResourceRequest.McpServers`), and what a plugin puts in a session's environment, such as `GH_REPO`, now also reaches SDK sessions and sessions on the headless server, not only terminal panes.
 - changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
   made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
   as before, and a link that matches no single project is left alone with a warning. Needs Cockpit 0.91.0; Depot 0.11.11.
