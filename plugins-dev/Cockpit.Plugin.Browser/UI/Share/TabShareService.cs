@@ -63,7 +63,7 @@ internal sealed class TabShareService : IDisposable
         var request = new ConsentRequest(
             "Share this tab with an agent",
             $"{tab.Address} · your own profile, signed in\n"
-            + "The agent may read this one tab only. Never: cookies and storage, saved passwords and autofill, other tabs, downloads and uploads, DevTools.",
+            + "This one tab only, until you stop, the tab closes or the session ends.",
             new ConsentSource(null, null, "Browser"),
             "browser.share",
             ConsentRisk.Dangerous)
@@ -74,9 +74,11 @@ internal sealed class TabShareService : IDisposable
                 new ConsentChoice("mode", "What the agent may do",
                 [
                     new ConsentOption(Watch, "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
-                    new ConsentOption("control", "Control", "Click, type, scroll and navigate. Not in this version.", Enabled: false),
+                    new ConsentOption("control", "Control", "Click, type, scroll and navigate within this site.", Enabled: false) { Note = "not in this version" },
                 ], AllowMultiple: true),
             ],
+            ApproveLabel = "Share watching",
+            Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"],
         };
 
         using var timeout = new CancellationTokenSource(CardTimeout);
