@@ -84,7 +84,7 @@ internal sealed class TabGrantRegistry
     {
         lock (_gate)
         {
-            return _grants.TryGetValue((paneId, tabId), out var grant) && grant.Paused == false
+            return _grants.Values.Where(g => g.PaneId == paneId).OrderByDescending(g => g.Controls).FirstOrDefault() is { } grant && grant.Paused == false
                 && (control == false || (grant.Controls && grant.OperatorHolds == false))
                 ? grant
                 : null;
