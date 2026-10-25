@@ -67,6 +67,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         {
             Name = "OverviewRangePicker",
             Height = 38,
+            Ranges = ["Dag", "Werkweek", "Week", "Maand", "Eigen bereik"],
             SelectedRange = _controller.SelectedRange,
             HorizontalAlignment = HorizontalAlignment.Left,
             Width = 520,
@@ -276,13 +277,13 @@ internal sealed class OverviewWorkspaceBody : UserControl
             {
                 new TextBlock { Text = "Jouw tijd per dag, met de agents ernaast", FontSize = 15, FontWeight = FontWeight.SemiBold },
                 chart,
-                _Legend(),
+                _DailyLegend(),
                 Ui.Hint("Per dag twee staven: links jouw tijd, rechts de agents. Agenttijd telt nooit op bij jouw tijd."),
             },
         }, 14);
     }
 
-    private static Control _Legend() =>
+    private static Control _DailyLegend() =>
         new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -291,7 +292,20 @@ internal sealed class OverviewWorkspaceBody : UserControl
             {
                 _LegendItem(Lavender, "jouw tijd · gemeten"),
                 _LegendItem(Own, "jouw tijd · eigen regels"),
-                _LegendItem(Agent, "agents actief"),
+                _LegendItem(Agent, "agents actief (naast jou, niet erbij)"),
+            },
+        };
+
+    private static Control _ProjectLegend() =>
+        new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 14,
+            Children =
+            {
+                _LegendItem(Lavender, "gemeten"),
+                _LegendItem(Own, "eigen regels"),
+                _LegendItem(Agent, "agent zonder jou"),
             },
         };
 
@@ -315,17 +329,26 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Children =
             {
                 new TextBlock { Text = "Tijd per project", FontSize = 15, FontWeight = FontWeight.SemiBold },
-                _Legend(),
+                _ProjectLegend(),
             },
         };
         foreach (var project in _ProjectRows(snapshot, includeAgent))
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*,52"), ColumnSpacing = 8 };
-            row.Children.Add(new TextBlock { Text = project.Label, TextTrimming = TextTrimming.CharacterEllipsis });
+            row.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(project.Color), VerticalAlignment = VerticalAlignment.Center },
+                    new TextBlock { Text = project.Label, TextTrimming = TextTrimming.CharacterEllipsis },
+                },
+            });
             var segments = new List<ChartSegment>
             {
-                new("gemeten", project.Measured.TotalMinutes, project.Color),
-                new("eigen regels", project.Own.TotalMinutes, project.Color, true),
+                new("gemeten", project.Measured.TotalMinutes, Lavender),
+                new("eigen regels", project.Own.TotalMinutes, Own, true),
             };
             if (includeAgent)
             {
@@ -342,7 +365,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             row.Children.Add(chart);
             var total = new TextBlock
             {
-                Text = Ui.Duration(project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero)),
+                Text = Ui.Duration(project.Measured + project.Own),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 FontWeight = FontWeight.SemiBold,
             };
