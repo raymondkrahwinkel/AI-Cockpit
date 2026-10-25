@@ -1,64 +1,32 @@
 ---
 title: Setup
 order: 10
-summary: Creating the Discord application and bot, and the one setting that silently breaks the connection.
+summary: Creating the Discord application and bot, then linking your own account for direct messages.
 icon: 🤖
 ---
 
-Four things need to be true before a bot token works in this plugin's settings: an application exists, it
-has a bot, the bot's privileged Message Content intent is on, and the bot is in your server. A fifth — the
-channel's id — only when you want a channel instead of direct messages. This page walks through them in order. The same walkthrough is also in the repo as this
-plugin's `README.md`, for whoever's reading it outside the app.
+Four things need to be true before Discord can relay messages: an application exists, it has a bot, the privileged Message Content intent is on, and the bot is installed in a server you share with it. Cockpit then links your own Discord user id. Channel ids are not used.
 
 ## 1. Create the application and get the bot token {#create-application}
 
-Go to the [Discord Developer Portal](https://discord.com/developers/applications) and press **New
-Application**. Give it a name and accept the terms — that lands you on the application's **General
-Information** page.
-
-Open the **Bot** page in the left-hand sidebar. This is where the bot token lives; press **Reset Token** (or
-**Copy**, if one is already showing) to get it, and paste it into this plugin's **Bot token** field. Treat it
-like a password — anyone holding it can act as your bot.
+Go to the [Discord Developer Portal](https://discord.com/developers/applications), press **New Application**, and give it a name. Open **Bot** in the left sidebar and press **Reset Token** or **Copy**. Paste the value into Cockpit's **Bot token** field and treat it like a password.
 
 ## 2. Turn on the Message Content Intent {#message-content-intent}
 
-Still on the **Bot** page, scroll to **Privileged Gateway Intents** and turn on **Message Content Intent**.
+On the **Bot** page, enable **Message Content Intent** under **Privileged Gateway Intents**. Without it, Discord delivers message events with an empty body, so the assistant cannot respond. This plugin requests `GatewayIntents.MessageContent` together with `GatewayIntents.DirectMessages`.
 
-This is the step that is easy to skip because nothing tells you it is missing. Without it, Discord still
-delivers the *events* for messages in your channel, but every message arrives with an empty body — the
-plugin connects, the bot shows online, and the assistant simply never responds, because from its side no one
-said anything. This plugin asks the gateway for this intent unconditionally (`GatewayIntents.MessageContent`
-in `DiscordGatewayConnection`), so there is no lesser mode that works around it.
+## 3. Install the bot {#invite-link}
 
-Message Content is a *privileged* intent. On an app past [verification](https://support-dev.discord.com/hc/en-us/articles/23926564536471-How-Do-I-Get-My-App-Verified),
-Discord may ask why you need it before letting you enable it — for a personal or small-server bot like this
-one, the toggle is available straight away.
+Open **Installation**, enable **Guild Install**, and add the **bot** scope. Select **Send Messages**, **Read Message History**, and **Use Slash Commands**, then copy the install link. Open it, select **Add to server**, choose a server you control, and confirm.
 
-## 3. Choose bot permissions and copy the install link {#invite-link}
+## 4. Link your own account {#link-account}
 
-Open **Installation** in the left-hand sidebar. Under **Installation Contexts**, enable **Guild Install**.
-Under **Default Install Settings**, add the **bot** scope, then select at least **Send Messages**, **Read
-Message History**, and **Use Slash Commands** — add more if you plan to use the bot for anything past what
-this plugin relays. Copy the **Install Link**.
+In Discord, enable Developer Mode under **User Settings → Advanced**. Right-click your account, choose **Copy User ID**, and paste it into **Your Discord user id** in Cockpit. Make sure Discord allows direct messages from members of the shared server.
 
-## 4. Invite the bot to your server {#invite-bot}
+Only direct messages from this linked account become assistant turns. Replies, consent buttons, and messages from other plugins return to the same DM. Channel messages and DMs from every other account are ignored without a reply.
 
-Open the link from the previous step in a browser, select **Add to server** in the installation prompt, then
-pick the server and confirm. You need the **Manage Server** permission on that server to complete this step.
-
-## 5. Direct messages, or a channel {#channel-id}
-
-Leave **Channel id** blank and the bot talks to you in direct messages: a DM from the allowed account becomes
-a turn, and the answer comes back in that DM. This is the default, and it is only offered for a single allowed
-account — a list of accounts or everyone needs a channel. Discord lets you DM a bot you share a server with.
-
-For a channel instead, the plugin needs the numeric id of the text channel, not its name. Discord only shows
-ids once **Developer Mode** is on: in the Discord client, open **User Settings → Advanced** and turn on
-**Developer Mode**. Then right-click the channel, choose **Copy Channel ID**, and paste that into this
-plugin's **Channel id** field. With a channel set, direct messages are ignored, and so is every other channel.
+You may save the user id before entering a bot token. Until both a linked user and a working token exist, Discord communication remains off.
 
 ## Your responsibility, not this plugin's {#terms-of-service}
 
-This plugin connects a bot account you control to a channel you control. Whether doing so — and who you let
-talk to your assistant through it — is consistent with Discord's own terms of service and developer policy is
-for you to check, not something this plugin verifies on your behalf.
+This plugin connects a bot account you control to your direct messages. Whether doing so is consistent with Discord's terms of service and developer policy is for you to check.
