@@ -560,7 +560,9 @@
     <!-- 3.25.0 (AC-1720): added ICockpitTimelineReader and ICockpitHost.Timeline (default unavailable), the timeline,
          per-turn usage deltas and day aggregates of every session behind timeline.read-all. A plugin that reads it sets
          minHostVersion 0.114.0. Additive; still v3. -->
-    <Version>3.25.0</Version>
+    <!-- 3.26.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.7.0 - WorkspaceTypeRegistration.HeaderActions.
+         A plugin that relies on them sets minHostVersion 0.115.0. Additive; still v3. -->
+    <Version>3.26.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

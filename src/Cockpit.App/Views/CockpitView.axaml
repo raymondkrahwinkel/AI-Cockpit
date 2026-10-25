@@ -1119,6 +1119,9 @@
                          Renders nothing at all when no action is registered — a fresh install loses no height. -->
                     <controls:PluginToolbarHost DockPanel.Dock="Right" Margin="0,0,6,0"/>
 
+                    <!-- AC-1711: the active plugin workspace's own header buttons, only while it is active. -->
+                    <controls:WorkspaceHeaderActionsHost DockPanel.Dock="Right" Margin="0,0,6,0"/>
+
                     <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
                          the dragged Border would stop firing the moment it did its job once. -->
                     <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}"
