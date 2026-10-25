@@ -24,7 +24,7 @@
 
             <!-- AC-1523: title and decision rows stay put, and only the action between them scrolls, so a long request can
                  no longer push Approve/Deny out of the window. The host's own height bounds the middle row. -->
-            <Grid Margin="11,9,11,10" RowDefinitions="Auto,*,Auto">
+            <Grid Margin="11,9,11,10" RowDefinitions="Auto,*,Auto,Auto">
                 <!-- Title row: glyph + host-framed title on the left, the source on the right. -->
                 <DockPanel Grid.Row="0">
                     <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="{Binding Glyph}" Width="14" Height="14" Margin="0,0,7,0"
@@ -48,8 +48,45 @@
                     </ScrollViewer>
                 </Border>
 
+                <!-- AC-1714: the questions answered by picking — a list for one pick, checkboxes for more. Approve sends
+                     what is picked here, and the broker denies an approval whose pick it did not offer. -->
+                <ItemsControl Grid.Row="2" ItemsSource="{Binding Choices}" IsVisible="{Binding HasChoices}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ConsentChoiceViewModel">
+                            <StackPanel Spacing="5" Margin="0,0,0,8">
+                                <TextBlock Text="{Binding Label}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}"
+                                          IsVisible="{Binding IsSingle}" HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ConsentOptionViewModel">
+                                            <TextBlock Text="{Binding Label}" IsEnabled="{Binding Enabled}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <ItemsControl ItemsSource="{Binding Options}" IsVisible="{Binding AllowMultiple}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ConsentOptionViewModel">
+                                            <Border Margin="0,0,0,5" Padding="9,7" BorderThickness="1"
+                                                    BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                                                    CornerRadius="{StaticResource CockpitControlRadius}">
+                                                <CheckBox IsChecked="{Binding IsPicked}" IsEnabled="{Binding Enabled}">
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock Text="{Binding Label}" FontSize="12.5"/>
+                                                        <TextBlock Text="{Binding Detail}" IsVisible="{Binding HasDetail}" FontSize="11"
+                                                                   TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    </StackPanel>
+                                                </CheckBox>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
                 <!-- Decision row: remember (low-risk only) on the left, Deny/Approve on the right. -->
-                <DockPanel Grid.Row="2">
+                <DockPanel Grid.Row="3">
                     <CheckBox DockPanel.Dock="Left" Content="Remember for this session"
                               IsChecked="{Binding Remember}" IsVisible="{Binding CanRemember}"
                               FontSize="11.5" VerticalAlignment="Center"/>

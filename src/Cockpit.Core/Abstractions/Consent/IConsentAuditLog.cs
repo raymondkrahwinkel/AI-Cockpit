@@ -33,9 +33,9 @@ public enum ConsentAuditAction
     Bypassed,
 }
 
-// One line of the consent audit trail (#AC-47): SourceLabel = who asked, PaneId = the session (if any),
-// PluginId = the plugin that asked (if any), Scope = the key an approval is remembered by, ActionText =
-// the trimmed command/URL/pane, Remembered = true when the operator opted out of being asked again.
+// One line of the consent audit trail (#AC-47): who asked, for which session and plugin, the remember key, the
+// trimmed action, whether it was remembered, what was picked on a card with choices ("key=value; …", AC-1714),
+// and the plugin policy that skipped the card (AC-1348), so a Bypassed line names who skipped it.
 public sealed record ConsentAuditEntry(
     DateTimeOffset At,
     ConsentAuditAction Action,
@@ -44,4 +44,6 @@ public sealed record ConsentAuditEntry(
     string? PluginId,
     string Scope,
     string ActionText,
-    bool Remembered);
+    bool Remembered,
+    string? Chosen = null,
+    string? PreApprovedBy = null);

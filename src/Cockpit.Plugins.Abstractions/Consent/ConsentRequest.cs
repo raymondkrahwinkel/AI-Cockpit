@@ -42,4 +42,12 @@ public sealed record ConsentRequest(
     string Scope,
     ConsentRisk Risk,
     bool AllowRemember = false,
-    string? PreApprovedBy = null);
+    string? PreApprovedBy = null)
+{
+    /// <summary>
+    /// Questions the operator answers on the card by picking (AC-1714), returned in <see cref="ConsentDecision.Chosen"/>.
+    /// A request with choices is always shown: never remembered, never bypassed, and denied when
+    /// <see cref="PreApprovedBy"/> is set, since only the operator can pick. A plugin that sets it needs minHostVersion 0.117.0.
+    /// </summary>
+    public IReadOnlyList<ConsentChoice>? Choices { get; init; }
+}

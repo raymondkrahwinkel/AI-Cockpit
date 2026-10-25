@@ -22,6 +22,7 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
         SourceLabel = prompt.Request.Source.Label;
         CanRemember = prompt.CanRemember;
         IsDangerous = prompt.Request.Risk == ConsentRisk.Dangerous;
+        Choices = [.. (prompt.Request.Choices ?? []).Select(choice => new ConsentChoiceViewModel(choice))];
     }
 
     // Matches the broker's prompt, so the cockpit can clear this banner when the prompt is resolved elsewhere.
@@ -50,9 +51,70 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
     [ObservableProperty]
     private bool _remember;
 
+    // AC-1714: the questions the operator answers by picking; empty for a plain Approve/Deny card.
+    public IReadOnlyList<ConsentChoiceViewModel> Choices { get; }
+
+    public bool HasChoices => Choices.Count > 0;
+
     [RelayCommand]
-    private void Approve() => _consent.Respond(Id, ConsentOutcome.Approved, Remember);
+    private void Approve()
+    {
+        if (HasChoices)
+        {
+            _consent.Respond(Id, ConsentOutcome.Approved, Remember, Choices.ToDictionary(choice => choice.Key, choice => choice.Picked()));
+            return;
+        }
+
+        _consent.Respond(Id, ConsentOutcome.Approved, Remember);
+    }
 
     [RelayCommand]
     private void Deny() => _consent.Respond(Id, ConsentOutcome.Denied, remember: false);
+}
+
+// One question on a card with choices (AC-1714): a list to pick one from, or checkboxes when more than one may be picked.
+public sealed partial class ConsentChoiceViewModel : ViewModelBase
+{
+    public ConsentChoiceViewModel(ConsentChoice choice)
+    {
+        Key = choice.Key;
+        Label = choice.Label;
+        AllowMultiple = choice.AllowMultiple;
+        Options = [.. choice.Options.Select(option => new ConsentOptionViewModel(option))];
+        _selectedOption = Options.FirstOrDefault(option => option.IsPicked && option.Enabled);
+    }
+
+    public string Key { get; }
+
+    public string Label { get; }
+
+    public bool AllowMultiple { get; }
+
+    public bool IsSingle => !AllowMultiple;
+
+    public IReadOnlyList<ConsentOptionViewModel> Options { get; }
+
+    // The single-pick list's selection; the checkboxes of a multiple choice use each option's IsPicked instead.
+    [ObservableProperty]
+    private ConsentOptionViewModel? _selectedOption;
+
+    public IReadOnlyList<string> Picked() => AllowMultiple
+        ? [.. Options.Where(option => option.IsPicked).Select(option => option.Value)]
+        : SelectedOption is { } selected ? [selected.Value] : [];
+}
+
+public sealed partial class ConsentOptionViewModel(ConsentOption option) : ViewModelBase
+{
+    public string Value { get; } = option.Value;
+
+    public string Label { get; } = option.Label;
+
+    public string? Detail { get; } = option.Detail;
+
+    public bool HasDetail => !string.IsNullOrEmpty(Detail);
+
+    public bool Enabled { get; } = option.Enabled;
+
+    [ObservableProperty]
+    private bool _isPicked = option.Selected;
 }

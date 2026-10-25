@@ -2620,6 +2620,23 @@
                 Width="{Binding AssistantDropZoneWidth}"
                 BorderThickness="2,0,0,0"/>
 
+        <!-- AC-1714: a card with choices that belongs to no session — sharing a browser tab picks the session on the
+             card itself — over the whole window, with the same card a pane shows. Escape denies, as on the pane. -->
+        <Border Grid.Row="0" Grid.RowSpan="2" Background="{DynamicResource CockpitScrimBrush}"
+                IsVisible="{Binding WindowConsent, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <Border.KeyBindings>
+                <KeyBinding Gesture="Escape" Command="{Binding WindowConsent.DenyCommand, FallbackValue={x:Null}}"/>
+            </Border.KeyBindings>
+            <ContentControl Content="{Binding WindowConsent}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Width="520" Margin="24">
+                <ContentControl.ContentTemplate>
+                    <DataTemplate x:DataType="vm:ConsentPromptViewModel">
+                        <controls:ConsentBanner/>
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+        </Border>
+
     </Grid>
     </DockPanel>
 </UserControl>

@@ -27,6 +27,13 @@ public interface IConsentPrompts
     /// Answers the prompt <paramref name="promptId"/>; <paramref name="remember"/> counts only where the prompt allows it.
     /// </summary>
     void Respond(Guid promptId, ConsentOutcome outcome, bool remember);
+
+    /// <summary>
+    /// <see cref="Respond(Guid, ConsentOutcome, bool)"/> with the picks for the prompt's choices (AC-1714). The default
+    /// drops them, which the broker answers with a denial.
+    /// </summary>
+    void Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen) =>
+        Respond(promptId, outcome, remember);
 }
 
 // One open prompt as the desktop shows it: the request verbatim, and whether "remember" may be offered.
