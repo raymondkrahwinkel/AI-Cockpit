@@ -50,6 +50,16 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     [ObservableProperty]
     private string _summaryMessage = string.Empty;
 
+    // What the assistant step lists as chosen here: ticked, or installed in this wizard.
+    public IReadOnlyList<string> ChosenProviderLines =>
+        [.. Providers.Where(row => row.IsSelected || row.WasInstalled).Select(row => row.ChosenLine)];
+
+    // Next installs nothing (criterion 4), so a provider that looks ticked and is not installed would be a surprise two steps on, a suggestion's tick included.
+    public string? NextBlockedReason =>
+        Providers.Any(row => row.IsSelected && !row.WasInstalled && !row.Row.IsInstalled) ? "Press Install for what you ticked, or untick it." : null;
+
+    public event EventHandler? NextBlockedChanged;
+
     public bool HasProviders => Providers.Count > 0;
 
     public bool HasFoundProviders => FoundProviders.Any();
@@ -107,6 +117,11 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                         if (args.PropertyName == nameof(ProviderPickerRowViewModel.IsSelected))
                         {
                             InstallSelectedCommand.NotifyCanExecuteChanged();
+                        }
+
+                        if (args.PropertyName is nameof(ProviderPickerRowViewModel.IsSelected) or nameof(ProviderPickerRowViewModel.WasInstalled))
+                        {
+                            NextBlockedChanged?.Invoke(this, EventArgs.Empty);
                         }
                     };
                 }

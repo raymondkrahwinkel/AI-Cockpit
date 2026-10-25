@@ -14,8 +14,9 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
         IAssistantSettingsStore settingsStore,
         IAssistantProfileStore profileStore,
         ISessionDialogService dialogService,
-        IPluginRegistrations pluginProviderRegistry)
-        : this(new AssistantStepViewModel(settingsStore, profileStore, dialogService, pluginProviderRegistry))
+        IPluginRegistrations pluginProviderRegistry,
+        ProviderStep providerStep)
+        : this(new AssistantStepViewModel(settingsStore, profileStore, dialogService, pluginProviderRegistry, () => providerStep.ViewModel))
     {
     }
 
@@ -30,6 +31,10 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
     public string Title => "Your assistant";
 
     public bool IsSkipped => false;
+
+    public string? NextBlockedReason => ViewModel.NextBlockedReason;
+
+    public void Entered() => ViewModel.RefreshChosenProviders();
 
     public Control BuildContent() => new AssistantStepView { DataContext = ViewModel };
 }

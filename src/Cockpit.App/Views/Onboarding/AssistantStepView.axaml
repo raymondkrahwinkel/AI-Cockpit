@@ -45,6 +45,18 @@
                 <Run Text=" are available on this machine right now — that's not a blocker, but its profile can only run on one of those two until another provider is added."/>
             </TextBlock>
 
+            <StackPanel Spacing="2" IsVisible="{Binding HasChosenProviders}">
+                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                           Text="You chose these in the previous step. A provider can run the assistant once the cockpit has started with it, so its profile can be picked in Options → Assistant after that:"/>
+                <ItemsControl ItemsSource="{Binding ChosenProviders}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <TextBlock Text="{Binding AssistantOptions.ProfileLabel}"
                            IsVisible="{Binding AssistantOptions.ProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

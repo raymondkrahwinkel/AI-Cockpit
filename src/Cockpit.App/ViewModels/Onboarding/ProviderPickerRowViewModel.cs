@@ -62,6 +62,17 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
     [ObservableProperty]
     private string _outcomeBrushKey = "CockpitTextSecondaryBrush";
 
+    // True once this row's install landed (or was staged) in this wizard; the plugin still waits for its approval and the restart.
+    [ObservableProperty]
+    private bool _wasInstalled;
+
+    // How the assistant step names this row: what the operator did with it in this step, never that it is already usable.
+    public string ChosenLine => WasInstalled
+        ? $"{Row.Name} (installed, runs once you approve it)"
+        : $"{Row.Name} (ticked, not installed yet: press Install in the previous step)";
+
+    partial void OnWasInstalledChanged(bool value) => OnPropertyChanged(nameof(ChosenLine));
+
     public bool HasOutcome => !string.IsNullOrEmpty(OutcomeText);
 
     partial void OnOutcomeTextChanged(string? value) => OnPropertyChanged(nameof(HasOutcome));
@@ -70,6 +81,7 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
     // (`PluginProvisionOutcome`), translated to a line the operator reads instead of a raw result object.
     public void ApplyOutcome(PluginProvisionResult result)
     {
+        WasInstalled = result.Outcome is PluginProvisionOutcome.Installed or PluginProvisionOutcome.Staged;
         (OutcomeText, OutcomeBrushKey) = result.Outcome switch
         {
             PluginProvisionOutcome.Installed =>

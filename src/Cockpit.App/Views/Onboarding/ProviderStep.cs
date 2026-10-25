@@ -21,8 +21,15 @@ internal sealed class ProviderStep(
 
     public bool IsSkipped => false;
 
-    public Control BuildContent() => new ProviderStepView
+    // The one the latest wizard was built over; the assistant step reads what was chosen here from it.
+    internal ProviderStepViewModel? ViewModel { get; private set; }
+
+    public string? NextBlockedReason => ViewModel?.NextBlockedReason;
+
+    public Control BuildContent()
     {
-        DataContext = new ProviderStepViewModel(storeConfigStore, storeClient, provisioningService, plugins),
-    };
+        ViewModel = new ProviderStepViewModel(storeConfigStore, storeClient, provisioningService, plugins);
+
+        return new ProviderStepView { DataContext = ViewModel };
+    }
 }
