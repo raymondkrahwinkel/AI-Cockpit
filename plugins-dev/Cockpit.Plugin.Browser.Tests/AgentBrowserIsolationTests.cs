@@ -13,10 +13,9 @@ public class AgentBrowserIsolationTests
     [Fact]
     public async Task TwoSessionsWithPlaywrightMcp_GetEachTheirOwnBrowser_AndNothingOutlivesThem()
     {
-        var executable = new AgentBrowserRuntime(Path.Combine(Path.GetTempPath(), "cockpit-browser-test-none"), Http).CachedExecutable()
-            ?? AgentBrowserRuntime.SystemBrowser()
-            ?? throw new InvalidOperationException("No Chromium to test against: install Chrome or Edge.");
-        var browsers = new AgentBrowserHost(() => executable);
+        var executable = Executable();
+        var root = NewRoot();
+        var browsers = new AgentBrowserHost(() => executable, root);
         var provider = new AgentBrowserSessionResources(browsers, () => true);
         var servers = new[] { new SessionResourceMcpServer("playwright", "npx", ["-y", "@playwright/mcp@latest"]) };
 
@@ -38,6 +37,7 @@ public class AgentBrowserIsolationTests
         finally
         {
             browsers.Dispose();
+            DeleteRoot(root);
         }
 
         // The browsers stop with the host: no process of either session is left behind.
@@ -46,6 +46,45 @@ public class AgentBrowserIsolationTests
             Assert.True(await GoneAsync(id), $"Chromium process {id} outlived the dispose");
         }
     }
+
+    // AC-1712: a start after a hard kill. The previous run never stopped its browser; the next start sweeps by the profile
+    // root it names, ends the browser and clears the profile.
+    [Fact]
+    public async Task ASweepAtStart_EndsTheBrowserAPreviousRunLeftBehind_AndClearsItsProfile()
+    {
+        var executable = Executable();
+        var root = NewRoot();
+        using var previous = new AgentBrowserHost(() => executable, root);
+        await previous.StartAsync("pane-old");
+        var left = previous.ProcessIdFor("pane-old")!.Value;
+
+        new AgentBrowserHost(() => executable, root).SweepStale();
+
+        Assert.True(await GoneAsync(left), $"Chromium process {left} survived the sweep");
+        try
+        {
+            Assert.Empty(Directory.EnumerateDirectories(root));
+        }
+        finally
+        {
+            DeleteRoot(root);
+        }
+    }
+
+    private static string Executable() =>
+        new AgentBrowserRuntime(Path.Combine(Path.GetTempPath(), "cockpit-browser-test-none"), Http).CachedExecutable()
+            ?? AgentBrowserRuntime.SystemBrowser()
+            ?? throw new InvalidOperationException("No Chromium to test against: install Chrome or Edge.");
+
+    private static void DeleteRoot(string root)
+    {
+        if (Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static string NewRoot() => Path.Combine(Path.GetTempPath(), "cockpit-browser-test-" + Guid.NewGuid().ToString("N"));
 
     private static async Task<string> EndpointAsync(AgentBrowserSessionResources provider, string paneId, SessionResourceMcpServer[] servers)
     {

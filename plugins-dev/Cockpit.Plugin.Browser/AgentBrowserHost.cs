@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Browser;
 // AC-1712: One headless Chromium per session, with a throwaway profile and its own debug port on loopback. Playwright
 // MCP's `--cdp-endpoint` takes the default context of the browser it connects to, so a process per session is what
 // keeps two sessions' tabs apart. Owns the processes: they stop with the session and with the host, never later.
-internal sealed class AgentBrowserHost(Func<string?> resolveExecutable) : IDisposable
+internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string profilesRoot) : IDisposable
 {
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
 
@@ -25,13 +25,24 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable) : IDispo
             return null;
         }
 
-        var profile = Directory.CreateTempSubdirectory("cockpit-agent-browser-").FullName;
+        var profile = Path.Combine(profilesRoot, Guid.NewGuid().ToString("N"));
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(profile);
+        }
+        else
+        {
+            Directory.CreateDirectory(profile, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
         var process = Launch(executable, profile);
         if (process is null)
         {
             DeleteProfile(profile);
             return null;
         }
+
+        WriteOwner(process, profile);
 
         var running = new Running(process, profile);
         lock (_gate)
@@ -96,6 +107,63 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable) : IDispo
         foreach (var running in all)
         {
             running.Stop();
+        }
+    }
+
+    // A hard kill of the host leaves its browsers running (nothing ties them to it), so each profile names the process
+    // that owns it: process id and start time, the pair that cannot be a recycled id.
+    private const string OwnerFile = "cockpit-owner.txt";
+
+    // Ends the browsers a previous run left behind and clears their profiles, as StaleSessionProcessSweep does for
+    // sessions on Linux. Only what this host's own profile root names; run once at start, before any session.
+    public void SweepStale()
+    {
+        if (!Directory.Exists(profilesRoot))
+        {
+            return;
+        }
+
+        foreach (var profile in Directory.EnumerateDirectories(profilesRoot))
+        {
+            StopOwner(Path.Combine(profile, OwnerFile));
+            DeleteProfile(profile);
+        }
+    }
+
+    private static void WriteOwner(Process process, string profile)
+    {
+        try
+        {
+            File.WriteAllLines(
+                Path.Combine(profile, OwnerFile),
+                [process.Id.ToString(CultureInfo.InvariantCulture), process.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture)]);
+        }
+        catch (InvalidOperationException)
+        {
+            // Exited already: nothing to name, and nothing to leave behind.
+        }
+    }
+
+    private static void StopOwner(string ownerFile)
+    {
+        try
+        {
+            var lines = File.Exists(ownerFile) ? File.ReadAllLines(ownerFile) : [];
+            if (lines.Length < 2 || !int.TryParse(lines[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !long.TryParse(lines[1], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks))
+            {
+                return;
+            }
+
+            using var process = Process.GetProcessById(id);
+            if (Math.Abs(process.StartTime.ToUniversalTime().Ticks - ticks) < TimeSpan.TicksPerSecond)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException or Win32Exception)
+        {
+            // Not running any more, or not ours to read: nothing left to stop.
         }
     }
 
