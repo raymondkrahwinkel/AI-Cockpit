@@ -1163,6 +1163,9 @@ bypass in Options does not apply to it, and there is no overload without it. Can
 `InvalidOperationException("Declined by the operator.")`; so does a pane that is not an agent session. A session in the
 middle of a turn gets the prompt after that turn. The decision is in the consent audit with your plugin id, the pane
 and a SHA-256 of the text. A plugin that calls it sets `minHostVersion` to `0.108.0`.
+It differs from `host.SendToSessionAsync`: that one types into a session without asking, on the strength of the
+`sessions.drive` capability the operator granted when the plugin loaded; this one asks the operator about every single
+prompt, so it is the one to use for text the operator has not already seen.
 
 `host.TimeEntries` is the host-owned log of the operator's own time. It supports manual entries, one persistent
 stopwatch, day-range reads, and the offered/booked lifecycle. It needs no capability because it exposes only the
