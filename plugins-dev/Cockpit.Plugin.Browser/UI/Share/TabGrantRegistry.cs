@@ -77,6 +77,17 @@ internal sealed class TabGrantRegistry
         }
     }
 
+    public IReadOnlyList<TabGrant> All
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _grants.Values];
+            }
+        }
+    }
+
     public IReadOnlyList<TabGrant> ForSession(string paneId)
     {
         lock (_gate)

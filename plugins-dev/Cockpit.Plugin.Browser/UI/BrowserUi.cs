@@ -79,6 +79,18 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         : place == BrowserPlace.Rail ? "Browser docked in the rail"
         : $"Browser · profile Raymond · {tabs} {(tabs == 1 ? "tab" : "tabs")}";
 
+    // AC-1714, mockup screen 7: what is shared, after the browser's own text.
+    internal static string? WithShared(string? text, IReadOnlyList<TabGrant> grants)
+    {
+        if (text is null || grants.Count == 0)
+        {
+            return text;
+        }
+
+        var tabs = grants.Select(grant => grant.TabId).Distinct().Count();
+        return $"{text} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
+    }
+
     private BrowserHome _Home(ICockpitUiHost host)
     {
         if (_home is not null)
@@ -97,8 +109,11 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }, share.Grants, tab => _ = share.ShareAsync(tab));
         var home = new BrowserHome(shell);
         home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
-        void ShowStatus() => host.SetStatusText(StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, _agents!.Showing, _agents.Tabs.Count));
+        void ShowStatus() => host.SetStatusText(WithShared(
+            StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, _agents!.Showing, _agents.Tabs.Count),
+            share.Grants.All));
         home.Changed += ShowStatus;
+        share.Grants.Changed += () => Avalonia.Threading.Dispatcher.UIThread.Post(ShowStatus);
         _agents!.Changed += ShowStatus;
         shell.Model.Changed += ShowStatus;
         shell.Model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(ShowStatus);

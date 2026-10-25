@@ -24,7 +24,7 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   caller, reads in-process through `ExecuteDevToolsMethod`, and writes each read to `consent-audit.jsonl` as a
   Bypassed line with `PreApprovedBy: tab grant <id>`. No tool touches cookies, storage, other tabs or DevTools.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
-  `browser-shared`, `browser-share-paused`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
+  `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## The agent profile (AC-1713)
 

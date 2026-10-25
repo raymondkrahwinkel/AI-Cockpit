@@ -58,6 +58,16 @@ internal static class BrowserScenes
                     HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
                 },
                 BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3, agentSide: true, agentTabs: 2)),
+            // AC-1714, mockup screen 7: a shared tab in the main window, with what is shared in the status bar.
+            ["browser-workspace-shared"] = () => (
+                new WorkspaceTypeRegistration(BrowserUi.WorkspaceTypeId, "Browser", _ => _Shell(BrowserPlace.Tab, share: Shared.Reading))
+                {
+                    IconKind = MaterialIconKind.Web,
+                    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
+                },
+                BrowserUi.WithShared(
+                    BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3),
+                    [new TabGrant("pane-1714", "AC-1714 statusline", "scene", "https://github.com", TabShareService.Watch)])),
         };
 
     private enum Shared
