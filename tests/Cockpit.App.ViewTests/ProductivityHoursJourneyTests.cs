@@ -246,8 +246,8 @@ public sealed class ProductivityHoursJourneyTests
                 ? [_Act(now.AddHours(-3), "cockpit")]
                 : [
                     .. Enumerable.Range(0, 6).Select(step => _Act(morning.AddMinutes(step * 5), "syn-portal")),
-                    _Act(morning.AddHours(1), "syn-api"),
-                    _Act(morning.AddHours(1).AddMinutes(5), "syn-api"),
+                    _Act(morning.AddHours(2), "syn-api"),
+                    _Act(morning.AddHours(2).AddMinutes(5), "syn-api"),
                     new(CockpitTimelineKind.Status, morning, "agent", "syn-api", null, null, CockpitTimelineStatus.Busy, null, null),
                     new(CockpitTimelineKind.Status, morning.AddMinutes(90), "agent", "syn-api", null, null, CockpitTimelineStatus.Idle, null, null),
                 ];
