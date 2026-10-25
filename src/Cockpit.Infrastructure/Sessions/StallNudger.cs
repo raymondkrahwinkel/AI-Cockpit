@@ -107,7 +107,7 @@ public sealed class StallNudger : ISingletonService, IDisposable
 
         lock (followed.Gate)
         {
-            followed.Closed = followed.Closed || _IsTool(toolName, "notify") || _IsTool(toolName, "start_run");
+            followed.Closed = _IsTool(toolName, "notify") || _IsTool(toolName, "start_run");
         }
     }
 
