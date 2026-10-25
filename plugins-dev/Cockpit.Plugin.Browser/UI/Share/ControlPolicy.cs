@@ -19,7 +19,7 @@ internal static class ControlPolicy
     // The very grant that authorized the action still stands, the tab is still on its origin, and for keys the focused
     // frame is on that origin too, so typing never lands in another site's iframe.
     public static bool MayAct(TabGrantRegistry grants, string paneId, string tabId, TabGrant grant, string? mainUrl, string? focusedUrl, bool needsFocus) =>
-        grants.Authorize(paneId, tabId, control: true) is not null
+        ReferenceEquals(grants.Authorize(paneId, tabId, control: true), grant)
         && SameOrigin(mainUrl, grant.Origin)
         && (needsFocus == false || SameOrigin(focusedUrl, grant.Origin));
 
