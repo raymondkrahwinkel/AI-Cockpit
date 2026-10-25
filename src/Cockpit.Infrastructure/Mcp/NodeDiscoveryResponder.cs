@@ -38,8 +38,9 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         NodeDiscoveryId discoveryId,
         NodePairingHost pairingHost,
         ILoggerFactory loggerFactory,
-        NodeLanOnboarding lanOnboarding)
-        : this(settings, visibility, discoveryId, pairingHost, loggerFactory, localMulticastInterface: null, lanOnboarding: lanOnboarding)
+        NodeLanOnboarding lanOnboarding,
+        IPAddress? localMulticastInterface = null)
+        : this(settings, visibility, discoveryId, pairingHost, loggerFactory, localMulticastInterface, lanOnboarding: lanOnboarding)
     {
     }
 
@@ -78,7 +79,7 @@ internal sealed class NodeDiscoveryResponder : IHostedService, ISingletonService
         {
             var client = new UdpClient();
             client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            client.Client.Bind(new IPEndPoint(IPAddress.Any, _port));
+            client.Client.Bind(new IPEndPoint(_localMulticastInterface ?? IPAddress.Any, _port));
             BoundPort = ((IPEndPoint)client.Client.LocalEndPoint!).Port;
 
             var group = IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup);

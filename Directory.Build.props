@@ -355,6 +355,11 @@
     <NoWarn>$(NoWarn);CS1591;CS1570;CS1573;CS1574;CS1734;CS0419</NoWarn>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Tests.csproj')) Or $([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Cockpit.Journeys.csproj'))">
+    <UseAppHost>false</UseAppHost>
+    <VSTestCLIRunSettings Condition="$([MSBuild]::IsOSPlatform('Windows'))">RunConfiguration.DotNetHostPath=$([System.IO.Path]::GetFullPath('$(MSBuildToolsPath)\..\..\dotnet.exe'))</VSTestCLIRunSettings>
+  </PropertyGroup>
+
   <!-- Blocks FluentAssertions from ever coming back (AC-372): a build error beats trusting a review to notice
        the package reference again. BannedSymbols.txt bans the whole namespace, not just AssertionExtensions,
        so a differently-named entry point (e.g. a future major version's API) is caught too. -->

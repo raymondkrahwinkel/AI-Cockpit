@@ -103,7 +103,11 @@ public sealed class CockpitBackend
     // Core and the no-frontend defaults, then Infrastructure and whatever `frontend` adds; the last registration wins,
     // so a desktop's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
     // so a plugin's ConfigureServices registers on top of all of it (#14).
-    public static CockpitBackend Build(ILoggerFactory loggerFactory, Action<IServiceCollection>? frontend = null, PluginStartup plugins = PluginStartup.None)
+    public static CockpitBackend Build(
+        ILoggerFactory loggerFactory,
+        Action<IServiceCollection>? frontend = null,
+        PluginStartup plugins = PluginStartup.None,
+        System.Net.IPAddress? nodeListenAddress = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILoggerFactory>(loggerFactory);
@@ -124,6 +128,10 @@ public sealed class CockpitBackend
         }
 
         frontend?.Invoke(services);
+        if (nodeListenAddress is not null)
+        {
+            services.AddSingleton(new NodeListenAddress(nodeListenAddress));
+        }
         if (plugins != PluginStartup.None)
         {
             _LoadPlugins(services, loggerFactory, plugins == PluginStartup.SafeMode, withoutFrontend: frontend is null);

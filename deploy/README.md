@@ -104,6 +104,8 @@ with `docker logs`, fix the owner, and start it again.
 
 One port: **20383** (the node door, HTTPS with a self-signed certificate). The log names the certificate to pin:
 
+`COCKPIT_NODE_LISTEN_ADDRESS` limits that door to one IP address; by default it listens on all IPv4 interfaces.
+
     Node listener for ... presents certificate fingerprint <SHA-256 hex>.
 
 `GET /healthz` on that port answers without a key: 200 or 503, with only each check's name and whether it holds. The

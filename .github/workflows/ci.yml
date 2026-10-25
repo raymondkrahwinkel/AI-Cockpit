@@ -279,6 +279,16 @@ jobs:
       - name: Guard's own tests
         run: python3 scripts/check-comment-length.test.py
 
+  # AC-1707: a wildcard listener in a test process triggers a per-worktree Windows Firewall prompt.
+  test-listener-loopback:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test listeners bind to loopback only
+        run: python3 scripts/check-test-loopback.py
+
   # AC-1423/AC-1424: the test suite is being cut down to journeys plus layer 2. A count that may only go down
   # is what keeps it from growing back while that happens. Baseline: scripts/test-count-baseline.txt.
   # AC-1614: the baseline holds ceilings, and a PR may not raise one above origin/main's.

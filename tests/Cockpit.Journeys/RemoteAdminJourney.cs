@@ -940,7 +940,7 @@ public sealed class RemoteAdminJourney
     {
         while (true)
         {
-            using var listener = new System.Net.Sockets.TcpListener(IPAddress.Any, 0);
+            using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             if (port > NodeEndpointSettings.McpPortOffset)
