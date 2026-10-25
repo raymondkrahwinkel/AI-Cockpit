@@ -39,6 +39,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         _control = control;
         _firstSessionsWorkspaceId = firstSessionsWorkspaceId;
         _isLive = isLive;
+        control.OperatorActed += action => OperatorActed?.Invoke(action);
     }
 
     // AC-1450: the session the desktop made and registered before its pane; until `Attach` the handle answers from its
@@ -112,6 +113,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     public string? ActiveProfileLabel => _pane?.ActiveProfileLabel;
 
     public string? ProjectId => _pane?.ProjectId;
+
+    public string? RunId => (_pane as SessionViewModel)?.RunId;
 
     // The flag the gateways filter on as "no agent here" is `ShowPluginHeaderItems`; a plain terminal is the only
     // pane that clears it, and it sets `IsTerminal` in the same breath (`TtyViewModel.LaunchTerminal`).
@@ -226,14 +229,21 @@ internal sealed partial class SessionPanelHandle : IHostedSession
             ? new SessionRowSnapshot(control.Rows, lastSeq())
             : (SessionRowSnapshot?)null);
 
-    // AC-1438: the host's fold as the pane last drew it, with its signals raised on the UI thread once drawn; a TTY
-    // pane and a plain terminal keep none, as the contract's defaults say.
-    public SessionLiveState LiveState => _pane is SessionViewModel sdk ? sdk.LiveState : SessionLiveState.None;
+    // AC-1438: the host's fold as the pane last drew it, with its signals raised on the UI thread once drawn. A TTY
+    // pane keeps no fold, only its status (AC-1717); a plain terminal keeps neither.
+    public SessionLiveState LiveState => _pane switch
+    {
+        SessionViewModel sdk => sdk.LiveState,
+        TtyViewModel { IsTerminal: false } tty => SessionLiveState.None with { Status = tty.SessionStatus },
+        _ => SessionLiveState.None,
+    };
 
     // AC-1450: held here rather than on the pane, so a listener that arrives before the pane does is not lost.
     public event Action<SessionLiveState>? LiveStateChanged;
 
     public event Action<SessionTurnEnd>? TurnEnded;
+
+    public event Action<SessionOperatorAction>? OperatorActed;
 
     public event Action? ToolProgressed;
 
@@ -254,6 +264,21 @@ internal sealed partial class SessionPanelHandle : IHostedSession
             sdk.TurnEnded += end => TurnEnded?.Invoke(end);
             sdk.ToolActivity += () => ToolProgressed?.Invoke();
             sdk.BackgroundTaskNotified += notice => BackgroundTaskNotified?.Invoke(notice);
+            if (_control is null)
+            {
+                sdk.Control.OperatorActed += action => OperatorActed?.Invoke(action);
+            }
+        }
+        else if (pane is TtyViewModel tty)
+        {
+            // AC-1717: the status TtyViewModel derives, so a TTY pane's busy/idle reaches the host's listeners too.
+            tty.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(SessionPanelViewModel.SessionStatus) && !tty.IsTerminal)
+                {
+                    LiveStateChanged?.Invoke(LiveState);
+                }
+            };
         }
 
         lock (_gate)

@@ -170,6 +170,9 @@
                                             </StackPanel>
                                             <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                            <TextBlock Text="{Binding CapabilitiesText}" IsVisible="{Binding HasCapabilities}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                             <TextBlock Text="{Binding FailureText}" IsVisible="{Binding HasFailure}"

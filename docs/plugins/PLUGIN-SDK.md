@@ -62,8 +62,9 @@ what a plugin may do; this describes what stops it, and — more usefully — wh
 ### The decision, and its date
 
 **Informed consent, not a sandbox (2026-07-28).** A plugin runs in-process with the same rights as the
-operator: your account, your file system, your network. There is no capability restriction, no per-API
-permission prompt, and no process isolation. .NET cannot give an in-process plugin a security boundary, so
+operator: your account, your file system, your network. There is no per-API permission prompt and no process
+isolation; capabilities are declared in the manifest and shown at consent, and one of them is enforced (below).
+Everything else a plugin can do, it can do without declaring it. .NET cannot give an in-process plugin a security boundary, so
 the choice was between moving plugins out-of-process behind a broker and being honest that there is no wall.
 The broker route was **declined** and is not a direction this design is working towards.
 
@@ -82,6 +83,13 @@ the protection, and why the list below of what is **not** covered is the more im
   assembly (`PluginClosureHash.OfInstalledFolderAsync`, verified on each discovery pass in
   `PluginDiscovery.cs`). Swapping a dependency re-prompts exactly as rebuilding the plugin does.
 - **The abstractions major-version gate.** A mismatch is refused outright, before any plugin code runs.
+- **Declared capabilities (host 0.110.0+, AC-1730).** `plugin.json` names ids from
+  [`CapabilityCatalog`](API-REFERENCE.md#capabilities) under `capabilities`. An id the host does not know keeps
+  the plugin from loading, with the id in the Plugins manager. Every declared id is shown, in the catalogue's
+  own sentence, in the consent dialog and the plugin list; since the closure hash covers `plugin.json`, adding
+  one later asks for consent again. Only `time.entries` is **enforced**: without it, `host.TimeEntries`
+  throws `UnauthorizedAccessException` naming the capability. The other ids are shown, not enforced — and
+  `host.Services` still resolves anything, which is point 2 below in another form.
 - **Mount authorization on the MCP endpoints the cockpit hosts for you.** A session reaches exactly the
   endpoints its own launch mounted for it, checked server-side on the already-verified caller identity and
   fail-closed (`McpEndpointAuthorization.Allows`, `SessionMcpMounts.IsMounted`). Before this landed, the
@@ -202,7 +210,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
 | Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
-| Dock panel | `host.AddDockPanel(registration)` | Registers a panel for the right-hand **dock rail**; it appears as a tab, and opening it builds the registration's own view. No per-instance context — build your own from `host.Storage`/`host.Sessions` if you need one. |
+| Dock panel | `host.AddDockPanel(registration)` | Registers a panel for the right-hand **dock rail**; it appears as a tab, and opening it builds the registration's own view — once, with `KeepAlive`, which keeps that instance across collapse and tab switches. `CanFloat` adds an undock button that moves the panel into its own window and back; the stand survives a restart (host 0.111.0). No per-instance context — build your own from `host.Storage`/`host.Sessions` if you need one. See [`DockPanelRegistration`](API-REFERENCE.md#dockpanelregistration). |
 | Companion tool | `host.AddCompanionTool(registration)` | Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory builds, handed that tool's own [`ICompanionToolContext`](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window) (storage, the session-observe surface, a refresh signal). See [Companion tool plugins](#companion-tool-plugins--a-mini-tool-in-the-pop-out-window). |
 | Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
@@ -257,6 +265,7 @@ public interface ICockpitHost
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
+    McpCaller? CurrentMcpCaller { get; }                        // who is behind the MCP call being handled (AC-1685)
     void AddProjectField(ProjectFieldRegistration registration); // a field on the project editor (AC-317)
     Task<string?> GetProjectFieldValueAsync(string key, string? paneId = null,
                                             CancellationToken cancellationToken = default); // and what it was set to
@@ -269,6 +278,7 @@ public interface ICockpitActions
     Task SetClipboardTextAsync(string text);
     Task InjectIntoActiveSessionAsync(string text); // SDK sessions: the input box · TTY sessions: the pty
     bool HasActiveSession { get; }
+    Task SendPromptToSessionAsync(string paneId, string prompt, string reason); // behind the host's card (AC-1724)
 }
 
 public interface IPluginStorage
@@ -773,6 +783,26 @@ pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-name
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
 
+### Who is calling your MCP tool {#who-is-calling-your-mcp-tool}
+
+A tool your plugin hosts in-process can ask who called it. `host.CurrentMcpCaller` holds the caller's `PaneId`,
+its `Kind` (`Assistant`, `Session` or `Remote`), and `ViaConnectKeyLabel` for a remote caller that used a connect
+key. The host reads all of it from the request's own credential, never from the tool's arguments, so a session
+cannot pass itself off as the assistant. The operator's UI reaches your plugin through its own channel, not
+through MCP, so that path never needs this check.
+
+It is null outside an MCP call and on a host older than `0.109.0`. A tool meant only for the owner treats null as
+"unknown" and refuses (fail closed):
+
+```csharp
+if (host.CurrentMcpCaller is not { Kind: McpCallerKind.Assistant })
+{
+    return "Only the owner's assistant may create a card.";
+}
+```
+
+A plugin that reads it sets `minHostVersion` to `0.109.0`.
+
 ## Project fields — link a project to your side of the world {#project-fields--link-a-project-to-your-side-of-the-world}
 
 A cockpit **project** says what a session works on. Your plugin knows that same thing under a different name: a
@@ -1005,6 +1035,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `uiEntryType` | no | Fully-qualified UI entry type; omit to let the host find the single `ICockpitPluginUi` in the UI assembly. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
+| `capabilities` | no | Ids from [`CapabilityCatalog`](API-REFERENCE.md#capabilities) the plugin asks for (`["time.entries"]`), shown at consent and in the Plugins manager. An unknown id keeps the plugin from loading. `time.entries` is required for `host.TimeEntries`. Host 0.110.0+; see [the trust boundary](#the-trust-boundary). |
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
 | `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. This covers a host **theme resource or control style class** your plugin looks up by name too, not just an SDK member — see "Theme tokens and control classes" below; that dependency has no compiler to catch you if you forget it. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
@@ -1113,7 +1144,7 @@ than warns.
 
 ### Side-menu icons and badge tones
 
-SDK 3.19.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
+SDK 3.23.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
 semantic tone. Existing launchers stay accent-blue; the new overload is additive.
 
 ```csharp
@@ -1123,7 +1154,7 @@ badge.Tone = SideMenuButtonBadgeTone.Success;
 ```
 
 The host owns the icon and pill rendering so plugins do not embed theme-specific colors. A plugin using the
-icon overload or `Tone` sets `minHostVersion` to `0.108.0`.
+icon overload or `Tone` sets `minHostVersion` to `0.112.0`.
 
 ### Theme tokens and control classes: declare them, nothing derives them for you {#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you}
 
@@ -1169,9 +1200,21 @@ app-wide styles or `ResourceDictionary` merges; scope any styling to your own ro
 
 ## Storage and actions {#storage-and-actions}
 
+`host.Actions.SendPromptToSessionAsync(paneId, prompt, reason)` submits a turn in a running agent session on SDK and
+TTY alike. The host first shows its own confirmation card on that session, naming your plugin, the session, your
+`reason` and the prompt word for word. Nothing you pass can skip it: it is never remembered, the operator's consent
+bypass in Options does not apply to it, and there is no overload without it. Cancel throws
+`InvalidOperationException("Declined by the operator.")`; so does a pane that is not an agent session. A session in the
+middle of a turn gets the prompt after that turn. The decision is in the consent audit with your plugin id, the pane
+and a SHA-256 of the text. A plugin that calls it sets `minHostVersion` to `0.108.0`.
+It differs from `host.SendToSessionAsync`: that one types into a session without asking, on the strength of the
+`sessions.drive` capability the operator granted when the plugin loaded; this one asks the operator about every single
+prompt, so it is the one to use for text the operator has not already seen.
+
 `host.TimeEntries` is the host-owned log of the operator's own time. It supports manual entries, one persistent
-stopwatch, day-range reads, and the offered/booked lifecycle. It needs no capability because it exposes only the
-operator's own entries, not the session timeline. A plugin that uses it sets `minHostVersion` to `0.107.0`.
+stopwatch, day-range reads, and the offered/booked lifecycle. It needs `"capabilities": ["time.entries"]` in
+`plugin.json` (AC-1730): without it the getter throws `UnauthorizedAccessException`. A plugin that uses it sets
+`minHostVersion` to `0.110.0`.
 
 ```csharp
 public void Initialize(ICockpitHost host)

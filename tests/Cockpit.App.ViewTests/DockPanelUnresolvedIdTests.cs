@@ -18,35 +18,6 @@ public sealed class DockPanelUnresolvedIdTests
         new(id, "T", MaterialIconKind.ViewDashboardOutline, () => new TextBlock { Text = id });
 
     [Fact]
-    public async Task UnresolvedOpenPanelId_CollapsesTheRail_WithNoContent()
-    {
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var panels = new DockPanelRegistry();
-            panels.Register(_Panel("other"));
-            var cockpit = new CockpitViewModel(panels) { OpenDockPanelId = "missing" };
-
-            var main = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };
-            main.Show();
-            main.UpdateLayout();
-            await Task.Delay(50);
-
-            try
-            {
-                var content = main.GetVisualDescendants().OfType<ContentControl>().First(c => c.Name == "DockPanelContent");
-                Assert.Null(content.Content);
-
-                var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "PanelsRoot").ColumnDefinitions[4];
-                Assert.Equal(40, rail.Width.Value);
-            }
-            finally
-            {
-                main.Close();
-            }
-        });
-    }
-
-    [Fact]
     public async Task ALateRegistrationForTheOpenId_ExpandsTheRail_AndFillsTheContent()
     {
         await HeadlessAvalonia.RunAsync(async () =>
@@ -61,8 +32,11 @@ public sealed class DockPanelUnresolvedIdTests
 
             try
             {
+                // Unresolved: the rail stays collapsed with nothing in it (criterion 6) until the late registration.
                 var rail = main.GetVisualDescendants().OfType<Grid>().First(g => g.Name == "PanelsRoot").ColumnDefinitions[4];
                 Assert.Equal(40, rail.Width.Value);
+                var content = main.GetVisualDescendants().OfType<ContentControl>().First(c => c.Name == "DockPanelContent");
+                Assert.Null(content.Content);
 
                 // DockPanelRegistry.Changed fires OnPropertyChanged(DockPanels)/(HasDockPanels) synchronously off
                 // Register, and the bound rail width reacts to that on the same call stack — UpdateLayout alone
@@ -71,7 +45,6 @@ public sealed class DockPanelUnresolvedIdTests
                 main.UpdateLayout();
 
                 Assert.Equal(400, rail.Width.Value);
-                var content = main.GetVisualDescendants().OfType<ContentControl>().First(c => c.Name == "DockPanelContent");
                 Assert.IsType<TextBlock>(content.Content);
             }
             finally

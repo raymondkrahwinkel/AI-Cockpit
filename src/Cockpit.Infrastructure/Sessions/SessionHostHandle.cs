@@ -81,6 +81,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         host.TurnFailedToStart += _OnTurnFailedToStart;
         host.BusyChanged += _NoteStateChanged;
         host.LiveStateChanged += liveState => _RaiseOutsideTheLock(() => LiveStateChanged?.Invoke(liveState));
+        host.OperatorActed += action => _RaiseOutsideTheLock(() => OperatorActed?.Invoke(action));
         host.TurnEnded += end =>
         {
             // A turn's images go before the next queued turn can start and take its own (AC-116).
@@ -222,7 +223,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
                     return false;
                 }
 
-                sending = _host.SubmitAsync(queued);
+                sending = _host.SubmitForTheAgentAsync(queued);
             }
 
             _RaiseHeldSignals();
@@ -468,6 +469,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     public event Action<SessionToolCall>? ToolActivityProduced;
 
     public event Action<SessionLiveState>? LiveStateChanged;
+
+    public event Action<SessionOperatorAction>? OperatorActed;
 
     public event Action<SessionTurnEnd>? TurnEnded;
 

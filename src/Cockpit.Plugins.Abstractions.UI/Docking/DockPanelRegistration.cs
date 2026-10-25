@@ -18,7 +18,7 @@ namespace Cockpit.Plugins.Abstractions.Docking;
 /// Shown above the title on the rail tab; required, since the rail has no text fallback.
 /// </param>
 /// <param name="CreateView">
-/// Builds the panel's content, on the UI thread, once each time it is opened.
+/// Builds the panel's content, on the UI thread: each time it is opened, or once when <see cref="KeepAlive"/> is set.
 /// </param>
 public sealed record DockPanelRegistration(string Id, string Title, MaterialIconKind IconKind, Func<Control> CreateView)
 {
@@ -26,4 +26,18 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
     /// An optional count on the tab, for what in the panel waits on the operator; null draws none.
     /// </summary>
     public DockPanelBadge? Badge { get; init; }
+
+    /// <summary>
+    /// Builds the view once and keeps that instance across collapsing the rail, switching tabs and moving between
+    /// the rail and its own window — for a view whose state (a page, a playing video) must outlive being hidden.
+    /// Host 0.111.0 and later; an older host ignores it and rebuilds on every opening.
+    /// </summary>
+    public bool KeepAlive { get; init; }
+
+    /// <summary>
+    /// Offers an undock button in the rail, which moves the panel into its own window and back. The stand and the
+    /// window's bounds survive a restart. Combine with <see cref="KeepAlive"/> to move the same view instance.
+    /// Host 0.111.0 and later; an older host ignores it.
+    /// </summary>
+    public bool CanFloat { get; init; }
 }
