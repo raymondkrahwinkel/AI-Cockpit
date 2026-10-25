@@ -77,6 +77,10 @@ public sealed class DockPanelKeepAliveFloatTests
                 Assert.NotNull(saved);
                 var restarted = _Cockpit(_LayoutStore(saved), _Panels());
                 Assert.True(restarted.IsDockPanelFloating(KeptId));
+
+                // The load replaces the default stand, where the assistant floats: docked in the file, docked after it.
+                Assert.True(cockpit.AssistantDocked);
+                Assert.True(restarted.AssistantDocked);
                 restarted.DockHost.RestoreFloatingWindows();
                 var reopened = restarted.DockHost.WindowFor(KeptId);
                 Assert.NotNull(reopened);
