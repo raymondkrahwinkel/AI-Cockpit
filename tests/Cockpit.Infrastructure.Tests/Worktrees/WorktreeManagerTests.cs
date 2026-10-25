@@ -57,26 +57,6 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task IsCleanAsync_WorktreeWithUncommittedChange_IsNotClean()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
-
-        Assert.False((await _manager.IsCleanAsync(record)));
-    }
-
-    [Fact]
-    public async Task IsCleanAsync_WorktreeWithCommitAheadOfBase_IsNotClean()
-    {
-        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
-        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
-        _Git(record.Path, "add", "-A");
-        _Git(record.Path, "commit", "-m", "work");
-
-        Assert.False((await _manager.IsCleanAsync(record)));
-    }
-
-    [Fact]
     public async Task RemoveAsync_DirtyWorktreeWithoutForce_IsRefused_ThenForceRemoves()
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);

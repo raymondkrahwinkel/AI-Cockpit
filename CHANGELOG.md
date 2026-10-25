@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: the session timeline and the usage history keep their raw lines for 90 days; older days are folded
+  into one line per session and day (agent time, waiting time, operator actions, tokens, reported cost and turns)
+  that stays. Your own time entries are never folded or removed.
 - added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
   so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
 - added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**

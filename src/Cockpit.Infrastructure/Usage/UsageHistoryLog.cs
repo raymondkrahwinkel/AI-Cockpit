@@ -95,6 +95,20 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
         }
     }
 
+    // AC-1719: retention rewrites the live and rollover files; under the rotation lock no append lands in between.
+    internal async Task RunExclusiveAsync(Func<Task> action, CancellationToken cancellationToken = default)
+    {
+        await _rotationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            _rotationLock.Release();
+        }
+    }
+
     // Reads the live file, then continues into the rollover file if that didn't fill `limit` — otherwise
     // usage would look like it dropped to zero right after every rotation. Consent/delegation need none of
     // this since they never roll, so their inherited `JsonlAuditLog{T}.ReadRecentAsync` already reads everything.
