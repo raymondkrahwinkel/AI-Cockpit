@@ -111,6 +111,7 @@ public sealed class AssistantChannelAccess
     /// </summary>
     public bool IsAllowed(string? userId) =>
         !string.IsNullOrWhiteSpace(userId)
+        && Audience == AssistantChannelAudience.SingleUser
         && _userIds.Count == 1
         && _userIds.Contains(userId.Trim());
 
