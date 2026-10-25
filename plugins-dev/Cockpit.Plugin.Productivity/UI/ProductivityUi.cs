@@ -38,7 +38,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             OverviewWorkspaceTypeId,
             "Overzicht",
-            _ => new OverviewWorkspaceBody(_overviewController))
+            _ => new OverviewWorkspaceBody(_overviewController, () => _Open(host)))
         {
             IconKind = MaterialIconKind.ViewDashboardOutline,
             Description = "Bekijk jouw tijd, agents, tokens en kosten per project, ticket en sessie.",

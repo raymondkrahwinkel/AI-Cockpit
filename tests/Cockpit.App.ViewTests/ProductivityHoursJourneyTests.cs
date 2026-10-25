@@ -114,8 +114,28 @@ public sealed class ProductivityHoursJourneyTests
 
         var sidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
         var menu = new PluginLauncherButton("Uren", () => { }, badge: badge, iconKind: MaterialIconKind.ClockOutline);
-        var sidebarSceneBody = new StackPanel { Spacing = 12, Children = { menu, sidebar } };
-        using var sidebarScene = RenderedScene.Show(sidebarSceneBody, 360, 560);
+        var overviewMenu = new PluginLauncherButton("Overzicht", () => { }, iconKind: MaterialIconKind.ViewDashboardOutline);
+        var sidebarSceneBody = new StackPanel
+        {
+            Margin = new Thickness(8, 12),
+            Spacing = 12,
+            Children =
+            {
+                new Button { Content = "+ New session", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch, Classes = { "Accent" } },
+                new TextBlock { Text = "Sessies · 5" },
+                new TextBlock { Text = "●  ai-cockpit · AC-1665\n    bouwen\n\n●  syn-portal · SYN-412\n    tests draaien\n\n●  werkagent · Synvolution\n    idle\n\n●  depot · notities\n    idle\n\n●  syn-api · SYN-398\n    idle" },
+                sidebar,
+                new TextBlock { Text = "Productiviteit" },
+                menu,
+                overviewMenu,
+                new Border
+                {
+                    Padding = new Thickness(8),
+                    Child = new TextBlock { Text = "Één item Uren: snelle invoer, dan Dag of Week. De stopwatch staat in een eigen zijbalksectie.", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                },
+            },
+        };
+        using var sidebarScene = RenderedScene.Show(sidebarSceneBody, 220, 824);
         await _Until(() => _Texts(sidebar).Any(text => text.Contains("Uitwerking voorstel", StringComparison.Ordinal)), "the sidebar stopwatch");
         _Render(sidebarScene.Window, "09-menu-zijbalk.png");
         _Click(sidebar, "StopStopwatch");
@@ -164,14 +184,12 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Equal(screen.GetVisualDescendants().OfType<Grid>().Count(grid => grid.Name == "ProposalRow") + 4, table.Length);
 
         var overviewFrom = _Local(2026, 10, 19);
-        timeEntries.Seed(new CockpitTimeEntry(
-            Guid.NewGuid(),
-            "Weekstart met het team",
-            overviewFrom.AddHours(3).AddMinutes(5),
-            TimeSpan.FromHours(5).Add(TimeSpan.FromMinutes(15)),
-            "syn-portal",
-            CockpitTimeEntrySource.Duration,
-            CockpitTimeEntryStatus.Open));
+        timeEntries.Seed(
+            new CockpitTimeEntry(Guid.NewGuid(), "Weekstart met het team", overviewFrom.AddHours(7).AddMinutes(20), TimeSpan.FromHours(1), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new CockpitTimeEntry(Guid.NewGuid(), "Planning", overviewFrom.AddDays(1).AddHours(7), TimeSpan.FromMinutes(15), null, CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new CockpitTimeEntry(Guid.NewGuid(), "Portal uitwerken", overviewFrom.AddDays(2).AddHours(4), TimeSpan.FromHours(2).Add(TimeSpan.FromMinutes(30)), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new CockpitTimeEntry(Guid.NewGuid(), "API review", overviewFrom.AddDays(3).AddHours(5), TimeSpan.FromMinutes(30), "syn-api", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new CockpitTimeEntry(Guid.NewGuid(), "Week afronden", overviewFrom.AddDays(4).AddHours(12).AddMinutes(30), TimeSpan.FromHours(1), "ai-cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open));
         var overviewPayload = JsonSerializer.SerializeToElement(new
         {
             From = overviewFrom,
@@ -190,7 +208,7 @@ public sealed class ProductivityHoursJourneyTests
         (openOverview ?? throw new InvalidOperationException("No Overzicht button."))();
         await ui.Received(1).OpenWorkspaceAsync("workspace.productivity.overview");
         var overviewScreen = workspaces["workspace.productivity.overview"].CreateBody(Substitute.For<IWorkspaceContext>());
-        using var overviewScene = RenderedScene.Show(overviewScreen, 1280, 900);
+        using var overviewScene = RenderedScene.Show(overviewScreen, 1280, 1000);
         await _Until(
             () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "31u00",
             "the week overview");
@@ -201,6 +219,19 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
         Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
         Assert.Contains("geen prijs", _Texts(overviewScreen));
+        _Control<Button>(overviewScreen, "OpenHoursTab");
+        _Control<Button>(overviewScreen, "OverviewTab");
+        _Control<Button>(overviewScreen, "PreviousOverviewRange");
+        _Control<Button>(overviewScreen, "NextOverviewRange");
+        _Control<Button>(overviewScreen, "AddOverviewEntry");
+        _Control<Control>(overviewScreen, "DailyOverviewChart");
+        Assert.Equal(5, overviewScreen.GetVisualDescendants().OfType<Border>().Count(border => border.Name == "OverviewTileCard"));
+        var projectScales = overviewScreen.GetVisualDescendants().OfType<Grid>().Where(grid => grid.Name == "ProjectBarScale").ToList();
+        Assert.True(projectScales.Select(grid => grid.ColumnDefinitions[0].Width.Value).Distinct().Count() > 1);
+        Assert.True(overviewScreen.GetVisualDescendants().OfType<Control>().Count(control => control.Name == "OverviewEntryProjectDot") >= 3);
+        Assert.Contains("1:00", _Texts(overviewScreen));
+        Assert.Contains("personal · opus", _Texts(overviewScreen));
+        Assert.Contains("work · sonnet", _Texts(overviewScreen));
         _Render(overviewScene.Window, "08-overzicht.png");
 
         _Click(overviewScreen, "IncludeAgent");
@@ -209,16 +240,18 @@ public sealed class ProductivityHoursJourneyTests
             "the overview including agent time outside your own time");
         _Render(overviewScene.Window, "04-overzicht-plus-agent.png");
 
+        _Click(overviewScreen, "YourTimeOnly");
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = overviewFrom;
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "12u20",
+            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "8u05",
             "the one-day custom overview");
         Assert.Equal("8u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
         Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
         _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
 
+        _Click(overviewScreen, "IncludeAgent");
         var historicalDay = _Local(2025, 1, 6);
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
@@ -441,12 +474,14 @@ public sealed class ProductivityHoursJourneyTests
             _Attention(lines, monday.AddDays(3).AddHours(10), 82, "depot", "AC-252");
             _Busy(lines, "AC-1665 bouwen", "ai-cockpit", monday.AddDays(1).AddHours(8), monday.AddDays(1).AddHours(17).AddMinutes(42));
             _Busy(lines, "AC-1665 bouwen", "syn-api", monday.AddDays(2).AddHours(8), monday.AddDays(2).AddHours(9).AddMinutes(48));
-            _Busy(lines, "SYN-412 tests", "syn-portal", monday.AddDays(4), monday.AddDays(4).AddHours(12).AddMinutes(10));
+            _Busy(lines, "SYN-412 tests", "syn-portal", monday.AddHours(2), monday.AddHours(3));
+            _Busy(lines, "SYN-412 tests", "syn-portal", monday.AddDays(3).AddHours(15), monday.AddDays(3).AddHours(17));
+            _Busy(lines, "SYN-412 tests", "syn-portal", monday.AddDays(4), monday.AddDays(4).AddHours(9).AddMinutes(10));
             CockpitUsageDelta[] usage =
             [
-                new("AC-1665 bouwen", monday.AddDays(1).AddHours(18), "run-ac", "claude-opus-4-1", 120000, 22000, 45000, 3000, 121, 18),
-                new("SYN-412 tests", monday.AddDays(4).AddHours(13), "run-syn", "claude-sonnet-4-5", 64000, 12000, 18000, 1000, 63.2, 9),
-                new("SYN-398 refactor", monday.AddDays(3).AddHours(14), "run-codex", "gpt-5-codex", 48000, 9000, 11000, 0, 0, 7),
+                new("AC-1665 bouwen", monday.AddDays(1).AddHours(18), "run-ac", "personal · opus", 120000, 22000, 45000, 3000, 121, 18),
+                new("SYN-412 tests", monday.AddDays(4).AddHours(13), "run-syn", "work · sonnet", 64000, 12000, 18000, 1000, 63.2, 9),
+                new("SYN-398 refactor", monday.AddDays(3).AddHours(14), "run-codex", "work · codex", 48000, 9000, 11000, 0, 0, 7),
             ];
             return new CockpitTimeline(
                 [.. lines.Where(line => line.At >= from && line.At < to)],

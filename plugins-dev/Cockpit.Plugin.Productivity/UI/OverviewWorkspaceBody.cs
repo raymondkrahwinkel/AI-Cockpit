@@ -16,11 +16,13 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private static readonly Color Agent = Color.Parse("#22C7DF");
 
     private readonly OverviewController _controller;
+    private readonly Action _openHours;
     private readonly StackPanel _body = new() { Spacing = 12, Margin = new Thickness(18, 14) };
 
-    public OverviewWorkspaceBody(OverviewController controller)
+    public OverviewWorkspaceBody(OverviewController controller, Action openHours)
     {
         _controller = controller;
+        _openHours = openHours;
         Content = new ScrollViewer { Content = _body };
         _controller.Changed += _Render;
         DetachedFromVisualTree += (_, _) => _controller.Changed -= _Render;
@@ -31,7 +33,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private void _Render()
     {
         _body.Children.Clear();
-        _body.Children.Add(_Header());
+        _body.Children.Add(_Tabs());
         _body.Children.Add(_RangeCard());
         if (_controller.Error is { } error)
         {
@@ -51,16 +53,19 @@ internal sealed class OverviewWorkspaceBody : UserControl
         _body.Children.Add(_Tickets(snapshot));
     }
 
-    private Control _Header()
+    private Control _Tabs()
     {
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        row.Children.Add(new TextBlock
+        var hours = new Button { Name = "OpenHoursTab", Content = "Uren", Classes = { "Compact" } };
+        hours.Click += (_, _) => _openHours();
+        var overview = new Button { Name = "OverviewTab", Content = "Overzicht", Classes = { "Compact", "Accent" } };
+        var tabs = new StackPanel
         {
-            Text = "Overzicht",
-            FontSize = 19,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Children = { hours, overview },
+        };
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        row.Children.Add(tabs);
         var today = Ui.Pill($"vandaag · {DateTimeOffset.Now.ToString("ddd d MMM", Dutch)}", "CockpitTextSecondaryBrush", "CockpitInsetBgBrush");
         Grid.SetColumn(today, 1);
         row.Children.Add(today);
@@ -75,18 +80,38 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Height = 38,
             Ranges = ["Dag", "Werkweek", "Week", "Maand", "Eigen bereik"],
             SelectedRange = _controller.SelectedRange,
-            HorizontalAlignment = HorizontalAlignment.Left,
             Width = 520,
         };
         picker.SelectedRangeChanged += async (_, range) => await _controller.SelectRangeAsync(range);
-        picker.Previous += async (_, _) => await _controller.MoveAsync(-1);
-        picker.Next += async (_, _) => await _controller.MoveAsync(1);
+        var pickerClip = new Grid
+        {
+            Width = 520,
+            Height = 38,
+        };
+        pickerClip.Children.Add(picker);
+        var leftCover = new Border { Width = 32, HorizontalAlignment = HorizontalAlignment.Left };
+        leftCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
+        pickerClip.Children.Add(leftCover);
+        var rightCover = new Border { Width = 32, HorizontalAlignment = HorizontalAlignment.Right };
+        rightCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
+        pickerClip.Children.Add(rightCover);
         var dates = new TextBlock
         {
             Text = $"{_controller.From.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} – {_controller.To.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM yyyy", Dutch)}",
             FontSize = 12.5,
             FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
+        };
+        var previous = new Button { Name = "PreviousOverviewRange", Content = "‹", Classes = { "Compact" } };
+        previous.Click += async (_, _) => await _controller.MoveAsync(-1);
+        var next = new Button { Name = "NextOverviewRange", Content = "›", Classes = { "Compact" } };
+        next.Click += async (_, _) => await _controller.MoveAsync(1);
+        var dateNavigation = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { previous, dates, next },
         };
         var yours = new Button { Name = "YourTimeOnly", Content = "Jouw tijd", Classes = { "Compact" } };
         var withAgent = new Button { Name = "IncludeAgent", Content = "+ agent zonder jou", Classes = { "Compact" } };
@@ -114,11 +139,11 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 withAgent,
             },
         };
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
-        row.Children.Add(picker);
-        Grid.SetColumn(dates, 2);
-        row.Children.Add(dates);
-        Grid.SetColumn(basis, 3);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
+        row.Children.Add(pickerClip);
+        Grid.SetColumn(dateNavigation, 1);
+        row.Children.Add(dateNavigation);
+        Grid.SetColumn(basis, 2);
         row.Children.Add(basis);
         var customFrom = new DatePicker
         {
@@ -211,9 +236,18 @@ internal sealed class OverviewWorkspaceBody : UserControl
         };
         for (var index = 0; index < values.Length; index++)
         {
-            values[index].Height = 96;
-            Grid.SetColumn(values[index], index);
-            tiles.Children.Add(values[index]);
+            var card = new Border
+            {
+                Name = "OverviewTileCard",
+                Height = 96,
+                Child = values[index],
+                CornerRadius = new CornerRadius(8),
+                BorderThickness = new Thickness(1),
+            };
+            card.Themed(BackgroundProperty, "CockpitPanelBgBrush");
+            card.Themed(Border.BorderBrushProperty, "CockpitHairlineBrush");
+            Grid.SetColumn(card, index);
+            tiles.Children.Add(card);
         }
 
         return tiles;
@@ -263,7 +297,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private static Control _Charts(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
-        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("3*,2*"), ColumnSpacing = 12 };
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("11*,9*"), ColumnSpacing = 12 };
         columns.Children.Add(_DailyChart(snapshot));
         var right = new StackPanel { Spacing = 12, Children = { _Projects(snapshot, includeAgent), _Sessions(snapshot) } };
         Grid.SetColumn(right, 1);
@@ -273,18 +307,18 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private static Control _DailyChart(ProductivityOverviewSnapshot snapshot)
     {
-        var chart = new GroupedBarChartControl
+        var chart = new OverviewDailyChartControl
         {
+            Name = "DailyOverviewChart",
             Height = 280,
-            FirstColor = Lavender,
-            SecondColor = Agent,
             Items =
             [
                 .. snapshot.Days.Select(day =>
                 {
-                    return new GroupedBarDatum(
+                    return new OverviewDailyDatum(
                         day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch),
-                        day.YourTime.TotalHours,
+                        (day.Attention.Measured - day.Attention.Overlap + day.HistoricalMeasured).TotalHours,
+                        day.Attention.Own.TotalHours,
                         day.Attention.AgentTime.TotalHours);
                 }),
             ],
@@ -343,6 +377,10 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private static Control _Projects(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
+        var projects = _ProjectRows(snapshot, includeAgent);
+        var maximum = projects.Count == 0
+            ? 1
+            : projects.Max(project => (project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero)).TotalMinutes);
         var body = new StackPanel
         {
             Spacing = 7,
@@ -352,7 +390,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 _ProjectLegend(),
             },
         };
-        foreach (var project in _ProjectRows(snapshot, includeAgent))
+        foreach (var project in projects)
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*,52"), ColumnSpacing = 8 };
             row.Children.Add(new StackPanel
@@ -375,17 +413,23 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 segments.Add(new ChartSegment("agent zonder jou", project.Agent.TotalMinutes, Agent));
             }
 
+            var totalTime = project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero);
             var chart = new HorizontalBarChartControl
             {
-                Height = 34,
+                Height = 30,
+                MinWidth = 25,
                 Segments = segments,
                 TooltipText = project.Label,
             };
-            Grid.SetColumn(chart, 1);
-            row.Children.Add(chart);
+            var scale = new Grid { Name = "ProjectBarScale" };
+            scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(1, totalTime.TotalMinutes), GridUnitType.Star)));
+            scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(0, maximum - totalTime.TotalMinutes), GridUnitType.Star)));
+            scale.Children.Add(chart);
+            Grid.SetColumn(scale, 1);
+            row.Children.Add(scale);
             var total = new TextBlock
             {
-                Text = Ui.Duration(project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero)),
+                Text = Ui.Duration(totalTime),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 FontWeight = FontWeight.SemiBold,
             };
@@ -436,7 +480,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Children =
             {
                 new TextBlock { Text = "Agents", FontSize = 15, FontWeight = FontWeight.SemiBold },
-                _TableHead(["Sessie", "Profiel", "Actief", "Zonder jou", "Tokens", "Kosten"], "2*,*,70,80,80,80"),
+                _TableHead(["Sessie", "Profiel", "Actief", "Zonder jou", "Tokens", "Kosten"], "120,104,58,68,58,66"),
             },
         };
         var active = snapshot.Attention.Agents
@@ -476,7 +520,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                     _Tokens(tokens),
                     hasUnpriced ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
-                "2*,*,70,80,80,80"));
+                "120,104,58,68,58,66"));
         }
 
         if (sessions.Count == 0)
@@ -496,28 +540,52 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private static long _TokenCount(Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimelineDay day) =>
         (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens;
 
-    private static Control _Entries(ProductivityOverviewSnapshot snapshot)
+    private Control _Entries(ProductivityOverviewSnapshot snapshot)
     {
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        heading.Children.Add(new TextBlock { Text = "Eigen regels deze week", FontSize = 15, FontWeight = FontWeight.SemiBold });
+        var add = new Button { Name = "AddOverviewEntry", Content = "+ Regel", Classes = { "Compact" } };
+        add.Click += (_, _) => _openHours();
+        Grid.SetColumn(add, 1);
+        heading.Children.Add(add);
         var body = new StackPanel
         {
             Spacing = 6,
             Children =
             {
-                new TextBlock { Text = "Eigen regels deze week", FontSize = 15, FontWeight = FontWeight.SemiBold },
+                heading,
                 _TableHead(["Dag", "Omschrijving", "Project", "Duur", "Status"], "80,*,160,70,90"),
             },
         };
+        var projects = snapshot.Projects.ToDictionary(project => project.Id, project => project.Name, StringComparer.Ordinal);
         foreach (var entry in snapshot.Entries.OrderBy(entry => entry.StartedAt))
         {
-            body.Children.Add(_TableRow(
-                [
-                    entry.StartedAt.ToLocalTime().ToString("ddd d", Dutch),
-                    entry.Description,
-                    entry.ProjectId ?? "geen project",
-                    Ui.Duration(entry.Duration),
-                    Ui.Status(entry),
-                ],
-                "80,*,160,70,90"));
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("80,*,160,70,90"), ColumnSpacing = 8 };
+            _AddCell(row, 0, entry.StartedAt.ToLocalTime().ToString("ddd d", Dutch));
+            _AddCell(row, 1, entry.Description);
+            var projectId = entry.ProjectId ?? string.Empty;
+            var project = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new Avalonia.Controls.Shapes.Ellipse
+                    {
+                        Name = "OverviewEntryProjectDot",
+                        Width = 8,
+                        Height = 8,
+                        Fill = MeasuredTimeCard.ProjectBrush(projectId),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    new TextBlock { Text = projectId.Length == 0 ? "geen project" : projects.GetValueOrDefault(projectId, projectId), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
+                },
+            };
+            Grid.SetColumn(project, 2);
+            row.Children.Add(project);
+            _AddCell(row, 3, _ClockDuration(entry.Duration));
+            _AddCell(row, 4, Ui.Status(entry));
+            body.Children.Add(_TableBorder(row));
         }
 
         if (snapshot.Entries.Count == 0)
@@ -577,12 +645,94 @@ internal sealed class OverviewWorkspaceBody : UserControl
             row.Children.Add(value);
         }
 
-        return new Border
+        return _TableBorder(row);
+    }
+
+    private static void _AddCell(Grid row, int column, string text)
+    {
+        var value = new TextBlock { Text = text, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+        Grid.SetColumn(value, column);
+        row.Children.Add(value);
+    }
+
+    private static Border _TableBorder(Control child) =>
+        new Border
         {
-            Child = row,
+            Child = child,
             BorderThickness = new Thickness(0, 0, 0, 1),
             Padding = new Thickness(0, 5),
         }.Themed(Border.BorderBrushProperty, "CockpitHairlineSoftBrush");
+
+    private static string _ClockDuration(TimeSpan duration) =>
+        $"{(int)duration.TotalHours}:{duration.Minutes:00}";
+
+    private sealed record OverviewDailyDatum(string Label, double Measured, double Own, double Agent);
+
+    private sealed class OverviewDailyChartControl : ChartControl
+    {
+        public IReadOnlyList<OverviewDailyDatum> Items { get; init; } = [];
+
+        public override void Render(DrawingContext context)
+        {
+            base.Render(context);
+            if (Items.Count == 0 || Bounds.Width < 100 || Bounds.Height < 100)
+            {
+                Empty(context, Bounds);
+                return;
+            }
+
+            const double left = 38;
+            const double top = 24;
+            const double bottom = 28;
+            var plotHeight = Bounds.Height - top - bottom;
+            var maximum = Math.Max(10, Math.Ceiling(Items.Max(item => Math.Max(item.Measured + item.Own, item.Agent))));
+            var muted = Brush("ThemeForegroundLowBrush", Brushes.Gray);
+            var foreground = Brush("ThemeForegroundBrush", Brushes.Black);
+            var gridPen = new Pen(Brush("CockpitHairlineSoftBrush", Brushes.DimGray), 1);
+            for (var step = 0; step <= 4; step++)
+            {
+                var value = maximum * step / 4;
+                var y = top + plotHeight - (plotHeight * step / 4);
+                context.DrawLine(gridPen, new Point(left, y), new Point(Bounds.Width - 8, y));
+                var scale = new FormattedText($"{value:0.#}u", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, muted);
+                context.DrawText(scale, new Point(2, y - scale.Height / 2));
+            }
+
+            var group = (Bounds.Width - left - 8) / Items.Count;
+            for (var index = 0; index < Items.Count; index++)
+            {
+                var item = Items[index];
+                var barWidth = Math.Max(5, Math.Min(22, (group - 10) / 2));
+                var measuredHeight = Math.Max(0, item.Measured) / maximum * plotHeight;
+                var ownHeight = Math.Max(0, item.Own) / maximum * plotHeight;
+                var agentHeight = Math.Max(0, item.Agent) / maximum * plotHeight;
+                var x = left + index * group + Math.Max(2, (group - (barWidth * 2 + 4)) / 2);
+                var baseline = top + plotHeight;
+                var measured = new Rect(x, baseline - measuredHeight, barWidth, measuredHeight);
+                context.DrawRectangle(new SolidColorBrush(Lavender), null, measured);
+                var own = new Rect(x, baseline - measuredHeight - ownHeight, barWidth, ownHeight);
+                context.DrawRectangle(new SolidColorBrush(Own), null, own);
+                Hatch(context, own);
+                var agent = new Rect(x + barWidth + 4, baseline - agentHeight, barWidth, agentHeight);
+                context.DrawRectangle(new SolidColorBrush(Agent), null, agent);
+                _DrawValue(context, item.Measured + item.Own, x, baseline - measuredHeight - ownHeight, foreground);
+                _DrawValue(context, item.Agent, x + barWidth + 4, baseline - agentHeight, foreground);
+                var label = new FormattedText(item.Label, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, muted);
+                context.DrawText(label, new Point(x, Bounds.Height - label.Height));
+            }
+        }
+
+        private static void _DrawValue(DrawingContext context, double hours, double x, double y, IBrush brush)
+        {
+            if (hours <= 0)
+            {
+                return;
+            }
+
+            var duration = TimeSpan.FromHours(hours);
+            var text = new FormattedText(_ClockDuration(duration), CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, brush);
+            context.DrawText(text, new Point(x, Math.Max(0, y - text.Height - 2)));
+        }
     }
 
     private sealed record _ProjectRow(string Label, TimeSpan Measured, TimeSpan Own, TimeSpan Agent, Color Color);
