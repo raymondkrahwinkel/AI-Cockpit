@@ -38,6 +38,10 @@ internal sealed record AttentionTime(
     public IReadOnlyList<ProjectTime> MeasuredPerProject =>
         [.. You.GroupBy(span => span.Owner).Select(group => new ProjectTime(group.Key, _Sum(group.Select(span => span.Duration)))).OrderByDescending(project => project.Time)];
 
+    // A day past the raw retention (AC-1719) keeps only its operator actions per project; each counts as one block.
+    public static IReadOnlyList<ProjectTime> MeasuredFromDays(IEnumerable<CockpitTimelineDay> days, AttentionSettings settings) =>
+        [.. days.GroupBy(day => day.ProjectId).Select(group => new ProjectTime(group.Key, settings.BlockLength * group.Sum(day => day.OperatorActions))).OrderByDescending(project => project.Time)];
+
     public static AttentionTime Compute(
         CockpitTimeline timeline,
         IReadOnlyList<CockpitTimeEntry> ownEntries,
