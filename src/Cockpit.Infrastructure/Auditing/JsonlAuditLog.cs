@@ -82,7 +82,7 @@ internal abstract class JsonlAuditLog<T>
 
     // AC-1446: up to `limit` entries from before the line starting at `beforeOffset` (the end when null), newest first,
     // each with its offset: unique and rising with the write order, where a timestamp is not (writers stamp before the
-    // lock). Stable because no trail is ever rotated or rewritten; only UsageHistoryLog rolls over, in a file of its own.
+    // lock). Stable: a paged trail never rolls over or loses days; only usage and the timeline do (AC-1719), unpaged.
     public async Task<IReadOnlyList<(T Entry, long Offset)>> ReadPageAsync(int limit, long? beforeOffset, CancellationToken cancellationToken = default)
     {
         if (beforeOffset is { } offset && !await _IsLineStartAsync(offset, cancellationToken).ConfigureAwait(false))

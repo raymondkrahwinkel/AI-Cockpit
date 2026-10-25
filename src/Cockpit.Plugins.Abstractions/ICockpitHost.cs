@@ -28,10 +28,16 @@ public interface ICockpitHost
     IPluginStorage Storage { get; }
 
     /// <summary>
-    /// The operator's own time entries. Needs <c>"capabilities": ["time-entries.read-write"]</c> in
+    /// The operator's own time entries. Needs <c>"capabilities": ["time.entries"]</c> in
     /// <c>plugin.json</c>; without it the host throws <see cref="UnauthorizedAccessException"/> naming the capability.
     /// </summary>
     ICockpitTimeEntries TimeEntries => UnavailableCockpitTimeEntries.Instance;
+
+    /// <summary>
+    /// The timeline and usage of every session over a range (AC-1720). Needs <c>"capabilities": ["timeline.read-all"]</c>
+    /// in <c>plugin.json</c>; without it the host throws <see cref="UnauthorizedAccessException"/> naming the capability.
+    /// </summary>
+    ICockpitTimelineReader Timeline => UnavailableCockpitTimelineReader.Instance;
 
     /// <summary>
     /// Where what the plugin can rebuild goes: fetched data, run history, anything it would refetch rather than

@@ -32,6 +32,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin can show one line of its own text in the status bar, such as the browser's "Browser · profile
+  Raymond · 3 tabs", and replace or remove it as its state changes.
+- added: a plugin's workspace can put its own buttons on the workspace tab strip, shown only while that workspace is
+  active, so an action like **Dock in the rail** sits in the row above the workspace instead of inside it.
+- added: a plugin you allow to (`timeline.read-all`) can read every session's timeline over a range: when it was
+  busy, waiting or idle, what you did in it, its statuslines and what each turn spent, with day totals for anything
+  older than 90 days. Without that permission in its manifest, it gets a refusal that names it.
+- added: the session timeline and the usage history keep their raw lines for 90 days; older days are folded
+  into one line per session and day (agent time, waiting time, operator actions, tokens, reported cost and turns)
+  that stays. Your own time entries are never folded or removed.
 - added: the Browser plugin lets you browse inside Cockpit with your own profile, as a tab or in the rail (also in its
   own window), with tabs, an address bar, sound and mute per tab. YouTube plays; a page that needs a video format the
   built-in browser lacks offers **Open in system browser**. The engine downloads once on first use. Off on macOS for now.
@@ -206,6 +216,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Quit from the tray and the restart after an update now close Cockpit the same way as closing it from the desktop,
+  so plugins that tidy up on the way out (the browser's engine) get to do that on every route.
 - fixed: searching Options no longer leaves a plugin's field labels on screen without their boxes (the YouTrack
   instance cards showed only "Label", "Instance base URL" and "Permanent token"). A label now shows and hides with
   the field it names, and the hint below a card's last field goes with that field.

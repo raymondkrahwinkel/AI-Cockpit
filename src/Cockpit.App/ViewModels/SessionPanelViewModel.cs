@@ -1613,7 +1613,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
                 return;
             }
 
-            OnVoiceTextReady(text);
+            OnOperatorVoiceTextReady(text);
             if (AutoSubmitAfterVoice)
             {
                 OnVoiceSubmitRequested();
@@ -1725,14 +1725,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
-        OnVoiceTextReady(text);
+        OnOperatorVoiceTextReady(text);
         if (AutoSubmitAfterVoice)
         {
             OnVoiceSubmitRequested();
         }
     }
 
-    // Injects a finished voice transcript into this session kind's own input surface (chat input box or raw pty bytes).
+    // Keeps real operator dictation distinct from text injected by an agent or the host.
+    protected virtual void OnOperatorVoiceTextReady(string text) => OnVoiceTextReady(text);
+
+    // Injects text into this session kind's own input surface (chat input box or raw pty bytes).
     protected abstract void OnVoiceTextReady(string text);
 
     // Submits the just-injected transcript when `AutoSubmitAfterVoice` is on — the SDK

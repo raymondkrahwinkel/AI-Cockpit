@@ -133,6 +133,10 @@ internal sealed class CockpitUiHost(
         _ownDockPanelIds.Add(registration.Id);
     }
 
+    // Keyed by this plugin's id, so a plugin can only ever replace its own line.
+    public void SetStatusText(string? text) =>
+        services.GetService<CockpitViewModel>()?.SetPluginStatusText(pluginId, text);
+
     // Only this plugin's own panels: a plugin cannot pull another's panel into view. Floating stays floating.
     public async Task OpenDockPanelAsync(string panelId)
     {

@@ -131,6 +131,15 @@ public interface ICockpitUiHost
     Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
 
     /// <summary>
+    /// Shows one line of this plugin's own text in the status bar ("Browser · profile Raymond · 3 tabs"), replacing
+    /// the line it showed before; null or blank removes it. Long text is cut. Host 0.116.0 and later; an older host
+    /// and a server show nothing.
+    /// </summary>
+    void SetStatusText(string? text)
+    {
+    }
+
+    /// <summary>
     /// Contributes a tool to the companion window.
     /// </summary>
     void AddCompanionTool(CompanionToolRegistration registration);

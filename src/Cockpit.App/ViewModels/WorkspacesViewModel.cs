@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -73,6 +74,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
                 _RefreshPluginBody();
                 OnPropertyChanged(nameof(ActivePluginBody));
                 OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));
+                OnPropertyChanged(nameof(ActiveHeaderActions));
             };
         }
     }
@@ -198,6 +200,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // moment the plugin registers (the registry raises `Changed`).
     public bool ShowUnknownPluginWorkspace =>
         IsPluginWorkspaceActive && ActivePluginBody is null;
+
+    // AC-1711: the header-row buttons of the active plugin workspace's type, drawn on the tab strip only while a
+    // workspace of that type is active. Empty for a host type or a type whose plugin is not installed.
+    public IReadOnlyList<ToolbarAction> ActiveHeaderActions =>
+        IsPluginWorkspaceActive && Active is { } active
+            ? AvailablePluginWorkspaceTypes.FirstOrDefault(type => type.Id == active.Type.Id)?.HeaderActions ?? []
+            : [];
 
     // AC-1013: Loads the saved workspaces. Called once at startup; a no-op without a store (design time).
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -620,6 +629,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(IsPluginWorkspaceActive));
         OnPropertyChanged(nameof(ActivePluginBody));
         OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));
+        OnPropertyChanged(nameof(ActiveHeaderActions));
         OnPropertyChanged(nameof(ShowDashboardEmptyState));
         OnPropertyChanged(nameof(DashboardRows));
         OnPropertyChanged(nameof(DashboardColumns));
