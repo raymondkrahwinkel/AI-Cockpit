@@ -145,7 +145,7 @@ internal static class MeasuredTimeCard
                     Typeface.Default,
                     10.5,
                     label);
-                var x = Math.Clamp(((hour - first) / (last - first) * width) - (text.Width / 2), 0, width - text.Width);
+                var x = Math.Clamp(((hour - first) / (last - first) * width) - (text.Width / 2), 0, Math.Max(0, width - text.Width));
                 context.DrawText(text, new Point(x, 0));
             }
 

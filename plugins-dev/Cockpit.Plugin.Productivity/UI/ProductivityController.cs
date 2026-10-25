@@ -25,6 +25,14 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
 
     public AttentionTime? Day { get; private set; }
 
+    public bool ShowWeek { get; private set; }
+
+    public WeekProposal? Week { get; private set; }
+
+    public DateOnly WeekStart => SelectedDate.AddDays(-(((int)SelectedDate.DayOfWeek + 6) % 7));
+
+    public bool IsThisWeek => WeekStart == _Today().AddDays(-(((int)_Today().DayOfWeek + 6) % 7));
+
     public string? Error { get; private set; }
 
     public string? ProjectFallback { get; private set; }
@@ -72,6 +80,13 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
     public async Task SelectDateAsync(DateOnly date)
     {
         SelectedDate = date;
+        await RefreshAsync().ConfigureAwait(false);
+    }
+
+    public async Task ShowWeekAsync(bool week, DateOnly? date = null)
+    {
+        ShowWeek = week;
+        SelectedDate = date ?? SelectedDate;
         await RefreshAsync().ConfigureAwait(false);
     }
 
@@ -172,6 +187,11 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
         TodayTotal = snapshot.TodayTotal;
         Day = snapshot.Day;
         Stopwatch = snapshot.Stopwatch;
+        Week = ShowWeek
+            ? await _AskAsync<WeekProposal>(
+                ProductivityChannel.Week,
+                new ProductivityWeekRequest([.. Enumerable.Range(0, 8).Select(offset => _AtLocalTime(WeekStart.AddDays(offset), TimeOnly.MinValue))])).ConfigureAwait(false)
+            : null;
         Error = null;
         _PublishChanged();
     }

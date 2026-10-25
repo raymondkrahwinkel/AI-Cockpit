@@ -5,6 +5,9 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Cockpit.Plugin.Productivity.Contracts;
+using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
@@ -35,6 +38,13 @@ internal sealed class HoursWorkspaceBody : UserControl
     private readonly StackPanel _running = new() { Spacing = 8 };
     private readonly StackPanel _rows = new() { Spacing = 0 };
     private readonly ContentControl _measured = new() { Name = "MeasuredTime" };
+    private readonly Button _dayMode = new() { Name = "DayMode", Content = "Dag", Classes = { "Compact" } };
+    private readonly Button _weekMode = new() { Name = "WeekMode", Content = "Week", Classes = { "Compact" } };
+    private readonly Button _thisWeek = new() { Name = "ThisWeek", Content = "Vandaag", Classes = { "Compact" } };
+    private readonly StackPanel _meaning = new() { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+    private readonly ContentControl _week = new() { Name = "WeekProposal" };
+    private readonly Control _dayColumns;
+    private IReadOnlyList<PluginProjectInfo> _projects = [];
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Guid? _editingId;
     private bool _editingStopwatch;
@@ -66,11 +76,15 @@ internal sealed class HoursWorkspaceBody : UserControl
         };
         _date.LostFocus += async (_, _) => await _SelectTypedDateAsync();
         _dayLabel.Click += async (_, _) => await _controller.SelectDateAsync(_Today());
+        _thisWeek.Click += async (_, _) => await _controller.SelectDateAsync(_Today());
+        _dayMode.Click += async (_, _) => await _controller.ShowWeekAsync(false);
+        _weekMode.Click += async (_, _) => await _controller.ShowWeekAsync(true);
+        _dayColumns = _DayColumns();
 
         var previous = new Button { Name = "PreviousDay", Content = "‹", Classes = { "Compact" } };
-        previous.Click += async (_, _) => await _controller.SelectDateAsync(_controller.SelectedDate.AddDays(-1));
+        previous.Click += async (_, _) => await _controller.SelectDateAsync(_controller.SelectedDate.AddDays(_controller.ShowWeek ? -7 : -1));
         var next = new Button { Name = "NextDay", Content = "›", Classes = { "Compact" } };
-        next.Click += async (_, _) => await _controller.SelectDateAsync(_controller.SelectedDate.AddDays(1));
+        next.Click += async (_, _) => await _controller.SelectDateAsync(_controller.SelectedDate.AddDays(_controller.ShowWeek ? 7 : 1));
 
         Content = new ScrollViewer
         {
@@ -82,7 +96,8 @@ internal sealed class HoursWorkspaceBody : UserControl
                 {
                     _Header(previous, next),
                     _EntryCard(),
-                    _DayColumns(),
+                    _dayColumns,
+                    _week,
                 },
             },
         };
@@ -96,14 +111,35 @@ internal sealed class HoursWorkspaceBody : UserControl
             _controller.Changed -= _Render;
         };
         _Render();
+        _ = _LoadProjectsAsync();
+    }
+
+    private async Task _LoadProjectsAsync()
+    {
+        _projects = await _host.GetProjectsAsync() ?? [];
+        _Render();
+    }
+
+    private async Task _CopyAsync()
+    {
+        if (_controller.Week is { } week)
+        {
+            await _host.SetClipboardTextAsync(week.ToTable());
+            _host.ShowToast("Het voorstel staat als tabel op het klembord.", PluginToastSeverity.Success);
+        }
+    }
+
+    private async Task _EditCellAsync(CellOverride? edit, DateOnly day, string projectId)
+    {
+        var key = CellOverride.StorageKey(_controller.WeekStart);
+        var others = (_host.Storage.Get<CellOverride[]>(key) ?? []).Where(cell => cell.Day != day || cell.ProjectId != projectId);
+        _host.Storage.Set<CellOverride[]>(key, edit is null ? [.. others] : [.. others, edit]);
+        await _controller.RefreshAsync();
     }
 
     private Control _Header(Button previous, Button next)
     {
-        var day = new Button { Content = "Dag", Classes = { "Accent", "Compact" } };
-        var week = new Button { Content = "Week", IsEnabled = false, Classes = { "Compact" } };
-        ToolTip.SetTip(week, "Komt met AC-1723");
-        var segments = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { day, week } };
+        var segments = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _dayMode, _weekMode } };
         var datePicker = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         datePicker.Children.Add(_date);
         var calendar = Ui.IconButton("OpenDayPicker", MaterialIconKind.CalendarMonthOutline, "Kies een datum");
@@ -111,23 +147,9 @@ internal sealed class HoursWorkspaceBody : UserControl
         Grid.SetColumn(calendar, 1);
         datePicker.Children.Add(calendar);
 
-        var meaning = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children =
-            {
-                Ui.Hint("Telt mee als"),
-                new TextBlock { Text = "jouw tijd", FontWeight = FontWeight.SemiBold, FontSize = 11.5 },
-                Ui.Hint("· gaat mee in het weekvoorstel"),
-            },
-        };
-
         var header = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"),
             ColumnSpacing = 9,
         };
         header.Children.Add(new TextBlock
@@ -147,8 +169,10 @@ internal sealed class HoursWorkspaceBody : UserControl
         header.Children.Add(next);
         Grid.SetColumn(datePicker, 5);
         header.Children.Add(datePicker);
-        Grid.SetColumn(meaning, 7);
-        header.Children.Add(meaning);
+        Grid.SetColumn(_thisWeek, 6);
+        header.Children.Add(_thisWeek);
+        Grid.SetColumn(_meaning, 8);
+        header.Children.Add(_meaning);
         return Ui.Card(header, 12);
     }
 
@@ -330,10 +354,42 @@ internal sealed class HoursWorkspaceBody : UserControl
     private void _Render()
     {
         _rendering = true;
-        _date.Text = _controller.SelectedDate.ToString("dd-MM-yyyy", Dutch);
+        var showWeek = _controller.ShowWeek;
+        _date.Text = (showWeek ? _controller.WeekStart : _controller.SelectedDate).ToString("dd-MM-yyyy", Dutch);
         _rendering = false;
         var date = _controller.SelectedDate.ToDateTime(TimeOnly.MinValue);
-        _dayLabel.Content = date.ToString("ddd d MMM yyyy", Dutch) + (_controller.IsToday ? " · vandaag" : string.Empty);
+        _dayLabel.Content = showWeek
+            ? _WeekLabel()
+            : date.ToString("ddd d MMM yyyy", Dutch) + (_controller.IsToday ? " · vandaag" : string.Empty);
+        _dayLabel.IsHitTestVisible = showWeek == false;
+        _thisWeek.IsVisible = showWeek && _controller.IsThisWeek == false;
+        _SetAccent(_dayMode, showWeek == false);
+        _SetAccent(_weekMode, showWeek);
+        _meaning.Children.Clear();
+        if (showWeek)
+        {
+            _meaning.Children.Add(Ui.Hint("Cockpit boekt niets zelf. Een agent boekt, na jouw akkoord."));
+        }
+        else
+        {
+            _meaning.Children.Add(Ui.Hint("Telt mee als"));
+            _meaning.Children.Add(new TextBlock { Text = "jouw tijd", FontWeight = FontWeight.SemiBold, FontSize = 11.5 });
+            _meaning.Children.Add(Ui.Hint("· gaat mee in het weekvoorstel"));
+        }
+
+        _dayColumns.IsVisible = showWeek == false;
+        _week.IsVisible = showWeek;
+        _week.Content = showWeek && _controller.Week is { } week
+            ? WeekView.Build(
+                week,
+                _host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default,
+                _projects,
+                _controller.IsThisWeek,
+                ISOWeek.GetWeekOfYear(_controller.WeekStart.ToDateTime(TimeOnly.MinValue)),
+                day => _ = _controller.ShowWeekAsync(false, day),
+                () => _ = _CopyAsync(),
+                (edit, day, projectId) => _ = _EditCellAsync(edit, day, projectId))
+            : null;
         _formDay.Text = "legt vast op " + (_controller.IsToday ? "vandaag, " : string.Empty) + date.ToString("ddd d MMM", Dutch);
         _rulesTitle.Text = _controller.IsToday
             ? "Mijn regels van vandaag"
@@ -514,6 +570,34 @@ internal sealed class HoursWorkspaceBody : UserControl
 
         _project.ItemsSource = options;
         _project.SelectedIndex = 0;
+    }
+
+    private Control _WeekLabel()
+    {
+        var start = _controller.WeekStart.ToDateTime(TimeOnly.MinValue);
+        var end = start.AddDays(4);
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock { Text = $"week {ISOWeek.GetWeekOfYear(start)}", FontWeight = FontWeight.SemiBold },
+                Ui.Hint($"· {start.ToString("ddd d", Dutch)} – {end.ToString("ddd d MMM", Dutch)}"),
+            },
+        };
+    }
+
+    private static void _SetAccent(Button button, bool selected)
+    {
+        if (selected)
+        {
+            button.Classes.Add("Accent");
+        }
+        else
+        {
+            button.Classes.Remove("Accent");
+        }
     }
 
     private static DateOnly _Today() => DateOnly.FromDateTime(DateTimeOffset.Now.LocalDateTime);

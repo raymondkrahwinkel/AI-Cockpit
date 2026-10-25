@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Uren · Week, the hours proposal: per day the work schedule less your own entries, split over the projects in
+  the proposal by measured time and rounded to 5, 15 or 30 minutes, never above the schedule. Own entries stand as
+  their own rows, each line shows its status, earlier weeks keep the status of then, and "Kopieer als tabel" copies
+  the grid as tab-separated text. Schedule, rounding and private projects live in Productivity's settings (0.3.0).
 - added: a plugin's side-menu launcher can ask for a Material icon and set the tone of its badge (accent, success or
   neutral); Productivity uses both for its hours entry. Needs SDK 3.26.0 (UI 3.7.0) and host 0.115.0.
 - added: Uren · Dag shows the time measured from your sessions beside your own entries: a strip of when you acted,

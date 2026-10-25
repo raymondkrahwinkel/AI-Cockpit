@@ -12,6 +12,7 @@ internal static class ProductivityChannel
     public const string StartStopwatch = "productivity.time.stopwatch.start";
     public const string UpdateStopwatch = "productivity.time.stopwatch.update";
     public const string StopStopwatch = "productivity.time.stopwatch.stop";
+    public const string Week = "productivity.time.week";
 
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 }
@@ -35,6 +36,9 @@ internal sealed record ProductivitySaveRequest(
     DateTimeOffset StartedAt,
     TimeSpan Duration,
     string? ProjectId);
+
+// DayStarts holds the eight local midnights from Monday to the next Monday.
+internal sealed record ProductivityWeekRequest(IReadOnlyList<DateTimeOffset> DayStarts);
 
 internal sealed record ProductivityDeleteRequest(Guid Id);
 
