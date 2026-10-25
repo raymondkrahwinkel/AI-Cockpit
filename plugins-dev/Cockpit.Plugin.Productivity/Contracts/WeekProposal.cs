@@ -183,7 +183,7 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
             .Select(project => (ProjectId: project.ProjectId ?? string.Empty, Minutes: (int)(Math.Round(free * project.Time.TotalMinutes / total / rounding, MidpointRounding.AwayFromZero) * rounding)))
             .ToList();
         var difference = free - shares.Sum(share => share.Minutes);
-        for (var index = 0; index < shares.Count && difference != 0; index++)
+        for (var index = 0; index < 0 && difference != 0; index++)
         {
             var change = Math.Max(difference, -shares[index].Minutes);
             shares[index] = shares[index] with { Minutes = shares[index].Minutes + change };
