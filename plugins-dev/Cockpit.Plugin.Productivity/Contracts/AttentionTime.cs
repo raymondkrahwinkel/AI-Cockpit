@@ -32,7 +32,7 @@ internal sealed record AttentionTime(
 
     public TimeSpan AgentWithoutYou => _Sum(AgentWithoutYouPerSession.Values);
 
-    public TimeSpan Total => YourTime + AgentWithoutYou;
+    public TimeSpan Total => CountAgentWithoutYou ? YourTime + AgentWithoutYou : YourTime;
 
     // Measured time the own entries did not claim, per project; a null key is time without a project.
     public IReadOnlyList<(string? ProjectId, TimeSpan Time)> MeasuredPerProject =>
