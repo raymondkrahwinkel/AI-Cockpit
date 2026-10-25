@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Cockpit.Plugin.Productivity.Contracts;
 
 namespace Cockpit.Plugin.Productivity.UI;
@@ -10,9 +12,29 @@ namespace Cockpit.Plugin.Productivity.UI;
 // The context column of Uren · Dag (AC-1731): the strip, the measured time per project, your time and the agents.
 internal static class MeasuredTimeCard
 {
-    public const string You = "CockpitAccentBrush";
     public const string Own = "CockpitStatusWaitingBrush";
     public const string Agents = "CockpitStatusBusyBrush";
+
+    // The theme has no solid lavender; mockup v3 01 draws "jij, gemeten" in it.
+    public static IBrush You { get; } = new ImmutableSolidColorBrush(Color.Parse("#B79CF0"));
+
+    private static readonly IBrush[] ProjectPalette =
+    [
+        .. new[] { "#4ADE80", "#F59E0B", "#60A5FA", "#F472B6", "#2DD4BF", "#F87171", "#E879F9", "#FB923C" }
+            .Select(color => new ImmutableSolidColorBrush(Color.Parse(color))),
+    ];
+
+    // FNV-1a over the id's UTF-8 bytes: stable across runs, unlike string.GetHashCode.
+    public static IBrush ProjectBrush(string? projectId)
+    {
+        var hash = 2166136261u;
+        foreach (var value in Encoding.UTF8.GetBytes(projectId ?? string.Empty))
+        {
+            hash = (hash ^ value) * 16777619u;
+        }
+
+        return ProjectPalette[hash % (uint)ProjectPalette.Length];
+    }
 
     public static Control Build(AttentionTime? day, string title)
     {
@@ -33,7 +55,7 @@ internal static class MeasuredTimeCard
         {
             Orientation = Orientation.Horizontal,
             Spacing = 14,
-            Children = { _Legend(You, "jij, gemeten"), _Legend(Own, "eigen regels"), _Legend(Agents, "agents") },
+            Children = { _Legend(_Dot(You), "jij, gemeten"), _Legend(Ui.Dot(Own), "eigen regels"), _Legend(Ui.Dot(Agents), "agents") },
         });
 
         var longest = day.MeasuredPerProject.Count == 0 ? 1 : day.MeasuredPerProject.Max(project => project.Time.TotalMinutes);
@@ -49,8 +71,11 @@ internal static class MeasuredTimeCard
         return Ui.Card(body, 14);
     }
 
-    private static Control _Legend(string brush, string text) =>
-        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { Ui.Dot(brush), Ui.Hint(text) } };
+    private static Control _Legend(Control dot, string text) =>
+        new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children = { dot, Ui.Hint(text) } };
+
+    private static Control _Dot(IBrush brush) =>
+        new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = brush, VerticalAlignment = VerticalAlignment.Center };
 
     private static Control _ProjectRow(ProjectTime project, double longest)
     {
@@ -59,10 +84,15 @@ internal static class MeasuredTimeCard
         {
             Orientation = Orientation.Horizontal,
             Spacing = 7,
-            Children = { Ui.Dot(You), new TextBlock { Text = project.ProjectId ?? "geen project", TextTrimming = TextTrimming.CharacterEllipsis } },
+            Children = { _Dot(ProjectBrush(project.ProjectId)), new TextBlock { Text = project.ProjectId ?? "geen project", TextTrimming = TextTrimming.CharacterEllipsis } },
         });
-        var bar = new Border { Height = 12, CornerRadius = new CornerRadius(3), VerticalAlignment = VerticalAlignment.Center }
-            .Themed(Border.BackgroundProperty, You);
+        var bar = new Border
+        {
+            Height = 12,
+            CornerRadius = new CornerRadius(3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = ProjectBrush(project.ProjectId),
+        };
         var share = project.Time.TotalMinutes / longest;
         var track = new Grid();
         track.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(share, GridUnitType.Star)));
@@ -122,18 +152,18 @@ internal static class MeasuredTimeCard
             var track = _Brush("CockpitInsetBgBrush");
             context.DrawRectangle(track, null, new Rect(0, Axis, width, lane), 4, 4);
             context.DrawRectangle(track, null, new Rect(0, Axis + lane + 6, width, lane), 4, 4);
-            void Draw(IEnumerable<AttentionSpan> lanespans, string brush, double top, double inset)
+            void Draw(IEnumerable<AttentionSpan> lanespans, IBrush? brush, double top, double inset)
             {
                 foreach (var span in lanespans)
                 {
                     var left = X(span.Start);
-                    context.DrawRectangle(_Brush(brush), null, new Rect(left, top + inset, Math.Max(2, X(span.End) - left), lane - (2 * inset)), 3, 3);
+                    context.DrawRectangle(brush, null, new Rect(left, top + inset, Math.Max(2, X(span.End) - left), lane - (2 * inset)), 3, 3);
                 }
             }
 
             Draw(day.You, You, Axis, 4);
-            Draw(day.OwnEntries, Own, Axis, 4);
-            Draw(day.Agents, Agents, Axis + lane + 6, 4);
+            Draw(day.OwnEntries, _Brush(Own), Axis, 4);
+            Draw(day.Agents, _Brush(Agents), Axis + lane + 6, 4);
         }
 
         private IBrush? _Brush(string key) =>
