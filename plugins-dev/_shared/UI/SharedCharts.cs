@@ -31,9 +31,9 @@ public abstract class ChartControl : Control
         ToolTip.SetTip(this, TooltipText);
     }
 
-    protected static void Hatch(DrawingContext context, Rect rect)
+    protected void Hatch(DrawingContext context, Rect rect)
     {
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb(110, 255, 255, 255)), 1);
+        var pen = new Pen(Brush("ThemeForegroundLowBrush", Brushes.Gray), 1);
         for (var offset = -rect.Height; offset < rect.Width; offset += 5)
         {
             context.DrawLine(pen, new Point(rect.X + offset, rect.Bottom), new Point(rect.X + offset + rect.Height, rect.Top));
@@ -71,6 +71,9 @@ public sealed class StackedBarChartControl : ChartControl
                 context.DrawRectangle(new SolidColorBrush(segment.Color), null, rect);
                 if (segment.IsHatched) { Hatch(context, rect); }
             }
+            var total = Items[index].Segments.Sum(segment => Math.Max(0, segment.Value));
+            var totalText = new FormattedText(total.ToString("0.#"), System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 10, Brush("ThemeForegroundLowBrush", Brushes.Gray));
+            context.DrawText(totalText, new Point(Padding + index * width + 2, Math.Max(0, y - totalText.Height)));
             var label = new FormattedText(Items[index].Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 11, Brush("ThemeForegroundLowBrush", Brushes.Gray));
             context.DrawText(label, new Point(Padding + index * width + 2, Bounds.Height - label.Height));
         }
@@ -144,10 +147,12 @@ public sealed class StatTile : ChartControl
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        var brush = Brush("ThemeForegroundLowBrush", Brushes.Gray);
-        context.DrawText(new FormattedText(Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush), new Point(Padding, Padding));
-        context.DrawText(new FormattedText(Value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 22, brush), new Point(Padding, Padding + 18));
-        context.DrawText(new FormattedText(Detail, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush), new Point(Padding, Math.Max(Padding + 46, Bounds.Height - Padding - 12)));
+        var muted = Brush("ThemeForegroundLowBrush", Brushes.Gray);
+        var foreground = Brush("ThemeForegroundBrush", Brushes.Black);
+        context.DrawRectangle(Brush("ThemeCardBrush", Brushes.Transparent), new Pen(Brush("ThemeBorderBrush", Brushes.Gray), 1), Bounds);
+        context.DrawText(new FormattedText(Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, muted), new Point(Padding, Padding));
+        context.DrawText(new FormattedText(Value, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 22, foreground), new Point(Padding, Padding + 18));
+        context.DrawText(new FormattedText(Detail, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, muted), new Point(Padding, Math.Max(Padding + 46, Bounds.Height - Padding - 12)));
     }
 }
 
@@ -202,8 +207,20 @@ public sealed class RangePicker : ChartControl
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        var labels = string.Join("   ", Ranges.Select(range => range == SelectedRange ? range.ToUpperInvariant() : range));
-        var text = new FormattedText($"‹  {labels}  ›", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, Brush("ThemeForegroundLowBrush", Brushes.Gray));
-        context.DrawText(text, new Point(Padding, Math.Max(Padding, (Bounds.Height - text.Height) / 2)));
+        var x = Padding;
+        var brush = Brush("ThemeForegroundLowBrush", Brushes.Gray);
+        context.DrawText(new FormattedText("‹", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush), new Point(x, Padding));
+        x += 20;
+        foreach (var range in Ranges)
+        {
+            var text = new FormattedText(range, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush);
+            if (range == SelectedRange)
+            {
+                context.DrawRectangle(Brush("ThemeAccentBrush", Brushes.DodgerBlue), null, new Rect(x - 5, Padding - 4, text.Width + 10, text.Height + 8));
+            }
+            context.DrawText(text, new Point(x, Padding));
+            x += text.Width + 14;
+        }
+        context.DrawText(new FormattedText("›", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 12, brush), new Point(x, Padding));
     }
 }

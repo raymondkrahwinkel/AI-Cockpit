@@ -31,8 +31,8 @@ public class SharedChartsJourneyTests
             Spacing = 8,
             Children =
             {
-                new StackedBarChartControl { Height = 90, Items = [new("Mon", [new("Own", 3, Color.FromRgb(76, 139, 245)), new("Rule", 2, Color.FromRgb(61, 190, 139), true)])] },
-                new GroupedBarChartControl { Height = 90, Items = [new("Mon", 3, 2)] },
+                new StackedBarChartControl { Height = 110, Items = _Week().Select(day => new StackedBarDatum(day.Label, [new("Alpha", day.First, Color.FromRgb(76, 139, 245)), new("Beta", 1, Color.FromRgb(61, 190, 139)), new("Rules", .5, Color.FromRgb(232, 163, 61), true)])).ToList() },
+                new GroupedBarChartControl { Height = 100, Items = _Week() },
                 new HorizontalBarChartControl { Height = 32, Segments = [new("Project", 3, Color.FromRgb(76, 139, 245)), new("Rules", 2, Color.FromRgb(61, 190, 139), true)] },
                 new StatTile { Height = 70, Label = "Your time", Value = "4h 30", Detail = "Today" },
                 new RangePicker { Height = 32, Ranges = ["Hour", "Day", "Workweek", "Week", "Month", "Custom range"], SelectedRange = "Workweek" },
@@ -64,4 +64,6 @@ public class SharedChartsJourneyTests
 
         app.RequestedThemeVariant = ThemeVariant.Default;
     }
+
+    private static IReadOnlyList<GroupedBarDatum> _Week() => [new("Mon", 3, 2), new("Tue", 4, 2.5), new("Wed", 2, 3), new("Thu", 4.5, 1.5), new("Fri", 3.5, 2)];
 }
