@@ -10,8 +10,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cockpit.Infrastructure.Tests.Usage;
 
 // AC-1719: retention. (a) L2 money: a day 100 days back folds into an aggregate with the same time, operator actions,
-// tokens and cost as its raw lines, the usage as differences of running totals. (b) L2 data loss: folding twice gives
-// one aggregate per session and day, and an own time entry (AC-1729) of 200 days back keeps its booked status.
+// tokens and cost as its raw lines, the usage as differences of running totals. (b) L2 data loss: folding twice, or a
+// rollover dropping a day, gives one aggregate per session and day; an own time entry (AC-1729) keeps its status.
 public sealed class SessionDayRetentionTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 25, 12, 0, 0, TimeSpan.Zero);
@@ -72,6 +72,17 @@ public sealed class SessionDayRetentionTests : IDisposable
         await _Retention().RunAsync();
 
         Assert.Equal("builder", Assert.Single(await _AggregatesAsync()).PaneId);
+
+        // A busy trail rolls twice: the second roll would drop a whole day, which is folded first, once.
+        var tiny = new UsageHistoryLog(_UsagePath, NullLogger<UsageHistoryLog>.Instance, maxSizeBytes: 1);
+        var dropped = _Snapshot(Now.AddDays(-3), 50, 5, 0.05, 1) with { PaneId = "roller", StartedAt = Now.AddDays(-3) };
+        await tiny.RecordAsync(dropped);
+        await tiny.RecordAsync(dropped with { RecordedAt = Now.AddDays(-2), InputTokens = 80, Turns = 2 });
+        await tiny.RecordAsync(dropped with { RecordedAt = Now.AddDays(-2).AddHours(1), InputTokens = 90, Turns = 3 });
+        var folded = Assert.Single(await _AggregatesAsync(), aggregate => aggregate.PaneId == "roller");
+        Assert.Equal((50, 1), (folded.InputTokens, folded.Turns));
+        Assert.Equal([80, 90], (await tiny.ReadRecentAsync()).Where(snapshot => snapshot.PaneId == "roller").Select(snapshot => snapshot.InputTokens).Order());
+
         var kept = Assert.Single(await ownEntries.ListAsync(Now.AddDays(-201), Now));
         Assert.Equal((entry.Id, CockpitTimeEntryStatus.Booked), (kept.Id, kept.Status));
     }
@@ -118,7 +129,7 @@ public sealed class SessionDayRetentionTests : IDisposable
         [.. File.ReadAllLines(path).Where(line => line.Length > 0).Select(line => JsonSerializer.Deserialize<T>(line, Json)).OfType<T>()];
 
     private SessionDayRetention _Retention() =>
-        new(new UsageHistoryLog(_UsagePath, NullLogger<UsageHistoryLog>.Instance), _TimelinePath, _AggregatesPath, new Clock(), NullLogger.Instance);
+        new(_TimelinePath, _UsagePath, new Clock(), NullLogger.Instance);
 
     private async Task<IReadOnlyList<SessionDayAggregate>> _AggregatesAsync() =>
         await new SessionDayAggregateLog(_AggregatesPath, NullLogger.Instance).ReadRecentAsync(int.MaxValue);

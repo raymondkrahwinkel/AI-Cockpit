@@ -11,31 +11,35 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.Usage;
 
 // AC-1719: the raw session timeline and usage history keep 90 days; older days fold into one line per session and
-// local day in `session-day-aggregates.jsonl`, which stays. The own time entries (AC-1729) are a file this never opens.
-// Runs at startup before the timeline recorder; idempotent, since a day already folded is never written twice.
+// local day in `session-day-aggregates.jsonl`, which stays. A day is folded whole, from both trails at once, at startup
+// or before a rollover would drop it; never twice. The own time entries (AC-1729) are a file this never opens.
 internal sealed class SessionDayRetention : ISingletonService
 {
     internal const int RawDays = 90;
 
+    // ponytail: one lock for both trails' appends, rollovers and folds, in every directory; per-directory locks if it
+    // ever contends.
+    internal static readonly SemaphoreSlim TrailsLock = new(1, 1);
+
     private static readonly JsonSerializerOptions Json = new() { Converters = { new JsonStringEnumConverter() } };
 
-    private readonly UsageHistoryLog _usage;
     private readonly string _timelinePath;
+    private readonly string _usagePath;
     private readonly SessionDayAggregateLog _aggregates;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
 
-    public SessionDayRetention(UsageHistoryLog usage, ILogger<SessionDayRetention> logger)
-        : this(usage, AuditTrailFiles.InStateRoot(AuditTrailFiles.SessionTimeline), AuditTrailFiles.InStateRoot(AuditTrailFiles.SessionDayAggregates), TimeProvider.System, logger)
+    public SessionDayRetention(ILogger<SessionDayRetention> logger)
+        : this(AuditTrailFiles.InStateRoot(AuditTrailFiles.SessionTimeline), AuditTrailFiles.InStateRoot(AuditTrailFiles.Usage), TimeProvider.System, logger)
     {
     }
 
-    // Test seam: arbitrary files and clock.
-    internal SessionDayRetention(UsageHistoryLog usage, string timelinePath, string aggregatesPath, TimeProvider time, ILogger logger)
+    // Test seam: arbitrary trails and clock; the aggregates live next to the timeline.
+    internal SessionDayRetention(string timelinePath, string usagePath, TimeProvider time, ILogger logger)
     {
-        _usage = usage;
         _timelinePath = timelinePath;
-        _aggregates = new SessionDayAggregateLog(aggregatesPath, logger);
+        _usagePath = usagePath;
+        _aggregates = new SessionDayAggregateLog(_Sibling(timelinePath, AuditTrailFiles.SessionDayAggregates), logger);
         _time = time;
         _logger = logger;
     }
@@ -53,13 +57,55 @@ internal sealed class SessionDayRetention : ISingletonService
         }
     }
 
-    internal Task RunAsync() => _usage.RunExclusiveAsync(async () =>
+    internal async Task RunAsync()
     {
         var zone = _time.LocalTimeZone;
-        var cut = _StartOf(_DayOf(_time.GetUtcNow(), zone).AddDays(-RawDays), zone);
+        await TrailsLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _FoldBeforeAsync(_StartOf(_DayOf(_time.GetUtcNow(), zone).AddDays(-RawDays), zone)).ConfigureAwait(false);
+        }
+        finally
+        {
+            TrailsLock.Release();
+        }
+    }
+
+    // Rolls `livePath`, a trail at its size limit, under `TrailsLock`. Every day before the live file's first one is
+    // folded first, from both trails, so the generation the roll replaces keeps only lines of a day still running;
+    // those go ahead of the live lines into the new rollover file, the one exception to the 8 MB ceiling.
+    internal static async Task RollAsync<T>(string livePath, Func<T, DateTimeOffset> at, ILogger logger)
+        where T : class
+    {
+        var rolloverPath = UsageHistoryLog.RolloverPathFor(livePath);
+        if (File.Exists(rolloverPath) && _Read<T>([livePath]).FirstOrDefault() is { } first)
+        {
+            var timeline = typeof(T) == typeof(SessionTimelineEntry) ? livePath : _Sibling(livePath, AuditTrailFiles.SessionTimeline);
+            var usage = typeof(T) == typeof(UsageSnapshot) ? livePath : _Sibling(livePath, AuditTrailFiles.Usage);
+            var zone = TimeProvider.System.LocalTimeZone;
+            await new SessionDayRetention(timeline, usage, TimeProvider.System, logger)
+                ._FoldBeforeAsync(_StartOf(_DayOf(at(first), zone), zone)).ConfigureAwait(false);
+        }
+
+        if (File.Exists(rolloverPath) && new FileInfo(rolloverPath).Length > 0)
+        {
+            await _WriteAsync(rolloverPath, [.. File.ReadAllLines(rolloverPath), .. File.ReadAllLines(livePath)]).ConfigureAwait(false);
+            File.Delete(livePath);
+        }
+        else
+        {
+            File.Move(livePath, rolloverPath, overwrite: true);
+        }
+    }
+
+    // Folds every line before `cut`, the start of a local day, then drops those lines from the raw files.
+    private async Task _FoldBeforeAsync(DateTimeOffset cut)
+    {
+        var zone = _time.LocalTimeZone;
         var timelinePaths = _Generations(_timelinePath);
-        var usagePaths = _Generations(_usage.FilePath);
-        // Lines are in append order, so the oldest one says whether a start has anything to fold.
+        var usagePaths = _Generations(_usagePath);
+
+        // Lines are in append order, so the oldest one says whether there is anything to fold.
         var oldestLine = _Read<SessionTimelineEntry>(timelinePaths).FirstOrDefault()?.At;
         var oldestUsage = _Read<UsageSnapshot>(usagePaths).FirstOrDefault()?.RecordedAt;
         if ((oldestLine ?? cut) >= cut && (oldestUsage ?? cut) >= cut)
@@ -95,7 +141,9 @@ internal sealed class SessionDayRetention : ISingletonService
         {
             await _KeepFromAsync<SessionTimelineEntry>(path, entry => entry.At >= cut, path == oldest ? carried : []).ConfigureAwait(false);
         }
-    });
+    }
+
+    private static string _Sibling(string path, string fileName) => Path.Combine(Path.GetDirectoryName(path) ?? string.Empty, fileName);
 
     // Busy and background count as agent time, NeedsAttention as waiting on the operator. An interval still open at the
     // cut is cut there, and returned as a status line at the cut so the raw lines after it still know it is open.
@@ -251,7 +299,7 @@ internal sealed class SessionDayRetention : ISingletonService
     }
 
     // Rewrites `path` with `prepended` and every line that is kept, or that does not parse: a line this cannot read is
-    // not a line it may drop. Written aside and moved over, so a crash leaves the old file or the new one.
+    // not a line it may drop.
     private static async Task _KeepFromAsync<T>(string path, Func<T, bool> keep, IReadOnlyList<SessionTimelineEntry> prepended)
         where T : class
     {
@@ -267,8 +315,14 @@ internal sealed class SessionDayRetention : ISingletonService
             return;
         }
 
+        await _WriteAsync(path, [.. prepended.Select(entry => JsonSerializer.Serialize(entry, Json)), .. kept]).ConfigureAwait(false);
+    }
+
+    // Written aside and moved over, so a crash leaves the old file or the new one; owner-only, like every trail.
+    private static async Task _WriteAsync(string path, IEnumerable<string> lines)
+    {
         var text = new StringBuilder();
-        foreach (var line in prepended.Select(entry => JsonSerializer.Serialize(entry, Json)).Concat(kept))
+        foreach (var line in lines)
         {
             text.Append(line).Append(Environment.NewLine);
         }
