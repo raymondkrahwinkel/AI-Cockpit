@@ -7,9 +7,10 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 
 - **One CEF per Cockpit process**, started on the first opening, shut down on the UI thread after every browser
   closed. Offscreen rendering into `CefBrowserView`, GPU on. Any start failure is shown on the panel with the reason.
-- **The subprocess** is `Cockpit.Plugin.Browser.Subprocess(.exe)` in the plugin folder, with an `app.manifest`
-  carrying `supportedOS` (without it, offscreen rendering freezes after the first frames of a heavy page). The SDK
-  only embeds that manifest when building on Windows, so a Windows zip has to be built on Windows.
+- **The subprocess** is `Subprocess/Cockpit.Plugin.Browser.Subprocess(.exe)` in the plugin folder, with an
+  `app.manifest` carrying `supportedOS` (without it, offscreen rendering freezes after the first frames of a heavy
+  page). The SDK only embeds that manifest when building on Windows, so a Windows zip has to be built on Windows.
+  See "Publishing per platform" below.
 - **Raymond's profile** is its own `CefRequestContext` under `<state root>/browser/raymond/`. **No remote debugging
   port, ever**: it would open every tab of every profile to the whole machine.
 - **One browser, two places:** a tab (`browser.tab`) and the rail (`browser.rail`, KeepAlive and CanFloat). The view
@@ -82,3 +83,32 @@ both the download and the unpacked size per platform, and `CefRuntimePackage.Dow
 4. Try it per platform (hand test or CI smoke): first opening fetches, a second start fetches nothing, the old
    version directory is gone.
 5. Publish the plugin (`publish-plugin.yml`) and let it update the store index.
+
+## Publishing per platform
+
+The store has one zip per platform for this plugin: `browser-<version>-<rid>.zip` for `win-x64`, `win-arm64`,
+`linux-x64` and `linux-arm64`, listed under the version's `packages` in the store index. A cockpit downloads the
+zip for its own platform (host 0.118.0 and later, hence `minHostVersion`). macOS has no zip yet, so a Mac shows the
+plugin as incompatible with "No package for osx-arm64" instead of installing a browser that cannot start.
+
+- **Why per platform:** each zip carries the subprocess as a **self-contained** publish in `Subprocess/`. A user's
+  machine has no .NET, and Cockpit's own self-contained folder is no `DOTNET_ROOT`, so a framework-dependent exe
+  would not start. That costs about 35 MB per zip. The plugin's own DLLs stay framework-dependent and load into
+  Cockpit as always; the subprocess's runtime sits in its own folder, out of the plugin's load context.
+- **Where:** `store.json` names the `runtimeIdentifiers` and the `subprocess` (its path in the zip). That is read by
+  `publish-plugin.yml` only; `plugin.json` does not change. The workflow publishes the Windows RIDs on a Windows
+  runner (arm64 cross-published from x64, still with the manifest) and the Linux RIDs on ubuntu, then zips, hashes
+  and upserts them with `--package`. Every other plugin skips the Windows job and publishes one zip as before.
+- **Checked before the store PR:** `scripts/verify-plugin-packages.sh` checks every zip statically: its sha256
+  against the index, `hostfxr` beside the subprocess, the Windows 10 `supportedOS` id in each `.exe`, and the exec
+  bit of the Linux subprocess inside the zip. Run it locally against the four zips before changing this route:
+
+  ```
+  for rid in win-x64 win-arm64 linux-x64 linux-arm64; do
+    dotnet publish plugins-dev/Cockpit.Plugin.Browser/Subprocess -c Release -r $rid --self-contained -o publish/$rid
+  done
+  # zip each as the workflow does, upsert with --package, then:
+  bash scripts/verify-plugin-packages.sh <store dir> browser <version> Subprocess/Cockpit.Plugin.Browser.Subprocess
+  ```
+- **A local build** puts a framework-dependent subprocess in `bin/<Configuration>/net10.0/Subprocess/`, the same
+  place the zip has it, so a dev cockpit with .NET installed runs it as before.
