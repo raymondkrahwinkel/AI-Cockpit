@@ -59,12 +59,16 @@ internal sealed class SessionDayRetention : ISingletonService
         var cut = _StartOf(_DayOf(_time.GetUtcNow(), zone).AddDays(-RawDays), zone);
         var timelinePaths = _Generations(_timelinePath);
         var usagePaths = _Generations(_usage.FilePath);
-        var timeline = _Read<SessionTimelineEntry>(timelinePaths).Where(entry => entry.At < cut).ToList();
-        var usage = _Read<UsageSnapshot>(usagePaths).Where(snapshot => snapshot.RecordedAt < cut).ToList();
-        if (timeline.Count == 0 && usage.Count == 0)
+        // Lines are in append order, so the oldest one says whether a start has anything to fold.
+        var oldestLine = _Read<SessionTimelineEntry>(timelinePaths).FirstOrDefault()?.At;
+        var oldestUsage = _Read<UsageSnapshot>(usagePaths).FirstOrDefault()?.RecordedAt;
+        if ((oldestLine ?? cut) >= cut && (oldestUsage ?? cut) >= cut)
         {
             return;
         }
+
+        var timeline = _Read<SessionTimelineEntry>(timelinePaths).Where(entry => entry.At < cut).ToList();
+        var usage = _Read<UsageSnapshot>(usagePaths).Where(snapshot => snapshot.RecordedAt < cut).ToList();
 
         var existing = await _aggregates.ReadRecentAsync(int.MaxValue).ConfigureAwait(false);
         var days = new Dictionary<(string PaneId, DateOnly Day), Day>();
@@ -231,7 +235,7 @@ internal sealed class SessionDayRetention : ISingletonService
 
     private static IEnumerable<T> _Read<T>(IEnumerable<string> paths)
         where T : class =>
-        paths.Where(File.Exists).SelectMany(File.ReadLines).Select(_Parse<T>).OfType<T>().ToList();
+        paths.Where(File.Exists).SelectMany(File.ReadLines).Select(_Parse<T>).OfType<T>();
 
     private static T? _Parse<T>(string line)
         where T : class
