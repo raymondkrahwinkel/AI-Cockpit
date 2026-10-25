@@ -229,11 +229,13 @@ internal sealed class DiscordChannelSettingsControl : UserControl, IPluginSettin
             }
         }
 
+#pragma warning disable CS0618 // AC-1681 removes these legacy branches later in this change.
         var result = _singleUserOption.IsChecked == true
             ? AssistantChannelAccess.ForSingleUser(_singleUserId.Text ?? string.Empty)
             : _specificUsersOption.IsChecked == true
                 ? AssistantChannelAccess.ForUsers(_ParseUserIds(_specificUserIds.Text), _specificUsersWarningAck.IsChecked == true)
                 : AssistantChannelAccess.ForEveryone(_everyoneConfirmation.Text ?? string.Empty);
+#pragma warning restore CS0618
 
         if (!result.Ok)
         {

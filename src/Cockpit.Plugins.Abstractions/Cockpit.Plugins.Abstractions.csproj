@@ -539,7 +539,9 @@
          more than one button sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
     <!-- 3.16.0 (AC-1553): StructuredQuestionJson exposes the shared AskUserQuestion parser and answer text to plugins.
          A plugin that calls it sets minHostVersion 0.100.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
-    <Version>3.16.0</Version>
+    <!-- 3.17.0 (AC-1681): AssistantChannelStorage migrates legacy broad or channel audiences to one linked DM account
+         and persists a user-visible notice. A plugin that calls it sets minHostVersion 0.101.0. Additive; still v3. -->
+    <Version>3.17.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

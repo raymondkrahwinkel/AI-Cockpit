@@ -10,6 +10,7 @@ public static class AssistantChannelStorage
     private const string _UserIdsKey = "assistantChannel.userIds";
     private const string _VerbosityKey = "assistantChannel.verbosity";
     private const string _BotTokenKey = "assistantChannel.botToken";
+    private const string _MigrationNoticeKey = "assistantChannel.migrationNotice";
 
     /// <summary>
     /// Writes the level the operator settled on and how much this channel relays.
@@ -22,6 +23,7 @@ public static class AssistantChannelStorage
         storage.Set(_AudienceKey, access.Audience.ToString());
         storage.Set(_UserIdsKey, access.UserIds.ToArray());
         storage.Set(_VerbosityKey, verbosity.ToString());
+        storage.Set(_MigrationNoticeKey, string.Empty);
     }
 
     /// <summary>
@@ -69,5 +71,63 @@ public static class AssistantChannelStorage
     {
         ArgumentNullException.ThrowIfNull(storage);
         return storage.GetSecret(_BotTokenKey);
+    }
+
+    /// <summary>
+    /// Converts legacy channel and broad-audience settings to one linked DM account, or unlinks them when no owner
+    /// can be determined. Returns only a newly-created notice, while the stored notice remains until the next save.
+    /// </summary>
+    public static string? MigrateToSingleUser(IPluginStorage storage, string channelIdKey)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelIdKey);
+
+        if (!Enum.TryParse<AssistantChannelAudience>(storage.Get<string>(_AudienceKey), out var audience))
+        {
+            return null;
+        }
+
+        var userIds = (storage.Get<string[]>(_UserIdsKey) ?? [])
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var channelId = storage.Get<string>(channelIdKey)?.Trim();
+
+        if (audience == AssistantChannelAudience.SingleUser && userIds.Length == 1 && string.IsNullOrWhiteSpace(channelId))
+        {
+            return null;
+        }
+
+        string notice;
+        if ((audience is AssistantChannelAudience.SingleUser or AssistantChannelAudience.SpecificUsers) && userIds.Length == 1)
+        {
+            storage.Set(_AudienceKey, AssistantChannelAudience.SingleUser.ToString());
+            storage.Set(_UserIdsKey, userIds);
+            notice = string.IsNullOrWhiteSpace(channelId)
+                ? $"The assistant now talks only in DMs with {userIds[0]}."
+                : $"Channel {channelId} was disconnected; the assistant now talks only in DMs with {userIds[0]}.";
+        }
+        else
+        {
+            storage.Set(_AudienceKey, string.Empty);
+            storage.Set(_UserIdsKey, Array.Empty<string>());
+            var previouslyAllowed = userIds.Length == 0 ? "everyone" : string.Join(", ", userIds);
+            notice = $"No account is linked. Previously allowed: {previouslyAllowed}. Link your own account to receive messages.";
+        }
+
+        storage.Set(channelIdKey, string.Empty);
+        storage.Set(_MigrationNoticeKey, notice);
+        return notice;
+    }
+
+    /// <summary>
+    /// Reads the last migration notice for a settings view, or null after the operator saves the new settings.
+    /// </summary>
+    public static string? LoadMigrationNotice(IPluginStorage storage)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        var notice = storage.Get<string>(_MigrationNoticeKey);
+        return string.IsNullOrWhiteSpace(notice) ? null : notice;
     }
 }

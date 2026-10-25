@@ -4,16 +4,15 @@ using Cockpit.Plugins.Abstractions.Channels;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// The identity gate a channel plugin cannot get round (AC-1023 §3): one account by default, a warning to
-/// acknowledge before a list, a sentence to type over before everyone. No platform anywhere in it — a user id is
-/// whatever string the plugin calls one.
+/// The identity gate a channel plugin cannot get round: exactly one linked account, with legacy wider audiences
+/// denied before they are migrated.
 /// </summary>
 public class AssistantChannelAccessTests
 {
     [Fact]
     public void TheDefaultLevel_AllowsItsOneAccountAndNobodyElse()
     {
-        var access = AssistantChannelAccess.ForSingleUser("117").Access!;
+        var access = Assert.IsType<AssistantChannelAccess>(AssistantChannelAccess.ForSingleUser("117").Access);
 
         Assert.Equal(AssistantChannelAudience.SingleUser, access.Audience);
         Assert.True(access.IsAllowed("117"));
@@ -31,72 +30,6 @@ public class AssistantChannelAccessTests
         Assert.Null(result.Access);
     }
 
-    /// <summary>
-    /// Criterion 3: widening to a list without the warning having been acknowledged does not happen at all.
-    /// </summary>
-    [Fact]
-    public void WideningToAList_WithoutTheWarningAcknowledged_IsRefusedWithThatWarning()
-    {
-        var result = AssistantChannelAccess.ForUsers(["117", "118"], warningAcknowledged: false);
-
-        Assert.False(result.Ok);
-        Assert.Null(result.Access);
-        Assert.Equal(AssistantChannelAccess.MultipleUsersWarning, result.Error);
-        Assert.Contains("terms of service", result.Error!, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void WideningToAList_WithTheWarningAcknowledged_AllowsEveryoneNamedAndNobodyElse()
-    {
-        var access = AssistantChannelAccess.ForUsers(["117", "118"], warningAcknowledged: true).Access!;
-
-        Assert.Equal(AssistantChannelAudience.SpecificUsers, access.Audience);
-        Assert.True(access.IsAllowed("117"));
-        Assert.True(access.IsAllowed("118"));
-        Assert.False(access.IsAllowed("119"));
-    }
-
-    [Fact]
-    public void AListWithNobodyOnIt_IsRefused()
-    {
-        var result = AssistantChannelAccess.ForUsers([" "], warningAcknowledged: true);
-
-        Assert.False(result.Ok);
-        Assert.Null(result.Access);
-    }
-
-    /// <summary>
-    /// Criterion 3, the heavier half: clicking through is not enough — the sentence has to be typed over.
-    /// </summary>
-    [Fact]
-    public void OpeningToEveryone_WithoutTheConfirmationPhrase_IsRefusedWithTheHeavierWarning()
-    {
-        var result = AssistantChannelAccess.ForEveryone("yes");
-
-        Assert.False(result.Ok);
-        Assert.Null(result.Access);
-        Assert.Equal(AssistantChannelAccess.EveryoneWarning, result.Error);
-        Assert.NotEqual(AssistantChannelAccess.MultipleUsersWarning, result.Error);
-    }
-
-    [Fact]
-    public void OpeningToEveryone_WithTheConfirmationPhrase_AllowsAnyAccount()
-    {
-        var access = AssistantChannelAccess.ForEveryone($"  {AssistantChannelAccess.EveryoneConfirmationPhrase}  ").Access!;
-
-        Assert.Equal(AssistantChannelAudience.Everyone, access.Audience);
-        Assert.True(access.IsAllowed("117"));
-        Assert.True(access.IsAllowed("someone-nobody-has-met"));
-
-        // Still not a nameless sender: a platform that hands over no id is not "everyone", it is "unknown".
-        Assert.False(access.IsAllowed(null));
-    }
-
-    // ── storage ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Criterion 4: the bot token is written as a credential, never as a plain setting.
-    /// </summary>
     [Fact]
     public void TheBotToken_IsStoredAsASecret_AndNeverAsAPlainValue()
     {
@@ -110,19 +43,19 @@ public class AssistantChannelAccessTests
     }
 
     [Fact]
-    public void SettingsRoundTrip_AndComeBackWithoutTheWideningWarningsBeingAskedAgain()
+    public void SettingsRoundTrip_AndComeBackAsTheLinkedOwner()
     {
         var storage = new FakePluginStorage();
-        var saved = AssistantChannelAccess.ForUsers(["117", "118"], warningAcknowledged: true).Access!;
+        var saved = Assert.IsType<AssistantChannelAccess>(AssistantChannelAccess.ForSingleUser("117").Access);
 
         AssistantChannelStorage.Save(storage, saved, AssistantChannelVerbosity.StatusLines);
         var loaded = AssistantChannelStorage.Load(storage);
 
         Assert.NotNull(loaded);
-        Assert.Equal(AssistantChannelAudience.SpecificUsers, loaded.Value.Access.Audience);
+        Assert.Equal(AssistantChannelAudience.SingleUser, loaded.Value.Access.Audience);
         Assert.Equal(AssistantChannelVerbosity.StatusLines, loaded.Value.Verbosity);
-        Assert.True(loaded.Value.Access.IsAllowed("118"));
-        Assert.False(loaded.Value.Access.IsAllowed("119"));
+        Assert.True(loaded.Value.Access.IsAllowed("117"));
+        Assert.False(loaded.Value.Access.IsAllowed("118"));
     }
 
     [Fact]
@@ -132,20 +65,57 @@ public class AssistantChannelAccessTests
         Assert.Null(AssistantChannelStorage.LoadBotToken(new FakePluginStorage()));
     }
 
-    /// <summary>
-    /// A named level whose names went missing must not fall through to letting everyone in.
-    /// </summary>
-    [Fact]
-    public void ANamedLevelWithNoNamesLeft_ReadsAsNotConfigured()
+    public static TheoryData<AssistantChannelAudience, string[], string?, string?, string?> MigrationCases => new()
+    {
+        { AssistantChannelAudience.SingleUser, ["117"], null, "117", null },
+        { AssistantChannelAudience.SingleUser, ["117"], "42", "117", "Channel 42 was disconnected; the assistant now talks only in DMs with 117." },
+        { AssistantChannelAudience.SpecificUsers, ["117"], "42", "117", "Channel 42 was disconnected; the assistant now talks only in DMs with 117." },
+        { AssistantChannelAudience.Everyone, ["117", "118"], "42", null, "No account is linked. Previously allowed: 117, 118. Link your own account to receive messages." },
+    };
+
+    [Theory]
+    [MemberData(nameof(MigrationCases))]
+    public void LegacyAudience_IsMigratedToOneOwnerOrUnlinkedWithoutSilentLoss(
+        AssistantChannelAudience audience,
+        string[] userIds,
+        string? channelId,
+        string? expectedLinkedId,
+        string? expectedNotice)
     {
         var storage = new FakePluginStorage();
-        storage.Set("assistantChannel.audience", nameof(AssistantChannelAudience.SpecificUsers));
-        storage.Set("assistantChannel.userIds", Array.Empty<string>());
+        storage.Set("assistantChannel.audience", audience.ToString());
+        storage.Set("assistantChannel.userIds", userIds);
+        if (channelId is not null)
+        {
+            storage.Set("discordChannelId", channelId);
+        }
 
-        Assert.Null(AssistantChannelStorage.Load(storage));
+        var before = AssistantChannelStorage.Load(storage);
+        Assert.NotNull(before);
+        Assert.Equal(audience == AssistantChannelAudience.SingleUser, before.Value.Access.IsAllowed("117"));
+
+        var notice = AssistantChannelStorage.MigrateToSingleUser(storage, "discordChannelId");
+
+        Assert.Equal(expectedNotice, notice);
+        Assert.Equal(string.Empty, storage.Get<string>("discordChannelId") ?? string.Empty);
+        Assert.Equal(expectedNotice, AssistantChannelStorage.LoadMigrationNotice(storage));
+        Assert.Null(AssistantChannelStorage.MigrateToSingleUser(storage, "discordChannelId"));
+        Assert.Equal(expectedNotice, AssistantChannelStorage.LoadMigrationNotice(storage));
+
+        var migrated = AssistantChannelStorage.Load(storage);
+        if (expectedLinkedId is null)
+        {
+            Assert.Null(migrated);
+            return;
+        }
+
+        Assert.NotNull(migrated);
+        Assert.Equal(AssistantChannelAudience.SingleUser, migrated.Value.Access.Audience);
+        Assert.Equal([expectedLinkedId], migrated.Value.Access.UserIds);
+        Assert.True(migrated.Value.Access.IsAllowed(expectedLinkedId));
+        Assert.False(migrated.Value.Access.IsAllowed("999"));
     }
 
-    // Two buckets on purpose: what a test can only tell apart by which call wrote it.
     private sealed class FakePluginStorage : IPluginStorage
     {
         public Dictionary<string, object?> Plain { get; } = [];
