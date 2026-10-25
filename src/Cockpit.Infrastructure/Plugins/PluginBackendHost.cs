@@ -83,6 +83,12 @@ public class PluginBackendHost(
         : throw new UnauthorizedAccessException(
             $"Plugin '{pluginId}' needs the capability '{CapabilityCatalog.TimeEntries}' in its plugin.json to use the operator's time entries.");
 
+    // AC-1720: every session's timeline and spend, the same way.
+    public ICockpitTimelineReader Timeline => (capabilities ?? []).Contains(CapabilityCatalog.TimelineReadAll)
+        ? services.GetRequiredService<ICockpitTimelineReader>()
+        : throw new UnauthorizedAccessException(
+            $"Plugin '{pluginId}' needs the capability '{CapabilityCatalog.TimelineReadAll}' in its plugin.json to read the timeline of every session.");
+
     public IPluginCache Cache => _cache;
 
     // AC-1389: this plugin's slice of the backend's channel hub, which the UI part's CockpitUiHost reaches by the same id.

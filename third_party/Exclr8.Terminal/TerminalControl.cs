@@ -105,6 +105,9 @@ public class TerminalControl : Control, IDisposable
     /// PTY writer.</summary>
     public event EventHandler<ReadOnlyMemory<byte>>? Input;
 
+    /// <summary>User input with its source, for hosts that distinguish operator and programmatic input.</summary>
+    public event Action<ReadOnlyMemory<byte>, InputLineOrigin>? InputWithOrigin;
+
     /// <summary>Terminal wants bytes sent back to the PTY (DSR / DA
     /// replies). The consumer forwards to <c>pty.WriterStream</c>.</summary>
     public event EventHandler<ReadOnlyMemory<byte>>? Output;
@@ -314,6 +317,7 @@ public class TerminalControl : Control, IDisposable
     /// observers distinguish Typed / Pasted / Programmatic sources.</summary>
     private void RaiseInput(byte[] payload, InputLineOrigin origin)
     {
+        InputWithOrigin?.Invoke(payload, origin);
         Input?.Invoke(this, payload);
         InputEvents.Feed(payload, origin);
     }
@@ -961,7 +965,11 @@ public class TerminalControl : Control, IDisposable
     /// the close-marker is a paste-protocol primitive, never part
     /// of legitimate user content.</para>
     /// </summary>
-    public void Paste(string text)
+    public void Paste(string text) => Paste(text, InputLineOrigin.Pasted);
+
+    public void PasteProgrammatically(string text) => Paste(text, InputLineOrigin.Programmatic);
+
+    private void Paste(string text, InputLineOrigin origin)
     {
         if (string.IsNullOrEmpty(text)) return;
 
@@ -1008,7 +1016,7 @@ public class TerminalControl : Control, IDisposable
         int chunkSize = PasteChunkSize;
         if (chunkSize <= 0 || payload.Length <= chunkSize)
         {
-            RaiseInput(payload, InputLineOrigin.Pasted);
+            RaiseInput(payload, origin);
             return;
         }
 
@@ -1019,10 +1027,10 @@ public class TerminalControl : Control, IDisposable
         // carries \e[201~; each chunk is a contiguous slice of the
         // already-built payload, so brackets never straddle a chunk
         // boundary.
-        _ = SendPasteChunkedAsync(payload, chunkSize, PasteChunkDelayMs);
+        _ = SendPasteChunkedAsync(payload, chunkSize, PasteChunkDelayMs, origin);
     }
 
-    private async Task SendPasteChunkedAsync(byte[] payload, int chunkSize, int delayMs)
+    private async Task SendPasteChunkedAsync(byte[] payload, int chunkSize, int delayMs, InputLineOrigin origin)
     {
         try
         {
@@ -1032,7 +1040,7 @@ public class TerminalControl : Control, IDisposable
                 int len = Math.Min(chunkSize, payload.Length - offset);
                 var chunk = new byte[len];
                 Array.Copy(payload, offset, chunk, 0, len);
-                RaiseInput(chunk, InputLineOrigin.Pasted);
+                RaiseInput(chunk, origin);
                 offset += len;
                 if (offset >= payload.Length) break;
                 if (delayMs > 0)

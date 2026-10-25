@@ -17,17 +17,11 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
 
     private readonly ILogger _logger;
     private readonly string _liveFilePath;
-    private readonly string _rolloverFilePath;
     private readonly long _maxSizeBytes;
 
     // Reads (not writes) from the rollover file, so ReadRecentAsync doesn't appear to truncate history right
     // after a rollover. Null on the instance built to *be* that reader, which stops the chain going forever.
     private readonly UsageHistoryLog? _rolloverLog;
-
-    // Guards the read-size / rename-if-over-limit / append sequence as one unit. The base class's own write lock
-    // only serializes its own appends; without a lock at this layer too, one caller could rename the file out from
-    // under another that had already decided (a moment earlier) that no rotation was needed and was about to append.
-    private readonly SemaphoreSlim _rotationLock = new(1, 1);
 
     public UsageHistoryLog(ILogger<UsageHistoryLog> logger)
         : this(AuditTrailFiles.InStateRoot(AuditTrailFiles.Usage), logger, MaxSizeBytes)
@@ -54,10 +48,9 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
     {
         _logger = logger;
         _liveFilePath = logFilePath;
-        _rolloverFilePath = RolloverPathFor(logFilePath);
         _maxSizeBytes = maxSizeBytes;
         _rolloverLog = buildRolloverReader
-            ? new UsageHistoryLog(_rolloverFilePath, logger, maxSizeBytes, buildRolloverReader: false)
+            ? new UsageHistoryLog(RolloverPathFor(logFilePath), logger, maxSizeBytes, buildRolloverReader: false)
             : null;
     }
 
@@ -78,20 +71,21 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
         return string.IsNullOrEmpty(directory) ? rolloverName : Path.Combine(directory, rolloverName);
     }
 
-    // Rolls the file over (if at or past `MaxSizeBytes`) and appends, as one operation under `_rotationLock`
+    // Rolls the file over (if at or past `MaxSizeBytes`) and appends, as one operation under the shared `TrailsLock`
     // so a rename can't land between another caller's size check and its append. Hides (base method isn't
     // virtual by design) `JsonlAuditLog{T}.RecordAsync`; `IUsageHistory.RecordAsync` dispatch resolves here.
     public new async Task RecordAsync(UsageSnapshot entry, CancellationToken cancellationToken = default)
     {
-        await _rotationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // AC-1719: the lock retention shares, so neither a roll nor a fold lands between a size check and its append.
+        await SessionDayRetention.TrailsLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _RollIfOverLimit();
+            await _RollIfOverLimitAsync().ConfigureAwait(false);
             await base.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            _rotationLock.Release();
+            SessionDayRetention.TrailsLock.Release();
         }
     }
 
@@ -110,7 +104,7 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
         return older.Count == 0 ? recent : [.. recent, .. older];
     }
 
-    private void _RollIfOverLimit()
+    private async Task _RollIfOverLimitAsync()
     {
         try
         {
@@ -120,10 +114,8 @@ internal sealed class UsageHistoryLog : JsonlAuditLog<UsageSnapshot>, IUsageHist
                 return;
             }
 
-            // Overwrite whatever rollover file already exists — only one generation beyond the live file is kept,
-            // per the maintainer's call: bounding disk footprint here matters more than keeping two generations of
-            // a trail whose whole value is being *recent*.
-            File.Move(_liveFilePath, _rolloverFilePath, overwrite: true);
+            // One generation beyond the live file, as before; what it held is folded into day aggregates first (AC-1719).
+            await SessionDayRetention.RollAsync<UsageSnapshot>(_liveFilePath, snapshot => snapshot.RecordedAt, _logger).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

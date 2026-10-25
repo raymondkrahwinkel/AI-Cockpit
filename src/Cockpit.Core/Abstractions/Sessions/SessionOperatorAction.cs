@@ -6,4 +6,5 @@ public enum SessionOperatorAction
     MessageSent,
     PermissionAnswered,
     QuestionAnswered,
+    TtyInput,
 }
