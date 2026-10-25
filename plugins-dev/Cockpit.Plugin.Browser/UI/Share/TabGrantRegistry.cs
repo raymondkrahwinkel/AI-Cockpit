@@ -85,7 +85,7 @@ internal sealed class TabGrantRegistry
         lock (_gate)
         {
             return _grants.TryGetValue((paneId, tabId), out var grant) && grant.Paused == false
-                && (control == false || (grant.Controls && grant.OperatorHolds == false))
+                && (control == false || grant.OperatorHolds == false)
                 ? grant
                 : null;
         }
