@@ -1,7 +1,24 @@
 # Browser plugin
 
 A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README covers the engine delivery
-(AC-1727); the browser UI is AC-1711.
+(AC-1727) and the browser itself (AC-1711).
+
+## The browser
+
+- **One CEF per Cockpit process**, started on the first opening, shut down on the UI thread after every browser
+  closed. Offscreen rendering into `CefBrowserView`, GPU on. Any start failure is shown on the panel with the reason.
+- **The subprocess** is `Cockpit.Plugin.Browser.Subprocess(.exe)` in the plugin folder, with an `app.manifest`
+  carrying `supportedOS` (without it, offscreen rendering freezes after the first frames of a heavy page). The SDK
+  only embeds that manifest when building on Windows, so a Windows zip has to be built on Windows.
+- **Raymond's profile** is its own `CefRequestContext` under `<state root>/browser/raymond/`. **No remote debugging
+  port, ever**: it would open every tab of every profile to the whole machine.
+- **One browser, two places:** a tab (`browser.tab`) and the rail (`browser.rail`, KeepAlive and CanFloat). The view
+  is in one place at a time; the other says where it is.
+- **Codecs:** VP9, AV1 and Opus play (YouTube); H.264, AAC, HEVC and Widevine do not. A page that asks for one gets
+  a bar with "Open in system browser".
+- **macOS is off** until a Mac hand test (helper apps, `CefAppProtocol`, signing).
+- **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-rail`, `browser-codec`,
+  `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## How the engine arrives
 
