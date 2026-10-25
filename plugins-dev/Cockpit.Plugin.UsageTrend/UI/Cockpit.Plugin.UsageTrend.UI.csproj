@@ -17,6 +17,7 @@
   <ItemGroup>
     <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
     <Compile Include="..\UsageTrendSample.cs" Link="UsageTrendSample.cs" />
+    <Compile Include="..\..\_shared\UI\UsageTrendChartControl.cs" Link="UsageTrendChartControl.cs" />
   </ItemGroup>
 
   <ItemGroup>
