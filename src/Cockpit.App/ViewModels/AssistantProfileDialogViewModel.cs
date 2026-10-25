@@ -279,8 +279,9 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         _ttyProviderResolver,
         pluginConfigViews: _pluginConfigViews);
 
+    // The label starts as "<provider> (assistant)", the shape a saved assistant profile carries in Options.
     private static SessionProfile _EmptyProfile(SessionProviderOption? preferred) => new(
-        AssistantProfileSlot.DisplayName,
+        preferred is null ? AssistantProfileSlot.DisplayName : $"{preferred.Label} (assistant)",
         preferred switch
         {
             { Value: SessionProvider.Ollama } => new OllamaConfig(SessionProviderCatalog.DefaultBaseUrl(SessionProvider.Ollama), string.Empty, null),
