@@ -270,6 +270,9 @@ public sealed class CockpitBackend
         // turns the nudge into its turn.
         Services.GetService<StallNudger>()?.Start(sessionRegistry);
 
+        // AC-1717: and keep every session's busy/idle, operator actions and statuslines in `session-timeline.jsonl`.
+        Services.GetService<SessionTimelineRecorder>()?.Start(sessionRegistry);
+
         // AC-643: and keep the worktree crash net ticking after the startup sweep, against the sessions that are
         // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
         if (Services.GetService<WorktreeReconciler>() is { } worktreeReconciler)
@@ -323,7 +326,7 @@ public sealed class CockpitBackend
 
         IDisposable?[] planners =
         [
-            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(),
+            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
         ];
         foreach (var planner in planners)

@@ -2298,7 +2298,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         IReadOnlyList<Core.Sessions.ImageAttachment> images = [Core.Sessions.ImageAttachment.FromBytes(screenshotPng, "image/png")];
 
-        await _control.SubmitAsync(new QueuedPrompt(caption, images));
+        await _control.SubmitForTheAgentAsync(new QueuedPrompt(caption, images));
         return true;
     }
 
