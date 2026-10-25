@@ -115,14 +115,14 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_disposed || generation != Volatile.Read(ref _refreshGeneration))
+            if (_disposed || generation.Equals(Volatile.Read(ref _refreshGeneration)) is false)
             {
                 return;
             }
 
             var request = new ProductivityOverviewRequest(_AtLocalTime(requestedFrom), _AtLocalTime(requestedTo.AddDays(1)));
             var snapshot = await _AskAsync<ProductivityOverviewSnapshot>(ProductivityChannel.Overview, request).ConfigureAwait(false);
-            if (_disposed || generation != Volatile.Read(ref _refreshGeneration))
+            if (_disposed || generation.Equals(Volatile.Read(ref _refreshGeneration)) is false)
             {
                 return;
             }
@@ -135,7 +135,7 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
         }
         catch (Exception exception)
         {
-            if (_disposed || generation != Volatile.Read(ref _refreshGeneration))
+            if (_disposed || generation.Equals(Volatile.Read(ref _refreshGeneration)) is false)
             {
                 return;
             }
