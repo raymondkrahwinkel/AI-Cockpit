@@ -30,4 +30,11 @@ public interface IConsentBroker
     /// The operator's answer to an open prompt, from the UI. <paramref name="remember"/> is honoured only for a rememberable prompt (<see cref="ConsentPrompt.CanRemember"/>). Unknown or already-resolved ids are ignored.
     /// </summary>
     void Respond(Guid promptId, ConsentOutcome outcome, bool remember);
+
+    /// <summary>
+    /// <see cref="Respond(Guid, ConsentOutcome, bool)"/> with the picks for the request's choices (AC-1714). An approval
+    /// without a valid pick for each is a denial — which is also what the default gives, since it drops the picks.
+    /// </summary>
+    void Respond(Guid promptId, ConsentOutcome outcome, bool remember, IReadOnlyDictionary<string, IReadOnlyList<string>>? chosen) =>
+        Respond(promptId, outcome, remember);
 }

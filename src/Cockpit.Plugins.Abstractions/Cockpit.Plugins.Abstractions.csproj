@@ -564,7 +564,9 @@
          A plugin that relies on them sets minHostVersion 0.115.0. Additive; still v3. -->
     <!-- 3.27.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.8.0 - ICockpitUiHost.SetStatusText. A plugin
          that calls it sets minHostVersion 0.116.0. Additive; still v3. -->
-    <Version>3.27.0</Version>
+    <!-- 3.28.0 (AC-1714): added ConsentRequest.Choices, ConsentChoice, ConsentOption and ConsentDecision.Chosen, a
+         consent card the operator answers by picking. A plugin that sets Choices sets minHostVersion 0.117.0. Additive; still v3. -->
+    <Version>3.28.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
