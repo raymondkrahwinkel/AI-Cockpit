@@ -14,6 +14,7 @@ internal sealed record AttentionSpan(DateTimeOffset Start, DateTimeOffset End, s
 }
 
 internal sealed record ProjectTime(string? ProjectId, TimeSpan Time);
+internal sealed record MeasuredTicket(string Ticket, string? ProjectId, string? Statusline, TimeSpan Time);
 
 // Your time (measured attention plus own entries, overlap once) and agent time beside it, never added to it
 // unless CountAgentWithoutYou asks for the agents' time outside your blocks.
@@ -41,6 +42,52 @@ internal sealed record AttentionTime(
     // A day past the raw retention (AC-1719) keeps only its operator actions per project; each counts as one block.
     public static IReadOnlyList<ProjectTime> MeasuredFromDays(IEnumerable<CockpitTimelineDay> days, AttentionSettings settings) =>
         [.. days.GroupBy(day => day.ProjectId).Select(group => new ProjectTime(group.Key, settings.BlockLength * group.Sum(day => day.OperatorActions))).OrderByDescending(project => project.Time)];
+
+    public static IReadOnlyList<MeasuredTicket> MeasuredPerTicket(IEnumerable<CockpitTimelineLine> lines, TimeSpan blockLength) =>
+        [.. _ActionBlocks(lines, blockLength)
+            .Where(block => string.IsNullOrWhiteSpace(block.Line.Ticket) is false)
+            .GroupBy(block => block.Line.Ticket ?? string.Empty, StringComparer.Ordinal)
+            .Select(group => new MeasuredTicket(
+                group.Key,
+                group.Select(block => block.Line.ProjectId).LastOrDefault(project => project is not null),
+                group.Select(block => block.Line.Statusline).LastOrDefault(status => string.IsNullOrWhiteSpace(status) is false),
+                _Sum(group.Select(block => block.Span.Duration))))
+            .OrderByDescending(ticket => ticket.Time)];
+
+    public static IReadOnlyList<ProjectTime> AgentWithoutYouPerProject(
+        CockpitTimeline timeline,
+        TimeSpan blockLength,
+        DateTimeOffset until)
+    {
+        const string none = "";
+        var result = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
+        var measured = _Blocks(timeline.Lines, blockLength);
+        foreach (var span in _Subtract(_Busy(timeline.Lines, until), measured))
+        {
+            var pane = span.Owner ?? none;
+            var changes = timeline.Lines
+                .Where(line => line.PaneId == pane && line.ProjectId is not null && line.At < span.End)
+                .OrderBy(line => line.At)
+                .ToList();
+            var project = changes.LastOrDefault(line => line.At <= span.Start)?.ProjectId ?? none;
+            var cursor = span.Start;
+            foreach (var change in changes.Where(line => line.At > span.Start))
+            {
+                _Add(result, project, change.At - cursor);
+                project = change.ProjectId ?? none;
+                cursor = change.At;
+            }
+
+            _Add(result, project, span.End - cursor);
+        }
+
+        foreach (var day in timeline.Days)
+        {
+            _Add(result, day.ProjectId ?? none, day.AgentTime);
+        }
+
+        return [.. result.Select(pair => new ProjectTime(pair.Key.Length == 0 ? null : pair.Key, pair.Value)).OrderByDescending(project => project.Time)];
+    }
 
     public static AttentionTime Compute(
         CockpitTimeline timeline,
@@ -70,9 +117,14 @@ internal sealed record AttentionTime(
 
     // Each action opens or extends a block; its minutes run to the next action or the block end, to its project.
     private static List<AttentionSpan> _Blocks(IEnumerable<CockpitTimelineLine> lines, TimeSpan blockLength)
+        => [.. _ActionBlocks(lines, blockLength).Select(block => block.Span)];
+
+    private static List<(CockpitTimelineLine Line, AttentionSpan Span)> _ActionBlocks(
+        IEnumerable<CockpitTimelineLine> lines,
+        TimeSpan blockLength)
     {
         var actions = lines.Where(line => line.Kind == CockpitTimelineKind.Operator).OrderBy(line => line.At).ToList();
-        var spans = new List<AttentionSpan>();
+        var blocks = new List<(CockpitTimelineLine, AttentionSpan)>();
         for (var index = 0; index < actions.Count; index++)
         {
             var start = actions[index].At;
@@ -84,11 +136,11 @@ internal sealed record AttentionTime(
 
             if (end > start)
             {
-                spans.Add(new AttentionSpan(start, end, actions[index].ProjectId));
+                blocks.Add((actions[index], new AttentionSpan(start, end, actions[index].ProjectId)));
             }
         }
 
-        return spans;
+        return blocks;
     }
 
     private static List<AttentionSpan> _Busy(IEnumerable<CockpitTimelineLine> lines, DateTimeOffset until)
@@ -179,4 +231,7 @@ internal sealed record AttentionTime(
     }
 
     private static TimeSpan _Sum(IEnumerable<TimeSpan> values) => TimeSpan.FromTicks(values.Sum(value => value.Ticks));
+
+    private static void _Add(Dictionary<string, TimeSpan> values, string key, TimeSpan value) =>
+        values[key] = values.GetValueOrDefault(key) + value;
 }

@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Include="..\Contracts\*.cs" Link="Contracts\%(Filename)%(Extension)" />
+    <Compile Include="..\..\_shared\UI\SharedCharts.cs" Link="Shared\SharedCharts.cs" />
   </ItemGroup>
 
   <ItemGroup>
