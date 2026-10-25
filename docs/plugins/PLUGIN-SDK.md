@@ -87,8 +87,9 @@ the protection, and why the list below of what is **not** covered is the more im
   [`CapabilityCatalog`](API-REFERENCE.md#capabilities) under `capabilities`. An id the host does not know keeps
   the plugin from loading, with the id in the Plugins manager. Every declared id is shown, in the catalogue's
   own sentence, in the consent dialog and the plugin list; since the closure hash covers `plugin.json`, adding
-  one later asks for consent again. Only `time.entries` is **enforced**: without it, `host.TimeEntries`
-  throws `UnauthorizedAccessException` naming the capability. The other ids are shown, not enforced — and
+  one later asks for consent again. Only `time.entries` and `timeline.read-all` are **enforced**: without
+  them, `host.TimeEntries` and `host.Timeline` throw `UnauthorizedAccessException` naming the capability. The
+  other ids are shown, not enforced — and
   `host.Services` still resolves anything, which is point 2 below in another form.
 - **Mount authorization on the MCP endpoints the cockpit hosts for you.** A session reaches exactly the
   endpoints its own launch mounted for it, checked server-side on the already-verified caller identity and
@@ -246,6 +247,7 @@ public interface ICockpitHost
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
     ICockpitTimeEntries TimeEntries { get; }
+    ICockpitTimelineReader Timeline { get; }
     void AddSettings(Func<Control> createView);                 // opened from the manager's gear
     void AddSideMenuButton(string title, Action onInvoke);      // sidebar launcher button
     void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
@@ -1147,7 +1149,7 @@ than warns.
 
 ### Side-menu icons and badge tones
 
-SDK 3.25.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
+SDK 3.26.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
 semantic tone. Existing launchers stay accent-blue; the new overload is additive.
 
 ```csharp
@@ -1157,7 +1159,7 @@ badge.Tone = SideMenuButtonBadgeTone.Success;
 ```
 
 The host owns the icon and pill rendering so plugins do not embed theme-specific colors. A plugin using the
-icon overload or `Tone` sets `minHostVersion` to `0.114.0`.
+icon overload or `Tone` sets `minHostVersion` to `0.115.0`.
 
 ### Theme tokens and control classes: declare them, nothing derives them for you {#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you}
 
@@ -1218,6 +1220,13 @@ prompt, so it is the one to use for text the operator has not already seen.
 stopwatch, day-range reads, and the offered/booked lifecycle. It needs `"capabilities": ["time.entries"]` in
 `plugin.json` (AC-1730): without it the getter throws `UnauthorizedAccessException`. A plugin that uses it sets
 `minHostVersion` to `0.110.0`.
+
+`host.Timeline` reads every session's timeline over a range, not only the plugin's own (AC-1720):
+`QueryAsync(from, to, filter)` gives the status, operator and statusline lines, and each turn's usage as a
+difference from the turn before (sum a session's deltas for its total). Days older than the 90-day raw retention
+come back as day aggregates instead, never both for one session and day. It needs
+`"capabilities": ["timeline.read-all"]`; without it the getter throws `UnauthorizedAccessException`. A plugin
+that uses it sets `minHostVersion` to `0.114.0`.
 
 ```csharp
 public void Initialize(ICockpitHost host)

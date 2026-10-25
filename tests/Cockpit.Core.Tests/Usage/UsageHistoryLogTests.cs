@@ -162,7 +162,7 @@ public class UsageHistoryLogTests : IDisposable
     }
 
     [Fact]
-    public async Task RecordAsync_AtTheSizeLimit_RollsToTheDotOneFile_DroppingWhatWasThereBefore()
+    public async Task RecordAsync_AtTheSizeLimit_RollsToTheDotOneFile_KeepingADayNotFoldedYet()
     {
         // A tiny limit that the very first written line already exceeds, so the *second* write is the one that
         // finds the file over limit and rolls it. Proves AC1 (bounded growth via a single rollover generation)
@@ -180,10 +180,12 @@ public class UsageHistoryLogTests : IDisposable
         Assert.Contains("pane-b", await File.ReadAllTextAsync(_logPath));
         Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_logPath));
 
-        // Rolling again overwrites the previous rollover generation rather than chaining a second one.
+        // Rolling again keeps one generation, but every line here is from one day that is not folded yet (AC-1719),
+        // so the old generation's lines move along instead of being dropped.
         await log.RecordAsync(_Snapshot("pane-c"));
         Assert.Contains("pane-b", await File.ReadAllTextAsync(_RolloverPath()));
-        Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_RolloverPath()));
+        Assert.Contains("pane-a", await File.ReadAllTextAsync(_RolloverPath()));
+        Assert.DoesNotContain("pane-a", await File.ReadAllTextAsync(_logPath));
     }
 
     [Fact]

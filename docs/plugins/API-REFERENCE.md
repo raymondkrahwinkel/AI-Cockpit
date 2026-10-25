@@ -92,7 +92,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 
 **Declared in the manifest (host 0.110.0+).** A plugin lists the ids it asks for under `capabilities` in
 `plugin.json`; the consent dialog and the plugin list show each one's summary, and an unknown id is refused. Only
-`time.entries` is enforced today — see [the trust boundary](PLUGIN-SDK.md#the-trust-boundary).
+`time.entries` and `timeline.read-all` are enforced today — see [the trust boundary](PLUGIN-SDK.md#the-trust-boundary).
 
 **Host-only.** The catalogue describes the host's own surface, so only the host can add to it — see
 [AC-474](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-474).
@@ -154,6 +154,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
 | `time.entries` | Your own time entries | Sensitive | 0.107.0 | — | `ICockpitHost.TimeEntries` |
+| `timeline.read-all` | The timeline of every session | Sensitive | 0.114.0 | — | `ICockpitHost.Timeline` |
 | `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
 | `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
 
@@ -279,6 +280,7 @@ public interface ICockpitHost
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
     ICockpitTimeEntries TimeEntries { get; }                                   // default unavailable
+    ICockpitTimelineReader Timeline { get; }                                   // default unavailable
     IPluginCache Cache { get; }                                                 // default in-memory
     void AddSettings(Func<Control> createView);
     void AddSettings(Func<Control> createView, string category);                  // default forwards above
@@ -383,8 +385,12 @@ Your per-plugin key/value store — see [`IPluginStorage`](#ipluginstorage). For
 fetch or compute again, use `Cache`.
 
 ### `ICockpitTimeEntries TimeEntries { get; }` {#icockpittimeentries-timeentries--get}
-The host-owned log of the operator's manual time entries and one persistent stopwatch. It needs no capability:
+The host-owned log of the operator's manual time entries and one persistent stopwatch. It needs `time.entries`:
 this is the operator's own data, not the all-sessions timeline. See [`ICockpitTimeEntries`](#icockpittimeentries).
+
+### `ICockpitTimelineReader Timeline { get; }` {#icockpittimelinereader-timeline--get}
+The timeline and usage of every session over a range. It needs `timeline.read-all`; without it the getter throws
+`UnauthorizedAccessException` naming the capability. See [`ICockpitTimelineReader`](#icockpittimelinereader).
 
 ### `IPluginCache Cache { get; }` {#iplugincache-cache--get}
 Your per-plugin cache, in a file of its own — see [`IPluginCache`](#iplugincache).
@@ -429,7 +435,7 @@ badge.Text = "4h30 today";
 badge.Tone = SideMenuButtonBadgeTone.Success;
 ```
 
-The icon/tone overload requires SDK 3.25.0 and `minHostVersion` 0.114.0. Older plugins using the original
+The icon/tone overload requires SDK 3.26.0 and `minHostVersion` 0.115.0. Older plugins using the original
 overload remain accent-blue and require no change.
 
 ### `void AddSideMenuSection(string title, Func<Control> createView)` {#void-addsidemenusectionstring-title-funccontrol-createview}
@@ -1479,6 +1485,34 @@ public interface ICockpitTimeEntries
 
 Starting a second stopwatch or changing a frozen entry throws `InvalidOperationException` with a user-facing
 reason. A restart does not stop the stopwatch: its id, description, project and start time live in the log.
+
+## `ICockpitTimelineReader` {#icockpittimelinereader}
+
+Available in SDK 3.25.0 and host 0.114.0 (AC-1720), behind `timeline.read-all`. Every session, not only the plugin's
+own; a plugin's live view of its own sessions is [`ICockpitSessionObserver`](#the-sessions-namespace--provider-plugins).
+
+```csharp
+public interface ICockpitTimelineReader
+{
+    Task<CockpitTimeline> QueryAsync(DateTimeOffset from, DateTimeOffset to,
+        CockpitTimelineFilter? filter = null, CancellationToken cancellationToken = default);
+}
+
+public sealed record CockpitTimelineFilter(string? ProjectId = null, string? PaneId = null, string? RunId = null);
+public sealed record CockpitTimeline(IReadOnlyList<CockpitTimelineLine> Lines,
+    IReadOnlyList<CockpitUsageDelta> Usage, IReadOnlyList<CockpitTimelineDay> Days);
+```
+
+- `Lines` and `Usage` use a half-open range (`from <= At < to`). A line is a status change, an operator action
+  (only its kind, never the message), a statusline, a closed interval or a cockpit stop.
+- `Usage` holds what each turn **added**: the difference from the same session's record before it, taken over the
+  whole history, so a range that starts mid-session does not count it from zero. A session's deltas sum to its
+  last running total.
+- `Days` holds the local days older than the 90-day raw retention, one per session and day, with agent time,
+  waiting time, operator actions and that day's usage. A session's day is in `Days` or in `Lines`/`Usage`, never
+  both, so nothing on the boundary day is counted twice.
+- `filter`: every field that is set must match. A usage record carries no project, so a project filter matches the
+  sessions whose timeline names it. A cockpit-stop line has no session and passes only an empty filter.
 
 ## `IPluginStorage` {#ipluginstorage}
 

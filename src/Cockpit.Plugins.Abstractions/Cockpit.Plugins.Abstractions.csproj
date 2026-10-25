@@ -557,9 +557,12 @@
          projects as id and name and a pane's project. A plugin that calls them sets minHostVersion 0.112.0. Additive. -->
     <!-- 3.24.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.6.0 — ICockpitUiHost.OpenDockPanelAsync (default
          no-op). A plugin that calls it sets minHostVersion 0.113.0. Additive; still v3. -->
-    <!-- 3.25.0 (AC-1722): side-menu launchers accept an optional Material icon and their badges expose an optional
-         Accent/Success/Neutral tone. A plugin that uses either sets minHostVersion 0.114.0. Additive; still v3. -->
-    <Version>3.25.0</Version>
+    <!-- 3.25.0 (AC-1720): added ICockpitTimelineReader and ICockpitHost.Timeline (default unavailable), the timeline,
+         per-turn usage deltas and day aggregates of every session behind timeline.read-all. A plugin that reads it sets
+         minHostVersion 0.114.0. Additive; still v3. -->
+    <!-- 3.26.0 (AC-1722): side-menu launchers accept an optional Material icon and their badges expose an optional
+         Accent/Success/Neutral tone. A plugin that uses either sets minHostVersion 0.115.0. Additive; still v3. -->
+    <Version>3.26.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

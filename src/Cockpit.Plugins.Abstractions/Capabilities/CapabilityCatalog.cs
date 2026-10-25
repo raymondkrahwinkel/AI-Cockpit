@@ -12,10 +12,16 @@ namespace Cockpit.Plugins.Abstractions.Capabilities;
 public static class CapabilityCatalog
 {
     /// <summary>
-    /// The one capability the host enforces today (AC-1730): without it in <c>plugin.json</c>,
-    /// <see cref="ICockpitHost.TimeEntries"/> throws <see cref="UnauthorizedAccessException"/>.
+    /// Enforced (AC-1730): without it in <c>plugin.json</c>, <see cref="ICockpitHost.TimeEntries"/> throws
+    /// <see cref="UnauthorizedAccessException"/>.
     /// </summary>
     public const string TimeEntries = "time.entries";
+
+    /// <summary>
+    /// Enforced (AC-1720): without it in <c>plugin.json</c>, <see cref="ICockpitHost.Timeline"/> throws
+    /// <see cref="UnauthorizedAccessException"/>.
+    /// </summary>
+    public const string TimelineReadAll = "timeline.read-all";
 
     // Ordered risk-first so "what does this plugin actually get" is answerable by reading down the list, and
     // so the generated table in docs/plugins/API-REFERENCE.md reads the same way.
@@ -447,6 +453,15 @@ public static class CapabilityCatalog
             CapabilityRisk.Sensitive,
             "0.107.0",
             ["ICockpitHost.TimeEntries"],
+            []),
+
+        new(
+            TimelineReadAll,
+            "The timeline of every session",
+            "Reads when every session was busy, waiting or idle, what you did in it, its statuslines and what each turn spent — all sessions, not only the plugin's own.",
+            CapabilityRisk.Sensitive,
+            "0.114.0",
+            ["ICockpitHost.Timeline"],
             []),
 
         new(

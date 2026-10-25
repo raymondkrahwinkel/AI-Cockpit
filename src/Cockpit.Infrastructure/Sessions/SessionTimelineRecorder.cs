@@ -272,7 +272,7 @@ internal sealed record SessionTimelineEntry(
     SessionOperatorAction? Action = null,
     string? Statusline = null);
 
-// ponytail: rolls like UsageHistoryLog but reads only the live file; read the rollover too once a reader (AC-1720) needs it.
+// Rolls like UsageHistoryLog and reads only the file it is pointed at; CockpitTimelineReader (AC-1720) reads both.
 internal sealed class SessionTimelineLog : JsonlAuditLog<SessionTimelineEntry>
 {
     private const int MaxStatuslineLength = 200;
@@ -295,20 +295,29 @@ internal sealed class SessionTimelineLog : JsonlAuditLog<SessionTimelineEntry>
     protected override SessionTimelineEntry PrepareForWrite(SessionTimelineEntry entry) =>
         entry.Statusline is { } statusline ? entry with { Statusline = TrimText(statusline, MaxStatuslineLength) } : entry;
 
+    // AC-1719: under the lock retention shares; a roll folds the days it would drop into day aggregates first.
     public new async Task RecordAsync(SessionTimelineEntry entry, CancellationToken cancellationToken = default)
     {
+        await SessionDayRetention.TrailsLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (new FileInfo(FilePath) is { Exists: true, Length: >= UsageHistoryLog.MaxSizeBytes })
+            try
             {
-                File.Move(FilePath, UsageHistoryLog.RolloverPathFor(FilePath), overwrite: true);
+                if (new FileInfo(FilePath) is { Exists: true, Length: >= UsageHistoryLog.MaxSizeBytes })
+                {
+                    await SessionDayRetention.RollAsync<SessionTimelineEntry>(FilePath, line => line.At, _logger).ConfigureAwait(false);
+                }
             }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(exception, "Could not roll over the session timeline at {Path}.", FilePath);
-        }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "Could not roll over the session timeline at {Path}.", FilePath);
+            }
 
-        await base.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
+            await base.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            SessionDayRetention.TrailsLock.Release();
+        }
     }
 }

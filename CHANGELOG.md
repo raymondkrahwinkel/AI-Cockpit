@@ -33,7 +33,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Added
 
 - added: a plugin's side-menu launcher can ask for a Material icon and set the tone of its badge (accent, success or
-  neutral); Productivity uses both for its hours entry. Needs SDK 3.25.0 (UI 3.7.0) and host 0.114.0.
+  neutral); Productivity uses both for its hours entry. Needs SDK 3.26.0 (UI 3.7.0) and host 0.115.0.
+- added: a plugin you allow to (`timeline.read-all`) can read every session's timeline over a range: when it was
+  busy, waiting or idle, what you did in it, its statuslines and what each turn spent, with day totals for anything
+  older than 90 days. Without that permission in its manifest, it gets a refusal that names it.
+- added: the session timeline and the usage history keep their raw lines for 90 days; older days are folded
+  into one line per session and day (agent time, waiting time, operator actions, tokens, reported cost and turns)
+  that stays. Your own time entries are never folded or removed.
 - added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
   so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
 - added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**

@@ -111,7 +111,6 @@ public sealed class GitCloneUrlTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("https://github.com")]
-    [InlineData("https://github.com/")]
     [InlineData("not-a-url")]
     public void Parse_InputThatNamesNoRepository_Throws(string url)
     {

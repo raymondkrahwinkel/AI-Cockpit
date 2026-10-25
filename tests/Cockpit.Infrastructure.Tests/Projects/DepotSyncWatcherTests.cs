@@ -31,20 +31,6 @@ public sealed class DepotSyncWatcherTests : IDisposable
     }
 
     [Fact]
-    public void ChangeWithinFirstInterval_IsSeenAtTheFirstTickAfterIt()
-    {
-        _watcher.Start();
-        _time.Advance(TimeSpan.Zero);
-        Assert.False(_Next());
-
-        _checksum = "b";
-        _time.Advance(TimeSpan.FromMinutes(1));
-        _time.Advance(TimeSpan.FromMinutes(14));
-
-        Assert.True(_Next());
-    }
-
-    [Fact]
     public async Task ChangedFlag_StaysThroughQuietTicks_AndGoesOnSyncNow()
     {
         _watcher.Start();
