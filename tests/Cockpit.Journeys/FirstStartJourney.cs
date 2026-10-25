@@ -43,13 +43,92 @@ public sealed class FirstStartJourney
         var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-first-start-{Guid.NewGuid():N}")).FullName;
         try
         {
+            await Step.Run("Bundled and approved installed providers are offered without a restart; unapproved providers are not", async () =>
+            {
+                var stateRoot = Directory.CreateDirectory(Path.Combine(work, "installed-providers")).FullName;
+                var restarts = new _Restarts();
+                await using var cockpit = JourneyHost.Desktop(
+                    root =>
+                    {
+                        var bundledRoot = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName);
+                        var seeded = Directory.EnumerateDirectories(bundledRoot)
+                            .Select(directory => new DirectoryInfo(directory).Name)
+                            .Where(id => id is not ("claude-provider" or "cli-agent-provider"))
+                            .Select(id => JsonValue.Create(id))
+                            .ToArray();
+                        File.WriteAllText(
+                            CockpitConfigPath.For(root),
+                            new JsonObject { ["SeededBundledPlugins"] = new JsonArray(seeded) }.ToJsonString());
+
+                        _ProviderProvisioner._CopyPlugin(
+                            Path.Combine(bundledRoot, "gemini-provider"),
+                            Path.Combine(root, "plugins", "gemini-provider"));
+                    },
+                    stateRoot,
+                    services => services.AddSingleton<IAppRestartService>(restarts));
+
+                var resume = await cockpit.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync();
+                if (FirstRunWizardResume.NeedsLoadedProviders(resume))
+                {
+                    await cockpit.StartDesktopAsync();
+                }
+
+                var opened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var watch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => opened.TrySetResult(wizard));
+                Task shown = Task.CompletedTask;
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    shown = cockpit.Services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+                    return Task.CompletedTask;
+                });
+                var window = await opened.Task.WaitAsync(Until.Ceiling);
+                var wizard = HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(window.DataContext));
+                var dialogs = Assert.IsType<SessionDialogService>(cockpit.Services.GetRequiredService<ISessionDialogService>());
+                dialogs.OwnerWindow = () => window;
+                var providerStep = cockpit.Services.GetServices<IFirstRunWizardStep>().OfType<ProviderStep>().Single();
+                var providerStepViewModel = providerStep.ViewModel ?? throw new InvalidOperationException("The provider step has no view model.");
+                await Until.Holds(providerStepViewModel, () => !providerStepViewModel.IsLoading);
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    while (wizard.StepBar.All(step => !step.IsCurrent || step.Title != "Your assistant"))
+                    {
+                        wizard.NextCommand.Execute(null);
+                    }
+
+                    return Task.CompletedTask;
+                });
+
+                var assistant = cockpit.Services.GetServices<IFirstRunWizardStep>().OfType<AssistantStep>().Single().ViewModel;
+                HeadlessAvalonia.Run(() => assistant.AssistantOptions.IsEnabled = true);
+                var profileOpened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var profileWatch = Window.WindowOpenedEvent.AddClassHandler<AssistantProfileDialog>((dialog, _) => profileOpened.TrySetResult(dialog));
+                Task profileShown = Task.CompletedTask;
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    profileShown = assistant.EditProfileCommand.ExecuteAsync(null);
+                    return Task.CompletedTask;
+                });
+                var profileDialog = await profileOpened.Task.WaitAsync(Until.Ceiling);
+                var profileViewModel = HeadlessAvalonia.Run(() => Assert.IsType<AssistantProfileDialogViewModel>(profileDialog.DataContext));
+                var providerOptions = profileViewModel.Profile.Providers.Select(option => option.Label).ToList();
+                Assert.Equal(["Ollama", "LM Studio", "Claude", "Codex (CLI)"], providerOptions);
+                Assert.DoesNotContain("Gemini", providerOptions);
+                Assert.DoesNotContain("OpenAI", providerOptions);
+                Assert.False(restarts.Asked);
+
+                HeadlessAvalonia.Run(profileDialog.Close);
+                await profileShown.WaitAsync(Until.Ceiling);
+                HeadlessAvalonia.Run(window.Close);
+                await shown.WaitAsync(Until.Ceiling);
+            });
+
             await Step.Run("Gemini and Codex are installed, then the operator chooses the assistant after restart", async () =>
             {
                 var stateRoot = Directory.CreateDirectory(Path.Combine(work, "assistant-choice")).FullName;
                 var restarts = new _Restarts();
                 Task firstShown = Task.CompletedTask;
                 await using (var first = JourneyHost.Desktop(
-                    root => File.WriteAllText(CockpitConfigPath.For(root), """{"SeededBundledPlugins":["claude-provider","cli-agent-provider","gemini-provider"]}"""),
+                    root => File.WriteAllText(CockpitConfigPath.For(root), """{"SeededBundledPlugins":["cli-agent-provider","gemini-provider"]}"""),
                     stateRoot,
                     services =>
                     {
@@ -181,13 +260,12 @@ public sealed class FirstStartJourney
                     return Task.CompletedTask;
                 });
                 var profileDialog = await profileOpened.Task.WaitAsync(Until.Ceiling);
-                var providerPicker = HeadlessAvalonia.Run(() => profileDialog.GetLogicalDescendants().OfType<ComboBox>()
-                    .Single(combo => combo.ItemsSource?.Cast<SessionProviderOption>().Any() == true));
-                var providerOptions = HeadlessAvalonia.Run(() => providerPicker.ItemsSource?.Cast<SessionProviderOption>().ToList() ?? []);
-                Assert.Equal(["Ollama", "LM Studio", "Gemini", "OpenAI", "Codex (CLI)"], providerOptions.Select(option => option.Label));
-                Assert.DoesNotContain(providerOptions, option => option.Label.Contains("Claude", StringComparison.Ordinal));
-                Assert.Null(HeadlessAvalonia.Run(() => providerPicker.SelectedItem));
                 var profileViewModel = HeadlessAvalonia.Run(() => Assert.IsType<AssistantProfileDialogViewModel>(profileDialog.DataContext));
+                var providerPicker = HeadlessAvalonia.Run(() => profileDialog.GetLogicalDescendants().OfType<ComboBox>()
+                    .Single(combo => ReferenceEquals(combo.ItemsSource, profileViewModel.Profile.Providers)));
+                var providerOptions = HeadlessAvalonia.Run(() => providerPicker.ItemsSource?.Cast<SessionProviderOption>().ToList() ?? []);
+                Assert.Equal(["Ollama", "LM Studio", "Gemini", "OpenAI", "Codex (CLI)", "Claude"], providerOptions.Select(option => option.Label));
+                Assert.Null(HeadlessAvalonia.Run(() => providerPicker.SelectedItem));
                 HeadlessAvalonia.Run(() =>
                 {
                     providerPicker.SelectedItem = providerOptions.Single(option => option.Label == "Gemini");
@@ -496,7 +574,7 @@ public sealed class FirstStartJourney
                 manifest);
         }
 
-        private static void _CopyPlugin(string source, string target)
+        internal static void _CopyPlugin(string source, string target)
         {
             Directory.CreateDirectory(target);
             foreach (var file in Directory.EnumerateFiles(source))

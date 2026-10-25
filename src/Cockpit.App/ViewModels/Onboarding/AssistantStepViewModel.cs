@@ -148,17 +148,23 @@ public sealed partial class AssistantStepViewModel : ObservableObject
 
     private AssistantProfileSetup? _FirstRunSetup()
     {
-        var pluginProviders = (_resumeState?.Providers ?? [])
+        var resumedProviders = (_resumeState?.Providers ?? [])
             .SelectMany(provider => provider.SessionProviders)
-            .DistinctBy(provider => provider.Id)
             .Select(provider => new SessionProviderOption(provider.Name, SessionProvider.Plugin, provider.Id))
+            .ToList();
+        var pluginProviders = resumedProviders
+            .Concat((_registry?.SessionProviders ?? [])
+                .Select(provider => new SessionProviderOption(provider.DisplayName, SessionProvider.Plugin, provider.ProviderId)))
+            .DistinctBy(provider => provider.PluginProviderId)
             .ToList();
         IReadOnlyList<SessionProviderOption> providers =
         [
             .. SessionProviderCatalog.Providers.Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio),
             .. pluginProviders,
         ];
-        var preferred = pluginProviders.Count == 1 ? pluginProviders[0] : null;
+        var preferred = resumedProviders.Count == 1
+            ? pluginProviders.Single(provider => provider.PluginProviderId == resumedProviders[0].PluginProviderId)
+            : null;
 
         return new AssistantProfileSetup(providers, preferred, _RememberDeferredProfileAsync);
     }
