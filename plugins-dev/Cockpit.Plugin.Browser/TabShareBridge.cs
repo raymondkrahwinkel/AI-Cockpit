@@ -33,15 +33,18 @@ internal sealed class TabShareBridge : IDisposable
         host.Sessions.SessionClosed += _sessionClosed;
     }
 
-    public async Task<TabShareAnswer> AskAsync(string paneId, string tool, string? tabId = null, string? mode = null)
+    public Task<TabShareAnswer> AskAsync(string paneId, string tool, string? tabId = null, string? mode = null) =>
+        AskAsync(new TabShareRequest(Guid.NewGuid().ToString("N"), paneId, tool, tabId, mode), AnswerTimeout);
+
+    // AC-1728: a request with its own deadline, for the control card that waits on the operator.
+    public async Task<TabShareAnswer> AskAsync(TabShareRequest request, TimeSpan timeout)
     {
-        var request = new TabShareRequest(Guid.NewGuid().ToString("N"), paneId, tool, tabId, mode);
         var waiting = new TaskCompletionSource<TabShareAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[request.Id] = waiting;
         try
         {
             _host.Channel.Publish(Request, JsonSerializer.SerializeToElement(request, Json));
-            return await waiting.Task.WaitAsync(AnswerTimeout).ConfigureAwait(false);
+            return await waiting.Task.WaitAsync(timeout).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {

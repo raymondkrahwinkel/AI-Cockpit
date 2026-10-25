@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.Browser.UI.Share;
 // Sharing one of Raymond's tabs with one agent session (AC-1714): the consent card that grants it, and the answer to
 // every read the backend passes on. The grant is checked on the UI thread right before and right after the read, so
 // Stop sharing, closing the tab or a move to another site refuses the very next call.
-internal sealed class TabShareService : IDisposable
+internal sealed partial class TabShareService : IDisposable
 {
     public const string Watch = "watch";
 
@@ -80,7 +80,7 @@ internal sealed class TabShareService : IDisposable
                 ], AllowMultiple: true),
             ],
             ApproveLabel = "Share watching",
-            Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"],
+            Never = NeverCovered,
         };
 
         using var timeout = new CancellationTokenSource(CardTimeout);
@@ -136,6 +136,11 @@ internal sealed class TabShareService : IDisposable
 
     private async Task<TabShareAnswer> _HandleAsync(TabShareRequest request)
     {
+        if (ControlTools.Contains(request.Tool))
+        {
+            return await _ControlAsync(request);
+        }
+
         if (request.Tool == "list")
         {
             var tabs = Grants.ForSession(request.PaneId)
@@ -203,6 +208,7 @@ internal sealed class TabShareService : IDisposable
     {
         foreach (var tab in _model.Tabs.Where(tab => _watched.Add(tab.Id)))
         {
+            tab.View.OperatorInput += () => _OperatorInput(tab);
             tab.Changed += () =>
             {
                 if (Grants.ForTab(tab.Id).Count > 0)

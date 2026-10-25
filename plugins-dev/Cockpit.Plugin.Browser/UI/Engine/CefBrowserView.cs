@@ -83,6 +83,9 @@ internal sealed class CefBrowserView : Control
 
     public event Action<string>? PopupRequested;
 
+    // AC-1728: the operator's own click or key in this view, so an agent controlling the tab pauses for him.
+    public event Action? OperatorInput;
+
     public bool IsMuted { get; private set; }
 
     public void Navigate(string url)
@@ -101,6 +104,62 @@ internal sealed class CefBrowserView : Control
     public void GoForward() => _browser?.GoForward();
 
     public void Reload() => _browser?.Reload();
+
+    // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host.
+    // Coordinates are the view's DIPs, which are the page's CSS pixels at 100% zoom.
+    public void AgentClick(int x, int y)
+    {
+        var mouse = new CefMouseEvent(x, y, CefEventFlags.None);
+        _OnHost(host =>
+        {
+            host.SetFocus(true);
+            host.SendMouseMoveEvent(mouse, false);
+            host.SendMouseClickEvent(mouse, CefMouseButtonType.Left, false, 1);
+            host.SendMouseClickEvent(mouse, CefMouseButtonType.Left, true, 1);
+        });
+    }
+
+    public void AgentType(string text)
+    {
+        var keys = text.Select(character => new CefKeyEvent { EventType = CefKeyEventType.Char, Character = character, UnmodifiedCharacter = character, WindowsKeyCode = character }).ToList();
+        _OnHost(host =>
+        {
+            host.SetFocus(true);
+            foreach (var key in keys)
+            {
+                host.SendKeyEvent(key);
+            }
+        });
+    }
+
+    // False for a key name that has no code; Enter also sends its character, which is what submits a form.
+    public bool AgentKey(string name)
+    {
+        var code = KeyCodes.FromName(name);
+        if (code == 0)
+        {
+            return false;
+        }
+
+        _OnHost(host =>
+        {
+            host.SetFocus(true);
+            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.RawKeyDown, WindowsKeyCode = code });
+            if (code == 0x0D)
+            {
+                host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = code });
+            }
+
+            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.KeyUp, WindowsKeyCode = code });
+        });
+        return true;
+    }
+
+    public void AgentScroll(int dx, int dy)
+    {
+        var mouse = new CefMouseEvent((int)(_viewSize.Width / 2), (int)(_viewSize.Height / 2), CefEventFlags.None);
+        _OnHost(host => host.SendMouseWheelEvent(mouse, dx, dy));
+    }
 
     public void SetMuted(bool muted)
     {
@@ -226,6 +285,7 @@ internal sealed class CefBrowserView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        OperatorInput?.Invoke();
         Focus();
         var mouse = _Mouse(e);
         var button = _Button(e.GetCurrentPoint(this).Properties.PointerUpdateKind);
@@ -267,6 +327,7 @@ internal sealed class CefBrowserView : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        OperatorInput?.Invoke();
         _SendKey(e, CefKeyEventType.RawKeyDown);
         e.Handled = true;
     }

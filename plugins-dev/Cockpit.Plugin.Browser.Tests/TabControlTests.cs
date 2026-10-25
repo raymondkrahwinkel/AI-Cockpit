@@ -6,7 +6,8 @@ namespace Cockpit.Plugin.Browser.Tests;
 public class TabControlTests
 {
     // L2b (authorisation), criteria 1 to 4: watching is not enough, control is exactly one session on one tab, and
-    // Raymond taking over, Stop, closing the tab, the session ending or a move to another site refuse the next action.
+    // Raymond taking over, Stop, closing the tab, the session ending or a move to another site refuse the next action;
+    // and the audit masks a password field (criterion 5).
     [Fact]
     public void Control_IsOneSessionOnOneTab_AndNeverFollowsFromWatching()
     {
@@ -37,5 +38,9 @@ public class TabControlTests
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Control);
         grants.SessionEnded("pane-a");
         Assert.Null(grants.Authorize("pane-a", "tab-1", control: true));
+
+        // Criterion 5: the audit line of a typed text shows it, except in a password field.
+        Assert.Equal("type \"hello\"", TabShareService.Describe("type", "hello", null, null, null, password: false));
+        Assert.DoesNotContain("test-only-secret", TabShareService.Describe("type", "test-only-secret", null, null, null, password: true));
     }
 }
