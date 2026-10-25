@@ -192,7 +192,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
 
         // The selected session learning its working directory (an SDK session's init event) or its project (AC-1737)
         // is the same "re-scope now" cue as the selection itself changing.
-        if (e.PropertyName == nameof(SessionPanelViewModel.WorkingDirectory))
+        if (e.PropertyName is nameof(SessionPanelViewModel.WorkingDirectory) or nameof(SessionPanelViewModel.ProjectId))
         {
             _RaiseActiveSessionChanged();
         }
