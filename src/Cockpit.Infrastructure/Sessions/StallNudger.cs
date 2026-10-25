@@ -78,7 +78,7 @@ public sealed class StallNudger : ISingletonService, IDisposable
                 _followed.Remove(gone);
             }
 
-            foreach (var handle in live.Where(handle => handle.StartedByTheAssistant && !_followed.ContainsKey(handle)))
+            foreach (var handle in live.Where(handle => handle.IsTerminal && !_followed.ContainsKey(handle)))
             {
                 var followed = new Followed();
                 Action<SessionToolCall> onTool = call => _OnTool(followed, call.ToolName);
