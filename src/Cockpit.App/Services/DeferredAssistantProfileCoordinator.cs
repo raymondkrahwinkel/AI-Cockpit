@@ -61,6 +61,9 @@ internal sealed class DeferredAssistantProfileCoordinator(
         var profile = new SessionProfile(label, new PluginProviderConfig(providerId, configJson))
         {
             DefaultKind = ProfileSessionKind.Sdk,
+            Defaults = pending.AssistantOptionDefaults is { Count: > 0 } optionDefaults
+                ? new ProfileDefaults(string.Empty, string.Empty, string.Empty) { OptionDefaults = optionDefaults }
+                : null,
         };
         await profiles.RepointAsync(profile, replacesStandingInstruction: false, cancellationToken).ConfigureAwait(false);
         await settings.UpdateAsync(current => current with { IsEnabled = true }, cancellationToken).ConfigureAwait(false);

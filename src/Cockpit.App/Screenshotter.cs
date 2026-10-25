@@ -734,6 +734,11 @@ internal static partial class Screenshotter
                 new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini"),
                 new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
             ]),
+        // AC-1741: the same editor in first-run mode and in Options, per provider, to lay side by side.
+        ["first-run-assistant-claude-session-defaults"] = (_, _) => _FirstRunEditorWithDefaults("Claude"),
+        ["first-run-assistant-codex-session-defaults"] = (_, _) => _FirstRunEditorWithDefaults("Codex"),
+        ["assistant-profile-claude"] = (_, _) => _OptionsEditorWithDefaults("Claude"),
+        ["assistant-profile-codex"] = (_, _) => _OptionsEditorWithDefaults("Codex"),
         ["first-run-assistant-claude-resumed"] = (_, _) => _AssistantWithDeferredClaude(),
         // AC-1673: the two explicit choices from step 3; a found Claude CLI is visible but not selected.
         ["first-run-provider-ticked"] = (_, _) => _ProviderStepTicked(),
@@ -874,6 +879,47 @@ internal static partial class Screenshotter
         {
             DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([new _SceneProviderStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         };
+    }
+
+    private static (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry Registry, string Id, string Name, Func<string?, Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView> View) _DefaultsProvider(string which) =>
+        which == "Codex"
+            ? (new _FakeCodexProviderRegistry(), _FakeCodexProviderRegistry.ProviderId, "Codex (CLI)", _ => new _CodexPlaceholderConfigView())
+            : (new _FakeClaudeProviderRegistry(), ClaudePluginProfile.ProviderId, "Claude", _ => new _PlaceholderConfigView());
+
+    private static Window _FirstRunEditorWithDefaults(string which)
+    {
+        var (registry, id, name, view) = _DefaultsProvider(which);
+        var option = new SessionProviderOption(name, SessionProvider.Plugin, id);
+        AssistantProfileSetup setup = new([option], option, static (_, _) => Task.CompletedTask);
+        return new AssistantProfileDialog
+        {
+            DataContext = new AssistantProfileDialogViewModel(pluginProviderRegistry: new Composition.PluginRegistrations(registry), pluginConfigViews: _ConfigViews(id, view), setup: setup),
+            Height = 1220,
+        };
+    }
+
+    private static Window _OptionsEditorWithDefaults(string which)
+    {
+        var (registry, id, name, view) = _DefaultsProvider(which);
+        var viewModel = new AssistantProfileDialogViewModel(
+            new _FakeAssistantProfileStore(new SessionProfile($"{name} (assistant)", new PluginProviderConfig(id, "{}"))),
+            new _FakeSessionProfileStore(),
+            new _FakeAssistantSessionHost(),
+            pluginProviderRegistry: new Composition.PluginRegistrations(registry),
+            pluginConfigViews: _ConfigViews(id, view));
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new AssistantProfileDialog { DataContext = viewModel, Height = 1220 };
+    }
+
+    private sealed class _FakeAssistantProfileStore(SessionProfile profile) : IAssistantProfileStore
+    {
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(profile));
+
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(record, null, replacesStandingInstruction));
+
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(null, reason));
     }
 
     private static Window _FirstRunAssistantProfile(

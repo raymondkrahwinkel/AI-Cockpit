@@ -7,6 +7,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views.Onboarding;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Plugins;
@@ -132,6 +133,17 @@ public class AssistantStepViewModelTests
         await noRestart.EditProfileCommand.ExecuteAsync(null);
         Assert.Equal(["Ollama", "LM Studio"], openedSetup?.Providers.Select(provider => provider.Label));
 
+        // AC-1741: a session default chosen in the editor travels with the deferred choice.
+        FirstRunWizardResumeState? remembered = null;
+        var deferring = new AssistantStepViewModel(null, profileStore, dialogs, new PluginRegistrations(registry), null, Substitute.For<IFirstRunWizardStateStore>(), state => remembered = state);
+        await deferring.EditProfileCommand.ExecuteAsync(null);
+        var chosen = new SessionProfile("Codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"))
+        {
+            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty) { OptionDefaults = new Dictionary<string, string> { ["sandbox"] = "workspace-write" } },
+        };
+        await openedSetup!.SetUpLaterAsync(chosen, CancellationToken.None);
+        Assert.Equal("workspace-write", remembered?.AssistantOptionDefaults?["sandbox"]);
+
         // AC-1673: finding a CLI is detection, not the operator choosing it. Once ticked it is counted as a choice;
         // ticked off again it is not.
         var providers = new ProviderStepViewModel();
@@ -145,7 +157,7 @@ public class AssistantStepViewModelTests
         Assert.Equal("Press Install and restart for what you ticked, or untick it.", providers.NextBlockedReason);
         var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
         Assert.False(withChoice.OnlyLocalProvidersAvailable);
-        Assert.Contains("Claude Code (ticked, not installed yet", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);
+        Assert.Contains("Claude Code (not added yet)", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);
         claude.IsSelected = false;
         Assert.Null(providers.NextBlockedReason);
         withChoice.RefreshChosenProviders();

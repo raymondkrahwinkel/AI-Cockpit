@@ -16,6 +16,8 @@ internal sealed class FirstRunWizardResumeEntry
 
     public string? AssistantConfigJson { get; set; }
 
+    public Dictionary<string, string>? AssistantOptionDefaults { get; set; }
+
     public static FirstRunWizardResumeEntry FromDomain(FirstRunWizardResumeState state) => new()
     {
         StartAtOrder = state.StartAtOrder,
@@ -24,6 +26,7 @@ internal sealed class FirstRunWizardResumeEntry
         AssistantProviderId = state.AssistantProviderId,
         AssistantProviderName = state.AssistantProviderName,
         AssistantConfigJson = state.AssistantConfigJson,
+        AssistantOptionDefaults = state.AssistantOptionDefaults?.ToDictionary(pair => pair.Key, pair => pair.Value),
     };
 
     public FirstRunWizardResumeState ToDomain() => new(
@@ -32,7 +35,8 @@ internal sealed class FirstRunWizardResumeEntry
         [.. Providers.Select(provider => provider.ToDomain())],
         AssistantProviderId,
         AssistantProviderName,
-        AssistantConfigJson);
+        AssistantConfigJson,
+        AssistantOptionDefaults);
 }
 
 internal sealed class FirstRunProviderChoiceEntry

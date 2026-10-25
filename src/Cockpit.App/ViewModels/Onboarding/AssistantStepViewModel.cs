@@ -9,8 +9,8 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.App.ViewModels.Onboarding;
 
 // Drives the first-run wizard's assistant step (AC-585): reuses the exact settings/profile Options → Voice →
-// Assistant already edits, so there is no second definition (criterion 3). Never touches consent-bypass
-// (AC-575/AC-637) — the hard boundary the ticket draws.
+// Assistant already edits, so there is no second definition (criterion 3). Its profile editor is the regular
+// dialog, session defaults included (AC-1741).
 public sealed partial class AssistantStepViewModel : ObservableObject
 {
     private readonly ISessionDialogService? _dialogService;
@@ -188,6 +188,7 @@ public sealed partial class AssistantStepViewModel : ObservableObject
             AssistantProviderId = provider.ProviderId,
             AssistantProviderName = providerName,
             AssistantConfigJson = string.IsNullOrWhiteSpace(provider.ConfigJson) ? "{}" : provider.ConfigJson,
+            AssistantOptionDefaults = profile.Defaults?.OptionDefaults,
         };
         if (state is not null)
         {
