@@ -15,13 +15,13 @@ public class SlackChannelBridgeImageTests
     private static AssistantChannelAccess _SingleUserAccess(string userId) =>
         AssistantChannelAccess.ForSingleUser(userId).Access!;
 
-    private static (SlackChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeSlackChannelSink Sink, FakeSlackFileFetcher Files) _Build(Action<string>? reportError = null)
+    private static (SlackChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeSlackChannelSink Sink, FakeSlackFileFetcher Files) _Build(Action<string>? reportError = null, string channelId = "<unknown>", Action<string>? reportRefusal = null)
     {
         var gateway = new FakeAssistantChannelGateway();
         var sink = new FakeSlackChannelSink();
         var files = new FakeSlackFileFetcher();
         var bridge = new SlackChannelBridge(
-            gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => AssistantChannelVerbosity.Everything, reportError);
+            gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => AssistantChannelVerbosity.Everything, reportError, channelId, reportRefusal);
         return (bridge, gateway, sink, files);
     }
 
@@ -56,16 +56,22 @@ public class SlackChannelBridgeImageTests
     [InlineData("photo.png", "image/png")]
     public async Task AStrangerGetsNoReaction_AndNothingOfTheirsIsDownloaded(string name, string mimeType)
     {
-        var (bridge, gateway, sink, files) = _Build();
+        var refusals = new List<string>();
+        var (bridge, gateway, sink, files) = _Build(channelId: "C333", reportRefusal: refusals.Add);
         files.Files[_Url] = _Bytes;
-        gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
 
         await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", "1", [new SlackInboundFile(name, mimeType, 4, _Url)]);
 
         Assert.Empty(files.Fetched);
-        Assert.Empty(Assert.Single(gateway.SentImages));
+        Assert.Empty(gateway.SentMessages);
+        Assert.Empty(gateway.SentImages);
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
+        var refusal = Assert.Single(refusals);
+        Assert.Contains(_StrangerUserId, refusal);
+        Assert.Contains("C333", refusal);
+        Assert.DoesNotContain("hello?", refusal);
+        Assert.DoesNotContain(name, refusal);
     }
 
     // AC-1074: a dropped attachment is a dropped piece of the message, so it says so through the host. It used
