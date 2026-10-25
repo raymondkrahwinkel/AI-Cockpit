@@ -22,10 +22,12 @@ internal sealed record ProductivitySnapshotRequest(
     DateTimeOffset TodayFrom,
     DateTimeOffset TodayTo);
 
+// TodayTotal is your time today (measured plus own entries, overlap once); Day is the selected day's attention.
 internal sealed record ProductivitySnapshot(
     IReadOnlyList<CockpitTimeEntry> Entries,
     TimeSpan TodayTotal,
-    CockpitRunningStopwatch? Stopwatch);
+    CockpitRunningStopwatch? Stopwatch,
+    AttentionTime Day);
 
 internal sealed record ProductivitySaveRequest(
     Guid? Id,

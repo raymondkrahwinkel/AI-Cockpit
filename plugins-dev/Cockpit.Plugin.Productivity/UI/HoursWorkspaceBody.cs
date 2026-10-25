@@ -34,6 +34,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     private readonly TextBlock _rulesTotal = Ui.Hint(string.Empty);
     private readonly StackPanel _running = new() { Spacing = 8 };
     private readonly StackPanel _rows = new() { Spacing = 0 };
+    private readonly ContentControl _measured = new() { Name = "MeasuredTime" };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private Guid? _editingId;
     private bool _editingStopwatch;
@@ -81,7 +82,7 @@ internal sealed class HoursWorkspaceBody : UserControl
                 {
                     _Header(previous, next),
                     _EntryCard(),
-                    _RulesCard(),
+                    _DayColumns(),
                 },
             },
         };
@@ -188,6 +189,17 @@ internal sealed class HoursWorkspaceBody : UserControl
         }, 14);
     }
 
+    private Control _DayColumns()
+    {
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,440"), ColumnSpacing = 12 };
+        var rules = _RulesCard();
+        rules.VerticalAlignment = VerticalAlignment.Top;
+        columns.Children.Add(rules);
+        Grid.SetColumn(_measured, 1);
+        columns.Children.Add(_measured);
+        return columns;
+    }
+
     private Control _RulesCard()
     {
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
@@ -211,7 +223,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     {
         var header = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("60,*,145,70,90,150,55"),
+            ColumnDefinitions = new ColumnDefinitions("48,*,105,45,78,125,55"),
             ColumnSpacing = 10,
             Margin = new Thickness(6, 0),
         };
@@ -337,6 +349,9 @@ internal sealed class HoursWorkspaceBody : UserControl
         _reason.IsVisible = !string.IsNullOrEmpty(_reason.Text);
         _error.Text = _controller.Error ?? string.Empty;
         _error.IsVisible = _controller.Error is not null;
+        _measured.Content = MeasuredTimeCard.Build(
+            _controller.Day,
+            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}");
         _RenderRunning();
         _RenderRows();
     }
@@ -418,7 +433,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     {
         var row = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("60,*,145,70,90,150,55"),
+            ColumnDefinitions = new ColumnDefinitions("48,*,105,45,78,125,55"),
             ColumnSpacing = 10,
             Margin = new Thickness(6, 8),
         };
@@ -447,6 +462,8 @@ internal sealed class HoursWorkspaceBody : UserControl
         var source = entry.Source == CockpitTimeEntrySource.Stopwatch
             ? Ui.Pill("stopwatch", "CockpitStatusBusyBrush", "CockpitStatusBusyChipTintBrush")
             : Ui.Pill("duur", "CockpitStatusWaitingBrush", "CockpitStatusWaitingChipTintBrush");
+        source.HorizontalAlignment = HorizontalAlignment.Left;
+        source.VerticalAlignment = VerticalAlignment.Top;
         Grid.SetColumn(source, 4);
         row.Children.Add(source);
         var status = new TextBlock { Text = Ui.Status(entry), FontSize = 11.5 };

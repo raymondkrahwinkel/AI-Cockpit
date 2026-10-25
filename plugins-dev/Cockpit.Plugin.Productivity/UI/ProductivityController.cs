@@ -23,6 +23,8 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
 
     public TimeSpan TodayTotal { get; private set; }
 
+    public AttentionTime? Day { get; private set; }
+
     public string? Error { get; private set; }
 
     public string? ProjectFallback { get; private set; }
@@ -168,6 +170,7 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
             new ProductivitySnapshotRequest(from, to, todayFrom, todayTo)).ConfigureAwait(false);
         Entries = [.. snapshot.Entries.OrderBy(entry => entry.StartedAt)];
         TodayTotal = snapshot.TodayTotal;
+        Day = snapshot.Day;
         Stopwatch = snapshot.Stopwatch;
         Error = null;
         _PublishChanged();
