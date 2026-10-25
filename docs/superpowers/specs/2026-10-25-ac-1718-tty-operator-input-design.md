@@ -6,7 +6,7 @@ Record when the operator types in a TTY pane so session attention time includes 
 
 ## Scope and constraints
 
-- Only `Terminal.Input` after a successful PTY write is an operator action.
+- Only `Terminal.Input` from physical typing, paste, or real operator dictation after a successful PTY write is an operator action.
 - `Terminal.Output`, `PromptSink`, and terminal-access `RegisterInput` never count.
 - Input within 30 seconds of the last recorded TTY input is folded into the same moment.
 - The timeline stores `TtyInput` plus its normal timestamp and pane metadata, never input content.
@@ -20,4 +20,4 @@ Record when the operator types in a TTY pane so session attention time includes 
 
 ## Verification
 
-One L2 secrets theory covers typed input versus pushed input, immediate key batching, absence of the secret text, and reading the new enum value back from JSONL. One redundant existing view test is removed and the project baseline is lowered.
+One L2 secrets theory covers typed input, operator dictation, and pushed input, plus immediate key batching, absence of the secret text, and reading the new enum value back from JSONL. One redundant existing view test is removed and the project baseline is lowered.

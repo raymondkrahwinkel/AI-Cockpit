@@ -247,6 +247,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
+            _viewModel.OperatorVoiceTranscriptReady -= _OnOperatorVoiceTranscriptReady;
             _viewModel.PasteTextAsync = null;
             // And the prompt route, which points into this view's pty just as the paste delegate does: a view model
             // handed to another view must not go on answering "yes, a prompt reaches me" through the one it left.
@@ -259,6 +260,7 @@ public partial class TtyView : UserControl
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
             _viewModel.VoiceTranscriptReady += _OnVoiceTranscriptReady;
+            _viewModel.OperatorVoiceTranscriptReady += _OnOperatorVoiceTranscriptReady;
             _viewModel.PasteTextAsync = _OnPasteTextAsync;
             _viewModel.PropertyChanged += _OnViewModelPropertyChanged;
             // The profile may already have been configured (dialog confirmed) before this view existed;
@@ -346,13 +348,16 @@ public partial class TtyView : UserControl
         return pasted.Task;
     }
 
-    // Writes a finished voice transcript into the pty — the same path a scheduled resume takes (`_WriteToPty(string)`).
     private void _OnVoiceTranscriptReady(string text) => _WriteToPty(text);
+
+    private void _OnOperatorVoiceTranscriptReady(string text) => _WriteToPty(text, operatorInput: true);
 
     // AC-752: a >=64 byte stdin chunk is treated as a paste by claude's CLI, swallowing inline `\r`
     // — routed through bracketed paste with a trailing CR after. AC-941/993: the CR is deferred by
     // a length-scaled delay (AutoSubmitDelay), else the same pty read folds it into the paste.
-    private void _WriteToPty(string text)
+    private void _WriteToPty(string text) => _WriteToPty(text, operatorInput: false);
+
+    private void _WriteToPty(string text, bool operatorInput)
     {
         var pty = _pty;
         if (pty is null)
@@ -370,7 +375,14 @@ public partial class TtyView : UserControl
                 // AC-941 criterion 6: measures whether BracketedPaste is ever false on a live session (tab
                 // switches, backgrounding included), which the fix below does not assume either way.
                 _logger?.LogDebug("AC-941 measurement: BracketedPaste={BracketedPaste} at _WriteToPty paste", Terminal.BracketedPaste);
-                Terminal.PasteProgrammatically(typed);
+                if (operatorInput)
+                {
+                    Terminal.Paste(typed);
+                }
+                else
+                {
+                    Terminal.PasteProgrammatically(typed);
+                }
             }
 
             if (!hasTrailingReturn)
@@ -1127,6 +1139,7 @@ public partial class TtyView : UserControl
             // these three ever drop (AC-758).
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
+            _viewModel.OperatorVoiceTranscriptReady -= _OnOperatorVoiceTranscriptReady;
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 

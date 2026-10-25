@@ -21,7 +21,7 @@
 
 - A failed PTY write must not create an operator action.
 - Terminal protocol replies must not create an operator action.
-- Pushed text must not create an operator action or leak into JSONL.
+- Operator dictation must count, while pushed text must not create an operator action or leak into JSONL.
 - Repeated keystrokes within 30 seconds must create one timeline row.
 - `TtyInput` must round-trip through the JSONL reader.
 

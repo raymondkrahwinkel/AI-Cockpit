@@ -68,6 +68,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // The view writes the text as raw bytes to the pty's stdin, the same path as a typed keystroke.
     public event Action<string>? VoiceTranscriptReady;
 
+    internal event Action<string>? OperatorVoiceTranscriptReady;
+
     internal event Action<SessionOperatorAction>? OperatorActed;
 
     internal void RecordOperatorInput() => OperatorActed?.Invoke(SessionOperatorAction.TtyInput);
@@ -201,13 +203,17 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     // AC-1013: No cleanup — the terminal has no input box to proofread in, so the text goes straight to...
-    protected override void OnVoiceTextReady(string text)
+    protected override void OnVoiceTextReady(string text) => _EmitTranscript(text, VoiceTranscriptReady);
+
+    protected override void OnOperatorVoiceTextReady(string text) => _EmitTranscript(text, OperatorVoiceTranscriptReady);
+
+    private void _EmitTranscript(string text, Action<string>? sink)
     {
         var typed = _AsTypedText(text);
         _lastTypedLength = typed.Length;
         if (typed.Length > 0)
         {
-            VoiceTranscriptReady?.Invoke(typed);
+            sink?.Invoke(typed);
         }
     }
 
