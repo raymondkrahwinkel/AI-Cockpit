@@ -153,6 +153,22 @@ internal sealed partial class TabShareService : IDisposable
             return new TabShareAnswer(request.Id, true, Tabs: tabs);
         }
 
+        if (request.Tool == "request")
+        {
+            return await TabLookAlong.AskAsync(
+                request.PaneId,
+                request.Text,
+                [.. _model.Tabs.Select(tab => new LookAlongTab(tab.Id, tab.Title, tab.Address))],
+                _model.Active?.Id,
+                async card =>
+                {
+                    using var timeout = new CancellationTokenSource(CardTimeout);
+                    return await _host.RequestConsentAsync(card, timeout.Token);
+                },
+                tabId => _ShareAndReadAsync(request, tabId),
+                error => _Refuse(request, error));
+        }
+
         if (request.TabId is not { } tabId || _Authorized(request.PaneId, tabId) is not { } before)
         {
             return _Refuse(request, "This tab is not shared with your session, or sharing was stopped or paused. Only the operator can share it.");
@@ -178,6 +194,19 @@ internal sealed partial class TabShareService : IDisposable
             : _Answer(request, grant, tab, text: request.Mode == "tree" ? TabReader.Tree(result) : TabReader.Text(result));
     }
 
+    // After the click: the grant (this session, this tab, watching) and the first read through the same path as any other.
+    private async Task<TabShareAnswer> _ShareAndReadAsync(TabShareRequest request, string tabId)
+    {
+        if (_model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is not { } tab)
+        {
+            return _Refuse(request, "The tab was closed before it could be shared.");
+        }
+
+        var name = (await _OpenSessionsAsync()).FirstOrDefault(session => session.PaneId == request.PaneId)?.Name ?? request.PaneId;
+        Grants.Share(request.PaneId, name, tabId, TabGrantRegistry.OriginOf(tab.Address), Watch);
+        return await _HandleAsync(request with { Tool = "screenshot", TabId = tabId });
+    }
+
     // The grant of this session on this tab, and only while the tab is still on the origin it was granted for.
     private (BrowserTab Tab, TabGrant Grant)? _Authorized(string paneId, string tabId) =>
         Grants.Authorize(paneId, tabId) is { } grant
@@ -201,7 +230,7 @@ internal sealed partial class TabShareService : IDisposable
     private static TabShareAnswer _Answer(TabShareRequest request, TabGrant grant, BrowserTab tab, string? text = null, string? image = null) =>
         text is null && image is null
             ? _Refuse(request, "The tab did not answer the read.")
-            : new TabShareAnswer(request.Id, true, Origin: grant.Origin, Url: tab.Address, Title: tab.Title, Text: text, ImagePng: image);
+            : new TabShareAnswer(request.Id, true, Origin: grant.Origin, Url: tab.Address, Title: tab.Title, Text: text, ImagePng: image, TabId: grant.TabId);
 
     private static TabShareAnswer _Refuse(TabShareRequest request, string error) => new(request.Id, false, error);
 

@@ -36,6 +36,10 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   request continues, body and all) or drops it; one to another origin is cancelled, and so is the top frame leaving
   the origin unless the address bar sent it; no file picker opens. While a submission waits, DevTools reads of that
   tab do not answer. A page's own `fetch` is not covered: a page of the granted origin could always send data itself.
+- **Look along (AC-1715):** `browser_request_tab(reason)` raises the same share card in the asker's own conversation
+  (its pane is the card's source), watching only, active tab pre-picked, the other tabs in the list. It blocks until
+  the click (2 minute timeout; No, Escape and the timeout are a refusal that read nothing), then makes the grant and
+  returns address, title and a screenshot in the same call.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
   `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-tab-controlled`, `browser-form-held`, `browser-took-over`, `browser-workspace-controlled`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
