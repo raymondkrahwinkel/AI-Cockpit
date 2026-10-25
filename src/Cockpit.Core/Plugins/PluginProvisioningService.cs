@@ -16,15 +16,14 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
 
         // Checked before anything is fetched (AC-181): a version this host cannot run is refused without spending
         // a download on it, and the installer's own gate (a defense-in-depth second check) never gets the chance
-        // to be the only thing that caught it.
-        if (!PluginCompatibility.IsCompatible(request.Version, hostAbstractionsMajor, effectiveHostVersion))
+        // to be the only thing that caught it. No package for this RID is one of those reasons (AC-1740).
+        if (!PluginCompatibility.IsCompatible(request.Version, hostAbstractionsMajor, effectiveHostVersion)
+            || request.Version.PackageFor() is not { } package)
         {
             var reason = PluginCompatibility.IncompatibilityReason(request.Version, hostAbstractionsMajor, effectiveHostVersion);
             return new PluginProvisionResult(PluginProvisionOutcome.Incompatible, request.Id, request.Name, reason, Warning: null, FolderId: null, Sha256: null);
         }
 
-        // Non-null here: the gate above refuses a version with no package for this RID (AC-1740).
-        var package = request.Version.PackageFor()!;
         var download = await storeClient.DownloadZipAsync(request.Store, package.Path, package.Sha256, cancellationToken).ConfigureAwait(false);
         if (!download.IsSuccess || download.ZipPath is null)
         {

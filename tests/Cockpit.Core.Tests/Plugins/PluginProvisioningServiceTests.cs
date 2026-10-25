@@ -60,7 +60,9 @@ public class PluginProvisioningServiceTests : IDisposable
             : $$"""{ "version": "1.0.0", "path": "missing.zip", "abstractionsVersion": 1, "packages": { "{{rid}}": { "path": "acme-1.0.0.zip", "sha256": "{{sha}}" } } }""";
         _WriteIndex($$"""{ "plugins": [ { "id": "acme", "name": "Acme", "latestVersion": "1.0.0", "versions": [ {{versionJson}} ] } ] }""");
         var store = PluginStoreConfig.Local(_storeDir);
-        var version = (await _storeClient.FetchIndexAsync(store)).Index!.Plugins.Single().Versions[0];
+        var index = (await _storeClient.FetchIndexAsync(store)).Index;
+        Assert.NotNull(index);
+        var version = index.Plugins.Single().Versions[0];
 
         var result = await _service.InstallAsync(new PluginProvisionRequest("acme", "Acme", store, version), HostMajor, HostVersion);
 
