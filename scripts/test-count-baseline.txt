@@ -4,7 +4,7 @@
 # format: <project>	<ceiling>
 unit	cases
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	95
-plugins-dev/Cockpit.Plugin.Browser.Tests	2
+plugins-dev/Cockpit.Plugin.Browser.Tests	3
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	173
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 plugins-dev/Cockpit.Plugin.Depot.Tests	225
