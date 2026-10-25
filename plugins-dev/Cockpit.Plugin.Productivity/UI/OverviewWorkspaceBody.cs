@@ -39,8 +39,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
         }
 
         _body.Children.Add(_RangeCard());
-        _body.Children.Add(_Tiles(snapshot));
-        _body.Children.Add(_Charts(snapshot));
+        _body.Children.Add(_Tiles(snapshot, _controller.IncludeAgentWithoutYou, _controller.From, _controller.To));
+        _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
         _body.Children.Add(_Entries(snapshot));
         _body.Children.Add(_Tickets(snapshot));
     }
@@ -67,10 +67,13 @@ internal sealed class OverviewWorkspaceBody : UserControl
         {
             Name = "OverviewRangePicker",
             Height = 38,
-            SelectedRange = "Werkweek",
+            SelectedRange = _controller.SelectedRange,
             HorizontalAlignment = HorizontalAlignment.Left,
             Width = 520,
         };
+        picker.SelectedRangeChanged += async (_, range) => await _controller.SelectRangeAsync(range);
+        picker.Previous += async (_, _) => await _controller.MoveAsync(-1);
+        picker.Next += async (_, _) => await _controller.MoveAsync(1);
         var dates = new TextBlock
         {
             Text = $"{_controller.From.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} – {_controller.To.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM yyyy", Dutch)}",
@@ -78,6 +81,19 @@ internal sealed class OverviewWorkspaceBody : UserControl
             FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        var yours = new Button { Name = "YourTimeOnly", Content = "Jouw tijd", Classes = { "Compact" } };
+        var withAgent = new Button { Name = "IncludeAgent", Content = "+ agent zonder jou", Classes = { "Compact" } };
+        if (_controller.IncludeAgentWithoutYou)
+        {
+            withAgent.Classes.Add("Accent");
+        }
+        else
+        {
+            yours.Classes.Add("Accent");
+        }
+
+        yours.Click += (_, _) => _controller.SetIncludeAgentWithoutYou(false);
+        withAgent.Click += (_, _) => _controller.SetIncludeAgentWithoutYou(true);
         var basis = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -87,8 +103,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Children =
             {
                 Ui.Hint("Basis:"),
-                new Button { Name = "YourTimeOnly", Content = "Jouw tijd", Classes = { "Accent", "Compact" } },
-                new Button { Name = "IncludeAgent", Content = "+ agent zonder jou", Classes = { "Compact" } },
+                yours,
+                withAgent,
             },
         };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
@@ -97,23 +113,50 @@ internal sealed class OverviewWorkspaceBody : UserControl
         row.Children.Add(dates);
         Grid.SetColumn(basis, 3);
         row.Children.Add(basis);
-        return Ui.Card(row, 10);
+        var customFrom = new DatePicker
+        {
+            Name = "CustomFrom",
+            SelectedDate = _controller.From.ToDateTime(TimeOnly.MinValue),
+            Width = 150,
+        };
+        var customTo = new DatePicker
+        {
+            Name = "CustomTo",
+            SelectedDate = _controller.To.ToDateTime(TimeOnly.MinValue),
+            Width = 150,
+        };
+        var apply = new Button { Name = "ApplyCustomRange", Content = "Toepassen", Classes = { "Accent", "Compact" } };
+        apply.Click += async (_, _) =>
+        {
+            if (customFrom.SelectedDate is { } from && customTo.SelectedDate is { } to)
+            {
+                await _controller.SetCustomRangeAsync(DateOnly.FromDateTime(from.Date), DateOnly.FromDateTime(to.Date));
+            }
+        };
+        var custom = new StackPanel
+        {
+            IsVisible = _controller.SelectedRange == "Eigen bereik",
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children = { Ui.Hint("Van"), customFrom, Ui.Hint("tot"), customTo, apply },
+        };
+        return Ui.Card(new StackPanel { Spacing = 8, Children = { row, custom } }, 10);
     }
 
-    private static Control _Tiles(ProductivityOverviewSnapshot snapshot)
+    private static Control _Tiles(ProductivityOverviewSnapshot snapshot, bool includeAgent, DateOnly from, DateOnly to)
     {
         var tiles = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*,*,*,*"), ColumnSpacing = 10 };
         var measured = snapshot.Attention.Measured - snapshot.Attention.Overlap;
         var sessions = snapshot.Attention.Agents.Select(span => span.Owner).Where(owner => owner is not null).Distinct(StringComparer.Ordinal).Count();
         var cost = snapshot.Timeline.Usage.Sum(usage => usage.CostUsd) + snapshot.Timeline.Days.Sum(day => day.ReportedCostUsd);
-        var schedule = snapshot.ScheduleMinutes.Sum();
+        var schedule = _ScheduledMinutes(snapshot.ScheduleMinutes, from, to);
         var values = new[]
         {
             new StatTile
             {
                 Name = "YourTimeTile",
                 Label = "Jouw tijd",
-                Value = Ui.Duration(snapshot.YourTime),
+                Value = Ui.Duration(includeAgent ? snapshot.WithAgentWithoutYou : snapshot.YourTime),
                 Detail = $"gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(snapshot.Attention.Own)} − {Ui.Duration(snapshot.Attention.Overlap)} overlap",
             },
             new StatTile
@@ -179,14 +222,29 @@ internal sealed class OverviewWorkspaceBody : UserControl
         return string.Join(" · ", parts);
     }
 
+    private static int _ScheduledMinutes(IReadOnlyList<int> minutes, DateOnly from, DateOnly to)
+    {
+        var total = 0;
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            var index = ((int)day.DayOfWeek + 6) % 7;
+            if (index < minutes.Count)
+            {
+                total += minutes[index];
+            }
+        }
+
+        return total;
+    }
+
     private static string _WholeDuration(int minutes) =>
         minutes % 60 == 0 ? $"{minutes / 60}u" : Ui.Duration(TimeSpan.FromMinutes(minutes));
 
-    private static Control _Charts(ProductivityOverviewSnapshot snapshot)
+    private static Control _Charts(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
         var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("3*,2*"), ColumnSpacing = 12 };
         columns.Children.Add(_DailyChart(snapshot));
-        var right = new StackPanel { Spacing = 12, Children = { _Projects(snapshot), _Sessions(snapshot) } };
+        var right = new StackPanel { Spacing = 12, Children = { _Projects(snapshot, includeAgent), _Sessions(snapshot) } };
         Grid.SetColumn(right, 1);
         columns.Children.Add(right);
         return columns;
@@ -249,7 +307,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             },
         };
 
-    private static Control _Projects(ProductivityOverviewSnapshot snapshot)
+    private static Control _Projects(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
         var body = new StackPanel
         {
@@ -260,25 +318,31 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 _Legend(),
             },
         };
-        foreach (var project in _ProjectRows(snapshot))
+        foreach (var project in _ProjectRows(snapshot, includeAgent))
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*,52"), ColumnSpacing = 8 };
             row.Children.Add(new TextBlock { Text = project.Label, TextTrimming = TextTrimming.CharacterEllipsis });
+            var segments = new List<ChartSegment>
+            {
+                new("gemeten", project.Measured.TotalMinutes, project.Color),
+                new("eigen regels", project.Own.TotalMinutes, project.Color, true),
+            };
+            if (includeAgent)
+            {
+                segments.Add(new ChartSegment("agent zonder jou", project.Agent.TotalMinutes, Agent));
+            }
+
             var chart = new HorizontalBarChartControl
             {
                 Height = 34,
-                Segments =
-                [
-                    new("gemeten", project.Measured.TotalMinutes, Lavender),
-                    new("eigen regels", project.Own.TotalMinutes, Own, true),
-                ],
+                Segments = segments,
                 TooltipText = project.Label,
             };
             Grid.SetColumn(chart, 1);
             row.Children.Add(chart);
             var total = new TextBlock
             {
-                Text = Ui.Duration(project.Measured + project.Own),
+                Text = Ui.Duration(project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero)),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 FontWeight = FontWeight.SemiBold,
             };
@@ -290,7 +354,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         return Ui.Card(body, 14);
     }
 
-    private static IReadOnlyList<_ProjectRow> _ProjectRows(ProductivityOverviewSnapshot snapshot)
+    private static IReadOnlyList<_ProjectRow> _ProjectRows(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
         const string none = "";
         var names = snapshot.Projects.ToDictionary(project => project.Id, project => project.Name, StringComparer.Ordinal);
@@ -298,12 +362,34 @@ internal sealed class OverviewWorkspaceBody : UserControl
         var own = snapshot.Entries
             .GroupBy(entry => entry.ProjectId ?? none, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(entry => entry.Duration.Ticks)), StringComparer.Ordinal);
-        return measured.Keys.Concat(own.Keys).Distinct(StringComparer.Ordinal)
-            .Select(id => new _ProjectRow(
-                id.Length == 0 ? "geen project" : names.GetValueOrDefault(id, id),
-                measured.GetValueOrDefault(id),
-                own.GetValueOrDefault(id)))
-            .OrderByDescending(row => row.Measured + row.Own)
+        var agent = new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
+        if (includeAgent)
+        {
+            foreach (var session in snapshot.Attention.AgentWithoutYouPerSession)
+            {
+                var id = snapshot.Timeline.Lines
+                    .Where(line => line.PaneId == session.Key && line.ProjectId is not null)
+                    .OrderBy(line => line.At)
+                    .LastOrDefault()?.ProjectId
+                    ?? snapshot.Timeline.Days.LastOrDefault(day => day.PaneId == session.Key)?.ProjectId
+                    ?? none;
+                agent[id] = agent.GetValueOrDefault(id) + session.Value;
+            }
+        }
+
+        return measured.Keys.Concat(own.Keys).Concat(agent.Keys).Distinct(StringComparer.Ordinal)
+            .Select(id =>
+            {
+                var brush = MeasuredTimeCard.ProjectBrush(id);
+                var color = brush is ISolidColorBrush solid ? solid.Color : Lavender;
+                return new _ProjectRow(
+                    id.Length == 0 ? "geen project" : names.GetValueOrDefault(id, id),
+                    measured.GetValueOrDefault(id),
+                    own.GetValueOrDefault(id),
+                    agent.GetValueOrDefault(id),
+                    color);
+            })
+            .OrderByDescending(row => row.Measured + row.Own + row.Agent)
             .ToList();
     }
 
@@ -427,5 +513,5 @@ internal sealed class OverviewWorkspaceBody : UserControl
         }.Themed(Border.BorderBrushProperty, "CockpitHairlineSoftBrush");
     }
 
-    private sealed record _ProjectRow(string Label, TimeSpan Measured, TimeSpan Own);
+    private sealed record _ProjectRow(string Label, TimeSpan Measured, TimeSpan Own, TimeSpan Agent, Color Color);
 }

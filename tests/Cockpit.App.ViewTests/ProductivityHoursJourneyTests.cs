@@ -200,6 +200,23 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
         Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
         Assert.Contains("geen prijs", _Texts(overviewScreen));
+        _Render(overviewScene.Window, "08-overzicht.png");
+
+        _Click(overviewScreen, "IncludeAgent");
+        await _Until(
+            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "43u10",
+            "the overview including agent time outside your own time");
+        _Render(overviewScene.Window, "04-overzicht-plus-agent.png");
+
+        _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = overviewFrom;
+        _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom;
+        _Click(overviewScreen, "ApplyCustomRange");
+        await _Until(
+            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "12u20",
+            "the one-day custom overview");
+        Assert.Equal("8u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
+        Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
+        _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
     });
 
     private static DateTimeOffset _Local(int year, int month, int day)
@@ -325,7 +342,7 @@ public sealed class ProductivityHoursJourneyTests
         {
             if (from.Date == new DateTime(2026, 10, 19))
             {
-                return Task.FromResult(_Week43(from));
+                return Task.FromResult(_Week43(from, to));
             }
 
             var now = DateTimeOffset.Now;
@@ -342,24 +359,28 @@ public sealed class ProductivityHoursJourneyTests
             return Task.FromResult(new CockpitTimeline(lines, [], []));
         }
 
-        private static CockpitTimeline _Week43(DateTimeOffset from)
+        private static CockpitTimeline _Week43(DateTimeOffset from, DateTimeOffset to)
         {
+            var monday = _Local(2026, 10, 19);
             var lines = new List<CockpitTimelineLine>();
-            _Attention(lines, from.AddHours(8), 445, "syn-portal", "SYN-412");
-            _Attention(lines, from.AddDays(1).AddHours(8), 582, "ai-cockpit", "AC-1665");
-            _Attention(lines, from.AddDays(2).AddHours(8), 391, "syn-api", "SYN-398");
-            _Attention(lines, from.AddDays(3).AddHours(8), 65, null, null);
-            _Attention(lines, from.AddDays(3).AddHours(10), 82, "depot", "AC-252");
-            _Busy(lines, "AC-1665 bouwen", "ai-cockpit", from.AddDays(1).AddHours(8), from.AddDays(1).AddHours(17).AddMinutes(42));
-            _Busy(lines, "AC-1665 bouwen", "syn-api", from.AddDays(2).AddHours(8), from.AddDays(2).AddHours(9).AddMinutes(48));
-            _Busy(lines, "SYN-412 tests", "syn-portal", from.AddDays(4), from.AddDays(4).AddHours(12).AddMinutes(10));
+            _Attention(lines, monday.AddHours(8), 445, "syn-portal", "SYN-412");
+            _Attention(lines, monday.AddDays(1).AddHours(8), 582, "ai-cockpit", "AC-1665");
+            _Attention(lines, monday.AddDays(2).AddHours(8), 391, "syn-api", "SYN-398");
+            _Attention(lines, monday.AddDays(3).AddHours(8), 65, null, null);
+            _Attention(lines, monday.AddDays(3).AddHours(10), 82, "depot", "AC-252");
+            _Busy(lines, "AC-1665 bouwen", "ai-cockpit", monday.AddDays(1).AddHours(8), monday.AddDays(1).AddHours(17).AddMinutes(42));
+            _Busy(lines, "AC-1665 bouwen", "syn-api", monday.AddDays(2).AddHours(8), monday.AddDays(2).AddHours(9).AddMinutes(48));
+            _Busy(lines, "SYN-412 tests", "syn-portal", monday.AddDays(4), monday.AddDays(4).AddHours(12).AddMinutes(10));
             CockpitUsageDelta[] usage =
             [
-                new("AC-1665 bouwen", from.AddDays(1).AddHours(18), "run-ac", "claude-opus-4-1", 120000, 22000, 45000, 3000, 121, 18),
-                new("SYN-412 tests", from.AddDays(4).AddHours(13), "run-syn", "claude-sonnet-4-5", 64000, 12000, 18000, 1000, 63.2, 9),
-                new("SYN-398 refactor", from.AddDays(3).AddHours(14), "run-codex", "gpt-5-codex", 48000, 9000, 11000, 0, 0, 7),
+                new("AC-1665 bouwen", monday.AddDays(1).AddHours(18), "run-ac", "claude-opus-4-1", 120000, 22000, 45000, 3000, 121, 18),
+                new("SYN-412 tests", monday.AddDays(4).AddHours(13), "run-syn", "claude-sonnet-4-5", 64000, 12000, 18000, 1000, 63.2, 9),
+                new("SYN-398 refactor", monday.AddDays(3).AddHours(14), "run-codex", "gpt-5-codex", 48000, 9000, 11000, 0, 0, 7),
             ];
-            return new CockpitTimeline(lines, usage, []);
+            return new CockpitTimeline(
+                [.. lines.Where(line => line.At >= from && line.At < to)],
+                [.. usage.Where(value => value.RecordedAt >= from && value.RecordedAt < to)],
+                []);
         }
 
         private static void _Attention(List<CockpitTimelineLine> lines, DateTimeOffset start, int minutes, string? project, string? ticket)
