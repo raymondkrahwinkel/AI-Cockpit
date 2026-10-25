@@ -18,7 +18,6 @@ using Material.Icons;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using NSubstitute;
 using UiParts = productivityUi::Cockpit.Plugin.Productivity.UI;
-using SharedParts = productivityUi::Cockpit.Plugin.Shared.UI;
 
 namespace Cockpit.App.ViewTests;
 
@@ -210,10 +209,11 @@ public sealed class ProductivityHoursJourneyTests
         var overviewScreen = workspaces["workspace.productivity.overview"].CreateBody(Substitute.For<IWorkspaceContext>());
         using var overviewScene = RenderedScene.Show(overviewScreen, 1280, 1000);
         await _Until(
-            () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "31u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
             "the week overview");
-        Assert.Equal("36u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
-        Assert.Equal("geen prijs", _Control<SharedParts.StatTile>(overviewScreen, "CostTile").Value);
+        Assert.Equal("36u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
+        Assert.Equal("geen prijs", _Control<TextBlock>(overviewScreen, "CostTile").Text);
+        Assert.True(_Control<TextBlock>(overviewScreen, "YourTimeTileDetail").TextWrapping == Avalonia.Media.TextWrapping.Wrap);
         Assert.Contains("Overzicht", _Texts(overviewScreen));
         Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
@@ -236,7 +236,7 @@ public sealed class ProductivityHoursJourneyTests
 
         _Click(overviewScreen, "IncludeAgent");
         await _Until(
-            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "43u10",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "43u10",
             "the overview including agent time outside your own time");
         _Render(overviewScene.Window, "04-overzicht-plus-agent.png");
 
@@ -245,9 +245,9 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "8u05",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "8u05",
             "the one-day custom overview");
-        Assert.Equal("8u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
+        Assert.Equal("8u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
         Assert.Contains("ma 19 – ma 19 okt 2026", _Texts(overviewScreen));
         _Render(overviewScene.Window, "overzicht-eigen-bereik.png");
 
@@ -257,9 +257,9 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => _Control<SharedParts.StatTile>(overviewScreen, "YourTimeTile").Value == "3u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
             "the historical aggregate including agent time");
-        Assert.Equal("geen prijs", _Control<SharedParts.StatTile>(overviewScreen, "CostTile").Value);
+        Assert.Equal("geen prijs", _Control<TextBlock>(overviewScreen, "CostTile").Text);
         Assert.Contains("legacy-model", _Texts(overviewScreen));
         Assert.Contains("3u00", _Texts(overviewScreen));
 
@@ -273,7 +273,7 @@ public sealed class ProductivityHoursJourneyTests
         _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = historicalDay;
         _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
-            () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "3u00",
+            () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
             "the valid range after validation");
 
         var alternating = await channel.InvokeAsync(
@@ -314,6 +314,9 @@ public sealed class ProductivityHoursJourneyTests
         Dispatcher.UIThread.RunJobs();
         return [.. root.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text ?? string.Empty)];
     }
+
+    private static string? _NamedText(Visual root, string name) =>
+        root.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(text => text.Name == name)?.Text;
 
     private static void _Click(Visual root, string name) =>
         _Control<Button>(root, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

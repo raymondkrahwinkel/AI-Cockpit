@@ -92,7 +92,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         var leftCover = new Border { Width = 32, HorizontalAlignment = HorizontalAlignment.Left };
         leftCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
         pickerClip.Children.Add(leftCover);
-        var rightCover = new Border { Width = 32, HorizontalAlignment = HorizontalAlignment.Right };
+        var rightCover = new Border { Width = 210, HorizontalAlignment = HorizontalAlignment.Right };
         rightCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
         pickerClip.Children.Add(rightCover);
         var dates = new TextBlock
@@ -198,59 +198,46 @@ internal sealed class OverviewWorkspaceBody : UserControl
         var schedule = _ScheduledMinutes(snapshot.ScheduleMinutes, from, to);
         var values = new[]
         {
-            new StatTile
-            {
-                Name = "YourTimeTile",
-                Label = "Jouw tijd",
-                Value = Ui.Duration(includeAgent ? snapshot.WithAgentWithoutYou : snapshot.YourTime),
-                Detail = $"gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(snapshot.Attention.Own)} − {Ui.Duration(snapshot.Attention.Overlap)} overlap",
-            },
-            new StatTile
-            {
-                Name = "AgentTimeTile",
-                Label = "Agents (actief)",
-                Value = Ui.Duration(snapshot.Attention.AgentTime),
-                Detail = $"{sessions} sessies · naast jouw tijd",
-            },
-            new StatTile
-            {
-                Name = "ScheduleTile",
-                Label = "Schema",
-                Value = schedule == 0 ? "—" : _WholeDuration(schedule),
-                Detail = schedule == 0 ? "geen schema ingesteld" : _ScheduleDetail(snapshot.ScheduleMinutes),
-            },
-            new StatTile
-            {
-                Name = "CostTile",
-                Label = "Kosten",
-                Value = costText,
-                Detail = costText == "geen prijs" ? $"{_Tokens(tokens)} tokens · geen tarief" : $"{cost.ToString("$0.##", CultureInfo.InvariantCulture)} gemeld",
-            },
-            new StatTile
-            {
-                Name = "OwnEntriesTile",
-                Label = "Eigen regels",
-                Value = snapshot.Entries.Count.ToString(CultureInfo.InvariantCulture),
-                Detail = $"{snapshot.Entries.Count(entry => entry.Status == Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimeEntryStatus.Open)} open",
-            },
+            ("YourTimeTile", "Jouw tijd", Ui.Duration(includeAgent ? snapshot.WithAgentWithoutYou : snapshot.YourTime), $"gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(snapshot.Attention.Own)} − {Ui.Duration(snapshot.Attention.Overlap)} overlap"),
+            ("AgentTimeTile", "Agents (actief)", Ui.Duration(snapshot.Attention.AgentTime), $"{sessions} sessies · naast jouw tijd"),
+            ("ScheduleTile", "Schema", schedule == 0 ? "—" : _WholeDuration(schedule), schedule == 0 ? "geen schema ingesteld" : _ScheduleDetail(snapshot.ScheduleMinutes)),
+            ("CostTile", "Kosten", costText, costText == "geen prijs" ? $"{_Tokens(tokens)} tokens · geen tarief" : $"{cost.ToString("$0.##", CultureInfo.InvariantCulture)} gemeld"),
+            ("OwnEntriesTile", "Eigen regels", snapshot.Entries.Count.ToString(CultureInfo.InvariantCulture), $"{snapshot.Entries.Count(entry => entry.Status == Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimeEntryStatus.Open)} open"),
         };
         for (var index = 0; index < values.Length; index++)
         {
-            var card = new Border
-            {
-                Name = "OverviewTileCard",
-                Height = 96,
-                Child = values[index],
-                CornerRadius = new CornerRadius(8),
-                BorderThickness = new Thickness(1),
-            };
-            card.Themed(BackgroundProperty, "CockpitPanelBgBrush");
-            card.Themed(Border.BorderBrushProperty, "CockpitHairlineBrush");
+            var card = _Tile(values[index].Item1, values[index].Item2, values[index].Item3, values[index].Item4);
             Grid.SetColumn(card, index);
             tiles.Children.Add(card);
         }
 
         return tiles;
+    }
+
+    private static Border _Tile(string name, string label, string value, string detail)
+    {
+        var card = new Border
+        {
+            Name = "OverviewTileCard",
+            Height = 96,
+            Padding = new Thickness(12, 10),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            Child = new StackPanel
+            {
+                Spacing = 3,
+                Children =
+                {
+                    Ui.Hint(label),
+                    new TextBlock { Name = name, Text = value, FontSize = 22, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Name = $"{name}Detail", Text = detail, FontSize = 11, FontWeight = FontWeight.Normal, TextWrapping = TextWrapping.Wrap }
+                        .Themed(TextBlock.ForegroundProperty, "CockpitTextSecondaryBrush"),
+                },
+            },
+        };
+        card.Themed(BackgroundProperty, "CockpitPanelBgBrush");
+        card.Themed(Border.BorderBrushProperty, "CockpitHairlineBrush");
+        return card;
     }
 
     private static string _ScheduleDetail(IReadOnlyList<int> minutes)
