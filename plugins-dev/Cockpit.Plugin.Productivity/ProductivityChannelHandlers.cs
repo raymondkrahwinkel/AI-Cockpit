@@ -33,11 +33,12 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         var timeline = await host.Timeline.QueryAsync(request.From, request.To).ConfigureAwait(false);
         var entries = await timeEntries.ListAsync(request.From, request.To).ConfigureAwait(false);
         var projects = await host.GetProjectsAsync().ConfigureAwait(false);
+        var settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
         var now = DateTimeOffset.Now;
         var attention = AttentionTime.Compute(timeline, entries, AttentionSettings.Default, now < request.To ? now : request.To);
         var days = _OverviewDays(request, timeline, entries, now);
         var tickets = _OverviewTickets(request, timeline, now);
-        return new ProductivityOverviewSnapshot(attention, days, tickets, [], entries, timeline, projects);
+        return new ProductivityOverviewSnapshot(attention, days, tickets, settings.ScheduleMinutes, entries, timeline, projects);
     }
 
     private static IReadOnlyList<ProductivityTicketTime> _OverviewTickets(

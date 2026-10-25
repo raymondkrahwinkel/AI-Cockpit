@@ -127,7 +127,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             {
                 Name = "ScheduleTile",
                 Label = "Schema",
-                Value = schedule == 0 ? "—" : Ui.Duration(TimeSpan.FromMinutes(schedule)),
+                Value = schedule == 0 ? "—" : _WholeDuration(schedule),
                 Detail = schedule == 0 ? "geen schema ingesteld" : _ScheduleDetail(snapshot.ScheduleMinutes),
             },
             new StatTile
@@ -158,8 +158,29 @@ internal sealed class OverviewWorkspaceBody : UserControl
     private static string _ScheduleDetail(IReadOnlyList<int> minutes)
     {
         var labels = new[] { "ma", "di", "wo", "do", "vr", "za", "zo" };
-        return string.Join(" · ", minutes.Take(7).Select((value, index) => $"{labels[index]} {Ui.Duration(TimeSpan.FromMinutes(value))}"));
+        var parts = new List<string>();
+        for (var start = 0; start < Math.Min(7, minutes.Count);)
+        {
+            var end = start;
+            while (end + 1 < Math.Min(7, minutes.Count) && minutes[end + 1] == minutes[start])
+            {
+                end++;
+            }
+
+            if (minutes[start] > 0)
+            {
+                var days = start == end ? labels[start] : $"{labels[start]}–{labels[end]}";
+                parts.Add($"{days} {_WholeDuration(minutes[start])}");
+            }
+
+            start = end + 1;
+        }
+
+        return string.Join(" · ", parts);
     }
+
+    private static string _WholeDuration(int minutes) =>
+        minutes % 60 == 0 ? $"{minutes / 60}u" : Ui.Duration(TimeSpan.FromMinutes(minutes));
 
     private static Control _Charts(ProductivityOverviewSnapshot snapshot)
     {

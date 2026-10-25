@@ -38,6 +38,7 @@ public sealed class ProductivityHoursJourneyTests
         backend.Channel.Returns(channel);
         backend.TimeEntries.Returns(timeEntries);
         backend.Timeline.Returns(new _Timeline());
+        backend.Storage.Returns(Substitute.For<IPluginStorage>());
         backend.GetProjectsAsync().Returns(Task.FromResult<IReadOnlyList<PluginProjectInfo>>(
         [
             new("syn-portal", "Synvolution portal"),
@@ -193,6 +194,7 @@ public sealed class ProductivityHoursJourneyTests
         await _Until(
             () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "31u00",
             "the week overview");
+        Assert.Equal("36u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
         Assert.Contains("Overzicht", _Texts(overviewScreen));
         Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
