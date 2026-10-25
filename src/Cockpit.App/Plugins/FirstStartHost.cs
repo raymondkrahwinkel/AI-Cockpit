@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Plugins;
@@ -65,7 +66,7 @@ internal sealed class FirstStartHost(string pluginId, string pluginName, IServic
         }
 
         // manifest-v1 §5.3: route C applies nothing before the operator saw where it comes from and what it installs.
-        if (!await consent(WhatItSetsUp(manifest)))
+        if (!await consent(WhatItSetsUp(manifest, _BundledName)))
         {
             return ["Nothing was set up."];
         }
@@ -97,16 +98,17 @@ internal sealed class FirstStartHost(string pluginId, string pluginName, IServic
 
     // The consent screen's lines (manifest-v1 §5.3): where it comes from, then what it sets up, with counts and names.
     // An issuer that carries only an id says "your organisation": an id tells the operator nothing.
-    internal static IReadOnlyList<string> WhatItSetsUp(ProvisionManifest manifest)
+    internal static IReadOnlyList<string> WhatItSetsUp(ProvisionManifest manifest, Func<string, string?>? displayName = null)
     {
         var lines = new List<string>();
         if (manifest.Issuer is { } issuer)
         {
             var organisation = issuer.Organization?.Name;
             var profile = issuer.Profile?.Name;
-            lines.Add(organisation is null && profile is null
-                ? "From: your organisation and profile"
-                : $"From: {string.Join(", ", new[] { organisation, profile, issuer.InstallationSet?.Name }.Where(name => name is not null))}");
+            if (organisation is not null || profile is not null)
+            {
+                lines.Add($"From: {string.Join(", ", new[] { organisation, profile, issuer.InstallationSet?.Name }.Where(name => name is not null))}");
+            }
         }
 
         var stores = (manifest.Stores?.Added ?? []).Concat(manifest.Stores?.Allowed ?? []).Select(store => store.Url).Distinct().ToList();
@@ -117,7 +119,7 @@ internal sealed class FirstStartHost(string pluginId, string pluginName, IServic
 
         if (manifest.Plugins?.Required is { Count: > 0 } required)
         {
-            lines.Add($"Plugins ({required.Count}): {string.Join(", ", required.Select(plugin => plugin.Id))}");
+            lines.Add($"Plugins ({required.Count}): {string.Join(", ", required.Select(plugin => displayName?.Invoke(plugin.Id) ?? plugin.Id))}");
         }
 
         if (manifest.Profiles?.Items is { Count: > 0 } profiles)
@@ -142,6 +144,14 @@ internal sealed class FirstStartHost(string pluginId, string pluginName, IServic
         }
 
         return lines.Count == 0 ? ["Settings only: no stores, plugins or rule set."] : lines;
+    }
+
+    // The bundled plugins' own manifests carry the display name; a plugin that only a store knows keeps its id rather than cost a request.
+    private static string? _BundledName(string id)
+    {
+        var manifest = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName, id, "plugin.json");
+
+        return File.Exists(manifest) && PluginManifest.TryParse(File.ReadAllText(manifest), out var parsed, out _) ? parsed?.Name : null;
     }
 
     // What an applied manifest left behind, in one sentence: the same counts the consent screen promised.

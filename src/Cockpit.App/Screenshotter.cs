@@ -824,7 +824,7 @@ internal static partial class Screenshotter
         {
             if (Core.Provisioning.ProvisionManifestReader.Read(manifestJson).Manifest is { } manifest)
             {
-                _ = await consent(Plugins.FirstStartHost.WhatItSetsUp(manifest));
+                _ = await consent(Plugins.FirstStartHost.WhatItSetsUp(manifest, id => id == "git-status" ? "Git status" : null));
             }
 
             return [];

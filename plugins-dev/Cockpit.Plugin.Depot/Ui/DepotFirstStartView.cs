@@ -211,8 +211,13 @@ internal sealed class DepotFirstStartView : UserControl
         cancel.Click += (_, _) => _agreed.TrySetResult(false);
 
         _consent.Children.Clear();
-        _consent.Children.Add(_Hint(_organizationName is null ? "This sets up your cockpit:" : $"This sets up your cockpit from {_organizationName}:"));
-        foreach (var line in lines)
+        // The host's "From:" line names what the manifest says; the chosen organisation says it better, and says it once.
+        var from = lines.Any(line => line.StartsWith("From:", StringComparison.Ordinal));
+        _consent.Children.Add(_Hint(
+            _organizationName is not null ? $"This sets up your cockpit from {_organizationName}:"
+            : from ? "This sets up your cockpit:"
+            : "This sets up your cockpit from your organisation and profile:"));
+        foreach (var line in lines.Where(line => _organizationName is null || !line.StartsWith("From:", StringComparison.Ordinal)))
         {
             _consent.Children.Add(new TextBlock { Text = line, FontSize = 12, TextWrapping = TextWrapping.Wrap });
         }

@@ -196,12 +196,14 @@ public sealed class FirstStartJourney
                     Assert.Contains("Profiles (1): Acme dev", shown);
                     Assert.Contains("Settings (2)", shown);
                     Assert.DoesNotContain(OrganisationId, shown);
+                    Assert.DoesNotContain("From:", shown);
 
                     // A click on the summary collapses nothing: the screen stays the one that asks.
                     var summary = view.GetLogicalDescendants().OfType<TextBlock>().First(text => text.Text?.StartsWith("Profiles", StringComparison.Ordinal) == true);
                     summary.RaiseEvent(new RoutedEventArgs(Avalonia.Input.InputElement.TappedEvent));
                     Assert.True(agree.IsEffectivelyVisible);
                     Assert.False(wizard.NextCommand.CanExecute(null));
+                    Assert.True(wizard.BackCommand.CanExecute(null));
 
                     agree.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     var outcome = _Named<TextBlock>(view, "DepotFirstStartOutcome");
