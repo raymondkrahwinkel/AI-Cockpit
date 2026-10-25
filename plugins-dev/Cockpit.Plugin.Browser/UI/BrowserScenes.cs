@@ -1,4 +1,9 @@
+using System.Runtime.InteropServices;
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
 
@@ -13,6 +18,8 @@ internal static class BrowserScenes
     {
         ["browser-tab"] = () => _Shell(BrowserPlace.Tab),
         ["browser-rail"] = () => _Shell(BrowserPlace.Rail),
+        // Cockpit hangs a name ending in -floating in its own dock-panel window, titled by the automation name.
+        ["browser-floating"] = () => _Named(_Shell(BrowserPlace.Rail), "Browser"),
         ["browser-codec"] = () => _Shell(BrowserPlace.Tab, codecUnsupported: true),
         ["browser-engine-download"] = () => _Empty(BrowserEngine.ForScene(
             BrowserEngineState.Fetching,
@@ -27,13 +34,30 @@ internal static class BrowserScenes
     {
         var engine = BrowserEngine.ForScene(BrowserEngineState.Ready);
         var model = new BrowserModel(engine);
-        model.AddStaged(_Tab(engine, "https://www.youtube.com/watch?v=jfKfPfyJRdk").Staged("Lofi beats to code to — YouTube", audible: true, codecUnsupported: codecUnsupported));
-        model.AddStaged(_Tab(engine, "https://github.com/raymondkrahwinkel/AI-Cockpit").Staged("raymondkrahwinkel/AI-Cockpit"));
-        model.AddStaged(_Tab(engine, "https://docs.avaloniaui.net/").Staged("Avalonia docs — WebView", muted: true));
+        model.AddStaged(_Tab(engine, "https://www.youtube.com/watch?v=jfKfPfyJRdk").Staged("Lofi beats to code to — YouTube", _Square(0xFFE5_2D27), audible: true, codecUnsupported: codecUnsupported));
+        model.AddStaged(_Tab(engine, "https://github.com/raymondkrahwinkel/AI-Cockpit").Staged("raymondkrahwinkel/AI-Cockpit", _Square(0xFF8A_8F98)));
+        model.AddStaged(_Tab(engine, "https://docs.avaloniaui.net/").Staged("Avalonia docs — WebView", _Square(0xFF2F_6FE4), muted: true));
 
         var home = new BrowserHome(new BrowserShell(model, _ => { }));
         home.MoveTo(place);
         return home.CreateSlot(place);
+    }
+
+    private static Control _Named(Control control, string name)
+    {
+        AutomationProperties.SetName(control, name);
+        return control;
+    }
+
+    // The mockup's coloured favicon squares, since a scene fetches nothing.
+    private static Bitmap _Square(uint argb)
+    {
+        var bitmap = new WriteableBitmap(new PixelSize(16, 16), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        using var frame = bitmap.Lock();
+        var pixels = new int[16 * 16];
+        Array.Fill(pixels, unchecked((int)argb));
+        Marshal.Copy(pixels, 0, frame.Address, pixels.Length);
+        return bitmap;
     }
 
     private static BrowserTab _Tab(BrowserEngine engine, string address) => new(CefBrowserView.ForScene(engine), address);

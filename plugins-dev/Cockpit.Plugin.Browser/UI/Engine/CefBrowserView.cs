@@ -68,6 +68,8 @@ internal sealed class CefBrowserView : Control
 
     public event Action<string>? TitleChanged;
 
+    public event Action<string>? FaviconChanged;
+
     public event Action<bool, bool, bool>? LoadingChanged;
 
     public event Action<bool>? AudibleChanged;
@@ -448,6 +450,14 @@ internal sealed class CefBrowserView : Control
         }
 
         protected override void OnTitleChange(CefBrowser browser, string title) => _OnUi(() => owner.TitleChanged?.Invoke(title));
+
+        protected override void OnFaviconUrlChange(CefBrowser browser, string[] iconUrls)
+        {
+            if (iconUrls.Length > 0)
+            {
+                _OnUi(() => owner.FaviconChanged?.Invoke(iconUrls[0]));
+            }
+        }
 
         protected override bool OnConsoleMessage(CefBrowser browser, CefLogSeverity level, string message, string source, int line)
         {

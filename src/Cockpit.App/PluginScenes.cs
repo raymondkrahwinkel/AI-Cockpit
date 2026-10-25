@@ -1,7 +1,10 @@
 using System.Reflection;
 using System.Text.Json;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Docking;
+using Material.Icons;
 
 namespace Cockpit.App;
 
@@ -23,7 +26,17 @@ internal static class PluginScenes
                 nameof(scene));
         }
 
-        return new Window { Width = width, Height = height, Content = create() };
+        // A name ending in -floating renders in the host's own dock-panel window (AC-1710), titled by the view's
+        // automation name, the way a CanFloat panel shows once undocked.
+        var view = create();
+        if (name.EndsWith("-floating", StringComparison.Ordinal))
+        {
+            var title = AutomationProperties.GetName(view) ?? name;
+            var panel = new DockPanelRegistration(Prefix + name, title, MaterialIconKind.DockWindow, () => view);
+            return new Docking.DockPanelWindow(panel, view, boundsStore: null) { Width = width, Height = height };
+        }
+
+        return new Window { Width = width, Height = height, Content = view };
     }
 
     // Built output sits at plugins-dev/<plugin>/bin/<config>/<tfm>/, matching the running app's own config and tfm.

@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -20,11 +21,14 @@ internal sealed class BrowserShell : UserControl
     private readonly Button _reload;
     private readonly TextBox _address;
     private readonly MaterialIcon _lock = new() { Kind = MaterialIconKind.Lock, Width = 13, Height = 13, Margin = new Thickness(8, 0, 4, 0) };
+    private readonly TextBlock _addressShown = new() { VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly Border _codecBar;
     private readonly ContentControl _page = new();
     private readonly Button _placement;
     private BrowserTab? _watched;
     private bool _compact;
+    private string _placementLabel = string.Empty;
+    private MaterialIconKind _placementIcon;
 
     public BrowserShell(BrowserModel model, Action<string> openExternally)
     {
@@ -52,12 +56,14 @@ internal sealed class BrowserShell : UserControl
             }
         };
         _lock.Themed(MaterialIcon.ForegroundProperty, "CockpitTextSecondaryBrush");
+        _address.GotFocus += (_, _) => _Refresh();
+        _address.LostFocus += (_, _) => _Refresh();
 
         var addressField = new Border
         {
             CornerRadius = new CornerRadius(14),
             Height = 28,
-            Child = new DockPanel { Children = { _Docked(_lock, Dock.Left), _address } },
+            Child = new DockPanel { Children = { _Docked(_lock, Dock.Left), new Grid { Children = { _address, _addressShown } } } },
         }.Themed(Border.BackgroundProperty, "CockpitInsetBgBrush");
 
         _placement = new Button { Classes = { "Compact", "Subtle" }, VerticalAlignment = VerticalAlignment.Center };
@@ -133,7 +139,7 @@ internal sealed class BrowserShell : UserControl
 
         _model.Changed += _Refresh;
         _model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(_OnEngineChanged);
-        SetPlacement("Dock in rail", MaterialIconKind.DockRight, compact: false);
+        SetPlacement("Dock in rail", MaterialIconKind.DockRight);
         _Refresh();
     }
 
@@ -141,15 +147,32 @@ internal sealed class BrowserShell : UserControl
 
     public event Action? PlacementRequested;
 
-    // Compact in the rail (mockup screen 2): the button keeps its icon, the tabs narrow.
-    public void SetPlacement(string label, MaterialIconKind icon, bool compact)
+    public void SetPlacement(string label, MaterialIconKind icon)
     {
-        _compact = compact;
-        ToolTip.SetTip(_placement, label);
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new MaterialIcon { Kind = icon, Width = 14, Height = 14 } } };
-        if (compact == false)
+        _placementLabel = label;
+        _placementIcon = icon;
+        _ApplyPlacement();
+    }
+
+    // Compact by width, not by place: narrow in the rail (mockup screen 2), full tabs in its own window (screen 3).
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        var compact = e.NewSize.Width < 640;
+        if (compact != _compact)
         {
-            content.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            _compact = compact;
+            _ApplyPlacement();
+        }
+    }
+
+    private void _ApplyPlacement()
+    {
+        ToolTip.SetTip(_placement, _placementLabel);
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new MaterialIcon { Kind = _placementIcon, Width = 14, Height = 14 } } };
+        if (_compact == false)
+        {
+            content.Children.Add(new TextBlock { Text = _placementLabel, VerticalAlignment = VerticalAlignment.Center });
         }
 
         _placement.Content = content;
@@ -201,9 +224,35 @@ internal sealed class BrowserShell : UserControl
             _address.Text = _Display(tab.Address);
         }
 
+        _ShowAddress(_address.IsFocused ? string.Empty : _address.Text ?? string.Empty);
+
         _lock.Kind = tab?.Address.StartsWith("https://", StringComparison.Ordinal) ?? false ? MaterialIconKind.Lock : MaterialIconKind.Web;
         _codecBar.IsVisible = tab?.CodecUnsupported ?? false;
         _page.Content = ready && tab is not null ? tab.View : EngineStatusView.For(_model.Engine);
+    }
+
+    // Mockup screen 1: the host in bold, the rest faint, while the field is not being edited.
+    private void _ShowAddress(string shown)
+    {
+        _addressShown.Inlines?.Clear();
+        _addressShown.IsVisible = shown.Length > 0;
+        if (shown.Length == 0)
+        {
+            _address.ClearValue(TextBox.ForegroundProperty);
+            return;
+        }
+
+        _address.Foreground = Brushes.Transparent;
+        var slash = shown.IndexOf('/');
+        var host = slash < 0 ? shown : shown[..slash];
+        _addressShown.Inlines ??= [];
+        _addressShown.Inlines.Add(new Run(host) { FontWeight = FontWeight.SemiBold });
+        if (slash >= 0)
+        {
+            var path = new Run(shown[slash..]);
+            path.Bind(Run.ForegroundProperty, _addressShown.GetResourceObservable("CockpitTextFaintBrush"));
+            _addressShown.Inlines.Add(path);
+        }
     }
 
     // As the mockup shows it while the field is not being edited: no scheme, no "www.".
@@ -231,6 +280,11 @@ internal sealed class BrowserShell : UserControl
     {
         var active = ReferenceEquals(tab, _model.Active);
         var row = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+
+        if (tab.Favicon is { } favicon)
+        {
+            row.Children.Add(_Docked(new Image { Source = favicon, Width = 14, Height = 14, Margin = new Thickness(0, 0, 4, 0) }, Dock.Left));
+        }
 
         if (tab.IsAudible || tab.IsMuted)
         {

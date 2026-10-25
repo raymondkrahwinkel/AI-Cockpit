@@ -1,3 +1,4 @@
+using Avalonia.Media.Imaging;
 using Cockpit.Plugin.Browser.UI.Engine;
 
 namespace Cockpit.Plugin.Browser.UI;
@@ -14,6 +15,11 @@ internal sealed class BrowserTab
         view.LoadingChanged += (loading, back, forward) => _Update(() => (IsLoading, CanGoBack, CanGoForward) = (loading, back, forward));
         view.AudibleChanged += value => _Update(() => IsAudible = value);
         view.CodecUnsupported += () => _Update(() => CodecUnsupported = true);
+        view.FaviconChanged += async url =>
+        {
+            var icon = await Favicons.GetAsync(url);
+            _Update(() => Favicon = icon);
+        };
     }
 
     public CefBrowserView View { get; }
@@ -32,15 +38,18 @@ internal sealed class BrowserTab
 
     public bool IsMuted => View.IsMuted;
 
+    public Bitmap? Favicon { get; private set; }
+
     // Set by the page's media or DRM request, cleared by the next navigation or by dismissing the bar.
     public bool CodecUnsupported { get; set; }
 
     public event Action? Changed;
 
     // A headless scene's tab: what the page would have reported, set at once.
-    internal BrowserTab Staged(string title, bool audible = false, bool muted = false, bool codecUnsupported = false)
+    internal BrowserTab Staged(string title, Bitmap? favicon = null, bool audible = false, bool muted = false, bool codecUnsupported = false)
     {
         Title = title;
+        Favicon = favicon;
         IsAudible = audible;
         CodecUnsupported = codecUnsupported;
         View.SetMuted(muted);
