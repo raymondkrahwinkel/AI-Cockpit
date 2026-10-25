@@ -47,12 +47,18 @@ public static class AssistantChannelStorage
             return null;
         }
 
-        if (!Enum.TryParse<AssistantChannelVerbosity>(storage.Get<string>(_VerbosityKey), out var verbosity))
-        {
-            verbosity = AssistantChannelVerbosity.FinalAnswerOnly;
-        }
+        return (AssistantChannelAccess.Restore(audience, userIds), LoadVerbosity(storage));
+    }
 
-        return (AssistantChannelAccess.Restore(audience, userIds), verbosity);
+    /// <summary>
+    /// Reads the stored relay detail independently of whether an account is currently linked.
+    /// </summary>
+    public static AssistantChannelVerbosity LoadVerbosity(IPluginStorage storage)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        return Enum.TryParse<AssistantChannelVerbosity>(storage.Get<string>(_VerbosityKey), out var verbosity)
+            ? verbosity
+            : AssistantChannelVerbosity.FinalAnswerOnly;
     }
 
     /// <summary>

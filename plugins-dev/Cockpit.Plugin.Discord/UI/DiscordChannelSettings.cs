@@ -17,6 +17,8 @@ internal sealed class DiscordChannelSettings(IPluginStorage storage)
 
     public (AssistantChannelAccess Access, AssistantChannelVerbosity Verbosity)? Access => AssistantChannelStorage.Load(storage);
 
+    public AssistantChannelVerbosity Verbosity => AssistantChannelStorage.LoadVerbosity(storage);
+
     public string? MigrationNotice => AssistantChannelStorage.LoadMigrationNotice(storage);
 
     public void SaveAccess(AssistantChannelAccess access, AssistantChannelVerbosity verbosity) =>

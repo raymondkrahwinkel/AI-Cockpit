@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugin.Discord.UI;
+using Cockpit.Plugins.Abstractions.Channels;
 
 namespace Cockpit.Plugin.Discord.Tests;
 
@@ -9,9 +10,15 @@ public class DiscordSettingsControlStagingTests
     [Fact]
     public void WithoutALinkedUser_TheLinkPromptAndRemainingSettingsStayVisible()
     {
+        var storage = new FakePluginStorage();
+        storage.Set("assistantChannel.audience", AssistantChannelAudience.Everyone.ToString());
+        storage.Set("assistantChannel.userIds", new[] { "117", "118" });
+        storage.Set("assistantChannel.verbosity", AssistantChannelVerbosity.StatusLines.ToString());
+        storage.Set("discordChannelId", "42");
+        AssistantChannelStorage.MigrateToSingleUser(storage, "discordChannelId");
         var view = new DiscordChannelSettingsControl(
             new FakeCockpitUiHost(),
-            new DiscordChannelSettings(new FakePluginStorage()));
+            new DiscordChannelSettings(storage));
 
         var controls = _Descendants(view).ToList();
 
@@ -19,7 +26,9 @@ public class DiscordSettingsControlStagingTests
             controls.OfType<TextBlock>(),
             text => text.IsVisible && text.Text == "Link your own account to receive messages.");
         Assert.Equal(2, controls.OfType<TextBox>().Count());
-        Assert.Single(controls.OfType<ComboBox>());
+        Assert.Equal(
+            (int)AssistantChannelVerbosity.StatusLines,
+            Assert.Single(controls.OfType<ComboBox>()).SelectedIndex);
     }
 
     private static IEnumerable<Control> _Descendants(Control control)

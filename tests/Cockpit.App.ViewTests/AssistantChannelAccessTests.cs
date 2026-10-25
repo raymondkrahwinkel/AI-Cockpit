@@ -19,11 +19,6 @@ public class AssistantChannelAccessTests
         Assert.False(access.IsAllowed("118"));
         Assert.False(access.IsAllowed(null));
         Assert.False(access.IsAllowed(" "));
-    }
-
-    [Fact]
-    public void TheDefaultLevel_NeedsAnAccount()
-    {
         var result = AssistantChannelAccess.ForSingleUser("  ");
 
         Assert.False(result.Ok);
@@ -40,6 +35,8 @@ public class AssistantChannelAccessTests
         Assert.DoesNotContain(storage.Plain.Values, value => value is string text && text.Contains("bot-abc123", StringComparison.Ordinal));
         Assert.Contains("bot-abc123", storage.Secrets.Values);
         Assert.Equal("bot-abc123", AssistantChannelStorage.LoadBotToken(storage));
+        Assert.Null(AssistantChannelStorage.Load(new FakePluginStorage()));
+        Assert.Null(AssistantChannelStorage.LoadBotToken(new FakePluginStorage()));
     }
 
     [Fact]
@@ -58,19 +55,13 @@ public class AssistantChannelAccessTests
         Assert.False(loaded.Value.Access.IsAllowed("118"));
     }
 
-    [Fact]
-    public void NothingStoredYet_IsNoChannelToOpen_RatherThanADefaultOne()
-    {
-        Assert.Null(AssistantChannelStorage.Load(new FakePluginStorage()));
-        Assert.Null(AssistantChannelStorage.LoadBotToken(new FakePluginStorage()));
-    }
-
     public static TheoryData<AssistantChannelAudience, string[], string?, string?, string?> MigrationCases => new()
     {
         { AssistantChannelAudience.SingleUser, ["117"], null, "117", null },
         { AssistantChannelAudience.SingleUser, ["117"], "42", "117", "Channel 42 was disconnected; the assistant now talks only in DMs with 117." },
         { AssistantChannelAudience.SpecificUsers, ["117"], "42", "117", "Channel 42 was disconnected; the assistant now talks only in DMs with 117." },
-        { AssistantChannelAudience.Everyone, ["117", "118"], "42", null, "No account is linked. Previously allowed: 117, 118. Link your own account to receive messages." },
+        { AssistantChannelAudience.SpecificUsers, ["117", "118"], "42", null, "No account is linked. Previously allowed: 117, 118. Link your own account to receive messages." },
+        { AssistantChannelAudience.Everyone, [], "42", null, "No account is linked. Previously allowed: everyone. Link your own account to receive messages." },
     };
 
     [Theory]
