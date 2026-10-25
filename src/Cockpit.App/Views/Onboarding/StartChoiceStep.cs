@@ -57,6 +57,8 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
 
     public bool IsSkipped => false;
 
+    public string? NextBlockedReason => ViewModel.NextBlockedReason;
+
     public Control BuildContent()
     {
         ViewModel.Dispose();

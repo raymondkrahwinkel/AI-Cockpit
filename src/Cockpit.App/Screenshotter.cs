@@ -699,6 +699,10 @@ internal static partial class Screenshotter
             """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[{"id":"a","createdAt":"2026-10-19T21:10:00+00:00","size":2168000}],"manifest":"{}","notes":[]}"""),
         ["first-run-depot-org-choice"] = (_, _) => _DepotRouteWizard(
             """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[],"candidates":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}],"notes":[]}"""),
+        // AC-1670: an organisation chosen, and the screen that says what it sets up before "Set it up" is pressed.
+        ["first-run-depot-consent"] = (_, _) => _DepotRouteWizard(
+            """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[],"candidates":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}],"manifest":"{\"format\":\"cockpit.provision\",\"formatVersion\":1,\"issuer\":{\"kind\":\"depot\",\"organization\":{\"id\":\"019f4da0d22e77d79401467fffa3c1ad\"}},\"plugins\":{\"required\":[{\"id\":\"claude-provider\"},{\"id\":\"git-status\"}]},\"settings\":{\"terminal.fontSize\":{\"value\":15,\"mode\":\"default\",\"by\":\"org\"},\"layout.sidebarWidth\":{\"value\":300,\"mode\":\"default\",\"by\":\"org\"}},\"profiles\":{\"items\":[{\"id\":\"dev\",\"label\":\"Acme dev\",\"by\":\"org\"}]},\"projects\":{\"own\":[{\"id\":\"site\",\"name\":\"Acme website\"}]}}","notes":[]}""",
+            chooseOrganization: true),
         ["first-run-depot-offline"] = (_, _) => _DepotRouteWizard(
             """{"state":"offline","message":"Couldn't reach https://depot.example.com. Check the address, or skip this and connect to Depot later from its settings."}"""),
 
@@ -761,7 +765,7 @@ internal static partial class Screenshotter
 
     // The Depot plugin's UI part loaded from bundled-plugins as the app loads it, its route picked and, with `answer`, signed
     // in: the backend part's answer is staged by the channel the scene hands the route, so no Depot is reached.
-    private static Window _DepotRouteWizard(string? answer)
+    private static Window _DepotRouteWizard(string? answer, bool chooseOrganization = false)
     {
         var folder = Path.Combine(AppContext.BaseDirectory, Cockpit.Infrastructure.Plugins.BundledPluginInstaller.BundledFolderName, "depot");
         if (!PluginManifest.TryParse(File.ReadAllText(Path.Combine(folder, "plugin.json")), out var manifest, out var error) || manifest is null)
@@ -793,6 +797,13 @@ internal static partial class Screenshotter
             controls.OfType<Button>().First(button => button.Name == "DepotFirstStartSignIn").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         }
 
+        if (chooseOrganization)
+        {
+            Dispatcher.UIThread.RunJobs();
+            content.GetLogicalDescendants().OfType<Button>().First(button => button.Name == "DepotFirstStartSetUpOrganization").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+        }
+
         return window;
     }
 
@@ -808,9 +819,16 @@ internal static partial class Screenshotter
 
         public Task<string> RestoreBackupAsync(string targetId, string backupId, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
 
-        public Task<IReadOnlyList<string>> ApplyManifestAsync(
-            string manifestJson, Func<IReadOnlyList<string>, Task<bool>> consent, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<string>>([]);
+        public async Task<IReadOnlyList<string>> ApplyManifestAsync(
+            string manifestJson, Func<IReadOnlyList<string>, Task<bool>> consent, CancellationToken cancellationToken = default)
+        {
+            if (Core.Provisioning.ProvisionManifestReader.Read(manifestJson).Manifest is { } manifest)
+            {
+                _ = await consent(Plugins.FirstStartHost.WhatItSetsUp(manifest));
+            }
+
+            return [];
+        }
 
         private sealed class _Nothing : IDisposable
         {
