@@ -34,6 +34,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
   so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
+- added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**
+  opens the rail on it, or raises its window when it floats. A plugin cannot open another plugin's panel.
 - added: a dock-rail panel from a plugin can keep its view while you collapse the rail or switch tabs, and can be
   undocked (⧉ in the rail header) into its own window with **⇤ Dock back** to return it. Whether it floats and where its
   window stood survive a restart. The assistant docks and undocks through the same mechanism, behaving as before.

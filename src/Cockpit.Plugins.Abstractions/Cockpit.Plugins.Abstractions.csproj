@@ -555,7 +555,9 @@
          CanFloat. A plugin that relies on either sets minHostVersion 0.111.0. Additive; still v3. -->
     <!-- 3.23.0 (AC-1737): added PluginProjectInfo, ICockpitHost.GetProjectsAsync and GetSessionProjectIdAsync, the
          projects as id and name and a pane's project. A plugin that calls them sets minHostVersion 0.112.0. Additive. -->
-    <Version>3.23.0</Version>
+    <!-- 3.24.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.6.0 — ICockpitUiHost.OpenDockPanelAsync (default
+         no-op). A plugin that calls it sets minHostVersion 0.113.0. Additive; still v3. -->
+    <Version>3.24.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
