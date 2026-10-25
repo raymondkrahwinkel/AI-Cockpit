@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Cockpit.Plugin.Browser.UI.Share;
 
 // AC-1728: the decisions control rests on, with nothing the page's own scripts can set. MayAct runs on CEF's UI thread
-// right before the input goes in; Navigation runs in CEF's request handler for every frame; ClickTarget reads what
+// right before the input goes in; Navigation runs in CEF's resource handler for every frame; ClickTarget reads what
 // DevTools (not the page) says lies under the point.
 internal static class ControlPolicy
 {
@@ -23,16 +23,11 @@ internal static class ControlPolicy
         && SameOrigin(mainUrl, grant.Origin)
         && (needsFocus == false || SameOrigin(focusedUrl, grant.Origin));
 
-    // While a tab is controlled, any frame's form submission and any non-GET navigation waits for the operator, one to
-    // another origin is dropped, and only the one request the operator released goes through, matched on method and URL.
-    public static Verdict Navigation(string? controlOrigin, string method, bool formSubmit, string url, (string Method, string Url)? released)
+    // While a tab is controlled, any frame's form submission and any non-GET navigation waits for the operator, and one
+    // to another origin is dropped. Sending a held one continues that very request, so nothing else rides along.
+    public static Verdict Navigation(string? controlOrigin, string method, bool formSubmit, string url)
     {
         if (controlOrigin is null || (formSubmit == false && string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase)))
-        {
-            return Verdict.Allow;
-        }
-
-        if (released is { } one && string.Equals(one.Method, method, StringComparison.OrdinalIgnoreCase) && one.Url == url)
         {
             return Verdict.Allow;
         }

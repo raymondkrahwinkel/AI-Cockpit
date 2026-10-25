@@ -30,12 +30,11 @@ internal sealed class CefBrowserView : Control
         })();
         """;
 
-    // AC-1728: the origin an agent controls this tab on, or null. While set, OnBeforeBrowse holds every form submission
-    // and non-GET navigation in any frame for the operator; nothing in the page's scripts takes part in that decision.
+    // AC-1728: the origin an agent controls this tab on, or null. While set, every form submission and non-GET
+    // navigation in any frame waits in OnBeforeResourceLoad for the operator; the page's scripts have no say in it.
     private volatile string? _controlOrigin;
     private readonly object _holdGate = new();
-    private (string FrameId, CefRequest Request)? _held;
-    private (string Method, string Url)? _released;
+    private CefCallback? _held;
 
     private readonly object _gate = new();
     private readonly BrowserEngine _engine;
@@ -103,28 +102,18 @@ internal sealed class CefBrowserView : Control
         set => _controlOrigin = value;
     }
 
-    // Sends the held request again, in the frame that made it; only that method and address pass the hold, once.
-    public void ReleaseHeldSubmit() => _OnHost(_ =>
-    {
-        (string FrameId, CefRequest Request)? held;
-        lock (_holdGate)
-        {
-            held = _held;
-            _held = null;
-            _released = held is { } one ? (one.Request.Method, one.Request.Url) : null;
-        }
+    // Lets exactly the held request go on, body and all; nothing is copied or sent again (measured, AC-1728).
+    public void ReleaseHeldSubmit() => _TakeHeld()?.Continue();
 
-        if (held is { } request && _browser?.GetFrameByIdentifier(request.FrameId) is { } frame)
-        {
-            frame.LoadRequest(request.Request);
-        }
-    });
+    public void DropHeldSubmit() => _TakeHeld()?.Cancel();
 
-    public void DropHeldSubmit()
+    private CefCallback? _TakeHeld()
     {
         lock (_holdGate)
         {
+            var held = _held;
             _held = null;
+            return held;
         }
     }
 
@@ -607,42 +596,45 @@ internal sealed class CefBrowserView : Control
         protected override CefLoadHandler GetLoadHandler() => _load;
     }
 
-    // AC-1728: the submit hold, in every frame. A form submission or a non-GET navigation in a controlled tab is held
-    // for the operator, one to another origin is cancelled outright, and only the request he released passes, once.
+    // AC-1728: a controlled tab's navigations go through the submit hold; everything else keeps CEF's defaults.
     private sealed class RequestHandler(CefBrowserView owner) : CefRequestHandler
     {
-        protected override bool OnBeforeBrowse(CefBrowser browser, CefFrame frame, CefRequest request, bool userGesture, bool isRedirect)
+        private readonly SubmitHold _hold = new(owner);
+
+        protected override CefResourceRequestHandler? GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request,
+            bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) =>
+            isNavigation && owner._controlOrigin is not null ? _hold : null;
+    }
+
+    // The request itself waits (ContinueAsync) until the operator sends or drops it, in every frame; one to another
+    // origin is cancelled outright. OnBeforeBrowse would not do: the body is not there yet (measured, CEF 154).
+    private sealed class SubmitHold(CefBrowserView owner) : CefResourceRequestHandler
+    {
+        protected override CefCookieAccessFilter? GetCookieAccessFilter(CefBrowser browser, CefFrame frame, CefRequest request) => null;
+
+        protected override CefReturnValue OnBeforeResourceLoad(CefBrowser browser, CefFrame frame, CefRequest request, CefCallback callback)
         {
             var formSubmit = (request.TransitionType & CefTransitionType.SourceMask) == CefTransitionType.FormSubmit;
             var (method, url) = (request.Method, request.Url);
-            ControlPolicy.Verdict verdict;
-            lock (owner._holdGate)
+            switch (ControlPolicy.Navigation(owner._controlOrigin, method, formSubmit, url))
             {
-                verdict = ControlPolicy.Navigation(owner._controlOrigin, method, formSubmit, url, owner._released);
-                if (verdict == ControlPolicy.Verdict.Allow && ControlPolicy.Navigation(owner._controlOrigin, method, formSubmit, url, null) != ControlPolicy.Verdict.Allow)
-                {
-                    owner._released = null;
-                }
+                case ControlPolicy.Verdict.Drop:
+                    return CefReturnValue.Cancel;
+                case ControlPolicy.Verdict.Hold:
+                    CefCallback? previous;
+                    lock (owner._holdGate)
+                    {
+                        previous = owner._held;
+                        owner._held = callback;
+                    }
 
-                if (verdict == ControlPolicy.Verdict.Hold)
-                {
-                    var copy = CefRequest.Create();
-                    copy.Set(url, method, request.PostData, request.GetHeaderMap());
-                    owner._held = (frame.Identifier, copy);
-                }
+                    previous?.Cancel();
+                    _OnUi(() => owner.SubmitHeld?.Invoke(method, url));
+                    return CefReturnValue.ContinueAsync;
+                default:
+                    return CefReturnValue.Continue;
             }
-
-            if (verdict == ControlPolicy.Verdict.Hold)
-            {
-                _OnUi(() => owner.SubmitHeld?.Invoke(method, url));
-            }
-
-            return verdict != ControlPolicy.Verdict.Allow;
         }
-
-        // Null keeps CEF's default handling of every resource load.
-        protected override CefResourceRequestHandler? GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request,
-            bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) => null;
     }
 
     // AC-1728: no file picker opens while an agent controls the tab, so a click cannot hand it a file.

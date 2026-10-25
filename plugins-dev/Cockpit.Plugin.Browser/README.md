@@ -31,9 +31,10 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   and each lands in the consent audit with typed text cut short and masked in a password field. The operator's own
   click or key takes over. Each action is decided again on CEF's UI thread right before it goes in (same grant, same
   origin, and for keys a focused frame on that origin); a click must land on the top document, as DevTools'
-  `DOM.getNodeForLocation` says, never in a frame. While a tab is controlled, `OnBeforeBrowse` holds every form
-  submission and non-GET navigation in any frame for the operator, drops one to another origin, and lets through
-  only the request he released, matched on method and URL; no file picker opens. A page's own `fetch` is not covered.
+  `DOM.getNodeForLocation` says, never in a frame. While a tab is controlled, every form submission and non-GET
+  navigation in any frame waits in `OnBeforeResourceLoad` (`ContinueAsync`) until the operator sends it (the very
+  request continues, body and all) or drops it; one to another origin is cancelled; no file picker opens. While a
+  submission waits, DevTools reads of that tab do not answer. A page's own `fetch` is not covered.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
   `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 

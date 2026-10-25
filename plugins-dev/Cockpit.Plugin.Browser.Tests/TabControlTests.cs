@@ -60,13 +60,13 @@ public class TabControlTests
         Assert.False(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"MAIN"}""", tree, """{"node":{"nodeName":"IFRAME"}}"""));
         Assert.False(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"CHILD"}""", tree, """{"node":{"nodeName":"BUTTON"}}"""));
 
-        // Reviews 3 and 4: decided in CEF, not the page. Any form submission waits, GET or POST, another site is dropped,
-        // and a release lets through only the request it was given for.
+        // Reviews 3 and 4: decided in CEF, not the page. Any form submission waits, GET or POST, a script's POST too, and
+        // another site is dropped; a plain link is not held, and nothing is held without a controller.
         const string origin = "https://github.com";
-        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "GET", formSubmit: true, "https://github.com/search?q=x", null));
-        Assert.Equal(ControlPolicy.Verdict.Drop, ControlPolicy.Navigation(origin, "POST", formSubmit: false, "https://evil.example/collect", null));
-        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://github.com/pr/2", null));
-        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://github.com/merge", ("POST", "https://github.com/merge")));
-        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://github.com/delete", ("POST", "https://github.com/merge")));
+        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "GET", formSubmit: true, "https://github.com/search?q=x"));
+        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "POST", formSubmit: false, "https://github.com/merge"));
+        Assert.Equal(ControlPolicy.Verdict.Drop, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://evil.example/collect"));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://github.com/pr/2"));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(null, "POST", formSubmit: true, "https://github.com/merge"));
     }
 }
