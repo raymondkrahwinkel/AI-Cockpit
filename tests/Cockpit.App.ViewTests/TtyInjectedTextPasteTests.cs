@@ -63,11 +63,23 @@ public class TtyInjectedTextPasteTests
             Assert.Single(pty.WriteCalls);
         });
 
-    public static TheoryData<bool> OperatorInputOrigins => new() { true, false };
+    public enum TtyInputOrigin
+    {
+        Typed,
+        Voice,
+        Pushed,
+    }
+
+    public static TheoryData<TtyInputOrigin> OperatorInputOrigins => new()
+    {
+        TtyInputOrigin.Typed,
+        TtyInputOrigin.Voice,
+        TtyInputOrigin.Pushed,
+    };
 
     [Theory]
     [MemberData(nameof(OperatorInputOrigins))]
-    public Task TtyInput_OnlyOperatorTypingWritesOneContentFreeTimelineRow(bool operatorTyped) =>
+    public Task TtyInput_OnlyOperatorTypingAndVoiceWriteOneContentFreeTimelineRow(TtyInputOrigin origin) =>
         HeadlessAvalonia.RunAsync(async () =>
         {
             var (view, pty) = _NewWiredView();
@@ -87,10 +99,14 @@ public class TtyInjectedTextPasteTests
                 .CreateDelegate(typeof(Action<string>), view);
             vm.PromptSink = writeToPty;
 
-            if (operatorTyped)
+            if (origin == TtyInputOrigin.Typed)
             {
                 _InvokeTerminalInput(view, Encoding.UTF8.GetBytes(Secret));
                 _InvokeTerminalInput(view, " again"u8.ToArray());
+            }
+            else if (origin == TtyInputOrigin.Voice)
+            {
+                vm.InjectVoiceTranscript(Secret);
             }
             else
             {
@@ -103,8 +119,9 @@ public class TtyInjectedTextPasteTests
             var entries = await new SessionTimelineLog(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
                 .ReadRecentAsync(int.MaxValue);
             var operators = entries.Where(entry => entry.Kind == SessionTimelineKind.Operator).ToList();
-            Assert.Equal(operatorTyped ? 1 : 0, operators.Count);
-            if (operatorTyped)
+            var isOperator = origin != TtyInputOrigin.Pushed;
+            Assert.Equal(isOperator ? 1 : 0, operators.Count);
+            if (isOperator)
             {
                 Assert.Equal("TtyInput", operators[0].Action?.ToString());
             }
