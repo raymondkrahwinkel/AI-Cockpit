@@ -36,7 +36,8 @@ public sealed record PluginProvisionResult(
     string? Error,
     string? Warning,
     string? FolderId,
-    string? Sha256)
+    string? Sha256,
+    PluginManifest? Manifest = null)
 {
     public bool IsSuccess => Outcome is PluginProvisionOutcome.Installed or PluginProvisionOutcome.Staged;
 }

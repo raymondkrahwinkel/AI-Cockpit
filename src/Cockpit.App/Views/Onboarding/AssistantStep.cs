@@ -15,8 +15,17 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
         IAssistantProfileStore profileStore,
         ISessionDialogService dialogService,
         IPluginRegistrations pluginProviderRegistry,
-        ProviderStep providerStep)
-        : this(new AssistantStepViewModel(settingsStore, profileStore, dialogService, pluginProviderRegistry, () => providerStep.ViewModel))
+        ProviderStep providerStep,
+        IFirstRunWizardStateStore wizardState,
+        DeferredAssistantProfileCoordinator coordinator)
+        : this(new AssistantStepViewModel(
+            settingsStore,
+            profileStore,
+            dialogService,
+            pluginProviderRegistry,
+            () => providerStep.ViewModel,
+            wizardState,
+            coordinator.Remember))
     {
     }
 

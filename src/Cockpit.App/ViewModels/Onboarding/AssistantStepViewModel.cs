@@ -16,6 +16,8 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginRegistrations? _registry;
     private readonly Func<ProviderStepViewModel?>? _chosenProviders;
+    private readonly IFirstRunWizardStateStore? _wizardState;
+    private readonly Action<FirstRunWizardResumeState>? _rememberDeferred;
     private readonly Task _refreshTask;
     private FirstRunWizardResumeState? _resumeState;
 
@@ -34,8 +36,7 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     [ObservableProperty]
     private bool _onlyLocalProvidersAvailable;
 
-    // The providers the previous step ticked or installed. Plugins load only after the wizard, and one waits for its
-    // approval, so none of them can be the assistant's provider yet; saying so beats listing only the two local ones.
+    // The providers the previous step ticked or installed. The count also decides whether the local-only note applies.
     public ObservableCollection<string> ChosenProviders { get; } = [];
 
     public bool HasChosenProviders => ChosenProviders.Count > 0;
@@ -53,7 +54,7 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     // Why Next is off: the assistant is on and has no profile to run as. Skip and switching it off stay possible.
     public string? NextBlockedReason =>
         AssistantOptions.IsEnabled && string.IsNullOrEmpty(AssistantOptions.ProfileLabel) && !HasDeferredAssistant
-            ? "Pick a profile, or turn the assistant off."
+            ? "Choose a provider, or turn the assistant off."
             : null;
 
     public event EventHandler? NextBlockedChanged;
@@ -64,7 +65,6 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         ChosenProviders.Clear();
         var lines = _resumeState is { Providers.Count: > 0 } state
             ? state.Providers
-                .Where(provider => !string.Equals(provider.Name, state.AssistantProviderName, StringComparison.Ordinal))
                 .Select(provider => provider.Name)
             : _chosenProviders?.Invoke()?.ChosenProviderLines ?? [];
         foreach (var line in lines)
@@ -87,11 +87,15 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         IAssistantProfileStore? profileStore,
         ISessionDialogService? dialogService,
         IPluginRegistrations? pluginProviderRegistry,
-        Func<ProviderStepViewModel?>? chosenProviders = null)
+        Func<ProviderStepViewModel?>? chosenProviders = null,
+        IFirstRunWizardStateStore? wizardState = null,
+        Action<FirstRunWizardResumeState>? rememberDeferred = null)
     {
         _dialogService = dialogService;
         _registry = pluginProviderRegistry;
         _chosenProviders = chosenProviders;
+        _wizardState = wizardState;
+        _rememberDeferred = rememberDeferred;
         AssistantOptions = new AssistantOptionsViewModel(settingsStore, profileStore);
         AssistantOptions.PropertyChanged += (_, args) =>
         {
@@ -135,7 +139,50 @@ public sealed partial class AssistantStepViewModel : ObservableObject
             return;
         }
 
-        await _dialogService.ShowAssistantProfileDialogAsync(null);
+        await _dialogService.ShowAssistantProfileDialogAsync(null, _FirstRunSetup());
         await AssistantOptions.RefreshAsync();
+    }
+
+    private AssistantProfileSetup? _FirstRunSetup()
+    {
+        var pluginProviders = (_resumeState?.Providers ?? [])
+            .SelectMany(provider => provider.SessionProviders)
+            .DistinctBy(provider => provider.Id)
+            .Select(provider => new SessionProviderOption(provider.Name, SessionProvider.Plugin, provider.Id))
+            .ToList();
+        IReadOnlyList<SessionProviderOption> providers =
+        [
+            .. SessionProviderCatalog.Providers.Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio),
+            .. pluginProviders,
+        ];
+        var preferred = pluginProviders.Count == 1 ? pluginProviders[0] : null;
+
+        return new AssistantProfileSetup(providers, preferred, _RememberDeferredProfileAsync);
+    }
+
+    private async Task _RememberDeferredProfileAsync(SessionProfile profile, CancellationToken cancellationToken)
+    {
+        if (_resumeState is not { } state
+            || _wizardState is null
+            || profile.ProviderConfig is not PluginProviderConfig { ProviderId: { Length: > 0 } } provider)
+        {
+            return;
+        }
+
+        var providerName = state.Providers
+            .SelectMany(choice => choice.SessionProviders)
+            .First(choice => choice.Id == provider.ProviderId).Name;
+        var updated = state with
+        {
+            AssistantProviderId = provider.ProviderId,
+            AssistantProviderName = providerName,
+            AssistantConfigJson = string.IsNullOrWhiteSpace(provider.ConfigJson) ? "{}" : provider.ConfigJson,
+        };
+        await _wizardState.SaveResumeStateAsync(updated, cancellationToken).ConfigureAwait(true);
+        _resumeState = updated;
+        _rememberDeferred?.Invoke(updated);
+        DeferredAssistantName = providerName;
+        AssistantOptions.IsEnabled = true;
+        NextBlockedChanged?.Invoke(this, EventArgs.Empty);
     }
 }

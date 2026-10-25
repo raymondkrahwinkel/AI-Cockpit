@@ -338,9 +338,18 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                     return;
                 }
 
-                if (plugin.Discovered.Decision is PluginLoadDecision.NeedsConsent or PluginLoadDecision.Disabled)
+                var needsConsent = plugin.Discovered.Decision is PluginLoadDecision.NeedsConsent or PluginLoadDecision.Disabled;
+                var pinnedSha256 = result.Sha256 ?? plugin.Discovered.Sha256;
+                if (needsConsent)
                 {
-                    var consent = new Cockpit.App.ViewModels.PluginRowViewModel(plugin).ToConsentInfo();
+                    var consent = result.Outcome == PluginProvisionOutcome.Staged && result.Manifest is { } manifest
+                        ? new Cockpit.App.ViewModels.PluginConsentInfo(
+                            manifest.Name,
+                            manifest.Version,
+                            manifest.Author,
+                            plugin.Discovered.FolderPath,
+                            pinnedSha256)
+                        : new Cockpit.App.ViewModels.PluginRowViewModel(plugin).ToConsentInfo();
                     if (!await _dialogs.ShowPluginConsentAsync(consent).ConfigureAwait(true))
                     {
                         SummaryMessage = $"{result.Name} was not enabled. Review it and try again when you're ready.";
@@ -350,20 +359,34 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                     await _plugins.SetEnabledAsync(
                         plugin.Discovered.FolderId,
                         enabled: true,
-                        plugin.Discovered.Sha256).ConfigureAwait(true);
+                        pinnedSha256).ConfigureAwait(true);
+                }
+                else if (result.Outcome == PluginProvisionOutcome.Staged && result.Sha256 is { } stagedSha256)
+                {
+                    await _plugins.SetEnabledAsync(
+                        plugin.Discovered.FolderId,
+                        plugin.Registration?.Enabled ?? false,
+                        stagedSha256).ConfigureAwait(true);
                 }
 
                 requestRows[index].MarkReady();
             }
 
-            var choices = selectedRows.Select(row => new FirstRunProviderChoice(row.Row.Id, row.Row.Name)).ToList();
-            var claude = choices.FirstOrDefault(choice => choice.Id == "claude-provider");
+            var choices = selectedRows.Select((row, index) =>
+            {
+                var manifest = batch.Results[index].Manifest
+                    ?? installed.First(candidate => candidate.Discovered.FolderId == row.Row.Id).Discovered.Manifest;
+                return new FirstRunProviderChoice(
+                    row.Row.Id,
+                    row.Row.Name,
+                    [.. manifest.SessionProviders.Select(provider => new FirstRunSessionProviderChoice(provider.Id, provider.Name))]);
+            }).ToList();
             await _wizardState.SaveResumeStateAsync(new FirstRunWizardResumeState(
                 StartAtOrder: 25,
                 StartChoiceId: _startChoiceId?.Invoke() ?? "start-fresh",
                 Providers: choices,
-                AssistantProviderId: claude is null ? null : ClaudePluginProfile.ProviderId,
-                AssistantProviderName: claude?.Name)).ConfigureAwait(true);
+                AssistantProviderId: null,
+                AssistantProviderName: null)).ConfigureAwait(true);
 
             SummaryMessage = "Ready. Restarting Cockpit…";
             RestartRequested = true;

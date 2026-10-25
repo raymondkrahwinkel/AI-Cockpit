@@ -3,6 +3,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.VisualTree;
 using NSubstitute;
 using Cockpit.App.Composition;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views.Onboarding;
@@ -119,12 +120,28 @@ public class AssistantStepViewModelTests
         await profileStore.DidNotReceive().RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await profileStore.DidNotReceive().UnsetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
-        // AC-1671: a provider ticked in the previous step (a found CLI starts ticked, and looks the same as an own tick) is counted, and named as not usable yet; ticked off again it is not.
+        var dialogs = Substitute.For<ISessionDialogService>();
+        AssistantProfileSetup? openedSetup = null;
+        dialogs.ShowAssistantProfileDialogAsync(null, Arg.Any<AssistantProfileSetup>())
+            .Returns(call =>
+            {
+                openedSetup = call.ArgAt<AssistantProfileSetup>(1);
+                return Task.CompletedTask;
+            });
+        var noRestart = new AssistantStepViewModel(null, profileStore, dialogs, new PluginRegistrations(registry));
+        await noRestart.EditProfileCommand.ExecuteAsync(null);
+        Assert.Equal(["Ollama", "LM Studio"], openedSetup?.Providers.Select(provider => provider.Label));
+
+        // AC-1673: finding a CLI is detection, not the operator choosing it. Once ticked it is counted as a choice;
+        // ticked off again it is not.
         var providers = new ProviderStepViewModel();
         var claude = new ProviderPickerRowViewModel(
             new StorePluginRowViewModel(new PluginStoreEntry("claude-provider", "Claude Code", "d", "Cockpit", "1.0.0", []), PluginStoreConfig.Remote("url"), null),
             ProviderDetectionState.Found);
         providers.Providers.Add(claude);
+        Assert.False(claude.IsSelected);
+        Assert.Null(providers.NextBlockedReason);
+        claude.IsSelected = true;
         Assert.Equal("Press Install and restart for what you ticked, or untick it.", providers.NextBlockedReason);
         var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
         Assert.False(withChoice.OnlyLocalProvidersAvailable);
@@ -137,7 +154,7 @@ public class AssistantStepViewModelTests
         // AC-1671: Next waits while the assistant is on and has no profile, and Skip is not its business.
         Assert.Null(viewModel.NextBlockedReason);
         viewModel.AssistantOptions.IsEnabled = true;
-        Assert.Equal("Pick a profile, or turn the assistant off.", viewModel.NextBlockedReason);
+        Assert.Equal("Choose a provider, or turn the assistant off.", viewModel.NextBlockedReason);
         viewModel.AssistantOptions.ProfileLabel = "Claude (sonnet)";
         Assert.Null(viewModel.NextBlockedReason);
     }

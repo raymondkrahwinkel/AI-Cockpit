@@ -717,9 +717,11 @@ internal static partial class Screenshotter
 
         // AC-1671: the assistant on, no profile yet, and two providers chosen in the previous step: Next is off with its reason.
         ["first-run-assistant-chosen"] = (_, _) => _AssistantWithChosenProviders(),
-        // AC-1673: after the install restart, step 4 keeps Claude selected and states the deferred assistant plainly.
+        // AC-1673: the choice and its Gemini details use the regular assistant profile editor in first-run mode.
+        ["first-run-assistant-provider-choice"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true),
+        ["first-run-assistant-gemini"] = (_, _) => _FirstRunAssistantProfile(openProviderList: false),
         ["first-run-assistant-claude-resumed"] = (_, _) => _AssistantWithDeferredClaude(),
-        // AC-1671: "What you have" with a provider ticked and not installed: Next is off with its reason, Skip stays.
+        // AC-1673: the two explicit choices from step 3; a found Claude CLI is visible but not selected.
         ["first-run-provider-ticked"] = (_, _) => _ProviderStepTicked(),
 
         // Stage provider availability states directly so this headless scene does not depend on a store fetch
@@ -849,11 +851,39 @@ internal static partial class Screenshotter
     {
         var view = _ProviderStepCatalogue();
         var viewModel = (ViewModels.Onboarding.ProviderStepViewModel)(view.DataContext ?? throw new InvalidOperationException("The provider step has no view model."));
-        // Claude Code starts ticked, as a found CLI does: that tick holds Next like any other.
+        foreach (var provider in viewModel.Providers.Where(provider => provider.Row.Id is "gemini-provider" or "cli-agent-provider"))
+        {
+            provider.IsSelected = true;
+        }
+
         return new Views.Onboarding.FirstRunWizardWindow
         {
             DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([new _SceneProviderStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         };
+    }
+
+    private static Window _FirstRunAssistantProfile(bool openProviderList)
+    {
+        var gemini = new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini");
+        AssistantProfileSetup setup = new(
+            [
+                .. SessionProviderCatalog.Providers.Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio),
+                gemini,
+                new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
+                new SessionProviderOption("Codex (CLI)", SessionProvider.Plugin, _FakeCodexProviderRegistry.ProviderId),
+            ],
+            openProviderList ? null : gemini,
+            static (_, _) => Task.CompletedTask);
+        var viewModel = new AssistantProfileDialogViewModel(setup: setup);
+        var dialog = new AssistantProfileDialog { DataContext = viewModel };
+        if (openProviderList)
+        {
+            dialog.Opened += (_, _) => dialog.GetLogicalDescendants().OfType<ComboBox>()
+                .Single(combo => combo.ItemsSource?.Cast<SessionProviderOption>().Any() == true)
+                .IsDropDownOpen = true;
+        }
+
+        return dialog;
     }
 
     private sealed class _SceneProviderStep(ViewModels.Onboarding.ProviderStepViewModel viewModel) : Views.Onboarding.IFirstRunWizardStep

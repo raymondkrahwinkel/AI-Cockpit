@@ -57,7 +57,8 @@ internal sealed class DeferredAssistantProfileCoordinator(
         }
 
         var label = string.IsNullOrWhiteSpace(pending.AssistantProviderName) ? "Assistant" : pending.AssistantProviderName;
-        var profile = new SessionProfile(label, new PluginProviderConfig(providerId, "{}"))
+        var configJson = string.IsNullOrWhiteSpace(pending.AssistantConfigJson) ? "{}" : pending.AssistantConfigJson;
+        var profile = new SessionProfile(label, new PluginProviderConfig(providerId, configJson))
         {
             DefaultKind = ProfileSessionKind.Sdk,
         };

@@ -224,9 +224,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await _surfaces.ShowAsync(typeof(NewSessionDialog), dialog, owner, () => chosen);
     }
 
-    public async Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant)
+    public async Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant, AssistantProfileSetup? setup = null)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        if (OwnerWindow() is not { } owner)
         {
             return;
         }
@@ -237,7 +237,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             var viewModel = new AssistantProfileDialogViewModel(
                 _assistantProfileStore, _profileStore, assistant, _loginChecker,
-                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews);
+                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews, setup);
             await viewModel.LoadAsync();
 
             return new AssistantProfileDialog { DataContext = viewModel };
