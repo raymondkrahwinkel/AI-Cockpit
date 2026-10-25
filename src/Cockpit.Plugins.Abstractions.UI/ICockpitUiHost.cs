@@ -132,6 +132,12 @@ public interface ICockpitUiHost
     void AddDockPanel(DockPanelRegistration registration);
 
     /// <summary>
+    /// Shows a dock panel this plugin registered: opened in the rail, or its window raised when it floats. Does nothing
+    /// for a panel another plugin registered or an unknown id. Host 0.113.0 and later; an older host does nothing.
+    /// </summary>
+    Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
+
+    /// <summary>
     /// Contributes a tool to the companion window.
     /// </summary>
     void AddCompanionTool(CompanionToolRegistration registration);
@@ -200,12 +206,19 @@ public interface ICockpitUiHost
     string? ActiveSessionWorkingDirectory { get; }
 
     /// <summary>
+    /// The id of the project the session this window has selected belongs to (AC-1737), or null when none is selected
+    /// or it has no project. <see cref="ActiveSessionChanged"/> fires when it moves; the name is in
+    /// <see cref="GetProjectsAsync"/>. Default null, so existing hosts keep compiling.
+    /// </summary>
+    string? ActiveProjectId => null;
+
+    /// <summary>
     /// The live usage of the session this window has selected, or null.
     /// </summary>
     SessionUsageSnapshot? ActiveSessionUsage { get; }
 
     /// <summary>
-    /// Raised when this window selects another session.
+    /// Raised when this window selects another session, or the selected session's working directory or project moves.
     /// </summary>
     event EventHandler? ActiveSessionChanged;
 
@@ -244,6 +257,12 @@ public interface ICockpitUiHost
     /// The session profiles the operator has.
     /// </summary>
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();
+
+    /// <summary>
+    /// The cockpit's projects — see <see cref="ICockpitHost.GetProjectsAsync"/>. In a view opened for a server, that
+    /// server's projects. Default empty, so existing hosts keep compiling.
+    /// </summary>
+    Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]);
 
     /// <summary>
     /// Sends <paramref name="text"/> to the session <paramref name="paneId"/>, as if typed and submitted.

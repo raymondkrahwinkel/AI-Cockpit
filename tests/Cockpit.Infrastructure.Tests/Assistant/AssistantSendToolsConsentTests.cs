@@ -153,6 +153,9 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
 
         Assert.False((bool)result["ok"]!);
         Assert.Empty(_gateway.Calls);
+
+        // AC-759 criterion 6: a refusal carries its reason and nothing that could read as a half-formed approval.
+        Assert.Null(result["approval"]);
     }
 
     [Fact]
@@ -165,6 +168,7 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
 
         Assert.False((bool)result["ok"]!);
         Assert.Empty(_gateway.Calls);
+        Assert.Null(result["approval"]);
     }
 
     /// <summary>
@@ -215,23 +219,6 @@ public sealed class AssistantSendToolsConsentTests : IDisposable
         var result = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
 
         Assert.Equal("bypassed", (string)result["approval"]!);
-    }
-
-    /// <summary>
-    /// AC-759 criterion 6: a refusal is a refusal, carrying its own reason and nothing that could read as a
-    /// half-formed approval. <c>approval</c> only ever describes a decision that let the call through.
-    /// </summary>
-    [Fact]
-    public async Task ADeniedSendCall_CarriesNoApprovalField()
-    {
-        McpRequestContext.Set(AssistantIdentity.PaneId);
-        _consent.Approve = false;
-
-        var message = _Json(await _Tools().SendMessageAsync(TargetPane, "heads-up", "the branch moved"));
-        var prompt = _Json(await _Tools().SendPromptAsync(TargetPane, "run the tests"));
-
-        Assert.Null(message["approval"]);
-        Assert.Null(prompt["approval"]);
     }
 
     private sealed class RecordingBroker : IConsentBroker

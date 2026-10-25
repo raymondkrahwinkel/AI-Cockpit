@@ -77,6 +77,10 @@ public static class ConsentSourceCatalog
     // even by "allow all": skipping this card leaves the operator a UAC prompt that names PowerShell, not the command.
     public const string ElevatedCommand = "Elevated command";
 
+    // A plugin submitting a turn in a running session (AC-1724), stamped with that plugin's id. Never in `HostSources`
+    // and never bypassed, for the same reason as `ElevatedCommand`: the card is the whole contract.
+    public const string PluginPrompt = "Plugin prompt";
+
     // Every host-internal source, for the bypass list in Options. Ordered as written, which is roughly how often they ask.
     // Plugin rows are absent on purpose, `WhiteboardInvite` and `ElevatedCommand` included — see their own comments above.
     public static IReadOnlyList<string> HostSources { get; } =

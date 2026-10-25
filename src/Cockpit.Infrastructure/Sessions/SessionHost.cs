@@ -393,8 +393,19 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
         _DispatchNextQueued();
     }
 
+    // AC-1717: the operator's own sends and answers, by kind only; a prompt the session's tooling sends raises nothing.
+    public event Action<SessionOperatorAction>? OperatorActed;
+
     // Queues behind a turn in flight, unless the runtime takes input mid-turn (AC-739); otherwise sends now.
     public Task SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput = false)
+    {
+        OperatorActed?.Invoke(SessionOperatorAction.MessageSent);
+        return _SubmitAsync(prompt, takesMidTurnInput);
+    }
+
+    public Task SubmitForTheAgentAsync(QueuedPrompt prompt) => _SubmitAsync(prompt, takesMidTurnInput: false);
+
+    private Task _SubmitAsync(QueuedPrompt prompt, bool takesMidTurnInput)
     {
         if (IsBusy && !takesMidTurnInput)
         {
@@ -694,11 +705,17 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
 
     public Task CompactContextAsync() => Runtime?.CompactContextAsync() ?? Task.CompletedTask;
 
-    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson) =>
-        Runtime?.RespondToPermissionAsync(toolUseId, allow, answersJson, CancellationToken.None) ?? Task.CompletedTask;
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson)
+    {
+        OperatorActed?.Invoke(answersJson is null ? SessionOperatorAction.PermissionAnswered : SessionOperatorAction.QuestionAnswered);
+        return Runtime?.RespondToPermissionAsync(toolUseId, allow, answersJson, CancellationToken.None) ?? Task.CompletedTask;
+    }
 
-    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope) =>
-        Runtime?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope) ?? Task.CompletedTask;
+    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope)
+    {
+        OperatorActed?.Invoke(SessionOperatorAction.PermissionAnswered);
+        return Runtime?.AllowPermissionAlwaysAsync(toolUseId, toolName, inputJson, scope) ?? Task.CompletedTask;
+    }
 
     // AC-215: the tools a self-driving run allows without asking, since it has no one to answer a prompt.
     public void PreApprove(IReadOnlyList<string>? tools, bool allTools)

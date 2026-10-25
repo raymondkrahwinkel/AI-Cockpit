@@ -617,7 +617,8 @@ public partial class App : Application
             // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
             // apart from every other plugin's when it resolves a tool call's caller-scoped fallback.
             pluginType,
-            pluginCache.CreateFor(discovered.FolderId));
+            pluginCache.CreateFor(discovered.FolderId),
+            discovered.Manifest.Capabilities);
 
         backend.InitializePlugins((discovered, plugin) => HostFor(discovered, plugin.GetType()));
 

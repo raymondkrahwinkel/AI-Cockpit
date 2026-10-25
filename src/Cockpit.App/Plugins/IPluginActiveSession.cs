@@ -18,12 +18,17 @@ public interface IPluginActiveSession
     string? ActiveSessionWorkingDirectory { get; }
 
     /// <summary>
+    /// The project id of the selected session, or null.
+    /// </summary>
+    string? ActiveProjectId { get; }
+
+    /// <summary>
     /// The live usage of the selected session, or null.
     /// </summary>
     SessionUsageSnapshot? ActiveSessionUsage { get; }
 
     /// <summary>
-    /// Raised when the selection changes, or the selected session's working directory first becomes known.
+    /// Raised when the selection changes, or the selected session's working directory or project moves.
     /// </summary>
     event EventHandler? ActiveSessionChanged;
 

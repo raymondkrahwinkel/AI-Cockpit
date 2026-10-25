@@ -28,7 +28,8 @@ public interface ICockpitHost
     IPluginStorage Storage { get; }
 
     /// <summary>
-    /// The operator's own time entries. No capability is required because this is the operator's own data.
+    /// The operator's own time entries. Needs <c>"capabilities": ["time-entries.read-write"]</c> in
+    /// <c>plugin.json</c>; without it the host throws <see cref="UnauthorizedAccessException"/> naming the capability.
     /// </summary>
     ICockpitTimeEntries TimeEntries => UnavailableCockpitTimeEntries.Instance;
 
@@ -585,6 +586,17 @@ public interface ICockpitHost
     string? CurrentMcpCallerPaneId => null;
 
     /// <summary>
+    /// Who is behind the in-process MCP call currently being handled (AC-1685): its pane, whether it is the assistant,
+    /// an ordinary session or a remote caller, and the connect key's label when one was used. Read from the transport,
+    /// never from the tool's arguments.
+    /// </summary>
+    /// <remarks>
+    /// Null outside an MCP call, and on an older host that predates this. A tool meant for the owner only must then
+    /// refuse (fail closed): null is "unknown", never "probably the assistant".
+    /// </remarks>
+    McpCaller? CurrentMcpCaller => null;
+
+    /// <summary>
     /// The cockpit's configured session profiles (#9): what identities exist and where each keeps its provider
     /// state on disk. Read fresh on every call.
     /// </summary>
@@ -592,6 +604,25 @@ public interface ICockpitHost
     /// Default returns an empty list so existing implementations keep compiling untouched.
     /// </remarks>
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
+
+    /// <summary>
+    /// The cockpit's projects (AC-1737), in the operator's order, including the ones with no folder. Read fresh on
+    /// every call. On a server, that server's projects.
+    /// </summary>
+    /// <remarks>
+    /// Default returns an empty list so existing implementations keep compiling untouched.
+    /// </remarks>
+    Task<IReadOnlyList<Projects.PluginProjectInfo>> GetProjectsAsync() => Task.FromResult<IReadOnlyList<Projects.PluginProjectInfo>>([]);
+
+    /// <summary>
+    /// The id of the project the session <paramref name="paneId"/> belongs to (AC-1737), or null when it has none or
+    /// there is no such session. Its name is in <see cref="GetProjectsAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// The backend has no selected session: pass <see cref="CurrentMcpCallerPaneId"/>, or the pane the UI part sent.
+    /// Default null so existing implementations keep compiling untouched.
+    /// </remarks>
+    Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
     /// <summary>
     /// Shows a transient in-app toast in the cockpit (#61) — how a plugin tells the operator that something

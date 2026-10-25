@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
@@ -36,39 +38,56 @@ public class McpAuthMiddlewareTests
         Assert.Equal("<none>", await listeners.WhoAmIAsync(listeners.LoopbackUrl, authKey.Value));
     }
 
-    // AC-89, unchanged by AC-791: a live per-session token names its pane, and that is what reaches the tool.
+    // L2b (authorization), AC-1685 criterion 1, folding in AC-89: a session token is a Session even when the request
+    // claims to be the assistant, only the assistant's own token reads as Assistant, and a revoked token is nobody.
     [Fact]
-    public async Task LoopbackListener_SessionToken_StampsThePaneTheKeyringMintedItFor()
+    public async Task LoopbackListener_SessionToken_IsASession_EvenWhenItClaimsToBeTheAssistant()
     {
         var keyring = new SessionMcpKeyring();
         var token = keyring.TokenFor("pane-42");
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, _Mounting("pane-42"));
+        var assistantToken = keyring.TokenFor(AssistantIdentity.PaneId);
+        var mounts = _Mounting("pane-42");
+        mounts.Grant(AssistantIdentity.PaneId, ["cockpit-probe"]);
+        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, mounts);
 
         Assert.Equal("pane-42", await listeners.WhoAmIAsync(listeners.LoopbackUrl, token));
+        Assert.Equal("Session|pane-42|", await listeners.CallerAsync(listeners.LoopbackUrl, token, claim: AssistantIdentity.PaneId));
+        Assert.Equal($"Assistant|{AssistantIdentity.PaneId}|", await listeners.CallerAsync(listeners.LoopbackUrl, assistantToken));
 
-        // And a revoked one is nobody again — the keyring stays the only thing that decides, as before.
         keyring.Revoke("pane-42", token);
         using var response = await listeners.SendAsync(listeners.LoopbackUrl, token);
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    // AC-791, criterion 1: a caller on the node listener is authorized as the single remote-caller role and not as
-    // a session. Non-null on purpose: the null it used to get is the in-process tool loop's identity, and sharing
-    // that would have let a locally remembered consent cover a call from another machine.
+    // L2b (authorization), AC-1685 criterion 2, folding in AC-791 criterion 1: a connect key is Remote with its
+    // label and the pairing Remote without one, while the same session's token is refused there and is a Session
+    // on loopback, so no remote caller can borrow a pane's identity by replaying its token.
     [Fact]
-    public async Task NodeListener_SharedSecret_StampsTheRemoteCallerRole_NotASession()
+    public async Task NodeListener_ConnectKey_IsRemoteWithItsLabel_WhileTheSameSessionLocallyIsASession()
     {
-        var keyring = new SessionMcpKeyring();
-        var token = keyring.TokenFor("pane-42");
-        await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret);
+        var directory = Path.Combine(Path.GetTempPath(), $"auth-middleware-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var audit = new NodeAccessAuditLog(Path.Combine(directory, "node-access.jsonl"), NullLogger<NodeAccessAuditLog>.Instance);
+            var connectKeys = new ConnectKeyVerifier(Path.Combine(directory, "cockpit.json"), _ => null, _ => { }, TimeProvider.System, audit, NullLogger.Instance);
+            var issuer = new NodeCaller("testtest", "", ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None);
+            var (_, secret) = await connectKeys.IssueAsync("laptop", ConnectKeyCapability.Operate, 30, issuer);
+            var keyring = new SessionMcpKeyring();
+            var token = keyring.TokenFor("pane-42");
+            await using var listeners = await _AuthGatedListeners.StartAsync(new McpAuthKey(), keyring, NodeSecret, _Mounting("pane-42"), connectKeys: connectKeys);
 
-        Assert.Equal(NodeCallerIdentity.PaneId, await listeners.WhoAmIAsync(listeners.NodeUrl, NodeSecret));
-        Assert.NotEqual("pane-42", NodeCallerIdentity.PaneId);
+            Assert.Equal($"Remote|{NodeCallerIdentity.PaneId}|laptop", await listeners.CallerAsync(listeners.NodeUrl, secret));
+            Assert.Equal($"Remote|{NodeCallerIdentity.PaneId}|", await listeners.CallerAsync(listeners.NodeUrl, NodeSecret));
+            Assert.Equal("Session|pane-42|", await listeners.CallerAsync(listeners.LoopbackUrl, token));
 
-        // The session's own token is a loopback credential and stays one (AC-790's boundary): presenting it here
-        // is refused, so no remote caller can borrow a pane's identity by replaying its token.
-        using var response = await listeners.SendAsync(listeners.NodeUrl, token);
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            using var response = await listeners.SendAsync(listeners.NodeUrl, token);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     // AC-791, criterion 3: a refusal has to be classifiable at the other end. "Server unreachable" carries no HTTP
@@ -216,7 +235,8 @@ public class McpAuthMiddlewareTests
             bool isEnabled = true,
             bool nodeScopeGranted = true,
             // AC-856: only a NodeOnly endpoint has a node listener, so that is what this harness stands in for.
-            bool nodeOnly = true)
+            bool nodeOnly = true,
+            ConnectKeyVerifier? connectKeys = null)
         {
             // AC-792: the node's certificate now lives in a file, so the test gets one of its own rather than the
             // real cockpit's — and a live secret holder rather than a captured string, which is what the
@@ -243,8 +263,12 @@ public class McpAuthMiddlewareTests
                 authKey,
                 keyring,
                 paneId => new ValueTask<bool>(McpEndpointAuthorization.Allows(paneId, serverName, isEnabled, nodeScopeGranted, nodeOnly, grants)),
-                liveSecret);
+                liveSecret,
+                connectKeys);
             app.MapGet("/whoami", () => McpRequestContext.CurrentPaneId ?? "<none>");
+
+            // AC-1685: the caller a plugin would read; the query string is the tool argument a caller controls.
+            app.MapGet("/caller", (string? claim) => McpRequestContext.CurrentCaller is { } caller ? $"{caller.Kind}|{caller.PaneId}|{caller.ViaConnectKeyLabel}" : "<none>");
             await app.StartAsync();
 
             // The node listener's certificate is self-signed by design (see NodeSelfSignedCertificate) — a real
@@ -269,6 +293,9 @@ public class McpAuthMiddlewareTests
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsStringAsync();
         }
+
+        public Task<string> CallerAsync(string whoAmIUrl, string bearer, string? claim = null) =>
+            WhoAmIAsync(whoAmIUrl[..^"/whoami".Length] + "/caller" + (claim is null ? "" : $"?claim={Uri.EscapeDataString(claim)}"), bearer);
 
         public async Task<HttpResponseMessage> SendAsync(string url, string? bearer)
         {

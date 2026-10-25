@@ -2307,6 +2307,20 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- AC-1710 (mockup AC-1708 screen 2): the open panel's name and its undock button, only for a panel that
+                     can float and has no window of its own to bring — filled in by the code-behind with the content. -->
+                <Border x:Name="DockPanelHeader" DockPanel.Dock="Top" IsVisible="False" Padding="12,0,4,0" Height="34"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                    <DockPanel>
+                        <Button x:Name="DockPanelUndock" DockPanel.Dock="Right" Classes="Subtle" Padding="6"
+                                Command="{Binding UndockOpenDockPanelCommand}"
+                                ToolTip.Tip="Undock into its own window">
+                            <materialIcons:MaterialIcon Kind="DockWindow" Width="15" Height="15"/>
+                        </Button>
+                        <TextBlock x:Name="DockPanelHeaderTitle" VerticalAlignment="Center" FontSize="12.5"/>
+                    </DockPanel>
+                </Border>
+
                 <!-- The open panel's content — rebuilt by the code-behind whenever OpenDockPanelId changes
                      (DockPanelRegistration.CreateView is a plain Func<Control>, not a compiled binding). -->
                 <ContentControl x:Name="DockPanelContent"

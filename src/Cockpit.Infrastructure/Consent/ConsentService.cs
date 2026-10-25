@@ -55,9 +55,10 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
         var sourceKey = _SourceKey(request);
 
         // AC-1335: an elevated command is never put to the policy at all — the card is the only place the operator
-        // sees the command line before Windows asks about "PowerShell".
+        // sees the command line before Windows asks about "PowerShell". AC-1724: nor is a plugin's prompt into a session.
         if (verifiedPaneId is not null
             && sourceKey != ConsentSourceCatalog.ElevatedCommand
+            && request.Source.Label != ConsentSourceCatalog.PluginPrompt
             && bypassPolicy?.ShouldBypass(verifiedPaneId, sourceKey, request.Risk != ConsentRisk.LowRisk) == true)
         {
             await _RecordAsync(request, ConsentOutcome.Approved, remembered: false, bypassed: true).ConfigureAwait(false);

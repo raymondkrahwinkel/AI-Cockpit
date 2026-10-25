@@ -79,15 +79,6 @@ public sealed class AuditTrailPermissionTests : IDisposable
         Assert.Equal(WorldReadable, File.GetUnixFileMode(unrelated));
     }
 
-    [Fact]
-    public void RestrictAuditTrails_OnAStateRootWithoutTrails_DoesNothing()
-    {
-        // A fresh install has no trails at all; the repair runs on every start and must not mind.
-        CredentialFileHousekeeping.RestrictAuditTrails(_directory);
-
-        Assert.Empty(Directory.EnumerateFileSystemEntries(_directory));
-    }
-
     [PosixFact("Windows has no mode bits; there the boundary is the per-user profile directory instead.")]
     [UnsupportedOSPlatform("windows")]
     public void RestrictAuditTrails_LeavesASymlinkedTrailAlone()

@@ -1,5 +1,6 @@
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
+using Cockpit.Plugins.Abstractions.Capabilities;
 
 namespace Cockpit.App.ViewModels;
 
@@ -74,6 +75,8 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         // Named in full here, unlike the rest of the running text: the sentence carries two version numbers'
         // worth of ambiguity otherwise — the reader cannot tell whether it is the plugin's version or the host's.
         PluginLoadDecision.HostTooOld => $"Needs {CockpitProduct.DisplayName} {Discovered.Manifest.MinHostVersion} or later",
+        PluginLoadDecision.UnknownCapability =>
+            $"Not loaded — asks for a capability this app does not know: {string.Join(", ", Discovered.Manifest.Capabilities.Where(id => CapabilityCatalog.Find(id) is null))}",
         _ => string.Empty,
     };
 
@@ -85,7 +88,12 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
 
     // A version-incompatible plugin cannot be enabled at all — the manager shows why instead of an Enable button.
     public bool IsIncompatible =>
-        Discovered.Decision is PluginLoadDecision.AbstractionsMajorMismatch or PluginLoadDecision.HostTooOld;
+        Discovered.Decision is PluginLoadDecision.AbstractionsMajorMismatch or PluginLoadDecision.HostTooOld or PluginLoadDecision.UnknownCapability;
+
+    // AC-1730: what the plugin may reach beyond the standing terms, one sentence per capability.
+    public string CapabilitiesText => string.Join(" ", Discovered.Manifest.Capabilities.Select(CapabilityCatalog.Find).OfType<PluginCapability>().Select(capability => capability.Summary));
+
+    public bool HasCapabilities => CapabilitiesText.Length > 0;
 
     public string EnableLabel => Discovered.Decision is PluginLoadDecision.NeedsConsent ? "Review & enable" : "Enable";
 
@@ -94,5 +102,6 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         Discovered.Manifest.Version,
         Discovered.Manifest.Author,
         Discovered.FolderPath,
-        Discovered.Sha256);
+        Discovered.Sha256,
+        Discovered.Manifest.Capabilities);
 }
