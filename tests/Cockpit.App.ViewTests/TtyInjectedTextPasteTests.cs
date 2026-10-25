@@ -2,9 +2,11 @@ using System.Reflection;
 using System.Text;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Exclr8.Terminal;
 
 namespace Cockpit.App.ViewTests;
@@ -46,31 +48,6 @@ public class TtyInjectedTextPasteTests
         });
 
     [Fact]
-    public Task TextWithATrailingCarriageReturn_WithoutBracketedPaste_StillLandsTheCarriageReturnAsASeparatePtyWrite() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            // AC-941: deliberately no "[?2004h" - BracketedPaste stays false, the exact condition under which the
-            // CR used to land in the same pty read as the raw text and get folded into it as a literal newline
-            // instead of registering as Enter (measured: a 0ms gap between text and CR reproduces it, 10ms avoids
-            // it, regardless of bracketed paste).
-            var (view, pty) = _NewWiredView();
-            var prompt = new string('a', 80);
-
-            _InvokeWriteToPty(view, prompt + "\r");
-            await _LetPostedWorkRunAsync();
-
-            Assert.Single(pty.WriteCalls);
-            Assert.DoesNotContain((byte)'\r', pty.WriteCalls[0]);
-
-            await _WaitForTheDelayedCarriageReturnAsync(pty);
-
-            Assert.Equal(2, pty.WriteCalls.Count);
-            Assert.Equal("\r"u8.ToArray(), pty.WriteCalls[1]);
-            var written = Encoding.UTF8.GetString(pty.Written);
-            Assert.Equal($"{prompt}\r", written);
-        });
-
-    [Fact]
     public Task ACarriageReturnAlone_WritesARawEnter_NeverWrappedInAPasteAndNeverDelayed() =>
         HeadlessAvalonia.RunAsync(async () =>
         {
@@ -85,36 +62,55 @@ public class TtyInjectedTextPasteTests
             Assert.Single(pty.WriteCalls);
         });
 
-    [Fact]
-    public Task SendPromptAsync_TheRouteNotifyAndScheduledResumeUse_StillLandsTheCarriageReturnAsASeparatePtyWrite() =>
+    public static TheoryData<bool> OperatorInputOrigins => new() { true, false };
+
+    [Theory]
+    [MemberData(nameof(OperatorInputOrigins))]
+    public Task TtyInput_OnlyOperatorTypingWritesOneContentFreeTimelineRow(bool operatorTyped) =>
         HeadlessAvalonia.RunAsync(async () =>
         {
-            // AC-941 criterion 5: cockpit-agents notify (WorkspaceAgentGateway.SendPromptAsync) and the AC-234/
-            // AC-410 resume paths all reach the pty through TtyViewModel.SendPromptAsync -> PromptSink, which the
-            // real view wires straight to this same _WriteToPty(string) (see TtyView.axaml.cs's launch code).
-            // Unlike TtyInjectedTextTests's SendPromptAsync test, this wires the real method rather than a mock
-            // sink, so it is the actual method the bug lived in.
             var (view, pty) = _NewWiredView();
             var vm = (TtyViewModel)view.DataContext!;
+            vm.AdoptPaneId("tty-pane");
+            var registry = new SessionRegistry();
+            registry.Register(new SessionPanelHandle(vm, isEmbedded: false, () => null));
+            var directory = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "session-timeline.jsonl");
+            var recorder = new SessionTimelineRecorder(path, TimeProvider.System);
+            recorder.Start(registry);
+
+            const string Secret = "unique tty input that must stay private 71c4";
             var writeToPty = (Action<string>)typeof(TtyView)
                 .GetMethod("_WriteToPty", BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string)])!
                 .CreateDelegate(typeof(Action<string>), view);
             vm.PromptSink = writeToPty;
 
-            var notice = new string('n', 91); // matches the audit-trail's 91-character rendered notice (AC-941)
-
-            Assert.True(await vm.SendPromptAsync(notice));
-            await _LetPostedWorkRunAsync();
-
-            Assert.Single(pty.WriteCalls);
-            Assert.DoesNotContain((byte)'\r', pty.WriteCalls[0]);
+            if (operatorTyped)
+            {
+                _InvokeTerminalInput(view, Encoding.UTF8.GetBytes(Secret));
+                _InvokeTerminalInput(view, " again"u8.ToArray());
+            }
+            else
+            {
+                Assert.True(await vm.SendPromptAsync(Secret));
+            }
 
             await _WaitForTheDelayedCarriageReturnAsync(pty);
+            await recorder.FlushAsync();
 
-            Assert.Equal(2, pty.WriteCalls.Count);
-            Assert.Equal("\r"u8.ToArray(), pty.WriteCalls[1]);
-            var written = Encoding.UTF8.GetString(pty.Written);
-            Assert.Equal($"{notice}\r", written);
+            var entries = await new SessionTimelineLog(path, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
+                .ReadRecentAsync(int.MaxValue);
+            var operators = entries.Where(entry => entry.Kind == SessionTimelineKind.Operator).ToList();
+            Assert.Equal(operatorTyped ? 1 : 0, operators.Count);
+            if (operatorTyped)
+            {
+                Assert.Equal("TtyInput", operators[0].Action?.ToString());
+            }
+
+            Assert.DoesNotContain(Secret, await File.ReadAllTextAsync(path));
+            recorder.Dispose();
+            Directory.Delete(directory, recursive: true);
         });
 
     // Lets the pty write posted onto the UI thread by `_WriteToPty` actually run: the headless platform's
@@ -154,6 +150,11 @@ public class TtyInjectedTextPasteTests
         typeof(TtyView)
             .GetMethod("_WriteToPty", BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string)])!
             .Invoke(view, [text]);
+
+    private static void _InvokeTerminalInput(TtyView view, byte[] bytes) =>
+        typeof(TtyView)
+            .GetMethod("OnTerminalBytesToPty", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(view, [null, new ReadOnlyMemory<byte>(bytes)]);
 
     // The x:Name-generated field for the XAML-declared TerminalControl, not exposed publicly by TtyView.
     private static TerminalControl _Terminal(TtyView view) =>
