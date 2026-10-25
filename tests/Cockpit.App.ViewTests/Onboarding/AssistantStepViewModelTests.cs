@@ -7,6 +7,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views.Onboarding;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Plugins;
