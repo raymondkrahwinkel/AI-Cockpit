@@ -52,11 +52,11 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
     // What the assistant step lists as chosen here: ticked, or installed in this wizard.
     public IReadOnlyList<string> ChosenProviderLines =>
-        [.. Providers.Where(row => row.IsChosen || row.WasInstalled).Select(row => row.ChosenLine)];
+        [.. Providers.Where(row => row.IsSelected || row.WasInstalled).Select(row => row.ChosenLine)];
 
-    // Next installs nothing (criterion 4), so a provider the operator ticked and did not install would be a surprise two steps on.
+    // Next installs nothing (criterion 4), so a provider that looks ticked and is not installed would be a surprise two steps on, a suggestion's tick included.
     public string? NextBlockedReason =>
-        Providers.Any(row => row.IsChosen && !row.WasInstalled && !row.Row.IsInstalled) ? "Press Install for what you ticked, or untick it." : null;
+        Providers.Any(row => row.IsSelected && !row.WasInstalled && !row.Row.IsInstalled) ? "Press Install for what you ticked, or untick it." : null;
 
     public event EventHandler? NextBlockedChanged;
 

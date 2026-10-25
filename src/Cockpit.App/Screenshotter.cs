@@ -847,9 +847,7 @@ internal static partial class Screenshotter
     {
         var view = _ProviderStepCatalogue();
         var viewModel = (ViewModels.Onboarding.ProviderStepViewModel)(view.DataContext ?? throw new InvalidOperationException("The provider step has no view model."));
-        // Found rows start ticked as a suggestion; the operator ticking Codex is the choice that holds Next.
-        viewModel.Providers[2].IsSelected = true;
-
+        // Claude Code starts ticked, as a found CLI does: that tick holds Next like any other.
         return new Views.Onboarding.FirstRunWizardWindow
         {
             DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([new _SceneProviderStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),

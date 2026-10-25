@@ -119,11 +119,11 @@ public class AssistantStepViewModelTests
         await profileStore.DidNotReceive().RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await profileStore.DidNotReceive().UnsetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
-        // AC-1671: a provider ticked in the previous step is counted, and named as not usable yet; ticked off again it is not.
+        // AC-1671: a provider ticked in the previous step (a found CLI starts ticked, and looks the same as an own tick) is counted, and named as not usable yet; ticked off again it is not.
         var providers = new ProviderStepViewModel();
         var claude = new ProviderPickerRowViewModel(
             new StorePluginRowViewModel(new PluginStoreEntry("claude-provider", "Claude Code", "d", "Cockpit", "1.0.0", []), PluginStoreConfig.Remote("url"), null),
-            ProviderDetectionState.NotApplicable) { IsSelected = true };
+            ProviderDetectionState.Found);
         providers.Providers.Add(claude);
         Assert.Equal("Press Install for what you ticked, or untick it.", providers.NextBlockedReason);
         var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
