@@ -15,8 +15,9 @@ namespace Cockpit.Infrastructure.Plugins;
 // duplicated here, so every caller shares the one answer.
 internal sealed class SessionResourceResolver(
     ISessionResourceProviderRegistry registry,
-    ISessionProjectResolver projects,
     ILogger<SessionResourceResolver> logger,
+    ISessionProjectResolver? projects = null,
+    ISessionRegistry? sessions = null,
     IMcpServerCatalog? mcpServerCatalog = null)
     : ISessionResourceResolver, ISingletonService
 {
@@ -32,7 +33,10 @@ internal sealed class SessionResourceResolver(
             return SessionResources.Empty;
         }
 
-        var projectId = await projects.ProjectIdOfAsync(paneId, cancellationToken).ConfigureAwait(false);
+        // A host without the app-side resolver (the headless server) asks the pane's own handle, as PluginBackendHost does.
+        var projectId = projects is not null
+            ? await projects.ProjectIdOfAsync(paneId, cancellationToken).ConfigureAwait(false)
+            : sessions?.Find(paneId)?.ProjectId;
         var request = new SessionResourceRequest(paneId, projectId)
         {
             McpServers = await _MountedServersAsync(projectId, enabledMcpServerNames, cancellationToken).ConfigureAwait(false),
