@@ -53,7 +53,15 @@ internal sealed class BrowserEngine
                 : new CefRuntimeCache(CefRuntimeCache.DefaultRoot).EnsureAvailableAsync(catalog, rid, progress, token);
         },
         Path.Combine(Path.GetDirectoryName(typeof(BrowserEngine).Assembly.Location) ?? AppContext.BaseDirectory, _SubprocessExecutable()),
-        Path.Combine(CockpitBuild.StateRoot, "browser"));
+        Path.Combine(CockpitBuild.StateRoot, "browser"))
+    {
+        DownloadText = CefRuntimeCatalog.CurrentRid() is { } rid && CefRuntimeCatalog.Load().Packages.TryGetValue(rid, out var package)
+            ? package.DownloadText
+            : null,
+    };
+
+    // What the download costs, shown while it runs (AC-1727); null where there is nothing to download.
+    public string? DownloadText { get; init; }
 
     public BrowserEngineState State { get; private set; } = BrowserEngineState.NotStarted;
 

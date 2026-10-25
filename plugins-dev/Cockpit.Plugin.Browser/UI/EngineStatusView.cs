@@ -14,7 +14,7 @@ internal static class EngineStatusView
 {
     public static Control For(BrowserEngine engine) => engine.State switch
     {
-        BrowserEngineState.Fetching => _Fetching(engine.Progress),
+        BrowserEngineState.Fetching => _Fetching(engine.Progress, engine.DownloadText),
         BrowserEngineState.Unavailable => Unavailable(engine.Reason ?? "The browser engine is not available."),
         _ => _Centered(MaterialIconKind.Web, "Starting the browser engine…", null),
     };
@@ -23,14 +23,11 @@ internal static class EngineStatusView
         _Centered(MaterialIconKind.WebOff, "Browser unavailable", reason + Environment.NewLine + Environment.NewLine
             + "Restart Cockpit to try again. If it keeps failing, reinstall the Browser plugin from the plugin manager.");
 
-    private static Control _Fetching(Runtime.CefRuntimeProgress? progress)
+    private static Control _Fetching(Runtime.CefRuntimeProgress? progress, string? downloadText)
     {
         var total = progress?.Total;
-        var title = total is { } bytes ? $"Downloading the browser engine (≈ {bytes / 1_000_000} MB)" : "Downloading the browser engine";
-        if (progress?.Phase == "Unpacking")
-        {
-            title = "Unpacking the browser engine";
-        }
+        var title = progress?.Phase == "Unpacking" ? "Unpacking the browser engine" : "Downloading the browser engine";
+        var detail = (downloadText is null ? string.Empty : downloadText + Environment.NewLine) + "Once only: the engine is kept for the next start.";
 
         var bar = new ProgressBar
         {
@@ -41,7 +38,7 @@ internal static class EngineStatusView
             IsIndeterminate = total is null or 0 || progress?.Phase == "Unpacking",
         };
 
-        var panel = (StackPanel)_Centered(MaterialIconKind.Download, title, "Once only: the engine is kept for the next start.");
+        var panel = (StackPanel)_Centered(MaterialIconKind.Download, title, detail);
         panel.Children.Add(bar);
         return panel;
     }
