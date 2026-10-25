@@ -720,6 +720,20 @@ internal static partial class Screenshotter
         // AC-1673: the choice and its Gemini details use the regular assistant profile editor in first-run mode.
         ["first-run-assistant-provider-choice"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true),
         ["first-run-assistant-gemini"] = (_, _) => _FirstRunAssistantProfile(openProviderList: false),
+        ["first-run-assistant-providers-local"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true, []),
+        ["first-run-assistant-providers-claude"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true,
+            [new SessionProviderOption("Claude", SessionProvider.Plugin, "claude-provider.claude")]),
+        ["first-run-assistant-providers-claude-codex"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true,
+            [
+                new SessionProviderOption("Claude", SessionProvider.Plugin, "claude-provider.claude"),
+                new SessionProviderOption("Codex (CLI)", SessionProvider.Plugin, _FakeCodexProviderRegistry.ProviderId),
+            ]),
+        ["first-run-assistant-providers-claude-gemini"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true,
+            [
+                new SessionProviderOption("Claude", SessionProvider.Plugin, "claude-provider.claude"),
+                new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini"),
+                new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
+            ]),
         ["first-run-assistant-claude-resumed"] = (_, _) => _AssistantWithDeferredClaude(),
         // AC-1673: the two explicit choices from step 3; a found Claude CLI is visible but not selected.
         ["first-run-provider-ticked"] = (_, _) => _ProviderStepTicked(),
@@ -862,17 +876,23 @@ internal static partial class Screenshotter
         };
     }
 
-    private static Window _FirstRunAssistantProfile(bool openProviderList)
+    private static Window _FirstRunAssistantProfile(
+        bool openProviderList,
+        IReadOnlyList<SessionProviderOption>? stagedProviders = null)
     {
         var gemini = new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini");
+        stagedProviders ??=
+        [
+            gemini,
+            new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
+            new SessionProviderOption("Codex (CLI)", SessionProvider.Plugin, _FakeCodexProviderRegistry.ProviderId),
+        ];
         AssistantProfileSetup setup = new(
             [
                 .. SessionProviderCatalog.Providers.Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio),
-                gemini,
-                new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
-                new SessionProviderOption("Codex (CLI)", SessionProvider.Plugin, _FakeCodexProviderRegistry.ProviderId),
+            .. stagedProviders,
             ],
-            openProviderList ? null : gemini,
+            openProviderList ? null : stagedProviders.FirstOrDefault(provider => provider.PluginProviderId == gemini.PluginProviderId),
             static (_, _) => Task.CompletedTask);
         var configViews = new Plugins.PluginProviderConfigViews();
         configViews.Register("gemini-provider.gemini", static _ => new _FirstRunGeminiConfigView());

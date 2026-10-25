@@ -148,41 +148,53 @@ public sealed partial class AssistantStepViewModel : ObservableObject
 
     private AssistantProfileSetup? _FirstRunSetup()
     {
-        var pluginProviders = (_resumeState?.Providers ?? [])
+        var resumedProviders = (_resumeState?.Providers ?? [])
             .SelectMany(provider => provider.SessionProviders)
-            .DistinctBy(provider => provider.Id)
             .Select(provider => new SessionProviderOption(provider.Name, SessionProvider.Plugin, provider.Id))
+            .ToList();
+        var pluginProviders = resumedProviders
+            .Concat((_registry?.SessionProviders ?? [])
+                .Select(provider => new SessionProviderOption(provider.DisplayName, SessionProvider.Plugin, provider.ProviderId)))
+            .DistinctBy(provider => provider.PluginProviderId)
             .ToList();
         IReadOnlyList<SessionProviderOption> providers =
         [
             .. SessionProviderCatalog.Providers.Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio),
             .. pluginProviders,
         ];
-        var preferred = pluginProviders.Count == 1 ? pluginProviders[0] : null;
+        var preferred = resumedProviders.Count == 1
+            ? pluginProviders.Single(provider => provider.PluginProviderId == resumedProviders[0].PluginProviderId)
+            : null;
 
         return new AssistantProfileSetup(providers, preferred, _RememberDeferredProfileAsync);
     }
 
     private async Task _RememberDeferredProfileAsync(SessionProfile profile, CancellationToken cancellationToken)
     {
-        if (_resumeState is not { } state
-            || _wizardState is null
+        if (_wizardState is null
             || profile.ProviderConfig is not PluginProviderConfig { ProviderId: { Length: > 0 } } provider)
         {
             return;
         }
 
-        var providerName = state.Providers
+        var state = _resumeState;
+        var providerName = state?.Providers
             .SelectMany(choice => choice.SessionProviders)
-            .First(choice => choice.Id == provider.ProviderId).Name;
-        var updated = state with
+            .FirstOrDefault(choice => choice.Id == provider.ProviderId)?.Name
+            ?? _registry?.SessionProvider(provider.ProviderId)?.DisplayName
+            ?? profile.Label;
+        var updated = (state ?? new FirstRunWizardResumeState(25, string.Empty, [], null, null)) with
         {
             AssistantProviderId = provider.ProviderId,
             AssistantProviderName = providerName,
             AssistantConfigJson = string.IsNullOrWhiteSpace(provider.ConfigJson) ? "{}" : provider.ConfigJson,
         };
-        await _wizardState.SaveResumeStateAsync(updated, cancellationToken).ConfigureAwait(true);
-        _resumeState = updated;
+        if (state is not null)
+        {
+            await _wizardState.SaveResumeStateAsync(updated, cancellationToken).ConfigureAwait(true);
+            _resumeState = updated;
+        }
+
         _rememberDeferred?.Invoke(updated);
         if (_applyDeferred is not null && await _applyDeferred(cancellationToken).ConfigureAwait(true))
         {

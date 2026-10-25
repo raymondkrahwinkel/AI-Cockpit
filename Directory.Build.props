@@ -8,7 +8,8 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.105.13: first start lets the operator choose the assistant provider after provider installation (AC-1673).
+    <!-- 0.105.14: first start offers bundled and approved installed providers without needing a restart (AC-1673).
+         0.105.13: first start lets the operator choose the assistant provider after provider installation (AC-1673).
          0.105.12: first start resumes after installing and approving Claude, then creates its assistant profile after plugin start (AC-1673).
          0.105.11: first-start and Claude sessions find the native install in ~/.local/bin (AC-1704).
          0.105.6: bundled-plugin startup writes cockpit.json only for changed minimum versions and batches first-install pins
@@ -355,7 +356,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.105.13</VersionPrefix>
+    <VersionPrefix>0.105.14</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

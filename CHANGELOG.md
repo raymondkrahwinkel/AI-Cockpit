@@ -250,6 +250,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **already available providers show up during first start.** Step 4 now offers bundled and approved installed
+  provider plugins such as Claude and Codex even when step 3 did not install anything or request a restart.
 - fixed: **you choose what powers the assistant during first start.** The assistant step now offers the providers you
   picked or installed, alongside Ollama and LM Studio, without choosing one for you. Its existing profile editor shows
   only the provider details needed there, and lets you finish setting up an installed provider later.
