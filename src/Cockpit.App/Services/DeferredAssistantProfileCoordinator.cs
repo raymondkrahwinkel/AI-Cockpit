@@ -14,6 +14,17 @@ internal sealed class DeferredAssistantProfileCoordinator(
     private readonly object _gate = new();
     private FirstRunWizardResumeState? _pending;
 
+    public string? PendingAssistantName
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _pending?.AssistantProviderName;
+            }
+        }
+    }
+
     public void Remember(FirstRunWizardResumeState? state)
     {
         if (state?.AssistantProviderId is not { Length: > 0 })

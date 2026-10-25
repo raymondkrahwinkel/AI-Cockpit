@@ -62,8 +62,10 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     public void RefreshChosenProviders()
     {
         ChosenProviders.Clear();
-        var lines = _resumeState is { Providers.Count: > 0 }
-            ? _resumeState.Providers.Select(provider => provider.Name)
+        var lines = _resumeState is { Providers.Count: > 0 } state
+            ? state.Providers
+                .Where(provider => !string.Equals(provider.Name, state.AssistantProviderName, StringComparison.Ordinal))
+                .Select(provider => provider.Name)
             : _chosenProviders?.Invoke()?.ChosenProviderLines ?? [];
         foreach (var line in lines)
         {
@@ -71,7 +73,7 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasChosenProviders));
-        OnlyLocalProvidersAvailable = ChosenProviders.Count == 0 && (_registry is null || _registry.SessionProviders.Count == 0);
+        OnlyLocalProvidersAvailable = !HasDeferredAssistant && ChosenProviders.Count == 0 && (_registry is null || _registry.SessionProviders.Count == 0);
     }
 
     // Design-time/previewer constructor.

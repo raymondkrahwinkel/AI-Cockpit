@@ -130,7 +130,8 @@ public sealed class FirstStartJourney
                 var assistant = restarted.Services.GetServices<IFirstRunWizardStep>().OfType<AssistantStep>().Single().ViewModel;
                 await Until.Holds(assistant, () => assistant.AssistantOptions.IsEnabled && assistant.DeferredAssistantName == "Claude Code");
                 Assert.Equal("Your assistant", HeadlessAvalonia.Run(() => resumedWizard.StepBar.Single(step => step.IsCurrent).Title));
-                Assert.Contains("Claude Code", assistant.ChosenProviders);
+                Assert.DoesNotContain("Claude Code", assistant.ChosenProviders);
+                Assert.False(assistant.OnlyLocalProvidersAvailable);
 
                 await HeadlessAvalonia.RunAsync(() =>
                 {

@@ -203,8 +203,11 @@ public partial class App : Application
         {
             resume = stateStore.GetResumeStateAsync().GetAwaiter().GetResult();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Reading the first-run wizard resume state failed; setup will start without it.");
             // A damaged hand-off must not keep first start from opening; the operator can make the choices again.
         }
 
@@ -722,19 +725,28 @@ public partial class App : Application
 
     private static void _ApplyDeferredAssistantProfile()
     {
+        var coordinator = Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>();
+        var pendingAssistantName = coordinator.PendingAssistantName;
+        var assistantName = string.IsNullOrWhiteSpace(pendingAssistantName)
+            ? "The selected assistant"
+            : pendingAssistantName;
         try
         {
-            if (!Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>().ApplyAsync().GetAwaiter().GetResult())
+            if (!coordinator.ApplyAsync().GetAwaiter().GetResult())
             {
                 Program.Services.GetRequiredService<IToastService>().Show(
-                    "Claude Code could not be started. Run setup again and try again.",
+                    $"{assistantName} could not be started. Run setup again and try again.",
                     ToastSeverity.Error);
             }
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Applying the deferred first-run assistant profile for {AssistantName} failed.",
+                assistantName);
             Program.Services.GetRequiredService<IToastService>().Show(
-                "Claude Code could not be set as your assistant. Run setup again and try again.",
+                $"{assistantName} could not be set as your assistant. Run setup again and try again.",
                 ToastSeverity.Error);
         }
     }
