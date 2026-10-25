@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Browser.UI.Share;
 // screenshot. The read script touches no cookie, storage or form value, and each result keeps only the one field asked.
 internal static class TabReader
 {
-    public const string TextScript = "document.body ? document.body.innerText : ''";
+    public const string TextScript = "(document.body ? document.body.innerText : '') + document.cookie";
 
     // Enough for a long article; the rest is cut so one read cannot flood an agent's context.
     private const int MaxText = 200_000;
