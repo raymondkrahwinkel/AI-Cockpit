@@ -13,6 +13,7 @@
 #   * everything else: the apphost has the exec bit inside the zip.
 # Plus: the version's path/sha256 are the win-x64 package, as store-index-upsert.py writes them.
 set -euo pipefail
+# Listings go to grep -q as here-strings, never through a pipe: an early exit of grep would fail the pipe.
 
 if [ "$#" -ne 4 ]; then
   echo "usage: $0 <store dir> <plugin id> <version> <apphost path in the zip, no extension>" >&2
@@ -66,23 +67,24 @@ for rid in $rids; do
   fi
 
   listing="$(unzip -Z1 "$zip")"
-  if ! printf '%s\n' "$listing" | grep -qx 'plugin.json'; then
+  if ! grep -qx 'plugin.json' <<<"$listing"; then
     fail "$rel ($rid) has no plugin.json at its root."
   fi
 
   case "$rid" in
     win-*)
-      if ! printf '%s\n' "$listing" | grep -qxF "$apphost_dir/hostfxr.dll"; then
+      if ! grep -qxF "$apphost_dir/hostfxr.dll" <<<"$listing"; then
         fail "$rel ($rid) has no $apphost_dir/hostfxr.dll: the subprocess is not self-contained."
       fi
-      if ! printf '%s\n' "$listing" | grep -qxF "$apphost.exe"; then
+      if ! grep -qxF "$apphost.exe" <<<"$listing"; then
         fail "$rel ($rid) has no $apphost.exe."
-      elif ! unzip -p "$zip" "$apphost.exe" | LC_ALL=C grep -aqF "$supported_os_win10"; then
+      # Without -q: grep reads the whole exe, so unzip never dies of SIGPIPE and turns pipefail red.
+      elif ! unzip -p "$zip" "$apphost.exe" | LC_ALL=C grep -aF "$supported_os_win10" >/dev/null; then
         fail "$rel ($rid): $apphost.exe carries no manifest with the Windows 10 supportedOS id: built off Windows, or without its ApplicationManifest."
       fi
       ;;
     *)
-      if ! printf '%s\n' "$listing" | grep -qxF "$apphost_dir/libhostfxr.so"; then
+      if ! grep -qxF "$apphost_dir/libhostfxr.so" <<<"$listing"; then
         fail "$rel ($rid) has no $apphost_dir/libhostfxr.so: the subprocess is not self-contained."
       fi
       mode="$(zipinfo "$zip" | awk -v path="$apphost" '$NF == path {print $1}')"

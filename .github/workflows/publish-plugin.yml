@@ -188,9 +188,11 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: subprocess-windows
+          # Per plugin: publish-updated-plugins calls this once per plugin within one run, and names are per run.
+          name: subprocess-windows-${{ inputs.plugin }}
           path: subprocess/
           if-no-files-found: error
+          overwrite: true
 
   publish:
     needs: [runtime-identifiers, package-windows]
@@ -351,7 +353,7 @@ jobs:
         if: steps.check.outputs.skip != 'true' && needs.runtime-identifiers.outputs.windows != ''
         uses: actions/download-artifact@v8
         with:
-          name: subprocess-windows
+          name: subprocess-windows-${{ inputs.plugin }}
           path: subprocess
 
       - name: Publish the subprocess per other RID
@@ -512,7 +514,7 @@ jobs:
           fi
 
           listing="$(unzip -Z1 "$zip_path")"
-          if ! printf '%s\n' "$listing" | grep -qx 'plugin.json'; then
+          if ! grep -qx 'plugin.json' <<<"$listing"; then
             echo "::error::The zip has no plugin.json at its root — the installer would find no manifest."
             exit 1
           fi
@@ -520,7 +522,7 @@ jobs:
           # just that one; every assembly the manifest names has to be in the zip.
           for key in entryAssembly uiAssembly; do
             assembly="$(jq -r --arg key "$key" '.[$key] // empty' "$MANIFEST")"
-            if [ -n "$assembly" ] && ! printf '%s\n' "$listing" | grep -qxF "$assembly"; then
+            if [ -n "$assembly" ] && ! grep -qxF "$assembly" <<<"$listing"; then
               echo "::error::The zip has no $assembly at its root, the assembly plugin.json names as its $key."
               exit 1
             fi
