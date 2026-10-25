@@ -111,7 +111,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `ui.settings` | Its own settings screen | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSettings`, `ICockpitUiHost.ShowSettingsAsync`, `ICockpitUiHost.HasSettings`, `ICockpitUiHost.OnSettingsSaved` |
 | `ui.side-menu` | A button in the left menu | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSideMenuButton`, `ICockpitUiHost.AddSideMenuSection`, `ICockpitUiHost.AddSideMenuButtonWithBadge` |
 | `ui.commands` | Toolbar buttons and keyboard shortcuts | Ambient | 0.3.0 | — | `ICockpitUiHost.AddToolbarAction`, `ICockpitUiHost.AddShortcut` |
-| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.AddCompanionTool` |
+| `ui.panels` | Panels on the dashboard and the dock rail | Ambient | 0.3.0 | — | `ICockpitUiHost.AddWidget`, `ICockpitUiHost.AddDockPanel`, `ICockpitUiHost.OpenDockPanelAsync`, `ICockpitUiHost.SetStatusText`, `ICockpitUiHost.AddCompanionTool` |
 | `ui.session-chrome` | Controls around a session | Ambient | 0.3.0 | — | `ICockpitUiHost.AddSessionHeaderItem`, `ICockpitUiHost.AddSessionBanner`, `ICockpitUiHost.AddSessionHeaderAction`, `ICockpitUiHost.AddConversationPicker` |
 | `ui.status-bar` | A line in the status bar | Ambient | 0.3.0 | — | `ICockpitHost.AddSupervisedActivityProvider` |
 | `ui.dialogs` | Windows, toasts and confirmations | Ambient | 0.3.0 | — | `ICockpitUiHost.ShowDialogAsync`, `ICockpitHost.ShowToast`, `ICockpitUiHost.ConfirmAsync` |
@@ -619,6 +619,14 @@ so a plugin that relies on it sets `minHostVersion` to `0.113.0`.
 await host.OpenDockPanelAsync("my-plugin.browser");
 ```
 
+### `void SetStatusText(string? text)` {#void-setstatustextstring-text}
+Shows one line of **this plugin's** text in the status bar, at the right next to the supervised-activity counters,
+in the faint status colour. A new call replaces the plugin's line, keeping its spot; null or blank removes it. Text
+longer than 120 characters is cut. A server and an older host show nothing. SDK 3.27.0, host 0.116.0.
+```csharp
+host.SetStatusText($"Browser · profile Raymond · {tabs.Count} tabs");
+```
+
 ### `void AddCompanionTool(CompanionToolRegistration registration)` {#void-addcompaniontoolcompaniontoolregistration-registration}
 Registers a mini-tool in the pop-out **companion window** — an icon, a title and a control your own factory
 builds, one level below a widget: where `AddWidget` fills a Dashboard cell, this fills a slot in a window
@@ -694,8 +702,14 @@ host.AddWorkspaceType(new WorkspaceTypeRegistration("my-plugin.pipeline", "Pipel
 {
     Icon = "🚀",
     Description = "A whole workspace my plugin draws and drives.",
+    // SDK 3.26.0, host 0.115.0: buttons at the right of the tab strip, only while this workspace is active.
+    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => DockAsync())],
 });
 ```
+- `HeaderActions` — buttons the host draws on the workspace tab strip, only while a workspace of this type is the
+  active one. Use it for an action about this surface; a global action belongs in `AddToolbarAction`. An older
+  host ignores it, so a plugin that relies on it sets `minHostVersion` to `0.115.0`. A throwing action is
+  reported like a failed toolbar action.
 
 ### `IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }` {#ireadonlylistworkspacetyperegistration-workspacetypes--get}
 Every workspace type all plugins have contributed — what the tab strip's "+" menu reads. A plugin not building
@@ -709,6 +723,7 @@ public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWo
     public string Icon { get; init; } = "🧩";
     public MaterialIconKind? IconKind { get; init; }
     public string Description { get; init; } = string.Empty;
+    public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];   // SDK 3.26.0, host 0.115.0
 }
 ```
 - `Id` — stable, unique id for the workspace **type**, namespaced by your plugin (`"autopilot.run"`). It is
@@ -1081,14 +1096,25 @@ public sealed record ConsentRequest(
     string Scope,            // stable key for "remember", e.g. "workflow.http:GET"
     ConsentRisk Risk,        // LowRisk (rememberable) | Dangerous (asked every time)
     bool AllowRemember = false,
-    string? PreApprovedBy = null); // your own policy already decided — no card, logged as Bypassed (SDK 1.65.0)
+    string? PreApprovedBy = null) // your own policy already decided — no card, logged as Bypassed (SDK 1.65.0)
+{
+    public IReadOnlyList<ConsentChoice>? Choices { get; init; } // operator picks; always shown, never remembered (SDK 3.28.0, host 0.117.0)
+    public string? ApproveLabel { get; init; }        // the approve button on a card with choices, e.g. "Share watching"
+    public IReadOnlyList<string>? Never { get; init; } // what the approval never covers, a red block on that card
+}
 
+public sealed record ConsentChoice(string Key, string Label, IReadOnlyList<ConsentOption> Options, bool AllowMultiple = false);
+public sealed record ConsentOption(string Value, string Label, string? Detail = null, bool Selected = false, bool Enabled = true)
+{
+    public string? Note { get; init; } // a tag beside the label, e.g. "not in this version"
+}
 public sealed record ConsentSource(string? PaneId, string? PluginId, string Label);
 public enum ConsentRisk { LowRisk, Dangerous }
 public enum ConsentOutcome { Approved, Denied }
 public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = false)
 {
     public bool IsApproved { get; }   // Outcome == Approved
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Chosen { get; init; } // picks by choice key, approvals only
 }
 ```
 

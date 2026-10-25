@@ -42,6 +42,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   your entries and your agents, the measured time per project, your time and agent time. Your time counts each
   minute once and gives it to the project you last acted on; an own entry over measured time wins it. The Uren badge
   now counts measured plus own time. Productivity 0.2.0 asks for `timeline.read-all`.
+- added: plugins that offer a running-session picker can show each session's profile and whether it is busy, waiting,
+  done or idle instead of making you choose from names alone.
+- added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
+  for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
+  installing something that cannot start.
+- added: a consent card can ask you to pick, for example which session and what an agent may do, and over the whole
+  window when it belongs to no session. Such a card always waits for you: it is never remembered or skipped, and
+  Escape or a timeout refuses it.
+- added: a plugin can show one line of its own text in the status bar, such as the browser's "Browser · profile
+  Raymond · 3 tabs", and replace or remove it as its state changes.
+- added: a plugin's workspace can put its own buttons on the workspace tab strip, shown only while that workspace is
+  active, so an action like **Dock in the rail** sits in the row above the workspace instead of inside it.
 - added: a plugin you allow to (`timeline.read-all`) can read every session's timeline over a range: when it was
   busy, waiting or idle, what you did in it, its statuslines and what each turn spent, with day totals for anything
   older than 90 days. Without that permission in its manifest, it gets a refusal that names it.
@@ -216,6 +228,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Quit from the tray and the restart after an update now close Cockpit the same way as closing it from the desktop,
+  so plugins that tidy up on the way out (the browser's engine) get to do that on every route.
 - fixed: searching Options no longer leaves a plugin's field labels on screen without their boxes (the YouTrack
   instance cards showed only "Label", "Instance base URL" and "Permanent token"). A label now shows and hides with
   the field it names, and the hint below a card's last field goes with that field.

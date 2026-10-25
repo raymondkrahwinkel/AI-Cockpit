@@ -157,6 +157,8 @@ public class PluginBackendHostTests
         one.WorkingDirectory.Returns("/work/one");
         var two = _Pane("pane-2", "Two");
         two.WorkingDirectory.Returns("/work/two");
+        two.ActiveProfileLabel.Returns("work");
+        two.SessionStatus.Returns(SessionStatus.NeedsAttention);
         registry.Register(one);
         registry.Register(two);
         ICockpitSessionObserver observer = new PluginBackendSessionObserver(registry);
@@ -166,7 +168,7 @@ public class PluginBackendHostTests
         registry.Unregister("pane-1");
         registry.Register(_Pane("pane-3", "Three"));
 
-        Assert.Equal([new OpenCockpitSession("pane-2", "Two"), new OpenCockpitSession("pane-3", "Three")], observer.OpenSessions);
+        Assert.Equal(("work", "NeedsAttention"), (observer.OpenSessions[0].ProfileLabel, observer.OpenSessions[0].Status));
         Assert.Equal(["pane-1"], closed);
         Assert.Equal(("/work/two", (string?)null), (observer.GetWorkingDirectory("pane-2"), observer.GetWorkingDirectory("pane-1")));
     }

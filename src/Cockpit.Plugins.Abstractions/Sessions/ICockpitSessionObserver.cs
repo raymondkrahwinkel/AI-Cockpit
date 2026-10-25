@@ -86,7 +86,17 @@ public interface ICockpitSessionObserver
 /// <param name="Name">
 /// The name the operator sees on that session's header.
 /// </param>
-public sealed record OpenCockpitSession(string PaneId, string Name);
+/// <param name="ProfileLabel">
+/// The profile the session runs under, or null when the host does not expose it.
+/// </param>
+/// <param name="Status">
+/// The host's coarse lifecycle status, or null when the host does not expose it.
+/// </param>
+public sealed record OpenCockpitSession(
+    string PaneId,
+    string Name,
+    string? ProfileLabel = null,
+    string? Status = null);
 
 /// <summary>
 /// One chunk of text a session produced, delivered on <see cref="ICockpitSessionObserver.OutputProduced"/>.

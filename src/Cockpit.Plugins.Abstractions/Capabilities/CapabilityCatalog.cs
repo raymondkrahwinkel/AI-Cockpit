@@ -60,7 +60,7 @@ public static class CapabilityCatalog
             "Adds the plugin's own widgets to the dashboard, panels to the right-hand dock rail, and mini-tools to the companion window, and reads what is registered there.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitUiHost.AddWidget", "ICockpitUiHost.AddDockPanel", "ICockpitUiHost.OpenDockPanelAsync", "ICockpitUiHost.AddCompanionTool"],
+            ["ICockpitUiHost.AddWidget", "ICockpitUiHost.AddDockPanel", "ICockpitUiHost.OpenDockPanelAsync", "ICockpitUiHost.SetStatusText", "ICockpitUiHost.AddCompanionTool"],
             []),
 
         new(
