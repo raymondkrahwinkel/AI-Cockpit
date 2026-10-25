@@ -203,15 +203,10 @@ internal sealed class OverviewWorkspaceBody : UserControl
             [
                 .. snapshot.Days.Select(day =>
                 {
-                    var measured = day.Attention.Measured - day.Attention.Overlap;
                     return new GroupedBarDatum(
                         day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch),
                         day.Attention.YourTime.TotalHours,
-                        day.Attention.AgentTime.TotalHours,
-                        [
-                            new ChartSegment("jouw tijd · gemeten", measured.TotalHours, Lavender),
-                            new ChartSegment("jouw tijd · eigen regels", day.Attention.Own.TotalHours, Own, true),
-                        ]);
+                        day.Attention.AgentTime.TotalHours);
                 }),
             ],
             TooltipText = "Jouw tijd en actieve agenttijd per dag",

@@ -8,11 +8,7 @@ namespace Cockpit.Plugin.Shared.UI;
 
 public sealed record ChartSegment(string Label, double Value, Color Color, bool IsHatched = false);
 public sealed record StackedBarDatum(string Label, IReadOnlyList<ChartSegment> Segments);
-public sealed record GroupedBarDatum(
-    string Label,
-    double First,
-    double Second,
-    IReadOnlyList<ChartSegment>? FirstSegments = null);
+public sealed record GroupedBarDatum(string Label, double First, double Second);
 
 public abstract class ChartControl : Control
 {
@@ -127,26 +123,7 @@ public sealed class GroupedBarChartControl : ChartControl
             var bar = Math.Max(1, (group - 6) / 2);
             var first = Math.Max(0, Items[i].First) / max * (Bounds.Height - Padding * 2);
             var second = Math.Max(0, Items[i].Second) / max * (Bounds.Height - Padding * 2);
-            var firstLeft = Padding + i * group + 2;
-            if (Items[i].FirstSegments is { Count: > 0 } segments)
-            {
-                var bottom = Bounds.Height - Padding;
-                foreach (var segment in segments)
-                {
-                    var height = Math.Max(0, segment.Value) / max * (Bounds.Height - Padding * 2);
-                    bottom -= height;
-                    var rect = new Rect(firstLeft, bottom, bar, height);
-                    context.DrawRectangle(new SolidColorBrush(segment.Color), null, rect);
-                    if (segment.IsHatched)
-                    {
-                        Hatch(context, rect);
-                    }
-                }
-            }
-            else
-            {
-                context.DrawRectangle(new SolidColorBrush(FirstColor), null, new Rect(firstLeft, Bounds.Height - Padding - first, bar, first));
-            }
+            context.DrawRectangle(new SolidColorBrush(FirstColor), null, new Rect(Padding + i * group + 2, Bounds.Height - Padding - first, bar, first));
             context.DrawRectangle(new SolidColorBrush(SecondColor), null, new Rect(Padding + i * group + 4 + bar, Bounds.Height - Padding - second, bar, second));
             var label = new FormattedText(Items[i].Label, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, 11, Brush("ThemeForegroundLowBrush", Brushes.Gray));
             context.DrawText(label, new Point(Padding + i * group + 2, Bounds.Height - label.Height));
