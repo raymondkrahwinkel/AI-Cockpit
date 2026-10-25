@@ -7,7 +7,7 @@
   "uiAssembly": "Cockpit.Plugin.Productivity.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Productivity.UI.ProductivityUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.107.0",
+  "minHostVersion": "0.108.0",
   "description": "Record your own time with quick entries or one persistent stopwatch, and review it by day.",
   "author": "Cockpit"
 }

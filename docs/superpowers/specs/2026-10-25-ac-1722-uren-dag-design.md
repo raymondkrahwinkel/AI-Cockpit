@@ -8,7 +8,7 @@ Milestone M1 adds the first usable Productivity workspace: the operator records 
 
 - The host owns all time data through `ICockpitTimeEntries`; the plugin keeps no second store.
 - The plugin has a backend assembly and a separate UI assembly. UI access to time data crosses typed plugin-channel handlers so the split also works out of process.
-- The manifest uses `minHostVersion` 0.107.0 and `abstractionsVersion` 3.
+- The manifest uses `minHostVersion` 0.108.0 and `abstractionsVersion` 3 because its menu uses the 3.19 icon/tone additions.
 - Only open entries are editable or removable. Offered and booked entries are read-only.
 - A stopwatch can start only for today and only when none is running. Its persistence is host behavior already tested by AC-1729.
 - The current plugin API exposes neither the active Cockpit project id nor a project catalog. AC-1737 tracks that host API. M1 prefills the last segment of `ActiveSessionWorkingDirectory` and stores it as the temporary project value; no active session means no project.

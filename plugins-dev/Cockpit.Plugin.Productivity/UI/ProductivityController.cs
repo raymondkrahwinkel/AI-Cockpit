@@ -102,6 +102,18 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
     public Task<bool> StopStopwatchAsync() =>
         _MutateAsync(ProductivityChannel.StopStopwatch, new { });
 
+    public async Task<bool> UpdateStopwatchAsync(string description, string? projectId)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return _Reject("Geef de stopwatch een omschrijving.");
+        }
+
+        return await _MutateAsync(
+            ProductivityChannel.UpdateStopwatch,
+            new ProductivityStopwatchRequest(description.Trim(), _Project(projectId))).ConfigureAwait(false);
+    }
+
     public void ClearError()
     {
         Error = null;

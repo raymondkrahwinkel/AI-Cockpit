@@ -13,6 +13,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using NSubstitute;
 using UiParts = productivityUi::Cockpit.Plugin.Productivity.UI;
@@ -45,7 +46,7 @@ public sealed class ProductivityHoursJourneyTests
         Action? open = null;
         Func<Control>? sidebarFactory = null;
         WorkspaceTypeRegistration? workspace = null;
-        ui.AddSideMenuButtonWithBadge("Uren", Arg.Do<Action>(value => open = value)).Returns(badge);
+        ui.AddSideMenuButtonWithBadge("Uren", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
         ui.When(host => host.AddSideMenuSection("Tijd", Arg.Any<Func<Control>>()))
             .Do(call => sidebarFactory = call.Arg<Func<Control>>());
         ui.When(host => host.AddWorkspaceType(Arg.Any<WorkspaceTypeRegistration>()))
@@ -58,6 +59,13 @@ public sealed class ProductivityHoursJourneyTests
         var screen = registration.CreateBody(Substitute.For<IWorkspaceContext>());
         using var scene = RenderedScene.Show(screen, 1280, 820);
         await _Until(() => badge.Text == "0u00 vandaag", "the initial badge");
+        Assert.Equal(SideMenuButtonBadgeTone.Success, badge.Tone);
+        var idleSidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
+        using (var idleScene = RenderedScene.Show(idleSidebar, 360, 180))
+        {
+            Assert.Contains("Geen stopwatch actief", _Texts(idleSidebar));
+            _Control<Button>(idleSidebar, "SidebarStart");
+        }
 
         _Control<TextBox>(screen, "Description").Text = "Telefonisch overleg met klant XXX";
         _Control<TextBox>(screen, "Duration").Text = "ongeldig";
@@ -78,7 +86,7 @@ public sealed class ProductivityHoursJourneyTests
         _Render(scene.Window, "02-uren-dag-stopwatch-lopend.png");
 
         var sidebar = (sidebarFactory ?? throw new InvalidOperationException("No Tijd sidebar."))();
-        var menu = new PluginLauncherButton("Uren", () => { }, badge: badge);
+        var menu = new PluginLauncherButton("Uren", () => { }, badge: badge, iconKind: MaterialIconKind.ClockOutline);
         var sidebarSceneBody = new StackPanel { Spacing = 12, Children = { menu, sidebar } };
         using var sidebarScene = RenderedScene.Show(sidebarSceneBody, 360, 560);
         await _Until(() => _Texts(sidebar).Any(text => text.Contains("Uitwerking voorstel", StringComparison.Ordinal)), "the sidebar stopwatch");

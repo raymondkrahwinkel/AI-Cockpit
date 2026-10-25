@@ -1,3 +1,4 @@
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -17,7 +18,8 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         _host = host;
         _controller = new ProductivityController(host.Channel, TimeProvider.System);
         _controller.UpdateProjectFallback(host.ActiveSessionWorkingDirectory);
-        var badge = host.AddSideMenuButtonWithBadge("Uren", () => _Open(host));
+        var badge = host.AddSideMenuButtonWithBadge("Uren", () => _Open(host), MaterialIconKind.ClockOutline);
+        badge.Tone = SideMenuButtonBadgeTone.Success;
         _controller.AttachBadge(badge);
         host.AddSideMenuSection("Tijd", () => new TimeSidebar(_controller, () => _Open(host)));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
