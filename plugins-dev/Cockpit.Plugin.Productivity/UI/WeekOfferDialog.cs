@@ -46,11 +46,13 @@ internal sealed class WeekOfferDialog : UserControl
         var body = new Grid { ColumnDefinitions = new ColumnDefinitions("330,*"), ColumnSpacing = 18 };
         var tabs = new TabControl
         {
+            Name = "OfferDestinationTabs",
             ItemsSource = new[]
             {
                 new TabItem { Header = "Bestaande sessie", Content = _Choices(options.Sessions, options.Remembered, "Er zijn geen agentsessies open.") },
                 new TabItem { Header = "Nieuw met profiel", Content = _Choices(options.Profiles, options.Remembered, "Er zijn geen profielen beschikbaar.") },
             },
+            SelectedIndex = _selected?.Kind == WeekOfferDestinationKind.Profile ? 1 : 0,
         };
         body.Children.Add(new StackPanel
         {
@@ -198,6 +200,12 @@ internal sealed class WeekOfferDialog : UserControl
                 _projectId));
             _host.ShowToast("Het urenvoorstel is aan de agent gegeven.", PluginToastSeverity.Success);
             this.FindAncestorOfType<Window>()?.Close();
+        }
+        catch (WeekOfferFinalizationException exception)
+        {
+            _error.Text = exception.Message;
+            _error.IsVisible = true;
+            _confirm.IsEnabled = false;
         }
         catch (Exception exception)
         {

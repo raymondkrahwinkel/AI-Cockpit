@@ -96,6 +96,13 @@ public sealed class WeekOfferTests
         ];
         await Assert.ThrowsAsync<InvalidOperationException>(() => ambiguous.Sender.SendAsync(_Request(WeekOfferDestination.Profile("Codex"))));
         _AssertUntouched(ambiguous);
+
+        var finalization = _Rig([new OpenCockpitSession("pane-a", "Werk")]);
+        finalization.Entries.MarkFailure = new InvalidOperationException("The time-entry store is unavailable.");
+        var failure = await Assert.ThrowsAsync<WeekOfferFinalizationException>(() => finalization.Sender.SendAsync(request));
+        Assert.Equal("pane-a", failure.PaneId);
+        Assert.Equal(1, finalization.Actions.SendCount);
+        _AssertUntouched(finalization);
     }
 
     private static WeekOfferSendRequest _Request(WeekOfferDestination destination) =>
@@ -130,9 +137,11 @@ public sealed class WeekOfferTests
         public bool RefuseSend { get; set; }
         public string? SentPrompt { get; private set; }
         public Action<string>? AfterStart { get; set; }
+        public int SendCount { get; private set; }
 
         public Task SendPromptToSessionAsync(string paneId, string prompt, string reason)
         {
+            SendCount++;
             if (RefuseSend)
             {
                 throw new InvalidOperationException("The operator declined.");
@@ -144,6 +153,7 @@ public sealed class WeekOfferTests
 
         public Task<string> StartSessionAsync(string profileLabel, string? prompt, string? workingDirectory, string? sessionName)
         {
+            SendCount++;
             SentPrompt = prompt;
             AfterStart?.Invoke(sessionName ?? string.Empty);
             return Task.FromResult(sessionName ?? string.Empty);
@@ -165,9 +175,15 @@ public sealed class WeekOfferTests
     private sealed class _Entries : ICockpitTimeEntries
     {
         public (IReadOnlyCollection<Guid> Ids, DateTimeOffset At, string PaneId)? Marked { get; private set; }
+        public Exception? MarkFailure { get; set; }
 
         public Task MarkOfferedAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset offeredAt, string paneId, CancellationToken cancellationToken = default)
         {
+            if (MarkFailure is { } failure)
+            {
+                throw failure;
+            }
+
             Marked = (ids, offeredAt, paneId);
             return Task.CompletedTask;
         }

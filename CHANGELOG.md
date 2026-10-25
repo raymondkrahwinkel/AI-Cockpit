@@ -33,7 +33,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Added
 
 - added: Uren · Week can give its open proposal to an existing agent session or start one from a profile. The dialog
-  previews the exact prompt, keeps the schedule limit and prior approval mandatory, and marks rows only after delivery.
+  previews the exact prompt, keeps the schedule limit and prior approval mandatory, and marks rows only after delivery;
+  its visible destination follows the saved choice, and a failed status update cannot resend an already delivered prompt.
 - added: Uren · Week, the hours proposal: per day the work schedule less your own entries, split over the projects in
   the proposal by measured time and rounded to 5, 15 or 30 minutes, never above the schedule. Own entries stand as
   their own rows, each line shows its status, earlier weeks keep the status of then, and "Kopieer als tabel" copies

@@ -156,6 +156,12 @@ internal sealed record WeekOfferSendRequest(
 
 internal sealed record WeekOfferSendResult(string PaneId);
 
+internal sealed class WeekOfferFinalizationException(string paneId, Exception innerException)
+    : Exception("Het urenvoorstel is afgeleverd, maar de status kon niet volledig worden bijgewerkt. Verstuur het niet opnieuw; sluit dit venster en controleer de regels.", innerException)
+{
+    public string PaneId { get; } = paneId;
+}
+
 internal sealed class WeekOfferSender(
     ICockpitActions actions,
     ICockpitSessionObserver sessions,
@@ -171,14 +177,22 @@ internal sealed class WeekOfferSender(
             WeekOfferDestinationKind.Profile => await _StartSessionAsync(request).ConfigureAwait(false),
             _ => throw new InvalidOperationException("Kies een sessie of profiel."),
         };
-        var offeredAt = time.GetUtcNow();
-        if (request.OwnEntryIds.Count > 0)
+        try
         {
-            await timeEntries.MarkOfferedAsync(request.OwnEntryIds, offeredAt, paneId).ConfigureAwait(false);
+            var offeredAt = time.GetUtcNow();
+            if (request.OwnEntryIds.Count > 0)
+            {
+                await timeEntries.MarkOfferedAsync(request.OwnEntryIds, offeredAt, paneId).ConfigureAwait(false);
+            }
+
+            _FreezeProjectCells(request, offeredAt, paneId);
+            storage.Set(WeekOfferDestination.StorageKey(request.ProjectId), request.Destination);
+        }
+        catch (Exception exception)
+        {
+            throw new WeekOfferFinalizationException(paneId, exception);
         }
 
-        _FreezeProjectCells(request, offeredAt, paneId);
-        storage.Set(WeekOfferDestination.StorageKey(request.ProjectId), request.Destination);
         return new WeekOfferSendResult(paneId);
     }
 

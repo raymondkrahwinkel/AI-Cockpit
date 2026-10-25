@@ -39,7 +39,7 @@ public sealed class ProductivityHoursJourneyTests
         var storage = new _Storage();
         var actions = Substitute.For<ICockpitActions>();
         var sessions = Substitute.For<ICockpitSessionObserver>();
-        sessions.OpenSessions.Returns([new OpenCockpitSession("pane-agent", "Boekhouding", "Codex", "Idle")]);
+        sessions.OpenSessions.Returns([]);
         backend.Channel.Returns(channel);
         backend.Actions.Returns(actions);
         backend.Sessions.Returns(sessions);
@@ -206,6 +206,16 @@ public sealed class ProductivityHoursJourneyTests
         await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "this week's proposal");
         _Click(screen, "GiveToAgent");
         await _Until(() => offerDialog is not null, "the offer dialog");
+        var profileDialog = offerDialog ?? throw new InvalidOperationException("No profile offer dialog.");
+        using (var profileScene = RenderedScene.Show(profileDialog, 980, 696))
+        {
+            Assert.Equal(1, _Control<TabControl>(profileDialog, "OfferDestinationTabs").SelectedIndex);
+        }
+
+        sessions.OpenSessions.Returns([new OpenCockpitSession("pane-agent", "Boekhouding", "Codex", "Idle")]);
+        offerDialog = null;
+        _Click(screen, "GiveToAgent");
+        await _Until(() => offerDialog is not null, "the session offer dialog");
         var dialog = offerDialog ?? throw new InvalidOperationException("No offer dialog.");
         using var offerScene = RenderedScene.Show(dialog, 980, 696);
         var preview = _Control<TextBox>(dialog, "PromptPreview").Text ?? string.Empty;
