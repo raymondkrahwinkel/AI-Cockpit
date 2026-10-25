@@ -6229,7 +6229,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-165: what the plugins give this session, resolved now that the pane has a project, as the SDK route does.
         var contributed = _sessionResourceResolver is null
             ? SessionResources.Empty
-            : await _sessionResourceResolver.ResolveAsync(tty.PaneId);
+            : await _sessionResourceResolver.ResolveAsync(
+                tty.PaneId,
+                McpServerRegistryFilter.EffectiveSessionSelection(request.EnabledMcpServerNames, request.Profile.EnabledMcpServerNames));
         tty.LaunchConfigured(
             request.Profile,
             isClaudeProfile ? SessionOptionCatalog.ResolvePermissionMode(request.PermissionMode).Value : null,

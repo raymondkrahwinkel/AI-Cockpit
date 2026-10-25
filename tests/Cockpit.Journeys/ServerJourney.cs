@@ -232,7 +232,7 @@ public sealed class ServerJourney
     // What the operator set up before: a desk, SDK and TTY profiles, the node door on `port`, plain credentials,
     // Discord at `webhookUrl`, a controller key and the echo plugin. Written by the backend's own stores, in-process;
     // returns the node's fingerprint and the controller key.
-    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false, bool withEchoPlugin = true)
+    internal static async Task<(string Fingerprint, string ControllerKey, string HealthKey)> _PrepareStateRootAsync(string stateRoot, int port, string root, string webhookUrl, bool withTtyProfile = true, PluginStoreConfig? pluginStore = null, bool encrypted = false, bool withEchoPlugin = true, bool withBrowserPlugin = false)
     {
         var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
         Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
@@ -266,7 +266,7 @@ public sealed class ServerJourney
             }
 
             // AC-1525: without the echo plugin, a journey installs it from its store.
-            foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory") }.Where(plugin => withEchoPlugin || plugin.Item1 != "echo-provider"))
+            foreach (var (id, directory) in new[] { ("echo-provider", "EchoProviderDirectory"), ("workflows", "WorkflowsDirectory"), ("browser", "BrowserDirectory") }.Where(plugin => (withEchoPlugin || plugin.Item1 != "echo-provider") && (withBrowserPlugin || plugin.Item1 != "browser")))
             {
                 var plugin = Directory.CreateDirectory(Path.Combine(root, "bundled", id)).FullName;
                 foreach (var file in Directory.EnumerateFiles(_Metadata(directory)))
@@ -275,7 +275,18 @@ public sealed class ServerJourney
                 }
             }
 
-            Assert.Equal(withEchoPlugin ? ["echo-provider", "workflows"] : ["workflows"], (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
+            Assert.Equal(
+                new[] { withEchoPlugin ? "echo-provider" : null, "workflows", withBrowserPlugin ? "browser" : null }.OfType<string>().Order(),
+                (await new BundledPluginInstaller().InstallAsync(Path.Combine(root, "bundled"), PluginBootstrap.PluginsRoot)).Order());
+
+            // AC-1712: a Playwright MCP in the registry for the browser plugin to recognise; the echo fixture never starts it.
+            if (withBrowserPlugin)
+            {
+                await services.GetRequiredService<IMcpServerStore>().SaveAsync(
+                [
+                    new McpServerConfig { Id = McpServerIdentity.NewId(), Name = "playwright", Transport = McpTransport.Stdio, Command = "npx", Args = ["-y", "@playwright/mcp@latest"] },
+                ]);
+            }
             await services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync(
                 "workflows",
                 new Dictionary<string, string> { ["workflows"] = JsonSerializer.Serialize(_ScheduledWorkflowJson()) });
