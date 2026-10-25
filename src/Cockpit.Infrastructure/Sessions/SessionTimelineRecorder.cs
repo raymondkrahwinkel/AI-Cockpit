@@ -272,7 +272,7 @@ internal sealed record SessionTimelineEntry(
     SessionOperatorAction? Action = null,
     string? Statusline = null);
 
-// ponytail: rolls like UsageHistoryLog but reads only the live file; read the rollover too once a reader (AC-1720) needs it.
+// Rolls like UsageHistoryLog and reads only the file it is pointed at; CockpitTimelineReader (AC-1720) reads both.
 internal sealed class SessionTimelineLog : JsonlAuditLog<SessionTimelineEntry>
 {
     private const int MaxStatuslineLength = 200;
