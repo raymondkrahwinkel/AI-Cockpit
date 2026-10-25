@@ -80,7 +80,7 @@ internal sealed record AttentionTime(
 
             if (end > start)
             {
-                spans.Add(new AttentionSpan(start, end, spans.Count > 0 && spans[^1].End == start ? spans[^1].Owner : actions[index].ProjectId));
+                spans.Add(new AttentionSpan(start, end, actions[index].ProjectId));
             }
         }
 
