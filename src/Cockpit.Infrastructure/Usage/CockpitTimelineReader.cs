@@ -80,9 +80,7 @@ internal sealed class CockpitTimelineReader : ICockpitTimelineReader, ISingleton
         {
             var ordered = session.OrderBy(snapshot => snapshot.RecordedAt).ToList();
             var firstDay = _DayOf(ordered[0].RecordedAt, zone);
-            var previous = aggregates
-                .Where(aggregate => aggregate.PaneId == session.Key && aggregate.Day < firstDay && aggregate.Closing is not null)
-                .MaxBy(aggregate => aggregate.Day)?.Closing;
+            UsageSnapshot? previous = firstDay == DateOnly.MinValue ? aggregates[0].Closing : null;
             foreach (var snapshot in ordered)
             {
                 var delta = UsageSnapshots.Since(snapshot, previous);
