@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Secrets;
@@ -15,6 +16,8 @@ internal static class Program
 {
     // The container's grace (compose `stop_grace_period`) sets it; the default stays within a `docker stop`'s ten seconds.
     private const string StopBudgetVariable = "COCKPIT_STOP_BUDGET_SECONDS";
+
+    private const string NodeListenAddressVariable = "COCKPIT_NODE_LISTEN_ADDRESS";
 
     private const string UnlockPasswordFileVariable = "COCKPIT_UNLOCK_PASSWORD_FILE";
 
@@ -40,7 +43,11 @@ internal static class Program
         logger.LogInformation("Stop budget: {Budget}.", stopBudget);
         CockpitBackend.RepairProcess(loggerFactory);
 
-        var backend = CockpitBackend.Build(loggerFactory, frontend: null, PluginStartup.Load);
+        var nodeListenAddress = _NodeListenAddress(logger);
+        var backend = CockpitBackend.Build(
+            loggerFactory,
+            plugins: PluginStartup.Load,
+            nodeListenAddress: nodeListenAddress);
 
         var protection = backend.Services.GetRequiredService<ISecretProtectionService>();
         if ((await protection.GetStatusAsync()).Enabled)
@@ -105,6 +112,22 @@ internal static class Program
 
         logger.LogWarning("{Variable} is not a positive whole number of seconds; using {Budget}.", StopBudgetVariable, DefaultStopBudget);
         return DefaultStopBudget;
+    }
+
+    private static IPAddress _NodeListenAddress(ILogger logger)
+    {
+        var value = Environment.GetEnvironmentVariable(NodeListenAddressVariable);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return IPAddress.Any;
+        }
+        if (IPAddress.TryParse(value, out var address))
+        {
+            return address;
+        }
+
+        logger.LogWarning("{Variable} is not an IP address; listening on all IPv4 interfaces.", NodeListenAddressVariable);
+        return IPAddress.Any;
     }
 
     private static bool _IsUi(string name) =>

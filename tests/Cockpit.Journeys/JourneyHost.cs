@@ -81,7 +81,10 @@ public sealed class JourneyHost : IAsyncDisposable
     }
 
     public static JourneyHost Api() => new(null, (loggerFactory, drivers) => CockpitBackend.Build(
-        loggerFactory, services => services.AddSingleton<ISessionDriverFactory>(drivers)));
+        loggerFactory, services =>
+        {
+            services.AddSingleton<ISessionDriverFactory>(drivers);
+        }, nodeListenAddress: System.Net.IPAddress.Loopback));
 
     // As `Program.Main` builds it, up to the window. `beforeBuild` gets the state root first, for what an operator's
     // machine would already hold there (an installed plugin); a `stateRoot` of an earlier host is a restart onto it.
@@ -96,7 +99,8 @@ public sealed class JourneyHost : IAsyncDisposable
                 services.AddSingleton<ISessionDriverFactory>(drivers);
                 configure?.Invoke(services);
             },
-            PluginStartup.Load);
+            PluginStartup.Load,
+            nodeListenAddress: System.Net.IPAddress.Loopback);
         Program.Services = backend.Services;
         return backend;
     });

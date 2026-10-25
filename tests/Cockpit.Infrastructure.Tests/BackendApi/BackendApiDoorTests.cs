@@ -1023,7 +1023,8 @@ public sealed class BackendApiDoorTests
                 _certificate,
                 new NodeSharedSecret(),
                 mounts,
-                NullLoggerFactory.Instance);
+                NullLoggerFactory.Instance,
+                new NodeListenAddress(System.Net.IPAddress.Loopback));
             await _host.StartAsync(CancellationToken.None);
             NodeBase = _BaseOf(Assert.Single(_host.GetNodeAddresses()).Url);
             LoopbackBase = _BaseOf(Assert.Single(_host.GetServers()).Url ?? "");

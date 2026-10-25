@@ -43,7 +43,8 @@ public class NodePairingHandshakeTests : IAsyncLifetime
         // the host — so this needs no whitelist entry to keep passing.
         _visibility = new NodeVisibilityPolicy(_store);
         _broker = new NodePairingBroker(_store, _certificate, _liveSecret, []);
-        _host = new NodePairingHost(_store, _broker, _certificate, _visibility, NullLoggerFactory.Instance);
+        _host = new NodePairingHost(
+            _store, _broker, _certificate, _visibility, NullLoggerFactory.Instance, listenAddress: new NodeListenAddress(System.Net.IPAddress.Loopback));
 
         await _host.StartAsync(CancellationToken.None);
         Assert.NotNull(_host.BoundPort);
@@ -180,7 +181,8 @@ public class NodePairingHandshakeTests : IAsyncLifetime
     {
         var offPath = Path.Combine(Path.GetTempPath(), $"node-handshake-off-{Guid.NewGuid():N}.json");
         var offStore = new NodeEndpointSettingsStore(offPath);
-        var host = new NodePairingHost(offStore, _broker, _certificate, _visibility, NullLoggerFactory.Instance);
+        var host = new NodePairingHost(
+            offStore, _broker, _certificate, _visibility, NullLoggerFactory.Instance, listenAddress: new NodeListenAddress(System.Net.IPAddress.Loopback));
         try
         {
             await host.StartAsync(CancellationToken.None);

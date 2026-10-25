@@ -163,7 +163,8 @@ public sealed class CockpitMcpEndpointHostArgumentErrorTests
                 nodeCertificate: new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"ac-1028-{Guid.NewGuid():N}.pfx")),
                 mounts: new SessionMcpMounts(),
                 nodeSharedSecret: new NodeSharedSecret(),
-                loggerFactory: NullLoggerFactory.Instance);
+                loggerFactory: NullLoggerFactory.Instance,
+                nodeListenAddress: new NodeListenAddress(System.Net.IPAddress.Loopback));
 
             await host.MountAsync("ac-1028-echo", new EchoTools());
             var url = host.GetServers().Single(server => server.Name == "ac-1028-echo").Url;

@@ -42,7 +42,8 @@ public class NodeDiscoveryTests : IAsyncLifetime
     private async Task<NodePairingHost> _StartPairingHostAsync(Func<IEnumerable<IPNetwork>> ownRanges)
     {
         var visibility = new NodeVisibilityPolicy(_store, ownRanges);
-        var host = new NodePairingHost(_store, _broker, _certificate, visibility, NullLoggerFactory.Instance);
+        var host = new NodePairingHost(
+            _store, _broker, _certificate, visibility, NullLoggerFactory.Instance, listenAddress: new NodeListenAddress(IPAddress.Loopback));
         await host.StartAsync(CancellationToken.None);
         return host;
     }
@@ -65,7 +66,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
     // reserving and releasing an OS-assigned port is the same free-of-collisions idiom as `_StartResponderAsync`.
     private static int _ReserveEphemeralPort()
     {
-        using var socket = new UdpClient(0);
+        using var socket = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
         return ((IPEndPoint)socket.Client.LocalEndPoint!).Port;
     }
 
@@ -158,7 +159,8 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var offPath = Path.Combine(Path.GetTempPath(), $"node-discovery-off-{Guid.NewGuid():N}.json");
         var offStore = new NodeEndpointSettingsStore(offPath);
         var visibility = new NodeVisibilityPolicy(offStore, () => [IPNetwork.Parse("127.0.0.0/8")]);
-        var pairingHost = new NodePairingHost(offStore, _broker, _certificate, visibility, NullLoggerFactory.Instance);
+        var pairingHost = new NodePairingHost(
+            offStore, _broker, _certificate, visibility, NullLoggerFactory.Instance, listenAddress: new NodeListenAddress(IPAddress.Loopback));
         var responder = new NodeDiscoveryResponder(
             offStore, visibility, new NodeDiscoveryId(_discoveryIdPath), pairingHost, NullLoggerFactory.Instance, IPAddress.Loopback, port: 0);
 
@@ -191,7 +193,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         var responder = await _StartResponderAsync(pairingHost, () => [IPNetwork.Parse("127.0.0.0/8")]);
         try
         {
-            using var raw = new UdpClient(0);
+            using var raw = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
             raw.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, IPAddress.Loopback.GetAddressBytes());
             var group = new IPEndPoint(IPAddress.Parse(NodeDiscoveryProtocol.MulticastGroup), responder.BoundPort!.Value);
             await raw.SendAsync(NodeDiscoveryProtocol.QueryMarker, group);
