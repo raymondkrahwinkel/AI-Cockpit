@@ -11,7 +11,7 @@ public sealed class ProductivityPlugin : ICockpitPlugin
         Id: "productivity",
         DisplayName: "Productivity",
         Author: "Cockpit",
-        Description: "Record your own time with quick entries or one persistent stopwatch, and review it by day beside the time measured from your sessions.");
+        Description: "Record your time and review time, tokens and costs by project, ticket and session over a selected range.");
 
     public void ConfigureServices(IServiceCollection services)
     {
