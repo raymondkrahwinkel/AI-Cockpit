@@ -111,6 +111,8 @@ internal sealed class ServerPluginUiHost(
 
     public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
+    public Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
+
     public Control? CreateEmbeddedSessionView(string paneId) => null;
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
