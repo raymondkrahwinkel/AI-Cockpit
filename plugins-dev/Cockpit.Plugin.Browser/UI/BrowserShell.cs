@@ -35,7 +35,7 @@ internal sealed class BrowserShell : UserControl
         _reload = _IconButton(MaterialIconKind.Refresh, "Reload", () => _model.Active?.View.Reload());
         _address = new TextBox
         {
-            Watermark = "Search or enter an address",
+            PlaceholderText = "Search or enter an address",
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
             VerticalContentAlignment = VerticalAlignment.Center,
