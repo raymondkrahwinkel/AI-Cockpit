@@ -543,7 +543,9 @@
          and persists a user-visible notice. A plugin that calls it sets minHostVersion 0.106.0. Additive; still v3. -->
     <!-- 3.18.0 (AC-1729): added the host-owned ICockpitTimeEntries contract and textual side-menu badges. A plugin
          that uses either sets minHostVersion 0.107.0. Additive; the major and abstractionsVersion stay 3. -->
-    <Version>3.18.0</Version>
+    <!-- 3.19.0 (AC-1724): added ICockpitActions.SendPromptToSessionAsync, a prompt into a running session behind the
+         host's own confirmation card. A plugin that calls it sets minHostVersion 0.108.0. Additive; still v3. -->
+    <Version>3.19.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

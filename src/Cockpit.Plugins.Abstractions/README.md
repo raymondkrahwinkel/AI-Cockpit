@@ -14,7 +14,7 @@ The host loads its own copy of this assembly, so your plugin folder must **not**
 different types with the same name, and the host then silently finds no plugin in your assembly.
 
 ```xml
-<PackageReference Include="Cockpit.Plugins.Abstractions" Version="3.18.0">
+<PackageReference Include="Cockpit.Plugins.Abstractions" Version="3.19.0">
   <ExcludeAssets>runtime</ExcludeAssets>
 </PackageReference>
 ```

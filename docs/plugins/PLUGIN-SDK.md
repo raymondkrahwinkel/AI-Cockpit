@@ -269,6 +269,7 @@ public interface ICockpitActions
     Task SetClipboardTextAsync(string text);
     Task InjectIntoActiveSessionAsync(string text); // SDK sessions: the input box · TTY sessions: the pty
     bool HasActiveSession { get; }
+    Task SendPromptToSessionAsync(string paneId, string prompt, string reason); // behind the host's card (AC-1724)
 }
 
 public interface IPluginStorage
@@ -1154,6 +1155,14 @@ Your controls inherit the host's theme because they live in the host's visual tr
 app-wide styles or `ResourceDictionary` merges; scope any styling to your own root control.
 
 ## Storage and actions {#storage-and-actions}
+
+`host.Actions.SendPromptToSessionAsync(paneId, prompt, reason)` submits a turn in a running agent session on SDK and
+TTY alike. The host first shows its own confirmation card on that session, naming your plugin, the session, your
+`reason` and the prompt word for word. Nothing you pass can skip it: it is never remembered, the operator's consent
+bypass in Options does not apply to it, and there is no overload without it. Cancel throws
+`InvalidOperationException("Declined by the operator.")`; so does a pane that is not an agent session. A session in the
+middle of a turn gets the prompt after that turn. The decision is in the consent audit with your plugin id, the pane
+and a SHA-256 of the text. A plugin that calls it sets `minHostVersion` to `0.108.0`.
 
 `host.TimeEntries` is the host-owned log of the operator's own time. It supports manual entries, one persistent
 stopwatch, day-range reads, and the offered/booked lifecycle. It needs no capability because it exposes only the
