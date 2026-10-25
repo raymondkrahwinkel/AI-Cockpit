@@ -19,6 +19,8 @@ internal sealed class RecordingUiSurfaces : IPluginContributionSink, IPluginDial
 
     public string? ActiveSessionWorkingDirectory => null;
 
+    public string? ActiveProjectId => null;
+
     public SessionUsageSnapshot? ActiveSessionUsage => null;
 
     public event EventHandler? ActiveSessionChanged

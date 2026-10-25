@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Plugins;
+using Cockpit.Plugins.Abstractions.Capabilities;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -57,7 +58,8 @@ internal sealed class PluginDiscovery : ISingletonService
             var hash = await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false);
             var folderId = Path.GetFileName(folder);
             saved.TryGetValue(folderId, out var registration);
-            var decision = PluginLoadPolicy.Decide(manifest, hostAbstractionsMajor, registration, hash, HostVersionInfo.Current);
+            var decision = PluginLoadPolicy.Decide(
+                manifest, hostAbstractionsMajor, registration, hash, HostVersionInfo.Current, id => CapabilityCatalog.Find(id) is not null);
 
             result.Add(new DiscoveredPlugin(folder, folderId, manifest, hash, decision));
         }

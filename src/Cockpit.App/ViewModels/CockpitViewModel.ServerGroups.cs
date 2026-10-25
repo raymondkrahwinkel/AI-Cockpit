@@ -5,6 +5,8 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.App.Services;
@@ -414,7 +416,7 @@ public partial class CockpitViewModel
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),
-            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, row),
+            OpenPluginSettings = row => _OpenServerPluginSettingsAsync(group.Name, plugins, group.Server.Profiles, group.Server.Projects, row),
             IsPluginOnDesktop = row => Plugins.Plugins.Any(local => local.FolderId == PluginFolderName.Normalize(row.Id)),
             InstallPluginOnDesktop = row => Plugins.InstallFromStoreByIdAsync(row.Id),
             RestartDesktop = () => _appRestart?.Restart(),
@@ -445,7 +447,7 @@ public partial class CockpitViewModel
     // Opened beside the Admin dialog, with a channel that goes to the plugin's backend part on that server. The plugin's
     // local settings view over the server's storage wins (AC-1571); a view it offers only for a server (AC-1511) is the
     // fallback for a plugin without one.
-    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, IServerProfiles profiles, ServerPluginRowViewModel row)
+    private async Task _OpenServerPluginSettingsAsync(string server, IPluginAdministration? plugins, IServerProfiles profiles, IServerProjects projects, ServerPluginRowViewModel row)
     {
         if (_dialogService is null || plugins is not IPluginChannelRelay relay)
         {
@@ -454,7 +456,7 @@ public partial class CockpitViewModel
 
         if (_LocalSettingsPartFor(row) is { } part)
         {
-            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles)) is { } remote)
+            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles), () => _PluginProjectsAsync(projects)) is { } remote)
             {
                 await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
             }
@@ -477,6 +479,13 @@ public partial class CockpitViewModel
             ModelSuggestions = _Known(profile, WellKnownPluginSessionOptions.Model),
             EffortSuggestions = _Known(profile, WellKnownPluginSessionOptions.Effort),
         })];
+
+    // AC-1737: the server's projects, read again from its API so a project added there since shows up.
+    private static async Task<IReadOnlyList<PluginProjectInfo>> _PluginProjectsAsync(IServerProjects projects)
+    {
+        await projects.LoadAsync();
+        return [.. projects.Current.Settings.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
+    }
 
     private static IReadOnlyList<string> _Known(RemoteProfile profile, string option) =>
         profile.KnownValues?.GetValueOrDefault(option) is { } values ? [.. values.Select(value => value.Value)] : [];

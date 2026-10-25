@@ -35,6 +35,25 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
   on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
   Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
+- added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
+  so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
+- added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**
+  opens the rail on it, or raises its window when it floats. A plugin cannot open another plugin's panel.
+- added: a dock-rail panel from a plugin can keep its view while you collapse the rail or switch tabs, and can be
+  undocked (⧉ in the rail header) into its own window with **⇤ Dock back** to return it. Whether it floats and where its
+  window stood survive a restart. The assistant docks and undocks through the same mechanism, behaving as before.
+- added: a plugin names what it asks for under `capabilities` in its `plugin.json`; the consent dialog and the plugin
+  list say each one in plain words, and a name the cockpit does not know keeps the plugin from loading, with the
+  reason in the plugin list. Your own time entries now go only to a plugin that asks for `time.entries`.
+- added: a plugin's MCP tool can see who is calling it — your assistant, an ordinary session, or a remote caller
+  with the connect key's name — as the cockpit verified it, so a tool meant only for you can refuse everyone else.
+- added: a plugin can hand a running session a prompt, on SDK and terminal sessions alike, but only after you press
+  Send on the cockpit's own confirmation card on that session. The card names the plugin, the session, its reason and
+  the full text; it is never remembered and the consent bypass in Options does not skip it.
+- added: the cockpit keeps a timeline per session in `session-timeline.jsonl`: when it went busy, idle or waiting on
+  you, when you sent a message or answered a permission or question, and each statusline, with the project and the
+  ticket it was on. What you sent or answered never goes in. A session left busy when the cockpit stopped is closed
+  at the stop time on the next start.
 - added: a session the assistant started that ends a turn without saying done, blocked or asking, gets one nudge
   to carry on; stalling again tells the assistant (`stalled`, with its last lines) instead of nudging twice. Ending on a
   notify, an open question or permission, or a run still going counts as a closing. Sessions you start yourself are left alone.

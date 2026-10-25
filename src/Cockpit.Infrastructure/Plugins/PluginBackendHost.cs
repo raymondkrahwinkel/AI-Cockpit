@@ -20,6 +20,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Health;
@@ -50,7 +51,8 @@ public class PluginBackendHost(
     ICockpitActions actions,
     PluginDiagnostics diagnostics,
     Type? ownPluginType = null,
-    IPluginCache? cache = null) : ICockpitHost
+    IPluginCache? cache = null,
+    IReadOnlyList<string>? capabilities = null) : ICockpitHost
 {
     // Without a cache file behind it — a test host — the plugin still gets a cache, one that lives as long as
     // this host does. `Cache` is never null (AC-1294).
@@ -69,11 +71,17 @@ public class PluginBackendHost(
 
     public IServiceProvider Services => services;
 
-    public ICockpitActions Actions => actions;
+    // AC-1724: scoped to this plugin, so a prompt into a session is asked about under this plugin's own name.
+    public ICockpitActions Actions { get; } = new PluginScopedActions(pluginId, pluginName, actions, services);
 
     public IPluginStorage Storage => storage;
 
-    public ICockpitTimeEntries TimeEntries => services.GetRequiredService<ICockpitTimeEntries>();
+    // AC-1730: the operator's own time is handed only to a plugin whose consented manifest asks for it; any other
+    // plugin gets a refusal that names the missing capability, never an empty log.
+    public ICockpitTimeEntries TimeEntries => (capabilities ?? []).Contains(CapabilityCatalog.TimeEntries)
+        ? services.GetRequiredService<ICockpitTimeEntries>()
+        : throw new UnauthorizedAccessException(
+            $"Plugin '{pluginId}' needs the capability '{CapabilityCatalog.TimeEntries}' in its plugin.json to use the operator's time entries.");
 
     public IPluginCache Cache => _cache;
 
@@ -86,6 +94,9 @@ public class PluginBackendHost(
     // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a
     // session id the agent named. Null off the verified path (no MCP call in flight).
     public string? CurrentMcpCallerPaneId => McpRequestContext.CurrentPaneId;
+
+    // AC-1685: the same verified caller with its kind, so an owner-only tool can tell the assistant from a session.
+    public McpCaller? CurrentMcpCaller => McpRequestContext.CurrentCaller;
 
     // The legacy typed Claude profile's own models and effort levels, which only the desktop's option catalog holds.
     protected virtual IReadOnlyList<string> LegacyClaudeModels => [];
@@ -306,6 +317,16 @@ public class PluginBackendHost(
             .Where(resource => resource.Role == ProjectResourceRole.Memory)
             .Select(resource => new ProjectMemoryRow(resource.Reference, resource.Label, resource.ReachesSessions))];
     }
+
+    // AC-1737: every project, the folderless ones too, as list_projects answers it.
+    public async Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()
+    {
+        var projects = await services.GetRequiredService<IProjectStore>().LoadAsync().ConfigureAwait(false);
+        return [.. projects.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
+    }
+
+    public Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken) =>
+        _ProjectOfAsync(paneId, cancellationToken);
 
     // No pane named means no project: the backend has no selected session. Which project a pane belongs to is one
     // question with one answer (AC-320); a host without that resolver asks the pane's own handle.

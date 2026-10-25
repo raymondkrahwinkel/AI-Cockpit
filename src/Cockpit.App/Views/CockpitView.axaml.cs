@@ -93,6 +93,8 @@ public partial class CockpitView : UserControl
 
         if (DataContext is CockpitViewModel cockpit)
         {
+            // AC-1710: a panel left floating at the last close stands in its own window again.
+            cockpit.DockHost.RestoreFloatingWindows();
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
             cockpit.SpatialNavigationRequested += OnSpatialNavigationRequested;
 
@@ -412,9 +414,8 @@ public partial class CockpitView : UserControl
 
     private ColumnDefinition _DockRailColumn() => PanelsRoot.ColumnDefinitions[4];
 
-    // Builds the open panel's content fresh each time it opens — `DockPanelRegistration.CreateView` is a plain
-    // factory, not a per-instance context to reattach, so there is nothing to preserve across a close/reopen
-    // (unlike the widget panes, which keep their own state in `IWidgetContext.Storage`).
+    // Puts the open panel's view in the rail: built fresh each opening, or the kept instance for a `KeepAlive`
+    // panel (AC-1710) — `IDockPanelRegistry.ViewFor` decides which.
     private void _RebuildDockPanelContent()
     {
         if (DockPanelContent is null || DataContext is not CockpitViewModel cockpit)
@@ -426,8 +427,12 @@ public partial class CockpitView : UserControl
         // session is picked; the panels stand's own state (`AssistantDocked`, `OpenDockPanelId`) is left
         // untouched either way, so that stand comes back as it was rather than rebuilt from a default.
         DockPanelContent.Content = cockpit.EffectiveOpenDockPanelId is { } panelId
-            ? cockpit.DockPanels.FirstOrDefault(panel => panel.Id == panelId)?.CreateView()
+            ? cockpit.DockPanelViewFor(panelId)
             : null;
+
+        var open = cockpit.DockPanels.FirstOrDefault(panel => panel.Id == cockpit.EffectiveOpenDockPanelId);
+        DockPanelHeader.IsVisible = open is not null && cockpit.DockHost.OffersUndock(open);
+        DockPanelHeaderTitle.Text = open?.Title;
     }
 
     // AC-1303: building a host asks the coordinator for the chat view model, and constructing that one sets

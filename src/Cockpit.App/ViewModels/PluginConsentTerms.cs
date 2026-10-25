@@ -9,8 +9,8 @@ public static class PluginConsentTerms
         "A plugin runs with your account's permissions — it is not sandboxed. Only enable plugins you trust. "
         + "If the file changes later, you will be asked to consent again.";
 
-    // The same grant said per plugin, for a list where each row has to carry its own. Identical for every plugin
-    // because a plugin's reach is not narrowed per plugin yet — capability grants are EPIC AC-107, still open.
+    // The same grant said per plugin, for a list where each row has to carry its own. Identical for every plugin:
+    // a manifest's capabilities (AC-1730) add to these terms in the per-plugin dialog, they never narrow them.
     public const string PermissionSummary =
         "run with your account's permissions — your files, your network, your shell. Not sandboxed.";
 }
