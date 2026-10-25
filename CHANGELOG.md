@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin can hand a running session a prompt, on SDK and terminal sessions alike, but only after you press
+  Send on the cockpit's own confirmation card on that session. The card names the plugin, the session, its reason and
+  the full text; it is never remembered and the consent bypass in Options does not skip it.
 - added: a session the assistant started that ends a turn without saying done, blocked or asking, gets one nudge
   to carry on; stalling again tells the assistant (`stalled`, with its last lines) instead of nudging twice. Ending on a
   notify, an open question or permission, or a run still going counts as a closing. Sessions you start yourself are left alone.

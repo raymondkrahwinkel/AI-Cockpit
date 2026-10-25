@@ -13,12 +13,14 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Journeys;
 
-// J4, the assistant as Raymond's dispatcher: a question in its window is answered there, it puts sessions out onto a
-// desk through `cockpit-assistant-agents`, and (AC-1616) its conversation reads per project: a prompt and a session's
-// message each land in their project's thread, Questions holds the open question, a closed thread reopens by itself.
+// J4, the assistant as Raymond's dispatcher: a question in its window is answered there, it puts sessions out onto a desk
+// (where a plugin's prompt goes in only after Send on the host's card, AC-1724), and (AC-1616) its conversation reads per
+// project: a prompt and a message land in their project's thread, Questions holds the question, a closed thread reopens.
 [Collection(JourneyCollection.Alone)]
 public sealed class AssistantJourney
 {
@@ -68,6 +70,16 @@ public sealed class AssistantJourney
         Assert.All(rows.GroupBy(row => row), group => Assert.Single(group));
         Assert.Contains(session, HeadlessAvalonia.Run(() => chat.SessionsStartedByTheAssistant.ToList()));
         Assert.Contains(cockpit.Drivers.Made, driver => driver.Profile?.Label == OtherProfile);
+
+        // AC-1724: a plugin hands that session a prompt. It waits on the host's card on that pane; Send lets it in.
+        var plugin = new PluginScopedActions("journey-plugin", "Journey plugin", new NoSharedActions(), cockpit.Services);
+        var handed = plugin.SendPromptToSessionAsync(paneId, "carry on", "the journey asks");
+        await HeadlessAvalonia.RunAsync(() => Until.Holds(session, () => session.PendingConsent is not null));
+        var consentCard = HeadlessAvalonia.Run(() => session.PendingConsent?.Action ?? string.Empty);
+        HeadlessAvalonia.Run(() => session.PendingConsent?.ApproveCommand.Execute(null));
+        await handed.WaitAsync(Until.Ceiling);
+        await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(session.Transcript, () => session.Transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text == "echo: carry on")));
+        Assert.Contains("carry on", consentCard, StringComparison.Ordinal);
 
         // AC-1616: a session for WayMark tells the assistant something; it rides along with the operator's next turn.
         var other = await JourneyHost.CallAsync(assistant, "start_agent", new() { ["workspaceId"] = desk, ["profile"] = OtherProfile, ["projectId"] = waymark.Id, ["prompt"] = "go" });
@@ -166,4 +178,7 @@ public sealed class AssistantJourney
         var projects = services.GetRequiredService<IProjectEditor>();
         return (await projects.AddNewProjectAsync(Project.Create("Depot")), await projects.AddNewProjectAsync(Project.Create("WayMark")));
     }
+
+    // The shared surface the plugin's own one wraps; the prompt never reaches it.
+    private sealed class NoSharedActions : ICockpitActions;
 }

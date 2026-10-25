@@ -453,6 +453,8 @@ internal static partial class Screenshotter
         ["session-consent-plain-developer"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentSession(ReadingLevel.Developer) },
         // The fallback: a command that cannot be restated from itself keeps the raw call rather than a guess.
         ["session-consent-plain-fallback"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentFallbackSession() },
+        // AC-1724: a plugin's prompt into a running session, on the host's own card on that session's pane.
+        ["session-consent-plugin-prompt"] = (width, height) => new Window { Width = width, Height = height, Content = _PluginPromptConsentSession() },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -2141,6 +2143,26 @@ internal static partial class Screenshotter
         ReadingLevel.Simple,
         "Let me clear out what is left over.",
         """{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""");
+
+    private static SessionView _PluginPromptConsentSession()
+    {
+        var viewModel = new SessionViewModel { Title = "werkagent" };
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "The tests are green; the branch is pushed." });
+        viewModel.PendingConsent = new ViewModels.ConsentPromptViewModel(
+            new ConsentQuestion(
+                Guid.NewGuid(),
+                Cockpit.Infrastructure.Plugins.PluginScopedActions.PromptCard(
+                    "time-tracking",
+                    "Time tracking",
+                    "pane-werkagent",
+                    "werkagent",
+                    "Book today's hours in YouTrack: AC-1724 2h30 (plugin prompt contract), AC-1717 45m (review).",
+                    "You chose \"Give to an agent\" on today's time proposal"),
+                CanRemember: false),
+            new _NoConsentPrompts());
+
+        return new SessionView { DataContext = viewModel };
+    }
 
     private static SessionView _ConsentSession(ReadingLevel level, string leadIn, string input)
     {

@@ -69,7 +69,8 @@ public class PluginBackendHost(
 
     public IServiceProvider Services => services;
 
-    public ICockpitActions Actions => actions;
+    // AC-1724: scoped to this plugin, so a prompt into a session is asked about under this plugin's own name.
+    public ICockpitActions Actions { get; } = new PluginScopedActions(pluginId, pluginName, actions, services);
 
     public IPluginStorage Storage => storage;
 

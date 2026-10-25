@@ -142,7 +142,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `workflows.trigger-raise` | Starting a workflow | Dangerous | 0.3.0 | `typeId` | `ICockpitHost.RaiseWorkflowTrigger` |
 | `sessions.start` | Starting sessions | Dangerous | 0.3.0 | `profileLabel` | `ICockpitActions.StartSessionAsync` |
 | `sessions.delegate` | Handing work to a profile | Dangerous | 0.3.0 | `profileLabel`, `permission` | `ICockpitActions.DelegateAsync` |
-| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession` |
+| `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.SendPromptToSessionAsync` |
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
 | `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync` |
@@ -1279,8 +1279,20 @@ public interface ICockpitActions
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory,
                                TimeSpan? timeout, string? permission,
                                Action<string> taskStarted);                                  // default: the above
+    Task SendPromptToSessionAsync(string paneId, string prompt, string reason);              // default throws
 }
 ```
+
+### `Task SendPromptToSessionAsync(string paneId, string prompt, string reason)` {#task-sendprompttosessionasyncstring-paneid-string-prompt-string-reason}
+Available in SDK 3.19.0 and host 0.108.0 (AC-1724). Submits `prompt` as a turn in the running agent session
+`paneId`, on an SDK and a TTY pane alike, once the operator has approved it on the host's own confirmation card. That
+card sits on the target session and shows your plugin, the session, `reason` and the prompt word for word. It is never
+remembered, the consent bypass in Options does not reach it, and no overload goes around it.
+
+Throws `InvalidOperationException` with "Declined by the operator." when the operator cancels, and also when the pane is
+not an agent session (a terminal, the assistant's own pane, a pane that closed). A session in the middle of a turn gets
+the prompt after that turn; one still starting holds it until it can take it. The consent audit records the decision
+with your plugin id, the pane and a SHA-256 of the text. The default throws `NotSupportedException`.
 
 ### `Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)` {#taskstring-delegateasyncstring-profilelabel-string-prompt-string-workingdirectory--null-timespan-timeout--null}
 Hands work to another profile as a **background task** and waits for what it produces (#67) — the cockpit's own
