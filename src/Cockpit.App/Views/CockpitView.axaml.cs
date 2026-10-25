@@ -563,7 +563,7 @@ public partial class CockpitView : UserControl
 
         return entry switch
         {
-            { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings, launcher.Badge),
+            { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings, launcher.Badge, launcher.IconKind),
             { Section: { } section } => new PluginSectionControl(section.Title, section.CreateView(), onSettings),
             _ => throw new InvalidOperationException($"'{pluginId}' contributed a menu entry that is neither a button nor a section."),
         };

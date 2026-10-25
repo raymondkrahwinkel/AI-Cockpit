@@ -1111,6 +1111,20 @@ banner and against the plugin's row in the manager — rather than letting it fa
 auto-derived `minHostVersion`; keep the manifest's `minHostVersion` honest too, since that one *refuses* rather
 than warns.
 
+### Side-menu icons and badge tones
+
+SDK 3.19.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
+semantic tone. Existing launchers stay accent-blue; the new overload is additive.
+
+```csharp
+var badge = host.AddSideMenuButtonWithBadge("Hours", OpenHours, MaterialIconKind.ClockOutline);
+badge.Text = "4h30 today";
+badge.Tone = SideMenuButtonBadgeTone.Success;
+```
+
+The host owns the icon and pill rendering so plugins do not embed theme-specific colors. A plugin using the
+icon overload or `Tone` sets `minHostVersion` to `0.108.0`.
+
 ### Theme tokens and control classes: declare them, nothing derives them for you {#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you}
 
 The auto-derivation above only covers `Cockpit.Plugins.Abstractions` — a compiled reference the host can

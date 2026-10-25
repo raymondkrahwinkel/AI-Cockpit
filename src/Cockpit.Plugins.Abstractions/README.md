@@ -14,7 +14,7 @@ The host loads its own copy of this assembly, so your plugin folder must **not**
 different types with the same name, and the host then silently finds no plugin in your assembly.
 
 ```xml
-<PackageReference Include="Cockpit.Plugins.Abstractions" Version="3.18.0">
+<PackageReference Include="Cockpit.Plugins.Abstractions" Version="3.19.0">
   <ExcludeAssets>runtime</ExcludeAssets>
 </PackageReference>
 ```
@@ -27,6 +27,10 @@ in your plugin folder and the loader resolves them from there.
 
 Also set `<EnableDynamicLoading>true</EnableDynamicLoading>`, which emits the `.deps.json` the plugin loader
 reads.
+
+SDK 3.19 adds an icon-bearing `ICockpitUiHost.AddSideMenuButtonWithBadge` overload and
+`SideMenuButtonBadge.Tone` (`Accent`, `Success`, or `Neutral`). A plugin using either declares
+`minHostVersion` 0.108.0; the original overload remains accent-blue and unchanged.
 
 ## Two version gates, and they are not this package's version
 

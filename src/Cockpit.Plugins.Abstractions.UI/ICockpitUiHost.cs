@@ -10,6 +10,7 @@ using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Material.Icons;
 
 namespace Cockpit.Plugins.Abstractions.UI;
 
@@ -71,6 +72,12 @@ public interface ICockpitUiHost
     /// Adds a launcher button to the left menu with a live counter the plugin updates through the returned badge.
     /// </summary>
     SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke);
+
+    /// <summary>
+    /// Adds a launcher with a live badge and a host-rendered material icon.
+    /// </summary>
+    SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke, MaterialIconKind iconKind) =>
+        AddSideMenuButtonWithBadge(title, onInvoke);
 
     /// <summary>
     /// Adds an inline section to the left menu, under the session list.

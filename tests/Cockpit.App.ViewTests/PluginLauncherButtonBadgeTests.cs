@@ -3,6 +3,8 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.Plugins.Abstractions;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Xunit.Abstractions;
 
 namespace Cockpit.App.ViewTests;
@@ -38,15 +40,19 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
     public void ABadgeWithBothCounters_RendersPrimarySlashSecondary() => HeadlessAvalonia.Run(() =>
     {
         var badge = new SideMenuButtonBadge { Primary = 3, Secondary = 2 };
-        var launcher = new PluginLauncherButton("Open PR's", () => { }, badge: badge);
+        var launcher = new PluginLauncherButton("Open PR's", () => { }, badge: badge, iconKind: MaterialIconKind.ClockOutline);
         using var shown = _Show(launcher);
 
         Assert.Equal("3 / 2", _PillText(launcher));
+        Assert.Equal(MaterialIconKind.ClockOutline, launcher.GetVisualDescendants().OfType<MaterialIcon>().Single().Kind);
+        var accentBackground = _Pill(launcher).Background;
 
         badge.Text = "4u30 today";
+        badge.Tone = SideMenuButtonBadgeTone.Success;
         Dispatcher.UIThread.RunJobs();
 
         Assert.Equal("4u30 today", _PillText(launcher));
+        Assert.NotEqual(accentBackground, _Pill(launcher).Background);
     });
 
     // Acceptance criterion 1: the plugin updates the counter after registering, without registering the button
@@ -127,7 +133,7 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
     });
 
     private static Border _Pill(PluginLauncherButton launcher) =>
-        launcher.GetVisualDescendants().OfType<Border>().Single();
+        launcher.GetVisualDescendants().OfType<Border>().Single(border => border.Child is TextBlock);
 
     private static string _PillText(PluginLauncherButton launcher) =>
         _Pill(launcher).GetVisualDescendants().OfType<TextBlock>().Single().Text ?? string.Empty;
