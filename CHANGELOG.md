@@ -210,6 +210,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Quit from the tray and the restart after an update now close Cockpit the same way as closing it from the desktop,
+  so plugins that tidy up on the way out (the browser's engine) get to do that on every route.
 - fixed: searching Options no longer leaves a plugin's field labels on screen without their boxes (the YouTrack
   instance cards showed only "Label", "Instance base URL" and "Permanent token"). A label now shows and hides with
   the field it names, and the hint below a card's last field goes with that field.
