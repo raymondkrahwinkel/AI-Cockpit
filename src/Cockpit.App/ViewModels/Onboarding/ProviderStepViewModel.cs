@@ -190,8 +190,8 @@ public sealed partial class ProviderStepViewModel : ObservableObject
 
                 installedVersions.TryGetValue(PluginFolderName.Normalize(entry.Id), out var installedVersion);
                 var row = new StorePluginRowViewModel(entry, store, installedVersion);
-                var detection = ProviderHostExecutables.CommandFor(entry.Id) is { } command
-                    ? (HostExecutableProbe.Resolve(command) is not null ? ProviderDetectionState.Found : ProviderDetectionState.NotFound)
+                var detection = ProviderHostExecutables.For(entry.Id) is { } executable
+                    ? (HostExecutableProbe.Resolve(executable) is not null ? ProviderDetectionState.Found : ProviderDetectionState.NotFound)
                     : ProviderDetectionState.NotApplicable;
 
                 // Appended in the catalogue's own order: what is found stands apart from the rest because the view

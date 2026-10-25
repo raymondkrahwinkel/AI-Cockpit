@@ -50,34 +50,26 @@ internal static class ClaudeExecutableLocator
             }
         }
 
-        // PATH did not have it — on Windows the desktop install is off-PATH, so try its well-known location before
-        // giving up. Only for the bare "claude" command; a different name the operator typed is theirs to own.
-        if (OperatingSystem.IsWindows()
-            && (command.Equals("claude", StringComparison.OrdinalIgnoreCase) || command.Equals("claude.exe", StringComparison.OrdinalIgnoreCase))
+        var isDefaultCommand = command.Equals("claude", StringComparison.Ordinal)
+            || (OperatingSystem.IsWindows() && command.Equals("claude.exe", StringComparison.OrdinalIgnoreCase));
+
+        // Native installs use ~/.local/bin on every platform; GUI launches commonly omit it from PATH.
+        if (isDefaultCommand && _TryUserProfileInstall(command) is { } fromUserProfile)
+        {
+            return fromUserProfile;
+        }
+
+        if (OperatingSystem.IsWindows() && isDefaultCommand
             && _TryWindowsDesktopInstall() is { } fromDesktopInstall)
         {
             return fromDesktopInstall;
         }
 
-        // Linux/macOS: the `claude` installer's launcher lives at ~/.local/bin/claude, which a login shell adds to
-        // PATH but a GUI or AppImage launch does not — so a blank profile reads "not found" and the session cannot
-        // spawn even though claude is installed. Fall back to the well-known install locations, the same way the
-        // Windows branch above does for the desktop install. Only for the bare "claude" command.
-        if (!OperatingSystem.IsWindows()
-            && command.Equals("claude", StringComparison.Ordinal)
-            && _TryUnixWellKnownInstall() is { } fromUnixInstall)
-        {
-            return fromUnixInstall;
-        }
-
         return command;
     }
 
-    // The `claude` installer's launcher and older local-install layouts on Linux/macOS, none of which a GUI or
-    // AppImage launch carries on PATH: `~/.local/bin/claude` (a symlink into the versioned install), then
-    // `~/.claude/local/claude`, then the newest binary directly under `~/.local/share/claude/versions`.
-    // Returns the first that exists.
-    private static string? _TryUnixWellKnownInstall()
+    // The native launcher's ~/.local/bin location is cross-platform; the remaining fallbacks are Unix-only.
+    private static string? _TryUserProfileInstall(string command)
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (string.IsNullOrEmpty(home))
@@ -85,17 +77,20 @@ internal static class ClaudeExecutableLocator
             return null;
         }
 
-        string[] launchers =
-        [
-            Path.Combine(home, ".local", "bin", "claude"),
-            Path.Combine(home, ".claude", "local", "claude"),
-        ];
-        foreach (var launcher in launchers)
+        if (_TryDirectory(Path.Combine(home, ".local", "bin"), command) is { } launcher)
         {
-            if (File.Exists(launcher))
-            {
-                return launcher;
-            }
+            return launcher;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        var legacyLauncher = Path.Combine(home, ".claude", "local", "claude");
+        if (File.Exists(legacyLauncher))
+        {
+            return legacyLauncher;
         }
 
         return PickNewestClaudeBinary(Path.Combine(home, ".local", "share", "claude", "versions"));
