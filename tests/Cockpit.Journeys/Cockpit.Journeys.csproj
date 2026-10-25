@@ -54,11 +54,13 @@
   <ItemGroup>
     <_StoreOnlyPlugin Include="Autopilot" FolderId="autopilot" />
     <_StoreOnlyPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+    <_StoreOnlyPlugin Include="CliAgentProvider" FolderId="cli-agent-provider" />
     <_StoreOnlyPlugin Include="Clock" FolderId="clock" />
     <_StoreOnlyPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
     <_StoreOnlyPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
     <_StoreOnlyPlugin Include="FanOut" FolderId="fan-out" />
     <_StoreOnlyPlugin Include="GitStatus" FolderId="git-status" />
+    <_StoreOnlyPlugin Include="GeminiProvider" FolderId="gemini-provider" />
     <_StoreOnlyPlugin Include="TranscriptSearch" FolderId="transcript-search" />
     <_StoreOnlyPlugin Include="UsageTrend" FolderId="usage-trend" />
     <BundledPlugin Include="@(_StoreOnlyPlugin)" />

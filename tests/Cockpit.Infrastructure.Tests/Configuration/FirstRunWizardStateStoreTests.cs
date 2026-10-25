@@ -39,15 +39,17 @@ public sealed class FirstRunWizardStateStoreTests : IDisposable
         var resume = new FirstRunWizardResumeState(
             25,
             "start-fresh",
-            [new FirstRunProviderChoice("claude-provider", "Claude Code")],
+            [new FirstRunProviderChoice("claude-provider", "Claude Code", [new FirstRunSessionProviderChoice("claude", "Claude")])],
             "claude",
-            "Claude Code");
+            "Claude",
+            "{\"model\":\"sonnet\"}");
         await store.SaveResumeStateAsync(resume);
         var restored = Assert.IsType<FirstRunWizardResumeState>(await store.GetResumeStateAsync());
         Assert.Equal(25, restored.StartAtOrder);
         Assert.Equal("start-fresh", restored.StartChoiceId);
-        Assert.Equal([new FirstRunProviderChoice("claude-provider", "Claude Code")], restored.Providers);
+        Assert.Equal([new FirstRunProviderChoice("claude-provider", "Claude Code", [new FirstRunSessionProviderChoice("claude", "Claude")])], restored.Providers);
         Assert.Equal("claude", restored.AssistantProviderId);
+        Assert.Equal("{\"model\":\"sonnet\"}", restored.AssistantConfigJson);
 
         await store.MarkCompletedAsync(1);
 

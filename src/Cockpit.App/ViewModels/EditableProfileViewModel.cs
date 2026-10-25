@@ -215,7 +215,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     // Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable
     // (removed, disabled, or failed to load) — the editor shows a "provider plugin not installed" state
     // instead of an empty settings region, and `ToProfile` preserves the original config as-is.
-    public bool IsPluginProviderMissing => IsPluginProvider && PluginConfigView is null;
+    public bool IsPluginProviderMissing =>
+        IsPluginProvider
+        && SelectedProvider.PluginProviderId is { Length: > 0 }
+        && PluginConfigView is null;
 
     public IReadOnlyList<SessionProviderOption> Providers { get; }
 
@@ -334,7 +337,9 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     // Whether the selected provider is registered by a plugin (#45) — swaps the fixed local-provider fields for
     // `PluginConfigView`'s content.
-    public bool IsPluginProvider => SelectedProvider.Value == SessionProvider.Plugin;
+    public bool IsPluginProvider =>
+        SelectedProvider.Value == SessionProvider.Plugin
+        && SelectedProvider.PluginProviderId is { Length: > 0 };
 
     // Whether this host runs terminals and the selected provider has a TTY route (AC-139).
     public bool HasTtyProvider => _hostRunsTty && SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);

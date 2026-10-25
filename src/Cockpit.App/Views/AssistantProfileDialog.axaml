@@ -17,6 +17,12 @@
         <vm:AssistantProfileDialogViewModel/>
     </Design.DataContext>
 
+    <Window.Styles>
+        <Style Selector="ContentControl.firstRunProviderSettings StackPanel.advanced-provider-field">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+    </Window.Styles>
+
     <DockPanel>
 
         <!-- Footer: Cancel/Save on the right, the status line taking the star column — the one thing in the band
@@ -30,7 +36,10 @@
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <Button Content="Cancel" Command="{Binding CancelCommand}"/>
-                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                    <Button Content="Set this up later" Command="{Binding SetUpLaterCommand}"
+                            IsVisible="{Binding CanSetUpLater}"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"
+                            IsVisible="{Binding ShowSave}"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -44,12 +53,22 @@
                      already carries the name. -->
                 <TextBlock Text="The assistant's own profile. It is not in the profile list, nothing else uses it, and editing a profile elsewhere never changes it."
                            FontSize="11" TextWrapping="Wrap"
+                           IsVisible="{Binding ShowAdvancedProfileFields}"
                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <TextBlock Text="Choose where the assistant runs. Only the details needed for that provider are shown here."
+                           FontSize="11" TextWrapping="Wrap" IsVisible="{Binding IsFirstRunSetup}"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
                 <!-- Starting point, not a link. The values are read in once and nothing remembers where they came
                      from — which is exactly why the previous design needed a paragraph explaining that its copy
                      was a copy, and this one does not. -->
-                <StackPanel Spacing="4" IsVisible="{Binding HasCopyFromProfiles}">
+                <StackPanel Spacing="4">
+                    <StackPanel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="HasCopyFromProfiles"/>
+                            <Binding Path="ShowAdvancedProfileFields"/>
+                        </MultiBinding>
+                    </StackPanel.IsVisible>
                     <TextBlock Text="Start from an existing profile" FontSize="11"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -68,7 +87,8 @@
 
                 <StackPanel Spacing="11" DataContext="{Binding Profile}" x:DataType="vm:EditableProfileViewModel">
 
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="4"
+                                IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields}">
                         <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Label}"/>
                     </StackPanel>
@@ -76,7 +96,8 @@
                     <!-- AC-594: this is added to AssistantSystemPrompt.Default, not put in its place. Replacing it
                          outright is the checkbox below, because that default carries the language rule, the
                          speak-don't-write rule, the honesty clause and the permission paragraph. -->
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="4"
+                                IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields}">
                         <TextBlock Text="Extra instructions (added to the assistant's built-in ones)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
@@ -124,7 +145,13 @@
                     </StackPanel>
 
                     <!-- Local (Ollama / LM Studio) provider fields. -->
-                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsLocalProvider"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="Server base URL" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding BaseUrl}" FontFamily="{StaticResource CockpitMonoFont}"
@@ -139,7 +166,13 @@
                                          PlaceholderText="Model id as the server reports it"/>
                     </StackPanel>
 
-                    <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsLmStudioProvider"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
@@ -149,7 +182,13 @@
                          validation feedback that makes a path field usable. Embedded whole rather than reproduced,
                          since a plugin's config shape is opaque to the host and a second rendering of it would be a
                          copy that drifts. -->
-                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProviderMissing}">
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsPluginProviderMissing"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="Provider plugin not installed" FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                         <TextBlock Text="This profile's provider plugin is missing, disabled, or failed to load. Its settings are kept as-is and cannot be edited here until the plugin is available again."
@@ -157,14 +196,44 @@
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
-                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}" IsEnabled="{Binding !IsPluginProviderMissing}">
+                    <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8">
+                        <Border.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsPluginProviderMissing"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).IsFirstRunSetup"/>
+                            </MultiBinding>
+                        </Border.IsVisible>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding SelectedProvider.Label, StringFormat='Finish {0} after Cockpit starts.'}"
+                                       FontWeight="SemiBold" FontSize="12"/>
+                <TextBlock Text="Choose Set this up later. Add its key and model later in Assistant options."
+                                       FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsPluginProvider"/>
+                                <Binding Path="!IsPluginProviderMissing"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="Provider settings" FontSize="11"
-                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                   IsVisible="{Binding !IsPluginProviderMissing}"/>
-                        <ContentControl Content="{Binding PluginConfigView.View}" IsVisible="{Binding !IsPluginProviderMissing}"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ContentControl Content="{Binding PluginConfigView.View}"
+                                        Classes.firstRunProviderSettings="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).IsFirstRunSetup}"/>
                     </StackPanel>
 
-                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsLocalProvider"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="Base system prompt (optional)" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding SystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
@@ -176,14 +245,26 @@
                          block below — the assistant reads it at start (SessionViewModel.StartWithProfileAsync).
                          Hidden for a provider that has permission modes, which would make it a dead control. -->
                     <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
-                              IsVisible="{Binding ShowAutoApproveTools}"
-                              ToolTip.Tip="The assistant starts with 'Allow all tools' already on"/>
+                              ToolTip.Tip="The assistant starts with 'Allow all tools' already on">
+                        <CheckBox.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="ShowAutoApproveTools"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </CheckBox.IsVisible>
+                    </CheckBox>
 
                     <!-- Session defaults: the provider's own declared start options, rendered generically from its
                          declaration. The wording deliberately differs from the profile editor's: there it says each
                          can still be changed when a session is started, and for the assistant there is no
                          New-session dialog to change them in. -->
-                    <StackPanel Spacing="11" IsVisible="{Binding HasPluginOptionDefaults}">
+                    <StackPanel Spacing="11">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="HasPluginOptionDefaults"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
@@ -235,7 +316,13 @@
                          the assistant's own two endpoints, and with nothing ticked the set is the ordinary fan-out
                          minus what the assistant is not handed by default. Said here so seeing cockpit-assistant
                          mounted with an empty selection does not read as a bug. -->
-                    <StackPanel Spacing="11" IsVisible="{Binding HasMcpServers}">
+                    <StackPanel Spacing="11">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="HasMcpServers"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="MCP SERVERS" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
@@ -256,7 +343,13 @@
                     <!-- Per-profile environment variables (AC-22), injected at spawn by
                          PluginSessionDriverAdapter._SpawnEnvironment. Gated on the provider's own capability so a
                          provider with nothing to inject into never shows a dead editor. -->
-                    <StackPanel Spacing="11" IsVisible="{Binding SupportsEnvVars}">
+                    <StackPanel Spacing="11">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="SupportsEnvVars"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ShowAdvancedProfileFields"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="ENVIRONMENT VARIABLES" FontSize="11" Margin="0,4,0,0"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>

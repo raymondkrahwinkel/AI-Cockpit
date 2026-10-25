@@ -250,6 +250,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **you choose what powers the assistant during first start.** The assistant step now offers the providers you
+  picked or installed, alongside Ollama and LM Studio, without choosing one for you. Its existing profile editor shows
+  only the provider details needed there, and lets you finish setting up an installed provider later.
 - fixed: **Claude Code carries through first start.** "Install and restart" now installs and asks for permission in
   the setup itself, returns to "Your assistant" with Claude Code selected, and creates that assistant profile once
   Claude Code has started; opening Options is no longer part of setup.

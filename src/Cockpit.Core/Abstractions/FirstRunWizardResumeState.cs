@@ -7,6 +7,15 @@ public sealed record FirstRunWizardResumeState(
     string StartChoiceId,
     IReadOnlyList<FirstRunProviderChoice> Providers,
     string? AssistantProviderId,
-    string? AssistantProviderName);
+    string? AssistantProviderName,
+    string? AssistantConfigJson = null);
 
-public sealed record FirstRunProviderChoice(string Id, string Name);
+public sealed record FirstRunProviderChoice(
+    string Id,
+    string Name,
+    IReadOnlyList<FirstRunSessionProviderChoice>? SessionProviders = null)
+{
+    public IReadOnlyList<FirstRunSessionProviderChoice> SessionProviders { get; } = SessionProviders ?? [];
+}
+
+public sealed record FirstRunSessionProviderChoice(string Id, string Name);

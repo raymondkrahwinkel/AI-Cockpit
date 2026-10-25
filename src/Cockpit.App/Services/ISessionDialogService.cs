@@ -32,7 +32,7 @@ public interface ISessionDialogService
     /// session profile. <paramref name="assistant"/> backs the restart button; a parameter, not injected, for the
     /// same reason as <see cref="ShowWorktreesDialogAsync"/>. Null just offers no restart.
     /// </summary>
-    Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant);
+    Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant, AssistantProfileSetup? setup = null);
 
     /// <summary>
     /// Shows the projects manager (AC-161): saved projects, with add, edit and remove. Its own dialog rather than a

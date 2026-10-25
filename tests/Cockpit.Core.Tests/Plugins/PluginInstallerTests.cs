@@ -151,7 +151,13 @@ public class PluginInstallerTests : IDisposable
         // The update result must hash the NEW (staged) bytes, so the manager can pin that hash and keep the
         // plugin enabled after the restart swap — pinning the still-live old bytes' hash was the disable bug.
         var v1 = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
-        var v2 = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
+        var v2Manifest = _Manifest("acme", "acme", "Plugin.dll", abstractionsVersion: 1)
+            .Replace("}", ",\"sessionProviders\":[{\"id\":\"acme.provider\",\"name\":\"Acme\"}]}", StringComparison.Ordinal);
+        var v2 = await _installer.InstallFromZipAsync(_CreateZip(new()
+        {
+            ["plugin.json"] = v2Manifest,
+            ["Plugin.dll"] = "MZ-v2",
+        }), HostMajor);
 
         Assert.False(string.IsNullOrEmpty(v1.Sha256));
         Assert.False(string.IsNullOrEmpty(v2.Sha256));
@@ -160,6 +166,7 @@ public class PluginInstallerTests : IDisposable
         // v1 is a fresh install (not staged); v2 is an update over it (staged to .pending-updates).
         Assert.False(v1.Staged);
         Assert.True(v2.Staged);
+        Assert.Equal("acme.provider", Assert.Single(v2.Manifest?.SessionProviders ?? []).Id);
     }
 
     private string _PluginZip(string id, string dll) => _CreateZip(new()

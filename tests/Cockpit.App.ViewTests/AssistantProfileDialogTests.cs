@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using Cockpit.App.Composition;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
@@ -211,6 +212,14 @@ public class AssistantProfileDialogTests
         var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(assistant: null));
 
         Assert.False(viewModel.CanRestartAssistant);
+
+        var gemini = new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini");
+        var firstRun = Dispatcher.UIThread.Invoke(() => _Dialog(
+            assistant: null,
+            setup: new AssistantProfileSetup([gemini], gemini, static (_, _) => Task.CompletedTask)));
+        Assert.True(firstRun.Profile.IsPluginProviderMissing);
+        Assert.True(firstRun.CanSetUpLater);
+        Assert.False(firstRun.ShowSave);
     }
 
     /// <summary>A record shaped like a plugin profile: its start defaults live in OptionDefaults, which is where the assistant's launch reads them (<c>AssistantSessionHost._LaunchOptions</c>).</summary>
@@ -240,7 +249,8 @@ public class AssistantProfileDialogTests
         AssistantProfileSlot? slot = null,
         IAssistantProfileStore? slotStore = null,
         IReadOnlyList<SessionProfile>? profiles = null,
-        IAssistantSessionHost? assistant = null)
+        IAssistantSessionHost? assistant = null,
+        AssistantProfileSetup? setup = null)
     {
         var sessionProfiles = Substitute.For<ISessionProfileStore>();
         sessionProfiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles ?? []);
@@ -250,7 +260,8 @@ public class AssistantProfileDialogTests
             sessionProfiles,
             assistant,
             pluginProviderRegistry: new PluginRegistrations(_Registry()),
-            pluginConfigViews: _ConfigViews());
+            pluginConfigViews: _ConfigViews(),
+            setup: setup);
     }
 
     /// <summary>

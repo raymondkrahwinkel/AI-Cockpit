@@ -27,10 +27,9 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
         Row = row;
         Detection = detection;
 
-        // A suggestion, never a decision already made (AC-510[b] criterion 4): only a CLI provider this host actually
-        // found, not incompatible, starts checked — Skip/Next must be free to leave it exactly that, a suggestion
-        // nobody acted on.
-        IsSelected = detection == ProviderDetectionState.Found && !row.IsIncompatible && !row.IsInstalled;
+        // Detection is information, not a choice. Starting a Found row checked made an untouched provider look like
+        // the operator's assistant choice after restart (AC-1673).
+        IsSelected = false;
     }
 
     public StorePluginRowViewModel Row { get; }

@@ -3,9 +3,11 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
+using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.ViewTests;
@@ -41,17 +43,17 @@ public sealed class FirstStartJourney
         var work = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-first-start-{Guid.NewGuid():N}")).FullName;
         try
         {
-            await Step.Run("Claude is installed and approved, then the restarted wizard resumes with it as the assistant", async () =>
+            await Step.Run("Gemini and Codex are installed, then the operator chooses the assistant after restart", async () =>
             {
-                var stateRoot = Directory.CreateDirectory(Path.Combine(work, "claude-assistant")).FullName;
+                var stateRoot = Directory.CreateDirectory(Path.Combine(work, "assistant-choice")).FullName;
                 var restarts = new _Restarts();
                 Task firstShown = Task.CompletedTask;
                 await using (var first = JourneyHost.Desktop(
-                    root => File.WriteAllText(CockpitConfigPath.For(root), """{"SeededBundledPlugins":["claude-provider"]}"""),
+                    root => File.WriteAllText(CockpitConfigPath.For(root), """{"SeededBundledPlugins":["claude-provider","cli-agent-provider","gemini-provider"]}"""),
                     stateRoot,
                     services =>
                     {
-                        services.AddSingleton<IPluginProvisioningService>(new _ClaudeProvisioner());
+                        services.AddSingleton<IPluginProvisioningService>(new _ProviderProvisioner());
                         services.AddSingleton<IAppRestartService>(restarts);
                     }))
                 {
@@ -74,36 +76,60 @@ public sealed class FirstStartJourney
                         wizard.NextCommand.Execute(null);
                         var viewModel = providers.ViewModel ?? throw new InvalidOperationException("The provider step has no view model.");
                         viewModel.Providers.Clear();
-                        var version = new PluginStoreVersion("1.0.0", "claude-provider.zip", 3, null, null, null);
-                        var entry = new PluginStoreEntry(
-                            "claude-provider", "Claude Code", "Claude on this machine", "Cockpit", "1.0.0", [version], PluginStoreEntry.ProviderCategory);
-                        viewModel.Providers.Add(new ProviderPickerRowViewModel(
-                            new Cockpit.App.ViewModels.StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.invalid"), null),
-                            ProviderDetectionState.Found));
+
+                        ProviderPickerRowViewModel Row(string id, string name, ProviderDetectionState detection) => new(
+                            new Cockpit.App.ViewModels.StorePluginRowViewModel(
+                                new PluginStoreEntry(id, name, name, "Cockpit", "1.0.0", [new PluginStoreVersion("1.0.0", $"{id}.zip", 3, null, null, null)], PluginStoreEntry.ProviderCategory),
+                                PluginStoreConfig.Remote("https://store.invalid"), null),
+                            detection);
+
+                        var claude = Row("claude-provider", "Claude Code", ProviderDetectionState.Found);
+                        Assert.False(claude.IsSelected);
+                        viewModel.Providers.Add(claude);
+                        var gemini = Row("gemini-provider", "Gemini / OpenAI Provider", ProviderDetectionState.NotApplicable);
+                        gemini.IsSelected = true;
+                        viewModel.Providers.Add(gemini);
+                        var codex = Row("cli-agent-provider", "Codex (ChatGPT)", ProviderDetectionState.NotFound);
+                        codex.IsSelected = true;
+                        viewModel.Providers.Add(codex);
                         return Task.CompletedTask;
                     });
 
                     var consentOpened = new TaskCompletionSource<PluginConsentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
                     using var consentWatch = Window.WindowOpenedEvent.AddClassHandler<PluginConsentDialog>((dialog, _) => consentOpened.TrySetResult(dialog));
+                    string? geminiConsentSha = null;
                     var install = HeadlessAvalonia.RunAsync(async () =>
                     {
                         var viewModel = providers.ViewModel ?? throw new InvalidOperationException("The provider step has no view model.");
                         await viewModel.InstallSelectedCommand.ExecuteAsync(null);
                     });
-                    if (await Task.WhenAny(consentOpened.Task, install) == install)
+                    for (var index = 0; index < 2; index++)
                     {
-                        await install;
-                        var message = providers.ViewModel?.SummaryMessage ?? "The provider step has no message.";
-                        throw new InvalidOperationException($"The consent question did not open: {message}");
-                    }
+                        if (await Task.WhenAny(consentOpened.Task, install) == install)
+                        {
+                            await install;
+                            var message = providers.ViewModel?.SummaryMessage ?? "The provider step has no message.";
+                            throw new InvalidOperationException($"Consent question {index + 1} did not open: {message}");
+                        }
 
-                    var consent = await consentOpened.Task.WaitAsync(Until.Ceiling);
-                    await HeadlessAvalonia.RunAsync(() =>
-                    {
-                        consent.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Enable"))
-                            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                        return Task.CompletedTask;
-                    });
+                        var consent = await consentOpened.Task.WaitAsync(Until.Ceiling);
+                        consentOpened = new TaskCompletionSource<PluginConsentDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var consentInfo = HeadlessAvalonia.Run(() => Assert.IsType<PluginConsentInfo>(consent.DataContext));
+                        if (index == 0)
+                        {
+                            var livePlugin = (await first.Services.GetRequiredService<IPluginAdministration>().GetInstalledAsync())
+                                .Single(plugin => plugin.Discovered.FolderId == "gemini-provider");
+                            Assert.NotEqual(livePlugin.Discovered.Sha256, consentInfo.Sha256);
+                            geminiConsentSha = consentInfo.Sha256;
+                        }
+
+                        await HeadlessAvalonia.RunAsync(() =>
+                        {
+                            consent.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, "Enable"))
+                                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            return Task.CompletedTask;
+                        });
+                    }
                     await install;
 
                     Assert.True(restarts.Asked);
@@ -112,11 +138,21 @@ public sealed class FirstStartJourney
                     var saved = Assert.IsType<FirstRunWizardResumeState>(
                         await first.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync());
                     Assert.Equal(25, saved.StartAtOrder);
-                    Assert.Equal("claude", saved.AssistantProviderId);
-                    Assert.Equal(["claude-provider"], saved.Providers.Select(provider => provider.Id));
+                    Assert.Null(saved.AssistantProviderId);
+                    Assert.Equal(["gemini-provider", "cli-agent-provider"], saved.Providers.Select(provider => provider.Id));
+                    var installed = await first.Services.GetRequiredService<IPluginAdministration>().GetInstalledAsync();
+                    Assert.Equal(
+                        geminiConsentSha,
+                        installed.Single(plugin => plugin.Discovered.FolderId == "gemini-provider").Registration?.PinnedSha256);
                 }
 
                 await using var restarted = JourneyHost.Desktop(stateRoot: stateRoot);
+                var restartState = await restarted.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync();
+                if (FirstRunWizardResume.NeedsLoadedProviders(restartState))
+                {
+                    await restarted.StartDesktopAsync();
+                }
+
                 var resumedOpened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var resumedWatch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => resumedOpened.TrySetResult(wizard));
                 Task resumedShown = Task.CompletedTask;
@@ -128,10 +164,51 @@ public sealed class FirstStartJourney
                 var resumedWindow = await resumedOpened.Task.WaitAsync(Until.Ceiling);
                 var resumedWizard = HeadlessAvalonia.Run(() => Assert.IsType<FirstRunWizardViewModel>(resumedWindow.DataContext));
                 var assistant = restarted.Services.GetServices<IFirstRunWizardStep>().OfType<AssistantStep>().Single().ViewModel;
-                await Until.Holds(assistant, () => assistant.AssistantOptions.IsEnabled && assistant.DeferredAssistantName == "Claude Code");
                 Assert.Equal("Your assistant", HeadlessAvalonia.Run(() => resumedWizard.StepBar.Single(step => step.IsCurrent).Title));
-                Assert.DoesNotContain("Claude Code", assistant.ChosenProviders);
+                Assert.False(assistant.AssistantOptions.IsEnabled);
+                Assert.Null(assistant.DeferredAssistantName);
                 Assert.False(assistant.OnlyLocalProvidersAvailable);
+                HeadlessAvalonia.Run(() => assistant.AssistantOptions.IsEnabled = true);
+
+                var profileOpened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var profileWatch = Window.WindowOpenedEvent.AddClassHandler<AssistantProfileDialog>((dialog, _) => profileOpened.TrySetResult(dialog));
+                var resumedDialogs = Assert.IsType<SessionDialogService>(restarted.Services.GetRequiredService<ISessionDialogService>());
+                resumedDialogs.OwnerWindow = () => resumedWindow;
+                Task profileShown = Task.CompletedTask;
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    profileShown = assistant.EditProfileCommand.ExecuteAsync(null);
+                    return Task.CompletedTask;
+                });
+                var profileDialog = await profileOpened.Task.WaitAsync(Until.Ceiling);
+                var providerPicker = HeadlessAvalonia.Run(() => profileDialog.GetLogicalDescendants().OfType<ComboBox>()
+                    .Single(combo => combo.ItemsSource?.Cast<SessionProviderOption>().Any() == true));
+                var providerOptions = HeadlessAvalonia.Run(() => providerPicker.ItemsSource?.Cast<SessionProviderOption>().ToList() ?? []);
+                Assert.Equal(["Ollama", "LM Studio", "Gemini", "OpenAI", "Codex (CLI)"], providerOptions.Select(option => option.Label));
+                Assert.DoesNotContain(providerOptions, option => option.Label.Contains("Claude", StringComparison.Ordinal));
+                Assert.Null(HeadlessAvalonia.Run(() => providerPicker.SelectedItem));
+                var profileViewModel = HeadlessAvalonia.Run(() => Assert.IsType<AssistantProfileDialogViewModel>(profileDialog.DataContext));
+                HeadlessAvalonia.Run(() =>
+                {
+                    providerPicker.SelectedItem = providerOptions.Single(option => option.Label == "Gemini");
+                    Dispatcher.UIThread.RunJobs();
+                });
+                Assert.True(profileViewModel.CanSetUpLater);
+                Assert.False(profileViewModel.Profile.IsPluginProviderMissing);
+                Assert.NotNull(profileViewModel.Profile.PluginConfigView);
+                var fieldLabels = HeadlessAvalonia.Run(() => profileDialog.GetVisualDescendants().OfType<TextBlock>()
+                    .Where(text => text.IsEffectivelyVisible)
+                    .Select(text => text.Text)
+                    .ToList());
+                Assert.Contains("API key", fieldLabels);
+                Assert.Contains("Model", fieldLabels);
+                Assert.DoesNotContain("Base URL", fieldLabels);
+                Assert.DoesNotContain("Timeout (seconds)", fieldLabels);
+                Assert.True(profileViewModel.ShowSave);
+                await HeadlessAvalonia.RunAsync(() => profileViewModel.SetUpLaterCommand.ExecuteAsync(null));
+                await profileShown.WaitAsync(Until.Ceiling);
+                Assert.True(assistant.AssistantOptions.IsEnabled);
+                Assert.Null(assistant.DeferredAssistantName);
 
                 await HeadlessAvalonia.RunAsync(() =>
                 {
@@ -147,9 +224,9 @@ public sealed class FirstStartJourney
                 await resumedShown.WaitAsync(Until.Ceiling);
                 Assert.Null(await restarted.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync());
 
-                await restarted.StartDesktopAsync();
                 var slot = await restarted.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync();
-                Assert.Equal(ClaudePluginProfile.ProviderId, Assert.IsType<PluginProviderConfig>(slot.Profile?.ProviderConfig).ProviderId);
+                var provider = Assert.IsType<PluginProviderConfig>(slot.Profile?.ProviderConfig);
+                Assert.Equal("gemini-provider.gemini", provider.ProviderId);
                 Assert.True((await restarted.Services.GetRequiredService<IAssistantSettingsStore>().LoadAsync()).IsEnabled);
             });
 
@@ -359,33 +436,73 @@ public sealed class FirstStartJourney
         }
     }
 
-    private sealed class _ClaudeProvisioner : IPluginProvisioningService
+    private sealed class _ProviderProvisioner : IPluginProvisioningService
     {
         public Task<PluginProvisionResult> InstallAsync(
             PluginProvisionRequest request,
             int hostAbstractionsMajor,
             Version? hostVersion = null,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(_Install(request));
+            _InstallAsync(request, cancellationToken);
 
-        public Task<PluginProvisionBatchResult> InstallManyAsync(
+        public async Task<PluginProvisionBatchResult> InstallManyAsync(
             IReadOnlyList<PluginProvisionRequest> requests,
             int hostAbstractionsMajor,
             Version? hostVersion = null,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new PluginProvisionBatchResult([.. requests.Select(_Install)]));
+            CancellationToken cancellationToken = default)
+        {
+            var results = new List<PluginProvisionResult>();
+            foreach (var request in requests)
+            {
+                results.Add(await _InstallAsync(request, cancellationToken));
+            }
 
-        private static PluginProvisionResult _Install(PluginProvisionRequest request)
+            return new PluginProvisionBatchResult(results);
+        }
+
+        private static async Task<PluginProvisionResult> _InstallAsync(
+            PluginProvisionRequest request,
+            CancellationToken cancellationToken)
         {
             var source = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName, request.Id);
-            var target = Directory.CreateDirectory(Path.Combine(PluginBootstrap.PluginsRoot, request.Id)).FullName;
+            var target = Path.Combine(PluginBootstrap.PluginsRoot, request.Id);
+            var staged = request.Id == "gemini-provider";
+            var installedTarget = staged
+                ? Path.Combine(PluginBootstrap.PluginsRoot, ".pending-updates", request.Id)
+                : target;
+            _CopyPlugin(source, installedTarget);
+
+            if (staged)
+            {
+                _CopyPlugin(source, target);
+                await File.WriteAllTextAsync(Path.Combine(target, "old-marker.txt"), "old bytes", cancellationToken);
+            }
+
+            var sha256 = await PluginClosureHash.OfInstalledFolderAsync(installedTarget, cancellationToken);
+            var manifestJson = await File.ReadAllTextAsync(Path.Combine(source, "plugin.json"), cancellationToken);
+            if (!PluginManifest.TryParse(manifestJson, out var manifest, out var error) || manifest is null)
+            {
+                throw new InvalidOperationException(error ?? $"Could not parse {request.Id}'s manifest.");
+            }
+
+            return new PluginProvisionResult(
+                staged ? PluginProvisionOutcome.Staged : PluginProvisionOutcome.Installed,
+                request.Id,
+                request.Name,
+                null,
+                null,
+                request.Id,
+                sha256,
+                manifest);
+        }
+
+        private static void _CopyPlugin(string source, string target)
+        {
+            Directory.CreateDirectory(target);
             foreach (var file in Directory.EnumerateFiles(source))
             {
                 File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
             }
-
-            return new PluginProvisionResult(
-                PluginProvisionOutcome.Installed, request.Id, request.Name, null, null, request.Id, "journey-sha");
         }
     }
 

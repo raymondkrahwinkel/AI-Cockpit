@@ -61,6 +61,19 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
         _fetchModels.Click += (_, _) => _ = _FetchModelsAsync();
         _modelStatus.IsVisible = false;
         _timeoutStatus.IsVisible = false;
+        var advancedFields = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                _Label("Base URL"),
+                _baseUrl,
+                _Label("Timeout (seconds)"),
+                _timeoutSeconds,
+                _timeoutStatus,
+            },
+        };
+        advancedFields.Classes.Add("advanced-provider-field");
 
         View = new StackPanel
         {
@@ -73,11 +86,7 @@ internal sealed class OpenAiCompatProviderConfigView : IPluginProviderConfigView
                 _Label("Model"),
                 _ModelRow(),
                 _modelStatus,
-                _Label("Base URL"),
-                _baseUrl,
-                _Label("Timeout (seconds)"),
-                _timeoutSeconds,
-                _timeoutStatus,
+                advancedFields,
             },
         };
     }

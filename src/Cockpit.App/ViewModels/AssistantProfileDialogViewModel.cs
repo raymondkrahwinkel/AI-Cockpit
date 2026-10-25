@@ -1,6 +1,7 @@
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Assistant;
@@ -28,6 +29,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly IMcpToolTokenEstimator? _tokenEstimator;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
+    private readonly AssistantProfileSetup? _setup;
 
     private IReadOnlyList<string> _availableMcpServerNames = [];
 
@@ -64,16 +66,36 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // False in the design-time graph and in a cockpit that never wired a host.
     public bool CanRestartAssistant => _assistant is not null;
 
+    public bool IsFirstRunSetup => _setup is not null;
+
+    public bool ShowAdvancedProfileFields => !IsFirstRunSetup;
+
+    public bool CanSetUpLater => IsFirstRunSetup && Profile.SelectedProvider.PluginProviderId is { Length: > 0 };
+
+    public bool ShowSave => !IsFirstRunSetup || !Profile.IsPluginProviderMissing;
+
     // The plugin option rows, MCP rows and variable are staged directly rather than resolved: a headless render has no
     // plugin registry and no MCP catalog, so a scene built from the real path would show the empty half of every block
     // and prove nothing about the parts this dialog exists for.
-    public AssistantProfileDialogViewModel(IAssistantSessionHost? assistant = null, IPluginRegistrations? pluginProviderRegistry = null, IPluginProviderConfigViews? pluginConfigViews = null)
+    public AssistantProfileDialogViewModel(
+        IAssistantSessionHost? assistant = null,
+        IPluginRegistrations? pluginProviderRegistry = null,
+        IPluginProviderConfigViews? pluginConfigViews = null,
+        AssistantProfileSetup? setup = null)
     {
+        _setup = setup;
         _assistant = assistant;
         _pluginProviderRegistry = pluginProviderRegistry;
-        _providers = pluginProviderRegistry is null
+        _pluginConfigViews = pluginConfigViews;
+        _providers = setup?.Providers ?? (pluginProviderRegistry is null
             ? SessionProviderCatalog.Providers
-            : SessionProviderCatalog.AllProviders(pluginProviderRegistry);
+            : SessionProviderCatalog.AllProviders(pluginProviderRegistry));
+
+        if (setup is not null)
+        {
+            _profile = _Editable(_EmptyProfile(setup.PreferredProvider));
+            return;
+        }
 
         // Fase 4 only understands a Claude profile as one of these, and the legacy shape resolves to no provider option
         // at all — it falls back to Ollama and renders a local-model form under a label saying Claude, which is exactly
@@ -115,8 +137,10 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         IMcpServerCatalog? mcpServerCatalog = null,
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
-        IPluginProviderConfigViews? pluginConfigViews = null)
+        IPluginProviderConfigViews? pluginConfigViews = null,
+        AssistantProfileSetup? setup = null)
     {
+        _setup = setup;
         _pluginConfigViews = pluginConfigViews;
         _slotStore = slotStore;
         _sessionProfileStore = sessionProfileStore;
@@ -126,12 +150,12 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         _mcpServerCatalog = mcpServerCatalog;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;
-        _providers = pluginProviderRegistry is null
+        _providers = setup?.Providers ?? (pluginProviderRegistry is null
             ? SessionProviderCatalog.Providers
-            : SessionProviderCatalog.AllProviders(pluginProviderRegistry);
+            : SessionProviderCatalog.AllProviders(pluginProviderRegistry));
 
         // Replaced by LoadAsync; assigned here so the field is never null between construction and the load.
-        _profile = _Editable(new SessionProfile(AssistantProfileSlot.DisplayName, new ClaudeConfig(string.Empty)));
+        _profile = _Editable(_EmptyProfile(setup?.PreferredProvider));
     }
 
     // Reads the slot, the MCP catalog and the profiles that can be copied in.
@@ -161,7 +185,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
             // A slot that has never been set up opens on a blank Claude-shaped record rather than refusing to open:
             // this dialog is where an assistant profile comes into being, so "there is none yet" is its empty state,
             // not an error. Its own display name is the starting label — the assistant is what it is for.
-            Profile = _Editable(slot.Profile ?? new SessionProfile(AssistantProfileSlot.DisplayName, new ClaudeConfig(string.Empty)));
+            Profile = _Editable(slot.Profile ?? _EmptyProfile(_setup?.PreferredProvider));
             ReplacesStandingInstruction = slot.ReplacesStandingInstruction;
             StatusMessage = slot.Profile is null ? slot.UnsetReason ?? string.Empty : string.Empty;
         }
@@ -211,6 +235,18 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke();
 
+    [RelayCommand]
+    private async Task SetUpLaterAsync(CancellationToken cancellationToken)
+    {
+        if (_setup is null || !CanSetUpLater)
+        {
+            return;
+        }
+
+        await _setup.SetUpLaterAsync(Profile.ToProfile(), cancellationToken).ConfigureAwait(true);
+        CloseRequested?.Invoke();
+    }
+
     // Writes the slot, or says why it could not. Returns whether anything was persisted.
     private async Task<bool> _PersistAsync(CancellationToken cancellationToken)
     {
@@ -244,4 +280,38 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         _tokenEstimator,
         _ttyProviderResolver,
         pluginConfigViews: _pluginConfigViews);
+
+    private static SessionProfile _EmptyProfile(SessionProviderOption? preferred) => new(
+        AssistantProfileSlot.DisplayName,
+        preferred switch
+        {
+            { Value: SessionProvider.Ollama } => new OllamaConfig(SessionProviderCatalog.DefaultBaseUrl(SessionProvider.Ollama), string.Empty, null),
+            { Value: SessionProvider.LmStudio } => new LmStudioConfig(SessionProviderCatalog.DefaultBaseUrl(SessionProvider.LmStudio), string.Empty, null, null),
+            { Value: SessionProvider.Plugin, PluginProviderId: { Length: > 0 } providerId } => new PluginProviderConfig(providerId, string.Empty),
+            _ => new PluginProviderConfig(string.Empty, string.Empty),
+        });
+
+    partial void OnProfileChanging(EditableProfileViewModel? oldValue, EditableProfileViewModel newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.PropertyChanged -= _OnProfilePropertyChanged;
+        }
+    }
+
+    partial void OnProfileChanged(EditableProfileViewModel value)
+    {
+        value.PropertyChanged += _OnProfilePropertyChanged;
+        OnPropertyChanged(nameof(CanSetUpLater));
+        OnPropertyChanged(nameof(ShowSave));
+    }
+
+    private void _OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(EditableProfileViewModel.SelectedProvider) or nameof(EditableProfileViewModel.PluginConfigView))
+        {
+            OnPropertyChanged(nameof(CanSetUpLater));
+            OnPropertyChanged(nameof(ShowSave));
+        }
+    }
 }
