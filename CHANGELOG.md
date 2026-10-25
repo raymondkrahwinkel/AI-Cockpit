@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session the assistant started that ends a turn without saying done, blocked or asking, gets one nudge
+  to carry on; stalling again tells the assistant (`stalled`, with its last lines) instead of nudging twice. Ending on a
+  notify, an open question or permission, or a run still going counts as a closing. Sessions you start yourself are left alone.
 - added: every session the cockpit starts is told how a turn ends — done, blocked or a question, never an announced
   next step — that mail and run verdicts arrive in its inbox and wake it (so no sleep loops), and to look up a tool's
   schema when it fails unclearly. No briefing has to remember it any more; a project's own instructions still come first.

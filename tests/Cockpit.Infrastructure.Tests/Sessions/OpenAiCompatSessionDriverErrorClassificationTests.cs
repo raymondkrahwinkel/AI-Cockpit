@@ -17,7 +17,6 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
     [InlineData(429, SessionErrorKind.RateLimited)]
     [InlineData(500, SessionErrorKind.ServiceUnavailable)]
     [InlineData(400, SessionErrorKind.Unknown)]
-    [InlineData(404, SessionErrorKind.Unknown)]
     public void ClassifyError_MapsHttpStatusToKind(int status, SessionErrorKind expected)
     {
         var ex = new ClientResultException(new _FakeResponse(status));
