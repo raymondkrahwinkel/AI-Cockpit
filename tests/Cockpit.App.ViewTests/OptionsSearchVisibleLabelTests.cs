@@ -38,16 +38,25 @@ public class OptionsSearchVisibleLabelTests
         dialog.Close();
     });
 
+    // Layer 2 (view behaviour): a flat label-then-box layout, as the YouTrack instance card has, keeps each label with its box.
     [Fact]
     public void SearchingAVisiblePluginLabel_ShowsOnlyTheMatchingPluginRow() => HeadlessAvalonia.Run(() =>
     {
         var vm = new CockpitViewModel();
+        var instanceUrl = new TextBox { Text = "https://example.youtrack.cloud/api" };
+        var token = new TextBox();
+        var trailingHint = new TextBlock { Text = "Applies to every session." };
         ((IPluginContributionSink)vm).AddPluginSettings("sample", "Sample plugin", () => new StackPanel
         {
             Children =
             {
                 new CheckBox { Content = "AC-1087 plugin-only label" },
                 new CheckBox { Content = "Send diagnostic events" },
+                new TextBlock { Text = "Instance base URL" },
+                instanceUrl,
+                new TextBlock { Text = "Permanent token" },
+                token,
+                trailingHint,
             },
         });
         vm.BeginOptionsEdit();
@@ -67,6 +76,19 @@ public class OptionsSearchVisibleLabelTests
 
         Assert.True(rows["AC-1087 plugin-only label"].IsEffectivelyVisible);
         Assert.False(rows["Send diagnostic events"].IsEffectivelyVisible);
+        Assert.Empty(_VisibleTexts(dialog, "Instance base URL", "Permanent token", "Applies to every session."));
+        Assert.False(instanceUrl.IsEffectivelyVisible);
+
+        vm.OptionsSearchText = "Instance base URL";
+        dialog.UpdateLayout();
+        Assert.True(instanceUrl.IsEffectivelyVisible);
+        Assert.Equal(["Instance base URL"], _VisibleTexts(dialog, "Instance base URL", "Permanent token", "Applies to every session."));
+        Assert.False(token.IsEffectivelyVisible);
+
+        vm.OptionsSearchText = "Permanent token";
+        dialog.UpdateLayout();
+        Assert.True(token.IsEffectivelyVisible);
+        Assert.True(trailingHint.IsEffectivelyVisible);
 
         dialog.Close();
     });
@@ -134,6 +156,12 @@ public class OptionsSearchVisibleLabelTests
 
         dialog.Close();
     });
+
+    private static List<string?> _VisibleTexts(Window dialog, params string[] texts) =>
+        dialog.GetVisualDescendants().OfType<TextBlock>()
+            .Where(block => texts.Contains(block.Text) && block.IsEffectivelyVisible)
+            .Select(block => block.Text)
+            .ToList();
 
     private sealed class UsageThresholdStore : IUsageThresholdStore
     {

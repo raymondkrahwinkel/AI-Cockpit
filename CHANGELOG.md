@@ -181,6 +181,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: searching Options no longer leaves a plugin's field labels on screen without their boxes (the YouTrack
+  instance cards showed only "Label", "Instance base URL" and "Permanent token"). A label now shows and hides with
+  the field it names, and the hint below a card's last field goes with that field.
 - fixed: a Codex session in a terminal pane now gets the project's instructions and the cockpit's standing ones;
   it used to start without any of them.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running
