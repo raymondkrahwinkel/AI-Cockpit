@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: every session the cockpit starts is told how a turn ends — done, blocked or a question, never an announced
+  next step — that mail and run verdicts arrive in its inbox and wake it (so no sleep loops), and to look up a tool's
+  schema when it fails unclearly. No briefing has to remember it any more; a project's own instructions still come first.
 - added: **reminders** in Schedules, once or repeating. At its moment a reminder goes off as a cockpit notification
   with **Done**, **Snooze 10 min** and **1 hour**, also with the Schedules screen closed or hidden, and on every
   chosen channel, with buttons where the channel has them (Discord) or a text reply. One missed while the computer
@@ -175,6 +178,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a Codex session in a terminal pane now gets the project's instructions and the cockpit's standing ones;
+  it used to start without any of them.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running
   them when they inherit a Git repository override.
 - fixed: the **Quick note** window closes again once the note is saved, as it did before; it stayed open after every

@@ -92,6 +92,15 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
             arguments.AddRange(mcpConfigArgs);
         }
 
+        // AC-1705: the TUI's counterpart of the app-server's `developerInstructions`, so the host's appended prompt
+        // (project, base instruction, statusline) reaches a Codex pane on both routes. A global `-c`, like the MCP ones.
+        if (CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, null) is { } instructions
+            && !string.IsNullOrWhiteSpace(instructions))
+        {
+            arguments.Add("-c");
+            arguments.Add($"developer_instructions={CodexMcpConfig.TomlString(instructions.Trim())}");
+        }
+
         if (resume is not null)
         {
             arguments.Add("resume");
