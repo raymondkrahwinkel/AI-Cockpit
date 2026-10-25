@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Services;
@@ -146,6 +147,12 @@ public sealed class FirstStartJourney
                 }
 
                 await using var restarted = JourneyHost.Desktop(stateRoot: stateRoot);
+                var restartState = await restarted.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync();
+                if (FirstRunWizardResume.NeedsLoadedProviders(restartState))
+                {
+                    await restarted.StartDesktopAsync();
+                }
+
                 var resumedOpened = new TaskCompletionSource<FirstRunWizardWindow>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var resumedWatch = Window.WindowOpenedEvent.AddClassHandler<FirstRunWizardWindow>((wizard, _) => resumedOpened.TrySetResult(wizard));
                 Task resumedShown = Task.CompletedTask;
@@ -161,6 +168,7 @@ public sealed class FirstStartJourney
                 Assert.False(assistant.AssistantOptions.IsEnabled);
                 Assert.Null(assistant.DeferredAssistantName);
                 Assert.False(assistant.OnlyLocalProvidersAvailable);
+                HeadlessAvalonia.Run(() => assistant.AssistantOptions.IsEnabled = true);
 
                 var profileOpened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var profileWatch = Window.WindowOpenedEvent.AddClassHandler<AssistantProfileDialog>((dialog, _) => profileOpened.TrySetResult(dialog));
@@ -186,13 +194,21 @@ public sealed class FirstStartJourney
                     Dispatcher.UIThread.RunJobs();
                 });
                 Assert.True(profileViewModel.CanSetUpLater);
-                Assert.True(profileViewModel.Profile.IsPluginProviderMissing);
+                Assert.False(profileViewModel.Profile.IsPluginProviderMissing);
+                Assert.NotNull(profileViewModel.Profile.PluginConfigView);
+                var fieldLabels = HeadlessAvalonia.Run(() => profileDialog.GetVisualDescendants().OfType<TextBlock>()
+                    .Where(text => text.IsEffectivelyVisible)
+                    .Select(text => text.Text)
+                    .ToList());
+                Assert.Contains("API key", fieldLabels);
+                Assert.Contains("Model", fieldLabels);
+                Assert.DoesNotContain("Base URL", fieldLabels);
+                Assert.DoesNotContain("Timeout (seconds)", fieldLabels);
+                Assert.True(profileViewModel.ShowSave);
                 await HeadlessAvalonia.RunAsync(() => profileViewModel.SetUpLaterCommand.ExecuteAsync(null));
                 await profileShown.WaitAsync(Until.Ceiling);
                 Assert.True(assistant.AssistantOptions.IsEnabled);
-                Assert.Equal("Gemini", assistant.DeferredAssistantName);
-                var deferred = await restarted.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync();
-                Assert.Equal("gemini-provider.gemini", deferred?.AssistantProviderId);
+                Assert.Null(assistant.DeferredAssistantName);
 
                 await HeadlessAvalonia.RunAsync(() =>
                 {
@@ -208,7 +224,6 @@ public sealed class FirstStartJourney
                 await resumedShown.WaitAsync(Until.Ceiling);
                 Assert.Null(await restarted.Services.GetRequiredService<IFirstRunWizardStateStore>().GetResumeStateAsync());
 
-                await restarted.StartDesktopAsync();
                 var slot = await restarted.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync();
                 var provider = Assert.IsType<PluginProviderConfig>(slot.Profile?.ProviderConfig);
                 Assert.Equal("gemini-provider.gemini", provider.ProviderId);

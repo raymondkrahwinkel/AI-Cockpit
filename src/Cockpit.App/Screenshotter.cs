@@ -874,7 +874,9 @@ internal static partial class Screenshotter
             ],
             openProviderList ? null : gemini,
             static (_, _) => Task.CompletedTask);
-        var viewModel = new AssistantProfileDialogViewModel(setup: setup);
+        var configViews = new Plugins.PluginProviderConfigViews();
+        configViews.Register("gemini-provider.gemini", static _ => new _FirstRunGeminiConfigView());
+        var viewModel = new AssistantProfileDialogViewModel(pluginConfigViews: configViews, setup: setup);
         var dialog = new AssistantProfileDialog { DataContext = viewModel };
         if (openProviderList)
         {
@@ -884,6 +886,27 @@ internal static partial class Screenshotter
         }
 
         return dialog;
+    }
+
+    private sealed class _FirstRunGeminiConfigView : IPluginProviderConfigView
+    {
+        public Control View { get; } = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "API key", FontSize = 11 },
+                new TextBox { PasswordChar = '•', Watermark = "Paste your Gemini API key" },
+                new TextBlock { Text = "Model", FontSize = 11 },
+                new AutoCompleteBox { PlaceholderText = "Type a model id" },
+            },
+        };
+
+        public bool TryGetConfigJson(out string configJson)
+        {
+            configJson = "{}";
+            return true;
+        }
     }
 
     private sealed class _SceneProviderStep(ViewModels.Onboarding.ProviderStepViewModel viewModel) : Views.Onboarding.IFirstRunWizardStep

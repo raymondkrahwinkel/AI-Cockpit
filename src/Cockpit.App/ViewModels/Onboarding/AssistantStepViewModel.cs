@@ -18,6 +18,7 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     private readonly Func<ProviderStepViewModel?>? _chosenProviders;
     private readonly IFirstRunWizardStateStore? _wizardState;
     private readonly Action<FirstRunWizardResumeState>? _rememberDeferred;
+    private readonly Func<CancellationToken, Task<bool>>? _applyDeferred;
     private readonly Task _refreshTask;
     private FirstRunWizardResumeState? _resumeState;
 
@@ -89,13 +90,15 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         IPluginRegistrations? pluginProviderRegistry,
         Func<ProviderStepViewModel?>? chosenProviders = null,
         IFirstRunWizardStateStore? wizardState = null,
-        Action<FirstRunWizardResumeState>? rememberDeferred = null)
+        Action<FirstRunWizardResumeState>? rememberDeferred = null,
+        Func<CancellationToken, Task<bool>>? applyDeferred = null)
     {
         _dialogService = dialogService;
         _registry = pluginProviderRegistry;
         _chosenProviders = chosenProviders;
         _wizardState = wizardState;
         _rememberDeferred = rememberDeferred;
+        _applyDeferred = applyDeferred;
         AssistantOptions = new AssistantOptionsViewModel(settingsStore, profileStore);
         AssistantOptions.PropertyChanged += (_, args) =>
         {
@@ -181,6 +184,14 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         await _wizardState.SaveResumeStateAsync(updated, cancellationToken).ConfigureAwait(true);
         _resumeState = updated;
         _rememberDeferred?.Invoke(updated);
+        if (_applyDeferred is not null && await _applyDeferred(cancellationToken).ConfigureAwait(true))
+        {
+            DeferredAssistantName = null;
+            await AssistantOptions.RefreshAsync(cancellationToken).ConfigureAwait(true);
+            NextBlockedChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         DeferredAssistantName = providerName;
         AssistantOptions.IsEnabled = true;
         NextBlockedChanged?.Invoke(this, EventArgs.Empty);

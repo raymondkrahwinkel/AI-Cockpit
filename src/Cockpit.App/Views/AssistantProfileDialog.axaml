@@ -38,7 +38,8 @@
                     <Button Content="Cancel" Command="{Binding CancelCommand}"/>
                     <Button Content="Set this up later" Command="{Binding SetUpLaterCommand}"
                             IsVisible="{Binding CanSetUpLater}"/>
-                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"
+                            IsVisible="{Binding ShowSave}"/>
                 </StackPanel>
             </Grid>
         </Border>

@@ -25,7 +25,8 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
             pluginProviderRegistry,
             () => providerStep.ViewModel,
             wizardState,
-            coordinator.Remember))
+            coordinator.Remember,
+            coordinator.ApplyAsync))
     {
     }
 

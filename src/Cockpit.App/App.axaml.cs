@@ -168,7 +168,17 @@ public partial class App : Application
         // which window shows next, so it has to be known before that window is built rather than raced against it.
         if (_NeedsOnboarding())
         {
-            _ShowOnboardingWizard(desktop);
+            var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
+            var resume = _ReadFirstRunResume(stateStore);
+            if (Program.Provisioning?.Failure is null && FirstRunWizardResume.NeedsLoadedProviders(resume))
+            {
+                _StartCockpit(desktop);
+                _ = _ShowResumedOnboardingAsync();
+            }
+            else
+            {
+                _ShowOnboardingWizard(desktop, stateStore, resume);
+            }
 
             return;
         }
@@ -194,14 +204,11 @@ public partial class App : Application
 
     // Keep the wizard open until the cockpit is shown so desktop lifetime never sees zero windows. Building it
     // here avoids IFirstRunWizard's close-before-return contract (AC-512); Closing covers every exit route.
-    private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
+    private static FirstRunWizardResumeState? _ReadFirstRunResume(IFirstRunWizardStateStore stateStore)
     {
-        var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
-        IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
-        FirstRunWizardResumeState? resume = null;
         try
         {
-            resume = stateStore.GetResumeStateAsync().GetAwaiter().GetResult();
+            return stateStore.GetResumeStateAsync().GetAwaiter().GetResult();
         }
         catch (Exception exception)
         {
@@ -209,7 +216,30 @@ public partial class App : Application
                 exception,
                 "Reading the first-run wizard resume state failed; setup will start without it.");
             // A damaged hand-off must not keep first start from opening; the operator can make the choices again.
+            return null;
         }
+    }
+
+    private static async Task _ShowResumedOnboardingAsync()
+    {
+        try
+        {
+            await Program.Services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Reopening first-start setup after provider loading failed.");
+        }
+    }
+
+    private void _ShowOnboardingWizard(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        IFirstRunWizardStateStore stateStore,
+        FirstRunWizardResumeState? resume)
+    {
+        IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
 
         FirstRunWizardResume.Apply(
             steps,

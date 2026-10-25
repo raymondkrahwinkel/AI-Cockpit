@@ -72,6 +72,8 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
     public bool CanSetUpLater => IsFirstRunSetup && Profile.SelectedProvider.PluginProviderId is { Length: > 0 };
 
+    public bool ShowSave => !IsFirstRunSetup || !Profile.IsPluginProviderMissing;
+
     // The plugin option rows, MCP rows and variable are staged directly rather than resolved: a headless render has no
     // plugin registry and no MCP catalog, so a scene built from the real path would show the empty half of every block
     // and prove nothing about the parts this dialog exists for.
@@ -301,6 +303,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     {
         value.PropertyChanged += _OnProfilePropertyChanged;
         OnPropertyChanged(nameof(CanSetUpLater));
+        OnPropertyChanged(nameof(ShowSave));
     }
 
     private void _OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs args)
@@ -308,6 +311,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         if (args.PropertyName is nameof(EditableProfileViewModel.SelectedProvider) or nameof(EditableProfileViewModel.PluginConfigView))
         {
             OnPropertyChanged(nameof(CanSetUpLater));
+            OnPropertyChanged(nameof(ShowSave));
         }
     }
 }
