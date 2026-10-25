@@ -272,6 +272,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         else if (pane is TtyViewModel tty)
         {
             // AC-1717: the status TtyViewModel derives, so a TTY pane's busy/idle reaches the host's listeners too.
+            tty.OperatorActed += action => OperatorActed?.Invoke(action);
             tty.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(SessionPanelViewModel.SessionStatus) && !tty.IsTerminal)

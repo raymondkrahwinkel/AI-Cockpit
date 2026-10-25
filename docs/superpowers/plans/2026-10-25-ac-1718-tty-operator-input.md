@@ -34,6 +34,7 @@
 - Modify: `src/Cockpit.App/ViewModels/TtyViewModel.cs`
 - Modify: `src/Cockpit.App/Services/SessionPanelHandle.cs`
 - Modify: `src/Cockpit.App/Views/TtyView.axaml.cs`
+- Modify: `third_party/Exclr8.Terminal/TerminalControl.cs`
 - Modify: `tests/Cockpit.App.ViewTests/TtyInjectedTextPasteTests.cs`
 - Modify: `scripts/test-count-baseline.txt`
 

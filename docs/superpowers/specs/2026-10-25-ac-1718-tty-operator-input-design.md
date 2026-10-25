@@ -14,7 +14,7 @@ Record when the operator types in a TTY pane so session attention time includes 
 
 ## Approaches
 
-1. **Selected: source-side debounce and existing event bridge.** Split terminal input from protocol output in `TtyView`, debounce successful operator writes there, raise `TtyInput` through `TtyViewModel`, and forward it from `SessionPanelHandle` to the existing recorder subscription. This preserves the source distinction and does not touch the log's retention path.
+1. **Selected: source-side debounce and existing event bridge.** Preserve the terminal control's typed, pasted, and programmatic origins, split terminal input from protocol output in `TtyView`, debounce successful operator writes there, raise `TtyInput` through `TtyViewModel`, and forward it from `SessionPanelHandle` to the existing recorder subscription. This preserves the source distinction and does not touch the log's retention path.
 2. **Rejected: recorder-side filtering.** Passing every keystroke to `SessionTimelineRecorder` and filtering there would mix TTY-specific policy into the shared log and increase overlap with AC-1719.
 3. **Rejected: reuse `MessageSent`.** Individual TTY input is not necessarily a submitted message, so that action kind would misdescribe the timeline.
 

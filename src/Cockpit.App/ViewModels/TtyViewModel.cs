@@ -68,6 +68,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // The view writes the text as raw bytes to the pty's stdin, the same path as a typed keystroke.
     public event Action<string>? VoiceTranscriptReady;
 
+    internal event Action<SessionOperatorAction>? OperatorActed;
+
+    internal void RecordOperatorInput() => OperatorActed?.Invoke(SessionOperatorAction.TtyInput);
+
     // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
     // AC-1013: Where this session's provider drops its statusline snapshots, set by the view once the pty...

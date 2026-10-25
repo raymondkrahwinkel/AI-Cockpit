@@ -17,6 +17,7 @@ using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
 using Exclr8.Terminal;
 using Exclr8.Terminal.Buffer;
+using Exclr8.Terminal.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -87,6 +88,10 @@ public partial class TtyView : UserControl
     private static readonly TimeSpan HostedTuiReadyFallback = TimeSpan.FromSeconds(15);
     private DateTime? _firstPtyOutputAtUtc;
     private bool _hostedTuiReady;
+
+    // One line per input moment rather than one per key (AC-1718).
+    private static readonly TimeSpan OperatorInputWindow = TimeSpan.FromSeconds(30);
+    private DateTimeOffset? _lastOperatorInputAt;
 
     // #58/AC-1259 confirmation logging: one line per settled resize, so the net-zero round-trip signature can
     // be confirmed from cockpit.log without a line per pass. Resolved from the DI container, not injected —
@@ -365,7 +370,7 @@ public partial class TtyView : UserControl
                 // AC-941 criterion 6: measures whether BracketedPaste is ever false on a live session (tab
                 // switches, backgrounding included), which the fix below does not assume either way.
                 _logger?.LogDebug("AC-941 measurement: BracketedPaste={BracketedPaste} at _WriteToPty paste", Terminal.BracketedPaste);
-                Terminal.Paste(typed);
+                Terminal.PasteProgrammatically(typed);
             }
 
             if (!hasTrailingReturn)
@@ -395,8 +400,8 @@ public partial class TtyView : UserControl
         // Both events carry bytes the terminal wants written back to the pty: Input is the user's
         // keystrokes/paste, Output is protocol replies (DSR/DA/DECRQM/OSC-query) the terminal itself
         // generates. Both go to the same place.
-        Terminal.Input += OnTerminalBytesToPty;
-        Terminal.Output += OnTerminalBytesToPty;
+        Terminal.InputWithOrigin += OnTerminalBytesToPty;
+        Terminal.Output += OnTerminalOutputToPty;
         Terminal.Resized += OnTerminalResized;
 
         // AC-2: honour claude's OSC-52 clipboard writes and make URLs clickable, both opt-in.
@@ -842,7 +847,7 @@ public partial class TtyView : UserControl
         e.Handled = true;
     }
 
-    private void OnTerminalBytesToPty(object? sender, ReadOnlyMemory<byte> e)
+    private void OnTerminalBytesToPty(ReadOnlyMemory<byte> bytes, InputLineOrigin origin)
     {
         var pty = _pty;
         if (pty is null)
@@ -850,7 +855,28 @@ public partial class TtyView : UserControl
             return;
         }
 
-        _WriteToPty(pty, e.Span);
+        if (!_WriteToPty(pty, bytes.Span) || origin == InputLineOrigin.Programmatic)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (_lastOperatorInputAt is { } last && now - last < OperatorInputWindow)
+        {
+            return;
+        }
+
+        _lastOperatorInputAt = now;
+        _viewModel?.RecordOperatorInput();
+    }
+
+    private void OnTerminalOutputToPty(object? sender, ReadOnlyMemory<byte> e)
+    {
+        var pty = _pty;
+        if (pty is not null)
+        {
+            _WriteToPty(pty, e.Span);
+        }
     }
 
     // Dispatches per TtyWheelScrollGate instead of TerminalControl's own wheel handling.

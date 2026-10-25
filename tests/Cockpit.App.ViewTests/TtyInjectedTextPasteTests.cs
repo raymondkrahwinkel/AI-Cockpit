@@ -8,6 +8,7 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Exclr8.Terminal;
+using Exclr8.Terminal.Input;
 
 namespace Cockpit.App.ViewTests;
 
@@ -152,9 +153,9 @@ public class TtyInjectedTextPasteTests
             .Invoke(view, [text]);
 
     private static void _InvokeTerminalInput(TtyView view, byte[] bytes) =>
-        typeof(TtyView)
-            .GetMethod("OnTerminalBytesToPty", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(view, [null, new ReadOnlyMemory<byte>(bytes)]);
+        typeof(TerminalControl)
+            .GetMethod("RaiseInput", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(_Terminal(view), [bytes, InputLineOrigin.Typed]);
 
     // The x:Name-generated field for the XAML-declared TerminalControl, not exposed publicly by TtyView.
     private static TerminalControl _Terminal(TtyView view) =>
