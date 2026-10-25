@@ -23,6 +23,9 @@ internal static class BrowserScenes
         ["browser-rail"] = () => _Shell(BrowserPlace.Rail),
         // Cockpit hangs a name ending in -floating in its own dock-panel window, titled by the automation name.
         ["browser-floating"] = () => _Named(_Shell(BrowserPlace.Rail), "Browser"),
+        // Mockup screen 5: the Agents side with an agent tab's live picture, and the same while Raymond has taken over.
+        ["browser-agents"] = () => _Shell(BrowserPlace.Tab, agentSide: true),
+        ["browser-agents-driving"] = () => _Shell(BrowserPlace.Tab, agentSide: true, driving: true),
         ["browser-codec"] = () => _Shell(BrowserPlace.Tab, codecUnsupported: true),
         ["browser-engine-download"] = () => _Empty(BrowserEngine.ForScene(
             BrowserEngineState.Fetching,
@@ -44,9 +47,16 @@ internal static class BrowserScenes
                     HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
                 },
                 BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3)),
+            ["browser-workspace-agents"] = () => (
+                new WorkspaceTypeRegistration(BrowserUi.WorkspaceTypeId, "Browser", _ => _Shell(BrowserPlace.Tab, agentSide: true))
+                {
+                    IconKind = MaterialIconKind.Web,
+                    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
+                },
+                BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3, agentSide: true, agentTabs: 2)),
         };
 
-    private static Control _Shell(BrowserPlace place, bool codecUnsupported = false)
+    private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false)
     {
         var engine = BrowserEngine.ForScene(BrowserEngineState.Ready);
         var model = new BrowserModel(engine);
@@ -54,7 +64,21 @@ internal static class BrowserScenes
         model.AddStaged(_Tab(engine, "https://github.com/raymondkrahwinkel/AI-Cockpit").Staged("raymondkrahwinkel/AI-Cockpit", _Square(0xFF8A_8F98)));
         model.AddStaged(_Tab(engine, "https://docs.avaloniaui.net/").Staged("Avalonia docs — WebView", _Square(0xFF2F_6FE4), muted: true));
 
-        var home = new BrowserHome(new BrowserShell(model, _ => { }));
+        var agents = new AgentTabsModel(null);
+        agents.Stage(
+            [
+                new AgentTab("pane-1", "AC-1720 verify login", "t1", "localhost:5173 — Login", "http://localhost:5173/login", driving, Icon: _Square(0xFF2F_6FE4)),
+                new AgentTab("pane-2", "Depot-docs bijwerken", "t2", "docs.avaloniaui.net", "https://docs.avaloniaui.net/", false, Icon: _Square(0xFF3F_A56B)),
+            ],
+            AgentLoginPicture.Render(1440, 745),
+            (1440, 745));
+        var shell = new BrowserShell(model, agents, _ => { });
+        if (agentSide)
+        {
+            shell.ShowAgents();
+        }
+
+        var home = new BrowserHome(shell);
         home.MoveTo(place);
         return home.CreateSlot(place);
     }
@@ -80,7 +104,7 @@ internal static class BrowserScenes
 
     private static Control _Empty(BrowserEngine engine)
     {
-        var home = new BrowserHome(new BrowserShell(new BrowserModel(engine), _ => { }));
+        var home = new BrowserHome(new BrowserShell(new BrowserModel(engine), new AgentTabsModel(null), _ => { }));
         return home.CreateSlot(BrowserPlace.Tab);
     }
 }

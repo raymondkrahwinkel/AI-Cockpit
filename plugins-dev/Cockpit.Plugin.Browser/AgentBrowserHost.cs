@@ -15,6 +15,9 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private readonly Dictionary<string, Running> _running = new(StringComparer.Ordinal);
     private bool _disposed;
 
+    // The set of live agent browsers or who drives one changed (AC-1713).
+    public event Action? Changed;
+
     // Starts (or restarts, with a fresh empty profile) the browser of one session and returns its CDP endpoint,
     // or null when there is no browser to start or it did not come up.
     public async Task<string?> StartAsync(string paneId, CancellationToken cancellationToken = default)
@@ -63,16 +66,72 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             return null;
         }
 
-        running.Endpoint = $"http://127.0.0.1:{port}";
-        return running.Endpoint;
+        // Playwright is given the proxy's endpoint (AC-1713); the browser's own stays with the host.
+        running.Upstream = $"http://127.0.0.1:{port}";
+        running.Proxy = AgentCdpProxy.Start(port.Value);
+        Changed?.Invoke();
+        return running.Proxy.Endpoint;
     }
 
     public string? EndpointFor(string paneId)
     {
         lock (_gate)
         {
-            return _running.TryGetValue(paneId, out var running) ? running.Endpoint : null;
+            return _running.TryGetValue(paneId, out var running) ? running.Proxy?.Endpoint : null;
         }
+    }
+
+    // The sessions with an agent browser that is up, and the browser's own endpoint, for the tabs view (AC-1713).
+    public IReadOnlyList<(string PaneId, string Upstream, bool OperatorDrives)> Live()
+    {
+        lock (_gate)
+        {
+            return [.. _running.Where(pair => pair.Value is { Stopped: false, Upstream: not null, Proxy: not null }).Select(pair => (pair.Key, pair.Value.Upstream!, pair.Value.Proxy!.OperatorDrives))];
+        }
+    }
+
+    // Raymond takes the surface of one session, or hands it back. False when the session has no live browser.
+    public bool SetOperatorDrives(string paneId, bool drives)
+    {
+        lock (_gate)
+        {
+            if (_running.TryGetValue(paneId, out var running) is false || running is not { Stopped: false, Proxy: { } proxy })
+            {
+                return false;
+            }
+
+            if (drives)
+            {
+                proxy.TakeOver();
+            }
+            else
+            {
+                proxy.Release();
+            }
+        }
+
+        Changed?.Invoke();
+        return true;
+    }
+
+    // Stop agent: the browser goes, the proxy stays so the session's next call reads why (AC-1713).
+    public bool StopBrowser(string paneId)
+    {
+        Running? running;
+        lock (_gate)
+        {
+            if (_running.TryGetValue(paneId, out running) is false || running.Stopped)
+            {
+                return false;
+            }
+
+            running.Stopped = true;
+        }
+
+        running.Proxy?.MarkStopped();
+        running.KillBrowser();
+        Changed?.Invoke();
+        return true;
     }
 
     internal int? ProcessIdFor(string paneId)
@@ -91,7 +150,11 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             _running.Remove(paneId, out running);
         }
 
-        running?.Stop();
+        if (running is not null)
+        {
+            running.Stop();
+            Changed?.Invoke();
+        }
     }
 
     public void Dispose()
@@ -277,10 +340,28 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         public string Profile { get; } = profile;
 
-        public string? Endpoint { get; set; }
+        public string? Upstream { get; set; }
+
+        public AgentCdpProxy? Proxy { get; set; }
+
+        public bool Stopped { get; set; }
+
+        private bool _ended;
 
         public void Stop()
         {
+            Proxy?.Dispose();
+            KillBrowser();
+        }
+
+        public void KillBrowser()
+        {
+            if (_ended)
+            {
+                return;
+            }
+
+            _ended = true;
             try
             {
                 if (!Process.HasExited)

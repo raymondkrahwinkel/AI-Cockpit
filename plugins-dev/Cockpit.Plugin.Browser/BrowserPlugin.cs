@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 
@@ -9,6 +10,7 @@ namespace Cockpit.Plugin.Browser;
 public sealed class BrowserPlugin : ICockpitPlugin
 {
     private AgentBrowserHost? _browsers;
+    private AgentBrowserTabs? _tabs;
 
     public PluginMetadata Metadata { get; } = new(
         Id: "browser",
@@ -34,7 +36,20 @@ public sealed class BrowserPlugin : ICockpitPlugin
         var settings = new BrowserSettings(host.Storage);
         host.AddSessionResourceProvider(new AgentBrowserSessionResources(browsers, () => settings.AgentsUseCockpitBrowser));
         host.Sessions.SessionClosed += (_, paneId) => browsers.Stop(paneId);
+        browsers.Changed += () => host.Channel.Publish("agents.changed", JsonSerializer.SerializeToElement(new { }));
+
+        // AC-1713: the agent profile in the browser's Agents tab, over the plugin's own channel.
+        var tabs = new AgentBrowserTabs(
+            browsers,
+            paneId => host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == paneId)?.Name,
+            (name, payload) => host.Channel.Publish(name, JsonSerializer.SerializeToElement(payload)));
+        _tabs = tabs;
+        AgentChannel.Register(host.Channel, tabs);
     }
 
-    public void Dispose() => _browsers?.Dispose();
+    public void Dispose()
+    {
+        _tabs?.Dispose();
+        _browsers?.Dispose();
+    }
 }

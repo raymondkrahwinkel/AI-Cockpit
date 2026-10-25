@@ -20,6 +20,19 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
   `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
+## The agent profile (AC-1713)
+
+- **The Agents side** of the profile switch lists the tabs of every live agent browser (AC-1712) with the session as a
+  badge. It reads them over the plugin channel (`agents.*`), so it works when the backend runs on a server.
+- **The picture** is a CDP `Page.startScreencast` of the tab on screen, straight from the agent Chromium: no CEF. It runs
+  only while the view is visible; hide the panel and it stops. The count in the rail tab is the number of agent tabs.
+- **Take over / Give back / Stop agent:** Playwright MCP is pointed at `AgentCdpProxy`, not at Chromium. While Raymond
+  drives, the proxy answers the session's `Input.*` commands with an error that says so; everything else passes. His
+  own mouse and keys go to the tab over a separate connection, so the pause never holds them. Stop agent kills the
+  Chromium and leaves the proxy up, so the session's next call reads that Raymond stopped it.
+- **Known edges:** a session's `Runtime.evaluate` can still click while Raymond drives (only `Input.*` is held), and the
+  rail count is refreshed on changes and while the panel is open, not by a background poll.
+
 ## How the engine arrives
 
 The plugin does not contain CEF. On the first opening of the browser, `CefRuntimeCache` fetches the official

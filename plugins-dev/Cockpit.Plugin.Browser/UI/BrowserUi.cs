@@ -21,6 +21,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     public const string DockPanelId = "browser.rail";
 
     private BrowserHome? _home;
+    private AgentTabsModel? _agents;
 
     // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not part of the plugin contract.
     public static IReadOnlyDictionary<string, Func<Control>> Scenes => BrowserScenes.All;
@@ -29,6 +30,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     public void InitializeUi(ICockpitUiHost host)
     {
+        _agents = new AgentTabsModel(host.Channel);
         host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), host.Storage));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Browser", _ => _Home(host).CreateSlot(BrowserPlace.Tab))
         {
@@ -45,6 +47,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         host.AddDockPanel(new DockPanelRegistration(DockPanelId, "Browser", MaterialIconKind.Web, () => _Home(host).CreateSlot(BrowserPlace.Rail))
         {
             KeepAlive = true,
+            Badge = _agents.Badge,
             CanFloat = true,
         });
 
@@ -56,11 +59,16 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
     }
 
-    public void Dispose() => BrowserEngine.Shared.Shutdown();
+    public void Dispose()
+    {
+        _agents?.Dispose();
+        BrowserEngine.Shared.Shutdown();
+    }
 
     // Mockup screens 1 and 2: what the status bar says about the browser; nothing while it has no open tab.
-    internal static string? StatusText(BrowserPlace place, BrowserEngineState state, int tabs) =>
-        state != BrowserEngineState.Ready || tabs == 0 ? null
+    internal static string? StatusText(BrowserPlace place, BrowserEngineState state, int tabs, bool agentSide = false, int agentTabs = 0) =>
+        agentSide ? $"Agent profile · {agentTabs} {(agentTabs == 1 ? "tab" : "tabs")} by agents"
+        : state != BrowserEngineState.Ready || tabs == 0 ? null
         : place == BrowserPlace.Rail ? "Browser docked in the rail"
         : $"Browser · profile Raymond · {tabs} {(tabs == 1 ? "tab" : "tabs")}";
 
@@ -72,7 +80,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
 
         BrowserShell? shell = null;
-        shell = new BrowserShell(new BrowserModel(BrowserEngine.Shared), url =>
+        shell = new BrowserShell(new BrowserModel(BrowserEngine.Shared), _agents!, url =>
         {
             if (TopLevel.GetTopLevel(shell) is { } top)
             {
@@ -81,8 +89,9 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         });
         var home = new BrowserHome(shell);
         home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
-        void ShowStatus() => host.SetStatusText(StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count));
+        void ShowStatus() => host.SetStatusText(StatusText(home.Place, shell.Model.Engine.State, shell.Model.Tabs.Count, _agents!.Showing, _agents.Tabs.Count));
         home.Changed += ShowStatus;
+        _agents!.Changed += ShowStatus;
         shell.Model.Changed += ShowStatus;
         shell.Model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(ShowStatus);
         _home = home;
