@@ -29,7 +29,7 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
 
         // Detection is information, not a choice. Starting a Found row checked made an untouched provider look like
         // the operator's assistant choice after restart (AC-1673).
-        IsSelected = detection == ProviderDetectionState.Found;
+        IsSelected = false;
     }
 
     public StorePluginRowViewModel Row { get; }
