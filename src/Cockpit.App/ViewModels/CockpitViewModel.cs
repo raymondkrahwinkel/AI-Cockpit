@@ -299,6 +299,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // (only while it has activities) and a panel with a Kill per item.
     public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
 
+    // AC-1711: at most one line of text per plugin in the status bar, in the order the plugins first set one.
+    public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
+
+    // Replaced in place, so a plugin's text keeps its spot; null or blank removes it. Long text is cut, not wrapped.
+    internal void SetPluginStatusText(string pluginId, string? text) => _OnUiThread(() =>
+    {
+        var existing = PluginStatusTexts.FirstOrDefault(entry => entry.PluginId == pluginId);
+        var index = existing is null ? -1 : PluginStatusTexts.IndexOf(existing);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            if (index >= 0)
+            {
+                PluginStatusTexts.RemoveAt(index);
+            }
+
+            return;
+        }
+
+        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text);
+        if (index >= 0)
+        {
+            PluginStatusTexts[index] = entry;
+        }
+        else
+        {
+            PluginStatusTexts.Add(entry);
+        }
+    });
+
+    private const int PluginStatusTextMaxLength = 120;
+
     // Sessions-toolbar buttons contributed by plugins (AC-91) — global quick actions shown next to the workspace gear.
     public ObservableCollection<PluginToolbarAction> PluginToolbarActions { get; } = [];
 

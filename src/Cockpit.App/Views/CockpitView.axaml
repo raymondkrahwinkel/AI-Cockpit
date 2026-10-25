@@ -3,6 +3,7 @@
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:views="using:Cockpit.App.Views"
              xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:plugins="using:Cockpit.App.Plugins"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:layout="using:Cockpit.Core.Layout"
              xmlns:projects="using:Cockpit.Core.Projects"
@@ -2581,6 +2582,23 @@
                     <controls:PluginStatusBarHost DockPanel.Dock="Right"
                                                   Margin="0,0,8,0"
                                                   VerticalAlignment="Center"/>
+
+                    <!-- AC-1711: one line per plugin (`ICockpitUiHost.SetStatusText`), e.g. the browser's
+                         "Browser · profile Raymond · 3 tabs". Nothing at all while no plugin sets one. -->
+                    <ItemsControl DockPanel.Dock="Right" ItemsSource="{Binding PluginStatusTexts}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="plugins:PluginStatusText">
+                                <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                           VerticalAlignment="Center"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <TextBlock Text="{Binding ResourceSessions}"
                                FontSize="11"
