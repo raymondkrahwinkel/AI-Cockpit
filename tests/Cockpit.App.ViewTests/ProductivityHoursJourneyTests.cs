@@ -11,6 +11,7 @@ using Cockpit.App.Controls;
 using Cockpit.Plugin.Productivity;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
@@ -36,6 +37,13 @@ public sealed class ProductivityHoursJourneyTests
         backend.Channel.Returns(channel);
         backend.TimeEntries.Returns(timeEntries);
         backend.Timeline.Returns(new _Timeline());
+        backend.GetProjectsAsync().Returns(Task.FromResult<IReadOnlyList<PluginProjectInfo>>(
+        [
+            new("syn-portal", "Synvolution portal"),
+            new("ai-cockpit", "AI Cockpit"),
+            new("syn-api", "Synvolution API"),
+            new("depot", "Depot"),
+        ]));
         using var plugin = new ProductivityPlugin();
         plugin.Initialize(backend);
 
@@ -139,7 +147,36 @@ public sealed class ProductivityHoursJourneyTests
         string[] header = ["Regel", .. screen.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "OpenDay").Select(button => button.Content as string ?? string.Empty), "Week", "Status"];
         Assert.Equal(header, table[0].Split('\t'));
         Assert.Equal(screen.GetVisualDescendants().OfType<Grid>().Count(grid => grid.Name == "ProposalRow") + 4, table.Length);
+
+        var overviewFrom = _Local(2026, 10, 19);
+        timeEntries.Seed(new CockpitTimeEntry(
+            Guid.NewGuid(),
+            "Weekstart met het team",
+            overviewFrom.AddHours(3).AddMinutes(5),
+            TimeSpan.FromHours(5).Add(TimeSpan.FromMinutes(15)),
+            "syn-portal",
+            CockpitTimeEntrySource.Duration,
+            CockpitTimeEntryStatus.Open));
+        var overviewPayload = JsonSerializer.SerializeToElement(new
+        {
+            From = overviewFrom,
+            To = overviewFrom.AddDays(5),
+        });
+        var overview = await channel.InvokeAsync("productivity.overview.snapshot", overviewPayload);
+        var attention = overview.GetProperty("attention");
+        Assert.Equal(TimeSpan.FromHours(31), TimeSpan.Parse(attention.GetProperty("yourTime").GetString() ?? string.Empty));
+        Assert.Equal(TimeSpan.FromHours(23).Add(TimeSpan.FromMinutes(40)), TimeSpan.Parse(attention.GetProperty("agentTime").GetString() ?? string.Empty));
+        Assert.Equal(4, overview.GetProperty("projects").GetArrayLength());
+        Assert.Contains(
+            overview.GetProperty("timeline").GetProperty("usage").EnumerateArray(),
+            usage => usage.GetProperty("inputTokens").GetInt32() > 0 && usage.GetProperty("costUsd").GetDouble() == 0);
     });
+
+    private static DateTimeOffset _Local(int year, int month, int day)
+    {
+        var local = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
+    }
 
     private static T _Control<T>(Visual root, string name) where T : Control =>
         root.GetVisualDescendants().OfType<T>().Single(control => control.Name == name);
@@ -256,6 +293,11 @@ public sealed class ProductivityHoursJourneyTests
     {
         public Task<CockpitTimeline> QueryAsync(DateTimeOffset from, DateTimeOffset to, CockpitTimelineFilter? filter = null, CancellationToken cancellationToken = default)
         {
+            if (from.Date == new DateTime(2026, 10, 19))
+            {
+                return Task.FromResult(_Week43(from));
+            }
+
             var now = DateTimeOffset.Now;
             var morning = from.AddHours(9);
             CockpitTimelineLine[] lines = from <= now && now < to
@@ -268,6 +310,58 @@ public sealed class ProductivityHoursJourneyTests
                     new(CockpitTimelineKind.Status, morning.AddMinutes(90), "agent", "syn-api", null, null, CockpitTimelineStatus.Idle, null, null),
                 ];
             return Task.FromResult(new CockpitTimeline(lines, [], []));
+        }
+
+        private static CockpitTimeline _Week43(DateTimeOffset from)
+        {
+            var lines = new List<CockpitTimelineLine>();
+            _Attention(lines, from.AddHours(8), 445, "syn-portal", "SYN-412");
+            _Attention(lines, from.AddDays(1).AddHours(8), 582, "ai-cockpit", "AC-1665");
+            _Attention(lines, from.AddDays(2).AddHours(8), 391, "syn-api", "SYN-398");
+            _Attention(lines, from.AddDays(3).AddHours(8), 65, null, null);
+            _Attention(lines, from.AddDays(3).AddHours(10), 82, "depot", "AC-252");
+            _Busy(lines, "AC-1665 bouwen", "ai-cockpit", from.AddDays(1).AddHours(8), from.AddDays(1).AddHours(17).AddMinutes(42));
+            _Busy(lines, "AC-1665 bouwen", "syn-api", from.AddDays(2).AddHours(8), from.AddDays(2).AddHours(9).AddMinutes(48));
+            _Busy(lines, "SYN-412 tests", "syn-portal", from.AddDays(4), from.AddDays(4).AddHours(12).AddMinutes(10));
+            CockpitUsageDelta[] usage =
+            [
+                new("AC-1665 bouwen", from.AddDays(1).AddHours(18), "run-ac", "claude-opus-4-1", 120000, 22000, 45000, 3000, 121, 18),
+                new("SYN-412 tests", from.AddDays(4).AddHours(13), "run-syn", "claude-sonnet-4-5", 64000, 12000, 18000, 1000, 63.2, 9),
+                new("SYN-398 refactor", from.AddDays(3).AddHours(14), "run-codex", "gpt-5-codex", 48000, 9000, 11000, 0, 0, 7),
+            ];
+            return new CockpitTimeline(lines, usage, []);
+        }
+
+        private static void _Attention(List<CockpitTimelineLine> lines, DateTimeOffset start, int minutes, string? project, string? ticket)
+        {
+            var count = (int)Math.Ceiling(minutes / 10d);
+            var reduction = (count * 10) - minutes;
+            var at = start;
+            for (var index = 0; index < count; index++)
+            {
+                lines.Add(new CockpitTimelineLine(
+                    CockpitTimelineKind.Operator,
+                    at,
+                    "you",
+                    project,
+                    null,
+                    ticket,
+                    null,
+                    CockpitOperatorAction.MessageSent,
+                    ticket is null ? null : $"{ticket} · werk"));
+                at = at.AddMinutes(index == 0 ? 10 - reduction : 10);
+            }
+        }
+
+        private static void _Busy(
+            List<CockpitTimelineLine> lines,
+            string pane,
+            string project,
+            DateTimeOffset start,
+            DateTimeOffset end)
+        {
+            lines.Add(new CockpitTimelineLine(CockpitTimelineKind.Status, start, pane, project, null, null, CockpitTimelineStatus.Busy, null, null));
+            lines.Add(new CockpitTimelineLine(CockpitTimelineKind.Status, end, pane, project, null, null, CockpitTimelineStatus.Idle, null, null));
         }
 
         private static CockpitTimelineLine _Act(DateTimeOffset at, string project) =>

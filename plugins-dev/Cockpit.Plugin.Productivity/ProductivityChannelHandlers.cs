@@ -10,6 +10,7 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
     public IReadOnlyList<IDisposable> Register() =>
     [
         _Handle<ProductivitySnapshotRequest, ProductivitySnapshot>(ProductivityChannel.Snapshot, _SnapshotAsync),
+        _Handle<ProductivityOverviewRequest, ProductivityOverviewSnapshot>(ProductivityChannel.Overview, _OverviewAsync),
         _Handle<ProductivitySaveRequest, CockpitTimeEntry>(ProductivityChannel.Add, request =>
             timeEntries.AddAsync(request.Description, request.StartedAt, request.Duration, request.ProjectId, CockpitTimeEntrySource.Duration)),
         _Handle<ProductivitySaveRequest, CockpitTimeEntry>(ProductivityChannel.Update, request =>
@@ -26,6 +27,16 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         _Handle<object, CockpitTimeEntry>(ProductivityChannel.StopStopwatch, _ => timeEntries.StopStopwatchAsync()),
         _Handle<ProductivityWeekRequest, WeekProposal>(ProductivityChannel.Week, _WeekAsync),
     ];
+
+    private async Task<ProductivityOverviewSnapshot> _OverviewAsync(ProductivityOverviewRequest request)
+    {
+        var timeline = await host.Timeline.QueryAsync(request.From, request.To).ConfigureAwait(false);
+        var entries = await timeEntries.ListAsync(request.From, request.To).ConfigureAwait(false);
+        var projects = await host.GetProjectsAsync().ConfigureAwait(false);
+        var now = DateTimeOffset.Now;
+        var attention = AttentionTime.Compute(timeline, entries, AttentionSettings.Default, now < request.To ? now : request.To);
+        return new ProductivityOverviewSnapshot(attention, entries, timeline, projects);
+    }
 
     private async Task<ProductivitySnapshot> _SnapshotAsync(ProductivitySnapshotRequest request)
     {
