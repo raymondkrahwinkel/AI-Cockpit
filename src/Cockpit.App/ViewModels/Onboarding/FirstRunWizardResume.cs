@@ -7,7 +7,7 @@ namespace Cockpit.App.ViewModels.Onboarding;
 internal static class FirstRunWizardResume
 {
     public static bool NeedsLoadedProviders(FirstRunWizardResumeState? state) =>
-        state is null or { StartAtOrder: 25, Providers.Count: > 0 };
+        state is { StartAtOrder: 25, Providers.Count: > 0 };
 
     public static void Apply(
         IReadOnlyList<IFirstRunWizardStep> steps,
