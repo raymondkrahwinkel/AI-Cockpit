@@ -7,16 +7,14 @@ internal sealed record AttentionSettings(TimeSpan BlockLength, bool CountAgentWi
     public static AttentionSettings Default { get; } = new(TimeSpan.FromMinutes(10), false);
 }
 
-/// <summary>A stretch of clock time; Owner is the project for your time, the pane for agent time.</summary>
+// A stretch of clock time; Owner is the project for your time, the pane for agent time.
 internal sealed record AttentionSpan(DateTimeOffset Start, DateTimeOffset End, string? Owner)
 {
     public TimeSpan Duration => End - Start;
 }
 
-/// <summary>
-/// Your time (measured attention plus own entries, overlap once) and agent time beside it, never added to it
-/// unless <see cref="AttentionSettings.CountAgentWithoutYou"/> asks for the agents' time outside your blocks.
-/// </summary>
+// Your time (measured attention plus own entries, overlap once) and agent time beside it, never added to it
+// unless CountAgentWithoutYou asks for the agents' time outside your blocks.
 internal sealed record AttentionTime(
     TimeSpan Measured,
     TimeSpan Own,
