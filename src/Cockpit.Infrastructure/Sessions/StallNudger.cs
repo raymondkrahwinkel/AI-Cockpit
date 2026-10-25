@@ -95,16 +95,19 @@ public sealed class StallNudger : ISingletonService, IDisposable
         }
     }
 
-    // A notify says where the work stands; a start_run's verdict is still to come and wakes the session itself.
-    // set_status is deliberately not one: AC-1681 stalled right after setting it.
+    // Closed only when the turn's last tool call is a notify or a start_run (whose verdict wakes it); any other tool
+    // after it reopens the turn. set_status neither closes nor reopens: AC-1681 notified, set its status, appended to
+    // Depot and stalled.
     private static void _OnTool(Followed followed, string toolName)
     {
-        if (_IsTool(toolName, "notify") || _IsTool(toolName, "start_run"))
+        if (_IsTool(toolName, "set_status"))
         {
-            lock (followed.Gate)
-            {
-                followed.Closed = true;
-            }
+            return;
+        }
+
+        lock (followed.Gate)
+        {
+            followed.Closed = _IsTool(toolName, "notify") || _IsTool(toolName, "start_run");
         }
     }
 
