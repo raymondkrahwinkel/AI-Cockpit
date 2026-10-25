@@ -22,7 +22,7 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-1722 layer 2 view journey: one real Productivity UI and backend channel over host-owned time entries;
-/// AC-1731 adds the measured time from the session timeline beside them.
+/// AC-1731 adds the measured time from the session timeline beside them; AC-1723 the week proposal and its table.
 /// </summary>
 [Collection("avalonia")]
 public sealed class ProductivityHoursJourneyTests
@@ -44,6 +44,8 @@ public sealed class ProductivityHoursJourneyTests
         ui.ActiveSessionWorkingDirectory.Returns(Path.Combine("work", "cockpit"));
         ui.OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId).Returns(Task.CompletedTask);
         ui.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        string? copied = null;
+        ui.SetClipboardTextAsync(Arg.Do<string>(text => copied = text)).Returns(Task.CompletedTask);
         var badge = new SideMenuButtonBadge();
         Action? open = null;
         Func<Control>? sidebarFactory = null;
@@ -123,6 +125,20 @@ public sealed class ProductivityHoursJourneyTests
         _Click(screen, "Today");
         await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "returning to today");
         Assert.Equal("0u50 vandaag", badge.Text);
+
+        _Click(screen, "WeekMode");
+        await _Until(() => _Texts(screen).Contains("Voorstel per dag"), "the week proposal");
+        Assert.Contains("Schema (grens)", _Texts(screen));
+        _Render(scene.Window, "04-uren-week.png");
+        _Click(screen, "PreviousDay");
+        await _Until(() => _Texts(screen).Any(text => text.StartsWith("Voorstel per dag · week", StringComparison.Ordinal)), "the week before");
+        _Render(scene.Window, "05-uren-week-eerder.png");
+        _Click(screen, "CopyTable");
+        await _Until(() => copied is not null, "the copied table");
+        var table = (copied ?? string.Empty).Split(Environment.NewLine);
+        string[] header = ["Regel", .. screen.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "OpenDay").Select(button => button.Content as string ?? string.Empty), "Week", "Status"];
+        Assert.Equal(header, table[0].Split('\t'));
+        Assert.Equal(screen.GetVisualDescendants().OfType<Grid>().Count(grid => grid.Name == "ProposalRow") + 4, table.Length);
     });
 
     private static T _Control<T>(Visual root, string name) where T : Control =>

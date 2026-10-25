@@ -30,6 +30,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
             IconKind = MaterialIconKind.ClockOutline,
             Description = "Leg je eigen uren vast met een duur of stopwatch en bekijk ze per dag.",
         });
+        host.AddSettings(() => new ProductivitySettingsControl(host, _controller));
         host.ActiveSessionChanged += _ActiveSessionChanged;
         _ = _RefreshAsync(host, _controller);
     }
