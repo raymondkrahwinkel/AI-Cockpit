@@ -29,7 +29,7 @@ internal sealed record AttentionTime(
     IReadOnlyList<AttentionSpan> Agents,
     bool CountAgentWithoutYou)
 {
-    public TimeSpan YourTime => Measured + Own - Overlap;
+    public TimeSpan YourTime => Measured + Own;
 
     public TimeSpan AgentWithoutYou => _Sum(AgentWithoutYouPerSession.Values);
 
