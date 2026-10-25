@@ -14,7 +14,15 @@ namespace Cockpit.Plugin.Browser.UI;
 // and the page. One instance per process; BrowserHome hangs it in the tab or the rail. With no engine it shows why.
 internal sealed class BrowserShell : UserControl
 {
+    private static readonly Color AgentPurple = Color.Parse("#A67CD8");
+
     private readonly BrowserModel _model;
+    private readonly AgentTabsModel _agents;
+    private readonly AgentScreen _agentScreen;
+    private readonly Border _agentBar = new() { IsVisible = false };
+    private readonly StackPanel _profile = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+    private readonly Avalonia.Threading.DispatcherTimer _visibility = new() { Interval = TimeSpan.FromSeconds(1) };
+    private bool _agentSide;
     private readonly StackPanel _tabStrip = new() { Orientation = Orientation.Horizontal, Spacing = 2 };
     private readonly Button _back;
     private readonly Button _forward;
@@ -28,9 +36,11 @@ internal sealed class BrowserShell : UserControl
     private BrowserTab? _watched;
     private bool _compact;
 
-    public BrowserShell(BrowserModel model, Action<string> openExternally)
+    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally)
     {
         _model = model;
+        _agents = agents;
+        _agentScreen = new AgentScreen(agents);
         OpenExternally = openExternally;
 
         _back = _IconButton(MaterialIconKind.ArrowLeft, "Back", () => _model.Active?.View.GoBack());
@@ -77,19 +87,6 @@ internal sealed class BrowserShell : UserControl
             },
         };
 
-        var profile = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 8, 0),
-            Children =
-            {
-                _Pill("● Raymond", active: true),
-                _Pill("◆ Agents", active: false),
-            },
-        };
-        ToolTip.SetTip(profile.Children[1], "Agent profiles arrive with AC-1713");
-
         var newTab = _IconButton(MaterialIconKind.Plus, "New tab", () => _model.NewTab());
         var tabRow = new DockPanel
         {
@@ -97,7 +94,7 @@ internal sealed class BrowserShell : UserControl
             Height = 32,
             Children =
             {
-                _Docked(profile, Dock.Left),
+                _Docked(_profile, Dock.Left),
                 _Docked(more, Dock.Right),
                 new ScrollViewer
                 {
@@ -121,7 +118,7 @@ internal sealed class BrowserShell : UserControl
 
         _codecBar = _BuildCodecBar();
 
-        var header = new StackPanel { Children = { tabRow, addressRow } }.Themed(StackPanel.BackgroundProperty, "CockpitSecondaryBgBrush");
+        var header = new StackPanel { Children = { tabRow, _agentBar, addressRow } }.Themed(StackPanel.BackgroundProperty, "CockpitSecondaryBgBrush");
         var hairline = new Border { Height = 1 }.Themed(Border.BackgroundProperty, "CockpitHairlineBrush");
 
         Content = new DockPanel
@@ -136,6 +133,8 @@ internal sealed class BrowserShell : UserControl
         };
 
         _model.Changed += _Refresh;
+        _agents.Changed += _Refresh;
+        _visibility.Tick += (_, _) => _UpdateViewing();
         _model.Engine.Changed += (_, _) => Avalonia.Threading.Dispatcher.UIThread.Post(_OnEngineChanged);
         ShowBackToTab(false);
         _Refresh();
@@ -165,7 +164,16 @@ internal sealed class BrowserShell : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _visibility.Start();
         _ = _model.Engine.EnsureStartedAsync();
+    }
+
+    // A panel that is collapsed or floated away keeps its shell alive; only a visible one is watched (AC-1713).
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _visibility.Stop();
+        _UpdateViewing();
     }
 
     private void _OnEngineChanged()
@@ -181,6 +189,15 @@ internal sealed class BrowserShell : UserControl
 
     private void _Refresh()
     {
+        _RebuildProfile();
+        _agentBar.IsVisible = _agentSide;
+        _UpdateViewing();
+        if (_agentSide)
+        {
+            _RefreshAgents();
+            return;
+        }
+
         if (ReferenceEquals(_watched, _model.Active) == false)
         {
             if (_watched is not null)
@@ -212,6 +229,132 @@ internal sealed class BrowserShell : UserControl
         _lock.Kind = tab?.Address.StartsWith("https://", StringComparison.Ordinal) ?? false ? MaterialIconKind.Lock : MaterialIconKind.Web;
         _codecBar.IsVisible = tab?.CodecUnsupported ?? false;
         _page.Content = ready && tab is not null ? tab.View : EngineStatusView.For(_model.Engine);
+    }
+
+    // The Agents side (AC-1713, mockup screen 5): the tabs of the agent browsers, read-only, with their live picture.
+    private void _RefreshAgents()
+    {
+        _RebuildAgentTabs();
+        var tab = _agents.Active;
+        _back.IsEnabled = false;
+        _forward.IsEnabled = false;
+        _reload.IsEnabled = false;
+        _address.IsReadOnly = true;
+        _address.Text = tab is null ? string.Empty : _Display(tab.Url);
+        _ShowAddress(_address.Text);
+        _lock.Kind = tab?.Url.StartsWith("https://", StringComparison.Ordinal) ?? false ? MaterialIconKind.Lock : MaterialIconKind.Web;
+        _codecBar.IsVisible = false;
+        _BuildAgentBar(tab);
+        _page.Content = tab is null ? _AgentsEmpty() : _agentScreen;
+        _agentScreen.InvalidateVisual();
+    }
+
+    private void _UpdateViewing() => _agents.SetViewing(_agentSide && IsEffectivelyVisible);
+
+    private void _RebuildProfile()
+    {
+        _profile.Children.Clear();
+        _profile.Children.Add(_Pill("● Raymond", _agentSide == false, () => _SwitchSide(agents: false)));
+        var count = _agents.Tabs.Count;
+        _profile.Children.Add(_Pill(count > 0 ? $"◆ Agents {count}" : "◆ Agents", _agentSide, () => _SwitchSide(agents: true)));
+    }
+
+    // A headless scene opens on the Agents side.
+    internal void ShowAgents() => _SwitchSide(agents: true);
+
+    private void _SwitchSide(bool agents)
+    {
+        _agentSide = agents;
+        _Refresh();
+    }
+
+    private void _RebuildAgentTabs()
+    {
+        _tabStrip.Children.Clear();
+        foreach (var tab in _agents.Tabs)
+        {
+            _tabStrip.Children.Add(_AgentChip(tab));
+        }
+    }
+
+    private Control _AgentChip(AgentTab tab)
+    {
+        var active = ReferenceEquals(tab, _agents.Active);
+        var badge = new Border
+        {
+            Padding = new Thickness(7, 1),
+            CornerRadius = new CornerRadius(9),
+            Margin = new Thickness(4, 0, 0, 0),
+            Background = new SolidColorBrush(AgentPurple, 0.18),
+            Child = new TextBlock { Text = tab.Session, FontSize = 11, Foreground = new SolidColorBrush(AgentPurple), MaxWidth = 90, TextTrimming = TextTrimming.CharacterEllipsis },
+        };
+        var row = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(_Docked(badge, Dock.Right));
+        row.Children.Add(new TextBlock
+        {
+            Text = tab.Title.Length == 0 ? tab.Url : tab.Title,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0),
+        }.Themed(TextBlock.ForegroundProperty, active ? "CockpitTextPrimaryBrush" : "CockpitTextSecondaryBrush"));
+
+        var chip = new Border
+        {
+            Width = _compact ? 170 : 240,
+            Height = 28,
+            Padding = new Thickness(6, 0, 4, 0),
+            CornerRadius = new CornerRadius(6, 6, 0, 0),
+            BorderThickness = new Thickness(1, 1, 1, 0),
+            BorderBrush = new SolidColorBrush(AgentPurple, 0.6),
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = row,
+        };
+        if (active)
+        {
+            chip.Themed(Border.BackgroundProperty, "CockpitPanelBgBrush");
+        }
+
+        chip.PointerPressed += (_, _) => _agents.Activate(tab);
+        ToolTip.SetTip(chip, tab.Session + ": " + tab.Title);
+        return chip;
+    }
+
+    // Mockup screen 5: who drives this tab, with Neem over (Take over) and Stop agent.
+    private void _BuildAgentBar(AgentTab? tab)
+    {
+        if (tab is null)
+        {
+            _agentBar.Child = null;
+            return;
+        }
+
+        var drives = tab.OperatorDrives;
+        var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12 };
+        text.Inlines ??= [];
+        text.Inlines.Add(new Run("Agent profile") { FontWeight = FontWeight.SemiBold });
+        text.Inlines.Add(new Run(drives ? "  ·  you are driving: the session's browser calls are refused until you give it back" : "  ·  live view of the agent Chromium  ·  no logins of Raymond  ·  driven by "));
+        if (drives == false)
+        {
+            text.Inlines.Add(new Run(tab.Session) { FontWeight = FontWeight.SemiBold });
+            text.Inlines.Add(new Run(" via Playwright MCP"));
+        }
+
+        var take = new Button { Content = drives ? "Give back" : "Take over", Classes = { "Compact", drives ? "Accent" : "Subtle" }, Margin = new Thickness(6, 0, 0, 0) };
+        take.Click += async (_, _) => await (drives ? _agents.GiveBackAsync() : _agents.TakeOverAsync());
+        var stop = new Button { Content = new TextBlock { Text = "Stop agent", Foreground = new SolidColorBrush(Color.Parse("#E5484D")) }, Classes = { "Compact", "Subtle" }, Margin = new Thickness(6, 0, 0, 0) };
+        stop.Click += async (_, _) => await _agents.StopAsync();
+        ToolTip.SetTip(stop, "Close this session's Chromium; its browser calls fail until it opens a new one");
+
+        _agentBar.Background = new SolidColorBrush(AgentPurple, 0.12);
+        _agentBar.Padding = new Thickness(12, 5);
+        _agentBar.Child = new DockPanel { Children = { _Docked(stop, Dock.Right), _Docked(take, Dock.Right), text } };
+    }
+
+    private Control _AgentsEmpty()
+    {
+        var message = _agents.Error ?? "No agent has a browser open. A session that mounts Playwright MCP gets one, and its tabs show here.";
+        return new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(24) }
+            .Themed(TextBlock.ForegroundProperty, "CockpitTextSecondaryBrush");
     }
 
     // Mockup screen 1: the host in bold, the rest faint, while the field is not being edited.
@@ -246,7 +389,8 @@ internal sealed class BrowserShell : UserControl
             return string.Empty;
         }
 
-        var shown = address.StartsWith("https://", StringComparison.Ordinal) ? address["https://".Length..] : address;
+        var shown = address.StartsWith("https://", StringComparison.Ordinal) ? address["https://".Length..]
+            : address.StartsWith("http://", StringComparison.Ordinal) ? address["http://".Length..] : address;
         return shown.StartsWith("www.", StringComparison.Ordinal) ? shown["www.".Length..] : shown;
     }
 
@@ -351,15 +495,16 @@ internal sealed class BrowserShell : UserControl
         }
     }
 
-    private static Control _Pill(string text, bool active)
+    private static Control _Pill(string text, bool active, Action onClick)
     {
         var pill = new Border
         {
             Padding = new Thickness(8, 2),
             CornerRadius = new CornerRadius(10),
-            IsEnabled = active,
+            Cursor = new Cursor(StandardCursorType.Hand),
             Child = new TextBlock { Text = text, FontSize = 12 }.Themed(TextBlock.ForegroundProperty, active ? "CockpitTextPrimaryBrush" : "CockpitTextFaintBrush"),
         };
+        pill.PointerPressed += (_, _) => onClick();
         return active ? pill.Themed(Border.BackgroundProperty, "CockpitAccentSelectionBrush") : pill;
     }
 

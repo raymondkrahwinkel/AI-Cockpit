@@ -48,6 +48,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
   on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
   Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
+- added: the Browser's **Agents** side shows the tabs of the browsers your agents use, each with the session it belongs
+  to, and a live picture of the tab you select (only while it is on screen). **Take over** lets you click and type in the
+  tab while that session's browser calls are refused with a clear message until you **Give back**; **Stop agent** closes
+  that session's browser, and its next browser call says you stopped it.
 - added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
   so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
 - added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**

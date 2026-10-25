@@ -18,7 +18,14 @@ public class AgentBrowserDriverTests
             ?? AgentBrowserRuntime.SystemBrowser()
             ?? throw new InvalidOperationException("No Chromium to test against: install Chrome or Edge.");
         using var browsers = new AgentBrowserHost(() => executable, root);
-        using var tabs = new AgentBrowserTabs(browsers, paneId => paneId, (_, _) => { });
+        var frames = 0;
+        using var tabs = new AgentBrowserTabs(browsers, paneId => paneId, (name, _) =>
+        {
+            if (name == "agents.frame")
+            {
+                Interlocked.Increment(ref frames);
+            }
+        });
         try
         {
             var endpoint = await browsers.StartAsync("pane-a") ?? throw new InvalidOperationException("The agent browser did not start");
@@ -40,10 +47,17 @@ public class AgentBrowserDriverTests
             Assert.True(await tabs.WatchAsync("pane-a", targetId, CancellationToken.None));
             await InputClickAsync(tabs, targetId);
             await TitleBecomesAsync(endpoint, "2");
+            Assert.True(Volatile.Read(ref frames) > 0, "no screencast frame while the tab was on screen");
 
+            // AC-1713 acceptance 1: with nobody looking there is no screencast, so the page changing sends nothing.
+            tabs.Unwatch();
+            await Task.Delay(500);
+            var framesWhenClosed = Volatile.Read(ref frames);
             browsers.SetOperatorDrives("pane-a", false);
             Assert.Null(await ClickAsync(agent, 5));
             await TitleBecomesAsync(endpoint, "3");
+            await Task.Delay(500);
+            Assert.Equal(framesWhenClosed, Volatile.Read(ref frames));
         }
         finally
         {

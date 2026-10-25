@@ -21,6 +21,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     public const string DockPanelId = "browser.rail";
 
     private BrowserHome? _home;
+    private AgentTabsModel? _agents;
 
     // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not part of the plugin contract.
     public static IReadOnlyDictionary<string, Func<Control>> Scenes => BrowserScenes.All;
@@ -29,6 +30,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
 
     public void InitializeUi(ICockpitUiHost host)
     {
+        _agents = new AgentTabsModel(host.Channel);
         host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), host.Storage));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Browser", _ => _Home(host).CreateSlot(BrowserPlace.Tab))
         {
@@ -45,6 +47,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         host.AddDockPanel(new DockPanelRegistration(DockPanelId, "Browser", MaterialIconKind.Web, () => _Home(host).CreateSlot(BrowserPlace.Rail))
         {
             KeepAlive = true,
+            Badge = _agents.Badge,
             CanFloat = true,
         });
 
@@ -56,7 +59,11 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
     }
 
-    public void Dispose() => BrowserEngine.Shared.Shutdown();
+    public void Dispose()
+    {
+        _agents?.Dispose();
+        BrowserEngine.Shared.Shutdown();
+    }
 
     // Mockup screens 1 and 2: what the status bar says about the browser; nothing while it has no open tab.
     internal static string? StatusText(BrowserPlace place, BrowserEngineState state, int tabs) =>
@@ -72,7 +79,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
 
         BrowserShell? shell = null;
-        shell = new BrowserShell(new BrowserModel(BrowserEngine.Shared), url =>
+        shell = new BrowserShell(new BrowserModel(BrowserEngine.Shared), _agents!, url =>
         {
             if (TopLevel.GetTopLevel(shell) is { } top)
             {
