@@ -32,6 +32,13 @@ public interface IFirstRunWizardStep
     string? NextBlockedReason => null;
 
     /// <summary>
+    /// Called each time the wizard lands on this step, so it can read what an earlier step settled.
+    /// </summary>
+    void Entered()
+    {
+    }
+
+    /// <summary>
     /// This step's own content, built once when the wizard opens.
     /// </summary>
     Control BuildContent();

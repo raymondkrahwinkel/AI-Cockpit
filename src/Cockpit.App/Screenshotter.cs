@@ -715,6 +715,9 @@ internal static partial class Screenshotter
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 
+        // AC-1671: the assistant on, no profile yet, and two providers chosen in the previous step: Next is off with its reason.
+        ["first-run-assistant-chosen"] = (_, _) => _AssistantWithChosenProviders(),
+
         // Stage provider availability states directly so this headless scene does not depend on a store fetch
         // (AC-510[b]).
         ["provider-step-catalogue"] = (_, _) => _AsWindow(_ProviderStepCatalogue(), 640, 560),
@@ -836,6 +839,27 @@ internal static partial class Screenshotter
             {
             }
         }
+    }
+
+    private static Window _AssistantWithChosenProviders()
+    {
+        var providers = new ViewModels.Onboarding.ProviderStepViewModel();
+        foreach (var (id, name) in new[] { ("claude-provider", "Claude Code"), ("codex-provider", "Codex") })
+        {
+            providers.Providers.Add(new ViewModels.Onboarding.ProviderPickerRowViewModel(
+                new ViewModels.StorePluginRowViewModel(new Core.Plugins.PluginStoreEntry(id, name, "d", "Cockpit", "1.0.0", []), Core.Plugins.PluginStoreConfig.Remote("https://plugins.example.org/index.json"), null),
+                ViewModels.Onboarding.ProviderDetectionState.NotApplicable) { IsSelected = true });
+        }
+
+        var viewModel = new ViewModels.Onboarding.AssistantStepViewModel(null, null, null, null, () => providers);
+        viewModel.AssistantOptions.IsEnabled = true;
+        var window = new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.AssistantStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+
+        return window;
     }
 
     private static Window _WorkKindWizard(int pluginCount)

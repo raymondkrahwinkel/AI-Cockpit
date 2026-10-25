@@ -94,6 +94,11 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
             choice.ViewModel.AnswersChanged += (_, _) => RefreshSkips();
         }
 
+        if (ordered.OfType<AssistantStep>().FirstOrDefault() is { } assistant)
+        {
+            assistant.ViewModel.NextBlockedChanged += (_, _) => RefreshSkips();
+        }
+
         var navigable = _Navigable();
         _current = navigable.FirstOrDefault(index => ordered[index].Order == startAtOrder, navigable[0]);
         _ApplyPosition();
@@ -136,6 +141,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         var navigable = _Navigable();
         _current = navigable[navigable.IndexOf(_current) - 1];
         _ApplyPosition();
+        _steps[_current].Entered();
     }
 
     [RelayCommand(CanExecute = nameof(CanGoNext))]
@@ -151,6 +157,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         var navigable = _Navigable();
         _current = navigable[navigable.IndexOf(_current) + 1];
         _ApplyPosition();
+        _steps[_current].Entered();
     }
 
     // AC-509 criterion 3: Skip leaves everything uninstalled — it does nothing here beyond closing the window.

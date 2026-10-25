@@ -250,6 +250,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the assistant step counts the providers you chose.** A provider ticked in "What you have" is listed on "Your
+  assistant" with what is still to do (install it, approve it), instead of the page saying only Ollama and LM Studio are
+  available. Plugins start after the setup, so such a provider can be picked as the assistant's profile once the cockpit has started.
+- fixed: **Next waits for a profile when the assistant is on.** With "Enable the assistant" ticked and no profile, Next is off
+  and says why; Back, Skip and switching the assistant off still work.
+
 - fixed: **the first start says what "Set up from my profile and organisation" installs.** The screen before "Set it up" names
   your organisation instead of an id and lists the plugins, profiles, projects and settings it brings, with counts and
   names. After "Set it up" it says what was set up, or why nothing was, and Next waits until you have made that choice.

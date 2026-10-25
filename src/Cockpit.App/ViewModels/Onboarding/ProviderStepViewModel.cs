@@ -50,6 +50,10 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     [ObservableProperty]
     private string _summaryMessage = string.Empty;
 
+    // What the assistant step lists as chosen here: ticked, or installed in this wizard.
+    public IReadOnlyList<string> ChosenProviderLines =>
+        [.. Providers.Where(row => row.IsSelected || row.WasInstalled).Select(row => row.ChosenLine)];
+
     public bool HasProviders => Providers.Count > 0;
 
     public bool HasFoundProviders => FoundProviders.Any();

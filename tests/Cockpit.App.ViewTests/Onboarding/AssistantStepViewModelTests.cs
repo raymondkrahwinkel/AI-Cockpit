@@ -8,6 +8,7 @@ using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.Views.Onboarding;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -117,5 +118,25 @@ public class AssistantStepViewModelTests
 
         await profileStore.DidNotReceive().RepointAsync(Arg.Any<SessionProfile>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         await profileStore.DidNotReceive().UnsetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // AC-1671: a provider ticked in the previous step is counted, and named as not usable yet; ticked off again it is not.
+        var providers = new ProviderStepViewModel();
+        var claude = new ProviderPickerRowViewModel(
+            new StorePluginRowViewModel(new PluginStoreEntry("claude-provider", "Claude Code", "d", "Cockpit", "1.0.0", []), PluginStoreConfig.Remote("url"), null),
+            ProviderDetectionState.NotApplicable) { IsSelected = true };
+        providers.Providers.Add(claude);
+        var withChoice = new AssistantStepViewModel(null, profileStore, null, new PluginRegistrations(registry), () => providers);
+        Assert.False(withChoice.OnlyLocalProvidersAvailable);
+        Assert.Contains("Claude Code (ticked, not installed yet", Assert.Single(withChoice.ChosenProviders), StringComparison.Ordinal);
+        claude.IsSelected = false;
+        withChoice.RefreshChosenProviders();
+        Assert.True(withChoice.OnlyLocalProvidersAvailable);
+
+        // AC-1671: Next waits while the assistant is on and has no profile, and Skip is not its business.
+        Assert.Null(viewModel.NextBlockedReason);
+        viewModel.AssistantOptions.IsEnabled = true;
+        Assert.Equal("Pick a profile, or turn the assistant off.", viewModel.NextBlockedReason);
+        viewModel.AssistantOptions.ProfileLabel = "Claude (sonnet)";
+        Assert.Null(viewModel.NextBlockedReason);
     }
 }

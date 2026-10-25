@@ -68,8 +68,18 @@ public sealed class FirstStartJourney
                     Assert.Equal("Step 2 of 5", label);
 
                     // Start fresh is the pick nobody has to make: Next carries on through every step, and the last Next ends it.
+                    // AC-1671: on the assistant step Next waits while the assistant is on without a profile; Back and switching it off stay.
                     await HeadlessAvalonia.RunAsync(() =>
                     {
+                        var assistant = services.GetServices<IFirstRunWizardStep>().OfType<AssistantStep>().Single();
+                        wizard.NextCommand.Execute(null);
+                        wizard.NextCommand.Execute(null);
+                        assistant.ViewModel.AssistantOptions.IsEnabled = true;
+                        Assert.False(wizard.NextCommand.CanExecute(null));
+                        Assert.True(wizard.BackCommand.CanExecute(null));
+                        assistant.ViewModel.AssistantOptions.IsEnabled = false;
+                        Assert.True(wizard.NextCommand.CanExecute(null));
+
                         while (!wizard.IsLastStep)
                         {
                             wizard.NextCommand.Execute(null);

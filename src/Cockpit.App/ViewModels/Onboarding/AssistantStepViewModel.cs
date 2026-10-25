@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
@@ -12,6 +13,8 @@ namespace Cockpit.App.ViewModels.Onboarding;
 public sealed partial class AssistantStepViewModel : ObservableObject
 {
     private readonly ISessionDialogService? _dialogService;
+    private readonly IPluginRegistrations? _registry;
+    private readonly Func<ProviderStepViewModel?>? _chosenProviders;
 
     public AssistantOptionsViewModel AssistantOptions { get; }
 
@@ -25,7 +28,33 @@ public sealed partial class AssistantStepViewModel : ObservableObject
     // True when nothing beyond the two built-in local providers is registered (AC-585 criterion 5) — read off the
     // same registry the assistant's own profile dialog offers providers from, not a fresh network probe. This only
     // states the fact; nothing here picks a profile because of it.
-    public bool OnlyLocalProvidersAvailable { get; }
+    [ObservableProperty]
+    private bool _onlyLocalProvidersAvailable;
+
+    // The providers the previous step ticked or installed. Plugins load only after the wizard, and one waits for its
+    // approval, so none of them can be the assistant's provider yet; saying so beats listing only the two local ones.
+    public ObservableCollection<string> ChosenProviders { get; } = [];
+
+    public bool HasChosenProviders => ChosenProviders.Count > 0;
+
+    // Why Next is off: the assistant is on and has no profile to run as. Skip and switching it off stay possible.
+    public string? NextBlockedReason =>
+        AssistantOptions.IsEnabled && string.IsNullOrEmpty(AssistantOptions.ProfileLabel) ? "Pick a profile, or turn the assistant off." : null;
+
+    public event EventHandler? NextBlockedChanged;
+
+    // Reads the previous step again; called when the wizard lands here.
+    public void RefreshChosenProviders()
+    {
+        ChosenProviders.Clear();
+        foreach (var line in _chosenProviders?.Invoke()?.ChosenProviderLines ?? [])
+        {
+            ChosenProviders.Add(line);
+        }
+
+        OnPropertyChanged(nameof(HasChosenProviders));
+        OnlyLocalProvidersAvailable = ChosenProviders.Count == 0 && (_registry is null || _registry.SessionProviders.Count == 0);
+    }
 
     // Design-time/previewer constructor.
     public AssistantStepViewModel()
@@ -37,11 +66,21 @@ public sealed partial class AssistantStepViewModel : ObservableObject
         IAssistantSettingsStore? settingsStore,
         IAssistantProfileStore? profileStore,
         ISessionDialogService? dialogService,
-        IPluginRegistrations? pluginProviderRegistry)
+        IPluginRegistrations? pluginProviderRegistry,
+        Func<ProviderStepViewModel?>? chosenProviders = null)
     {
         _dialogService = dialogService;
+        _registry = pluginProviderRegistry;
+        _chosenProviders = chosenProviders;
         AssistantOptions = new AssistantOptionsViewModel(settingsStore, profileStore);
-        OnlyLocalProvidersAvailable = pluginProviderRegistry is null || pluginProviderRegistry.SessionProviders.Count == 0;
+        AssistantOptions.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is nameof(AssistantOptionsViewModel.IsEnabled) or nameof(AssistantOptionsViewModel.ProfileLabel))
+            {
+                NextBlockedChanged?.Invoke(this, EventArgs.Empty);
+            }
+        };
+        RefreshChosenProviders();
 
         _ = AssistantOptions.RefreshAsync();
     }
