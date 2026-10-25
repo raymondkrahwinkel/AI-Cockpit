@@ -192,7 +192,7 @@ public static class CapabilityCatalog
             "Reads which sessions are open, what they are doing, and which pane an MCP call arrived from.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
+            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitHost.CurrentMcpCaller", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
             [new("paneId", "The session pane the plugin may observe.")]),
 
         new(

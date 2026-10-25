@@ -585,6 +585,17 @@ public interface ICockpitHost
     string? CurrentMcpCallerPaneId => null;
 
     /// <summary>
+    /// Who is behind the in-process MCP call currently being handled (AC-1685): its pane, whether it is the assistant,
+    /// an ordinary session or a remote caller, and the connect key's label when one was used. Read from the transport,
+    /// never from the tool's arguments.
+    /// </summary>
+    /// <remarks>
+    /// Null outside an MCP call, and on an older host that predates this. A tool meant for the owner only must then
+    /// refuse (fail closed): null is "unknown", never "probably the assistant".
+    /// </remarks>
+    McpCaller? CurrentMcpCaller => null;
+
+    /// <summary>
     /// The cockpit's configured session profiles (#9): what identities exist and where each keeps its provider
     /// state on disk. Read fresh on every call.
     /// </summary>

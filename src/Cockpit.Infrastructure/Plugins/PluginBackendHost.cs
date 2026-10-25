@@ -88,6 +88,9 @@ public class PluginBackendHost(
     // session id the agent named. Null off the verified path (no MCP call in flight).
     public string? CurrentMcpCallerPaneId => McpRequestContext.CurrentPaneId;
 
+    // AC-1685: the same verified caller with its kind, so an owner-only tool can tell the assistant from a session.
+    public McpCaller? CurrentMcpCaller => McpRequestContext.CurrentCaller;
+
     // The legacy typed Claude profile's own models and effort levels, which only the desktop's option catalog holds.
     protected virtual IReadOnlyList<string> LegacyClaudeModels => [];
 
