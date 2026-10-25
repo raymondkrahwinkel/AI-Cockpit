@@ -11,10 +11,9 @@
         <vm:AssistantStepViewModel/>
     </Design.DataContext>
 
-    <!-- AC-585: explains the assistant and turns it on, reusing AssistantOptionsViewModel — the same view model
-         Options → Voice → Assistant edits — for IsEnabled and the profile label/reason (criterion 3). Nothing here
-         ever binds to a consent-bypass or permission-mode setting: the hard boundary the ticket draws is kept by
-         this view simply never offering either control, not by hiding a preselected one. -->
+    <!-- AC-585: explains the assistant and turns it on, reusing AssistantOptionsViewModel for IsEnabled and the
+         profile label/reason. The profile itself is edited in the regular assistant profile dialog (AC-1741), so
+         the permission mode a session default offers is the one Options → Assistant offers. -->
     <StackPanel Margin="4,4" Spacing="10">
         <StackPanel Spacing="2">
             <TextBlock Text="Your assistant" FontSize="16" FontWeight="SemiBold"/>

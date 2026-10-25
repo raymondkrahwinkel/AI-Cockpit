@@ -8,7 +8,8 @@ public sealed record FirstRunWizardResumeState(
     IReadOnlyList<FirstRunProviderChoice> Providers,
     string? AssistantProviderId,
     string? AssistantProviderName,
-    string? AssistantConfigJson = null);
+    string? AssistantConfigJson = null,
+    IReadOnlyDictionary<string, string>? AssistantOptionDefaults = null);
 
 public sealed record FirstRunProviderChoice(
     string Id,

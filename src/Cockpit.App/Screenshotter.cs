@@ -737,6 +737,7 @@ internal static partial class Screenshotter
         // AC-1741: the same editor in first-run mode and in Options, per provider, to lay side by side.
         ["first-run-assistant-claude-session-defaults"] = (_, _) => _FirstRunEditorWithDefaults("Claude"),
         ["first-run-assistant-codex-session-defaults"] = (_, _) => _FirstRunEditorWithDefaults("Codex"),
+        ["assistant-profile-claude"] = (_, _) => _OptionsEditorWithDefaults("Claude"),
         ["assistant-profile-codex"] = (_, _) => _OptionsEditorWithDefaults("Codex"),
         ["first-run-assistant-claude-resumed"] = (_, _) => _AssistantWithDeferredClaude(),
         // AC-1673: the two explicit choices from step 3; a found Claude CLI is visible but not selected.
@@ -899,10 +900,26 @@ internal static partial class Screenshotter
 
     private static Window _OptionsEditorWithDefaults(string which)
     {
-        var (registry, id, _, view) = _DefaultsProvider(which);
-        var viewModel = new AssistantProfileDialogViewModel(new _FakeAssistantSessionHost(), new Composition.PluginRegistrations(registry), _ConfigViews(id, view));
-        viewModel.Profile.SelectedProvider = viewModel.Profile.Providers.Single(provider => provider.PluginProviderId == id);
+        var (registry, id, name, view) = _DefaultsProvider(which);
+        var viewModel = new AssistantProfileDialogViewModel(
+            new _FakeAssistantProfileStore(new SessionProfile($"{name} (assistant)", new PluginProviderConfig(id, "{}"))),
+            new _FakeSessionProfileStore(),
+            new _FakeAssistantSessionHost(),
+            pluginProviderRegistry: new Composition.PluginRegistrations(registry),
+            pluginConfigViews: _ConfigViews(id, view));
+        viewModel.LoadAsync().GetAwaiter().GetResult();
         return new AssistantProfileDialog { DataContext = viewModel, Height = 1220 };
+    }
+
+    private sealed class _FakeAssistantProfileStore(SessionProfile profile) : IAssistantProfileStore
+    {
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(profile));
+
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(record, null, replacesStandingInstruction));
+
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(null, reason));
     }
 
     private static Window _FirstRunAssistantProfile(

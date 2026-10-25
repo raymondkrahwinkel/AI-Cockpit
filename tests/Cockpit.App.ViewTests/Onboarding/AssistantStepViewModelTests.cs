@@ -132,6 +132,17 @@ public class AssistantStepViewModelTests
         await noRestart.EditProfileCommand.ExecuteAsync(null);
         Assert.Equal(["Ollama", "LM Studio"], openedSetup?.Providers.Select(provider => provider.Label));
 
+        // AC-1741: a session default chosen in the editor travels with the deferred choice.
+        FirstRunWizardResumeState? remembered = null;
+        var deferring = new AssistantStepViewModel(null, profileStore, dialogs, new PluginRegistrations(registry), null, Substitute.For<IFirstRunWizardStateStore>(), state => remembered = state);
+        await deferring.EditProfileCommand.ExecuteAsync(null);
+        var chosen = new SessionProfile("Codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"))
+        {
+            Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty) { OptionDefaults = new Dictionary<string, string> { ["sandbox"] = "workspace-write" } },
+        };
+        await openedSetup!.SetUpLaterAsync(chosen, CancellationToken.None);
+        Assert.Equal("workspace-write", remembered?.AssistantOptionDefaults?["sandbox"]);
+
         // AC-1673: finding a CLI is detection, not the operator choosing it. Once ticked it is counted as a choice;
         // ticked off again it is not.
         var providers = new ProviderStepViewModel();

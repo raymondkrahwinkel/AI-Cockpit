@@ -311,6 +311,27 @@ public sealed class FirstStartJourney
                     "claude",
                     Assert.IsType<PluginProviderConfig>((await restarted.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync()).Profile?.ProviderConfig).ProviderId);
 
+                // AC-1741: a session default chosen in step 4 lands in the assistant profile.
+                profileOpened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
+                await HeadlessAvalonia.RunAsync(() =>
+                {
+                    profileShown = assistant.EditProfileCommand.ExecuteAsync(null);
+                    return Task.CompletedTask;
+                });
+                profileDialog = await profileOpened.Task.WaitAsync(Until.Ceiling);
+                profileViewModel = HeadlessAvalonia.Run(() => Assert.IsType<AssistantProfileDialogViewModel>(profileDialog.DataContext));
+                HeadlessAvalonia.Run(() =>
+                {
+                    profileViewModel.Profile.SelectedProvider = profileViewModel.Profile.Providers.Single(option => option.Label == "Codex (CLI)");
+                    Dispatcher.UIThread.RunJobs();
+                    profileViewModel.Profile.PluginOptionDefaults.Single(option => option.Key == "sandbox").Value = "workspace-write";
+                });
+                await HeadlessAvalonia.RunAsync(() => profileViewModel.SetUpLaterCommand.ExecuteAsync(null));
+                await profileShown.WaitAsync(Until.Ceiling);
+                Assert.Equal(
+                    "workspace-write",
+                    (await restarted.Services.GetRequiredService<IAssistantProfileStore>().LoadAsync()).Profile?.Defaults?.OptionDefaults?["sandbox"]);
+
                 profileOpened = new TaskCompletionSource<AssistantProfileDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
                 await HeadlessAvalonia.RunAsync(() =>
                 {
