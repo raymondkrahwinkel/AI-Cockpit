@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Plugin.Browser.UI.Share;
@@ -44,7 +45,7 @@ internal sealed partial class TabShareService
             return await _AskControlAsync(request);
         }
 
-        if (request.TabId is not { } tabId || _Controlled(request.PaneId, tabId) is null)
+        if (request.TabId is not { } tabId || _Controlled(request.PaneId, tabId) is not ({ } tab, { } grant))
         {
             return _Refuse(request, NoControl);
         }
@@ -53,63 +54,97 @@ internal sealed partial class TabShareService
         var password = false;
         if (request.Tool == "click" && request.Selector is { } selector)
         {
-            var tab = _model.Tabs.First(tab => tab.Id == tabId);
-            var located = _Point(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(LocateScript.Replace("%SELECTOR%", JsonSerializer.Serialize(selector)))));
-            if (located is not { } point)
+            if (_Point(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(LocateScript.Replace("%SELECTOR%", JsonSerializer.Serialize(selector))))) is not { } point)
             {
                 return _Refuse(request, "No element on the page matches that selector.");
             }
 
             (x, y) = point;
         }
-        else if (request.Tool == "type")
+
+        if (request.Tool == "click" && (x is null || y is null || await _LandsInTopDocumentAsync(tab, (int)x, (int)y) == false))
         {
-            var tab = _model.Tabs.First(tab => tab.Id == tabId);
-            password = _MaybePassword(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(FocusIsPasswordScript)));
+            return _Refuse(request, "That point is not on this site's own page: it is in a frame, or on nothing. Control covers the top page only.");
         }
 
-        // Checked again after the awaits above, and nothing awaits between this check and the input going in.
-        if (_Controlled(request.PaneId, tabId) is not ({ } target, { } grant))
+        if (request.Tool == "type")
         {
-            return _Refuse(request, NoControl);
+            password = await _MaybePasswordAsync(tab);
         }
 
-        var refusal = _Act(request, target, grant, x, y);
-        if (refusal is not null)
+        // Decided again on CEF's UI thread right before the input: the same grant, the same origin, and for keys a
+        // focused frame on that origin. The answer, and so the audit line, comes only after the input went in.
+        var needsFocus = request.Tool is "type" or "key";
+        bool Gate(string? mainUrl, string? focusedUrl) => ControlPolicy.MayAct(Grants, request.PaneId, tabId, grant, mainUrl, focusedUrl, needsFocus);
+        var (done, refusal) = await _ActAsync(request, tab, grant, x, y, Gate);
+        if (done == false)
         {
-            return _Refuse(request, refusal);
+            return _Refuse(request, refusal ?? NoControl);
+        }
+
+        if (request.Tool == "type")
+        {
+            password |= await _MaybePasswordAsync(tab);
         }
 
         var action = Describe(request.Tool, request.Text, x, y, request.Selector, password);
         Grants.MarkAction(grant, action);
-        return new TabShareAnswer(request.Id, true, Origin: grant.Origin, Url: target.Address, Title: target.Title, Action: action);
+        return new TabShareAnswer(request.Id, true, Origin: grant.Origin, Url: tab.Address, Title: tab.Title, Action: action);
     }
 
-    private static string? _Act(TabShareRequest request, BrowserTab tab, TabGrant grant, double? x, double? y)
+    private static async Task<(bool Done, string? Refusal)> _ActAsync(TabShareRequest request, BrowserTab tab, TabGrant grant, double? x, double? y, Func<string?, string?, bool> gate)
     {
         switch (request.Tool)
         {
-            case "click" when x is { } left && y is { } top:
-                tab.View.AgentClick((int)left, (int)top);
-                return null;
+            case "click":
+                return (await tab.View.AgentClick((int)x!.Value, (int)y!.Value, gate), null);
             case "type" when request.Text is { Length: > 0 and <= MaxTyped } text:
-                tab.View.AgentType(text);
-                return null;
+                return (await tab.View.AgentType(text, gate), null);
             case "key" when request.Text is { } key:
-                return tab.View.AgentKey(key) ? null : $"Unknown key \"{key}\". Use a name such as Enter, Tab, Escape, Backspace or ArrowDown.";
+                var code = KeyCodes.FromName(key);
+                return code == 0
+                    ? (false, $"Unknown key \"{key}\". Use a name such as Enter, Tab, Escape, Backspace or ArrowDown.")
+                    : (await tab.View.AgentKey(code, gate), null);
             case "scroll":
-                tab.View.AgentScroll((int)(x ?? 0), (int)(y ?? 0));
-                return null;
+                return (await tab.View.AgentScroll((int)(x ?? 0), (int)(y ?? 0), gate), null);
             case "navigate" when request.Text is { } address:
-                if (_SameOrigin(address, grant.Origin) == false)
-                {
-                    return $"Control covers {grant.Origin} only. Another site needs its own approval: ask again with request_tab_control after the operator opens it.";
-                }
-
-                tab.View.Navigate(address);
-                return null;
+                return ControlPolicy.SameOrigin(address, grant.Origin)
+                    ? (await tab.View.AgentNavigate(address, gate), null)
+                    : (false, $"Control covers {grant.Origin} only. Another site needs its own approval: ask again with request_tab_control after the operator opens it.");
             default:
-                return $"Missing or invalid arguments for {request.Tool}.";
+                return (false, $"Missing or invalid arguments for {request.Tool}.");
+        }
+    }
+
+    // What lies under the point, from DevTools rather than the page's own scripts: an element of the top document.
+    private static async Task<bool> _LandsInTopDocumentAsync(BrowserTab tab, int x, int y)
+    {
+        await _DevToolsAsync(tab, "DOM.enable", new Dictionary<string, object>());
+        var node = await _DevToolsAsync(tab, "DOM.getNodeForLocation", new Dictionary<string, object> { ["x"] = x, ["y"] = y });
+        var frames = await _DevToolsAsync(tab, "Page.getFrameTree", new Dictionary<string, object>());
+        if (_BackendNodeId(node) is not { } backendNodeId)
+        {
+            return false;
+        }
+
+        var described = await _DevToolsAsync(tab, "DOM.describeNode", new Dictionary<string, object> { ["backendNodeId"] = backendNodeId });
+        return ControlPolicy.ClickTarget(node, frames, described);
+    }
+
+    // Asked before and after the keys go in; either answer that is not a clear no masks the typed text.
+    private static async Task<bool> _MaybePasswordAsync(BrowserTab tab) =>
+        _MaybePassword(await _DevToolsAsync(tab, "Runtime.evaluate", _Evaluate(FocusIsPasswordScript)));
+
+    private static int? _BackendNodeId(string? result)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(result ?? string.Empty);
+            return document.RootElement.TryGetProperty("backendNodeId", out var id) ? id.GetInt32() : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 
@@ -165,18 +200,18 @@ internal sealed partial class TabShareService
             ? (tab, grant)
             : null;
 
-    // A form held in a controlled tab, per tab id, as "<method> <target address>"; the bar asks Raymond about it.
+    // A navigation held in a controlled tab, per tab id, as "<method> <target address>"; the bar asks Raymond about it.
     public IReadOnlyDictionary<string, string> HeldForms => _heldForms;
 
     public event Action? HeldFormsChanged;
 
-    // Only while the tab is still controlled and the form still targets the granted origin.
+    // Sent again only while the tab is still controlled on the origin the held request targets.
     public void SendHeldForm(string tabId)
     {
         if (_heldForms.Remove(tabId, out var submit) && _model.Tabs.FirstOrDefault(tab => tab.Id == tabId) is { } tab)
         {
             var grant = Grants.ForTab(tabId).FirstOrDefault(grant => grant.Controls);
-            if (grant is not null && _SameOrigin(_Target(submit), grant.Origin))
+            if (grant is not null && ControlPolicy.SameOrigin(_Target(submit), grant.Origin))
             {
                 tab.View.ReleaseHeldSubmit();
             }
@@ -198,35 +233,21 @@ internal sealed partial class TabShareService
         }
     }
 
-    // A submission to another origin is dropped without asking; one to the granted origin waits for Raymond.
-    private void _SubmitHeld(BrowserTab tab, string submit)
+    // The view already held it in CEF; another origin never reaches this, it was cancelled there.
+    private void _SubmitHeld(BrowserTab tab, string method, string url)
     {
-        var grant = Grants.ForTab(tab.Id).FirstOrDefault(grant => grant.Controls);
-        if (grant is not null && _SameOrigin(_Target(submit), grant.Origin))
-        {
-            _heldForms[tab.Id] = submit;
-        }
-        else
-        {
-            _heldForms.Remove(tab.Id);
-            tab.View.DropHeldSubmit();
-        }
-
+        _heldForms[tab.Id] = $"{method} {url}";
         HeldFormsChanged?.Invoke();
     }
 
-    // The view holds forms and refuses file pickers exactly while its tab has a controller.
+    // Each view holds submissions and refuses file pickers exactly while its tab has a controller, on its origin.
     private void _SyncControlled()
     {
         foreach (var tab in _model.Tabs)
         {
-            var controlled = Grants.ForTab(tab.Id).Any(grant => grant.Controls);
-            if (tab.View.Controlled != controlled)
-            {
-                tab.View.Controlled = controlled;
-            }
-
-            if (controlled == false && _heldForms.Remove(tab.Id))
+            var origin = Grants.ForTab(tab.Id).FirstOrDefault(grant => grant.Controls)?.Origin;
+            tab.View.ControlOrigin = origin;
+            if (origin is null && _heldForms.Remove(tab.Id))
             {
                 tab.View.DropHeldSubmit();
                 HeldFormsChanged?.Invoke();
@@ -247,10 +268,6 @@ internal sealed partial class TabShareService
 
     private static bool _IsWeb(string address) =>
         Uri.TryCreate(address, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
-
-    private static bool _SameOrigin(string address, string origin) =>
-        _IsWeb(address)
-        && string.Equals(TabGrantRegistry.OriginOf(address), origin, StringComparison.OrdinalIgnoreCase);
 
     private static Dictionary<string, object> _Evaluate(string expression) => new() { ["expression"] = expression, ["returnByValue"] = true };
 

@@ -210,7 +210,7 @@ internal sealed partial class TabShareService : IDisposable
         foreach (var tab in _model.Tabs.Where(tab => _watched.Add(tab.Id)))
         {
             tab.View.OperatorInput += () => _OperatorInput(tab);
-            tab.View.SubmitHeld += submit => _SubmitHeld(tab, submit);
+            tab.View.SubmitHeld += (method, url) => _SubmitHeld(tab, method, url);
             tab.Changed += () =>
             {
                 if (Grants.ForTab(tab.Id).Count > 0)

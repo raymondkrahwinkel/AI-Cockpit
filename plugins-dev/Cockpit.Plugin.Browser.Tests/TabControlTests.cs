@@ -7,7 +7,7 @@ public class TabControlTests
 {
     // L2b (authorisation), criteria 1 to 4: watching is not enough, control is exactly one session on one tab, and
     // Raymond taking over, Stop, closing the tab, the session ending or a move to another site refuse the next action;
-    // and the audit masks a password field (criterion 5).
+    // and the audit masks a password field (criterion 5). The review's points 1 to 4 each have a block at the end.
     [Fact]
     public void Control_IsOneSessionOnOneTab_AndNeverFollowsFromWatching()
     {
@@ -42,5 +42,31 @@ public class TabControlTests
         // Criterion 5: the audit line of a typed text shows it, except in a password field.
         Assert.Equal("type \"hello\"", TabShareService.Describe("type", "hello", null, null, null, password: false));
         Assert.DoesNotContain("test-only-secret", TabShareService.Describe("type", "test-only-secret", null, null, null, password: true));
+
+        // Review 1: the gate on CEF's thread holds only the very grant that authorized the action.
+        grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Control);
+        var grant = grants.Authorize("pane-a", "tab-1", control: true)!;
+        const string page = "https://github.com/pr/1";
+        Assert.True(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, page, needsFocus: true));
+        grants.Stop("tab-1");
+        grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Control);
+        Assert.False(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, page, needsFocus: true));
+
+        // Review 2: keys never go to a focused frame of another site, and a click never lands in a frame.
+        grant = grants.Authorize("pane-a", "tab-1", control: true)!;
+        Assert.False(ControlPolicy.MayAct(grants, "pane-a", "tab-1", grant, page, "https://evil.example/frame", needsFocus: true));
+        const string tree = """{"frameTree":{"frame":{"id":"MAIN"}}}""";
+        Assert.True(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"MAIN"}""", tree, """{"node":{"nodeName":"BUTTON"}}"""));
+        Assert.False(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"MAIN"}""", tree, """{"node":{"nodeName":"IFRAME"}}"""));
+        Assert.False(ControlPolicy.ClickTarget("""{"backendNodeId":7,"frameId":"CHILD"}""", tree, """{"node":{"nodeName":"BUTTON"}}"""));
+
+        // Reviews 3 and 4: decided in CEF, not the page. Any form submission waits, GET or POST, another site is dropped,
+        // and a release lets through only the request it was given for.
+        const string origin = "https://github.com";
+        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "GET", formSubmit: true, "https://github.com/search?q=x", null));
+        Assert.Equal(ControlPolicy.Verdict.Drop, ControlPolicy.Navigation(origin, "POST", formSubmit: false, "https://evil.example/collect", null));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://github.com/pr/2", null));
+        Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://github.com/merge", ("POST", "https://github.com/merge")));
+        Assert.Equal(ControlPolicy.Verdict.Hold, ControlPolicy.Navigation(origin, "POST", formSubmit: true, "https://github.com/delete", ("POST", "https://github.com/merge")));
     }
 }

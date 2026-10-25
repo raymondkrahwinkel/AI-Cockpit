@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Cockpit.Plugin.Browser.UI.Share;
 using Xilium.CefGlue;
 
 namespace Cockpit.Plugin.Browser.UI.Engine;
@@ -26,20 +27,15 @@ internal sealed class CefBrowserView : Control
         ['play','pause','ended','volumechange','emptied'].forEach(t=>window.addEventListener(t,audible,true));
         window.addEventListener('error',e=>{const t=e.target;const m=t&&t.tagName==='SOURCE'?t.parentElement:t;if(m&&(m.tagName==='VIDEO'||m.tagName==='AUDIO')&&m.error&&m.error.code===4)say('codec');},true);
         const r=navigator.requestMediaKeySystemAccess;if(r){navigator.requestMediaKeySystemAccess=function(){return r.apply(this,arguments).catch(x=>{say('codec');throw x;});};}
-        window.addEventListener('submit',e=>{if(!window.__cockpitHold)return;if(window.__cockpitRelease){window.__cockpitRelease=0;return;}
-        e.preventDefault();e.stopImmediatePropagation();const f=e.target,s=e.submitter;window.__cockpitHeld=[f,s];
-        say('submit:'+((s&&s.getAttribute('formmethod'))||f.getAttribute('method')||'get').toLowerCase()+' '+((s&&s.formAction)||f.action));},true);
         })();
         """;
 
-    // AC-1728: sends the held form, once, past the hold above.
-    private const string ReleaseHeldScript =
-        "(()=>{const h=window.__cockpitHeld;window.__cockpitHeld=null;if(h){window.__cockpitRelease=1;h[0].requestSubmit(h[1]||undefined);}})()";
-
-    // AC-1728: while an agent controls this tab, every form submission waits for the operator, and POST navigations
-    // that did not come from a released form are cancelled. The page cannot tell the agent's submit from Raymond's.
-    private volatile bool _controlled;
-    private int _postAllowed;
+    // AC-1728: the origin an agent controls this tab on, or null. While set, OnBeforeBrowse holds every form submission
+    // and non-GET navigation in any frame for the operator; nothing in the page's scripts takes part in that decision.
+    private volatile string? _controlOrigin;
+    private readonly object _holdGate = new();
+    private (string FrameId, CefRequest Request)? _held;
+    private (string Method, string Url)? _released;
 
     private readonly object _gate = new();
     private readonly BrowserEngine _engine;
@@ -98,28 +94,39 @@ internal sealed class CefBrowserView : Control
     // AC-1728: the operator's own click or key in this view, so an agent controlling the tab pauses for him.
     public event Action? OperatorInput;
 
-    // AC-1728: a form submission held while the tab is controlled, as "<method> <target address>".
-    public event Action<string>? SubmitHeld;
+    // AC-1728: a navigation held while the tab is controlled, as its method and target address, on the UI thread.
+    public event Action<string, string>? SubmitHeld;
 
-    public bool Controlled
+    public string? ControlOrigin
     {
-        get => _controlled;
-        set
+        get => _controlOrigin;
+        set => _controlOrigin = value;
+    }
+
+    // Sends the held request again, in the frame that made it; only that method and address pass the hold, once.
+    public void ReleaseHeldSubmit() => _OnHost(_ =>
+    {
+        (string FrameId, CefRequest Request)? held;
+        lock (_holdGate)
         {
-            _controlled = value;
-            _OnHost(_ => _browser?.GetMainFrame()?.ExecuteJavaScript(_HoldScript(value), string.Empty, 0));
+            held = _held;
+            _held = null;
+            _released = held is { } one ? (one.Request.Method, one.Request.Url) : null;
+        }
+
+        if (held is { } request && _browser?.GetFrameByIdentifier(request.FrameId) is { } frame)
+        {
+            frame.LoadRequest(request.Request);
+        }
+    });
+
+    public void DropHeldSubmit()
+    {
+        lock (_holdGate)
+        {
+            _held = null;
         }
     }
-
-    public void ReleaseHeldSubmit()
-    {
-        Interlocked.Exchange(ref _postAllowed, 1);
-        _OnHost(_ => _browser?.GetMainFrame()?.ExecuteJavaScript(ReleaseHeldScript, string.Empty, 0));
-    }
-
-    public void DropHeldSubmit() => _OnHost(_ => _browser?.GetMainFrame()?.ExecuteJavaScript("window.__cockpitHeld=null;", string.Empty, 0));
-
-    private static string _HoldScript(bool hold) => $"window.__cockpitHold={(hold ? 1 : 0)};";
 
     public bool IsMuted { get; private set; }
 
@@ -140,12 +147,13 @@ internal sealed class CefBrowserView : Control
 
     public void Reload() => _browser?.Reload();
 
-    // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host.
-    // Coordinates are the view's DIPs, which are the page's CSS pixels at 100% zoom.
-    public void AgentClick(int x, int y)
+    // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host. The
+    // gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses, and the task
+    // says whether the input went in. Coordinates are the page's CSS pixels at 100% zoom.
+    public Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate)
     {
         var mouse = new CefMouseEvent(x, y, CefEventFlags.None);
-        _OnHost(host =>
+        return _Agent(gate, host =>
         {
             host.SetFocus(true);
             host.SendMouseMoveEvent(mouse, false);
@@ -154,10 +162,10 @@ internal sealed class CefBrowserView : Control
         });
     }
 
-    public void AgentType(string text)
+    public Task<bool> AgentType(string text, Func<string?, string?, bool> gate)
     {
         var keys = text.Select(character => new CefKeyEvent { EventType = CefKeyEventType.Char, Character = character, UnmodifiedCharacter = character, WindowsKeyCode = character }).ToList();
-        _OnHost(host =>
+        return _Agent(gate, host =>
         {
             host.SetFocus(true);
             foreach (var key in keys)
@@ -167,33 +175,53 @@ internal sealed class CefBrowserView : Control
         });
     }
 
-    // False for a key name that has no code; Enter also sends its character, which is what submits a form.
-    public bool AgentKey(string name)
+    // A Windows key code from KeyCodes.FromName; Enter also sends its character, which is what submits a form.
+    public Task<bool> AgentKey(int code, Func<string?, string?, bool> gate) => _Agent(gate, host =>
     {
-        var code = KeyCodes.FromName(name);
-        if (code == 0)
+        host.SetFocus(true);
+        host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.RawKeyDown, WindowsKeyCode = code });
+        if (code == 0x0D)
         {
-            return false;
+            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = code });
         }
 
-        _OnHost(host =>
-        {
-            host.SetFocus(true);
-            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.RawKeyDown, WindowsKeyCode = code });
-            if (code == 0x0D)
-            {
-                host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = code });
-            }
+        host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.KeyUp, WindowsKeyCode = code });
+    });
 
-            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.KeyUp, WindowsKeyCode = code });
-        });
-        return true;
-    }
-
-    public void AgentScroll(int dx, int dy)
+    public Task<bool> AgentScroll(int dx, int dy, Func<string?, string?, bool> gate)
     {
         var mouse = new CefMouseEvent((int)(_viewSize.Width / 2), (int)(_viewSize.Height / 2), CefEventFlags.None);
-        _OnHost(host => host.SendMouseWheelEvent(mouse, dx, dy));
+        return _Agent(gate, host => host.SendMouseWheelEvent(mouse, dx, dy));
+    }
+
+    public Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => _Agent(gate, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
+
+    private Task<bool> _Agent(Func<string?, string?, bool> gate, Action<CefBrowserHost> input)
+    {
+        if (_browser is not { } browser)
+        {
+            return Task.FromResult(false);
+        }
+
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() =>
+        {
+            try
+            {
+                var allowed = gate(browser.GetMainFrame()?.Url, browser.GetFocusedFrame()?.Url);
+                if (allowed)
+                {
+                    input(browser.GetHost());
+                }
+
+                done.TrySetResult(allowed);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                done.TrySetResult(false);
+            }
+        }));
+        return done.Task;
     }
 
     public void SetMuted(bool muted)
@@ -528,10 +556,6 @@ internal sealed class CefBrowserView : Control
             {
                 AudibleChanged?.Invoke(marker.EndsWith('1'));
             }
-            else if (marker.StartsWith("submit:", StringComparison.Ordinal) && _controlled)
-            {
-                SubmitHeld?.Invoke(marker["submit:".Length..]);
-            }
         });
     }
 
@@ -583,18 +607,37 @@ internal sealed class CefBrowserView : Control
         protected override CefLoadHandler GetLoadHandler() => _load;
     }
 
-    // AC-1728: the backstop for a POST that no held form released, such as form.submit() from a script.
+    // AC-1728: the submit hold, in every frame. A form submission or a non-GET navigation in a controlled tab is held
+    // for the operator, one to another origin is cancelled outright, and only the request he released passes, once.
     private sealed class RequestHandler(CefBrowserView owner) : CefRequestHandler
     {
         protected override bool OnBeforeBrowse(CefBrowser browser, CefFrame frame, CefRequest request, bool userGesture, bool isRedirect)
         {
-            if (frame.IsMain == false)
+            var formSubmit = (request.TransitionType & CefTransitionType.SourceMask) == CefTransitionType.FormSubmit;
+            var (method, url) = (request.Method, request.Url);
+            ControlPolicy.Verdict verdict;
+            lock (owner._holdGate)
             {
-                return false;
+                verdict = ControlPolicy.Navigation(owner._controlOrigin, method, formSubmit, url, owner._released);
+                if (verdict == ControlPolicy.Verdict.Allow && ControlPolicy.Navigation(owner._controlOrigin, method, formSubmit, url, null) != ControlPolicy.Verdict.Allow)
+                {
+                    owner._released = null;
+                }
+
+                if (verdict == ControlPolicy.Verdict.Hold)
+                {
+                    var copy = CefRequest.Create();
+                    copy.Set(url, method, request.PostData, request.GetHeaderMap());
+                    owner._held = (frame.Identifier, copy);
+                }
             }
 
-            var released = Interlocked.Exchange(ref owner._postAllowed, 0) == 1;
-            return owner._controlled && released == false && string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase);
+            if (verdict == ControlPolicy.Verdict.Hold)
+            {
+                _OnUi(() => owner.SubmitHeld?.Invoke(method, url));
+            }
+
+            return verdict != ControlPolicy.Verdict.Allow;
         }
 
         // Null keeps CEF's default handling of every resource load.
@@ -608,7 +651,7 @@ internal sealed class CefBrowserView : Control
         protected override bool OnFileDialog(CefBrowser browser, CefFileDialogMode mode, string title, string defaultFilePath,
             string[] acceptFilters, string[] acceptExtensions, string[] acceptDescriptions, CefFileDialogCallback callback)
         {
-            if (owner._controlled == false)
+            if (owner._controlOrigin is null)
             {
                 return false;
             }
@@ -717,7 +760,7 @@ internal sealed class CefBrowserView : Control
         {
             if (frame.IsMain)
             {
-                frame.ExecuteJavaScript(PageHooks + _HoldScript(owner._controlled), frame.Url, 0);
+                frame.ExecuteJavaScript(PageHooks, frame.Url, 0);
                 _OnUi(() => owner.AudibleChanged?.Invoke(false));
             }
         }
