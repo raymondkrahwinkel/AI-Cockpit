@@ -680,8 +680,14 @@ host.AddWorkspaceType(new WorkspaceTypeRegistration("my-plugin.pipeline", "Pipel
 {
     Icon = "🚀",
     Description = "A whole workspace my plugin draws and drives.",
+    // SDK 3.26.0, host 0.115.0: buttons at the right of the tab strip, only while this workspace is active.
+    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => DockAsync())],
 });
 ```
+- `HeaderActions` — buttons the host draws on the workspace tab strip, only while a workspace of this type is the
+  active one. Use it for an action about this surface; a global action belongs in `AddToolbarAction`. An older
+  host ignores it, so a plugin that relies on it sets `minHostVersion` to `0.115.0`. A throwing action is
+  reported like a failed toolbar action.
 
 ### `IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }` {#ireadonlylistworkspacetyperegistration-workspacetypes--get}
 Every workspace type all plugins have contributed — what the tab strip's "+" menu reads. A plugin not building
@@ -695,6 +701,7 @@ public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWo
     public string Icon { get; init; } = "🧩";
     public MaterialIconKind? IconKind { get; init; }
     public string Description { get; init; } = string.Empty;
+    public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];   // SDK 3.26.0, host 0.115.0
 }
 ```
 - `Id` — stable, unique id for the workspace **type**, namespaced by your plugin (`"autopilot.run"`). It is

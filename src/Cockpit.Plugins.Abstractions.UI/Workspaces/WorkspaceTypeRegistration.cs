@@ -43,4 +43,12 @@ public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWo
     /// One line describing the workspace type for the "+" menu. Empty by default.
     /// </summary>
     public string Description { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Buttons the host draws at the right of the workspace tab strip, only while a workspace of this type is the
+    /// active one — an action about this surface as a whole ("Dock in the rail"), not a global one
+    /// (<see cref="ToolbarAction"/> via <c>AddToolbarAction</c> is on screen everywhere). Empty by default.
+    /// Host 0.115.0 and later; an older host ignores them.
+    /// </summary>
+    public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];
 }

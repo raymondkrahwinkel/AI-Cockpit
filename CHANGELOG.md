@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin's workspace can put its own buttons on the workspace tab strip, shown only while that workspace is
+  active, so an action like **Dock in the rail** sits in the row above the workspace instead of inside it.
 - added: a plugin you allow to (`timeline.read-all`) can read every session's timeline over a range: when it was
   busy, waiting or idle, what you did in it, its statuslines and what each turn spent, with day totals for anything
   older than 90 days. Without that permission in its manifest, it gets a refusal that names it.
