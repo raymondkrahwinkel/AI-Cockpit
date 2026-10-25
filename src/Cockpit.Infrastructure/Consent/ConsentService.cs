@@ -146,7 +146,7 @@ internal sealed class ConsentService(IConsentAuditLog auditLog, IConsentBypassPo
                 return null;
             }
 
-            var offered = choice.Options.Select(option => option.Value).ToHashSet(StringComparer.Ordinal);
+            var offered = choice.Options.Where(option => option.Enabled).Select(option => option.Value).ToHashSet(StringComparer.Ordinal);
             if (picked.Distinct(StringComparer.Ordinal).Count() != picked.Count || picked.Any(value => !offered.Contains(value)))
             {
                 return null;
