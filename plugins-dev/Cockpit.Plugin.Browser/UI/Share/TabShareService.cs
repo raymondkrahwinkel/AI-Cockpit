@@ -15,6 +15,8 @@ internal sealed class TabShareService : IDisposable
 {
     public const string Watch = "watch";
 
+    public const string Control = "control";
+
     private static readonly TimeSpan CardTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(10);
 
