@@ -39,15 +39,23 @@ public class AgentBrowserDriverTests
             using var agent = new ClientWebSocket();
             await agent.ConnectAsync(new Uri(socketUrl), CancellationToken.None);
 
+            // A click before the page is up lands on nothing: wait for its own title first.
+            await TitleBecomesAsync(endpoint, "0");
             Assert.Null(await ClickAsync(agent, 1));
             await TitleBecomesAsync(endpoint, "1");
 
             browsers.SetOperatorDrives("pane-a", true);
             Assert.Equal(AgentCdpProxy.TakenOverMessage, await ClickAsync(agent, 3));
             Assert.True(await tabs.WatchAsync("pane-a", targetId, CancellationToken.None));
+            for (var attempt = 0; attempt < 50 && Volatile.Read(ref frames) == 0; attempt++)
+            {
+                await Task.Delay(100);
+            }
+
+            Assert.True(Volatile.Read(ref frames) > 0, "no screencast frame while the tab was on screen");
+
             await InputClickAsync(tabs, targetId);
             await TitleBecomesAsync(endpoint, "2");
-            Assert.True(Volatile.Read(ref frames) > 0, "no screencast frame while the tab was on screen");
 
             // AC-1713 acceptance 1: with nobody looking there is no screencast, so the page changing sends nothing.
             tabs.Unwatch();
