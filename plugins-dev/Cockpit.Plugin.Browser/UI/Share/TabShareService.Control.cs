@@ -33,7 +33,7 @@ internal sealed partial class TabShareService
     public static string Describe(string tool, string? text, double? x, double? y, string? selector, string? field) => tool switch
     {
         "click" => selector is null ? $"click at {x:0},{y:0}" : $"click {_Short(selector, 80)}",
-        "type" => $"type {text?.Length ?? 0} characters" + (string.IsNullOrEmpty(field) ? string.Empty : $" into {_Short(field, 40)}"),
+        "type" => $"type {text}" + (string.IsNullOrEmpty(field) ? string.Empty : $" into {_Short(field, 40)}"),
         "key" => $"press {text}",
         "scroll" => $"scroll {x:0},{y:0}",
         "navigate" => $"navigate to {_Short(text ?? string.Empty, 120)}",
