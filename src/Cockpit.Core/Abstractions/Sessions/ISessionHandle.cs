@@ -76,6 +76,11 @@ public interface ISessionHandle
     bool StartedByTheAssistant => false;
 
     /// <summary>
+    /// The run a plugin embedded this session for (<c>EmbeddedSessionRequest.RunId</c>), or null.
+    /// </summary>
+    string? RunId => null;
+
+    /// <summary>
     /// True for a plain shell pane, which has no agent behind it.
     /// </summary>
     bool IsTerminal { get; }
@@ -304,6 +309,20 @@ public interface ISessionHandle
     /// Raised when a turn ends, completed or broken off by a session error (AC-1437), outside the handle's own lock.
     /// </summary>
     event Action<SessionTurnEnd>? TurnEnded
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Raised when the operator sends a prompt or answers a permission or a question card (AC-1717). Carries no content.
+    /// </summary>
+    event Action<SessionOperatorAction>? OperatorActed
     {
         add
         {

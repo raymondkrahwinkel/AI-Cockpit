@@ -283,6 +283,25 @@ public interface ISessionControl : IAsyncDisposable
     event Action<QueuedPrompt, Exception>? TurnFailedToStart;
 
     /// <summary>
+    /// Raised when the operator sends a prompt or answers a permission or a question card (AC-1717). Carries no content.
+    /// </summary>
+    event Action<SessionOperatorAction>? OperatorActed
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Queues a prompt the session's own tooling sends, not the operator (a verify screenshot); raises no <see cref="OperatorActed"/>.
+    /// </summary>
+    Task SubmitForTheAgentAsync(QueuedPrompt prompt) => SubmitAsync(prompt);
+
+    /// <summary>
     /// Raised with the agent mail a turn carried into the context (AC-394).
     /// </summary>
     event Action<AgentInboxTurnNotice>? MailDelivered;

@@ -3,7 +3,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Collections.Specialized;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.UI;
 using Avalonia.Threading;
@@ -7707,17 +7706,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return true;
     }
 
-    // The shape a ticket id takes everywhere this codebase already writes one by hand ("AC-13", "AC-544") — two or more
-    // uppercase letters, a dash, digits — kept as the one pattern every brief-seeded statusline is read against
-    // (AC-544) rather than reinvented per caller (AC-251).
-    private static readonly Regex _TicketIdPattern = new(@"^[A-Z]{2,}-\d+\b", RegexOptions.Compiled);
-
     // Lets a host-side spawn path seed a fresh session's statusline deterministically, from what it already knows,
     // instead of leaving the line blank until (or unless) the agent inside calls `set_status` itself (AC-544, AC-13).
-    private static string? _TicketFromBrief(string? text) =>
-        !string.IsNullOrWhiteSpace(text) && _TicketIdPattern.Match(text.TrimStart()) is { Success: true } match
-            ? match.Value
-            : null;
+    private static string? _TicketFromBrief(string? text) => TicketId.At(text);
 
     // A session by its pane id, including embedded ones the grid deliberately does not list — so an embedded run's
     // own `set_status`, a plugin acting on its embedded pane, and a consent routed to it all reach it (AC-152),

@@ -39,6 +39,7 @@ internal sealed partial class SessionPanelHandle : IHostedSession
         _control = control;
         _firstSessionsWorkspaceId = firstSessionsWorkspaceId;
         _isLive = isLive;
+        control.OperatorActed += action => OperatorActed?.Invoke(action);
     }
 
     // AC-1450: the session the desktop made and registered before its pane; until `Attach` the handle answers from its
@@ -112,6 +113,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
     public string? ActiveProfileLabel => _pane?.ActiveProfileLabel;
 
     public string? ProjectId => _pane?.ProjectId;
+
+    public string? RunId => (_pane as SessionViewModel)?.RunId;
 
     // The flag the gateways filter on as "no agent here" is `ShowPluginHeaderItems`; a plain terminal is the only
     // pane that clears it, and it sets `IsTerminal` in the same breath (`TtyViewModel.LaunchTerminal`).
@@ -235,6 +238,8 @@ internal sealed partial class SessionPanelHandle : IHostedSession
 
     public event Action<SessionTurnEnd>? TurnEnded;
 
+    public event Action<SessionOperatorAction>? OperatorActed;
+
     public event Action? ToolProgressed;
 
     public event Action<SessionBackgroundTaskNotice>? BackgroundTaskNotified;
@@ -254,6 +259,10 @@ internal sealed partial class SessionPanelHandle : IHostedSession
             sdk.TurnEnded += end => TurnEnded?.Invoke(end);
             sdk.ToolActivity += () => ToolProgressed?.Invoke();
             sdk.BackgroundTaskNotified += notice => BackgroundTaskNotified?.Invoke(notice);
+            if (_control is null)
+            {
+                sdk.Control.OperatorActed += action => OperatorActed?.Invoke(action);
+            }
         }
 
         lock (_gate)
