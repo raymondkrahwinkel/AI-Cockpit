@@ -40,7 +40,7 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         var historicalMeasured = AttentionTime.MeasuredFromDays(timeline.Days, AttentionSettings.Default);
         var agentPerProject = AttentionTime.AgentWithoutYouPerProject(timeline, AttentionSettings.Default.BlockLength, until);
         var days = _OverviewDays(request, timeline, entries, now);
-        var tickets = _OverviewTickets(request, timeline, now);
+        var tickets = _OverviewTickets(timeline);
         return new ProductivityOverviewSnapshot(
             attention,
             days,
@@ -53,28 +53,10 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
             projects);
     }
 
-    private static IReadOnlyList<ProductivityTicketTime> _OverviewTickets(
-        ProductivityOverviewRequest request,
-        CockpitTimeline timeline,
-        DateTimeOffset now)
+    private static IReadOnlyList<ProductivityTicketTime> _OverviewTickets(CockpitTimeline timeline)
     {
-        var result = timeline.Lines
-            .Where(line => string.IsNullOrWhiteSpace(line.Ticket) is false)
-            .GroupBy(line => line.Ticket ?? string.Empty, StringComparer.Ordinal)
-            .Select(group =>
-            {
-                var lines = group.OrderBy(line => line.At).ToList();
-                var attention = AttentionTime.Compute(
-                    new CockpitTimeline(lines, [], []),
-                    [],
-                    AttentionSettings.Default,
-                    now < request.To ? now : request.To);
-                return new ProductivityTicketTime(
-                    group.Key,
-                    lines.Select(line => line.ProjectId).LastOrDefault(project => project is not null),
-                    attention.YourTime,
-                    lines.Select(line => line.Statusline).LastOrDefault(status => string.IsNullOrWhiteSpace(status) is false));
-            })
+        var result = AttentionTime.MeasuredPerTicket(timeline.Lines, AttentionSettings.Default.BlockLength)
+            .Select(ticket => new ProductivityTicketTime(ticket.Ticket, ticket.ProjectId, ticket.Time, ticket.Statusline))
             .ToDictionary(ticket => ticket.Ticket, StringComparer.Ordinal);
         foreach (var day in timeline.Days)
         {

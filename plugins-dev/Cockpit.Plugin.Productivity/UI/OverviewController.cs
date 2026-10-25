@@ -13,6 +13,7 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
     private DateOnly _lastValidTo = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime)).AddDays(4);
     private string _lastValidRange = "Werkweek";
     private bool _disposed;
+    private long _refreshGeneration;
 
     public event Action? Changed;
 
@@ -107,18 +108,38 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
             return;
         }
 
+        var generation = Interlocked.Increment(ref _refreshGeneration);
+        var requestedFrom = From;
+        var requestedTo = To;
+        var requestedRange = SelectedRange;
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            var request = new ProductivityOverviewRequest(_AtLocalTime(From), _AtLocalTime(To.AddDays(1)));
-            Snapshot = await _AskAsync<ProductivityOverviewSnapshot>(ProductivityChannel.Overview, request).ConfigureAwait(false);
+            if (_disposed || generation != Volatile.Read(ref _refreshGeneration))
+            {
+                return;
+            }
+
+            var request = new ProductivityOverviewRequest(_AtLocalTime(requestedFrom), _AtLocalTime(requestedTo.AddDays(1)));
+            var snapshot = await _AskAsync<ProductivityOverviewSnapshot>(ProductivityChannel.Overview, request).ConfigureAwait(false);
+            if (_disposed || generation != Volatile.Read(ref _refreshGeneration))
+            {
+                return;
+            }
+
+            Snapshot = snapshot;
             Error = null;
-            _lastValidFrom = From;
-            _lastValidTo = To;
-            _lastValidRange = SelectedRange;
+            _lastValidFrom = requestedFrom;
+            _lastValidTo = requestedTo;
+            _lastValidRange = requestedRange;
         }
         catch (Exception exception)
         {
+            if (_disposed || generation != Volatile.Read(ref _refreshGeneration))
+            {
+                return;
+            }
+
             Error = exception.Message;
             From = _lastValidFrom;
             To = _lastValidTo;
@@ -127,13 +148,17 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
         finally
         {
             _gate.Release();
-            _PublishChanged();
+            if (generation == Volatile.Read(ref _refreshGeneration))
+            {
+                _PublishChanged();
+            }
         }
     }
 
     public void Dispose()
     {
         _disposed = true;
+        Interlocked.Increment(ref _refreshGeneration);
         Changed = null;
     }
 

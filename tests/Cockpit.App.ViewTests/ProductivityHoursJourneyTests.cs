@@ -195,6 +195,7 @@ public sealed class ProductivityHoursJourneyTests
             () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "31u00",
             "the week overview");
         Assert.Equal("36u", _Control<SharedParts.StatTile>(overviewScreen, "ScheduleTile").Value);
+        Assert.Equal("geen prijs", _Control<SharedParts.StatTile>(overviewScreen, "CostTile").Value);
         Assert.Contains("Overzicht", _Texts(overviewScreen));
         Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
@@ -241,6 +242,17 @@ public sealed class ProductivityHoursJourneyTests
         await _Until(
             () => overviewScreen.GetVisualDescendants().OfType<SharedParts.StatTile>().SingleOrDefault(tile => tile.Name == "YourTimeTile")?.Value == "3u00",
             "the valid range after validation");
+
+        var alternating = await channel.InvokeAsync(
+            "productivity.overview.snapshot",
+            JsonSerializer.SerializeToElement(
+                new { from = _Local(2026, 2, 2), to = _Local(2026, 2, 3) }));
+        var alternatingTickets = alternating.GetProperty("tickets").EnumerateArray().ToDictionary(
+            ticket => ticket.GetProperty("ticket").GetString() ?? string.Empty,
+            ticket => TimeSpan.Parse(ticket.GetProperty("time").GetString() ?? string.Empty),
+            StringComparer.Ordinal);
+        Assert.Equal(TimeSpan.FromMinutes(15), alternatingTickets["AC-A"]);
+        Assert.Equal(TimeSpan.FromMinutes(5), alternatingTickets["AC-B"]);
 
         var dst = await channel.InvokeAsync(
             "productivity.overview.snapshot",
@@ -384,6 +396,19 @@ public sealed class ProductivityHoursJourneyTests
             if (from.Date == new DateTime(2026, 3, 23))
             {
                 return Task.FromResult(new CockpitTimeline([_Act(_Local(2026, 3, 30).AddMinutes(30), "syn-api")], [], []));
+            }
+
+            if (from.Date == new DateTime(2026, 2, 2))
+            {
+                var start = _Local(2026, 2, 2).AddHours(9);
+                return Task.FromResult(new CockpitTimeline(
+                    [
+                        new(CockpitTimelineKind.Operator, start, "you", "ai-cockpit", null, "AC-A", null, CockpitOperatorAction.MessageSent, "AC-A · werk"),
+                        new(CockpitTimelineKind.Operator, start.AddMinutes(5), "you", "ai-cockpit", null, "AC-B", null, CockpitOperatorAction.MessageSent, "AC-B · werk"),
+                        new(CockpitTimelineKind.Operator, start.AddMinutes(10), "you", "ai-cockpit", null, "AC-A", null, CockpitOperatorAction.MessageSent, "AC-A · werk"),
+                    ],
+                    [],
+                    []));
             }
 
             if (from.Date == new DateTime(2026, 10, 19))

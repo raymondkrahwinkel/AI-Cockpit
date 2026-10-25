@@ -167,7 +167,9 @@ internal sealed class OverviewWorkspaceBody : UserControl
         var cost = snapshot.Timeline.Usage.Sum(usage => usage.CostUsd) + snapshot.Timeline.Days.Sum(day => day.ReportedCostUsd);
         var tokens = snapshot.Timeline.Usage.Sum(usage => (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens)
             + snapshot.Timeline.Days.Sum(day => (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens);
-        var costText = cost == 0 && tokens > 0 ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture);
+        var hasUnpriced = snapshot.Timeline.Usage.Any(usage => _TokenCount(usage) > 0 && usage.CostUsd == 0)
+            || snapshot.Timeline.Days.Any(day => _TokenCount(day) > 0 && day.ReportedCostUsd == 0);
+        var costText = hasUnpriced ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture);
         var schedule = _ScheduledMinutes(snapshot.ScheduleMinutes, from, to);
         var values = new[]
         {
@@ -457,6 +459,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             var tokens = usage.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens)
                 + days.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens);
             var cost = usage.Sum(value => value.CostUsd) + days.Sum(value => value.ReportedCostUsd);
+            var hasUnpriced = usage.Any(value => _TokenCount(value) > 0 && value.CostUsd == 0)
+                || days.Any(value => _TokenCount(value) > 0 && value.ReportedCostUsd == 0);
             var model = usage.Select(value => value.Model)
                 .Concat(days.Select(value => value.Model))
                 .LastOrDefault(value => string.IsNullOrWhiteSpace(value) is false)
@@ -470,7 +474,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                     Ui.Duration(active.GetValueOrDefault(session)),
                     Ui.Duration(withoutYou),
                     _Tokens(tokens),
-                    cost == 0 && tokens > 0 ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture),
+                    hasUnpriced ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
                 "2*,*,70,80,80,80"));
         }
@@ -485,6 +489,12 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private static string _Tokens(long tokens) =>
         tokens >= 1000 ? $"{tokens / 1000d:0.#}k" : tokens.ToString(CultureInfo.InvariantCulture);
+
+    private static long _TokenCount(Cockpit.Plugins.Abstractions.TimeTracking.CockpitUsageDelta usage) =>
+        (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens;
+
+    private static long _TokenCount(Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimelineDay day) =>
+        (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens;
 
     private static Control _Entries(ProductivityOverviewSnapshot snapshot)
     {
