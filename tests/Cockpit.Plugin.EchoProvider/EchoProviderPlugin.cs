@@ -186,6 +186,7 @@ internal sealed class EchoSessionDriver(string configJson) : IPluginSessionDrive
     private Process? _child;
     private string? _model;
     private string? _workingDirectory;
+    private IReadOnlyDictionary<string, string>? _environment;
 
     public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: false, SupportsPermissions: false);
 
@@ -196,10 +197,11 @@ internal sealed class EchoSessionDriver(string configJson) : IPluginSessionDrive
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
 
     // AC-1473: the model the profile's defaults name, so a journey sees which one a session started with.
-    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken)
     {
         _model = model ?? options?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
         _workingDirectory = workingDirectory;
+        _environment = environment;
         return StartAsync(_model, cancellationToken);
     }
 
@@ -234,6 +236,8 @@ internal sealed class EchoSessionDriver(string configJson) : IPluginSessionDrive
         var echoed = text switch
         {
             "working-directory" => _workingDirectory,
+            // AC-1712: what a plugin put in the session's environment for the browser, so a journey sees it arrive.
+            "cdp-endpoint" => _environment?.GetValueOrDefault("PLAYWRIGHT_MCP_CDP_ENDPOINT") ?? "none",
             "config" => _Config(),
             _ => text,
         };

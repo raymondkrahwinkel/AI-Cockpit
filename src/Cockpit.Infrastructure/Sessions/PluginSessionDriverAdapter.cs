@@ -137,7 +137,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         var contributed = sessionResources is null
             ? SessionResources.Empty
-            : await sessionResources.ResolveAsync(paneId, cancellationToken).ConfigureAwait(false);
+            : await sessionResources.ResolveAsync(paneId, selection, cancellationToken).ConfigureAwait(false);
 
         // The host's typed permission-mode parameter (older than the plugin surface) folds into the options
         // map under the well-known key, but only when launch options carry none (see _MergePermissionMode) — else

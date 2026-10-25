@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
+  on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
+  Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
 - added: a session the assistant started that ends a turn without saying done, blocked or asking, gets one nudge
   to carry on; stalling again tells the assistant (`stalled`, with its last lines) instead of nudging twice. Ending on a
   notify, an open question or permission, or a run still going counts as a closing. Sessions you start yourself are left alone.
@@ -254,6 +257,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: plugins can now be told which MCP servers a session mounts (`SessionResourceRequest.McpServers`), and what a plugin puts in a session's environment, such as `GH_REPO`, now also reaches SDK sessions and sessions on the headless server, not only terminal panes.
 - changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
   made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
   as before, and a link that matches no single project is left alone with a warning. Needs Cockpit 0.91.0; Depot 0.11.11.
