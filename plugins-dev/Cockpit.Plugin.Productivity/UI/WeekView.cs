@@ -32,7 +32,9 @@ internal static class WeekView
         {
             var cards = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 12 };
             cards.Children.Add(_ScheduleCard(settings));
-            var included = _IncludedCard(settings, projects);
+            var included = _IncludedCard(settings, projects.Count > 0
+                ? projects
+                : [.. week.Lines.Where(line => line.Own == false && line.ProjectId is not null).Select(line => new PluginProjectInfo(line.ProjectId ?? string.Empty, line.Label))]);
             Grid.SetColumn(included, 1);
             cards.Children.Add(included);
             body.Children.Add(cards);
@@ -144,7 +146,7 @@ internal static class WeekView
         _Cell(rows, Ui.Hint("Projecten"), 0, 0);
         _Cell(rows, chips, 0, 1);
         _Cell(rows, Ui.Hint("Eigen regels"), 1, 0);
-        _Cell(rows, new TextBlock { Text = "alle open regels van de week, ook zonder project", TextWrapping = TextWrapping.Wrap }, 1, 1);
+        _Cell(rows, new TextBlock { Text = "alle open regels van de week, ook zonder project", FontSize = 12.5, TextWrapping = TextWrapping.Wrap }, 1, 1);
         _Cell(rows, Ui.Hint("Instructies"), 2, 0);
         _Cell(rows, Ui.Hint("komen met de overdracht aan een agent"), 2, 1);
 
@@ -193,10 +195,13 @@ internal static class WeekView
             {
                 Name = "OpenDay",
                 Content = day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch),
-                Classes = { "Subtle", "Compact" },
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
                 HorizontalAlignment = HorizontalAlignment.Right,
                 FontSize = 11.5,
             };
+            open.Themed(Button.ForegroundProperty, "CockpitTextSecondaryBrush");
             open.Click += (_, _) => openDay(day);
             _Cell(header, open, 0, index + 1);
         }
