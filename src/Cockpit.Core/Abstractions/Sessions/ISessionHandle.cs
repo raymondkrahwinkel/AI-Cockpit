@@ -71,6 +71,11 @@ public interface ISessionHandle
     string? ProjectId => null;
 
     /// <summary>
+    /// True when the assistant started this session rather than the operator (AC-1300); what AC-1706's stall nudge is limited to.
+    /// </summary>
+    bool StartedByTheAssistant => false;
+
+    /// <summary>
     /// True for a plain shell pane, which has no agent behind it.
     /// </summary>
     bool IsTerminal { get; }

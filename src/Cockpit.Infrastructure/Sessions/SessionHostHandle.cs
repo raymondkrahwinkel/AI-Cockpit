@@ -135,6 +135,8 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
 
     public bool IsEmbedded => false;
 
+    public bool StartedByTheAssistant { get; init; }
+
     // AC-1437: the same fold the desktop pane reads, so a headless session shows the status a desktop one would.
     public SessionStatus SessionStatus => LiveState.Status;
 
