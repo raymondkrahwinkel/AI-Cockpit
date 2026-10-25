@@ -33,6 +33,7 @@ internal sealed class CefBrowserView : Control
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WriteableBitmap? _bitmap;
     private byte[] _back = [];
+    private byte[] _front = [];
     private PixelSize _backSize;
     private int _blitQueued;
     private Size _viewSize = new(800, 600);
@@ -114,6 +115,7 @@ internal sealed class CefBrowserView : Control
         }
 
         _browser?.GetHost().CloseBrowser(true);
+        _engine.Closing(_closed.Task);
         return _closed.Task;
     }
 
@@ -340,25 +342,32 @@ internal sealed class CefBrowserView : Control
         }
     }
 
-    // Avalonia UI thread: back buffer into the WriteableBitmap, then redraw.
+    // Avalonia UI thread: swap the buffers under the gate, then lock and fill the WriteableBitmap outside it, so
+    // OnPaint never waits on a compositor-bound lock (Codex review AC-1711).
     private void _Blit()
     {
         Interlocked.Exchange(ref _blitQueued, 0);
+        PixelSize size;
         lock (_gate)
         {
-            if (_backSize.Width == 0)
-            {
-                return;
-            }
+            (_front, _back) = (_back, _front);
+            size = _backSize;
+        }
 
-            if (_bitmap is null || _bitmap.PixelSize != _backSize)
-            {
-                _bitmap?.Dispose();
-                _bitmap = new WriteableBitmap(_backSize, new Vector(96 * _scale, 96 * _scale), PixelFormat.Bgra8888, AlphaFormat.Premul);
-            }
+        if (size.Width == 0 || _front.Length < size.Width * size.Height * 4)
+        {
+            return;
+        }
 
-            using var frame = _bitmap.Lock();
-            Marshal.Copy(_back, 0, frame.Address, Math.Min(_back.Length, frame.RowBytes * _backSize.Height));
+        if (_bitmap is null || _bitmap.PixelSize != size)
+        {
+            _bitmap?.Dispose();
+            _bitmap = new WriteableBitmap(size, new Vector(96 * _scale, 96 * _scale), PixelFormat.Bgra8888, AlphaFormat.Premul);
+        }
+
+        using (var frame = _bitmap.Lock())
+        {
+            Marshal.Copy(_front, 0, frame.Address, Math.Min(size.Width * size.Height * 4, frame.RowBytes * size.Height));
         }
 
         InvalidateVisual();

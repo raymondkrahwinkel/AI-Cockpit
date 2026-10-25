@@ -21,7 +21,7 @@ internal sealed class BrowserEngine
 {
     public const string SubprocessFileName = "Cockpit.Plugin.Browser.Subprocess";
 
-    private static readonly TimeSpan CloseBudget = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan CloseBudget = TimeSpan.FromSeconds(5);
 
     private static string _libCefPath = string.Empty;
     private static int _resolverSet;
@@ -30,6 +30,7 @@ internal sealed class BrowserEngine
     private readonly string _subprocessPath;
     private readonly string _rootCachePath;
     private readonly List<CefBrowserView> _views = [];
+    private readonly List<Task> _closing = [];
     private readonly CancellationTokenSource _stopping = new();
     private Task? _start;
     private CefRequestContext? _raymondProfile;
@@ -201,13 +202,49 @@ internal sealed class BrowserEngine
             return;
         }
 
-        // A copy: CloseAsync unregisters each view from _views while this walks it.
-        var closing = _views.ToArray().Select(view => view.CloseAsync()).ToArray();
-        Task.WaitAll(closing, CloseBudget);
+        // A copy: CloseAsync unregisters each view from _views while this walks it. Tabs closed earlier may still be
+        // closing, so those count too.
+        foreach (var view in _views.ToArray())
+        {
+            _closing.Add(view.CloseAsync());
+        }
+
         _views.Clear();
         _raymondProfile = null;
+
+        // CefShutdown with a browser still open is what CEF forbids (Codex review AC-1711): then skip it and let the
+        // process exit take CEF and its subprocesses down.
+        if (Task.WaitAll([.. _closing], CloseBudget) == false)
+        {
+            _LogLine($"Skipped CefShutdown: {_closing.Count(task => task.IsCompleted == false)} browser(s) still open after {CloseBudget.TotalSeconds:0} s.");
+            _Set(BrowserEngineState.Unavailable, "The browser engine was left to the process exit.");
+            return;
+        }
+
         CefRuntime.Shutdown();
         _Set(BrowserEngineState.Unavailable, "The browser engine has shut down.");
+    }
+
+    // A close that started elsewhere (a tab closed by hand); Shutdown waits for it before CefShutdown.
+    public void Closing(Task closed)
+    {
+        _closing.RemoveAll(task => task.IsCompleted);
+        _closing.Add(closed);
+    }
+
+    // The engine's own trace next to CEF's log; the UI part has no logger of the host's.
+    private void _LogLine(string line)
+    {
+        try
+        {
+            File.AppendAllText(Path.Combine(_rootCachePath, "engine.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {line}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private void _Set(BrowserEngineState state, string? reason)
