@@ -21,6 +21,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -529,7 +530,8 @@ internal static partial class Screenshotter
         {
             DataContext = new ViewModels.PluginConsentInfo(
                 "GitHub Issues", "1.8.0", "Cockpit", "/home/you/.config/Cockpit/plugins/github-issues",
-                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2"),
+                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2",
+                [CapabilityCatalog.TimeEntries]),
         },
         ["restore-selection"] = (_, _) => _RestoreSelection(),
         ["schedule-resume"] = (_, _) => new ScheduleResumeDialog { DataContext = new ViewModels.ScheduleResumeDialogViewModel() },

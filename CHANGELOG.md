@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin names what it asks for under `capabilities` in its `plugin.json`; the consent dialog and the plugin
+  list say each one in plain words, and a name the cockpit does not know keeps the plugin from loading, with the
+  reason in the plugin list. Your own time entries now go only to a plugin that asks for `time.entries`.
 - added: a plugin's MCP tool can see who is calling it — your assistant, an ordinary session, or a remote caller
   with the connect key's name — as the cockpit verified it, so a tool meant only for you can refuse everyone else.
 - added: a plugin can hand a running session a prompt, on SDK and terminal sessions alike, but only after you press

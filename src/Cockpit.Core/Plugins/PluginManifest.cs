@@ -17,12 +17,17 @@ public sealed record PluginManifest(
     string? Author,
     IReadOnlyList<string>? SecretKeys = null,
     string? UiAssembly = null,
-    string? UiEntryType = null)
+    string? UiEntryType = null,
+    IReadOnlyList<string>? Capabilities = null)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
     // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
     // as ciphertext. (Omitted: the install-time credential-intent framing; see ticket.)
     public IReadOnlyList<string> SecretKeys { get; } = SecretKeys ?? [];
+
+    // AC-1730: what the plugin asks the host for, as written. An unknown name is kept so the load policy can refuse
+    // the plugin with that name in the reason, rather than the folder vanishing as an unparsable manifest.
+    public IReadOnlyList<string> Capabilities { get; } = Capabilities ?? [];
 
     // AC-1389: the assemblies the loader reads, backend part first. A UI-only plugin (a clock) has no entryAssembly,
     // and a plugin not yet split in two has no uiAssembly; parsing refuses one with neither.
@@ -96,7 +101,8 @@ public sealed record PluginManifest(
                 GetOptionalString(root, "author"),
                 GetOptionalStrings(root, "secretKeys"),
                 uiAssembly,
-                uiEntryType);
+                uiEntryType,
+                GetOptionalStrings(root, "capabilities"));
             return true;
         }
     }

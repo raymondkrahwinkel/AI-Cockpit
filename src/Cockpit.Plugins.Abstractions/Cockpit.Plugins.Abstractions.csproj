@@ -548,7 +548,10 @@
     <!-- 3.20.0 (AC-1685): ICockpitHost.CurrentMcpCaller with McpCaller/McpCallerKind, the transport-verified caller's
          kind (assistant, session or remote) and connect-key label. A plugin that reads it sets minHostVersion 0.109.0;
          an older host answers null, which an owner-only tool refuses. Additive; the major and abstractionsVersion stay 3. -->
-    <Version>3.20.0</Version>
+    <!-- 3.21.0 (AC-1730): CapabilityCatalog gains `time.entries`, CapabilityCatalog.TimeEntries and Find. A manifest
+         names catalogue ids under `capabilities`; ICockpitHost.TimeEntries now needs `time.entries` and throws
+         UnauthorizedAccessException without it. Additive to the SDK surface; the major and abstractionsVersion stay 3. -->
+    <Version>3.21.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

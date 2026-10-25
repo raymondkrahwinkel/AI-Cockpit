@@ -97,19 +97,6 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void SurfaceClosed_DecouplesAutomatically()
-    {
-        var registry = new DiagramAccessRegistry();
-        registry.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
-        registry.Grant("session-a", "surface-1", DiagramCapability.Edit);
-
-        registry.SurfaceClosed("surface-1");
-
-        Assert.Null(registry.CouplingOf("session-a", "surface-1"));
-        Assert.Null(registry.PeekText("surface-1"));
-    }
-
-    [Fact]
     public void SessionEnded_DecouplesEverySurfaceThatSessionHeld()
     {
         var registry = new DiagramAccessRegistry();
@@ -221,7 +208,7 @@ public class DiagramAccessRegistryTests
     }
 
     [Fact]
-    public void SurfaceClosed_AndSessionEnded_AlsoClearAnyPendingProposal()
+    public void SurfaceClosed_Decouples_AndSurfaceClosedOrSessionEnded_ClearAnyPendingProposal()
     {
         var registryForClose = new DiagramAccessRegistry();
         registryForClose.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");
@@ -231,6 +218,8 @@ public class DiagramAccessRegistryTests
         registryForClose.SurfaceClosed("surface-1");
 
         Assert.Null(registryForClose.PendingProposal("surface-1"));
+        Assert.Null(registryForClose.CouplingOf("session-a", "surface-1"));
+        Assert.Null(registryForClose.PeekText("surface-1"));
 
         var registryForSessionEnd = new DiagramAccessRegistry();
         registryForSessionEnd.SurfaceOpened("surface-1", "Onboarding flow", "flowchart LR\nA-->B");

@@ -90,6 +90,10 @@ The transitional route, one entry type that is both `ICockpitPlugin` and `ICockp
 with every member below grouped into the unit a manifest declares and an operator grants. It is also the
 discovery list: if a contribution point is not in this table, it does not exist.
 
+**Declared in the manifest (host 0.110.0+).** A plugin lists the ids it asks for under `capabilities` in
+`plugin.json`; the consent dialog and the plugin list show each one's summary, and an unknown id is refused. Only
+`time.entries` is enforced today — see [the trust boundary](PLUGIN-SDK.md#the-trust-boundary).
+
 **Host-only.** The catalogue describes the host's own surface, so only the host can add to it — see
 [AC-474](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-474).
 
@@ -149,6 +153,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
+| `time.entries` | Your own time entries | Sensitive | 0.107.0 | — | `ICockpitHost.TimeEntries` |
 | `assistant.notify` | Leaving a message for the assistant | Sensitive | 0.34.0 | — | `ICockpitHost.NotifyAssistantAsync` |
 | `channels.assistant` | A chat channel onto the assistant | Dangerous | 0.27.0 | — | `ICockpitHost.OpenAssistantChannel` |
 
