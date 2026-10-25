@@ -12,40 +12,62 @@ namespace Cockpit.Plugin.Slack;
 internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<MessageEvent>, IBlockActionHandler<ButtonAction>
 {
     private readonly ISlackSocketModeClient _client;
-    private readonly SlackChannelBridge _bridge;
     private readonly SlackFileFetcher _files;
-    private readonly string _channelId;
+    private readonly Action<string> _reportRefusal;
+    private SlackChannelBridge? _bridge;
+    private string? _channelId;
     private bool _disposed;
 
     public SlackGatewayConnection(
         IAssistantChannelGateway gateway,
         string botToken,
         string appLevelToken,
-        string channelId,
+        string ownerUserId,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
-        Action<string> reportError)
+        Action<string> reportError,
+        Action<string> reportRefusal)
     {
-        _channelId = channelId;
-
         var builder = new SlackServiceBuilder()
             .UseApiToken(botToken)
             .UseAppLevelToken(appLevelToken)
             .RegisterEventHandler<MessageEvent>(this)
             .RegisterBlockActionHandler<ButtonAction>(this);
 
-        var sink = new SlackChannelSink(builder.GetApiClient(), channelId);
+        var api = builder.GetApiClient();
         _files = new SlackFileFetcher(botToken);
-        _bridge = new SlackChannelBridge(gateway, sink, _files, access, verbosity, reportError);
+        _reportRefusal = reportRefusal;
         _client = builder.GetSocketModeClient();
 
-        _ = _ConnectAsync(reportError);
+        _ = _ConnectAsync(api, gateway, ownerUserId, access, verbosity, reportError);
     }
 
-    private async Task _ConnectAsync(Action<string> reportError)
+    private async Task _ConnectAsync(
+        ISlackApiClient api,
+        IAssistantChannelGateway gateway,
+        string ownerUserId,
+        AssistantChannelAccess access,
+        Func<AssistantChannelVerbosity> verbosity,
+        Action<string> reportError)
     {
         try
         {
+            var channelId = await api.Conversations.Open([ownerUserId]).ConfigureAwait(false);
+            if (_disposed)
+            {
+                return;
+            }
+
+            _channelId = channelId;
+            _bridge = new SlackChannelBridge(
+                gateway,
+                new SlackChannelSink(api, channelId),
+                _files,
+                access,
+                verbosity,
+                reportError,
+                channelId,
+                _reportRefusal);
             await _client.Connect().ConfigureAwait(false);
         }
         catch (Exception exception)
@@ -92,22 +114,40 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         "tombstone",
     };
 
-    // Whether an inbound event is a real message from a real person on this channel.
-    internal static bool ShouldHandle(string? botId, string? subtype, string? channel, string expectedChannel) =>
+    // Whether an inbound event is a real message from a real person in the owner's DM.
+    internal static bool ShouldHandle(
+        string? botId,
+        string? subtype,
+        string? channel,
+        string? channelType,
+        string expectedChannel) =>
         botId is null
         && channel == expectedChannel
+        && channelType == "im"
         && (subtype is null || !_ignoredSubtypes.Contains(subtype));
 
     // A message arrived on the socket.
     public Task Handle(MessageEvent slackEvent)
     {
-        if (!ShouldHandle(slackEvent.BotId, slackEvent.Subtype, slackEvent.Channel, _channelId))
+        if (_channelId is not { } channelId
+            || !ShouldHandle(slackEvent.BotId, slackEvent.Subtype, slackEvent.Channel, slackEvent.ChannelType, channelId))
         {
+            if (slackEvent.BotId is null
+                && (slackEvent.Subtype is null || !_ignoredSubtypes.Contains(slackEvent.Subtype)))
+            {
+                _reportRefusal(Refusal(slackEvent.User, slackEvent.Channel));
+            }
+
             return Task.CompletedTask;
         }
 
-        return _bridge.HandleInboundMessageAsync(slackEvent.User, slackEvent.Text, slackEvent.Ts, _InboundFiles(slackEvent));
+        return _bridge is { } bridge
+            ? bridge.HandleInboundMessageAsync(slackEvent.User, slackEvent.Text, slackEvent.Ts, _InboundFiles(slackEvent))
+            : Task.CompletedTask;
     }
+
+    internal static string Refusal(string? senderId, string? channelId) =>
+        $"Slack ignored a message from sender {senderId ?? "<unknown>"} in channel {channelId ?? "<unknown>"}.";
 
     private static IReadOnlyList<SlackInboundFile> _InboundFiles(MessageEvent slackEvent) =>
         slackEvent.Files?
@@ -122,7 +162,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
     // An Approve/Deny button was clicked. SlackNet acknowledges the interaction itself once this task
     // completes — unlike Discord's Components API there is no separate defer step to call first.
     public Task Handle(ButtonAction action, BlockActionRequest request) =>
-        _bridge.HandleButtonAsync(action.ActionId, request.User.Id);
+        _bridge?.HandleButtonAsync(action.ActionId, request.User.Id) ?? Task.CompletedTask;
 
     public void Dispose()
     {
@@ -132,7 +172,7 @@ internal sealed class SlackGatewayConnection : IDisposable, IEventHandler<Messag
         }
 
         _disposed = true;
-        _bridge.Dispose();
+        _bridge?.Dispose();
         _files.Dispose();
         _client.Disconnect();
         _client.Dispose();

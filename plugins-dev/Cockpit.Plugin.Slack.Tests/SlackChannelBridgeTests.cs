@@ -7,24 +7,29 @@ public class SlackChannelBridgeTests
 {
     private const string _AllowedUserId = "U111";
     private const string _StrangerUserId = "U222";
+    private const string _ChannelId = "D111";
 
     private static AssistantChannelAccess _SingleUserAccess(string userId) =>
         AssistantChannelAccess.ForSingleUser(userId).Access!;
 
     private static (SlackChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeSlackChannelSink Sink) _Build(
-        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
+        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything,
+        Action<string>? reportRefusal = null)
     {
-        var (bridge, gateway, sink, _) = _BuildWithFiles(verbosity);
+        var (bridge, gateway, sink, _) = _BuildWithFiles(verbosity, reportRefusal);
         return (bridge, gateway, sink);
     }
 
     private static (SlackChannelBridge Bridge, FakeAssistantChannelGateway Gateway, FakeSlackChannelSink Sink, FakeSlackFileFetcher Files) _BuildWithFiles(
-        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything)
+        AssistantChannelVerbosity verbosity = AssistantChannelVerbosity.Everything,
+        Action<string>? reportRefusal = null)
     {
         var gateway = new FakeAssistantChannelGateway();
         var sink = new FakeSlackChannelSink();
         var files = new FakeSlackFileFetcher();
-        var bridge = new SlackChannelBridge(gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => verbosity);
+        var bridge = new SlackChannelBridge(
+            gateway, sink, files, _SingleUserAccess(_AllowedUserId), () => verbosity,
+            channelId: _ChannelId, reportRefusal: reportRefusal);
         return (bridge, gateway, sink, files);
     }
 
@@ -34,7 +39,8 @@ public class SlackChannelBridgeTests
     [Fact]
     public async Task IgnoredSender_ProducesNoSlackActivityAtAll()
     {
-        var (bridge, gateway, sink) = _Build();
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(reportRefusal: refusals.Add);
         gateway.NextResult = AssistantChannelSendResult.IgnoredSender();
 
         await bridge.HandleInboundMessageAsync(_StrangerUserId, "hello?", messageTs: "1");
@@ -42,6 +48,10 @@ public class SlackChannelBridgeTests
         Assert.Empty(sink.Reactions);
         Assert.Empty(sink.Posted);
         Assert.Empty(sink.Edited);
+        var refusal = Assert.Single(refusals);
+        Assert.Contains(_StrangerUserId, refusal);
+        Assert.Contains(_ChannelId, refusal);
+        Assert.DoesNotContain("hello?", refusal);
     }
 
     [Fact]
@@ -135,7 +145,8 @@ public class SlackChannelBridgeTests
     [Fact]
     public async Task ButtonClick_FromAStranger_IsIgnored()
     {
-        var (bridge, gateway, sink) = _Build();
+        var refusals = new List<string>();
+        var (bridge, gateway, sink) = _Build(reportRefusal: refusals.Add);
         var prompt = _ConsentPrompt("do the thing");
         gateway.RaisePromptOpened(prompt);
 
@@ -144,6 +155,10 @@ public class SlackChannelBridgeTests
         Assert.Empty(gateway.Responses);
         Assert.Single(sink.Posted); // only the original prompt post — no edit followed.
         Assert.Empty(sink.Edited);
+        var refusal = Assert.Single(refusals);
+        Assert.Contains(_StrangerUserId, refusal);
+        Assert.Contains(_ChannelId, refusal);
+        Assert.DoesNotContain("do the thing", refusal);
     }
 
     [Fact]

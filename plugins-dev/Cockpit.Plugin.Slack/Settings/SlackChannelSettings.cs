@@ -9,7 +9,9 @@ namespace Cockpit.Plugin.Slack.Settings;
 internal sealed class SlackChannelSettings(IPluginStorage storage)
 {
     private const string _AppLevelTokenKey = "slack.appLevelToken";
-    private const string _ChannelIdKey = "slackChannelId";
+    public const string ChannelIdKey = "slackChannelId";
+    public const string ReauthorizationNotice =
+        "Reinstall and authorize the Slack app with the new DM scopes and event, or no messages will arrive.";
 
     public string? BotToken
     {
@@ -23,13 +25,13 @@ internal sealed class SlackChannelSettings(IPluginStorage storage)
         set => storage.SetSecret(_AppLevelTokenKey, value ?? string.Empty);
     }
 
-    public string? ChannelId
-    {
-        get => storage.Get<string>(_ChannelIdKey);
-        set => storage.Set(_ChannelIdKey, value ?? string.Empty);
-    }
-
     public (AssistantChannelAccess Access, AssistantChannelVerbosity Verbosity)? Access => AssistantChannelStorage.Load(storage);
+
+    public AssistantChannelVerbosity Verbosity => AssistantChannelStorage.LoadVerbosity(storage);
+
+    public string? MigrationNotice => AssistantChannelStorage.LoadMigrationNotice(storage) is { } notice
+        ? $"{notice} {ReauthorizationNotice}"
+        : null;
 
     public void SaveAccess(AssistantChannelAccess access, AssistantChannelVerbosity verbosity) =>
         AssistantChannelStorage.Save(storage, access, verbosity);
