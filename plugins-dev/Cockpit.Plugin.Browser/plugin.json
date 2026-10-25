@@ -1,0 +1,13 @@
+{
+  "id": "browser",
+  "name": "Browser",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.Browser.dll",
+  "entryType": "Cockpit.Plugin.Browser.BrowserPlugin",
+  "uiAssembly": "Cockpit.Plugin.Browser.UI.dll",
+  "uiEntryType": "Cockpit.Plugin.Browser.UI.BrowserUi",
+  "abstractionsVersion": 3,
+  "minHostVersion": "0.46.0",
+  "description": "A web browser inside Cockpit. This version only provides the browser engine (CEF), fetched on first use for your platform and checked against a pinned checksum.",
+  "author": "Cockpit"
+}

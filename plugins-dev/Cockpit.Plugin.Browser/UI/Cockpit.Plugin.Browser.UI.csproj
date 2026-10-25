@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The UI half of the browser plugin: everything that needs a window, and the CEF runtime fetch (AC-1727).
+       Builds into the backend project's bin/ and never references it (see GitStatus.UI, AC-1390). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\..\src\Cockpit.Plugins.Abstractions.UI\Cockpit.Plugins.Abstractions.UI.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <!-- Compile-only: CockpitBuild.StateRoot is the host's own, so the runtime lands under the same state root
+         (and a dev build or COCKPIT_STATE_ROOT keeps its own) as everything else. -->
+    <ProjectReference Include="..\..\..\src\Cockpit.Core\Cockpit.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The CEF archives are .tar.bz2 and the BCL has no bzip2. Shipped with the plugin, so the host's copy
+         (Infrastructure) is not relied on. -->
+    <PackageReference Include="SharpCompress" Version="0.49.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Runtime\cef-catalog.json" LogicalName="cef-catalog.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Browser.Tests" />
+  </ItemGroup>
+
+</Project>
