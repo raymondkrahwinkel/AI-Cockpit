@@ -42,12 +42,18 @@ internal static class TabLookAlong
                 : refuse("The operator did not share a tab. Do not ask again unless they invite you to.");
     }
 
+    // The address as the card's first line, kept to what fits: the host and the last path segment.
+    private static string Short(string address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && uri.Host.Length > 0
+            ? uri.Host + (uri.AbsolutePath.Trim('/').Split('/') is { Length: > 1 } parts ? "/…/" + parts[^1] : uri.AbsolutePath.Length > 1 ? uri.AbsolutePath : string.Empty)
+            : address;
+
     // The card sits in the asker's own conversation (its pane is the source). The reason is the agent's own words and
     // is shown as such, never as the card's framing.
     public static ConsentRequest Card(string paneId, string? reason, IReadOnlyList<LookAlongTab> tabs, string? activeId)
     {
         var selected = tabs.Any(tab => tab.Id == activeId) ? activeId : tabs[0].Id;
-        var subject = tabs.First(tab => tab.Id == selected).Address;
+        var subject = Short(tabs.First(tab => tab.Id == selected).Address);
         var said = string.Join(' ', (reason ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         if (said.Length > ReasonLimit)
         {
