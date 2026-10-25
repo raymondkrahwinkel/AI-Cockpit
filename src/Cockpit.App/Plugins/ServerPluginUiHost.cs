@@ -25,6 +25,7 @@ internal sealed class ServerPluginUiHost(
     Func<string, CancellationToken, Task<PluginMcpAuthState>> mcpAuthState,
     Func<string, CancellationToken, Task<PluginMcpSignInOutcome>> mcpSignIn,
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+    Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
     ServerManagedClis managedClis) : ICockpitUiHost
 {
     private readonly List<Action> _saved = [];
@@ -170,6 +171,8 @@ internal sealed class ServerPluginUiHost(
 
     // The server's profiles, which a session the plugin starts there runs on.
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => profiles();
+
+    public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => projects();
 
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 

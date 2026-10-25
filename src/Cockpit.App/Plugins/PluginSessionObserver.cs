@@ -35,6 +35,8 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
 
     public string? ActivePaneId => _cockpit.SelectedSession?.PaneId;
 
+    public string? ActiveProjectId => _cockpit.SelectedSession?.ProjectId;
+
     // The assistant is appended rather than hooked into `_cockpit.Sessions` itself (AC-833): it deliberately sits
     // outside that collection (see `CockpitViewModel.CreateAssistantSession`) so nothing else that iterates
     // Sessions picks it up by accident, but it is still a session an "open sessions" list must be able to name.
@@ -188,9 +190,9 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver, IPluginAc
             return;
         }
 
-        // The selected session learning its working directory (an SDK session's init event) is the same
-        // "re-scope now" cue as the selection itself changing.
-        if (e.PropertyName == nameof(SessionPanelViewModel.WorkingDirectory))
+        // The selected session learning its working directory (an SDK session's init event) or its project (AC-1737)
+        // is the same "re-scope now" cue as the selection itself changing.
+        if (e.PropertyName is nameof(SessionPanelViewModel.WorkingDirectory) or nameof(SessionPanelViewModel.ProjectId))
         {
             _RaiseActiveSessionChanged();
         }

@@ -285,6 +285,8 @@ internal sealed class CockpitUiHost(
 
     public string? ActiveSessionWorkingDirectory => activeSession.ActiveSessionWorkingDirectory;
 
+    public string? ActiveProjectId => activeSession.ActiveProjectId;
+
     public SessionUsageSnapshot? ActiveSessionUsage => activeSession.ActiveSessionUsage;
 
     public event EventHandler? ActiveSessionChanged
@@ -313,6 +315,8 @@ internal sealed class CockpitUiHost(
         host.RequestConsentAsync(request, cancellationToken);
 
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => host.GetProfilesAsync();
+
+    public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => host.GetProjectsAsync();
 
     public Task SendToSessionAsync(string paneId, string text) => host.SendToSessionAsync(paneId, text);
 
