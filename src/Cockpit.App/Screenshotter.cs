@@ -717,6 +717,8 @@ internal static partial class Screenshotter
 
         // AC-1671: the assistant on, no profile yet, and two providers chosen in the previous step: Next is off with its reason.
         ["first-run-assistant-chosen"] = (_, _) => _AssistantWithChosenProviders(),
+        // AC-1673: after the install restart, step 4 keeps Claude selected and states the deferred assistant plainly.
+        ["first-run-assistant-claude-resumed"] = (_, _) => _AssistantWithDeferredClaude(),
         // AC-1671: "What you have" with a provider ticked and not installed: Next is off with its reason, Skip stays.
         ["first-run-provider-ticked"] = (_, _) => _ProviderStepTicked(),
 
@@ -886,6 +888,24 @@ internal static partial class Screenshotter
         };
 
         return window;
+    }
+
+    private static Window _AssistantWithDeferredClaude()
+    {
+        var viewModel = new ViewModels.Onboarding.AssistantStepViewModel();
+        viewModel.Restore(new Core.Abstractions.FirstRunWizardResumeState(
+            StartAtOrder: 25,
+            StartChoiceId: "start-fresh",
+            Providers: [new Core.Abstractions.FirstRunProviderChoice("claude-provider", "Claude Code")],
+            AssistantProviderId: Core.Profiles.ClaudePluginProfile.ProviderId,
+            AssistantProviderName: "Claude Code"));
+
+        return new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.AssistantStep(viewModel)],
+                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
     }
 
     private static Window _WorkKindWizard(int pluginCount)

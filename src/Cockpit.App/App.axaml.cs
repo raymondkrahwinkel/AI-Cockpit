@@ -198,9 +198,23 @@ public partial class App : Application
     {
         var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
         IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
+        FirstRunWizardResumeState? resume = null;
+        try
+        {
+            resume = stateStore.GetResumeStateAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            // A damaged hand-off must not keep first start from opening; the operator can make the choices again.
+        }
+
+        FirstRunWizardResume.Apply(
+            steps,
+            resume,
+            Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>());
 
         // AC-1505: a failed --provision lands on slot 10 with its reason, on the choice step (AC-1504).
-        int? startAtOrder = null;
+        int? startAtOrder = resume?.StartAtOrder;
         if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<StartChoiceStep>().FirstOrDefault() is { } choiceStep)
         {
             choiceStep.Notice = provisioningFailure;
@@ -703,6 +717,26 @@ public partial class App : Application
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
         // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
+        _ApplyDeferredAssistantProfile();
+    }
+
+    private static void _ApplyDeferredAssistantProfile()
+    {
+        try
+        {
+            if (!Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>().ApplyAsync().GetAwaiter().GetResult())
+            {
+                Program.Services.GetRequiredService<IToastService>().Show(
+                    "Claude Code could not be started. Run setup again and try again.",
+                    ToastSeverity.Error);
+            }
+        }
+        catch (Exception)
+        {
+            Program.Services.GetRequiredService<IToastService>().Show(
+                "Claude Code could not be set as your assistant. Run setup again and try again.",
+                ToastSeverity.Error);
+        }
     }
 
     // AC-1503: what a restore left empty, one toast each so every line has its own button. The button opens the plugin's

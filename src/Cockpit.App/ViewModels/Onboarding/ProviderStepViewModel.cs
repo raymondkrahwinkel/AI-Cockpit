@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
@@ -18,6 +20,11 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     private readonly IPluginStoreClient? _storeClient;
     private readonly IPluginProvisioningService? _provisioningService;
     private readonly IPluginAdministration? _plugins;
+    private readonly ISessionDialogService? _dialogs;
+    private readonly IFirstRunWizardStateStore? _wizardState;
+    private readonly IAppRestartService? _restart;
+    private readonly Func<string>? _startChoiceId;
+    private FirstRunWizardResumeState? _resumeState;
 
     public ObservableCollection<ProviderPickerRowViewModel> Providers { get; } = [];
 
@@ -50,13 +57,15 @@ public sealed partial class ProviderStepViewModel : ObservableObject
     [ObservableProperty]
     private string _summaryMessage = string.Empty;
 
+    internal bool RestartRequested { get; private set; }
+
     // What the assistant step lists as chosen here: ticked, or installed in this wizard.
     public IReadOnlyList<string> ChosenProviderLines =>
         [.. Providers.Where(row => row.IsSelected || row.WasInstalled).Select(row => row.ChosenLine)];
 
     // Next installs nothing (criterion 4), so a provider that looks ticked and is not installed would be a surprise two steps on, a suggestion's tick included.
     public string? NextBlockedReason =>
-        Providers.Any(row => row.IsSelected && !row.WasInstalled && !row.Row.IsInstalled) ? "Press Install for what you ticked, or untick it." : null;
+        Providers.Any(row => row.IsSelected && !row.WasInstalled && !row.Row.IsInstalled) ? "Press Install and restart for what you ticked, or untick it." : null;
 
     public event EventHandler? NextBlockedChanged;
 
@@ -81,12 +90,20 @@ public sealed partial class ProviderStepViewModel : ObservableObject
         IPluginStoreConfigStore storeConfigStore,
         IPluginStoreClient storeClient,
         IPluginProvisioningService provisioningService,
-        IPluginAdministration plugins)
+        IPluginAdministration plugins,
+        ISessionDialogService? dialogs = null,
+        IFirstRunWizardStateStore? wizardState = null,
+        IAppRestartService? restart = null,
+        Func<string>? startChoiceId = null)
     {
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
         _provisioningService = provisioningService;
         _plugins = plugins;
+        _dialogs = dialogs;
+        _wizardState = wizardState;
+        _restart = restart;
+        _startChoiceId = startChoiceId;
 
         _WireProvidersToInstallGate();
 
@@ -112,6 +129,11 @@ public sealed partial class ProviderStepViewModel : ObservableObject
             {
                 foreach (ProviderPickerRowViewModel row in e.NewItems)
                 {
+                    if (_resumeState?.Providers.Any(provider => provider.Id == row.Row.Id) == true)
+                    {
+                        row.IsSelected = true;
+                    }
+
                     row.PropertyChanged += (_, args) =>
                     {
                         if (args.PropertyName == nameof(ProviderPickerRowViewModel.IsSelected))
@@ -127,6 +149,18 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                 }
             }
         };
+
+    internal void Restore(FirstRunWizardResumeState state)
+    {
+        _resumeState = state;
+        foreach (var row in Providers)
+        {
+            if (state.Providers.Any(provider => provider.Id == row.Row.Id))
+            {
+                row.IsSelected = true;
+            }
+        }
+    }
 
     // Version each load so the constructor's fire-and-forget pass cannot overwrite a newer caller's results
     // (AC-510[b]).
@@ -264,8 +298,9 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                 requestRows.Add(row);
             }
 
-            if (requests.Count == 0)
+            if (requests.Count != selectedRows.Count)
             {
+                SummaryMessage = "One of your choices could not be added. Check the message above and try again.";
                 return;
             }
 
@@ -278,11 +313,65 @@ public sealed partial class ProviderStepViewModel : ObservableObject
                 requestRows[index].ApplyOutcome(batch.Results[index]);
             }
 
-            SummaryMessage = batch.SucceededCount == batch.Results.Count
-                ? $"Installed {batch.SucceededCount} of {batch.Results.Count} provider(s). Open the plugin store afterwards to approve them — nothing runs until you do."
-                : batch.SucceededCount == 0
-                    ? $"Couldn't install any of the {batch.Results.Count} selected provider(s) — see the reasons below."
-                    : $"Installed {batch.SucceededCount} of {batch.Results.Count} provider(s); {string.Join(", ", batch.FailedNames)} didn't make it — see the reasons below.";
+            if (batch.SucceededCount != batch.Results.Count)
+            {
+                SummaryMessage = batch.SucceededCount == 0
+                    ? "Nothing was added. Check the messages above and try again."
+                    : $"Some choices were not added: {string.Join(", ", batch.FailedNames)}. Check the messages above and try again.";
+                return;
+            }
+
+            if (_plugins is null || _dialogs is null || _wizardState is null || _restart is null)
+            {
+                SummaryMessage = "Cockpit couldn't finish setting this up. Try again.";
+                return;
+            }
+
+            var installed = await _plugins.GetInstalledAsync().ConfigureAwait(true);
+            for (var index = 0; index < batch.Results.Count; index++)
+            {
+                var result = batch.Results[index];
+                var plugin = installed.FirstOrDefault(candidate => candidate.Discovered.FolderId == result.FolderId);
+                if (plugin is null)
+                {
+                    SummaryMessage = $"{result.Name} was added, but Cockpit couldn't prepare it. Try again.";
+                    return;
+                }
+
+                if (plugin.Discovered.Decision is PluginLoadDecision.NeedsConsent or PluginLoadDecision.Disabled)
+                {
+                    var consent = new Cockpit.App.ViewModels.PluginRowViewModel(plugin).ToConsentInfo();
+                    if (!await _dialogs.ShowPluginConsentAsync(consent).ConfigureAwait(true))
+                    {
+                        SummaryMessage = $"{result.Name} was not enabled. Review it and try again when you're ready.";
+                        return;
+                    }
+
+                    await _plugins.SetEnabledAsync(
+                        plugin.Discovered.FolderId,
+                        enabled: true,
+                        plugin.Discovered.Sha256).ConfigureAwait(true);
+                }
+
+                requestRows[index].MarkReady();
+            }
+
+            var choices = selectedRows.Select(row => new FirstRunProviderChoice(row.Row.Id, row.Row.Name)).ToList();
+            var claude = choices.FirstOrDefault(choice => choice.Id == "claude-provider");
+            await _wizardState.SaveResumeStateAsync(new FirstRunWizardResumeState(
+                StartAtOrder: 25,
+                StartChoiceId: _startChoiceId?.Invoke() ?? "start-fresh",
+                Providers: choices,
+                AssistantProviderId: claude is null ? null : ClaudePluginProfile.ProviderId,
+                AssistantProviderName: claude?.Name)).ConfigureAwait(true);
+
+            SummaryMessage = "Ready. Restarting Cockpit…";
+            RestartRequested = true;
+            _restart.Restart();
+        }
+        catch (Exception)
+        {
+            SummaryMessage = "Cockpit couldn't finish setting this up. Check the messages above and try again.";
         }
         finally
         {

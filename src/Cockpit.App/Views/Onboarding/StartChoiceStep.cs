@@ -50,6 +50,10 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
     // Why the next wizard opens here, e.g. a --provision that failed (AC-1505); read once, by the wizard being built.
     internal string Notice { get; set; } = string.Empty;
 
+    private string? _restoredChoiceId;
+
+    internal void Restore(string choiceId) => _restoredChoiceId = choiceId;
+
     public int Order => 10;
 
     // Matches the mockup's label for this slot (AC-1504; EpicPlan's own).
@@ -65,6 +69,10 @@ internal sealed class StartChoiceStep : IFirstRunWizardStep, ISingletonService
         ViewModel = _Create();
         ViewModel.Notice = Notice;
         Notice = string.Empty;
+        if (ViewModel.Options.FirstOrDefault(option => option.Id == _restoredChoiceId) is { } restored)
+        {
+            ViewModel.ChooseCommand.Execute(restored);
+        }
 
         return new StartChoiceStepView { DataContext = ViewModel };
     }

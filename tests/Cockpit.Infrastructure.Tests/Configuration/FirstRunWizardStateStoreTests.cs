@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
@@ -35,9 +36,23 @@ public sealed class FirstRunWizardStateStoreTests : IDisposable
 
         Assert.Null(await store.GetCompletedVersionAsync());
 
+        var resume = new FirstRunWizardResumeState(
+            25,
+            "start-fresh",
+            [new FirstRunProviderChoice("claude-provider", "Claude Code")],
+            "claude",
+            "Claude Code");
+        await store.SaveResumeStateAsync(resume);
+        var restored = Assert.IsType<FirstRunWizardResumeState>(await store.GetResumeStateAsync());
+        Assert.Equal(25, restored.StartAtOrder);
+        Assert.Equal("start-fresh", restored.StartChoiceId);
+        Assert.Equal([new FirstRunProviderChoice("claude-provider", "Claude Code")], restored.Providers);
+        Assert.Equal("claude", restored.AssistantProviderId);
+
         await store.MarkCompletedAsync(1);
 
         Assert.Equal(1, await store.GetCompletedVersionAsync());
+        Assert.Null(await store.GetResumeStateAsync());
         Assert.True((await layoutStore.LoadAsync()).SingleSessionLayout);
 
         await store.MarkCompletedAsync(2);

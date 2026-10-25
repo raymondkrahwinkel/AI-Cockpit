@@ -62,14 +62,14 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
     [ObservableProperty]
     private string _outcomeBrushKey = "CockpitTextSecondaryBrush";
 
-    // True once this row's install landed (or was staged) in this wizard; the plugin still waits for its approval and the restart.
+    // True once this row's install landed (or was staged) in this wizard.
     [ObservableProperty]
     private bool _wasInstalled;
 
     // How the assistant step names this row: what the operator did with it in this step, never that it is already usable.
     public string ChosenLine => WasInstalled
-        ? $"{Row.Name} (installed, runs once you approve it)"
-        : $"{Row.Name} (ticked, not installed yet: press Install in the previous step)";
+        ? Row.Name
+        : $"{Row.Name} (not added yet)";
 
     partial void OnWasInstalledChanged(bool value) => OnPropertyChanged(nameof(ChosenLine));
 
@@ -85,12 +85,19 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
         (OutcomeText, OutcomeBrushKey) = result.Outcome switch
         {
             PluginProvisionOutcome.Installed =>
-                ("Installed — open the plugin store afterwards to approve it. It does nothing until you do.", "CockpitStatusDoneBrush"),
+                ("Installed — review it before Cockpit restarts.", "CockpitStatusWaitingBrush"),
             PluginProvisionOutcome.Staged =>
                 ("Already installed — the new bytes take effect after you restart the cockpit.", "CockpitStatusWaitingBrush"),
             PluginProvisionOutcome.Incompatible =>
                 ($"Can't install: {result.Error}", "CockpitStatusErrorBrush"),
             _ => ($"Couldn't install: {result.Error ?? "unknown error"}", "CockpitStatusErrorBrush"),
         };
+    }
+
+    public void MarkReady()
+    {
+        WasInstalled = true;
+        OutcomeText = "Ready — Cockpit will restart with this choice.";
+        OutcomeBrushKey = "CockpitStatusDoneBrush";
     }
 }

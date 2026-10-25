@@ -183,6 +183,10 @@ internal sealed class CockpitConfigFile
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? FirstRunWizardVersion { get; set; }
 
+    // AC-1673: one restart hand-off owned by the first-run state store. Completion or Skip removes it.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public FirstRunWizardResumeEntry? FirstRunWizardResume { get; set; }
+
     // AC-767: managed-CLI names excluded from auto-update — an exception list, so an absent section
     // means auto-update stays on for every CLI, existing or future, with no migration needed.
     public List<string> ManagedCliAutoUpdateDisabled { get; set; } = [];
