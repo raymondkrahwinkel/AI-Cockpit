@@ -34,6 +34,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: a plugin's side-menu launcher can ask for a Material icon and set the tone of its badge (accent, success or
   neutral); Productivity uses both for its hours entry. Needs SDK 3.26.0 (UI 3.7.0) and host 0.115.0.
+- added: Uren · Dag shows the time measured from your sessions beside your own entries: a strip of when you acted,
+  your entries and your agents, the measured time per project, your time and agent time. Your time counts each
+  minute once and gives it to the project you last acted on; an own entry over measured time wins it. The Uren badge
+  now counts measured plus own time. Productivity 0.2.0 asks for `timeline.read-all`.
 - added: a plugin you allow to (`timeline.read-all`) can read every session's timeline over a range: when it was
   busy, waiting or idle, what you did in it, its statuslines and what each turn spent, with day totals for anything
   older than 90 days. Without that permission in its manifest, it gets a refusal that names it.
