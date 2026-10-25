@@ -7,7 +7,11 @@ using Cockpit.Plugins.Abstractions.UI;
 namespace Cockpit.Plugin.Browser.UI;
 
 // One tab of an agent browser (AC-1713): its title and address, and the session that drives it.
-internal sealed record AgentTab(string PaneId, string Session, string TargetId, string Title, string Url, bool OperatorDrives);
+internal sealed record AgentTab(string PaneId, string Session, string TargetId, string Title, string Url, bool OperatorDrives, string FaviconUrl = "", Bitmap? Icon = null)
+{
+    // The session's name is "AC-1720 verify login"; the badge on the tab is its first word.
+    public string Badge => Session.Split(' ', 2)[0];
+}
 
 // The Agents side of the profile switch: the tabs of every live agent browser, the one on screen and its picture.
 // The backend half owns the browsers; this reads them over the plugin channel. The screencast runs only while the
@@ -53,9 +57,21 @@ internal sealed class AgentTabsModel : IDisposable
 
     public string? Error { get; private set; }
 
+    // Whether the shell shows the Agents side, for the status bar line.
+    public bool Showing { get; private set; }
+
     public event Action? Changed;
 
     public event Action? FrameChanged;
+
+    public void Show(bool showing)
+    {
+        if (Showing != showing)
+        {
+            Showing = showing;
+            Changed?.Invoke();
+        }
+    }
 
     public void SetViewing(bool viewing)
     {
@@ -95,7 +111,8 @@ internal sealed class AgentTabsModel : IDisposable
                     item.GetProperty("targetId").GetString()!,
                     item.GetProperty("title").GetString()!,
                     item.GetProperty("url").GetString()!,
-                    item.GetProperty("operatorDrives").GetBoolean()))
+                    item.GetProperty("operatorDrives").GetBoolean(),
+                    item.GetProperty("faviconUrl").GetString() ?? string.Empty))
                 .ToList();
             Dispatcher.UIThread.Post(() => Apply(tabs));
         }

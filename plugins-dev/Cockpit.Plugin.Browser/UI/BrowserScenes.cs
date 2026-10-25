@@ -47,6 +47,13 @@ internal static class BrowserScenes
                     HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
                 },
                 BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3)),
+            ["browser-workspace-agents"] = () => (
+                new WorkspaceTypeRegistration(BrowserUi.WorkspaceTypeId, "Browser", _ => _Shell(BrowserPlace.Tab, agentSide: true))
+                {
+                    IconKind = MaterialIconKind.Web,
+                    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
+                },
+                BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3, agentSide: true, agentTabs: 2)),
         };
 
     private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false)
@@ -60,8 +67,8 @@ internal static class BrowserScenes
         var agents = new AgentTabsModel(null);
         agents.Stage(
             [
-                new AgentTab("pane-1", "AC-1720", "t1", "localhost:5173 — Login", "http://localhost:5173/login", driving),
-                new AgentTab("pane-2", "Depot-docs", "t2", "docs.avaloniaui.net", "https://docs.avaloniaui.net/", false),
+                new AgentTab("pane-1", "AC-1720 verify login", "t1", "localhost:5173 — Login", "http://localhost:5173/login", driving, Icon: _Square(0xFF2F_6FE4)),
+                new AgentTab("pane-2", "Depot-docs bijwerken", "t2", "docs.avaloniaui.net", "https://docs.avaloniaui.net/", false, Icon: _Square(0xFF3F_A56B)),
             ],
             AgentLoginPicture.Render(1440, 745),
             (1440, 745));

@@ -22,6 +22,8 @@ internal sealed class BrowserShell : UserControl
     private readonly Border _agentBar = new() { IsVisible = false };
     private readonly StackPanel _profile = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
     private readonly Avalonia.Threading.DispatcherTimer _visibility = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly Border _agentLabel = new() { IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+    private readonly Button _newTab;
     private bool _agentSide;
     private readonly StackPanel _tabStrip = new() { Orientation = Orientation.Horizontal, Spacing = 2 };
     private readonly Button _back;
@@ -87,7 +89,7 @@ internal sealed class BrowserShell : UserControl
             },
         };
 
-        var newTab = _IconButton(MaterialIconKind.Plus, "New tab", () => _model.NewTab());
+        var newTab = _newTab = _IconButton(MaterialIconKind.Plus, "New tab", () => _model.NewTab());
         var tabRow = new DockPanel
         {
             Margin = new Thickness(8, 6, 8, 0),
@@ -112,10 +114,15 @@ internal sealed class BrowserShell : UserControl
             {
                 _Docked(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(0, 0, 6, 0), Children = { _back, _forward, _reload } }, Dock.Left),
                 _Docked(_placement, Dock.Right),
+                _Docked(_agentLabel, Dock.Right),
                 addressField,
             },
         };
 
+        _agentLabel.Padding = new Thickness(8, 2);
+        _agentLabel.CornerRadius = new CornerRadius(10);
+        _agentLabel.Background = new SolidColorBrush(AgentPurple, 0.18);
+        _agentLabel.Child = new TextBlock { Text = "◆ agent profile", FontSize = 11, Foreground = new SolidColorBrush(AgentPurple) };
         _codecBar = _BuildCodecBar();
 
         var header = new StackPanel { Children = { tabRow, _agentBar, addressRow } }.Themed(StackPanel.BackgroundProperty, "CockpitSecondaryBgBrush");
@@ -191,6 +198,8 @@ internal sealed class BrowserShell : UserControl
     {
         _RebuildProfile();
         _agentBar.IsVisible = _agentSide;
+        _agentLabel.IsVisible = _agentSide;
+        _newTab.IsVisible = _agentSide == false;
         _UpdateViewing();
         if (_agentSide)
         {
@@ -265,6 +274,7 @@ internal sealed class BrowserShell : UserControl
     private void _SwitchSide(bool agents)
     {
         _agentSide = agents;
+        _agents.Show(agents);
         _Refresh();
     }
 
@@ -286,7 +296,7 @@ internal sealed class BrowserShell : UserControl
             CornerRadius = new CornerRadius(9),
             Margin = new Thickness(4, 0, 0, 0),
             Background = new SolidColorBrush(AgentPurple, 0.18),
-            Child = new TextBlock { Text = tab.Session, FontSize = 11, Foreground = new SolidColorBrush(AgentPurple), MaxWidth = 90, TextTrimming = TextTrimming.CharacterEllipsis },
+            Child = new TextBlock { Text = tab.Badge, FontSize = 11, Foreground = new SolidColorBrush(AgentPurple), MaxWidth = 90, TextTrimming = TextTrimming.CharacterEllipsis },
         };
         var row = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(_Docked(badge, Dock.Right));
@@ -297,6 +307,15 @@ internal sealed class BrowserShell : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0),
         }.Themed(TextBlock.ForegroundProperty, active ? "CockpitTextPrimaryBrush" : "CockpitTextSecondaryBrush"));
+        if (tab.Icon is not null || tab.FaviconUrl.Length > 0)
+        {
+            var icon = new Image { Source = tab.Icon, Width = 14, Height = 14 };
+            row.Children.Insert(0, _Docked(icon, Dock.Left));
+            if (tab.Icon is null)
+            {
+                _ = _LoadIcon(icon, tab.FaviconUrl);
+            }
+        }
 
         var chip = new Border
         {
@@ -347,8 +366,11 @@ internal sealed class BrowserShell : UserControl
 
         _agentBar.Background = new SolidColorBrush(AgentPurple, 0.12);
         _agentBar.Padding = new Thickness(12, 5);
-        _agentBar.Child = new DockPanel { Children = { _Docked(stop, Dock.Right), _Docked(take, Dock.Right), text } };
+        var dot = new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(AgentPurple), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        _agentBar.Child = new DockPanel { Children = { _Docked(dot, Dock.Left), _Docked(stop, Dock.Right), _Docked(take, Dock.Right), text } };
     }
+
+    private static async Task _LoadIcon(Image image, string url) => image.Source = await Favicons.GetAsync(url);
 
     private Control _AgentsEmpty()
     {

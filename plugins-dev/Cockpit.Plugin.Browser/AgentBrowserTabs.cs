@@ -21,7 +21,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         {
             foreach (var page in await PagesAsync(upstream, cancellationToken).ConfigureAwait(false))
             {
-                tabs.Add(new { paneId, session = sessionName(paneId) ?? paneId, targetId = page.Id, title = page.Title, url = page.Url, operatorDrives = drives });
+                tabs.Add(new { paneId, session = sessionName(paneId) ?? paneId, targetId = page.Id, title = page.Title, url = page.Url, faviconUrl = page.FaviconUrl, operatorDrives = drives });
             }
         }
 
@@ -136,7 +136,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
             using var document = JsonDocument.Parse(await Http.GetStringAsync($"{upstream}/json/list", cancellationToken).ConfigureAwait(false));
             return [.. document.RootElement.EnumerateArray()
                 .Where(item => item.GetProperty("type").GetString() == "page" && item.TryGetProperty("webSocketDebuggerUrl", out _))
-                .Select(item => new Page(item.GetProperty("id").GetString()!, item.GetProperty("title").GetString() ?? string.Empty, item.GetProperty("url").GetString() ?? string.Empty, item.GetProperty("webSocketDebuggerUrl").GetString()!))];
+                .Select(item => new Page(item.GetProperty("id").GetString()!, item.GetProperty("title").GetString() ?? string.Empty, item.GetProperty("url").GetString() ?? string.Empty, item.GetProperty("webSocketDebuggerUrl").GetString()!, item.TryGetProperty("faviconUrl", out var icon) ? icon.GetString() ?? string.Empty : string.Empty))];
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -144,7 +144,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         }
     }
 
-    private sealed record Page(string Id, string Title, string Url, string SocketUrl);
+    private sealed record Page(string Id, string Title, string Url, string SocketUrl, string FaviconUrl);
 
     private sealed record Watch(string PaneId, string TargetId, CdpPage Connection);
 }
