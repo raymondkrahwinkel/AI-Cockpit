@@ -67,7 +67,7 @@
     <!-- AC-1714: a card the operator answers by picking, after the browser's share card (mockup screen 4): the
          subject with its host in bold, the questions, what it never covers in red, and an approve button naming
          the act. Same broker and same answer path as the card above; only the layout differs. -->
-    <Border CornerRadius="10" BoxShadow="0 10 30 0 #80000000" IsVisible="{Binding HasChoices}"
+    <Border CornerRadius="10" BoxShadow="0 10 30 0 #80000000" IsVisible="{Binding IsOverlayChoices}"
             Background="{DynamicResource CockpitPanelBgBrush}"
             BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" Padding="20,18">
         <StackPanel Spacing="12">
@@ -133,6 +133,47 @@
                 <Button Content="Cancel" Command="{Binding DenyCommand}"/>
                 <Button Content="{Binding ApproveLabel}" Classes="Accent" Command="{Binding ApproveCommand}"/>
             </StackPanel>
+        </StackPanel>
+    </Border>
+
+    <!-- AC-1715: the same card under the conversation, after mockup screen 6: the subject, what it sees and never
+         covers, then the approve button, the button that lists the other options, and No. -->
+    <Border CornerRadius="10" IsVisible="{Binding IsInline}" Padding="14,12"
+            Background="{DynamicResource CockpitPanelBgBrush}"
+            BorderBrush="{DynamicResource CockpitStatusWaitingBrush}" BorderThickness="1">
+        <StackPanel Spacing="8">
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"/>
+            <StackPanel Orientation="Horizontal" Spacing="5">
+                <materialIcons:MaterialIcon Kind="Lock" Width="12" Height="12" IsVisible="{Binding IsSecure}" VerticalAlignment="Center"
+                                            Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                <TextBlock FontSize="12" TextWrapping="Wrap">
+                    <Run Text="{Binding SubjectHost}" FontWeight="SemiBold"/><Run Text="{Binding SubjectRest}" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </TextBlock>
+            </StackPanel>
+            <SelectableTextBlock Text="{Binding Details}" IsVisible="{Binding HasDetails}" FontSize="12" TextWrapping="Wrap"
+                                 Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            <TextBlock FontSize="12" TextWrapping="Wrap" IsVisible="{Binding HasNever}" Foreground="{DynamicResource CockpitStatusErrorBrush}">
+                <Run Text="Never: "/><Run Text="{Binding Never}"/>
+            </TextBlock>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="{Binding ApproveLabel}" Classes="Accent" Command="{Binding ApproveCommand}"/>
+                <Button Content="{Binding OtherLabel}" IsVisible="{Binding HasOther}" Command="{Binding ToggleOthersCommand}"/>
+                <Button Content="No" Command="{Binding DenyCommand}"/>
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding OtherOptions}" IsVisible="{Binding ShowOthers}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ConsentOptionViewModel">
+                        <Button Classes="Compact" Margin="0,0,6,6" Content="{Binding Label}"
+                                Command="{Binding $parent[ItemsControl].((vm:ConsentPromptViewModel)DataContext).PickCommand}"
+                                CommandParameter="{Binding}"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </StackPanel>
     </Border>
     </Panel>

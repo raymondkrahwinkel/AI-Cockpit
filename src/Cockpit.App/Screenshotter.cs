@@ -617,6 +617,9 @@ internal static partial class Screenshotter
         // AC-1523: an approval card with a 3,000-character behaviour prompt, and a short one beside it — the long
         // one pushed Approve/Deny out of the window, the short one must not grow empty space in return.
         ["assistant-chat-consent-long"] = (_, _) => _AssistantChatConsent(_LongProjectUpdate()),
+        // AC-1715: the assistant asks to look along; the card sits in its own conversation.
+        ["assistant-chat-look-along"] = (_, _) => _AssistantChatLookAlong(),
+        ["assistant-chat-look-along-others"] = (_, _) => _AssistantChatLookAlong(showOthers: true),
         ["assistant-chat-consent-short"] = (_, _) => _AssistantChatConsent("Project: Synvolution-MailCatch\nDescription: \"Mail sink\" → \"Mail sink for staging\""),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
@@ -3270,6 +3273,42 @@ internal static partial class Screenshotter
                     CanRemember: true),
                 new _NoConsentPrompts()),
         };
+        return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-1715: the card the Browser plugin raises for browser_request_tab, as the assistant's chat shows it (the plugin
+    // builds the same request; the host cannot reference it).
+    private static AssistantChatWindow _AssistantChatLookAlong(bool showOthers = false)
+    {
+        var session = new ViewModels.SessionViewModel { Title = "Assistant" };
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "I see you have PR #1416 open in the browser. May I look along on that tab? Then I can read the failing check." });
+        session.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_look", ToolName = "mcp__cockpit-browser__browser_request_tab", InputJson = "{\"reason\":\"Why does the build fail on your PR?\"}" });
+        session.PendingConsent = new ViewModels.ConsentPromptViewModel(
+            new ConsentQuestion(
+                Guid.NewGuid(),
+                new ConsentRequest(
+                    "Look along on this tab?",
+                    "https://github.com/…/pull/1416 · your own profile\nThe session says: \"Why does the build fail on your PR?\"\n• I see: address, title, page text and a screenshot of only this tab\n• I control nothing",
+                    new ConsentSource(Cockpit.Core.Assistant.AssistantIdentity.PaneId, null, "Browser"),
+                    "browser.look-along",
+                    ConsentRisk.Dangerous)
+                {
+                    Choices =
+                    [
+                        new ConsentChoice("tab", "Which tab",
+                        [
+                            new ConsentOption("t1", "Fix statusline: ticket en fase tonen #1416", "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416", Selected: true),
+                            new ConsentOption("t2", "Lofi beats — YouTube", "https://www.youtube.com/watch?v=jfKfPfyJRdk"),
+                        ]),
+                    ],
+                    ApproveLabel = "Share this tab",
+                    Inline = true,
+                    OtherLabel = "Other tab…",
+                    Never = ["Cookies and storage", "passwords and autofill", "other tabs"],
+                },
+                CanRemember: false),
+            new _NoConsentPrompts(),
+            inlineSlot: true) { ShowOthers = showOthers };
         return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 

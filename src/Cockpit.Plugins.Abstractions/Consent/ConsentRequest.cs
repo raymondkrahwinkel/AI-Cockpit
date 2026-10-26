@@ -60,4 +60,18 @@ public sealed record ConsentRequest(
     /// What this approval never covers, whatever is picked, shown as its own warning block on a card with choices.
     /// </summary>
     public IReadOnlyList<string>? Never { get; init; }
+
+    /// <summary>
+    /// On a card with choices that names a session: the card stands under that session's conversation instead of
+    /// over it, as buttons: the approve button (<see cref="ApproveLabel"/>) with what is picked, a button
+    /// (<see cref="OtherLabel"/>) that lists the other options to approve with, and No. A host whose view has no such place
+    /// shows it as the overlay card (AC-1715). Needs minHostVersion 0.121.0.
+    /// </summary>
+    public bool Inline { get; init; }
+
+    /// <summary>
+    /// The button of an <see cref="Inline"/> card that lists the other options, "Other tab..."; the options stay a
+    /// list on the approve button's card when unset.
+    /// </summary>
+    public string? OtherLabel { get; init; }
 }

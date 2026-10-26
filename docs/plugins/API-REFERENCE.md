@@ -1087,6 +1087,8 @@ public sealed record ConsentRequest(
     public IReadOnlyList<ConsentChoice>? Choices { get; init; } // operator picks; always shown, never remembered (SDK 3.28.0, host 0.117.0)
     public string? ApproveLabel { get; init; }        // the approve button on a card with choices, e.g. "Share watching"
     public IReadOnlyList<string>? Never { get; init; } // what the approval never covers, a red block on that card
+    public bool Inline { get; init; }                 // under the session's conversation as buttons (SDK 3.30.0, host 0.121.0)
+    public string? OtherLabel { get; init; }          // the Inline card's button that lists the other options, "Other tab..."
 }
 
 public sealed record ConsentChoice(string Key, string Label, IReadOnlyList<ConsentOption> Options, bool AllowMultiple = false);

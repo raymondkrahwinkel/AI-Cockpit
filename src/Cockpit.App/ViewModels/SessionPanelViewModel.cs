@@ -1859,6 +1859,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         OnPropertyChanged(nameof(RequestsAttention));
         OnPropertyChanged(nameof(RailSortKey));
+        OnConsentCardChanged();
+    }
+
+    // AC-1715: for a pane whose transcript names the call a card belongs to.
+    protected virtual void OnConsentCardChanged()
+    {
     }
 
     partial void OnSidebarIndexChanged(int value) => OnPropertyChanged(nameof(RailSortKey));
