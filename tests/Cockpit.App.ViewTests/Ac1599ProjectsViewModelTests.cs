@@ -1,6 +1,9 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Projects;
+using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -56,19 +59,46 @@ public sealed class Ac1599ProjectsViewModelTests
     [Fact]
     public async Task HideAndUnhide_ReloadTheSectionAndKeepHiddenCount()
     {
-        var offer = _Group("depot-a", "Depot — alpha.example", "Acme", "depot-a:payroll", "Payroll");
-        var catalog = new _Catalog(_Snapshot([], [offer]));
+        var settings = ProjectSettings.Empty;
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(settings));
+        store.SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                settings = call.Arg<ProjectSettings>();
+                return Task.CompletedTask;
+            });
+        var source = Substitute.For<ISharedProjectSource>();
+        source.Key.Returns("depot-a");
+        source.SourceName.Returns("Depot — alpha.example");
+        source.ListAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(
+            SharedProjectListResult.Success([
+                new SharedProject("depot-a:payroll", "Payroll")
+                {
+                    Organization = new SharedProjectOrganization("acme", "Acme", "Editor"),
+                },
+            ])));
+        var registry = new SharedProjectSourceRegistry();
+        registry.Register(source);
+        var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), registry);
         var viewModel = new ProjectsViewModel(catalog, Substitute.For<IProjectEditor>(), dialogs: null);
 
         await viewModel.LoadAsync();
+        await viewModel.LoadSharedProjectsAsync();
         await viewModel.HideSharedProjectAsync("depot-a:payroll");
 
+        Assert.Contains("depot-a:payroll", settings.HiddenSharedProjectIds);
+        await viewModel.LoadAsync();
+        await viewModel.LoadSharedProjectsAsync();
         var hidden = Assert.Single(viewModel.ProjectSections);
         Assert.Equal(1, hidden.HiddenCount);
         Assert.Empty(hidden.Items);
 
         await viewModel.UnhideSharedProjectsAsync(("depot-a", "acme"));
 
+        Assert.Empty(settings.HiddenSharedProjectIds);
+        await viewModel.LoadAsync();
+        await viewModel.LoadSharedProjectsAsync();
         var restored = Assert.Single(viewModel.ProjectSections);
         Assert.Equal(0, restored.HiddenCount);
         Assert.Equal("Payroll", Assert.Single(restored.Items).Name);
