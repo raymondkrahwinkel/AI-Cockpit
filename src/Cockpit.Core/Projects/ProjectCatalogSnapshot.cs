@@ -22,8 +22,13 @@ public sealed record SharedProjectGroup(
     string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null,
     string SourceKey = "", string? Notice = null, bool AllAdded = false);
 
+// AC-1758: Unavailable says why a listed project cannot be added yet (no Cockpit definition, say); null means it can.
 public sealed record SharedProjectOffer(
-    string Id, string Name, string? Description = null, string? Role = null, SharedProjectOrganizationInfo? Organization = null);
+    string Id, string Name, string? Description = null, string? Role = null, SharedProjectOrganizationInfo? Organization = null,
+    string? Unavailable = null)
+{
+    public bool CanAdd => Unavailable is null;
+}
 
 // Core carries no Plugins.Abstractions reference, so the organization is copied by value.
 public sealed record SharedProjectOrganizationInfo(string Slug, string? Name, string? Role);

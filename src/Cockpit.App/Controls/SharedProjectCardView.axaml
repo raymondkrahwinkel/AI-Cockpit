@@ -22,7 +22,7 @@
                 <Border Grid.Column="1" Margin="8,0,0,0" Padding="7,2"
                         CornerRadius="{StaticResource CockpitPillRadius}"
                         Background="{DynamicResource CockpitAccentRingTintBrush}"
-                        VerticalAlignment="Top">
+                        VerticalAlignment="Top" IsVisible="{Binding CanAdd}">
                     <TextBlock Text="Ready to add" FontSize="10"
                                Foreground="{DynamicResource CockpitAccentBrush}"/>
                 </Border>
@@ -33,12 +33,17 @@
             <TextBlock Text="{Binding Role}" FontSize="11"
                        IsVisible="{Binding Role, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <!-- AC-1758: a listed project that cannot be added yet (no Cockpit definition, say) says why instead of
+                 offering a button that would fail; the button's slot stays free for a later "Set up for Cockpit…". -->
+            <TextBlock Text="{Binding Unavailable}" FontSize="12" TextWrapping="Wrap"
+                       IsVisible="{Binding !CanAdd}"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
             <!-- Its own wording, not the "Pick how it runs" a local project without a profile shows: both used to
                  say "Finish setting up…" for two unrelated situations, and this one is not a half-finished project
                  but someone else's project arriving. The command comes from whichever screen hosts the control. -->
             <Button Classes="Accent" HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center" Padding="12,7"
-                    Content="Add to my projects…"
+                    Content="Add to my projects…" IsVisible="{Binding CanAdd}"
                     Command="{Binding #Root.AddCommand}"
                     CommandParameter="{Binding}"/>
         </StackPanel>

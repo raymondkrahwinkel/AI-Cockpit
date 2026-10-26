@@ -2279,6 +2279,7 @@ internal static partial class Screenshotter
             [
                 new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
                 new SharedProjectOffer("depot:runbook", "Operations runbook", "Last known team project.", "Viewer"),
+                new SharedProjectOffer("depot:startpage", "startpage", Role: "Owner", Unavailable: "No Cockpit project definition yet."),
             ],
             Error: null,
             Notice: "Depot is unreachable — showing the last known list."));

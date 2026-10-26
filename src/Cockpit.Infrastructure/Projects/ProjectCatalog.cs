@@ -294,6 +294,10 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                         project.Organization is { } organization
                             ? new SharedProjectOrganizationInfo(organization.Slug, organization.Name, organization.Role)
                             : null))
+                    .Concat(result.ProjectReadStates
+                        .Where(state => state.State != SharedProjectReadState.Ok
+                            && !boundIds.Contains(state.Id) && !hiddenIds.Contains(state.Id))
+                        .Select(state => new SharedProjectOffer(state.Id, state.Name, Role: state.Role, Unavailable: _Unavailable(state.State))))
                     .ToList()
                 : [];
 
@@ -308,6 +312,17 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         _sharedProjectGroups = groups;
         _PublishAndRaise();
     }
+
+    // AC-1758: a project the source listed but could not offer still shows, with why it cannot be added yet.
+    private static string _Unavailable(SharedProjectReadState state) => state switch
+    {
+        SharedProjectReadState.Absent => "No Cockpit project definition yet.",
+        SharedProjectReadState.Pending => "Its Cockpit project definition is still loading.",
+        SharedProjectReadState.Timeout => "Its Cockpit project definition did not answer in time.",
+        SharedProjectReadState.TooLarge => "Its Cockpit project definition is too large to read.",
+        SharedProjectReadState.Invalid => "Its Cockpit project definition is not valid.",
+        _ => "Its Cockpit project definition could not be read.",
+    };
 
     // Every local project bound to `sharedProjects` is claimed as owned by `source`; returns the projects whose
     // `SharedSourceName` needs persisting to match (AC-762): confirmed when still listed, cleared only when a
