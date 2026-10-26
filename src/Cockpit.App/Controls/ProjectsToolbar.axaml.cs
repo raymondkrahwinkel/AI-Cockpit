@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
 
 namespace Cockpit.App.Controls;
 
@@ -12,8 +11,6 @@ public partial class ProjectsToolbar : UserControl
     public ProjectsToolbar()
     {
         InitializeComponent();
-        SizeChanged += (_, args) => this.FindControl<TextBlock>("CountText")!.IsVisible = args.NewSize.Width > CountMinWidth;
+        SizeChanged += (_, args) => CountText.IsVisible = args.NewSize.Width > CountMinWidth;
     }
-
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

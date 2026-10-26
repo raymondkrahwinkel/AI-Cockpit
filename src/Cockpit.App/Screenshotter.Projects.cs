@@ -52,6 +52,7 @@ internal static partial class Screenshotter
             cockpit.SyncProjectNowCommand);
         // The design-time cockpit does not wire the running-session count the real one does.
         cockpit.Projects.SetSessionCounter(id => cockpit.Sessions.Count(session => session.ProjectId == id), cockpit.Sessions);
+        // A scene builder returns a window synchronously; opening the workspace needs no I/O here, so blocking is safe.
         cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id).GetAwaiter().GetResult();
         stage?.Invoke(cockpit);
 
@@ -166,13 +167,18 @@ internal static partial class Screenshotter
 
     private static void _StageRunning(CockpitViewModel cockpit, Project project, int count)
     {
+        if (cockpit.Workspaces.Active is not { } workspace)
+        {
+            throw new InvalidOperationException("The Projects workspace scene has no active workspace to run its sessions in.");
+        }
+
         for (var index = 0; index < count; index++)
         {
             cockpit.Sessions.Add(new SessionViewModel
             {
                 Title = $"{project.Name} {index + 1}",
                 ProjectId = project.Id,
-                WorkspaceId = cockpit.Workspaces.Active!.Id,
+                WorkspaceId = workspace.Id,
                 SessionStatus = SessionStatus.Busy,
             });
         }

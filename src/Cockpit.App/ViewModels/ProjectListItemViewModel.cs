@@ -47,7 +47,9 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
 
     public bool HasDescription => !string.IsNullOrWhiteSpace(Description);
 
-    public string DescriptionText => HasDescription ? Description! : "No description";
+    public string DescriptionText => Description is { } description && !string.IsNullOrWhiteSpace(description)
+        ? description
+        : "No description";
 
     public string? Category => Project?.Category;
 
@@ -91,13 +93,19 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
 
     public bool CanAdd => SharedProject?.CanAdd == true;
 
-    public string RunsOn => !IsOnThisMachine
-        ? "Not on this machine"
-        : HasProfile ? $"▸ {Project!.DefaultProfileLabel}" : "No profile yet";
+    public string RunsOn => Project switch
+    {
+        null => "Not on this machine",
+        { DefaultProfileLabel: { Length: > 0 } profile } => $"▸ {profile}",
+        _ => "No profile yet",
+    };
 
-    public string RunsOnDetail => !IsOnThisMachine
-        ? "Not on this machine yet"
-        : HasProfile ? Project!.DefaultProfileLabel! : "No profile yet";
+    public string RunsOnDetail => Project switch
+    {
+        null => "Not on this machine yet",
+        { DefaultProfileLabel: { Length: > 0 } profile } => profile,
+        _ => "No profile yet",
+    };
 
     // The small list's one meta line under the name (mockup `.c-narrowmeta`).
     public string RunsOnAndLastOpened => IsOnThisMachine ? $"{RunsOn} · {LastOpened}" : "Not on this machine yet";
@@ -106,13 +114,15 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
     {
         get
         {
-            if (!IsOnThisMachine)
+            if (Project is not { } project)
             {
                 return "—";
             }
 
-            return Project!.LastOpenedAt is { } openedAt
-                ? ((string)LastOpenedConverter.Instance.Convert(openedAt, typeof(string), string.Empty, CultureInfo.InvariantCulture)!).Trim()
+            // The overview's own relative wording, without its "Opened" verb (an empty verb, trimmed).
+            return project.LastOpenedAt is { } openedAt
+                && LastOpenedConverter.Instance.Convert(openedAt, typeof(string), string.Empty, CultureInfo.InvariantCulture) is string text
+                ? text.Trim()
                 : "never opened";
         }
     }
