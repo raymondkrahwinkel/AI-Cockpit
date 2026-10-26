@@ -13,10 +13,8 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Controls;
 
-// AC-1762: a foldable card in the left sidebar — the mockups' `.sec` (Company v8): a hairline-bordered card whose
-// whole header is the click target, with a chevron, the title, `· n` in faint, and anything the caller wants at the
-// right (a status, or the buttons Projects keeps there). Projects, This laptop and every server stand in one, so the
-// three group headings look the same. `IsExpanded` binds two-way; where it is remembered is the caller's business.
+// AC-1762: the mockups' foldable `.sec` card (Company v8). Projects, This laptop and every server stand in one, so the
+// three group headings look the same; the whole header folds it, and where that is remembered is the caller's business.
 internal sealed class SidebarSection : ContentControl
 {
     public static readonly StyledProperty<string?> TitleProperty = AvaloniaProperty.Register<SidebarSection, string?>(nameof(Title));
