@@ -465,6 +465,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the nightly ships only the Velopack files.** The nightly release no longer carries the Linux tarball, the
+  macOS `.app.zip` and `.dmg` or the AppImage; the in-app updater and the plugin SDK are unchanged, and a nightly now
+  comes in through the update channel. Stable releases still ship those packages.
 - changed: a Kimi or opencode session started on a model the agent does not offer, or refuses, now fails to start
   and says why, instead of quietly running on the agent's own default model. This also applies to a model chosen in
   the profile's launch options; a stale "Default model" in the provider's own settings is still skipped quietly.

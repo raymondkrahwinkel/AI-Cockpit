@@ -253,47 +253,6 @@ jobs:
             -p:SourceRevisionId=${{ steps.version.outputs.sha }} \
             --output publish/${{ matrix.rid }}
 
-      # One thing per platform, and it is the thing you actually run: a Setup.exe on Windows (built further down,
-      # from this directory publish, by vpk), a .app on macOS, an AppImage on Linux (below). The tarball rides
-      # along for Linux only, where unpacking a directory on a server is a real use — a zip of loose DLLs is not
-      # something anybody wants to be handed.
-      - name: Package
-        shell: bash
-        run: |
-          mkdir -p artifacts
-          case "${{ matrix.rid }}" in
-            osx-arm64|osx-x64)
-              arch="${{ matrix.rid }}"
-              arch="${arch#osx-}"
-              scripts/package-macos.sh "$arch" "${{ steps.version.outputs.version }}"
-
-              # The .dmg is what a person downloads: open, drag onto Applications, done. The zipped bundle stays
-              # beside it because that is what automation wants — a tool that has to unpack a disk image first is
-              # a tool nobody writes.
-              mv artifacts/macos/*.dmg "artifacts/ai-cockpit-nightly-macos-$arch.dmg"
-
-              # ditto, not zip: it keeps the bundle's symlinks and permissions, and a .app that lost its
-              # executable bit is a .app that will not open.
-              ditto -c -k --sequesterRsrc --keepParent \
-                artifacts/macos/AI-Cockpit.app "artifacts/ai-cockpit-nightly-macos-$arch.app.zip"
-              rm -rf artifacts/macos
-              ;;
-            linux-x64)
-              tar -czf "artifacts/ai-cockpit-nightly-linux-x64.tar.gz" -C publish/linux-x64 .
-              ;;
-          esac
-
-      # An AppImage as well as the tarball, and not instead of it: the tarball is what you unpack on a server or
-      # feed to a package build, the AppImage is what a person double-clicks. Built from the publish that already
-      # happened, so both artifacts are the same bytes.
-      - name: AppImage
-        if: matrix.rid == 'linux-x64'
-        shell: bash
-        run: |
-          scripts/package-appimage.sh publish/linux-x64 "${{ steps.version.outputs.version }}"
-          mv artifacts/appimage/*.AppImage "artifacts/ai-cockpit-nightly-x86_64.AppImage"
-          rm -rf artifacts/appimage
-
       # The Velopack feed for the nightly channels — the same packing the release does, on -nightly rather than
       # -stable, so somebody following nightlies is offered nightlies and never a stable build (AC-384). Same
       # pinned tool version, because the tool writes the feed the app's Velopack library reads.
@@ -463,11 +422,6 @@ jobs:
               bash scripts/nightly-notes.sh -n 20
             fi
             echo
-            echo "---"
-            echo
-            echo "**macOS — install with this, not the .dmg:** \`curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash -s -- nightly\`"
-            echo
-            echo "The build is ad-hoc signed, not notarized, so a copy your *browser* fetched is quarantined and Gatekeeper calls it \"damaged and can't be opened\". It is not damaged — that flag is written by the downloader, and \`curl\` does not write one. Already took the .dmg? Clear only the quarantine flag with \`xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app\` — not \`xattr -cr\`, which also wipes the extended attributes carrying each managed assembly's signature and leaves the app unsigned."
           } > nightly-notes.md
 
           # Fail here, before the publish step deletes the live release, if the body is still too long.
