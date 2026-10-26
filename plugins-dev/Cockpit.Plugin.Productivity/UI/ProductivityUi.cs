@@ -29,7 +29,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         var badge = host.AddSideMenuButtonWithBadge("Uren", () => _Open(host), MaterialIconKind.ClockOutline);
         badge.Tone = SideMenuButtonBadgeTone.Success;
         _controller.AttachBadge(badge);
-        host.AddSideMenuButton("Overzicht", () => _OpenOverview(host));
+        host.AddSideMenuButton("Overzicht", () => _OpenOverview(host), MaterialIconKind.ViewDashboardOutline);
         host.AddSideMenuSection("Tijd", () => new TimeSidebar(_controller, () => _Open(host)));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             WorkspaceTypeId,

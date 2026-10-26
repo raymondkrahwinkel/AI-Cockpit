@@ -1,6 +1,7 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
 
 namespace Cockpit.Plugin.Schedules.UI;
 
@@ -18,7 +19,7 @@ public sealed class SchedulesUi : ICockpitPluginUi
     public void InitializeUi(ICockpitUiHost host)
     {
         // AC-1549: the button counts the reminders that went off and wait, as the mockup's badge.
-        var badge = host.AddSideMenuButtonWithBadge("Schedules", () => _Open(host));
+        var badge = host.AddSideMenuButtonWithBadge("Schedules", () => _Open(host), MaterialIconKind.CalendarClock);
         _dueSubscription = host.Channel.Subscribe(Contracts.SchedulesChannel.RemindersDue, due =>
         {
             var count = due.Payload.ValueKind == System.Text.Json.JsonValueKind.Number ? due.Payload.GetInt32() : 0;

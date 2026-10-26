@@ -40,7 +40,7 @@ internal static class ServerGroupScene
     }
 
     // AC-1762 (mockups Company v8 #22 and Productivity v3 #09): the panels sidebar with two projects, this laptop with two
-    // workspaces and one server — every section open, or This laptop and the server folded shut.
+    // workspaces and one server — the server open or folded shut.
     public static MainWindow Sidebar(int width, int height, bool collapsed)
     {
         var cockpit = new CockpitViewModel { SidebarWidth = 240 };
@@ -57,7 +57,6 @@ internal static class ServerGroupScene
         cockpit.ShowServers(new SceneServers(_Server(admin: true)), SessionViewModel.OverRemoteAsync, new SceneSignIns());
         if (collapsed)
         {
-            cockpit.ThisLaptopSectionExpanded = false;
             cockpit.ServerGroups[0].IsExpanded = false;
         }
 

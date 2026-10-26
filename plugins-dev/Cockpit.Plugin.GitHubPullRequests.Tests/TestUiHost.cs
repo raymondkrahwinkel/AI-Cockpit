@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Material.Icons;
 using NSubstitute;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
@@ -15,7 +16,7 @@ internal static class TestUiHost
         var host = Substitute.For<ICockpitUiHost>();
         host.Channel.Returns(channel ?? new InProcessChannel());
         host.Storage.Returns(new InMemoryPluginStorage());
-        host.AddSideMenuButtonWithBadge(Arg.Any<string>(), Arg.Any<Action>()).Returns(new SideMenuButtonBadge());
+        host.AddSideMenuButtonWithBadge(Arg.Any<string>(), Arg.Any<Action>(), Arg.Any<MaterialIconKind>()).Returns(new SideMenuButtonBadge());
         host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new TextBlock());
         return host;
     }

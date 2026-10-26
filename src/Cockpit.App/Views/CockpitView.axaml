@@ -182,13 +182,12 @@
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Grid.Column="0" Spacing="2">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <!-- AC-1762: v8's `.sess` — a 12 px regular name, a 7 px dot. -->
-                                <Ellipse Width="7" Height="7"
+                                <Ellipse Width="8" Height="8"
                                          Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                <TextBlock Text="{Binding Title}" FontSize="12"
+                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                            IsVisible="{Binding !IsRenaming}"/>
                                 <TextBox Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
-                                         Classes="Compact" MinWidth="110" FontSize="12"
+                                         Classes="Compact" MinWidth="110" FontWeight="SemiBold"
                                          KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
                                          AttachedToVisualTree="OnRenameBoxAttached"/>
                                 <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
@@ -223,10 +222,8 @@
                                 </Border>
                                 <TextBlock Text="{Binding ActiveProfileLabel}"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
-                                <TextBlock Text="·" Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
-                                           IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 <TextBlock Text="{Binding SessionStatusLabel}"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 <!-- AC-1096: what this session's processes still hold. Beside the status because that is
                                      the claim it qualifies: Idle says the agent stopped, not that its build did. -->
                                 <TextBlock Text="{Binding ProcessActivityLabel}"
@@ -644,36 +641,43 @@
                      remote window, whose Options would be this machine's and which keeps no state here. -->
                 <views:SidebarFooter DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
 
+                <!-- Plugin-contributed left-menu cards (#14, AC-1763), docked above the footer and below the session
+                     list, where the plugins always stood. Built in code-behind from CockpitViewModel.PluginMenuGroups;
+                     hidden entirely when no plugin contributes anything. -->
+                <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
 
+                <!-- AC-1790: Projects scroll with the sessions, so a tall list never runs under the plugin cards docked
+                     below; with room to spare it stands exactly where it did. -->
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
                 <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
                      entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
                      ▶ starts on the project's own defaults and skips the dialog; the context menu holds the slower
                      routes for when the operator wants to change something the project would otherwise decide.
                      Deliberately the recent few and not all of them: this strip is for reaching what you are busy
                      with, and the overview is where the whole list lives. -->
-                <controls:SidebarSection DockPanel.Dock="Top" Margin="0,0,0,8" Title="Projects"
-                                         Subtitle="{Binding Projects.Projects.Count}"
-                                         IsExpanded="{Binding ProjectsSectionExpanded}"
-                                         IsVisible="{Binding Projects.HasProjects}">
-                    <controls:SidebarSection.Trailing>
-                        <StackPanel Orientation="Horizontal">
-                            <!-- The way to the overview: without it, reaching it means knowing a workspace type exists
-                                 and finding it in the "+" menu — which is exactly the knowledge it is built to spare. -->
-                            <Button Classes="Subtle" Padding="4,0"
-                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                    Command="{Binding OpenProjectsWorkspaceCommand}"
-                                    ToolTip.Tip="Open the projects overview">
-                                <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="12" Height="12"/>
-                            </Button>
-                            <Button Classes="Subtle" Padding="4,0"
-                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                    Command="{Binding Projects.AddProjectCommand}"
-                                    ToolTip.Tip="New project">
-                                <materialIcons:MaterialIcon Kind="Plus" Width="12" Height="12"/>
-                            </Button>
-                        </StackPanel>
-                    </controls:SidebarSection.Trailing>
-                    <StackPanel Spacing="2">
+                <StackPanel Spacing="2" Margin="0,0,0,10"
+                            IsVisible="{Binding Projects.HasProjects}">
+                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,0,2">
+                        <TextBlock Grid.Column="0" Text="Projects" FontSize="11" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <!-- The way to the overview: without it, reaching it means knowing a workspace type exists
+                             and finding it in the "+" menu — which is exactly the knowledge it is built to spare. -->
+                        <Button Grid.Column="1" Classes="Subtle" Padding="4,0"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                Command="{Binding OpenProjectsWorkspaceCommand}"
+                                ToolTip.Tip="Open the projects overview">
+                            <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="12" Height="12"/>
+                        </Button>
+                        <Button Grid.Column="2" Classes="Subtle" Padding="4,0"
+                                Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                Command="{Binding Projects.AddProjectCommand}"
+                                ToolTip.Tip="New project">
+                            <materialIcons:MaterialIcon Kind="Plus" Width="12" Height="12"/>
+                        </Button>
+                    </Grid>
+
                     <ItemsControl x:Name="ProjectListStrip" ItemsSource="{Binding Projects.SidebarProjects}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="projects:Project">
@@ -700,9 +704,9 @@
                                                                    LogoPath="{Binding LogoPath}"
                                                                    ProjectName="{Binding Name}"
                                                                    IsVisible="{Binding LogoPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
                                         <!-- Hover-revealed quick start, mirroring the session rows' hover ✕. -->
                                         <Button Grid.Column="2" Classes="Subtle startProject"
                                                 Padding="4,0" VerticalAlignment="Center"
@@ -724,10 +728,8 @@
                             Command="{Binding OpenProjectsWorkspaceCommand}"
                             Content="All projects →"
                             ToolTip.Tip="Open the projects overview"/>
-                    </StackPanel>
-                </controls:SidebarSection>
+                </StackPanel>
 
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="2">
                         <!-- AC-1306: the session list as a workspace tree.
                              WHAT THIS TREE GROUPS: *where a session stands* — a workspace tab, and the sessions
@@ -741,11 +743,14 @@
                              Drag-reorder (AC-115) sits on the per-node ItemsControl, so a drag reorders inside
                              one node and never carries a session across to another tab. -->
                         <!-- AC-1487: this laptop's desks, which a remote window does not have. -->
-                        <!-- AC-1762: a foldable card like Projects and each server, remembered across restarts. -->
-                        <controls:SidebarSection Title="This laptop" Subtitle="{Binding Sessions.Count}"
-                                                 IsExpanded="{Binding ThisLaptopSectionExpanded}"
-                                                 IsVisible="{Binding !IsRemoteWindow}">
-                          <StackPanel Spacing="2">
+                        <StackPanel Spacing="2" IsVisible="{Binding !IsRemoteWindow}">
+                            <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
+                            <Grid ColumnDefinitions="*,Auto" Margin="2,0,4,2" IsVisible="{Binding HasServerGroups}">
+                                <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Sessions.Count}" FontSize="11"
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            </Grid>
                             <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:SessionWorkspaceGroupViewModel">
@@ -771,16 +776,13 @@
                                                                                         IsVisible="{Binding IsExpanded}"/>
                                                         </Panel>
                                                     </Button>
-                                                    <!-- AC-1762: v8's `.sidehead`, "Sessions · 2". -->
-                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                                                        <TextBlock Text="{Binding Name}" FontSize="11"
-                                                                   FontWeight="SemiBold" VerticalAlignment="Center"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                        <TextBlock Text="{Binding CountLabel, StringFormat='· {0}'}" FontSize="11"
-                                                                   VerticalAlignment="Center"
-                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11"
+                                                               FontWeight="SemiBold" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding CountLabel}" FontSize="11"
+                                                               VerticalAlignment="Center" Margin="0,0,4,0"
+                                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                 </Grid>
                                             </Border>
 
@@ -808,19 +810,37 @@
                                        IsVisible="{Binding HasOmittedEmptyWorkspaces}"
                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
                                        Text="{Binding OmittedEmptyWorkspacesLabel}"/>
-                          </StackPanel>
-                        </controls:SidebarSection>
+                        </StackPanel>
 
                         <!-- AC-1456 (variant A): each connect server as a group beside this laptop. Only what the
                              key may see is listed, and nothing counts what it may not. -->
                         <ItemsControl ItemsSource="{Binding ServerGroups}" Margin="0,8,0,0">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ServerGroupViewModel">
-                                    <controls:SidebarSection Margin="0,0,0,6" Title="{Binding Name}"
-                                                             Icon="Server" Trailing="{Binding SidebarStatus}"
-                                                             IsExpanded="{Binding IsExpanded}">
-                                      <StackPanel Spacing="2">
-                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="4,0,0,0">
+                                    <StackPanel Spacing="2" Margin="0,0,0,6">
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="4" Margin="2,3">
+                                            <ToggleButton Grid.Column="0" Classes="Subtle" Padding="2,0"
+                                                          IsChecked="{Binding IsExpanded}"
+                                                          Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                                          ToolTip.Tip="Fold this server away, or open it with its header above the sessions">
+                                                <Panel>
+                                                    <materialIcons:MaterialIcon Kind="ChevronRight" Width="12" Height="12"
+                                                                                IsVisible="{Binding !IsExpanded}"/>
+                                                    <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"
+                                                                                IsVisible="{Binding IsExpanded}"/>
+                                                </Panel>
+                                            </ToggleButton>
+                                            <materialIcons:MaterialIcon Grid.Column="1" Kind="Server" Width="13" Height="13"
+                                                                        VerticalAlignment="Center"
+                                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding SidebarStatus}" FontSize="11"
+                                                       VerticalAlignment="Center" Margin="0,0,4,0"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0" IsVisible="{Binding IsExpanded}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:ServerSessionRowViewModel">
                                                     <Button Classes="Subtle" Margin="0,0,0,4" Padding="8,6"
@@ -830,9 +850,9 @@
                                                             ToolTip.Tip="Open this session; it runs on the server">
                                                         <StackPanel Spacing="2">
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                                                                          Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                                <TextBlock Text="{Binding Title}" FontSize="12"
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                                                            TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
                                                             <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
@@ -842,23 +862,19 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        <Button Classes="Subtle" Padding="8,2" FontSize="11" Margin="4,0,0,0"
-                                                HorizontalAlignment="Left"
+                                        <Button Classes="Subtle" Padding="8,2" FontSize="11" Margin="13,0,0,0"
+                                                HorizontalAlignment="Left" IsVisible="{Binding IsExpanded}"
                                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                 Content="{Binding Start.SidebarLabel}"
                                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerStartCommand}"
                                                 CommandParameter="{Binding}"/>
-                                      </StackPanel>
-                                    </controls:SidebarSection>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- Plugin-contributed left-menu cards (#14, AC-1763), straight after the sessions and servers so
-                             the whole sidebar scrolls as one. Built in code-behind from CockpitViewModel.PluginMenuGroups;
-                             hidden entirely when no plugin contributes anything. -->
-                        <StackPanel x:Name="PluginSectionsHost" Spacing="6" Margin="0,8,0,0" IsVisible="False"/>
                     </StackPanel>
+                </StackPanel>
                 </ScrollViewer>
             </DockPanel>
         </Border>
@@ -941,6 +957,11 @@
                         </DockPanel>
                     </Button>
                 </StackPanel>
+
+                <!-- AC-1790: the same plugin cards as the panels sidebar, above Settings and Help, so a plugin's buttons and
+                     its stopwatch are there in this stand too (Raymond). Filled in code-behind with PluginSectionsHost. -->
+                <StackPanel DockPanel.Dock="Bottom" x:Name="SimplePluginSectionsHost" Spacing="4" Margin="0,0,0,8"
+                            IsVisible="False"/>
 
                 <!-- AC-1304: the first of the three doors onto the start screen. It does not open the New-session
                      dialog the panels stand's own "+ New session" opens — in this stand the question comes first

@@ -67,8 +67,8 @@ public sealed record LayoutSettings
 
     public AssistantThreadRail AssistantThreadRailDock { get; init; }
 
-    // AC-1762: the left sidebar's foldable sections that are folded shut, by key (`projects`, `this-laptop`,
-    // `server:{name}`). A section not listed is open, so an empty list — and a file from before this field — is
+    // AC-1762: the left sidebar's foldable sections that are folded shut, by key (`plugin:{id}` and `plugins` since
+    // AC-1790). A section not listed is open, so an empty list — and a file from before this field — is
     // everything open.
     public IReadOnlyList<string> CollapsedSidebarSections { get; init; } = [];
 
