@@ -585,7 +585,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             .ThenBy(section => section.Host, StringComparer.CurrentCultureIgnoreCase))
         {
             var ordered = section.Items
-                .OrderBy(item => item.IsOnThisMachine ? 1 : 0)
+                .OrderBy(item => item.IsOnThisMachine ? 0 : 1)
                 .ThenByDescending(item => item.Project?.LastOpenedAt ?? DateTimeOffset.MinValue)
                 .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
