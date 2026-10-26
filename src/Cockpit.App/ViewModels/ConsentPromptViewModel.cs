@@ -13,7 +13,9 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
 {
     private readonly IConsentPrompts _consent;
 
-    public ConsentPromptViewModel(ConsentQuestion prompt, IConsentPrompts consent)
+    // AC-1715: `inlineSlot` is whether the view this card lands in has a place under its conversation; without one an
+    // inline request is shown as the overlay card, so it is never lost.
+    public ConsentPromptViewModel(ConsentQuestion prompt, IConsentPrompts consent, bool inlineSlot = false)
     {
         _consent = consent;
         Id = prompt.Id;
@@ -25,6 +27,8 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
         Choices = [.. (prompt.Request.Choices ?? []).Select(choice => new ConsentChoiceViewModel(choice))];
         ApproveLabel = prompt.Request.ApproveLabel is { Length: > 0 } label ? label : "Approve";
         Never = string.Join(" · ", prompt.Request.Never ?? []);
+        IsInline = prompt.Request.Inline && Choices.Count > 0 && inlineSlot;
+        OtherLabel = prompt.Request.OtherLabel;
 
         // The action's first line as the card with choices heads it: an address with its host in bold, then the rest.
         var lines = Action.Split('\n');
@@ -71,6 +75,36 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
     public bool IsPlain => HasChoices == false;
 
     public string ApproveLabel { get; }
+
+    // AC-1715: under the conversation as buttons, and the one place where the overlay is not shown.
+    public bool IsInline { get; }
+
+    public bool IsOverlay => !IsInline;
+
+    public bool IsOverlayChoices => HasChoices && !IsInline;
+
+    public bool HasOther => IsInline && !string.IsNullOrEmpty(OtherLabel);
+
+    public string? OtherLabel { get; }
+
+    // The "Other tab..." button opens the list of the other options, each of which approves with itself.
+    [ObservableProperty]
+    private bool _showOthers;
+
+    [RelayCommand]
+    private void ToggleOthers() => ShowOthers = !ShowOthers;
+
+    [RelayCommand]
+    private void Pick(ConsentOptionViewModel option)
+    {
+        if (option.Enabled && Choices.Count > 0)
+        {
+            Choices[0].SelectedOption = option;
+            Approve();
+        }
+    }
+
+    public IReadOnlyList<ConsentOptionViewModel> OtherOptions => Choices.Count > 0 ? [.. Choices[0].Options.Where(option => option.Enabled)] : [];
 
     public string Never { get; }
 
