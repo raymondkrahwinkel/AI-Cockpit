@@ -116,16 +116,30 @@ internal sealed class HoursWorkspaceBody : UserControl
 
     private async Task _LoadProjectsAsync()
     {
-        _projects = await _host.GetProjectsAsync() ?? [];
-        _Render();
+        try
+        {
+            _projects = await _host.GetProjectsAsync() ?? [];
+            _Render();
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"De projecten konden niet worden geladen: {exception.Message}", PluginToastSeverity.Error);
+        }
     }
 
     private async Task _CopyAsync()
     {
-        if (_controller.Week is { } week)
+        try
         {
-            await _host.SetClipboardTextAsync(week.ToTable());
-            _host.ShowToast("Het voorstel staat als tabel op het klembord.", PluginToastSeverity.Success);
+            if (_controller.Week is { } week)
+            {
+                await _host.SetClipboardTextAsync(week.ToTable());
+                _host.ShowToast("Het voorstel staat als tabel op het klembord.", PluginToastSeverity.Success);
+            }
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Het voorstel kon niet worden gekopieerd: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 
