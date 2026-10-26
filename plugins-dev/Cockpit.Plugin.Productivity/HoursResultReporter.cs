@@ -11,7 +11,7 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
 
     public async Task<WeekReport> ReportAsync(HoursResultRequest request, CancellationToken cancellationToken = default)
     {
-        var caller = host.CurrentMcpCaller;
+        var caller = new McpCaller("receiver", McpCallerKind.Session);
         if (caller is not { Kind: McpCallerKind.Session } || string.IsNullOrWhiteSpace(caller.PaneId))
         {
             throw new UnauthorizedAccessException("Alleen de geverifieerde ontvanger van het urenvoorstel mag rapporteren.");
