@@ -177,11 +177,14 @@ public partial class CockpitViewModel
         {
             var group = new ServerGroupViewModel(server, profile => _serverSignIns?.Start(server.Name, profile, CancellationToken.None), _logger);
 
+            group.IsExpanded = IsSidebarSectionExpanded(ServerSectionKey(group.Name));
+
             // Subscribed before the state is read again below, so a change raised in between is not lost.
             group.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(ServerGroupViewModel.IsExpanded))
                 {
+                    SetSidebarSectionExpanded(ServerSectionKey(group.Name), group.IsExpanded);
                     _OnOpenServerGroupsChanged();
                 }
             };

@@ -18,9 +18,11 @@ internal static partial class Screenshotter
     private static AssistantChatWindow _AssistantThreads(
         double width, string? thread = null, bool questions = false, bool overlay = false, bool answered = false,
         bool dragging = false, bool moved = false, bool overview = false, bool closed = false, bool suggestion = false,
-        bool logos = false)
+        bool logos = false, bool iconsOnly = false)
     {
-        var chat = _AssistantChatViewModel(_AssistantThreadsConversation(), cockpit: logos ? _CockpitWithALogo() : null);
+        var chat = _AssistantChatViewModel(
+            _AssistantThreadsConversation(),
+            cockpit: logos ? _CockpitWithALogo() : iconsOnly ? new CockpitViewModel { AssistantThreadRailWindow = Cockpit.Core.Layout.AssistantThreadRail.IconsOnly } : null);
         var window = new AssistantChatWindow
         {
             DataContext = chat,

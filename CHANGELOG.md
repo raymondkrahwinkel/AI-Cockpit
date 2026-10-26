@@ -351,6 +351,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   end of any session set off an endless chain of updates in the browser plugin (0.7.2) that kept the window from
   drawing or answering a click, until the status bar was hidden to save it. The status bar also no longer redraws a
   plugin's line when the text has not changed.
+- fixed: **"Icons only" in the Assistant window is remembered.** The thread rail's choice was dropped every time the
+  layout was saved, so it came back as icons plus labels after reopening the window or restarting the cockpit.
 - fixed: **agents get their own browser on Ubuntu 24.04 again.** On Linux the agent browser now starts the
   installed Chrome before the downloaded headless shell, which Ubuntu's AppArmor stops from sandboxing, and a
   browser that fails to start says why in the log instead of leaving the session silently without one.
@@ -478,6 +480,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the sidebar folds by section.** Projects, This laptop and every connected server are now cards with a
+  chevron, a count and, for a server, its latency; click a card's header to fold it away, and it stays folded after a
+  restart. Plugin store, Menu and Help at the bottom are plain rows with an icon instead of bordered buttons.
 - changed: **the nightly ships only the Velopack files.** The nightly release no longer carries the Linux tarball, the
   macOS `.app.zip` and `.dmg` or the AppImage; the in-app updater and the plugin SDK are unchanged, and a nightly now
   comes in through the update channel. Stable releases still ship those packages.
