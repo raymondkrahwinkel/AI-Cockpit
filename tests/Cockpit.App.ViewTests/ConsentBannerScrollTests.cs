@@ -27,7 +27,7 @@ public class ConsentBannerScrollTests
                 Dispatcher.UIThread.RunJobs();
 
                 var approve = window.GetVisualDescendants().OfType<Button>()
-                    .Single(button => Equals(button.Content, "Approve"));
+                    .Single(button => Equals(button.Content, "Approve") && button.IsEffectivelyVisible);
                 var corner = approve.TranslatePoint(new Point(approve.Bounds.Width, approve.Bounds.Height), window);
                 var centre = approve.TranslatePoint(new Point(approve.Bounds.Width / 2, approve.Bounds.Height / 2), window);
                 var inside = corner is { } c && c.Y <= window.ClientSize.Height && c.X <= window.ClientSize.Width;

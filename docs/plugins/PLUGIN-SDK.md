@@ -942,6 +942,10 @@ choices and no `PaneId` shows over the whole window rather than on a session, as
 `Action` as its subject (an `https://` address gets a lock and its host in bold), `Never` as a red block, and
 `ApproveLabel` on the approve button. Needs minHostVersion 0.117.0.
 
+With `Inline` set and a `PaneId`, the same card stands under that session's conversation instead of over it, as buttons:
+the approve button with what is picked (`Selected`), `OtherLabel` to list the other options and approve with one of
+them, and No. A host view without such a place shows it as the overlay card. Needs minHostVersion 0.121.0.
+
 **Telling a bypass apart in the audit.** Every skipped card is a `Bypassed` line in `consent-audit.jsonl`.
 A line with `PreApprovedBy` set is your plugin's own policy (for example a grant the operator gave earlier),
 and a line without it is the operator's own bypass switch in Options.
