@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Productivity.UI;
@@ -96,11 +97,18 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
 
     private async Task _LoadProjectsAsync()
     {
-        foreach (var project in await _host.GetProjectsAsync() ?? [])
+        try
         {
-            var box = new CheckBox { Content = $"{project.Name} · privé", IsChecked = _settings.PrivateProjects.Contains(project.Id, StringComparer.Ordinal) };
-            _private.Add((project.Id, box));
-            _projects.Children.Add(box);
+            foreach (var project in await _host.GetProjectsAsync() ?? [])
+            {
+                var box = new CheckBox { Content = $"{project.Name} · privé", IsChecked = _settings.PrivateProjects.Contains(project.Id, StringComparer.Ordinal) };
+                _private.Add((project.Id, box));
+                _projects.Children.Add(box);
+            }
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"De projecten konden niet worden geladen: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 }
