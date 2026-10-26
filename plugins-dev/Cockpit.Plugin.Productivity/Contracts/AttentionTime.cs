@@ -136,7 +136,8 @@ internal sealed record AttentionTime(
 
             if (end > start)
             {
-                blocks.Add((actions[index], new AttentionSpan(start, end, actions[index].ProjectId)));
+                blocks.Add((actions[index], new AttentionSpan(start, end,
+                    blocks.Count > 0 && blocks[^1].Item2.End == start ? blocks[^1].Item2.Owner : actions[index].ProjectId)));
             }
         }
 
