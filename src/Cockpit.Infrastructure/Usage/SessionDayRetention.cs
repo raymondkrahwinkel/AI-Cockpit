@@ -250,7 +250,7 @@ internal sealed class SessionDayRetention : ISingletonService
             foreach (var snapshot in ordered)
             {
                 var day = _At(days, session.Key, _DayOf(snapshot.RecordedAt, zone));
-                day.Add(snapshot);
+                day.Add(UsageSnapshots.Since(snapshot, previous));
                 day.Closing = snapshot;
                 day.Note(null, snapshot.RunId, null);
                 previous = snapshot;
