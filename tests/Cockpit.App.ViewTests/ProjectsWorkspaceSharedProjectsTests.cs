@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -65,91 +66,67 @@ public class ProjectsWorkspaceSharedProjectsTests
             window.Show();
             window.UpdateLayout();
 
-            var heading = view.GetVisualDescendants().OfType<TextBlock>()
-                .FirstOrDefault(text => text.Text == "From your team · Depot — Work");
+            // AC-1600: the team project is a row in its source's section, and its Add… reaches the real command.
+            var heading = view.GetVisualDescendants().OfType<ProjectSectionHeader>()
+                .FirstOrDefault(header => header.DataContext is ProjectSectionViewModel { Title: "◆ Depot — Work" });
             var cardName = view.GetVisualDescendants().OfType<TextBlock>()
                 .FirstOrDefault(text => text.Text == "Onboarding flow");
-            var finishSettingUpButton = view.GetVisualDescendants().OfType<Button>()
-                .FirstOrDefault(button => Equals(button.Content, "Add to my projects…"));
+            var finishSettingUpButton = view.GetVisualDescendants().OfType<ProjectListRow>().Single()
+                .GetVisualDescendants().OfType<Button>()
+                .FirstOrDefault(button => Equals(button.Content, "Add…"));
 
             Assert.NotNull(heading);
             Assert.NotNull(cardName);
             Assert.NotNull(finishSettingUpButton);
-            // Proves the three-deep nested-ItemsControl $parent binding actually resolved to the real
-            // ProjectsViewModel command instance rather than silently landing on null (Avalonia logs, but does not
-            // throw, a bad binding path).
             Assert.Same(cockpit.Projects.FinishSettingUpCommand, finishSettingUpButton.Command);
             Assert.Equal(sharedProject.Id, ((SharedProjectOffer?)finishSettingUpButton.CommandParameter)?.Id);
 
             window.Close();
         });
 
+    // Both directions in one test: shown with no source registered at all, hidden once one is — a signed-out
+    // connection already speaks for itself in its own section, so the line must not also claim nothing is set up.
     [Fact]
-    public async Task NoSharedProjectSourceRegistered_ShowsThePointerLine() =>
+    public async Task ThePointerLine_ShowsOnlyWhileNoSharedProjectSourceIsRegistered() =>
         await HeadlessAvalonia.RunAsync(async () =>
         {
-            var store = Substitute.For<IProjectStore>();
-            store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
-            var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = TestProjects.ViewModel(store, dialogs);
-            await projects.LoadAsync();
-            await projects.SharedProjectsLoadTask;
+            foreach (var registered in new[] { false, true })
+            {
+                ISharedProjectSourceRegistry? registry = null;
+                if (registered)
+                {
+                    var source = Substitute.For<ISharedProjectSource>();
+                    source.Key.Returns("depot");
+                    source.SourceName.Returns("Depot — Work");
+                    source.ListAsync(Arg.Any<CancellationToken>()).Returns(SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects."));
+                    registry = Substitute.For<ISharedProjectSourceRegistry>();
+                    registry.Sources.Returns([source]);
+                }
 
-            var cockpit = _NewCockpit(dialogs, projects);
-            await cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
+                var store = Substitute.For<IProjectStore>();
+                store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
+                var dialogs = Substitute.For<ISessionDialogService>();
+                var projects = TestProjects.ViewModel(store, dialogs, sharedSources: registry);
+                await projects.LoadAsync();
+                await projects.SharedProjectsLoadTask;
 
-            var view = new CockpitView { DataContext = cockpit };
-            var window = new Window { Content = view, Width = 1100, Height = 800 };
-            window.Show();
-            window.UpdateLayout();
+                var cockpit = _NewCockpit(dialogs, projects);
+                await cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
-            var pointer = view.GetVisualDescendants().OfType<TextBlock>()
-                .FirstOrDefault(text => _RunText(text).Contains("Projects can also come from a plugin"));
+                var view = new CockpitView { DataContext = cockpit };
+                var window = new Window { Content = view, Width = 1100, Height = 800 };
+                window.Show();
+                window.UpdateLayout();
 
-            Assert.NotNull(pointer);
-            Assert.True(pointer.IsEffectivelyVisible);
+                // Still in the visual tree either way (a hidden control is not torn down), so this reads IsEffectivelyVisible.
+                var pointer = view.GetVisualDescendants().OfType<TextBlock>()
+                    .FirstOrDefault(text => _RunText(text).Contains("Projects can also come from a plugin"));
 
-            window.Close();
-        });
+                Assert.NotNull(pointer);
+                Assert.Equal(!registered, pointer.IsEffectivelyVisible);
 
-    [Fact]
-    public async Task ASharedProjectSourceIsRegistered_HidesThePointerLine() =>
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var source = Substitute.For<ISharedProjectSource>();
-            source.Key.Returns("depot");
-            source.SourceName.Returns("Depot — Work");
-            source.ListAsync(Arg.Any<CancellationToken>()).Returns(SharedProjectListResult.Failed("Sign in to this Depot connection to see its shared projects."));
-
-            var registry = Substitute.For<ISharedProjectSourceRegistry>();
-            registry.Sources.Returns([source]);
-
-            var store = Substitute.For<IProjectStore>();
-            store.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty);
-            var dialogs = Substitute.For<ISessionDialogService>();
-            var projects = TestProjects.ViewModel(store, dialogs, sharedSources: registry);
-            await projects.LoadAsync();
-            await projects.SharedProjectsLoadTask;
-
-            var cockpit = _NewCockpit(dialogs, projects);
-            await cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
-
-            var view = new CockpitView { DataContext = cockpit };
-            var window = new Window { Content = view, Width = 1100, Height = 800 };
-            window.Show();
-            window.UpdateLayout();
-
-            // A signed-out connection already speaks for itself (the Error text a group with no projects would show
-            // if this workspace rendered errored groups) — the pointer line must not also claim nothing is set up.
-            // Still present in the visual tree either way (an unbound-visibility control is hidden, not torn down),
-            // so this checks IsEffectivelyVisible rather than whether the control exists at all.
-            var pointer = view.GetVisualDescendants().OfType<TextBlock>()
-                .FirstOrDefault(text => _RunText(text).Contains("Projects can also come from a plugin"));
-
-            Assert.NotNull(pointer);
-            Assert.False(pointer.IsEffectivelyVisible);
-
-            window.Close();
+                window.Close();
+            }
         });
 
     // The pointer line mixes plain text with <Run> spans (for the "Options" bold word) — Avalonia turns the plain

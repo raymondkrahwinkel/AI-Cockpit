@@ -166,7 +166,7 @@ internal static partial class Screenshotter
     // The window each scene name asks for. A table rather than a switch so the set of names can be read off it:
     // anything that has to cover every screen — the theme baseline (AC-338) above all — would otherwise be
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
-    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
         ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
         // AC-512: the in-app glossary — the guide's own depth stays on the website, this is what a fresh install
@@ -360,18 +360,6 @@ internal static partial class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
-        // AC-772 criterion 15: the Projects workspace, not the Manage-projects window, once per layout.
-        ["projects-workspace-cards"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards),
-        ["projects-workspace-list"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.List),
-        // Rendered although the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable) — the
-        // layout is built, and this is what will show whether it is worth offering.
-        ["projects-workspace-continue"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Continue),
-        // AC-488: the same workspace with nothing staged, which is the only state the starting-point gallery is
-        // drawn in. Its own scene rather than a fourth layout: what differs is what there is, not how it is laid out.
-        ["projects-workspace-empty"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, withProjects: false),
-        ["projects-workspace-team-partial"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StagePartialTeamProjects),
-        ["projects-workspace-unreachable"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageUnreachableTeamProjects),
-        ["projects-workspace-long-text"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageLongProjectText),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -776,7 +764,7 @@ internal static partial class Screenshotter
         // AC-1316: the fold open on one row — the grant, the origin and the checksum are folded, never hidden, and
         // this is the half of that sentence the two scenes above cannot show.
         ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
-    };
+    });
 
     private static Window _StartChoiceWizard(bool pickRestore, bool withPluginRoute)
     {
@@ -2221,125 +2209,6 @@ internal static partial class Screenshotter
             "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
 
         return new MainWindow { DataContext = cockpit };
-    }
-
-    // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
-    // each holds together and that all three carry the "From your team" section.
-    private static MainWindow _ProjectsWorkspace(
-        Cockpit.Core.Projects.ProjectsLayoutMode layout,
-        Action<ViewModels.CockpitViewModel>? stage = null,
-        bool withProjects = true)
-    {
-        var cockpit = new ViewModels.CockpitViewModel();
-
-        // Staged onto the cockpit's own view model, which is the one the view binds to; a headless render has no
-        // `ISharedProjectSource` to list from.
-        cockpit.Projects.CardActions = new ViewModels.ProjectCardActions(
-            cockpit.StartProjectSessionCommand,
-            cockpit.NewSessionForProjectCommand,
-            cockpit.StartProjectJobCommand,
-            cockpit.EditProjectCommand,
-            cockpit.OpenProjectFolderCommand,
-            cockpit.ShareProjectCommand,
-            cockpit.SyncProjectNowCommand);
-        // AC-488: a workspace staged with nothing is not a variation of this scene, it is the other half of it —
-        // the state this screen spends its first minute in, and the only one the starting-point gallery draws in.
-        if (withProjects)
-        {
-            cockpit.Projects.StageDesignSample();
-            cockpit.Projects.StageDesignSharedProjects();
-            stage?.Invoke(cockpit);
-        }
-
-        cockpit.Projects.LayoutMode = layout;
-
-        cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
-
-        return new MainWindow { DataContext = cockpit };
-    }
-
-    private static void _StagePartialTeamProjects(ViewModels.CockpitViewModel cockpit)
-    {
-        cockpit.Projects.SharedProjectGroups.Clear();
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Work",
-            [
-                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
-                new SharedProjectOffer("depot:workspace-move", "Workspace migration (pending)", "Waiting for its project definition.", "Pending"),
-                new SharedProjectOffer("depot:reports", "Quarterly reports (timed out)", "Its project definition did not answer in time.", "Timeout"),
-            ],
-            "1 project is still loading; 1 project timed out."));
-    }
-
-    private static void _StageUnreachableTeamProjects(ViewModels.CockpitViewModel cockpit)
-    {
-        cockpit.Projects.SharedProjectGroups.Clear();
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Work",
-            [
-                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
-                new SharedProjectOffer("depot:runbook", "Operations runbook", "Last known team project.", "Viewer"),
-                new SharedProjectOffer("depot:startpage", "startpage", Role: "Owner", Unavailable: "No Cockpit project definition yet."),
-            ],
-            Error: null,
-            Notice: "Depot is unreachable — showing the last known list."));
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Synvolution", [], Error: null, AllAdded: true));
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Personal", [], "Sign in to this Depot connection to see its shared projects."));
-    }
-
-    private static void _StageLongProjectText(ViewModels.CockpitViewModel cockpit)
-    {
-        var noProfile = Project.Create("Research and discovery notes for the next workspace migration") with
-        {
-            Description = "A deliberately long project name and description that must wrap instead of hiding the next action on a narrow workspace.",
-        };
-        var job = new ProjectJob("Check every migration dependency before release", "Reads configuration and writes a release report.")
-        {
-            Id = "scene-migration-check",
-        };
-        var running = Project.Create("Release train") with
-        {
-            DefaultProfileLabel = "personal",
-            Description = "A project with an active session and a scheduled job.",
-            Jobs = [job],
-        };
-        var actions = cockpit.Projects.CardActions;
-        var runAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
-        var run = new ProjectJobRun("scene-release", running.Id, job.Id, runAt, runAt, "Checking the release notes.");
-
-        if (cockpit.Workspaces.Active is not { } activeWorkspace)
-        {
-            throw new InvalidOperationException("The Projects workspace scene has no active workspace.");
-        }
-
-        cockpit.Projects.Projects.Clear();
-        cockpit.Projects.Projects.Add(noProfile);
-        cockpit.Projects.Projects.Add(running);
-        cockpit.Projects.ProjectCategoryGroups.Clear();
-        cockpit.Projects.ProjectCategoryGroups.Add(new ViewModels.ProjectCategoryGroupViewModel(
-            null,
-            [
-                new ViewModels.ProjectCardViewModel(noProfile, "● This machine", actions),
-                new ViewModels.ProjectCardViewModel(running, "● This machine", actions, jobRuns: [run]),
-            ]));
-        cockpit.Sessions.Add(new ViewModels.SessionViewModel
-        {
-            Title = "Release validation",
-            ProjectId = running.Id,
-            WorkspaceId = activeWorkspace.Id,
-            SessionStatus = SessionStatus.Busy,
-        });
-        cockpit.Projects.SharedProjectGroups.Clear();
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Research",
-            [new SharedProjectOffer(
-                "depot:research",
-                "A very long shared-project name that needs to stay legible on a narrow workspace",
-                "A deliberately long description checks that a shared project card wraps the text without pushing its action out of view.",
-                "Viewer")],
-            Error: null));
     }
 
     // The preview reads its file off-thread, so the scene pumps the dispatcher until the navigation has landed.

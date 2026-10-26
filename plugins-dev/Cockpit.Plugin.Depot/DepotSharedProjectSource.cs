@@ -126,6 +126,9 @@ internal sealed class DepotSharedProjectSource(
 
     public byte[]? SourceLogo => _brand.Logo;
 
+    // AC-1600: the section heading names the server from the connection's own address, never from its display name.
+    public string? SourceHost => Uri.TryCreate(connection.Url, UriKind.Absolute, out var uri) ? uri.Host : null;
+
     public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
     {
         if (_loadBranding)

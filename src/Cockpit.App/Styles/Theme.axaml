@@ -1312,6 +1312,101 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- AC-1600: the projects flow's pill shapes, from mockup B2 (`.chip`, `.tag`, `.role`, `.pill`). The chip is a
+         filter you click; the others are labels, coloured by the fact they state. -->
+    <Style Selector="Button.chip">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="10,3"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.chip :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.chip:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.chip.on /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentRingTintBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="Button.chip.on :is(TextBlock)">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.columnHead">
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag">
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="8,1"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.statusTag > TextBlock">
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+    <Style Selector="Border.statusTag.run">
+        <Setter Property="Background" Value="{StaticResource CockpitStatusDoneChipTintBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag.run > TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource CockpitStatusDoneBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag.job">
+        <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag.job > TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag.changed, Border.statusTag.ready">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentRingTintBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag.changed > TextBlock, Border.statusTag.ready > TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="Border.statusTag.ready">
+        <Setter Property="Padding" Value="7,2"/>
+    </Style>
+    <Style Selector="Border.statusTag.ready > TextBlock">
+        <Setter Property="FontSize" Value="10"/>
+    </Style>
+    <Style Selector="Border.roleTag">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="Padding" Value="6,0"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.roleTag > TextBlock">
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Border.originPill">
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="Padding" Value="8,1"/>
+        <Setter Property="Background" Value="{StaticResource CockpitIsolatedBadgeBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.originPill > TextBlock">
+        <Setter Property="FontSize" Value="10.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitIsolatedBadgeTextBrush}"/>
+    </Style>
+    <Style Selector="Border.originPill.local">
+        <Setter Property="Background" Value="{StaticResource CockpitInsetBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <Style Selector="Border.originPill.local > TextBlock">
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+
     <!-- Assistant threads: how many questions wait on the operator — the waiting status in its own chip tint and
          ring, as a count pill (rail items, the dock tab, the indicator). Amber because it is work waiting on you. -->
     <Style Selector="Border.waitingCount">

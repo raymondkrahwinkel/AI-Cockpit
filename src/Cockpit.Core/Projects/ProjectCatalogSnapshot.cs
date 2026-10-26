@@ -28,7 +28,7 @@ public sealed record SharedProjectSourceInfo(string Key, string Name, bool CanPu
 // means every listed project is already bound or hidden here.
 public sealed record SharedProjectGroup(
     string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null,
-    string SourceKey = "", string? Notice = null, bool AllAdded = false);
+    string SourceKey = "", string? Notice = null, bool AllAdded = false, string? SourceHost = null);
 
 // AC-1758: Unavailable says why a listed project cannot be added yet (no Cockpit definition, say); null means it can.
 public sealed record SharedProjectOffer(
@@ -41,5 +41,6 @@ public sealed record SharedProjectOffer(
 // Core carries no Plugins.Abstractions reference, so the organization is copied by value.
 public sealed record SharedProjectOrganizationInfo(string Slug, string? Name, string? Role);
 
+// AC-1600: SourceHost is the connection's host ("depot.example.com"), from the source's address rather than its name.
 public sealed record SharedProjectLocation(
-    string SourceKey, string SourceName, SharedProjectOrganizationInfo? Organization);
+    string SourceKey, string SourceName, SharedProjectOrganizationInfo? Organization, string? SourceHost = null);

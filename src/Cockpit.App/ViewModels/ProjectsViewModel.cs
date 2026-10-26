@@ -30,7 +30,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.
     private readonly ISessionDialogService? _dialogs;
 
-    // Which layout the Projects page draws (AC-772). Null under the previewer, which keeps the default and persists nothing.
+    // The Projects page's density and folded sections (AC-1599). Null under the previewer, which keeps the default and persists nothing.
     private readonly IProjectsDisplaySettingsStore? _displaySettings;
 
 
@@ -231,6 +231,16 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _Republish();
     }
 
+    // AC-1600: the Projects-workspace scenes stage a whole catalog snapshot — sources, organisations, claims — so the
+    // B2 list draws exactly what the catalog would hand it.
+    internal void StageSnapshot(ProjectCatalogSnapshot snapshot)
+    {
+        _snapshot = snapshot;
+        _Republish();
+        _RepublishSharedProjectGroups();
+        _RepublishProjectSections();
+    }
+
     // `DesignSample` plus shared-project groups (AC-245), staged directly rather than through
     // `LoadSharedProjectsAsync`.
     internal static ProjectsViewModel DesignSampleWithSharedProjects()
@@ -317,7 +327,6 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             // Deliberately unguarded: it reads the same cockpit.json the project store read a line above, so an
             // unreadable file has already thrown and a catch here would cover a case it cannot reach.
             _projectsDisplaySettings = await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true);
-            LayoutMode = _projectsDisplaySettings.LayoutMode;
             Density = _projectsDisplaySettings.Density;
             _collapsedSectionKeys.Clear();
             _collapsedSectionKeys.UnionWith(_projectsDisplaySettings.CollapsedSectionKeys);
@@ -325,63 +334,6 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
 
         _BeginSharedProjectsLoad();
-    }
-
-    // Which layout the page draws (AC-772). Persisted per operator by `SetLayoutModeAsync`; the segmented control on
-    // the page itself is the only place it is set, deliberately — a preference you can see the effect of while you
-    // change it does not need a settings screen to hide in.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCardsLayout))]
-    [NotifyPropertyChangedFor(nameof(IsListLayout))]
-    [NotifyPropertyChangedFor(nameof(IsContinueLayout))]
-    private ProjectsLayoutMode _layoutMode = ProjectsLayoutMode.Cards;
-
-    public bool IsCardsLayout => LayoutMode == ProjectsLayoutMode.Cards;
-
-    public bool IsListLayout => LayoutMode == ProjectsLayoutMode.List;
-
-    public bool IsContinueLayout => LayoutMode == ProjectsLayoutMode.Continue;
-
-    // Whether the third segment is offered at all — see `ProjectsDisplaySettings.ContinueLayoutAvailable`.
-    public static bool ShowContinueLayoutOption => ProjectsDisplaySettings.ContinueLayoutAvailable;
-
-    // Switches the page's layout and remembers it. Takes the mode by name so the three segments can be one command
-    // with a parameter rather than three commands that differ in one word.
-    [RelayCommand]
-    private async Task SetLayoutModeAsync(string? mode)
-    {
-        if (!Enum.TryParse<ProjectsLayoutMode>(mode, ignoreCase: true, out var parsed))
-        {
-            return;
-        }
-
-        var normalized = (_projectsDisplaySettings with { LayoutMode = parsed }).Normalized();
-        if (normalized.LayoutMode == LayoutMode)
-        {
-            // Clicking the segment you are already on: a ToggleButton has flipped its own IsChecked to false by the
-            // time this runs, so returning without a word would leave the control with nothing selected. Re-raising
-            // is what pushes the one-way binding back over that local flip.
-            _NotifyLayoutSegments();
-
-            return;
-        }
-
-        LayoutMode = normalized.LayoutMode;
-        _projectsDisplaySettings = normalized;
-
-        if (_displaySettings is not null)
-        {
-            try
-            {
-                await _displaySettings.SaveAsync(normalized).ConfigureAwait(true);
-            }
-            catch (Exception)
-            {
-                // The write, unlike the read in `LoadAsync`, can fail on its own — a read-only disk, a permission
-                // change, a config write gate — and it does so from a command, where an exception has no caller to
-                // land on. The page has already switched by then; the choice simply does not survive a restart.
-            }
-        }
     }
 
     [RelayCommand]
@@ -400,6 +352,10 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
     }
 
+    // AC-1600: a click on a section heading folds it or opens it again.
+    [RelayCommand]
+    private Task ToggleSectionAsync(ProjectSectionViewModel section) => SetSectionCollapsedAsync(section, !section.IsCollapsed);
+
     public async Task SetSectionCollapsedAsync(ProjectSectionViewModel section, bool collapsed)
     {
         section.IsCollapsed = collapsed;
@@ -417,15 +373,6 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         {
             await _displaySettings.SaveAsync(_projectsDisplaySettings).ConfigureAwait(true);
         }
-    }
-
-    // The three segments read off `LayoutMode` through separate computed properties, so a re-assert has to name all
-    // three — the one turning on and the two turning off.
-    private void _NotifyLayoutSegments()
-    {
-        OnPropertyChanged(nameof(IsCardsLayout));
-        OnPropertyChanged(nameof(IsListLayout));
-        OnPropertyChanged(nameof(IsContinueLayout));
     }
 
     // Public (rather than folded into `LoadAsync`) so a test can await it directly instead of racing the
@@ -469,6 +416,35 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     partial void OnSelectedCategoryChanged(string value) => _RepublishProjectSections();
 
+    // AC-1600: the toolbar's category chips, the selected one marked.
+    public IReadOnlyList<ProjectsCategoryChip> CategoryChips =>
+        [.. Categories.Select(category => new ProjectsCategoryChip(category, category == SelectedCategory))];
+
+    [RelayCommand]
+    private void SelectCategory(string category) => SelectedCategory = category;
+
+    // AC-1600: "19 here · 9 more from your organisations" beside the toolbar's title.
+    public string CountSummary
+    {
+        get
+        {
+            var toAdd = _snapshot.SharedProjectGroups.Sum(group => group.Projects.Count);
+            return toAdd > 0
+                ? $"{_snapshot.Settings.Projects.Count} here · {toAdd} more from your organisations"
+                : $"{_snapshot.Settings.Projects.Count} here";
+        }
+    }
+
+    public bool IsComfortable => Density == ProjectsDensity.Comfortable;
+
+    public bool IsCompact => Density == ProjectsDensity.Compact;
+
+    partial void OnDensityChanged(ProjectsDensity value)
+    {
+        OnPropertyChanged(nameof(IsComfortable));
+        OnPropertyChanged(nameof(IsCompact));
+    }
+
     public void SetSessionCounter(Func<string, int> counter, INotifyCollectionChanged? changes = null)
     {
         if (_sessionChanges is not null)
@@ -502,8 +478,37 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         await LoadSharedProjectsAsync().ConfigureAwait(true);
     }
 
+    // AC-1600: the B2 list's selection — a row, so a team project still to add can be selected too. Kept by id across
+    // every rebuild below, so a refresh or an event never moves it; the first row stands in when it is gone.
+    [ObservableProperty]
+    private ProjectListItemViewModel? _selectedListItem;
+
+    [RelayCommand]
+    private void SelectListItem(ProjectListItemViewModel item) => SelectedListItem = item;
+
+    // With nothing selected, the detail pane offers the starting points on an empty cockpit and a pointer otherwise.
+    public bool ShowsStartingPoints => SelectedListItem is null && !HasProjects;
+
+    public bool ShowsPickHint => SelectedListItem is null && HasProjects;
+
+    partial void OnSelectedListItemChanged(ProjectListItemViewModel? oldValue, ProjectListItemViewModel? newValue)
+    {
+        OnPropertyChanged(nameof(ShowsStartingPoints));
+        OnPropertyChanged(nameof(ShowsPickHint));
+        if (oldValue is not null)
+        {
+            oldValue.IsSelected = false;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.IsSelected = true;
+        }
+    }
+
     private void _RepublishProjectSections()
     {
+        var selectedId = SelectedListItem?.Id;
         var sections = new Dictionary<string, ProjectSectionViewModel>(StringComparer.Ordinal);
 
         ProjectSectionViewModel GetSection(SharedProjectLocation? location)
@@ -518,15 +523,14 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             }
 
             var sourceName = location?.SourceName ?? string.Empty;
-            // shortcut: the source exposes no host/address field; AC-1600 should replace this display-name fallback.
-            var host = sourceName.Split('—').LastOrDefault()?.Trim() ?? sourceName;
             var created = new ProjectSectionViewModel(
                 key, sourceKey, organizationSlug,
                 location is null ? "This machine" : location.Organization?.Name ?? sourceName,
-                isMachine ? string.Empty : host,
+                location?.SourceHost ?? string.Empty,
                 isMachine)
             {
                 IsCollapsed = _collapsedSectionKeys.Contains(key),
+                OrganizationRole = location?.Organization?.Role,
             };
             sections.Add(key, created);
             return created;
@@ -545,12 +549,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         {
             foreach (var offer in group.Projects)
             {
-                var location = new SharedProjectLocation(group.SourceKey, group.SourceName, offer.Organization);
+                var location = new SharedProjectLocation(group.SourceKey, group.SourceName, offer.Organization, group.SourceHost);
                 var section = GetSection(location);
                 section.ToAddCount++;
                 if (Matches(offer.Name, offer.Description, offer.Organization?.Name, null))
                 {
-                    section.Items.Add(new ProjectListItemViewModel(offer));
+                    section.Items.Add(new ProjectListItemViewModel(offer)
+                    {
+                        Add = FinishSettingUpCommand,
+                        Origin = _Origin(location),
+                        WhereItLives = _WhereItLives(location),
+                    });
                 }
             }
         }
@@ -562,7 +571,13 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             section.HereCount++;
             if (Matches(project.Name, project.Description, location?.Organization?.Name, project.Category))
             {
-                section.Items.Add(new ProjectListItemViewModel(project, _sessionsRunning(project.Id)));
+                section.Items.Add(new ProjectListItemViewModel(
+                    project, _sessionsRunning(project.Id), location?.Organization?.Role, location is not null,
+                    _snapshot.RemoteChangedProjectIds.Contains(project.Id), CardActions)
+                {
+                    Origin = _Origin(location),
+                    WhereItLives = _WhereItLives(location),
+                });
             }
         }
 
@@ -576,7 +591,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             var sourceSections = sections.Values.Where(section => !section.IsThisMachine && section.SourceKey == group.SourceKey).ToList();
             if (sourceSections.Count == 0 && (group.Error is { Length: > 0 } || group.Notice is { Length: > 0 }))
             {
-                sourceSections.Add(GetSection(new SharedProjectLocation(group.SourceKey, group.SourceName, null)));
+                sourceSections.Add(GetSection(new SharedProjectLocation(group.SourceKey, group.SourceName, null, group.SourceHost)));
             }
 
             foreach (var section in sourceSections)
@@ -610,8 +625,25 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             ProjectSections.Add(section);
         }
 
+        var rows = ProjectSections.SelectMany(section => section.Items).ToList();
+        SelectedListItem = rows.FirstOrDefault(row => row.Id == selectedId) ?? rows.FirstOrDefault();
+
         OnPropertyChanged(nameof(Categories));
+        OnPropertyChanged(nameof(CategoryChips));
+        OnPropertyChanged(nameof(CountSummary));
     }
+
+    private static string _Origin(SharedProjectLocation? location) => location is null
+        ? "● This machine"
+        : $"◆ {location.Organization?.Name ?? location.SourceName}";
+
+    private static string _WhereItLives(SharedProjectLocation? location) => location switch
+    {
+        null => "● This machine only",
+        { SourceHost: { Length: > 0 } host, Organization: { } organization } => $"◆ {host} / {organization.Slug}",
+        { SourceHost: { Length: > 0 } host } => $"◆ {host}",
+        _ => $"◆ {location.SourceName}",
+    };
 
     // Finds the source it came from by its own `SharedProjectOffer.Id` prefix (the same `"{scheme}:{slug}"` shape
     // `ISharedProjectSource.Key`'s own doc comment describes) rather than carrying the source alongside the row
@@ -792,6 +824,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SelectedProject = Projects.FirstOrDefault(project => project.Id == selectedId);
         OnPropertyChanged(nameof(HasProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
+        OnPropertyChanged(nameof(ShowsStartingPoints));
+        OnPropertyChanged(nameof(ShowsPickHint));
         OnPropertyChanged(nameof(MostRecentProject));
         OnPropertyChanged(nameof(HasMoreThanSidebarShows));
 
@@ -979,3 +1013,5 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         await LoadSharedProjectsAsync();
     }
 }
+
+public sealed record ProjectsCategoryChip(string Name, bool IsOn);
