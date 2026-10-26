@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **zoom and browser keys in the Browser tab.** Ctrl+plus, Ctrl+minus, Ctrl+0 and Ctrl+wheel zoom the page,
+  and the zoom is kept per site, also after a restart. Alt+Left, Alt+Right, F5 and Ctrl+R go back, forward and reload.
 - added: **plugins hear about an account change.** A plugin that contributes an OAuth MCP server can now subscribe to
   `McpServerAccountChanged` and drop what it cached about the previous account when someone signs in as another user
   or signs out. Only the plugin's own servers raise it, and it carries the server name, never a token.
@@ -338,6 +340,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the Browser tab fits the page on a display scaled above 100%.** At 125% or 150% the page was drawn too
+  large, so its right side, its scrollbars and the buttons at the bottom of a dialog fell outside the tab. Dragging a
+  scrollbar past the edge of the tab and slow touchpad scrolling work too now.
+- fixed: **a login in the Browser tab survives a crash.** Cookies reach disk as soon as a page has loaded, instead of
+  only every half minute or when Cockpit closes normally.
+- fixed: **the first download of the browser engine says what happens.** It shows how many MB are done, says the
+  browser opens by itself afterwards without a restart, and a failed download has a "Try again" button.
 - fixed: **Cockpit no longer freezes when a session ends while the browser is open.** With a browser tab open, the
   end of any session set off an endless chain of updates in the browser plugin (0.7.2) that kept the window from
   drawing or answering a click, until the status bar was hidden to save it. The status bar also no longer redraws a
