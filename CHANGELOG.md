@@ -338,6 +338,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **Cockpit no longer freezes when a session ends while the browser is open.** With a browser tab open, the
+  end of any session set off an endless chain of updates in the browser plugin (0.7.2) that kept the window from
+  drawing or answering a click, until the status bar was hidden to save it. The status bar also no longer redraws a
+  plugin's line when the text has not changed.
 - fixed: **agents get their own browser on Ubuntu 24.04 again.** On Linux the agent browser now starts the
   installed Chrome before the downloaded headless shell, which Ubuntu's AppArmor stops from sandboxing, and a
   browser that fails to start says why in the log instead of leaving the session silently without one.

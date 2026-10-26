@@ -323,6 +323,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text);
+        // AC-1764: the same line again is no change. A Replace builds a new item container that must be measured, so a
+        // plugin repeating its text in a loop would otherwise keep the status bar in layout for as long as it repeats.
+        if (entry == existing)
+        {
+            return;
+        }
+
         if (index >= 0)
         {
             PluginStatusTexts[index] = entry;

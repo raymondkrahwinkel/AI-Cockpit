@@ -72,5 +72,15 @@ public class TabControlTests
         Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://youtube.com/embed/x", mainFrame: false, fromHost: false));
         Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(origin, "GET", formSubmit: false, "https://news.example", mainFrame: true, fromHost: true));
         Assert.Equal(ControlPolicy.Verdict.Allow, ControlPolicy.Navigation(null, "POST", formSubmit: true, "https://github.com/merge", mainFrame: true, fromHost: false));
+
+        // AC-1764: TabShareService answers every Changed with a TakeHeld per tab, so taking nothing must not signal one;
+        // it did, and a single session ending re-posted itself until Cockpit's UI thread starved. Taking a held one does.
+        var changes = 0;
+        grants.Changed += () => changes++;
+        Assert.Null(grants.TakeHeld("tab-1"));
+        Assert.Equal(0, changes);
+        grants.Hold("tab-1", "POST https://github.com/merge");
+        Assert.Equal("POST https://github.com/merge", grants.TakeHeld("tab-1"));
+        Assert.Equal(2, changes);
     }
 }
