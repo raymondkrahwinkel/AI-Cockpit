@@ -144,11 +144,19 @@ public class ScheduleEngineTests
     {
         var rig = new EngineRig(Utc(10, 14, 6, 59, 50));
         rig.Add(EngineRig.NewTask("0 9 * * *"));
-        rig.Action = _ => new TaskCompletionSource<ActionResult>().Task;
+        var running = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.Action = _ =>
+        {
+            running.SetResult();
+            return new TaskCompletionSource<ActionResult>().Task;
+        };
         var before = rig.Start();
         await before.TickAsync();
         rig.Clock.Now = Utc(10, 14, 7, 0, 20);
         _ = before.TickAsync();
+
+        // The run starts off the tick's stack (AC-1648): stop the first engine only once its run is really under way.
+        await running.Task;
         before.Dispose();
         rig.Action = _ => Task.FromResult(new ActionResult(RunOutcome.Succeeded));
 

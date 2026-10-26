@@ -52,9 +52,11 @@ public class TerminalAccessRegistryTests
     }
 
     [Fact]
-    public void PaneClosed_DecouplesAutomatically()
+    public void PaneClosed_DecouplesAutomatically_AndAnnouncesBothChanges()
     {
         var registry = new TerminalAccessRegistry();
+        var changes = new List<TerminalCouplingChange>();
+        registry.CouplingChanged += changes.Add;
         registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
         registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive);
 
@@ -62,6 +64,8 @@ public class TerminalAccessRegistryTests
 
         Assert.False(registry.IsCoupled("pane-1"));
         Assert.Null(registry.ReadCoupled("session-a", "pane-1"));
+        Assert.Equal(new TerminalCouplingMode?[] { TerminalCouplingMode.Drive, null }, changes.Select(change => change.Coupling));
+        Assert.Equal("session-a", changes[0].AgentSession);
     }
 
     [Fact]
@@ -265,20 +269,5 @@ public class TerminalAccessRegistryTests
         Assert.Equal(2, System.Linq.Enumerable.Count(changes));
         Assert.Equal(TerminalCouplingMode.Drive, changes[0].Coupling);
         Assert.Null(changes[1].Coupling);
-    }
-
-    [Fact]
-    public void CouplingChanged_FiresOnCoupleAndOnAutoDecouple()
-    {
-        var registry = new TerminalAccessRegistry();
-        var changes = new List<TerminalCouplingChange>();
-        registry.CouplingChanged += changes.Add;
-        registry.PaneOpened("pane-1", "zsh-5", plainShell: true);
-
-        registry.Couple("session-a", "pane-1", TerminalCouplingMode.Drive);
-        registry.PaneClosed("pane-1");
-
-        Assert.Equal(new TerminalCouplingMode?[] { TerminalCouplingMode.Drive, null }, changes.Select(change => change.Coupling));
-        Assert.Equal("session-a", changes[0].AgentSession);
     }
 }

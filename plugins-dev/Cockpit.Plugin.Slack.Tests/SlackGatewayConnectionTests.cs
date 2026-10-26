@@ -2,7 +2,8 @@ namespace Cockpit.Plugin.Slack.Tests;
 
 public class SlackGatewayConnectionTests
 {
-    private const string Channel = "C123";
+    private const string _Channel = "C123";
+    private const string _DmChannel = "D123";
 
     [Theory]
     [InlineData("message_changed")]
@@ -18,9 +19,12 @@ public class SlackGatewayConnectionTests
     [InlineData("file_comment")]
     [InlineData("tombstone")]
     public void IgnoresBotAndSystemSubtypes(string subtype) =>
-        Assert.False(SlackGatewayConnection.ShouldHandle(botId: null, subtype, Channel, Channel));
+        Assert.False(SlackGatewayConnection.ShouldHandle(botId: null, subtype, _DmChannel, "im", _DmChannel));
 
-    [Fact]
-    public void IgnoresOurOwnOutboundMessages() =>
-        Assert.False(SlackGatewayConnection.ShouldHandle(botId: "B999", subtype: null, Channel, Channel));
+    [Theory]
+    [InlineData(null, _DmChannel, "im", true)]
+    [InlineData(null, _Channel, "channel", false)]
+    [InlineData("B999", _DmChannel, "im", false)]
+    public void AcceptsOnlyHumanMessagesFromTheOwnerDm(string? botId, string channel, string channelType, bool expected) =>
+        Assert.Equal(expected, SlackGatewayConnection.ShouldHandle(botId, subtype: null, channel, channelType, _DmChannel));
 }

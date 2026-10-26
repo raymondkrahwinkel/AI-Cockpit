@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
 
@@ -30,12 +31,20 @@ public interface IDockPanelRegistry
     /// </summary>
     IReadOnlyList<DockPanelRegistration> Panels { get; }
 
+    /// <summary>
+    /// The panel's view: built fresh each call, or once and kept when the panel asks for <c>KeepAlive</c> (AC-1710).
+    /// </summary>
+    Control ViewFor(DockPanelRegistration panel);
+
     event EventHandler? Changed;
 }
 
 internal sealed class DockPanelRegistry : IDockPanelRegistry, ISingletonService
 {
     private readonly List<DockPanelRegistration> _panels = [];
+
+    // AC-1710: the kept views, by panel id. Dropped with the registration, so a panel registered again starts fresh.
+    private readonly Dictionary<string, Control> _keptViews = [];
 
     public event EventHandler? Changed;
 
@@ -60,7 +69,25 @@ internal sealed class DockPanelRegistry : IDockPanelRegistry, ISingletonService
             return false;
         }
 
+        _keptViews.Remove(id);
+
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    public Control ViewFor(DockPanelRegistration panel)
+    {
+        if (!panel.KeepAlive)
+        {
+            return panel.CreateView();
+        }
+
+        if (!_keptViews.TryGetValue(panel.Id, out var view))
+        {
+            view = panel.CreateView();
+            _keptViews[panel.Id] = view;
+        }
+
+        return view;
     }
 }

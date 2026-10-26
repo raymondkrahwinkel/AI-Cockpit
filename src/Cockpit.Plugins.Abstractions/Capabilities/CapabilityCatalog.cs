@@ -11,6 +11,18 @@ namespace Cockpit.Plugins.Abstractions.Capabilities;
 /// </remarks>
 public static class CapabilityCatalog
 {
+    /// <summary>
+    /// Enforced (AC-1730): without it in <c>plugin.json</c>, <see cref="ICockpitHost.TimeEntries"/> throws
+    /// <see cref="UnauthorizedAccessException"/>.
+    /// </summary>
+    public const string TimeEntries = "time.entries";
+
+    /// <summary>
+    /// Enforced (AC-1720): without it in <c>plugin.json</c>, <see cref="ICockpitHost.Timeline"/> throws
+    /// <see cref="UnauthorizedAccessException"/>.
+    /// </summary>
+    public const string TimelineReadAll = "timeline.read-all";
+
     // Ordered risk-first so "what does this plugin actually get" is answerable by reading down the list, and
     // so the generated table in docs/plugins/API-REFERENCE.md reads the same way.
     public static IReadOnlyList<PluginCapability> All { get; } =
@@ -48,7 +60,7 @@ public static class CapabilityCatalog
             "Adds the plugin's own widgets to the dashboard, panels to the right-hand dock rail, and mini-tools to the companion window, and reads what is registered there.",
             CapabilityRisk.Ambient,
             "0.3.0",
-            ["ICockpitUiHost.AddWidget", "ICockpitUiHost.AddDockPanel", "ICockpitUiHost.AddCompanionTool"],
+            ["ICockpitUiHost.AddWidget", "ICockpitUiHost.AddDockPanel", "ICockpitUiHost.OpenDockPanelAsync", "ICockpitUiHost.SetStatusText", "ICockpitUiHost.AddCompanionTool"],
             []),
 
         new(
@@ -228,7 +240,7 @@ public static class CapabilityCatalog
             "Reads which sessions are open, what they are doing, and which pane an MCP call arrived from.",
             CapabilityRisk.Sensitive,
             "0.3.0",
-            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
+            ["ICockpitHost.Sessions", "ICockpitHost.CurrentMcpCallerPaneId", "ICockpitHost.CurrentMcpCaller", "ICockpitUiHost.ActivePaneId", "ICockpitUiHost.ActiveSessionWorkingDirectory", "ICockpitUiHost.ActiveProjectId", "ICockpitUiHost.ActiveSessionUsage", "ICockpitUiHost.ActiveSessionChanged", "ICockpitUiHost.ActiveSessionUsageChanged"],
             [new("paneId", "The session pane the plugin may observe.")]),
 
         new(
@@ -288,10 +300,10 @@ public static class CapabilityCatalog
         new(
             "projects.read",
             "Reading project field values",
-            "Reads what the operator filled in on a project — repository paths, tracker keys, whatever other plugins put there.",
+            "Reads which projects there are and which one a session belongs to, and what the operator filled in on a project — repository paths, tracker keys, whatever other plugins put there.",
             CapabilityRisk.Sensitive,
             "0.7.0",
-            ["ICockpitHost.GetProjectFieldValueAsync", "ICockpitHost.GetProjectFieldValuesAsync"],
+            ["ICockpitHost.GetProjectFieldValueAsync", "ICockpitHost.GetProjectFieldValuesAsync", "ICockpitHost.GetProjectsAsync", "ICockpitHost.GetSessionProjectIdAsync", "ICockpitUiHost.GetProjectsAsync"],
             [new("key", "The project field key the plugin may read.")]),
 
         new(
@@ -402,7 +414,7 @@ public static class CapabilityCatalog
             "Sends text into a session's input — the operator's own keyboard, aimed at an agent that is already running.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitHost.SendToSessionAsync", "ICockpitHost.InsertIntoSessionAsync", "ICockpitHost.BindToSession"],
+            ["ICockpitHost.SendToSessionAsync", "ICockpitHost.InsertIntoSessionAsync", "ICockpitHost.BindToSession", "ICockpitActions.SendPromptToSessionAsync"],
             [new("paneId", "The session pane the plugin may type into.")]),
 
         new(
@@ -471,6 +483,24 @@ public static class CapabilityCatalog
             [new("cliName", "The managed CLI the plugin may install and resolve.")]),
 
         new(
+            TimeEntries,
+            "Your own time entries",
+            "Reads and changes the hours you log yourself and your stopwatch — your time, not your sessions'.",
+            CapabilityRisk.Sensitive,
+            "0.107.0",
+            ["ICockpitHost.TimeEntries"],
+            []),
+
+        new(
+            TimelineReadAll,
+            "The timeline of every session",
+            "Reads when every session was busy, waiting or idle, what you did in it, its statuslines and what each turn spent — all sessions, not only the plugin's own.",
+            CapabilityRisk.Sensitive,
+            "0.114.0",
+            ["ICockpitHost.Timeline"],
+            []),
+
+        new(
             "assistant.notify",
             "Leaving a message for the assistant",
             "Puts a message in the cockpit-assistant's inbox — read as data from the plugin, never as an operator instruction, but still text put in front of the assistant.",
@@ -488,4 +518,7 @@ public static class CapabilityCatalog
             ["ICockpitHost.OpenAssistantChannel"],
             []),
     ];
+
+    /// <summary>The capability with this id, or <see langword="null"/> when the host does not know it.</summary>
+    public static PluginCapability? Find(string id) => All.FirstOrDefault(capability => capability.Id == id);
 }

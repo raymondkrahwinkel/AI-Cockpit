@@ -14,6 +14,11 @@ Source-of-truth split (the "metadata gap" the design settled on):
     entry, else left unset for a human to fill in the PR. A brand-new plugin with neither is listed
     with just its identity; the reviewer adds the polish.
 
+Per-RID packages (AC-1740): `--package <rid>=<path>:<sha256>`, repeatable, writes a `packages` object on
+the version and sets its `path`/`sha256` to the win-x64 package, so `path` stays required and valid. A host
+downloads the package for its own RID; a host older than packages never gets here, because such a plugin's
+minHostVersion is above it.
+
 Immutability: a version already present in the index is never rewritten (exit code 3). A version
 users may already have installed must stay byte-for-byte what its sha256 pinned.
 """
@@ -147,7 +152,32 @@ def field_loss_error(existing: OrderedDict, entry: OrderedDict, plugin_id: str) 
     )
 
 
+# AC-1740: the package whose zip `path`/`sha256` repeat, so a version with packages still has a valid `path`.
+DEFAULT_PACKAGE_RID = "win-x64"
+
+
+def parse_packages(specs: list[str]) -> OrderedDict:
+    """`<rid>=<path>:<sha256>` per --package, into the index's `packages` object; raises ValueError on a bad spec."""
+    packages: OrderedDict = OrderedDict()
+    for spec in specs:
+        rid, sep, rest = spec.partition("=")
+        path, colon, sha256 = rest.rpartition(":")
+        if not (rid and sep and path and colon and sha256):
+            raise ValueError(f"--package {spec!r} is not <rid>=<path>:<sha256>")
+        packages[rid] = OrderedDict([("path", path), ("sha256", sha256)])
+    return packages
+
+
 def build_version(args) -> OrderedDict:
+    packages = parse_packages(args.package or [])
+    if packages:
+        if DEFAULT_PACKAGE_RID not in packages:
+            raise ValueError(f"--package needs a {DEFAULT_PACKAGE_RID} package for path/sha256")
+        args.path = packages[DEFAULT_PACKAGE_RID]["path"]
+        args.sha256 = packages[DEFAULT_PACKAGE_RID]["sha256"]
+    elif not args.path:
+        raise ValueError("--path is required without --package")
+
     version: OrderedDict = OrderedDict()
     version["version"] = args.version
     version["path"] = args.path
@@ -159,6 +189,8 @@ def build_version(args) -> OrderedDict:
         version["sha256"] = args.sha256
     if args.notes:
         version["notes"] = args.notes
+    if packages:
+        version["packages"] = packages
     return version
 
 
@@ -173,7 +205,9 @@ def main() -> int:
     parser.add_argument("--abstractions-version", type=int, default=None)
     parser.add_argument("--min-host-version", default=None)
     parser.add_argument("--sha256", default=None)
-    parser.add_argument("--path", required=True, help="Zip path relative to the index (e.g. my-plugin/my-plugin-1.0.0.zip).")
+    parser.add_argument("--path", default=None, help="Zip path relative to the index (e.g. my-plugin/my-plugin-1.0.0.zip).")
+    parser.add_argument("--package", action="append", default=None,
+                        help="A per-RID zip as <rid>=<path>:<sha256> (AC-1740), repeatable; path/sha256 then follow win-x64.")
     parser.add_argument("--published", required=True, help="ISO date (YYYY-MM-DD) for the latest version.")
     parser.add_argument("--notes", default=None)
     parser.add_argument("--store-json", default=None, help="Optional store.json with editorial fields.")
@@ -212,7 +246,11 @@ def main() -> int:
         print(f"{args.id} {args.version} is already in the store index — nothing to publish.")
         return EXIT_ALREADY_PRESENT
 
-    versions.append(build_version(args))
+    try:
+        versions.append(build_version(args))
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return EXIT_ERROR
     versions.sort(key=lambda v: version_key(v.get("version", "0")), reverse=True)
 
     entry = build_entry(existing, store_meta, args)

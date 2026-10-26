@@ -41,6 +41,9 @@
                       ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Workflows\Cockpit.Plugin.Workflows.csproj"
                       ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Browser\Cockpit.Plugin.Browser.csproj"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+    <AssemblyMetadata Include="BrowserDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Browser\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="CockpitServerDirectory" Value="$(MSBuildThisFileDirectory)..\..\src\Cockpit.Server\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="EchoProviderDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.Plugin.EchoProvider\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="GitStatusDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\" />

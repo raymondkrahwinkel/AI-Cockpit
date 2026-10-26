@@ -22,7 +22,10 @@ public sealed class BackendSessionHosting(SessionControlFactory controls) : ISes
         var paneId = request.PaneId;
         var handle = new SessionHostHandle(
             paneId, request.Name, request.NameIsChosen, request.Request.WorkspaceId, request.WorkingDirectory,
-            request.Request.Profile.Label, controls.CreateHost(() => paneId), request.Request.ProjectId);
+            request.Request.Profile.Label, controls.CreateHost(() => paneId), request.Request.ProjectId)
+        {
+            StartedByTheAssistant = request.Request.StartedByTheAssistant,
+        };
         _ = handle.SetWorktreeBranchAsync(request.WorktreeBranch);
         return handle;
     }

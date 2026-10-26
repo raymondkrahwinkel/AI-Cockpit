@@ -702,7 +702,8 @@ public partial class App : Application
             // AC-499: this plugin's own runtime type, so the host can tell its own IPluginMcpProvider registration
             // apart from every other plugin's when it resolves a tool call's caller-scoped fallback.
             pluginType,
-            pluginCache.CreateFor(discovered.FolderId));
+            pluginCache.CreateFor(discovered.FolderId),
+            discovered.Manifest.Capabilities);
 
         backend.InitializePlugins((discovered, plugin) => HostFor(discovered, plugin.GetType()));
 
@@ -1021,15 +1022,23 @@ public partial class App : Application
         WindowActivation.BringToFront(_mainWindow);
     }
 
-    // Really quits the app (tray "Quit") — lets MainWindow's close through, then the normal teardown runs.
+    // Really quits the app (tray "Quit", a restart): through the lifetime's ShutdownRequested like a log-off, so whatever
+    // listens there (a plugin shutting its engine down first, AC-1711) hears every quit; that handler runs the teardown.
     public void RequestQuit()
     {
         LifecycleLog.Write("Quit requested from inside the app (tray Quit or a restart handoff).");
+        IsQuitting = true;
+        if (_desktop is { } desktop)
+        {
+            desktop.TryShutdown();
+            return;
+        }
+
         _ = TearDownThenShutdownAsync();
     }
 
-    // Every quit route goes through here, not just ShutdownRequested: the lifetime's `Shutdown()` is a *forced*
-    // shutdown that never raises that event, so the tray's Quit and the restart handoff would walk past it.
+    // Every quit route ends here. The lifetime's `Shutdown()` is a *forced* shutdown that never raises
+    // ShutdownRequested, which is why RequestQuit asks with TryShutdown first instead of calling this directly.
     internal async Task TearDownThenShutdownAsync()
     {
         // Before the first await, so MainWindow's close sees a real quit rather than a close-to-tray.

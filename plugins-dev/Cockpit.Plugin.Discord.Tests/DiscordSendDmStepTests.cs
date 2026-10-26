@@ -13,8 +13,6 @@ public class DiscordSendDmStepTests
     public static TheoryData<AssistantChannelAccess?, int, string, bool> Cases => new()
     {
         { AssistantChannelAccess.ForSingleUser("111").Access, 3, _Long, false },
-        { AssistantChannelAccess.ForUsers(["111", "222"], warningAcknowledged: true).Access, 0, string.Empty, true },
-        { AssistantChannelAccess.ForEveryone(AssistantChannelAccess.EveryoneConfirmationPhrase).Access, 0, string.Empty, true },
         { null, 0, string.Empty, true },
     };
 

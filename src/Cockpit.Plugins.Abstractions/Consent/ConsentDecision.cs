@@ -28,4 +28,10 @@ public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = f
     /// Whether the caller may go ahead.
     /// </summary>
     public bool IsApproved => Outcome == ConsentOutcome.Approved;
+
+    /// <summary>
+    /// What the operator picked for each <see cref="ConsentRequest.Choices"/> entry, by its key (AC-1714). Set only on
+    /// an approval of a request with choices, and then only with values the request offered and enabled; null otherwise.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>>? Chosen { get; init; }
 }

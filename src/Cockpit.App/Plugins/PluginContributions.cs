@@ -3,6 +3,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Material.Icons;
 
 namespace Cockpit.App.Plugins;
 
@@ -11,10 +12,18 @@ public sealed record PluginSideSection(string PluginId, string Title, Func<Contr
 
 // A left-menu launcher button a plugin contributes (#72): which plugin, its title, and the click action.
 // `Badge` (AC-516) is the counter handle from `AddSideMenuButtonWithBadge`, or null for a plain button.
-public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke, SideMenuButtonBadge? Badge = null);
+public sealed record PluginSideButton(
+    string PluginId,
+    string Title,
+    Action OnInvoke,
+    SideMenuButtonBadge? Badge = null,
+    MaterialIconKind? IconKind = null);
 
 // A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
+
+// AC-1711: the one line of text a plugin shows in the status bar (`ICockpitUiHost.SetStatusText`), keyed by plugin.
+public sealed record PluginStatusText(string PluginId, string Text);
 
 // A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
@@ -52,6 +61,14 @@ public interface IPluginContributionSink
     /// </summary>
     void AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
         AddPluginSideButton(pluginId, title, onInvoke);
+
+    void AddPluginSideButton(
+        string pluginId,
+        string title,
+        Action onInvoke,
+        SideMenuButtonBadge badge,
+        MaterialIconKind iconKind) =>
+        AddPluginSideButton(pluginId, title, onInvoke, badge);
 
     /// <summary>
     /// Registers a control shown in every session's header, built per session from that session's own context.

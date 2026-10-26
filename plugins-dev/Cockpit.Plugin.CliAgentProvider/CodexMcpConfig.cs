@@ -51,19 +51,19 @@ internal static class CodexMcpConfig
     {
         if (!string.IsNullOrWhiteSpace(server.Url))
         {
-            var fields = new List<string> { $"url = {_TomlString(server.Url)}" };
+            var fields = new List<string> { $"url = {TomlString(server.Url)}" };
 
             if (server.CockpitHosted)
             {
                 // A cockpit-hosted endpoint's auth is the host-set COCKPIT_MCP_KEY env var (AC-40): point Codex
                 // straight at it, so nothing is added to the environment this builder emits and no literal is written.
-                fields.Add($"bearer_token_env_var = {_TomlString(WellKnownSessionEnvironment.CockpitMcpKey)}");
+                fields.Add($"bearer_token_env_var = {TomlString(WellKnownSessionEnvironment.CockpitMcpKey)}");
             }
             else if (!string.IsNullOrWhiteSpace(server.BearerToken))
             {
                 var tokenEnvVar = $"{TokenEnvVarPrefix}{index}";
                 environmentVariables[tokenEnvVar] = server.BearerToken;
-                fields.Add($"bearer_token_env_var = {_TomlString(tokenEnvVar)}");
+                fields.Add($"bearer_token_env_var = {TomlString(tokenEnvVar)}");
             }
 
             // Custom headers (AC-354) go through Codex's env_http_headers — header name mapped to the *name* of an
@@ -79,7 +79,7 @@ internal static class CodexMcpConfig
                 {
                     var headerEnvVar = $"{HeaderEnvVarPrefix}{index}_{headerIndex++}";
                     environmentVariables[headerEnvVar] = value;
-                    mappings.Add($"{_TomlString(name)} = {_TomlString(headerEnvVar)}");
+                    mappings.Add($"{TomlString(name)} = {TomlString(headerEnvVar)}");
                 }
 
                 fields.Add($"env_http_headers = {{ {string.Join(", ", mappings)} }}");
@@ -90,11 +90,11 @@ internal static class CodexMcpConfig
 
         if (!string.IsNullOrWhiteSpace(server.Command))
         {
-            var fields = new List<string> { $"command = {_TomlString(server.Command)}" };
+            var fields = new List<string> { $"command = {TomlString(server.Command)}" };
 
             if (server.Args.Count > 0)
             {
-                fields.Add($"args = [{string.Join(", ", server.Args.Select(_TomlString))}]");
+                fields.Add($"args = [{string.Join(", ", server.Args.Select(TomlString))}]");
             }
 
             return $"{{ {string.Join(", ", fields)} }}";
@@ -142,7 +142,7 @@ internal static class CodexMcpConfig
     }
 
     // A TOML basic string with the escapes the spec requires, so a url/name with a quote or backslash cannot break the value.
-    private static string _TomlString(string value)
+    internal static string TomlString(string value)
     {
         var builder = new StringBuilder(value.Length + 2);
         builder.Append('"');

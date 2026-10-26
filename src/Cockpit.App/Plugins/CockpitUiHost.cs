@@ -25,6 +25,7 @@ using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Material.Icons;
 
 namespace Cockpit.App.Plugins;
 
@@ -43,6 +44,8 @@ internal sealed class CockpitUiHost(
     IReadOnlyList<string> declaredSecretKeys) : ICockpitUiHost
 {
     public IPluginUiChannel Channel { get; } = new UiChannel(services.GetRequiredService<PluginChannelHub>(), pluginId);
+
+    private readonly HashSet<string> _ownDockPanelIds = [];
 
     public IPluginStorage Storage => host.Storage;
 
@@ -66,9 +69,23 @@ internal sealed class CockpitUiHost(
         contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
 
     public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
+        => AddSideMenuButtonWithBadge(title, onInvoke, iconKind: null);
+
+    public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke, MaterialIconKind iconKind)
+        => AddSideMenuButtonWithBadge(title, onInvoke, (MaterialIconKind?)iconKind);
+
+    private SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke, MaterialIconKind? iconKind)
     {
         var badge = new SideMenuButtonBadge();
-        contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge);
+        if (iconKind is { } icon)
+        {
+            contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge, icon);
+        }
+        else
+        {
+            contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge);
+        }
+
         return badge;
     }
 
@@ -126,6 +143,32 @@ internal sealed class CockpitUiHost(
         if (!services.GetRequiredService<IDockPanelRegistry>().Register(registration))
         {
             _Logger()?.LogWarning("Dock panel '{DockPanelId}' is already contributed by another plugin; this registration is ignored", registration.Id);
+            return;
+        }
+
+        _ownDockPanelIds.Add(registration.Id);
+    }
+
+    // Keyed by this plugin's id, so a plugin can only ever replace its own line.
+    public void SetStatusText(string? text) =>
+        services.GetService<CockpitViewModel>()?.SetPluginStatusText(pluginId, text);
+
+    // Only this plugin's own panels: a plugin cannot pull another's panel into view. Floating stays floating.
+    public async Task OpenDockPanelAsync(string panelId)
+    {
+        if (!_ownDockPanelIds.Contains(panelId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        {
+            return;
+        }
+
+        try
+        {
+            await UiThreadCall.DispatchAsync(() => cockpit.DockHost.ShowInAsync(panelId, cockpit.IsDockPanelFloating(panelId)));
+        }
+        catch (UiUnavailableException exception)
+        {
+            _Logger()?.LogWarning(exception, "Opening dock panel '{DockPanelId}' for plugin '{PluginId}' gave up waiting for the UI thread", panelId, pluginId);
+            throw;
         }
     }
 
@@ -296,6 +339,8 @@ internal sealed class CockpitUiHost(
 
     public string? ActiveSessionWorkingDirectory => activeSession.ActiveSessionWorkingDirectory;
 
+    public string? ActiveProjectId => activeSession.ActiveProjectId;
+
     public SessionUsageSnapshot? ActiveSessionUsage => activeSession.ActiveSessionUsage;
 
     public event EventHandler? ActiveSessionChanged
@@ -325,6 +370,8 @@ internal sealed class CockpitUiHost(
 
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => host.GetProfilesAsync();
 
+    public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => host.GetProjectsAsync();
+
     public Task SendToSessionAsync(string paneId, string text) => host.SendToSessionAsync(paneId, text);
 
     // AC-1397: what PluginActions.InjectIntoActiveSessionAsync does for the selected pane, for a named one — placed, not sent.
@@ -336,6 +383,27 @@ internal sealed class CockpitUiHost(
             ?.InjectText(text);
         return Task.CompletedTask;
     }
+
+    public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(() =>
+    {
+        var cockpit = services.GetService<CockpitViewModel>();
+        var session = cockpit?.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
+        if (cockpit is null || session is null)
+        {
+            return false;
+        }
+
+        if (cockpit.SimpleView)
+        {
+            cockpit.SelectSimpleSessionCommand.Execute(session);
+        }
+        else
+        {
+            cockpit.SelectSessionCommand.Execute(session);
+        }
+
+        return true;
+    });
 
     // No pane named means this window's selected one, which only a UI part has.
     public Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>

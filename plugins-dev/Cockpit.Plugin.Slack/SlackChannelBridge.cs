@@ -17,6 +17,8 @@ internal sealed class SlackChannelBridge : IDisposable
     // building a fresh one — a live Func<> here would never see anything _Reconnect had not already rebuilt.
     private readonly AssistantChannelAccess _access;
     private readonly Func<AssistantChannelVerbosity> _verbosity;
+    private readonly string _channelId;
+    private readonly Action<string> _reportRefusal;
 
     // AC-1074: where a dropped attachment gets said out loud. Routed to the host rather than Trace, which nothing
     // in this app listens to, so the reason went nowhere at all.
@@ -43,14 +45,18 @@ internal sealed class SlackChannelBridge : IDisposable
         ISlackFileFetcher files,
         AssistantChannelAccess access,
         Func<AssistantChannelVerbosity> verbosity,
-        Action<string>? reportError = null)
+        Action<string>? reportError = null,
+        string channelId = "<unknown>",
+        Action<string>? reportRefusal = null)
     {
         _gateway = gateway;
         _sink = sink;
         _files = files;
         _access = access;
         _verbosity = verbosity;
+        _channelId = channelId;
         _reportError = reportError ?? (_ => { });
+        _reportRefusal = reportRefusal ?? (_ => { });
 
         _gateway.RowChanged += _OnRowChanged;
         _gateway.ConsentPromptOpened += _OnPromptOpened;
@@ -83,16 +89,19 @@ internal sealed class SlackChannelBridge : IDisposable
                 {
                     _gateway.RespondToConsent(openPromptId, outcome);
                 }
+                else
+                {
+                    _reportRefusal(SlackGatewayConnection.Refusal(senderId, _channelId));
+                }
 
                 return;
             }
         }
 
-        // A stranger must not be able to make the bot download anything (AC-1360). Their text still goes to the
-        // host without the files, so the host's own refusal logs them (AC-1074) and nothing more happens.
+        // A stranger must not be able to make the bot download anything (AC-1360).
         if (!_access.IsAllowed(senderId))
         {
-            await _gateway.SendAsync(senderId, text, [], cancellationToken).ConfigureAwait(false);
+            _reportRefusal(SlackGatewayConnection.Refusal(senderId, _channelId));
             return;
         }
 
@@ -167,8 +176,14 @@ internal sealed class SlackChannelBridge : IDisposable
     // An Approve/Deny button was clicked.
     public async Task HandleButtonAsync(string actionId, string senderId, CancellationToken cancellationToken = default)
     {
-        if (!SlackConsentButtonId.TryParse(actionId, out var promptId, out var approve) || !_access.IsAllowed(senderId))
+        if (!SlackConsentButtonId.TryParse(actionId, out var promptId, out var approve))
         {
+            return;
+        }
+
+        if (!_access.IsAllowed(senderId))
+        {
+            _reportRefusal(SlackGatewayConnection.Refusal(senderId, _channelId));
             return;
         }
 

@@ -132,6 +132,12 @@ calling agent cannot delegate to what it cannot see.
 - Plugins are .NET assemblies loaded from `plugins/` under the config directory, each implementing one interface and
   contributing settings, sidebar buttons/sections, dialogs, **session providers**, **dashboard widgets**, shortcuts
   and/or MCP servers through a host facade.
+- The host owns the operator's time entries and one persistent stopwatch in `own-time-entries.jsonl`; plugins use the
+  shared `ICockpitTimeEntries` contract instead of keeping a second copy in plugin settings.
+- A plugin can read the projects as id and name (`GetProjectsAsync`) and which project a session belongs to
+  (`ICockpitUiHost.ActiveProjectId`, `GetSessionProjectIdAsync`), on the desktop and on a server alike.
+- A plugin can hand a running session a prompt (`ICockpitActions.SendPromptToSessionAsync`), but only through the
+  host's own confirmation card, which shows the plugin, the session, the reason and the text and is never skipped.
 - **Install from zip**, then **Review & enable**. First load requires explicit **consent** (name/version/author/path/
   hash shown, "runs unsandboxed" warning); the entry assembly's **SHA-256** is pinned, so later tampering re-prompts.
 - **Plugin store dialog:** categories, searchable cards, a detail panel with version history and rollback — reusing

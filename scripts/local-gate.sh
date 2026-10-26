@@ -49,6 +49,7 @@ python3 scripts/check-xmldoc-scope.py
 python3 scripts/check-xmldoc-scope.test.py
 python3 scripts/check-comment-length.py
 python3 scripts/check-comment-length.test.py
+python3 scripts/check-test-loopback.py
 python3 scripts/check-test-count.py
 python3 scripts/check-test-count.test.py
 python3 scripts/check-duplicate-test-bodies.py

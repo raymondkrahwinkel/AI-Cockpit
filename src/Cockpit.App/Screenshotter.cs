@@ -21,6 +21,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -472,6 +473,11 @@ internal static partial class Screenshotter
         ["session-consent-plain-developer"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentSession(ReadingLevel.Developer) },
         // The fallback: a command that cannot be restated from itself keeps the raw call rather than a guess.
         ["session-consent-plain-fallback"] = (width, height) => new Window { Width = width, Height = height, Content = _PlainConsentFallbackSession() },
+        // AC-1724: a plugin's prompt into a running session, on the host's own card on that session's pane.
+        ["session-consent-plugin-prompt"] = (width, height) => new Window { Width = width, Height = height, Content = _PluginPromptConsentSession() },
+        // AC-1714: a card with choices that belongs to no session, as the window shows it — the browser's share card.
+        ["window-consent-choices"] = (width, height) => new Window { Width = width, Height = height, Content = _WindowConsentChoices(_ShareCard()) },
+        ["window-consent-control"] = (width, height) => new Window { Width = width, Height = height, Content = _WindowConsentChoices(_ControlCard()) },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -546,7 +552,8 @@ internal static partial class Screenshotter
         {
             DataContext = new ViewModels.PluginConsentInfo(
                 "GitHub Issues", "1.8.0", "Cockpit", "/home/you/.config/Cockpit/plugins/github-issues",
-                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2"),
+                "9f2c4b1ea7d05836c1b4e0f9a3d7c25e8b6041fd93a7e2c5b80d1a6a4e37c9b2",
+                [CapabilityCatalog.TimeEntries]),
         },
         ["restore-selection"] = (_, _) => _RestoreSelection(),
         ["schedule-resume"] = (_, _) => new ScheduleResumeDialog { DataContext = new ViewModels.ScheduleResumeDialogViewModel() },
@@ -612,6 +619,10 @@ internal static partial class Screenshotter
         ["dock-panel-pull-requests-min"] = (_, _) => _DockRailWithPullRequestsPanel(Cockpit.Core.Layout.LayoutSettings.MinDockRailWidth),
         ["dock-panel-pull-requests-max"] = (width, _) => _DockRailWithPullRequestsPanel(ViewModels.CockpitViewModel.ClampDockRailWidth(double.MaxValue, width, Cockpit.Core.Layout.LayoutSettings.DefaultSidebarWidth)),
         ["dock-rail-collapsed-two-tabs"] = (_, _) => _DockRailCollapsedWithTwoTabs(),
+        // AC-1710 (mockup AC-1708 screens 2 and 3): a KeepAlive + CanFloat panel docked beside the assistant, with
+        // the rail header's undock button, and the same panel standing in its own window with "Dock back".
+        ["dock-panel-keepalive"] = (_, _) => _DockRailWithKeptPanel(),
+        ["dock-panel-floating"] = (_, _) => new Docking.DockPanelWindow(_KeptDockPanel(), _KeptDockPanelView(), boundsStore: null),
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -625,6 +636,9 @@ internal static partial class Screenshotter
         // AC-1523: an approval card with a 3,000-character behaviour prompt, and a short one beside it — the long
         // one pushed Approve/Deny out of the window, the short one must not grow empty space in return.
         ["assistant-chat-consent-long"] = (_, _) => _AssistantChatConsent(_LongProjectUpdate()),
+        // AC-1715: the assistant asks to look along; the card sits in its own conversation.
+        ["assistant-chat-look-along"] = (_, _) => _AssistantChatLookAlong(),
+        ["assistant-chat-look-along-others"] = (_, _) => _AssistantChatLookAlong(showOthers: true),
         ["assistant-chat-consent-short"] = (_, _) => _AssistantChatConsent("Project: Synvolution-MailCatch\nDescription: \"Mail sink\" → \"Mail sink for staging\""),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
@@ -1246,6 +1260,10 @@ internal static partial class Screenshotter
         else if (ScreenshotSelectionScene.Covers(scene))
         {
             window = ScreenshotSelectionScene.Build(scene, width, height);
+        }
+        else if (scene.StartsWith(PluginScenes.Prefix, StringComparison.Ordinal))
+        {
+            window = PluginScenes.Build(scene, width, height);
         }
         else
         {
@@ -2625,6 +2643,93 @@ internal static partial class Screenshotter
         "Let me clear out what is left over.",
         """{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""");
 
+    private static Border _WindowConsentChoices(ConsentRequest request) =>
+        new()
+        {
+            Background = Avalonia.Application.Current!.FindResource("CockpitScrimBrush") as Avalonia.Media.IBrush,
+            Child = new ContentControl
+            {
+                Width = 520,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Content = new Controls.ConsentBanner
+                {
+                    DataContext = new ViewModels.ConsentPromptViewModel(new ConsentQuestion(Guid.NewGuid(), request, CanRemember: false), new _NoConsentPrompts()),
+                },
+            },
+        };
+
+    private const string SharedTab = "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416";
+
+    private static readonly string[] BrowserNever = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"];
+
+    // AC-1728, mockup v2 screen 9: the operator's own share card as the browser plugin sends it, Control a real choice.
+    private static ConsentRequest _ShareCard() =>
+        new(
+            "Share this tab with an agent",
+            $"{SharedTab} · your own profile, signed in\nThis one tab only, until you stop, the tab closes or the session ends.",
+            new ConsentSource(null, "browser", "Browser"),
+            "browser.share",
+            ConsentRisk.Dangerous)
+        {
+            Choices =
+            [
+                new ConsentChoice("session", "With", [
+                    new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true),
+                    new ConsentOption("pane-1720", "AC-1720 verify login · Claude")]),
+                new ConsentChoice("mode", "What the agent may do", [
+                    new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
+                    new ConsentOption("control", "Control", "Watch, plus click, type, scroll and navigate, only within https://github.com. Every form submission asks you again.")],
+                    AllowMultiple: true),
+            ],
+            ApproveLabel = "Share watching",
+            Never = BrowserNever,
+        };
+
+    // AC-1728, mockup v2 screen 8: an agent session asks with request_tab_control; it is fixed, Control is picked, and
+    // its reason is shown as its own words.
+    private static ConsentRequest _ControlCard() =>
+        new(
+            "AC-1714 statusline asks to control this tab",
+            $"{SharedTab} · your own profile, signed in\n"
+            + "The agent says (its own words, not checked): \"I want to re-run the failed build job on this PR.\"\n"
+            + "This one tab only, until you stop, the tab closes or the session ends.",
+            new ConsentSource("pane-1714", "browser", "Browser"),
+            "browser.control",
+            ConsentRisk.Dangerous)
+        {
+            Choices =
+            [
+                new ConsentChoice("session", "With", [new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true)]),
+                new ConsentChoice("mode", "What the agent may do", [
+                    new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab."),
+                    new ConsentOption("control", "Control", "Watch, plus click, type, scroll and navigate, only within https://github.com. Every form submission asks you again.", Selected: true)],
+                    AllowMultiple: true),
+            ],
+            ApproveLabel = "Allow control",
+            Never = BrowserNever,
+        };
+
+    private static SessionView _PluginPromptConsentSession()
+    {
+        var viewModel = new SessionViewModel { Title = "werkagent" };
+        viewModel.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "The tests are green; the branch is pushed." });
+        viewModel.PendingConsent = new ViewModels.ConsentPromptViewModel(
+            new ConsentQuestion(
+                Guid.NewGuid(),
+                Cockpit.Infrastructure.Plugins.PluginScopedActions.PromptCard(
+                    "time-tracking",
+                    "Time tracking",
+                    "pane-werkagent",
+                    "werkagent",
+                    "Book today's hours in YouTrack: AC-1724 2h30 (plugin prompt contract), AC-1717 45m (review).",
+                    "You chose \"Give to an agent\" on today's time proposal"),
+                CanRemember: false),
+            new _NoConsentPrompts());
+
+        return new SessionView { DataContext = viewModel };
+    }
+
     private static SessionView _ConsentSession(ReadingLevel level, string leadIn, string input)
     {
         var viewModel = new SessionViewModel { Title = "invoices", ReadingLevel = level };
@@ -3451,6 +3556,47 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
+    // AC-1710: a placeholder panel that keeps its view and can float, open in the rail beside the assistant's tab.
+    private static Window _DockRailWithKeptPanel()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        panels.Register(_KeptDockPanel());
+
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            AssistantDocked = true,
+            OpenDockPanelId = "sample.kept",
+            DockRailWidth = 460,
+        };
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _KeptDockPanel() =>
+        new("sample.kept", "Browser", Material.Icons.MaterialIconKind.Web, _KeptDockPanelView)
+        {
+            KeepAlive = true,
+            CanFloat = true,
+        };
+
+    // Stands in for what a plugin keeps alive (AC-1711's browser): a surface with state that must survive a move.
+    private static Control _KeptDockPanelView() => new Border
+    {
+        Margin = new Thickness(12),
+        Child = new StackPanel
+        {
+            Spacing = 6,
+            Margin = new Thickness(16),
+            Children =
+            {
+                new TextBlock { Text = "Placeholder view", FontSize = 15, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                new TextBlock { Text = "Kept alive: the same instance in the rail and in its own window.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+            },
+        },
+    };
+
     // AC-960: nothing open, so the rail is the 40px tab strip — with both the Assistant's tab (AC-953) and a
     // plugin's, proving the strip holds more than one without a real Assistant session behind it.
     private static Window _DockRailCollapsedWithTwoTabs()
@@ -3460,7 +3606,8 @@ internal static partial class Screenshotter
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         panels.Register(_PullRequestsDockPanel());
 
-        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels);
+        // AC-1710: an undocked assistant has no tab, and a fresh cockpit starts with it undocked.
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels) { AssistantDocked = true };
 
         return new MainWindow { DataContext = cockpit };
     }
@@ -3609,6 +3756,42 @@ internal static partial class Screenshotter
                     CanRemember: true),
                 new _NoConsentPrompts()),
         };
+        return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-1715: the card the Browser plugin raises for browser_request_tab, as the assistant's chat shows it (the plugin
+    // builds the same request; the host cannot reference it).
+    private static AssistantChatWindow _AssistantChatLookAlong(bool showOthers = false)
+    {
+        var session = new ViewModels.SessionViewModel { Title = "Assistant" };
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "I see you have PR #1416 open in the browser. May I look along on that tab? Then I can read the failing check." });
+        session.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_look", ToolName = "mcp__cockpit-browser__browser_request_tab", InputJson = "{\"reason\":\"Why does the build fail on your PR?\"}" });
+        session.PendingConsent = new ViewModels.ConsentPromptViewModel(
+            new ConsentQuestion(
+                Guid.NewGuid(),
+                new ConsentRequest(
+                    "Look along on this tab?",
+                    "https://github.com/…/pull/1416 · your own profile\nThe session says: \"Why does the build fail on your PR?\"\n• I see: address, title, page text and a screenshot of only this tab\n• I control nothing",
+                    new ConsentSource(Cockpit.Core.Assistant.AssistantIdentity.PaneId, null, "Browser"),
+                    "browser.look-along",
+                    ConsentRisk.Dangerous)
+                {
+                    Choices =
+                    [
+                        new ConsentChoice("tab", "Which tab",
+                        [
+                            new ConsentOption("t1", "Fix statusline: ticket en fase tonen #1416", "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416", Selected: true),
+                            new ConsentOption("t2", "Lofi beats — YouTube", "https://www.youtube.com/watch?v=jfKfPfyJRdk"),
+                        ]),
+                    ],
+                    ApproveLabel = "Share this tab",
+                    Inline = true,
+                    OtherLabel = "Other tab…",
+                    Never = ["Cookies and storage", "passwords and autofill", "other tabs"],
+                },
+                CanRemember: false),
+            new _NoConsentPrompts(),
+            inlineSlot: true) { ShowOthers = showOthers };
         return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 

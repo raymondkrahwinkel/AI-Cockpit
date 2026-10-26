@@ -48,6 +48,94 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   least as often, kept at least as many and sent only to targets the organisation names, and keys and tokens can be
   kept out of every backup. Each limit is marked "Managed by <organisation>" where you would change it.
 - added: When a Depot profile belongs to more than one organization during first-run setup, the cockpit now asks which organization to use before it applies any settings.
+- added: agents can report booked or skipped hours to Uren · Week. Only the session that received the proposal can
+  report it; the Agent column shows each result, skipped rows reopen, and bookings above the saved schedule stay red.
+- added: Uren · Week can give its open proposal to an existing agent session or start one from a profile. The dialog
+  previews the exact prompt, keeps the schedule limit and prior approval mandatory, and marks rows only after delivery;
+  its visible destination follows the saved choice, and a failed status update cannot resend an already delivered prompt.
+- added: Uren · Week, the hours proposal: per day the work schedule less your own entries, split over the projects in
+  the proposal by measured time and rounded to 5, 15 or 30 minutes, never above the schedule. Own entries stand as
+  their own rows, each line shows its status, earlier weeks keep the status of then, and "Kopieer als tabel" copies
+  the grid as tab-separated text. Schedule, rounding and private projects live in Productivity's settings (0.3.0).
+- added: a plugin's side-menu launcher can ask for a Material icon and set the tone of its badge (accent, success or
+  neutral); Productivity uses both for its hours entry. Needs SDK 3.26.0 (UI 3.7.0) and host 0.115.0.
+- added: Uren · Dag shows the time measured from your sessions beside your own entries: a strip of when you acted,
+  your entries and your agents, the measured time per project, your time and agent time. Your time counts each
+  minute once and gives it to the project you last acted on; an own entry over measured time wins it. The Uren badge
+  now counts measured plus own time. Productivity 0.2.0 asks for `timeline.read-all`.
+- added: plugins can open an existing session without changing or sending its input; a missing pane is reported.
+- added: in the Browser plugin an agent session can ask to control a shared tab, and you can give it control yourself
+  on the share card: it may then click, type, scroll and navigate in that one tab, only on that site. An amber line and
+  a bar say who controls it and what it last did, **Stop** ends it at once, and your own click or key in the tab takes
+  over until you **Give back**. Every form the tab would send waits for your **Send**, yours too while an agent
+  controls it; a form to another site, or the tab leaving the site, is refused. Every action is logged, typed text only
+  by its length.
+- added: a plugin can ask its question as a card under the assistant's conversation instead of over it, with
+  buttons to approve, pick another option or say no.
+- changed: every MCP tool call in a conversation now shows by its server and tool, such as `browser.request_tab` or
+  `agents.notify` instead of `mcp__cockpit-browser__browser_request_tab`, and the one a card belongs to says it
+  "waits for your choice" while that card is open.
+- added: plugins that offer a running-session picker can show each session's profile and whether it is busy, waiting,
+  done or idle instead of making you choose from names alone.
+- added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
+  for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
+  installing something that cannot start.
+- added: an agent or the assistant can ask to look along on one of your browser tabs. A card appears in its own
+  conversation with your active tab already picked; nothing is read until you approve, and a No or no answer reads
+  nothing. After you approve it gets that tab's address, title and a screenshot at once, under the same stop-at-any-time
+  sharing as any other shared tab.
+- added: in the Browser plugin you can share the tab you are looking at with one agent session, after you pick that
+  session on a card. The agent can then read only that tab (address, title, text and a screenshot), never cookies or
+  other tabs; every read is logged, a bar says who is watching, and **Stop sharing** ends it at once. If the tab moves
+  to another site, sharing pauses until you say to keep sharing there.
+- added: a consent card can ask you to pick, for example which session and what an agent may do, and over the whole
+  window when it belongs to no session. Such a card always waits for you: it is never remembered or skipped, and
+  Escape or a timeout refuses it.
+- added: a plugin can show one line of its own text in the status bar, such as the browser's "Browser · profile
+  Raymond · 3 tabs", and replace or remove it as its state changes.
+- added: a plugin's workspace can put its own buttons on the workspace tab strip, shown only while that workspace is
+  active, so an action like **Dock in the rail** sits in the row above the workspace instead of inside it.
+- added: a plugin you allow to (`timeline.read-all`) can read every session's timeline over a range: when it was
+  busy, waiting or idle, what you did in it, its statuslines and what each turn spent, with day totals for anything
+  older than 90 days. Without that permission in its manifest, it gets a refusal that names it.
+- added: the session timeline and the usage history keep their raw lines for 90 days; older days are folded
+  into one line per session and day (agent time, waiting time, operator actions, tokens, reported cost and turns)
+  that stays. Your own time entries are never folded or removed.
+- added: the Browser plugin lets you browse inside Cockpit with your own profile, as a tab or in the rail (also in its
+  own window), with tabs, an address bar, sound and mute per tab. YouTube plays; a page that needs a video format the
+  built-in browser lacks offers **Open in system browser**. The engine downloads once on first use. Off on macOS for now.
+- added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
+  on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
+  Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
+- added: the Browser's **Agents** side shows the tabs of the browsers your agents use, each with the session it belongs
+  to, and a live picture of the tab you select (only while it is on screen). **Take over** lets you click and type in the
+  tab while that session's browser calls are refused with a clear message until you **Give back**; **Stop agent** closes
+  that session's browser, and its next browser call says you stopped it.
+- added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
+  so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
+- added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**
+  opens the rail on it, or raises its window when it floats. A plugin cannot open another plugin's panel.
+- added: a dock-rail panel from a plugin can keep its view while you collapse the rail or switch tabs, and can be
+  undocked (⧉ in the rail header) into its own window with **⇤ Dock back** to return it. Whether it floats and where its
+  window stood survive a restart. The assistant docks and undocks through the same mechanism, behaving as before.
+- added: a plugin names what it asks for under `capabilities` in its `plugin.json`; the consent dialog and the plugin
+  list say each one in plain words, and a name the cockpit does not know keeps the plugin from loading, with the
+  reason in the plugin list. Your own time entries now go only to a plugin that asks for `time.entries`.
+- added: a plugin's MCP tool can see who is calling it — your assistant, an ordinary session, or a remote caller
+  with the connect key's name — as the cockpit verified it, so a tool meant only for you can refuse everyone else.
+- added: a plugin can hand a running session a prompt, on SDK and terminal sessions alike, but only after you press
+  Send on the cockpit's own confirmation card on that session. The card names the plugin, the session, its reason and
+  the full text; it is never remembered and the consent bypass in Options does not skip it.
+- added: the cockpit keeps a timeline per session in `session-timeline.jsonl`: when it went busy, idle or waiting on
+  you, when you sent a message or answered a permission or question, and each statusline, with the project and the
+  ticket it was on. What you sent or answered never goes in. A session left busy when the cockpit stopped is closed
+  at the stop time on the next start.
+- added: a session the assistant started that ends a turn without saying done, blocked or asking, gets one nudge
+  to carry on; stalling again tells the assistant (`stalled`, with its last lines) instead of nudging twice. Ending on a
+  notify, an open question or permission, or a run still going counts as a closing. Sessions you start yourself are left alone.
+- added: every session the cockpit starts is told how a turn ends — done, blocked or a question, never an announced
+  next step — that mail and run verdicts arrive in its inbox and wake it (so no sleep loops), and to look up a tool's
+  schema when it fails unclearly. No briefing has to remember it any more; a project's own instructions still come first.
 - added: **reminders** in Schedules, once or repeating. At its moment a reminder goes off as a cockpit notification
   with **Done**, **Snooze 10 min** and **1 hour**, also with the Schedules screen closed or hidden, and on every
   chosen channel, with buttons where the channel has them (Discord) or a text reply. One missed while the computer
@@ -294,6 +382,18 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   first-install pins into one save, removing avoidable disk I/O and sharing-violation windows.
 - fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
   saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
+- fixed: an idle assistant conversation no longer records a binding error while no inline consent card is open.
+- fixed: Productivity 0.6.2 is ready for its first store release with its category, icon, project links and
+  planning-and-tracking audience in place, and it can be selected in the manual publisher.
+- fixed: a prompt supplied to `StartSessionAsync` is submitted as the new desktop session's first turn once its
+  runtime is ready, instead of being left in the composer for an operator to send manually.
+- fixed: Quit from the tray and the restart after an update now close Cockpit the same way as closing it from the desktop,
+  so plugins that tidy up on the way out (the browser's engine) get to do that on every route.
+- fixed: searching Options no longer leaves a plugin's field labels on screen without their boxes (the YouTrack
+  instance cards showed only "Label", "Instance base URL" and "Permanent token"). A label now shows and hides with
+  the field it names, and the hint below a card's last field goes with that field.
+- fixed: a Codex session in a terminal pane now gets the project's instructions and the cockpit's standing ones;
+  it used to start without any of them.
 - fixed: tests that create temporary Git repositories no longer overwrite the identity of the repository running
   them when they inherit a Git repository override.
 - fixed: the **Quick note** window closes again once the note is saved, as it did before; it stayed open after every
@@ -365,6 +465,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: a Kimi or opencode session started on a model the agent does not offer, or refuses, now fails to start
   and says why, instead of quietly running on the agent's own default model. This also applies to a model chosen in
   the profile's launch options; a stale "Default model" in the provider's own settings is still skipped quietly.
+- changed: plugins can now be told which MCP servers a session mounts (`SessionResourceRequest.McpServers`), and what a plugin puts in a session's environment, such as `GH_REPO`, now also reaches SDK sessions and sessions on the headless server, not only terminal panes.
 - changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
   made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
   as before, and a link that matches no single project is left alone with a warning. Needs Cockpit 0.91.0; Depot 0.11.11.

@@ -17,4 +17,7 @@ public enum PluginLoadDecision
 
     // Needs a newer cockpit than this one (its `minHostVersion`) — refuse rather than load something that will fail where nobody can see it.
     HostTooOld,
+
+    // Asks for a capability this host does not know (AC-1730) — refuse, naming it, rather than load it without.
+    UnknownCapability,
 }

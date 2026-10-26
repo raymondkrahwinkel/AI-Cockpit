@@ -16,6 +16,9 @@ internal static class AuditTrailFiles
     // The usage trail (AC-251): what the sessions spent.
     public const string Usage = "usage-history.jsonl";
 
+    // The operator's own time entries (AC-1729): retained without rollover.
+    public const string OwnTimeEntries = "own-time-entries.jsonl";
+
     // The agent-notify trail (AC-392): the messages agents sent each other.
     public const string AgentNotify = "agent-notify-audit.jsonl";
 
@@ -28,8 +31,14 @@ internal static class AuditTrailFiles
     // The node-access trail (AC-1351): who knocked on the node endpoint, with which key prefix, and what they did.
     public const string NodeAccess = "node-access-audit.jsonl";
 
+    // The session timeline (AC-1717): status, operator actions and statuslines per session.
+    public const string SessionTimeline = "session-timeline.jsonl";
+
+    // The day aggregates (AC-1719): one line per session and day once its raw timeline and usage lines are gone.
+    public const string SessionDayAggregates = "session-day-aggregates.jsonl";
+
     // Every trail's file name. The order carries no meaning.
-    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, AgentNotify, AssistantSpawn, JobHistory, NodeAccess];
+    public static IReadOnlyList<string> Names { get; } = [Consent, Delegation, Usage, OwnTimeEntries, AgentNotify, AssistantSpawn, JobHistory, NodeAccess, SessionTimeline, SessionDayAggregates];
 
     // Where `fileName` lives for this install: next to `cockpit.json`, under the state root
     // a development build keeps to itself.

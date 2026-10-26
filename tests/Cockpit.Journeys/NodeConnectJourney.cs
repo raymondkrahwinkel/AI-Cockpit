@@ -179,7 +179,7 @@ public sealed class NodeConnectJourney
         var endpoints = services.GetRequiredService<CockpitMcpEndpointHost>();
         (IPAddress Address, int Port)[] listeners =
         [
-            (IPAddress.Any, new Uri(Assert.Single(endpoints.GetNodeAddresses()).Url).Port),
+            (IPAddress.Loopback, new Uri(Assert.Single(endpoints.GetNodeAddresses()).Url).Port),
             (IPAddress.Loopback, new Uri(endpoints.GetServers()[0].Url ?? "").Port),
         ];
         var registry = services.GetRequiredService<ISessionRegistry>();

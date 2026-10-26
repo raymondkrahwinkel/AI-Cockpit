@@ -94,7 +94,8 @@ internal sealed class AgentCanaryDesk : IAsyncDisposable
             new NodeSelfSignedCertificate(Path.Combine(Path.GetTempPath(), $"canary-node-{Guid.NewGuid():N}.pfx")),
             new NodeSharedSecret(),
             mounts,
-            NullLoggerFactory.Instance);
+            NullLoggerFactory.Instance,
+            new NodeListenAddress(System.Net.IPAddress.Loopback));
 
         await host.StartAsync(CancellationToken.None);
         var url = host.GetServers().Single(server => server.Name == "cockpit-agents").Url!;

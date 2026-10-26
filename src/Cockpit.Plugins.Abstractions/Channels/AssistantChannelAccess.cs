@@ -80,6 +80,7 @@ public sealed class AssistantChannelAccess
     /// Widens to a named list. A false <paramref name="warningAcknowledged"/> is refused with
     /// <see cref="MultipleUsersWarning"/> as the reason, so the warning cannot be skipped.
     /// </summary>
+    [Obsolete("Assistant channels support one linked account only. Use ForSingleUser instead.")]
     public static AssistantChannelAccessResult ForUsers(IReadOnlyList<string> userIds, bool warningAcknowledged)
     {
         var named = (userIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).ToList();
@@ -98,6 +99,7 @@ public sealed class AssistantChannelAccess
     /// Widens to everyone. Anything but <see cref="EveryoneConfirmationPhrase"/> typed over is refused with
     /// <see cref="EveryoneWarning"/> as the reason.
     /// </summary>
+    [Obsolete("Assistant channels support one linked account only. Use ForSingleUser instead.")]
     public static AssistantChannelAccessResult ForEveryone(string typedConfirmation) =>
         string.Equals(typedConfirmation?.Trim(), EveryoneConfirmationPhrase, StringComparison.OrdinalIgnoreCase)
             ? AssistantChannelAccessResult.Configured(new AssistantChannelAccess(AssistantChannelAudience.Everyone, []))
@@ -109,7 +111,9 @@ public sealed class AssistantChannelAccess
     /// </summary>
     public bool IsAllowed(string? userId) =>
         !string.IsNullOrWhiteSpace(userId)
-        && (Audience == AssistantChannelAudience.Everyone || _userIds.Contains(userId.Trim()));
+        && Audience == AssistantChannelAudience.SingleUser
+        && _userIds.Count == 1
+        && _userIds.Contains(userId.Trim());
 
     // AC-1023: the one door that skips the warnings, internal because it is only right for reading back a decision
     // the operator already made.

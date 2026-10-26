@@ -71,6 +71,16 @@ public interface ISessionHandle
     string? ProjectId => null;
 
     /// <summary>
+    /// True when the assistant started this session rather than the operator (AC-1300); what AC-1706's stall nudge is limited to.
+    /// </summary>
+    bool StartedByTheAssistant => false;
+
+    /// <summary>
+    /// The run a plugin embedded this session for (<c>EmbeddedSessionRequest.RunId</c>), or null.
+    /// </summary>
+    string? RunId => null;
+
+    /// <summary>
     /// True for a plain shell pane, which has no agent behind it.
     /// </summary>
     bool IsTerminal { get; }
@@ -282,7 +292,7 @@ public interface ISessionHandle
 
     /// <summary>
     /// Raised with the new <see cref="LiveState"/> whenever it changes (AC-1437), outside the handle's own lock.
-    /// Never raised by a handle whose session keeps no host-owned fold, such as a TTY pane or a plain terminal.
+    /// A TTY pane raises it for its status only (AC-1717); a plain terminal never does.
     /// </summary>
     event Action<SessionLiveState>? LiveStateChanged
     {
@@ -299,6 +309,20 @@ public interface ISessionHandle
     /// Raised when a turn ends, completed or broken off by a session error (AC-1437), outside the handle's own lock.
     /// </summary>
     event Action<SessionTurnEnd>? TurnEnded
+    {
+        add
+        {
+        }
+
+        remove
+        {
+        }
+    }
+
+    /// <summary>
+    /// Raised when the operator sends a prompt or answers a permission or a question card (AC-1717). Carries no content.
+    /// </summary>
+    event Action<SessionOperatorAction>? OperatorActed
     {
         add
         {

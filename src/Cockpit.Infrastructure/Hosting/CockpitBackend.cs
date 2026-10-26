@@ -34,6 +34,7 @@ using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Usage;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions;
 
@@ -104,7 +105,11 @@ public sealed class CockpitBackend
     // Core and the no-frontend defaults, then Infrastructure and whatever `frontend` adds; the last registration wins,
     // so a desktop's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
     // so a plugin's ConfigureServices registers on top of all of it (#14).
-    public static CockpitBackend Build(ILoggerFactory loggerFactory, Action<IServiceCollection>? frontend = null, PluginStartup plugins = PluginStartup.None)
+    public static CockpitBackend Build(
+        ILoggerFactory loggerFactory,
+        Action<IServiceCollection>? frontend = null,
+        PluginStartup plugins = PluginStartup.None,
+        System.Net.IPAddress? nodeListenAddress = null)
     {
         var services = new ServiceCollection();
         ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
@@ -139,6 +144,10 @@ public sealed class CockpitBackend
         }
 
         frontend?.Invoke(services);
+        if (nodeListenAddress is not null)
+        {
+            services.AddSingleton(new NodeListenAddress(nodeListenAddress));
+        }
         if (plugins != PluginStartup.None)
         {
             _LoadPlugins(services, loggerFactory, plugins == PluginStartup.SafeMode, withoutFrontend: frontend is null);
@@ -273,6 +282,16 @@ public sealed class CockpitBackend
             inboxWakeScheduler.Start();
         }
 
+        // AC-1706: and nudge a session the assistant started once when a turn ends without a closing; that wake above
+        // turns the nudge into its turn.
+        Services.GetService<StallNudger>()?.Start(sessionRegistry);
+
+        // AC-1719: first fold what is older than 90 days into day aggregates, before the recorder reads or appends.
+        Services.GetService<SessionDayRetention>()?.Run();
+
+        // AC-1717: and keep every session's busy/idle, operator actions and statuslines in `session-timeline.jsonl`.
+        Services.GetService<SessionTimelineRecorder>()?.Start(sessionRegistry);
+
         // AC-643: and keep the worktree crash net ticking after the startup sweep, against the sessions that are
         // live at that moment — a worktree whose owner crashed at noon is reconciled then, not at the next restart.
         if (Services.GetService<WorktreeReconciler>() is { } worktreeReconciler)
@@ -332,7 +351,7 @@ public sealed class CockpitBackend
 
         IDisposable?[] planners =
         [
-            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(),
+            Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
             Services.GetService<ScheduledBackup>(), Services.GetService<SettingsCarrierSync>(),
         ];
@@ -579,7 +598,8 @@ public sealed class CockpitBackend
             actions,
             diagnostics,
             plugin.GetType(),
-            cache.CreateFor(discovered.FolderId));
+            cache.CreateFor(discovered.FolderId),
+            discovered.Manifest.Capabilities);
     }
 
     // AC-1378/AC-1439: the one launcher everywhere; without a frontend it keeps the desks as saved and hosts its sessions

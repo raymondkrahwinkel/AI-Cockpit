@@ -26,6 +26,7 @@ internal sealed class ServerPluginUiHost(
     Func<string, CancellationToken, Task<PluginMcpSignInOutcome>> mcpSignIn,
     Func<string, CancellationToken, Task> mcpSignOut,
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+    Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
     ServerManagedClis managedClis) : ICockpitUiHost
 {
     private readonly List<Action> _saved = [];
@@ -111,6 +112,12 @@ internal sealed class ServerPluginUiHost(
 
     public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
+    public Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
+
+    public void SetStatusText(string? text)
+    {
+    }
+
     public Control? CreateEmbeddedSessionView(string paneId) => null;
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
@@ -171,6 +178,8 @@ internal sealed class ServerPluginUiHost(
 
     // The server's profiles, which a session the plugin starts there runs on.
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => profiles();
+
+    public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => projects();
 
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 

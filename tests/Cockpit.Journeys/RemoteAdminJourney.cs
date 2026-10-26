@@ -76,7 +76,9 @@ public sealed class RemoteAdminJourney
         // above the pairing port, so that is the port found free.
         var checksumFile = Path.Combine(root, "echo-checksum.txt");
         var port = _FreeDoorPort();
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false, withGitStatus: true);
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(
+            stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook",
+            pluginStore: store, withEchoPlugin: false, withGitStatus: true, withBrowserPlugin: true);
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile,
@@ -729,6 +731,30 @@ public sealed class RemoteAdminJourney
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(echoPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var profilesStatus = HeadlessAvalonia.Run(() => profiles.Status);
 
+            // AC-1712: a session that mounts Playwright MCP gets the agent Chromium's endpoint at launch, on the server too.
+            // A page opened through it is in its own targets, the browser goes away with the session, and with the plugin's
+            // setting off the next session gets no endpoint at all.
+            using var cdp = new HttpClient();
+            var (browserPane, browserEndpoint) = await _AskForCdpEndpointAsync(setup);
+            Assert.StartsWith("http://127.0.0.1:", browserEndpoint);
+            using (var page = await cdp.SendAsync(new HttpRequestMessage(HttpMethod.Put, $"{browserEndpoint}/json/new?data:text/html,agent-tab")))
+            {
+                page.EnsureSuccessStatusCode();
+            }
+
+            Assert.Contains("agent-tab", await cdp.GetStringAsync($"{browserEndpoint}/json/list"));
+            await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{browserPane}", null);
+            await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
+            {
+                for (var attempt = 0; attempt < 50; attempt++)
+                {
+                    await cdp.GetStringAsync($"{browserEndpoint}/json/version");
+                    await Task.Delay(100);
+                }
+            });
+            await setup.SendAsync<JsonObject>(HttpMethod.Put, "api/v1/plugins/browser/storage", new { values = new { agentsUseCockpitBrowser = false }, removed = Array.Empty<string>(), secrets = Array.Empty<string>() });
+            Assert.Equal("none", (await _AskForCdpEndpointAsync(setup)).Endpoint);
+
             // AC-1475: Assistant → Copy in Echo → turn it on; the server reports it running, and both are in the Audit log.
             var assistant = admin.Assistant ?? throw new InvalidOperationException("Admin opened Options without its Assistant page.");
             await HeadlessAvalonia.RunAsync(async () =>
@@ -1297,6 +1323,17 @@ public sealed class RemoteAdminJourney
         return (read["greeting"]?.GetValue<string>(), read["apiTokenSet"]?.GetValue<bool>() ?? false);
     }
 
+    // AC-1712: what the echo fixture saw in its session's environment under the browser's variable: "none" or the endpoint.
+    private static async Task<(string Pane, string Endpoint)> _AskForCdpEndpointAsync(BackendApiClient setup)
+    {
+        using var timeout = new CancellationTokenSource(Until.Ceiling);
+        var started = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/sessions", new { profile = "Echo", prompt = "cdp-endpoint" });
+        var pane = started["paneId"]?.GetValue<string>() ?? "";
+        var row = await setup.StreamEventsAsync(0, timeout.Token)
+            .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(pane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: ", StringComparison.Ordinal), timeout.Token);
+        return (pane, System.Text.RegularExpressions.Regex.Match(row.Data.GetRawText(), @"echo: (\S+?) \(cli").Groups[1].Value);
+    }
+
     private static async Task _GitAsync(string directory, params string[] arguments)
     {
         var start = new ProcessStartInfo("git", arguments) { WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true };
@@ -1337,7 +1374,7 @@ public sealed class RemoteAdminJourney
     {
         while (true)
         {
-            using var listener = new System.Net.Sockets.TcpListener(IPAddress.Any, 0);
+            using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             if (port > NodeEndpointSettings.McpPortOffset)
