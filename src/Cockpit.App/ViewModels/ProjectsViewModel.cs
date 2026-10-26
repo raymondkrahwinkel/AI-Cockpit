@@ -216,17 +216,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _snapshot = _snapshot with
         {
             Settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
-        {
-            Description = "The cockpit itself — the desktop app these sessions run in.",
-            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
-            DefaultProfileLabel = "personal",
-            LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
-            AdditionalInfo =
+            {
+                Description = "The cockpit itself — the desktop app these sessions run in.",
+                SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
+                DefaultProfileLabel = "personal",
+                LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
+                AdditionalInfo =
             [
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
                 new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
-        }),
+            }),
         };
         _Republish();
     }
