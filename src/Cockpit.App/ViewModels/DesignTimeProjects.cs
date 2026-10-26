@@ -18,6 +18,10 @@ internal sealed class DesignTimeProjects : IProjectCatalog, IProjectEditor
 
     public Task SyncNowAsync(string projectId) => Task.CompletedTask;
 
+    public Task HideSharedProjectAsync(string sharedProjectId) => Task.CompletedTask;
+
+    public Task UnhideSharedProjectsAsync(string sourceKey, string organizationSlug) => Task.CompletedTask;
+
     public Task<Project?> FindProjectAsync(string projectId) =>
         Task.FromResult(Current.Settings.Projects.FirstOrDefault(project => project.Id == projectId));
 

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
@@ -16,6 +17,10 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private readonly IProjectCatalog _catalog;
     private readonly IProjectEditor _editor;
     private ProjectCatalogSnapshot _snapshot = ProjectCatalogSnapshot.Empty;
+    private ProjectsDisplaySettings _projectsDisplaySettings = new();
+    private readonly HashSet<string> _collapsedSectionKeys = new(StringComparer.Ordinal);
+    private Func<string, int> _sessionsRunning = _ => 0;
+    private INotifyCollectionChanged? _sessionChanges;
 
     // AC-490: the job-run trail the cards read "started 9 September" from, and what was read from it last. Null
     // in a graph without one, where every job's line stays the calendar's alone.
@@ -96,6 +101,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         var sharedGroupsChanged = !ReferenceEquals(_catalog.Current.SharedProjectGroups, _snapshot.SharedProjectGroups);
         _snapshot = _catalog.Current;
         _Republish();
+        _RepublishProjectSections();
         if (sharedGroupsChanged)
         {
             _RepublishSharedProjectGroups();
@@ -125,6 +131,21 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // waiting on it, so opening the workspace never blocks on a slow or unreachable connection — see that method's own
     // remarks (AC-245).
     public ObservableCollection<SharedProjectGroupViewModel> SharedProjectGroups { get; } = [];
+
+    // AC-1599: B2's source/organization rows. The existing card/category collections remain for the old view until it
+    // is replaced by the B2 XAML in its own ticket.
+    public ObservableCollection<ProjectSectionViewModel> ProjectSections { get; } = [];
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private string _selectedCategory = "All";
+
+    [ObservableProperty]
+    private ProjectsDensity _density = ProjectsDensity.Comfortable;
+
+    public IReadOnlyList<string> Categories => ["All", .. _snapshot.Settings.Normalized().CategoryOrder, _UncategorizedLabel];
 
     // Whether there is anything to show under a "Shared" heading right now — lets the workspace leave the whole section out rather than draw an empty one.
     public bool HasSharedProjects => SharedProjectGroups.Count > 0;
@@ -195,17 +216,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _snapshot = _snapshot with
         {
             Settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
-        {
-            Description = "The cockpit itself — the desktop app these sessions run in.",
-            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
-            DefaultProfileLabel = "personal",
-            LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
-            AdditionalInfo =
+            {
+                Description = "The cockpit itself — the desktop app these sessions run in.",
+                SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
+                DefaultProfileLabel = "personal",
+                LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
+                AdditionalInfo =
             [
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
                 new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
-        }),
+            }),
         };
         _Republish();
     }
@@ -285,6 +306,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
         await _catalog.LoadAsync(cancellationToken).ConfigureAwait(true);
         _snapshot = _catalog.Current;
+        _Republish();
+        _RepublishSharedProjectGroups();
+        _RepublishProjectSections();
 
         await RefreshJobRunsAsync(cancellationToken).ConfigureAwait(true);
 
@@ -292,7 +316,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         {
             // Deliberately unguarded: it reads the same cockpit.json the project store read a line above, so an
             // unreadable file has already thrown and a catch here would cover a case it cannot reach.
-            LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
+            _projectsDisplaySettings = await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true);
+            LayoutMode = _projectsDisplaySettings.LayoutMode;
+            Density = _projectsDisplaySettings.Density;
+            _collapsedSectionKeys.Clear();
+            _collapsedSectionKeys.UnionWith(_projectsDisplaySettings.CollapsedSectionKeys);
+            _RepublishProjectSections();
         }
 
         _BeginSharedProjectsLoad();
@@ -326,7 +355,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             return;
         }
 
-        var normalized = new ProjectsDisplaySettings { LayoutMode = parsed }.Normalized();
+        var normalized = (_projectsDisplaySettings with { LayoutMode = parsed }).Normalized();
         if (normalized.LayoutMode == LayoutMode)
         {
             // Clicking the segment you are already on: a ToggleButton has flipped its own IsChecked to false by the
@@ -338,6 +367,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         }
 
         LayoutMode = normalized.LayoutMode;
+        _projectsDisplaySettings = normalized;
 
         if (_displaySettings is not null)
         {
@@ -351,6 +381,41 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 // change, a config write gate — and it does so from a command, where an exception has no caller to
                 // land on. The page has already switched by then; the choice simply does not survive a restart.
             }
+        }
+    }
+
+    [RelayCommand]
+    private async Task SetDensityAsync(string? density)
+    {
+        if (!Enum.TryParse<ProjectsDensity>(density, ignoreCase: true, out var parsed) || parsed == Density)
+        {
+            return;
+        }
+
+        Density = parsed;
+        _projectsDisplaySettings = _projectsDisplaySettings with { Density = parsed };
+        if (_displaySettings is not null)
+        {
+            await _displaySettings.SaveAsync(_projectsDisplaySettings).ConfigureAwait(true);
+        }
+    }
+
+    public async Task SetSectionCollapsedAsync(ProjectSectionViewModel section, bool collapsed)
+    {
+        section.IsCollapsed = collapsed;
+        if (collapsed)
+        {
+            _collapsedSectionKeys.Add(section.Key);
+        }
+        else
+        {
+            _collapsedSectionKeys.Remove(section.Key);
+        }
+
+        _projectsDisplaySettings = _projectsDisplaySettings with { CollapsedSectionKeys = [.. _collapsedSectionKeys] };
+        if (_displaySettings is not null)
+        {
+            await _displaySettings.SaveAsync(_projectsDisplaySettings).ConfigureAwait(true);
         }
     }
 
@@ -398,6 +463,154 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(HasSharedProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
         OnPropertyChanged(nameof(HasNoSharedProjectSources));
+    }
+
+    partial void OnSearchTextChanged(string value) => _RepublishProjectSections();
+
+    partial void OnSelectedCategoryChanged(string value) => _RepublishProjectSections();
+
+    public void SetSessionCounter(Func<string, int> counter, INotifyCollectionChanged? changes = null)
+    {
+        if (_sessionChanges is not null)
+        {
+            _sessionChanges.CollectionChanged -= _OnSessionsChanged;
+        }
+
+        _sessionsRunning = counter;
+        _sessionChanges = changes;
+        if (_sessionChanges is not null)
+        {
+            _sessionChanges.CollectionChanged += _OnSessionsChanged;
+        }
+
+        _RepublishProjectSections();
+    }
+
+    private void _OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs args) => _RepublishProjectSections();
+
+    [RelayCommand]
+    public async Task HideSharedProjectAsync(string sharedProjectId)
+    {
+        await _catalog.HideSharedProjectAsync(sharedProjectId).ConfigureAwait(true);
+        await LoadSharedProjectsAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    public async Task UnhideSharedProjectsAsync((string SourceKey, string OrganizationSlug) section)
+    {
+        await _catalog.UnhideSharedProjectsAsync(section.SourceKey, section.OrganizationSlug).ConfigureAwait(true);
+        await LoadSharedProjectsAsync().ConfigureAwait(true);
+    }
+
+    private void _RepublishProjectSections()
+    {
+        var sections = new Dictionary<string, ProjectSectionViewModel>(StringComparer.Ordinal);
+
+        ProjectSectionViewModel GetSection(SharedProjectLocation? location)
+        {
+            var isMachine = location is null;
+            var sourceKey = location?.SourceKey ?? string.Empty;
+            var organizationSlug = location?.Organization?.Slug ?? string.Empty;
+            var key = isMachine ? "machine" : sourceKey + ":" + (organizationSlug.Length == 0 ? "source" : organizationSlug);
+            if (sections.TryGetValue(key, out var existing))
+            {
+                return existing;
+            }
+
+            var sourceName = location?.SourceName ?? string.Empty;
+            // shortcut: the source exposes no host/address field; AC-1600 should replace this display-name fallback.
+            var host = sourceName.Split('—').LastOrDefault()?.Trim() ?? sourceName;
+            var created = new ProjectSectionViewModel(
+                key, sourceKey, organizationSlug,
+                location is null ? "This machine" : location.Organization?.Name ?? sourceName,
+                isMachine ? string.Empty : host,
+                isMachine)
+            {
+                IsCollapsed = _collapsedSectionKeys.Contains(key),
+            };
+            sections.Add(key, created);
+            return created;
+        }
+
+        bool Matches(string name, string? description, string? organization, string? category)
+        {
+            var text = SearchText.Trim();
+            return (SelectedCategory == "All" || string.Equals(category ?? _UncategorizedLabel, SelectedCategory, StringComparison.OrdinalIgnoreCase))
+                && (text.Length == 0 || name.Contains(text, StringComparison.OrdinalIgnoreCase)
+                    || (description?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (organization?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        foreach (var group in _snapshot.SharedProjectGroups)
+        {
+            foreach (var offer in group.Projects)
+            {
+                var location = new SharedProjectLocation(group.SourceKey, group.SourceName, offer.Organization);
+                var section = GetSection(location);
+                section.ToAddCount++;
+                if (Matches(offer.Name, offer.Description, offer.Organization?.Name, null))
+                {
+                    section.Items.Add(new ProjectListItemViewModel(offer));
+                }
+            }
+        }
+
+        foreach (var project in _snapshot.Settings.Projects)
+        {
+            _snapshot.BoundProjectLocations.TryGetValue(project.Id, out var location);
+            var section = GetSection(location);
+            section.HereCount++;
+            if (Matches(project.Name, project.Description, location?.Organization?.Name, project.Category))
+            {
+                section.Items.Add(new ProjectListItemViewModel(project, _sessionsRunning(project.Id)));
+            }
+        }
+
+        foreach (var location in _snapshot.HiddenSharedProjectLocations.Values)
+        {
+            GetSection(location).HiddenCount++;
+        }
+
+        foreach (var group in _snapshot.SharedProjectGroups)
+        {
+            var sourceSections = sections.Values.Where(section => !section.IsThisMachine && section.SourceKey == group.SourceKey).ToList();
+            if (sourceSections.Count == 0 && (group.Error is { Length: > 0 } || group.Notice is { Length: > 0 }))
+            {
+                sourceSections.Add(GetSection(new SharedProjectLocation(group.SourceKey, group.SourceName, null)));
+            }
+
+            foreach (var section in sourceSections)
+            {
+                section.Error = group.Error;
+                section.Notice = group.Notice;
+            }
+        }
+
+        var isFiltered = !string.IsNullOrWhiteSpace(SearchText) || SelectedCategory != "All";
+        ProjectSections.Clear();
+        foreach (var section in sections.Values
+            .Where(section => section.Items.Count > 0 || (!isFiltered
+                && (section.HiddenCount > 0 || section.Error is { Length: > 0 } || section.Notice is { Length: > 0 })))
+            .OrderBy(section => section.IsThisMachine ? 0 : 1)
+            .ThenBy(section => section.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(section => section.Host, StringComparer.CurrentCultureIgnoreCase))
+        {
+            var ordered = section.Items
+                .OrderBy(item => item.IsOnThisMachine ? 0 : 1)
+                .ThenByDescending(item => item.Project?.LastOpenedAt ?? DateTimeOffset.MinValue)
+                .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            section.Items.Clear();
+            foreach (var item in ordered)
+            {
+                section.Items.Add(item);
+            }
+
+            section.ShownCount = section.Items.Count;
+            ProjectSections.Add(section);
+        }
+
+        OnPropertyChanged(nameof(Categories));
     }
 
     // Finds the source it came from by its own `SharedProjectOffer.Id` prefix (the same `"{scheme}:{slug}"` shape

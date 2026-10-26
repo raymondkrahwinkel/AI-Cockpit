@@ -210,6 +210,10 @@ internal static class ServerAdminScene
 
         public Task SyncNowAsync(string projectId) => Task.CompletedTask;
 
+        public Task HideSharedProjectAsync(string sharedProjectId) => Task.CompletedTask;
+
+        public Task UnhideSharedProjectsAsync(string sourceKey, string organizationSlug) => Task.CompletedTask;
+
         public Task<Project?> FindProjectAsync(string projectId) => Task.FromResult(_projects.FirstOrDefault(project => project.Id == projectId));
 
         public Task<Project> AddNewProjectAsync(Project project) => throw new NotSupportedException();
