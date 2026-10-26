@@ -18,7 +18,7 @@ public sealed class Ac1599ProjectsViewModelTests
         var catalog = new _Catalog(prototype with
         {
             SharedProjectGroups = [
-                _Group("depot-b", "Depot — beta.example", "Synvolution", "depot-b:beta", "Beta"),
+                _Group("depot-b", "Depot — Beta", "beta.example", "Synvolution", "depot-b:beta", "Beta"),
                 .. prototype.SharedProjectGroups,
             ],
         });
@@ -206,12 +206,12 @@ public sealed class Ac1599ProjectsViewModelTests
             ("kit-cust", "Klant – De Vries Installatietechniek", "Krahwinkel IT", "Maintenance contract: Microsoft 365 tenant, laptops and the NAS."),
         };
         var groups = team.GroupBy(row => row.Org).Select(group => new SharedProjectGroup(
-            "Depot — alpha.example",
+            "Depot — Alpha",
             group.Select(row => new SharedProjectOffer("depot-a:" + row.Id, row.Name, row.Description,
                 Organization: new SharedProjectOrganizationInfo(group.Key.ToLowerInvariant(), group.Key, "Editor"))).ToList(),
-            null, SourceKey: "depot-a")).ToList();
+            null, SourceKey: "depot-a", SourceHost: "alpha.example")).ToList();
         return _Snapshot(projects, groups, owned.Where(row => row.Org is not null).ToDictionary(
-            row => row.Id, row => _Location("depot-a", "Depot — alpha.example", row.Org!))) with
+            row => row.Id, row => _Location("depot-a", "Depot — Alpha", "alpha.example", row.Org!))) with
         {
             Settings = new ProjectSettings { Projects = projects, CategoryOrder = ["Prive", "Synvolution"] },
         };
@@ -226,11 +226,12 @@ public sealed class Ac1599ProjectsViewModelTests
             BoundProjectLocations = boundLocations ?? new Dictionary<string, SharedProjectLocation>(),
         };
 
-    private static SharedProjectGroup _Group(string sourceKey, string sourceName, string organization, string id, string name, string? description = null) =>
-        new(sourceName, [new SharedProjectOffer(id, name, description, Organization: new SharedProjectOrganizationInfo(organization.ToLowerInvariant(), organization, "Editor"))], null, SourceKey: sourceKey);
+    // AC-1600: the host travels as its own field, apart from the display name, which names no host here on purpose.
+    private static SharedProjectGroup _Group(string sourceKey, string sourceName, string host, string organization, string id, string name, string? description = null) =>
+        new(sourceName, [new SharedProjectOffer(id, name, description, Organization: new SharedProjectOrganizationInfo(organization.ToLowerInvariant(), organization, "Editor"))], null, SourceKey: sourceKey, SourceHost: host);
 
-    private static SharedProjectLocation _Location(string sourceKey, string sourceName, string organization) =>
-        new(sourceKey, sourceName, new SharedProjectOrganizationInfo(organization.ToLowerInvariant(), organization, "Editor"));
+    private static SharedProjectLocation _Location(string sourceKey, string sourceName, string host, string organization) =>
+        new(sourceKey, sourceName, new SharedProjectOrganizationInfo(organization.ToLowerInvariant(), organization, "Editor"), host);
 
     private sealed class _Catalog(ProjectCatalogSnapshot current) : IProjectCatalog
     {

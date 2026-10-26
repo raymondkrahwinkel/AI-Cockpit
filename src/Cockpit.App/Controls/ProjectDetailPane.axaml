@@ -1,0 +1,111 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:materialIcons="using:Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.ProjectDetailPane"
+             x:DataType="vm:ProjectListItemViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.paneHeading">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="LetterSpacing" Value="0.44"/>
+            <Setter Property="Margin" Value="0,22,0,8"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.factLabel">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.factValue">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- AC-1600: the basic detail pane beside the Projects list — hero, the one primary action, About and Details, for
+         the selected row (mockup `.detail`). The laid-out pane (running sessions, jobs, project actions, remove) is
+         AC-1601's. -->
+    <StackPanel>
+        <Grid ColumnDefinitions="Auto,*">
+            <controls:ProjectLogoBadge Grid.Column="0" Size="48" Margin="0,0,14,0" VerticalAlignment="Top"
+                                       LogoPath="{Binding Project.LogoPath, FallbackValue={x:Null}}" ProjectName="{Binding Name}"/>
+            <StackPanel Grid.Column="1">
+                <TextBlock Text="{Binding Name}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" LineHeight="25"/>
+                <WrapPanel Margin="0,6,0,0" ItemSpacing="6" LineSpacing="6">
+                    <Border Classes="originPill" Classes.local="{Binding !IsInOrganization}">
+                        <TextBlock Text="{Binding Origin}"/>
+                    </Border>
+                    <Border Classes="roleTag" IsVisible="{Binding HasRole}">
+                        <TextBlock Text="{Binding Role}"/>
+                    </Border>
+                </WrapPanel>
+            </StackPanel>
+        </Grid>
+
+        <Panel Margin="0,16,0,0">
+            <Button Classes="Accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    IsVisible="{Binding CanStart}"
+                    Command="{Binding Actions.Start, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="Play" Width="15" Height="15"/>
+                    <TextBlock Text="Start" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Project.DefaultProfileLabel, FallbackValue={x:Null}}" FontWeight="Normal"
+                               FontSize="11.5" Opacity="0.8" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    IsVisible="{Binding NeedsProfile}"
+                    Command="{Binding Actions.Edit, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="PencilOutline" Width="15" Height="15"/>
+                    <TextBlock Text="Pick how it runs" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="Accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    IsVisible="{Binding CanAdd}"
+                    Command="{Binding Add}" CommandParameter="{Binding SharedProject}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="Plus" Width="15" Height="15"/>
+                    <TextBlock Text="Add to my projects…" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </Panel>
+
+        <WrapPanel Margin="0,12,0,0" ItemSpacing="6" LineSpacing="4">
+            <Border Classes="statusTag changed" IsVisible="{Binding HasRemoteChanges}">
+                <TextBlock Text="☁ Changed on Depot"/>
+            </Border>
+            <Border Classes="statusTag run" IsVisible="{Binding IsRunning}">
+                <TextBlock Text="{Binding RunningLabel}"/>
+            </Border>
+            <Border Classes="statusTag job" IsVisible="{Binding HasJobs}">
+                <TextBlock Text="{Binding JobsLabel}"/>
+            </Border>
+        </WrapPanel>
+
+        <TextBlock Classes="paneHeading" Text="ABOUT"/>
+        <TextBlock Text="{Binding DescriptionText}" TextWrapping="Wrap" FontSize="13"
+                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+
+        <TextBlock Classes="paneHeading" Text="DETAILS"/>
+        <Grid ColumnDefinitions="112,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+            <TextBlock Grid.Row="0" Grid.Column="0" Classes="factLabel" Text="Where it lives"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Classes="factValue" Text="{Binding WhereItLives}"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Classes="factLabel" Text="Your role" IsVisible="{Binding HasRole}"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Classes="factValue" Text="{Binding Role}" IsVisible="{Binding HasRole}"/>
+            <TextBlock Grid.Row="2" Grid.Column="0" Classes="factLabel" Text="Runs on"/>
+            <TextBlock Grid.Row="2" Grid.Column="1" Classes="factValue" Text="{Binding RunsOnDetail}"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Classes="factLabel" Text="Category" IsVisible="{Binding IsOnThisMachine}"/>
+            <TextBlock Grid.Row="3" Grid.Column="1" Classes="factValue" Text="{Binding CategoryText}" IsVisible="{Binding IsOnThisMachine}"/>
+            <TextBlock Grid.Row="4" Grid.Column="0" Classes="factLabel" Text="Last opened" IsVisible="{Binding IsOnThisMachine}"/>
+            <TextBlock Grid.Row="4" Grid.Column="1" Classes="factValue" Text="{Binding LastOpened}" IsVisible="{Binding IsOnThisMachine}"/>
+            <TextBlock Grid.Row="5" Grid.Column="0" Classes="factLabel" Text="Folder" IsVisible="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Grid.Row="5" Grid.Column="1" Classes="factValue" Text="{Binding Folder}" FontSize="11.5"
+                       TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Folder}"
+                       FontFamily="{StaticResource CockpitMonoFont}"
+                       IsVisible="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+        </Grid>
+    </StackPanel>
+</UserControl>

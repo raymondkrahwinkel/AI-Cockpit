@@ -470,6 +470,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the Projects page is a list with a detail pane.** A toolbar across the top holds the search field,
+  Refresh, the category chips, the Comfortable/Compact switch and + New project. Projects sit in one section per
+  organisation and server — the heading always names the Depot server, so two servers with an organisation of the
+  same name stay apart — with this machine's own projects in theirs; a server that cannot be reached gets its own
+  section with the reason and Try again. Each row says where the project runs, when it was last opened and how it
+  stands, and its columns follow the width of the list rather than the window. The selected project's details stand
+  on the right, and the selection stays put when the list refreshes. The Cards, List and Continue layouts are gone.
+
 - changed: **the nightly ships only the Velopack files.** The nightly release no longer carries the Linux tarball, the
   macOS `.app.zip` and `.dmg` or the AppImage; the in-app updater and the plugin SDK are unchanged, and a nightly now
   comes in through the update channel. Stable releases still ship those packages.

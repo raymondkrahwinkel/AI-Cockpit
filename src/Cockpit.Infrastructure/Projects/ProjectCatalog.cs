@@ -317,7 +317,8 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                     source.SourceName,
                     shared.Organization is { } organization
                         ? new SharedProjectOrganizationInfo(organization.Slug, organization.Name, organization.Role)
-                        : null);
+                        : null,
+                    source.SourceHost);
 
                 if (hiddenIds.Contains(shared.Id))
                 {
@@ -332,7 +333,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
 
             foreach (var state in result.ProjectReadStates.Where(state => hiddenIds.Contains(state.Id)))
             {
-                hiddenLocations.TryAdd(state.Id, new SharedProjectLocation(source.Key, source.SourceName, null));
+                hiddenLocations.TryAdd(state.Id, new SharedProjectLocation(source.Key, source.SourceName, null, source.SourceHost));
             }
         }
 
@@ -359,7 +360,8 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             groups.Add(new SharedProjectGroup(
                 source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo,
                 source.Key, result.Succeeded ? result.Error : null,
-                AllAdded: result.Succeeded && result.Projects.Count > 0 && visible.Count == 0));
+                AllAdded: result.Succeeded && result.Projects.Count > 0 && visible.Count == 0,
+                SourceHost: source.SourceHost));
         }
 
         _sharedProjectGroups = groups;

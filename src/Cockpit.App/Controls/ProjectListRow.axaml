@@ -1,0 +1,146 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:materialIcons="using:Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.ProjectListRow"
+             x:DataType="vm:ProjectListItemViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border#RowSurface">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="controls|ProjectListRow:pointerover Border#RowSurface">
+            <Setter Property="Background" Value="{DynamicResource CockpitGhostHoverBrush}"/>
+        </Style>
+        <Style Selector="controls|ProjectListRow:selected Border#RowSurface">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentSelectionBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.team">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.faint">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.waiting">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusWaitingBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- AC-1600: one project in the B2 list (mockup `.row`). Click selects, double-click starts; the columns follow the
+         list's width through `ProjectListGrid`. A team project still to add reads quieter (its name in secondary) and
+         offers Add… where an own project offers Start. -->
+    <Border x:Name="RowSurface" MinHeight="58" Padding="16,8"
+            BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1">
+        <Panel>
+            <Border Width="3" Margin="-16,-8,0,-8" HorizontalAlignment="Left"
+                    Background="{DynamicResource CockpitAccentBrush}" IsVisible="{Binding IsSelected}"/>
+            <controls:ProjectListGrid VerticalAlignment="Center">
+                <controls:ProjectLogoBadge controls:ProjectListGrid.Cell="logo" Size="22" VerticalAlignment="Center"
+                                           LogoPath="{Binding Project.LogoPath, FallbackValue={x:Null}}" ProjectName="{Binding Name}"/>
+
+                <StackPanel controls:ProjectListGrid.Cell="main" VerticalAlignment="Center" Spacing="1">
+                    <!-- Left-aligned, so the role sits right after the name and the name trims only when both do not fit. -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" HorizontalAlignment="Left">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" Classes.team="{Binding !IsOnThisMachine}"/>
+                        <Border Grid.Column="1" Classes="roleTag" IsVisible="{Binding HasRole}">
+                            <TextBlock Text="{Binding Role}"/>
+                        </Border>
+                    </Grid>
+                    <TextBlock x:Name="DescriptionUnderName" FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding !$self.(controls:ProjectListGrid.IsWide)}"
+                               Text="{Binding DescriptionText}" Classes.faint="{Binding !HasDescription}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock FontSize="11.5" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                               IsVisible="{Binding $self.(controls:ProjectListGrid.IsSmall)}"
+                               Text="{Binding RunsOnAndLastOpened}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+
+                <TextBlock x:Name="DescriptionColumn" controls:ProjectListGrid.Cell="desc" FontSize="12" LineHeight="17"
+                           MaxLines="2" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           Text="{Binding DescriptionText}" Classes.faint="{Binding !HasDescription}"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+
+                <TextBlock controls:ProjectListGrid.Cell="prof" Text="{Binding RunsOn}" FontSize="11.5"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Classes.faint="{Binding !IsOnThisMachine}" Classes.waiting="{Binding NeedsProfile}"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <TextBlock controls:ProjectListGrid.Cell="last" Text="{Binding LastOpened}" FontSize="11.5"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                <StackPanel controls:ProjectListGrid.Cell="pl" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding RunsOn}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                               Classes.faint="{Binding !IsOnThisMachine}" Classes.waiting="{Binding NeedsProfile}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding LastOpened}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+
+                <WrapPanel controls:ProjectListGrid.Cell="stat" VerticalAlignment="Center" MaxHeight="44"
+                           ItemSpacing="6" LineSpacing="4">
+                    <Border Classes="statusTag ready" IsVisible="{Binding CanAdd}">
+                        <TextBlock Text="Ready to add"/>
+                    </Border>
+                    <Border Classes="statusTag changed" IsVisible="{Binding HasRemoteChanges}"
+                            ToolTip.Tip="Changed on Depot since it was last checked here">
+                        <TextBlock Text="☁ Changed on Depot"/>
+                    </Border>
+                    <Border Classes="statusTag run" IsVisible="{Binding IsRunning}">
+                        <TextBlock Text="{Binding RunningLabel}"/>
+                    </Border>
+                    <Border Classes="statusTag job" IsVisible="{Binding HasJobs}">
+                        <TextBlock Text="{Binding JobsLabel}"/>
+                    </Border>
+                    <TextBlock Text="{Binding QuietStatus}" IsVisible="{Binding ShowsQuietStatus}" FontSize="11"
+                               VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </WrapPanel>
+
+                <StackPanel controls:ProjectListGrid.Cell="act" Orientation="Horizontal" Spacing="4"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Classes="Accent Compact" IsVisible="{Binding CanStart}"
+                            Command="{Binding Actions.Start, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="Play" Width="12" Height="12"/>
+                            <TextBlock Text="Start" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="Compact" Content="Pick how it runs" IsVisible="{Binding NeedsProfile}"
+                            Command="{Binding Actions.Edit, FallbackValue={x:Null}}" CommandParameter="{Binding Project}"/>
+                    <Button Classes="Compact" Content="Add…" IsVisible="{Binding CanAdd}"
+                            Command="{Binding Add}" CommandParameter="{Binding SharedProject}"/>
+                    <Button Classes="Subtle" Padding="6,2" VerticalAlignment="Center"
+                            ToolTip.Tip="More for this project" AutomationProperties.Name="More for this project">
+                        <materialIcons:MaterialIcon Kind="DotsHorizontal" Width="14" Height="14"/>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Spacing="2" MinWidth="240" Margin="4">
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,6" Content="Add to my projects…" IsVisible="{Binding CanAdd}"
+                                            Command="{Binding Add}" CommandParameter="{Binding SharedProject}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,6" Content="Start, but change something first…" IsVisible="{Binding CanStart}"
+                                            Command="{Binding Actions.StartWithOptions, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding Project}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,6" Content="Open folder" IsVisible="{Binding IsOnThisMachine}"
+                                            Command="{Binding Actions.OpenFolder, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding Project}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,6" Content="Edit this project…" IsVisible="{Binding IsOnThisMachine}"
+                                            Command="{Binding Actions.Edit, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding Project}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,6" Content="Sync now" IsVisible="{Binding IsSyncable}"
+                                            Command="{Binding Actions.SyncNow, FallbackValue={x:Null}}"
+                                            CommandParameter="{Binding Project}"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </controls:ProjectListGrid>
+        </Panel>
+    </Border>
+</UserControl>

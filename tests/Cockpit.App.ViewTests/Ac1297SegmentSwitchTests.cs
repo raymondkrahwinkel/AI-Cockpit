@@ -9,19 +9,16 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
-using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
-using Cockpit.Core.Workspaces;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -73,42 +70,6 @@ public sealed class Ac1297SegmentSwitchTests
         }
     });
 
-    // The Projects layout switch is the same form: on entry the persisted layout is the one segment on, and
-    // clicking it again leaves it on.
-    [Fact]
-    public async Task ProjectsLayoutSwitch_ShowsThePersistedLayout_AndKeepsItWhenClickedAgain() =>
-        await HeadlessAvalonia.RunAsync(async () =>
-        {
-            var store = Substitute.For<IProjectStore>();
-            store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings
-            {
-                Projects = [Project.Create("Cockpit") with { Category = "Privé" }],
-                CategoryOrder = ["Privé"],
-            });
-            var projects = TestProjects.ViewModel(store, Substitute.For<ISessionDialogService>());
-            await projects.LoadAsync();
-            projects.LayoutMode = ProjectsLayoutMode.List;
-
-            var cockpit = _Cockpit(new LayoutSettings(), projects);
-            await cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
-            var window = _Shown(cockpit);
-            try
-            {
-                Assert.False(_On(_ProjectsSegment(window, "Cards")));
-                Assert.True(_On(_ProjectsSegment(window, "List")));
-
-                _Click(window, _ProjectsSegment(window, "List"));
-
-                Assert.Equal(ProjectsLayoutMode.List, cockpit.Projects.LayoutMode);
-                Assert.True(_On(_ProjectsSegment(window, "List")), "clicking the active segment must not blank it");
-                Assert.False(_On(_ProjectsSegment(window, "Cards")));
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-
     private static Window _Shown(CockpitViewModel cockpit)
     {
         var window = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };
@@ -128,9 +89,6 @@ public sealed class Ac1297SegmentSwitchTests
 
     // The selection as the theme draws it: `Button.Segment.on` is the raised segment, and nothing else marks it.
     private static bool _On(Button segment) => segment.Classes.Contains("on");
-
-    private static Button _ProjectsSegment(Window window, string mode) =>
-        window.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("Segment") && Equals(b.CommandParameter, mode));
 
     private static void _Click(Window window, Control control)
     {
