@@ -157,7 +157,10 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         });
 
     public Task HideSharedProjectAsync(string sharedProjectId) =>
-        Task.CompletedTask;
+        _WriteAsync(settings => Task.FromResult(
+            settings.IsSharedProjectHidden(sharedProjectId)
+                ? ((ProjectSettings?)null, true)
+                : (settings with { HiddenSharedProjectIds = [.. settings.HiddenSharedProjectIds, sharedProjectId] }, true)));
 
     public Task UnhideSharedProjectsAsync(string sourceKey, string organizationSlug)
     {
