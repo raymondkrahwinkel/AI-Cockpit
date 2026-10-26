@@ -256,6 +256,9 @@ public sealed class ProductivityHoursJourneyTests
         await ui.Received(1).OpenWorkspaceAsync("workspace.productivity.overview");
         var overviewScreen = workspaces["workspace.productivity.overview"].CreateBody(Substitute.For<IWorkspaceContext>());
         using var overviewScene = RenderedScene.Show(overviewScreen, 1280, 1000);
+        _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = overviewFrom;
+        _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom.AddDays(4);
+        _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
             () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
             "the week overview");
@@ -520,7 +523,7 @@ public sealed class ProductivityHoursJourneyTests
             }
 
             var now = DateTimeOffset.Now;
-            var morning = from.AddHours(9);
+            var morning = new DateTimeOffset(from.Date.AddHours(9));
             CockpitTimelineLine[] lines = from <= now && now < to
                 ? [_Act(now.AddHours(-3), "cockpit")]
                 : [
