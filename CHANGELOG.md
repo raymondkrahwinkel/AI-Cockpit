@@ -344,6 +344,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **a Panels tab no longer shows through the Simple view.** With Uren, Overzicht, Projects, Autopilot, a
+  dashboard or any other tab that is not a Sessions tab open, switching to Simple left that tab's content standing
+  under Simple's own pages. It now steps aside, and switching back to Panels shows the same tab as you left it.
 - fixed: **typing on a website in the Browser tab.** No character reached a page, so a search box such as YouTube's
   or a form stayed empty, and Enter sent no form. Letters, digits, accents (also through a dead key), Enter, Tab, the
   arrows and Ctrl+A, Ctrl+C and Ctrl+V all reach the page now, and only the browser's own keys stay in Cockpit.
