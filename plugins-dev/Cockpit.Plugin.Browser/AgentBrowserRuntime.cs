@@ -20,6 +20,13 @@ internal sealed class AgentBrowserRuntime(string cacheRoot, HttpClient http)
     // waiting on this, so a missing runtime is fetched in the background and the next session gets it.
     public string? Resolve(Action<Exception>? onFetchFailed = null)
     {
+        // On Linux the packaged Chrome first: Ubuntu 23.10+ lets only the browsers it ships an AppArmor profile for create
+        // the user namespaces the sandbox needs, so the downloaded shell dies there with "No usable sandbox".
+        if (OperatingSystem.IsLinux() && SystemBrowser() is { } packaged)
+        {
+            return packaged;
+        }
+
         if (CachedExecutable() is { } cached)
         {
             return cached;

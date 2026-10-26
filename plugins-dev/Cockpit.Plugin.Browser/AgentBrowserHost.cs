@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -38,7 +39,8 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             Directory.CreateDirectory(profile, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        var process = Launch(executable, profile);
+        var errors = new ConcurrentQueue<string>();
+        var process = Launch(executable, profile, errors);
         if (process is null)
         {
             DeleteProfile(profile);
@@ -62,6 +64,14 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         var port = await ReadPortAsync(running, cancellationToken).ConfigureAwait(false);
         if (port is null)
         {
+            // Said out loud: a browser that dies before it listens ("No usable sandbox!" on Ubuntu 23.10+) is otherwise
+            // only a session without an endpoint.
+            if (running.Process.HasExited)
+            {
+                running.Process.WaitForExit(1000);
+            }
+
+            Console.Error.WriteLine($"browser: the agent browser '{executable}' did not come up: {string.Join(" | ", errors)}");
             Stop(paneId);
             return null;
         }
@@ -230,7 +240,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
     }
 
-    private static Process? Launch(string executable, string profile)
+    private static Process? Launch(string executable, string profile, ConcurrentQueue<string> errors)
     {
         var start = new ProcessStartInfo(executable)
         {
@@ -262,6 +272,18 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         try
         {
             var process = Process.Start(start);
+
+            // The first lines only: they say why a start failed, and a long-lived browser keeps writing.
+            if (process is not null)
+            {
+                process.ErrorDataReceived += (_, line) =>
+                {
+                    if (line.Data is { Length: > 0 } text && errors.Count < 20)
+                    {
+                        errors.Enqueue(text);
+                    }
+                };
+            }
 
             // Unread, the redirected pipes would fill and stall the browser.
             process?.BeginOutputReadLine();
