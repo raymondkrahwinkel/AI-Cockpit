@@ -480,6 +480,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the plugins in the sidebar are cards.** Each plugin that adds buttons and a section gets one foldable
+  card named after it, with its settings gear in the header; plugins with a single button share one "Plugins · n" card.
+  Rows look like the other sidebar rows, the fold is remembered across restarts, and a folded card shows the sum of
+  its counters.
 - changed: **the sidebar folds by section.** Projects, This laptop and every connected server are now cards with a
   chevron, a count and, for a server, its latency; click a card's header to fold it away, and it stays folded after a
   restart. Plugin store, Menu and Help at the bottom are plain rows with an icon instead of bordered buttons.
@@ -507,6 +511,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Removed
 
+- removed: **pin to sidebar for plugins.** Plugins no longer float in a "Plugins ›" list, so there is nothing to pin
+  to; the order you chose in the plugin store still decides which card comes first.
 - removed: the Depot plugin no longer falls back to a Depot's MCP tools when that Depot is too old to list its
   projects over REST; such a Depot now says it is too old. The plugin itself talks to Depot over REST and the event
   channel only, and a session still gets the Depot MCP server as before. Depot 0.21.0.

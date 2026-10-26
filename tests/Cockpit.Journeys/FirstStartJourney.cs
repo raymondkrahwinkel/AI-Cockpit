@@ -532,6 +532,13 @@ public sealed class FirstStartJourney
                 SidebarSection ThisLaptop(JourneyHost host) =>
                     host.Window.GetVisualDescendants().OfType<SidebarSection>().Single(section => section.Title == "This laptop");
 
+                // AC-1763: a plugin with one button lands in the shared "Plugins" card, whose fold is remembered the same way.
+                SidebarSection PluginsCard(JourneyHost host)
+                {
+                    ((Cockpit.App.Plugins.IPluginContributionSink)host.Cockpit).AddPluginSideButton("journey-plugin", "Journey", () => { });
+                    return HeadlessAvalonia.Run(() => host.Window.GetVisualDescendants().OfType<SidebarSection>().Single(section => section.Title == "Plugins"));
+                }
+
                 async Task LayoutHolds(Func<JsonNode?, bool> condition) => await Until.ReloadHolds(
                     () => Task.CompletedTask,
                     () =>
@@ -550,8 +557,10 @@ public sealed class FirstStartJourney
                 {
                     await first.StartDesktopAsync();
                     HeadlessAvalonia.Run(() => ThisLaptop(first).IsExpanded = false);
+                    var firstPlugins = PluginsCard(first);
+                    HeadlessAvalonia.Run(() => firstPlugins.IsExpanded = false);
                     await first.Cockpit.SetAssistantThreadRailAsync(docked: false, AssistantThreadRail.IconsOnly);
-                    await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Select(key => key?.GetValue<string>()).SequenceEqual(["this-laptop"]) == true
+                    await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Select(key => key?.GetValue<string>()).SequenceEqual(["plugins", "this-laptop"]) == true
                         && layout["AssistantThreadRailWindow"]?.GetValue<string>() == "IconsOnly");
                 }
 
@@ -559,6 +568,9 @@ public sealed class FirstStartJourney
                 {
                     await second.StartDesktopAsync();
                     Assert.False(HeadlessAvalonia.Run(() => ThisLaptop(second).IsExpanded));
+                    var secondPlugins = PluginsCard(second);
+                    Assert.False(HeadlessAvalonia.Run(() => secondPlugins.IsExpanded));
+                    HeadlessAvalonia.Run(() => secondPlugins.IsExpanded = true);
                     Assert.Equal(AssistantThreadRail.IconsOnly, second.Cockpit.AssistantThreadRailWindow);
                     HeadlessAvalonia.Run(() => ThisLaptop(second).IsExpanded = true);
                     await second.Cockpit.SetAssistantThreadRailAsync(docked: false, AssistantThreadRail.Labels);

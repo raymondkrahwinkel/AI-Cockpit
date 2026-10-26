@@ -175,10 +175,10 @@ internal static partial class Screenshotter
         // AC-512: the sidebar's Help flyout, opened the way session-settings-flyout already proves headless
         // rendering can — after the window is up, via the Hovers table below.
         ["help-menu"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
-        // AC-937: the sidebar's "Plugins ›" flyout, opened the way help-menu already proves headless rendering can.
-        // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
-        // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
-        ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
+        // AC-1763 (mockups Productivity v3 #09, Company v8 #22 and v7 #21): the sidebar's plugin cards — Productivity's two
+        // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
+        ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
+        ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
         ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
@@ -1080,27 +1080,39 @@ internal static partial class Screenshotter
             : new MainWindow { DataContext = cockpit };
     }
 
-    // AC-937: a CockpitViewModel with a few side-buttons registered through the sink, the same route a real plugin
-    // uses — Autopilot and Open PRs pinned (the shipped default for those two), YouTrack and Workflows collapsed,
-    // one of them (Open PRs) carrying a badge so the flyout also shows a live counter.
-    private static Window _PluginsMenuScene()
+    // AC-1763: a CockpitViewModel with plugins registered through the sink, the same route a real plugin uses —
+    // Productivity (two buttons, one with a text badge, and the Tijd section) and three plugins with a single button,
+    // two of them with a counter.
+    private static MainWindow _PluginSidebarScene(int width, int height, bool folded)
     {
-        var cockpit = new ViewModels.CockpitViewModel();
+        var cockpit = new ViewModels.CockpitViewModel { SidebarWidth = 240 };
         var sink = (Plugins.IPluginContributionSink)cockpit;
 
+        sink.AddPluginSettings("productivity", "Productiviteit", () => new TextBlock());
+        var hours = new SideMenuButtonBadge { Text = "4u30 vandaag", Tone = SideMenuButtonBadgeTone.Success };
+        sink.AddPluginSideButton("productivity", "Uren", () => { }, hours, Material.Icons.MaterialIconKind.ClockOutline);
+        sink.AddPluginSideButton("productivity", "Overzicht", () => { }, new SideMenuButtonBadge(), Material.Icons.MaterialIconKind.ViewDashboardOutline);
+        sink.AddPluginSideSection("productivity", "Tijd", () => new Border
+        {
+            Margin = new Thickness(6, 0),
+            Padding = new Thickness(10, 8),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Theming.ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39"),
+            Child = new TextBlock { Text = "0:23:41  Review offerte Acme", FontSize = 12 },
+        });
+
         sink.AddPluginSideButton("autopilot", "Autopilot", () => { });
-        var openPrsBadge = new SideMenuButtonBadge { Primary = 19, Secondary = 0 };
-        sink.AddPluginSideButton("github-pull-requests", "Open PRs", () => { }, openPrsBadge);
-        sink.AddPluginSideButton("youtrack", "YouTrack", () => { });
-        var issuesBadge = new SideMenuButtonBadge { Primary = 3 };
-        sink.AddPluginSideButton("github-issues", "GitHub Issues", () => { }, issuesBadge);
+        sink.AddPluginSideButton("github-pull-requests", "Open PRs", () => { }, new SideMenuButtonBadge { Primary = 19, Secondary = 0 });
+        sink.AddPluginSideButton("github-issues", "GitHub Issues", () => { }, new SideMenuButtonBadge { Primary = 3 });
 
-        cockpit.ApplyPluginMenuPreference("autopilot", menuOrder: 0, hiddenInMenu: false, pinnedToSidebar: true);
-        cockpit.ApplyPluginMenuPreference("github-pull-requests", menuOrder: 1, hiddenInMenu: false, pinnedToSidebar: true);
-        cockpit.ApplyPluginMenuPreference("youtrack", menuOrder: 2, hiddenInMenu: false, pinnedToSidebar: false);
-        cockpit.ApplyPluginMenuPreference("github-issues", menuOrder: 3, hiddenInMenu: false, pinnedToSidebar: false);
+        if (folded)
+        {
+            cockpit.SetSidebarSectionExpanded("plugin:productivity", false);
+            cockpit.SetSidebarSectionExpanded(Plugins.PluginMenuGroup.CollectedKey, false);
+        }
 
-        return new MainWindow { DataContext = cockpit };
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
     private static readonly string[] WorkKindPluginNames =
@@ -1154,7 +1166,6 @@ internal static partial class Screenshotter
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
-        ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["first-run-work-kind"] = _ChooseWorkKind,
         ["first-run-work-kind-long"] = _ChooseWorkKind,
