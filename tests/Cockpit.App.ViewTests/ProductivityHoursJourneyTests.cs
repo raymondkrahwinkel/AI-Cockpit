@@ -230,6 +230,25 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Equal(preview, sentPrompt);
         await _Until(() => _Texts(screen).Any(text => text.Contains("aangeboden", StringComparison.OrdinalIgnoreCase)), "the offered week status");
 
+        var unmarked = await timeEntries.AddAsync("Nog te verwerken", DateTimeOffset.Now, TimeSpan.FromMinutes(15), "cockpit", CockpitTimeEntrySource.Duration);
+        timeEntries.MarkFailure = new InvalidOperationException("The time-entry store is unavailable.");
+        _Click(screen, "ThisWeek");
+        await _Until(() => _Texts(screen).Contains("Nog te verwerken"), "the next open proposal");
+        offerDialog = null;
+        _Click(screen, "GiveToAgent");
+        await _Until(() => offerDialog is not null, "the next offer dialog");
+        var failedDialog = offerDialog ?? throw new InvalidOperationException("No finalization failure dialog.");
+        using (var failedScene = RenderedScene.Show(failedDialog, 980, 696))
+        {
+            _Control<CheckBox>(failedDialog, "ConfirmOffer").IsChecked = true;
+            _Click(failedDialog, "SendOffer");
+            await _Until(() => _Texts(failedDialog).Any(text => text.Contains("Het urenvoorstel is afgeleverd", StringComparison.Ordinal)), "the delivered offer with failed status update");
+            Assert.False(_Control<Button>(failedDialog, "SendOffer").IsEnabled);
+            Assert.False(_Control<CheckBox>(failedDialog, "ConfirmOffer").IsEnabled);
+            await actions.Received(2).SendPromptToSessionAsync("pane-agent", Arg.Any<string>(), Arg.Any<string>());
+            Assert.Equal(CockpitTimeEntryStatus.Open, timeEntries.Entries.Single(entry => entry.Id == unmarked.Id).Status);
+        }
+
         var overviewFrom = _Local(2026, 10, 19);
         timeEntries.Seed(
             new CockpitTimeEntry(Guid.NewGuid(), "Weekstart met het team", overviewFrom.AddHours(7).AddMinutes(20), TimeSpan.FromHours(1), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
@@ -403,6 +422,8 @@ public sealed class ProductivityHoursJourneyTests
 
         public CockpitRunningStopwatch? Running { get; private set; }
 
+        public Exception? MarkFailure { get; set; }
+
         public Task<CockpitTimeEntry> AddAsync(string description, DateTimeOffset startedAt, TimeSpan duration, string? projectId, CockpitTimeEntrySource source, CancellationToken cancellationToken = default)
         {
             var entry = new CockpitTimeEntry(Guid.NewGuid(), description, startedAt, duration, projectId, source, CockpitTimeEntryStatus.Open);
@@ -459,6 +480,11 @@ public sealed class ProductivityHoursJourneyTests
 
         public Task MarkOfferedAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset offeredAt, string paneId, CancellationToken cancellationToken = default)
         {
+            if (MarkFailure is { } failure)
+            {
+                throw failure;
+            }
+
             for (var index = 0; index < Entries.Count; index++)
             {
                 if (ids.Contains(Entries[index].Id))

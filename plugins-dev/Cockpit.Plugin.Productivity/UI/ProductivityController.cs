@@ -95,7 +95,12 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
 
     public async Task SendWeekOfferAsync(WeekOfferSendRequest request)
     {
-        await _AskAsync<WeekOfferSendResult>(ProductivityChannel.SendWeekOffer, request).ConfigureAwait(false);
+        var result = await _AskAsync<WeekOfferSendResult>(ProductivityChannel.SendWeekOffer, request).ConfigureAwait(false);
+        if (result.FinalizationError is { } error)
+        {
+            throw new WeekOfferFinalizationException(result.PaneId, new InvalidOperationException(error));
+        }
+
         await RefreshAsync().ConfigureAwait(false);
     }
 

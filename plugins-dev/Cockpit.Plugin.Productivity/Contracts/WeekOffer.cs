@@ -154,7 +154,7 @@ internal sealed record WeekOfferSendRequest(
     IReadOnlyList<WeekOfferProjectCell> ProjectCells,
     string? ProjectId);
 
-internal sealed record WeekOfferSendResult(string PaneId);
+internal sealed record WeekOfferSendResult(string PaneId, string? FinalizationError = null);
 
 internal sealed class WeekOfferFinalizationException(string paneId, Exception innerException)
     : Exception("Het urenvoorstel is afgeleverd, maar de status kon niet volledig worden bijgewerkt. Verstuur het niet opnieuw; sluit dit venster en controleer de regels.", innerException)
@@ -190,7 +190,7 @@ internal sealed class WeekOfferSender(
         }
         catch (Exception exception)
         {
-            throw new WeekOfferFinalizationException(paneId, exception);
+            return new WeekOfferSendResult(paneId, exception.Message);
         }
 
         return new WeekOfferSendResult(paneId);
