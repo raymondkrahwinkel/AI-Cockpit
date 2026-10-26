@@ -59,7 +59,7 @@ public sealed record PluginMenuGroup(
     {
         var groups = new List<PluginMenuGroup>();
         var collected = new List<PluginSideButton>();
-        foreach (var plugin in ordered.GroupBy(entry => entry.PluginId))
+        foreach (var plugin in ordered.GroupBy(entry => entry.Button?.Title ?? entry.Section!.Title))
         {
             var buttons = plugin.Select(entry => entry.Button).OfType<PluginSideButton>().ToList();
             var sections = plugin.Select(entry => entry.Section).OfType<PluginSideSection>().ToList();
