@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -54,6 +55,7 @@ internal static class PluginMenuCard
                 Padding = new Thickness(4, 2),
                 VerticalAlignment = VerticalAlignment.Center,
             };
+            gear.Bind(TemplatedControl.ForegroundProperty, gear.GetResourceObservable("CockpitTextFaintBrush"));
             ToolTip.SetTip(gear, $"{group.Title} settings");
             gear.Click += (_, _) => onSettings();
             trailing.Children.Add(gear);
