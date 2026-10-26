@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
@@ -20,8 +21,14 @@ public partial class ProjectListRow : UserControl
     {
         InitializeComponent();
         Tapped += (_, _) => SelectCommand?.Execute(DataContext);
-        DoubleTapped += (_, _) =>
+        // A double click on the row's own buttons is theirs: Start already ran on the click.
+        DoubleTapped += (_, args) =>
         {
+            if (args.Source is Visual source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+            {
+                return;
+            }
+
             if (DataContext is ProjectListItemViewModel { CanStart: true } item)
             {
                 item.Actions?.Start.Execute(item.Project);

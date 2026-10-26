@@ -1458,6 +1458,11 @@
                                     <LineBreak/>
                                     <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
                                 </TextBlock>
+
+                                <!-- Kept until the Manage-projects window itself goes (AC-1604); the old overview's
+                                     footer was its only door from this page. -->
+                                <Button Content="Manage projects" Classes="Subtle" Margin="16,6,16,16" HorizontalAlignment="Left"
+                                        Command="{Binding ManageProjectsCommand}"/>
                             </StackPanel>
                         </ScrollViewer>
                     </DockPanel>
