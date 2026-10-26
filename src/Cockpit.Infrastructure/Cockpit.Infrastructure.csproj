@@ -21,15 +21,15 @@
          OpenAI-compatible /v1 endpoints through Microsoft.Extensions.AI's IChatClient. The .OpenAI
          package brings the OpenAI SDK plus the AsIChatClient() adapter; a custom Endpoint points it at
          localhost. Later (#26 tool-loop) the same IChatClient hosts MCP tools via ModelContextProtocol. -->
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.11.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
     <!-- 2.0.0 (AC-505): the client's ClientOAuthProvider now requests `offline_access` itself whenever the
          authorization server advertises it (SEP-2207) — the reason McpOAuthAuthorizer no longer has to derive
          a scope list by hand. -->
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <!-- #26 tools/MCP: the MCP client (namespace ModelContextProtocol.Client) that connects the local-LLM
          tool-loop to the user's MCP servers. Kept on the same line as the AspNetCore server package. -->
-    <PackageReference Include="ModelContextProtocol" Version="2.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
     <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running the multilingual SupertonicTTS model in-proc —
          no Python, no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the model's own
          sample rate; playback plays at that rate (SoundFlowAudioPlaybackService opens the device on
