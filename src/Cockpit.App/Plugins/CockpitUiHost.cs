@@ -373,6 +373,27 @@ internal sealed class CockpitUiHost(
         return Task.CompletedTask;
     }
 
+    public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(() =>
+    {
+        var cockpit = services.GetService<CockpitViewModel>();
+        var session = cockpit?.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
+        if (cockpit is null || session is null)
+        {
+            return false;
+        }
+
+        if (cockpit.SimpleView)
+        {
+            cockpit.SelectSimpleSessionCommand.Execute(session);
+        }
+        else
+        {
+            cockpit.SelectSessionCommand.Execute(session);
+        }
+
+        return true;
+    });
+
     // No pane named means this window's selected one, which only a UI part has.
     public Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default) =>
         host.GetProjectMemoryRowsAsync(string.IsNullOrEmpty(paneId) ? activeSession.ActivePaneId : paneId, cancellationToken);

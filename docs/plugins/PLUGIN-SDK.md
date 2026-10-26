@@ -32,6 +32,10 @@ the plugin's own functionality and lives in the plugin (AC-885/AC-886).
 
 ## Overview {#overview}
 
+`ICockpitUiHost.FocusSessionAsync(paneId)` opens an existing agent or terminal session in the active view mode
+without changing its input. It returns `false` if the pane is absent or the host cannot focus sessions.
+Requires host **0.122.0**, SDK **3.31.0**, and UI SDK **3.9.0**.
+
 A Cockpit plugin is a small .NET assembly, dropped in its own folder under the config directory's
 `plugins/` folder, that implements one interface (`ICockpitPlugin`) and contributes UI and behaviour through
 a host facade (`ICockpitHost`) handed to it at startup. Everything a plugin can reference from the host lives

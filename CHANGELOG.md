@@ -45,6 +45,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   your entries and your agents, the measured time per project, your time and agent time. Your time counts each
   minute once and gives it to the project you last acted on; an own entry over measured time wins it. The Uren badge
   now counts measured plus own time. Productivity 0.2.0 asks for `timeline.read-all`.
+- added: plugins can open an existing session without changing or sending its input; a missing pane is reported.
 - added: a plugin can ask its question as a card under the assistant's conversation instead of over it, with
   buttons to approve, pick another option or say no.
 - changed: every MCP tool call in a conversation now shows by its server and tool, such as `browser.request_tab` or
