@@ -535,8 +535,8 @@ internal sealed class BrowserShell : UserControl
             send.Click += (_, _) => TabShareService.SendHeld(_grants, tab);
             var dropIt = new Button { Content = "Don’t send", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) };
             dropIt.Click += (_, _) => TabShareService.DropHeld(_grants, tab);
-            var line = _Said("Send this form?", $" {controller.SessionName} controls this tab · {held[..Math.Max(0, space)]} to ", "CockpitStatusWaitingBrush");
-            line.Inlines!.Add(new Run(_Short(held[(space + 1)..], 90)) { FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace") });
+            var target = new Run(_Short(held[(space + 1)..], 90)) { FontFamily = new FontFamily("Cascadia Mono, Consolas, monospace") };
+            var line = _Said("Send this form?", $" {controller.SessionName} controls this tab · {held[..Math.Max(0, space)]} to ", target);
             var note = new TextBlock
             {
                 Text = "While an agent controls this tab, every form asks first, yours too: the browser cannot tell who sent it. Another site is refused without asking. Requests a page makes by script (fetch) are not covered.",
@@ -552,7 +552,7 @@ internal sealed class BrowserShell : UserControl
         {
             var giveBack = new Button { Content = "Give back", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) };
             giveBack.Click += (_, _) => _grants.GiveBack(tab.Id);
-            var took = _Said("You took over", $" · {controller.SessionName} waits and is refused until you give control back", "CockpitAccentBrush");
+            var took = _Said("You took over", $" · {controller.SessionName} waits and is refused until you give control back");
             return new DockPanel { Children = { _Docked(stop, Dock.Right), _Docked(giveBack, Dock.Right), _Docked(_Dot("CockpitAccentBrush"), Dock.Left), took } };
         }
 
@@ -561,17 +561,23 @@ internal sealed class BrowserShell : UserControl
             : " · no action yet";
         var hint = new TextBlock { Text = "Click or type in the page to take over", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) }
             .Themed(TextBlock.ForegroundProperty, "CockpitTextFaintBrush");
-        var said = _Said($"Controlled by {controller.SessionName}", $" · within {_Host(controller.Origin)}{last}", "CockpitStatusWaitingBrush");
+        var said = _Said($"Controlled by {controller.SessionName}", $" · within {_Host(controller.Origin)}{last}");
         return new DockPanel { Children = { _Docked(stop, Dock.Right), _Docked(hint, Dock.Right), _Docked(_Dot("CockpitStatusWaitingBrush"), Dock.Left), said } };
     }
 
-    private TextBlock _Said(string bold, string rest, string dotBrush)
+    // A bold lead, a secondary rest and, for the form bar, the target address after it.
+    private TextBlock _Said(string bold, string rest, Inline? tail = null)
     {
         var said = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Inlines = [] };
         said.Inlines.Add(new Run(bold) { FontWeight = FontWeight.SemiBold });
         var detail = new Run(rest);
         detail.Bind(Run.ForegroundProperty, said.GetResourceObservable("CockpitTextSecondaryBrush"));
         said.Inlines.Add(detail);
+        if (tail is not null)
+        {
+            said.Inlines.Add(tail);
+        }
+
         return said;
     }
 
