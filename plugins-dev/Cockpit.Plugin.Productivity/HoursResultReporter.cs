@@ -32,7 +32,7 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
             var entries = await host.TimeEntries.ListAsync(_Local(request.Week), _Local(request.Week.AddDays(7)), cancellationToken).ConfigureAwait(false);
             foreach (var item in request.Items)
             {
-                if (item is null || !rows.TryGetValue(item.Marker ?? string.Empty, out var row) || row.PaneId != caller.PaneId)
+                if (item is null || string.IsNullOrEmpty(item.Marker) || !rows.TryGetValue(item.Marker, out var row) || row.PaneId != caller.PaneId)
                 {
                     throw new UnauthorizedAccessException("Dit kenmerk hoort niet bij deze ontvanger of aangeboden week.");
                 }
