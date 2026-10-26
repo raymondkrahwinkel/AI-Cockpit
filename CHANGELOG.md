@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: plugins can open an existing session without changing or sending its input; a missing pane is reported.
 - added: in the Browser plugin an agent session can ask to control a shared tab, and you can give it control yourself
   on the share card: it may then click, type, scroll and navigate in that one tab, only on that site. An amber line and
   a bar say who controls it and what it last did, **Stop** ends it at once, and your own click or key in the tab takes
