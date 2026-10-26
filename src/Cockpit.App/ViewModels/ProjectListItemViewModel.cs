@@ -7,23 +7,29 @@ public sealed class ProjectListItemViewModel
     public ProjectListItemViewModel(Project project, int sessionsRunning)
     {
         Project = project;
+        Id = project.Id;
+        Name = project.Name;
+        Description = project.Description;
         SessionsRunning = sessionsRunning;
     }
 
     public ProjectListItemViewModel(SharedProjectOffer sharedProject)
     {
         SharedProject = sharedProject;
+        Id = sharedProject.Id;
+        Name = sharedProject.Name;
+        Description = sharedProject.Description;
     }
 
     public Project? Project { get; }
 
     public SharedProjectOffer? SharedProject { get; }
 
-    public string Id => Project?.Id ?? SharedProject!.Id;
+    public string Id { get; }
 
-    public string Name => Project?.Name ?? SharedProject!.Name;
+    public string Name { get; }
 
-    public string? Description => Project?.Description ?? SharedProject!.Description;
+    public string? Description { get; }
 
     public string? Category => Project?.Category;
 

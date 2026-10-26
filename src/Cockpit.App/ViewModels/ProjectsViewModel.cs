@@ -518,10 +518,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             }
 
             var sourceName = location?.SourceName ?? string.Empty;
+            // shortcut: the source exposes no host/address field; AC-1600 should replace this display-name fallback.
             var host = sourceName.Split('—').LastOrDefault()?.Trim() ?? sourceName;
             var created = new ProjectSectionViewModel(
                 key, sourceKey, organizationSlug,
-                isMachine ? "This machine" : location!.Organization?.Name ?? sourceName,
+                location is null ? "This machine" : location.Organization?.Name ?? sourceName,
                 isMachine ? string.Empty : host,
                 isMachine)
             {
