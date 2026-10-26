@@ -140,7 +140,7 @@ public class PluginSessionDriverAdapterTests
     private static ISessionResourceResolver StubResources(params (string Key, string Value)[] variables)
     {
         var resolver = Substitute.For<ISessionResourceResolver>();
-        resolver.ResolveAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        resolver.ResolveAsync(Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<CancellationToken>())
             .Returns(new SessionResources(variables.ToDictionary(
                 variable => variable.Key, variable => variable.Value, StringComparer.Ordinal)));
         return resolver;

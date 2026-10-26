@@ -4,6 +4,7 @@
 # format: <project>	<ceiling>
 unit	cases
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	95
+plugins-dev/Cockpit.Plugin.Browser.Tests	10
 plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	173
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 plugins-dev/Cockpit.Plugin.Depot.Tests	225
@@ -24,6 +25,7 @@ plugins-dev/Cockpit.Plugin.Kubernetes.Tests	111
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	84
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	14
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	31
+plugins-dev/Cockpit.Plugin.Productivity.Tests	10
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
 plugins-dev/Cockpit.Plugin.Schedules.Tests	38
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	16

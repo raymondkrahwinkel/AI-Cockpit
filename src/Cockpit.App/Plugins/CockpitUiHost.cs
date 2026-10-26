@@ -25,6 +25,7 @@ using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Material.Icons;
 
 namespace Cockpit.App.Plugins;
 
@@ -68,9 +69,23 @@ internal sealed class CockpitUiHost(
         contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
 
     public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
+        => AddSideMenuButtonWithBadge(title, onInvoke, iconKind: null);
+
+    public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke, MaterialIconKind iconKind)
+        => AddSideMenuButtonWithBadge(title, onInvoke, (MaterialIconKind?)iconKind);
+
+    private SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke, MaterialIconKind? iconKind)
     {
         var badge = new SideMenuButtonBadge();
-        contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge);
+        if (iconKind is { } icon)
+        {
+            contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge, icon);
+        }
+        else
+        {
+            contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge);
+        }
+
         return badge;
     }
 

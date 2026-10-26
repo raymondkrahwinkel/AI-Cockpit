@@ -183,6 +183,8 @@ means a quick, one-click restart rather than a hand copy and restart. This only 
 DEBUG build, and it only refreshes a plugin you already installed — it never installs one on its own, and it
 never touches a plugin you disabled or one the store already updated past your source.
 
+Headless renders of your own views: give your `uiEntryType` a `public static IReadOnlyDictionary<string, Func<Control>> Scenes`, build the plugin, and run `dotnet run --project src/Cockpit.App -- --screenshot out.png --scene plugin:<name>`. A second table, `public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> WorkspaceScenes`, renders Cockpit's main window with that workspace active, its `HeaderActions` on the tab strip and the status text in the status bar. It is a dev hook for `--screenshot` only, not part of the plugin contract: a plugin without the table simply offers no scenes, and an unknown name fails with the list of known ones.
+
 ### Scaffold a new plugin {#scaffold-a-new-plugin}
 
 The `dotnet new` template lives in [`templates/cockpit-plugin`](https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/templates/cockpit-plugin). Install it
@@ -1165,6 +1167,20 @@ built against a newer SDK than it ships, **loads it anyway but says so loudly** 
 banner and against the plugin's row in the manager — rather than letting it fail silently. It is, in effect, an
 auto-derived `minHostVersion`; keep the manifest's `minHostVersion` honest too, since that one *refuses* rather
 than warns.
+
+### Side-menu icons and badge tones
+
+SDK 3.26.0 lets a UI plugin ask the host to draw a Material icon beside a live side-menu badge and choose a
+semantic tone. Existing launchers stay accent-blue; the new overload is additive.
+
+```csharp
+var badge = host.AddSideMenuButtonWithBadge("Hours", OpenHours, MaterialIconKind.ClockOutline);
+badge.Text = "4h30 today";
+badge.Tone = SideMenuButtonBadgeTone.Success;
+```
+
+The host owns the icon and pill rendering so plugins do not embed theme-specific colors. A plugin using the
+icon overload or `Tone` sets `minHostVersion` to `0.115.0`.
 
 ### Theme tokens and control classes: declare them, nothing derives them for you {#theme-tokens-and-control-classes-declare-them-nothing-derives-them-for-you}
 

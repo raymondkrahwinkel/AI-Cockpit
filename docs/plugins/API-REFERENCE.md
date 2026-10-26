@@ -506,6 +506,20 @@ Adds a **launcher button** to the left sidebar.
 host.AddSideMenuButton("GitHub Issues", () => _ = host.ShowDialogAsync("Issues", () => BuildIssuesView()));
 ```
 
+### `SideMenuButtonBadge AddSideMenuButtonWithBadge(...)` {#sidemenu-badge}
+Adds a launcher with a live badge handle. The two-argument overload keeps the host's accent styling. The
+three-argument overload also accepts a `MaterialIconKind`; set `badge.Tone` to `Accent` (default), `Success`,
+or `Neutral`. Changing text, counters, or tone raises `Changed` and the host repaints the existing launcher.
+
+```csharp
+var badge = host.AddSideMenuButtonWithBadge("Hours", OpenHours, MaterialIconKind.ClockOutline);
+badge.Text = "4h30 today";
+badge.Tone = SideMenuButtonBadgeTone.Success;
+```
+
+The icon/tone overload requires SDK 3.26.0 and `minHostVersion` 0.115.0. Older plugins using the original
+overload remain accent-blue and require no change.
+
 ### `void AddSideMenuSection(string title, Func<Control> createView)` {#void-addsidemenusectionstring-title-funccontrol-createview}
 Adds an **inline accordion section** under the session list — for small, always-visible content (not a heavy
 panel).

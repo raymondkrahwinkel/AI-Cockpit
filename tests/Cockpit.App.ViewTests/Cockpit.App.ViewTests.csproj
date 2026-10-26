@@ -53,6 +53,10 @@
     <!-- Aliased: both parts compile the shared Contracts as source, so their internal types would clash by name. -->
     <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/UI/Cockpit.Plugin.Schedules.UI.csproj"
                       Aliases="schedulesUi" SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Productivity/Cockpit.Plugin.Productivity.csproj"
+                      SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Productivity/UI/Cockpit.Plugin.Productivity.UI.csproj"
+                      Aliases="productivityUi" SetConfiguration="Configuration=$(Configuration)" />
     <!-- AC-1147: a build dependency only, same reasoning as the Diagram plugin above — LogPidPositiveControlTests
          runs its build output as two real processes rather than linking its types. -->
     <ProjectReference Include="../Cockpit.LogPidProbe/Cockpit.LogPidProbe.csproj"

@@ -1261,6 +1261,10 @@ internal static partial class Screenshotter
         {
             window = ScreenshotSelectionScene.Build(scene, width, height);
         }
+        else if (scene.StartsWith(PluginScenes.Prefix, StringComparison.Ordinal))
+        {
+            window = PluginScenes.Build(scene, width, height);
+        }
         else
         {
             // A misspelled name used to fall through to the main window, so the render succeeded and showed a screen
