@@ -16,7 +16,14 @@ public sealed record ProjectCatalogSnapshot(
 public sealed record SharedProjectSourceInfo(string Key, string Name, bool CanPublish);
 
 // A source that could not be read carries its own error rather than failing the other groups (AC-245).
+// AC-1758: one group per connection. Notice is the stale "last known list" line, kept apart from Error; AllAdded
+// means every listed project is already bound or hidden here.
 public sealed record SharedProjectGroup(
-    string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null);
+    string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null,
+    string SourceKey = "", string? Notice = null, bool AllAdded = false);
 
-public sealed record SharedProjectOffer(string Id, string Name, string? Description = null, string? Role = null);
+public sealed record SharedProjectOffer(
+    string Id, string Name, string? Description = null, string? Role = null, SharedProjectOrganizationInfo? Organization = null);
+
+// Core carries no Plugins.Abstractions reference, so the organization is copied by value.
+public sealed record SharedProjectOrganizationInfo(string Slug, string? Name, string? Role);

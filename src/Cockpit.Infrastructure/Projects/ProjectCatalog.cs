@@ -289,16 +289,20 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             var visible = result.Succeeded
                 ? result.Projects
                     .Where(project => !boundIds.Contains(project.Id) && !hiddenIds.Contains(project.Id))
-                    .Select(project => new SharedProjectOffer(project.Id, project.Name, project.Description, project.Role))
+                    .Select(project => new SharedProjectOffer(
+                        project.Id, project.Name, project.Description, project.Role,
+                        project.Organization is { } organization
+                            ? new SharedProjectOrganizationInfo(organization.Slug, organization.Name, organization.Role)
+                            : null))
                     .ToList()
                 : [];
 
-            if (visible.Count == 0 && result.Succeeded)
-            {
-                continue;
-            }
-
-            groups.Add(new SharedProjectGroup(source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo));
+            // AC-1758: a connection whose projects are all bound or hidden still gets its group (marked AllAdded, so the view
+            // keeps its heading), and a stale list's "last known" line travels as a Notice, not as an Error that a success clears.
+            groups.Add(new SharedProjectGroup(
+                source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo,
+                source.Key, result.Succeeded ? result.Error : null,
+                AllAdded: result.Succeeded && result.Projects.Count > 0 && visible.Count == 0));
         }
 
         _sharedProjectGroups = groups;

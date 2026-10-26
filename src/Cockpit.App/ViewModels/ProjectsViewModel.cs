@@ -388,9 +388,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private void _RepublishSharedProjectGroups()
     {
         SharedProjectGroups.Clear();
-        foreach (var group in _snapshot.SharedProjectGroups)
+        // AC-1758: the catalog hands over every connection. One whose projects are all added keeps a compact section so
+        // the server stays visible; one that listed nothing and has no error or notice has nothing to say.
+        foreach (var group in _snapshot.SharedProjectGroups.Where(group => group.Projects.Count > 0 || group.AllAdded || group.Error is { Length: > 0 } || group.Notice is { Length: > 0 }))
         {
-            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error, group.SourceLogo));
+            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error, group.SourceLogo, group.Notice, group.AllAdded));
         }
 
         OnPropertyChanged(nameof(HasSharedProjects));
