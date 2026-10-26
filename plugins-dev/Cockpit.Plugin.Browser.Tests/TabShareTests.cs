@@ -73,8 +73,12 @@ public class TabShareTests
         });
         Assert.False(waiting.IsCompleted);
         Assert.Empty(reads);
-        Assert.Equal("assistant", card!.Source.PaneId);
-        Assert.Equal(["t1"], card.Choices![0].Options.Where(option => option.Selected).Select(option => option.Value));
+        Assert.NotNull(card);
+        var shown = card;
+        Assert.Equal("assistant", shown.Source.PaneId);
+        var choices = shown.Choices;
+        Assert.NotNull(choices);
+        Assert.Equal(["t1"], choices[0].Options.Where(option => option.Selected).Select(option => option.Value));
 
         var declined = await Ask(_ => Task.FromResult(ConsentDecision.Denied));
         Assert.Equal("refused", declined);
