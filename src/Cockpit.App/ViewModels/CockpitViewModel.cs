@@ -5451,6 +5451,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ThemeMode = settings.ThemeMode;
         AssistantThreadRailWindow = settings.AssistantThreadRailWindow;
         AssistantThreadRailDock = settings.AssistantThreadRailDock;
+        _ApplyCollapsedSidebarSections(settings.CollapsedSidebarSections);
 
         // The stand the app opens in is the setting, never the stand last looked at (AC-1301 criterion 1) — this
         // is the only place the two are joined.
@@ -5478,7 +5479,69 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ThemeMode = ThemeMode,
         AssistantThreadRailWindow = AssistantThreadRailWindow,
         AssistantThreadRailDock = AssistantThreadRailDock,
+        CollapsedSidebarSections = [.. _collapsedSidebarSections.Order(StringComparer.Ordinal)],
     };
+
+    // AC-1762: which foldable sidebar sections stand shut, by key. Kept as the closed ones so that a section nobody
+    // has touched — and a server that connects later — is open.
+    private readonly HashSet<string> _collapsedSidebarSections = new(StringComparer.Ordinal);
+
+    internal static string ServerSectionKey(string serverName) => $"server:{serverName}";
+
+    public bool ProjectsSectionExpanded
+    {
+        get => IsSidebarSectionExpanded("projects");
+        set => SetSidebarSectionExpanded("projects", value);
+    }
+
+    public bool ThisLaptopSectionExpanded
+    {
+        get => IsSidebarSectionExpanded("this-laptop");
+        set => SetSidebarSectionExpanded("this-laptop", value);
+    }
+
+    public bool IsSidebarSectionExpanded(string key) => !_collapsedSidebarSections.Contains(key);
+
+    public void SetSidebarSectionExpanded(string key, bool expanded)
+    {
+        if (!(expanded ? _collapsedSidebarSections.Remove(key) : _collapsedSidebarSections.Add(key)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ProjectsSectionExpanded));
+        OnPropertyChanged(nameof(ThisLaptopSectionExpanded));
+        if (_layoutSettingsStore is not null)
+        {
+            _ = _PersistSidebarSectionsAsync();
+        }
+    }
+
+    // The fold is a two-way binding, so its setter cannot await; this does, and a failed save is logged, not lost.
+    private async Task _PersistSidebarSectionsAsync()
+    {
+        try
+        {
+            await _PersistLayoutSettingsAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Saving which sidebar sections are folded failed.");
+        }
+    }
+
+    // The startup load: the saved set replaces ours without writing it back, and the servers already listed follow it.
+    private void _ApplyCollapsedSidebarSections(IReadOnlyList<string> keys)
+    {
+        _collapsedSidebarSections.Clear();
+        _collapsedSidebarSections.UnionWith(keys);
+        OnPropertyChanged(nameof(ProjectsSectionExpanded));
+        OnPropertyChanged(nameof(ThisLaptopSectionExpanded));
+        foreach (var group in ServerGroups)
+        {
+            group.IsExpanded = IsSidebarSectionExpanded(ServerSectionKey(group.Name));
+        }
+    }
 
     // The assistant's thread rail preference per host, labels or icons only when the labels fit (voorstel § 8.2).
     [ObservableProperty]

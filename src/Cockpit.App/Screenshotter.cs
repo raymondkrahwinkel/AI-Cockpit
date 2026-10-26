@@ -238,6 +238,9 @@ internal static partial class Screenshotter
         ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
         ["options-nodes-status"] = (width, height) => _NodesConnectionStatus(width, height),
         // AC-1456: a connect server as a group in the session list, by an admin key and by a scoped operate key.
+        // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
+        ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
+        ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["remote-window"] = ServerGroupScene.Remote,
@@ -661,6 +664,8 @@ internal static partial class Screenshotter
         ["assistant-threads-closed"] = (_, _) => _AssistantThreads(960, closed: true),
         ["assistant-threads-closed-narrow"] = (_, _) => _AssistantThreads(520, closed: true),
         ["assistant-threads-suggestion"] = (_, _) => _AssistantThreads(960, suggestion: true),
+        // AC-1748: "Icons only" chosen, which the file now keeps.
+        ["assistant-threads-icons-only"] = (_, _) => _AssistantThreads(960, iconsOnly: true),
         ["assistant-threads-logos"] = (_, _) => _AssistantThreads(960, thread: "depot", logos: true),
         ["assistant-threads-logos-icons"] = (_, _) => _AssistantThreads(520, thread: "depot", logos: true),
         ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),

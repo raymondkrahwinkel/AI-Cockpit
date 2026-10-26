@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -18,6 +19,7 @@ using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Backup;
+using Cockpit.Core.Layout;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
@@ -520,6 +522,54 @@ public sealed class FirstStartJourney
                 Assert.Equal(333, JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(fresh)))?["Layout"]?["SidebarWidth"]?.GetValue<double>());
                 Assert.Contains(HeadlessAvalonia.Run(() => restarted.Cockpit.Toasts.Select(toast => toast.Message).ToList()),
                     message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
+            });
+
+            // AC-1762 and AC-1748: a section folded shut in the sidebar and the Assistant's "Icons only" are the layout's, so
+            // they come back after a restart — and so does the way back, open and labels again.
+            await Step.Run("a folded sidebar section and the Assistant's Icons only survive a restart", async () =>
+            {
+                var stateRoot = Directory.CreateDirectory(Path.Combine(work, "sidebar")).FullName;
+                SidebarSection ThisLaptop(JourneyHost host) =>
+                    host.Window.GetVisualDescendants().OfType<SidebarSection>().Single(section => section.Title == "This laptop");
+
+                async Task LayoutHolds(Func<JsonNode?, bool> condition) => await Until.ReloadHolds(
+                    () => Task.CompletedTask,
+                    () =>
+                    {
+                        try
+                        {
+                            return condition(JsonNode.Parse(File.ReadAllText(CockpitConfigPath.For(stateRoot)))?["Layout"]);
+                        }
+                        catch (Exception exception) when (exception is IOException or System.Text.Json.JsonException)
+                        {
+                            return false;
+                        }
+                    });
+
+                await using (var first = JourneyHost.Desktop(stateRoot: stateRoot))
+                {
+                    await first.StartDesktopAsync();
+                    HeadlessAvalonia.Run(() => ThisLaptop(first).IsExpanded = false);
+                    await first.Cockpit.SetAssistantThreadRailAsync(docked: false, AssistantThreadRail.IconsOnly);
+                    await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Select(key => key?.GetValue<string>()).SequenceEqual(["this-laptop"]) == true
+                        && layout["AssistantThreadRailWindow"]?.GetValue<string>() == "IconsOnly");
+                }
+
+                await using (var second = JourneyHost.Desktop(stateRoot: stateRoot))
+                {
+                    await second.StartDesktopAsync();
+                    Assert.False(HeadlessAvalonia.Run(() => ThisLaptop(second).IsExpanded));
+                    Assert.Equal(AssistantThreadRail.IconsOnly, second.Cockpit.AssistantThreadRailWindow);
+                    HeadlessAvalonia.Run(() => ThisLaptop(second).IsExpanded = true);
+                    await second.Cockpit.SetAssistantThreadRailAsync(docked: false, AssistantThreadRail.Labels);
+                    await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Count == 0
+                        && layout["AssistantThreadRailWindow"]?.GetValue<string>() == "Labels");
+                }
+
+                await using var third = JourneyHost.Desktop(stateRoot: stateRoot);
+                await third.StartDesktopAsync();
+                Assert.True(HeadlessAvalonia.Run(() => ThisLaptop(third).IsExpanded));
+                Assert.Equal(AssistantThreadRail.Labels, third.Cockpit.AssistantThreadRailWindow);
             });
 
             // AC-1670: an organisation that only has ids in its manifest is still named, what the setup holds is listed

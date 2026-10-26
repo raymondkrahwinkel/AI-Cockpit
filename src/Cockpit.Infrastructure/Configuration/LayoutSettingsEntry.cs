@@ -33,6 +33,13 @@ internal sealed class LayoutSettingsEntry
 
     public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
 
+    // AC-1748: these two were never here, so the thread rail's "Icons only" was dropped on every save.
+    public AssistantThreadRail AssistantThreadRailWindow { get; set; }
+
+    public AssistantThreadRail AssistantThreadRailDock { get; set; }
+
+    public List<string>? CollapsedSidebarSections { get; set; }
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
@@ -49,6 +56,9 @@ internal sealed class LayoutSettingsEntry
         CompanionWindowVisible = settings.CompanionWindowVisible,
         OpenInSimpleView = settings.OpenInSimpleView,
         ThemeMode = settings.ThemeMode,
+        AssistantThreadRailWindow = settings.AssistantThreadRailWindow,
+        AssistantThreadRailDock = settings.AssistantThreadRailDock,
+        CollapsedSidebarSections = settings.CollapsedSidebarSections.ToList(),
     };
 
     public LayoutSettings ToDomain() => new()
@@ -67,5 +77,8 @@ internal sealed class LayoutSettingsEntry
         CompanionWindowVisible = CompanionWindowVisible,
         OpenInSimpleView = OpenInSimpleView,
         ThemeMode = ThemeMode,
+        AssistantThreadRailWindow = AssistantThreadRailWindow,
+        AssistantThreadRailDock = AssistantThreadRailDock,
+        CollapsedSidebarSections = CollapsedSidebarSections ?? [],
     };
 }
