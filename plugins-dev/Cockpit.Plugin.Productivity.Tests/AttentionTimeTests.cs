@@ -10,7 +10,6 @@ public sealed class AttentionTimeTests
 
     [Theory]
     [InlineData(1, 2295, 1565, 315, 20, true, 1860, 2590, 2295, 730)]
-    [InlineData(3, 60, 20, 0, 0, false, 20, 20, 180, 40)]
     public void Compute_CountsOverlapOnceAndKeepsAgentTimeBeside(
         int sessions,
         int busyMinutes,

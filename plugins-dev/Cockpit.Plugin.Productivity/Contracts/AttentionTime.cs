@@ -7,8 +7,9 @@ internal sealed record AttentionSettings(TimeSpan BlockLength, bool CountAgentWi
     public static AttentionSettings Default { get; } = new(TimeSpan.FromMinutes(10), false);
 }
 
-// A stretch of clock time; Owner is the project for your time, the pane for agent time.
-internal sealed record AttentionSpan(DateTimeOffset Start, DateTimeOffset End, string? Owner)
+// A stretch of clock time; Owner is the project for your time, the pane for agent time. PaneId is the session your
+// measured time was in, so a project's time can be split per session.
+internal sealed record AttentionSpan(DateTimeOffset Start, DateTimeOffset End, string? Owner, string? PaneId = null)
 {
     public TimeSpan Duration => End - Start;
 }
@@ -136,7 +137,7 @@ internal sealed record AttentionTime(
 
             if (end > start)
             {
-                blocks.Add((actions[index], new AttentionSpan(start, end, actions[index].ProjectId)));
+                blocks.Add((actions[index], new AttentionSpan(start, end, actions[index].ProjectId, actions[index].PaneId)));
             }
         }
 

@@ -32,7 +32,9 @@ internal sealed record ProductivitySnapshot(
     IReadOnlyList<CockpitTimeEntry> Entries,
     TimeSpan TodayTotal,
     CockpitRunningStopwatch? Stopwatch,
-    AttentionTime Day);
+    AttentionTime Day,
+    IReadOnlyList<PluginProjectInfo> Projects,
+    IReadOnlyList<SessionLabel> Sessions);
 
 internal sealed record ProductivityOverviewRequest(DateTimeOffset From, DateTimeOffset To);
 
@@ -45,7 +47,9 @@ internal sealed record ProductivityOverviewSnapshot(
     int[] ScheduleMinutes,
     IReadOnlyList<CockpitTimeEntry> Entries,
     CockpitTimeline Timeline,
-    IReadOnlyList<PluginProjectInfo> Projects)
+    IReadOnlyList<PluginProjectInfo> Projects,
+    IReadOnlyList<SessionLabel> Sessions,
+    IReadOnlyDictionary<string, double> RatesPerMillionTokens)
 {
     public TimeSpan YourTime => Attention.YourTime + _Sum(HistoricalMeasuredPerProject.Select(project => project.Time));
     public TimeSpan WithAgentWithoutYou => YourTime + _Sum(AgentWithoutYouPerProject.Select(project => project.Time));
@@ -91,3 +95,29 @@ internal sealed record ProductivityDeleteRequest(Guid Id);
 internal sealed record ProductivityStopwatchRequest(string Description, string? ProjectId);
 
 internal sealed record ProductivityAcknowledgement(bool Success);
+
+// AC-1766: a price per profile for the usage its provider reports no cost for (a subscription, Codex), set by the
+// operator in the plugin's settings; there is no built-in price list. Null is usage that has no price at all.
+internal static class ProfileRates
+{
+    public const string StorageKey = "profile-rates";
+
+    // ponytail: one rate over input, output and cache writes, cache reads left out; split per token kind if the estimate needs to be closer.
+    public static double? Cost(CockpitUsageDelta usage, IReadOnlyDictionary<string, double> rates)
+    {
+        var tokens = (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens;
+        if (usage.CostUsd > 0 || tokens == 0)
+        {
+            return usage.CostUsd;
+        }
+
+        return usage.ProfileLabel is { } profile && rates.TryGetValue(profile, out var rate)
+            ? ((long)usage.InputTokens + usage.OutputTokens + usage.CacheCreationInputTokens) / 1_000_000d * rate
+            : null;
+    }
+
+    public static double? Cost(CockpitTimelineDay day) =>
+        day.ReportedCostUsd > 0 || (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens == 0
+            ? day.ReportedCostUsd
+            : null;
+}

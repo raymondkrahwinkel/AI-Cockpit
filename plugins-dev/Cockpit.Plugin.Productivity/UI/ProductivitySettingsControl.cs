@@ -9,7 +9,8 @@ using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
-// The week proposal's settings (AC-1723): the schedule per day, the rounding and which projects stay private.
+// The week proposal's settings (AC-1723): the schedule per day, the rounding and which projects stay private; and
+// the price per profile for usage its provider reports no cost for (AC-1766).
 internal sealed class ProductivitySettingsControl : UserControl, IPluginSettingsView
 {
     private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
@@ -22,12 +23,16 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
     private readonly TextBox _instructions;
     private readonly StackPanel _projects = new() { Spacing = 4 };
     private readonly List<(string Id, CheckBox Box)> _private = [];
+    private readonly StackPanel _rateRows = new() { Spacing = 4 };
+    private readonly List<(string Profile, TextBox Box)> _rates = [];
+    private readonly Dictionary<string, double> _storedRates;
 
     public ProductivitySettingsControl(ICockpitUiHost host, ProductivityController controller)
     {
         _host = host;
         _controller = controller;
         _settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
+        _storedRates = host.Storage.Get<Dictionary<string, double>>(ProfileRates.StorageKey) ?? [];
         _instructions = new TextBox
         {
             Name = "AgentInstructions",
@@ -59,9 +64,13 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
                 new TextBlock { Text = "Instructies voor de boekingsagent", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
                 new TextBlock { Text = "Deze tekst is bewerkbaar. De harde schemagrens en het verplichte akkoord staan vast buiten deze tekst.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 _instructions,
+                new TextBlock { Text = "Tarief per profiel", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
+                new TextBlock { Text = "In dollar per miljoen tokens (invoer, uitvoer en cache-schrijven), voor een profiel waarvan de aanbieder geen kosten meldt. Leeg laat het zonder prijs.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                _rateRows,
             },
         };
         _ = _LoadProjectsAsync();
+        _ = _LoadProfilesAsync();
     }
 
     public bool TryStage(out Action? commit, out string? error)
@@ -79,6 +88,25 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             minutes[day] = (int)Math.Round(hours * 60);
         }
 
+        var rates = new Dictionary<string, double>(_storedRates, StringComparer.Ordinal);
+        foreach (var (profile, box) in _rates)
+        {
+            if (string.IsNullOrWhiteSpace(box.Text))
+            {
+                rates.Remove(profile);
+            }
+            else if (double.TryParse(box.Text.Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var rate))
+            {
+                rates[profile] = rate;
+            }
+            else
+            {
+                commit = null;
+                error = $"Vul voor {profile} een tarief in, bijvoorbeeld 3,5, of laat het leeg.";
+                return false;
+            }
+        }
+
         var settings = new WeekSettings(
             minutes,
             new[] { 5, 15, 30 }[Math.Max(_rounding.SelectedIndex, 0)],
@@ -89,10 +117,38 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         commit = () =>
         {
             _host.Storage.Set(WeekSettings.StorageKey, settings);
+            _host.Storage.Set(ProfileRates.StorageKey, rates);
             _ = _controller.RefreshAsync();
         };
         error = null;
         return true;
+    }
+
+    private async Task _LoadProfilesAsync()
+    {
+        try
+        {
+            foreach (var profile in await _host.GetProfilesAsync() ?? [])
+            {
+                var box = new TextBox
+                {
+                    Name = $"Rate{_rates.Count}",
+                    Width = 80,
+                    Text = _storedRates.TryGetValue(profile.Label, out var rate) ? rate.ToString("0.##", Dutch) : string.Empty,
+                };
+                _rates.Add((profile.Label, box));
+                _rateRows.Children.Add(new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 8,
+                    Children = { new TextBlock { Text = profile.Label, Width = 140, VerticalAlignment = VerticalAlignment.Center }, box },
+                });
+            }
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"De profielen konden niet worden geladen: {exception.Message}", PluginToastSeverity.Error);
+        }
     }
 
     private async Task _LoadProjectsAsync()

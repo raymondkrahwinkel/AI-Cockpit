@@ -11,6 +11,9 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     public const string WorkspaceTypeId = "workspace.productivity.hours";
     public const string OverviewWorkspaceTypeId = "workspace.productivity.overview";
 
+    // Uren · Dag and Overzicht with fixed data, for `--screenshot --scene plugin:<name>` (AC-1766).
+    public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> WorkspaceScenes => ProductivityScenes.Workspaces;
+
     private ICockpitUiHost? _host;
     private ProductivityController? _controller;
     private OverviewController? _overviewController;
@@ -22,7 +25,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         _controller = new ProductivityController(host.Channel, TimeProvider.System);
         _overviewController = new OverviewController(host.Channel, TimeProvider.System);
         _reports = host.Channel.Subscribe("productivity.hours-reported", message => { _ = _RefreshAsync(host, _controller); });
-        _controller.UpdateProjectFallback(host.ActiveSessionWorkingDirectory);
+        _controller.UpdateProjectFallback(host.ActiveProjectId);
         var badge = host.AddSideMenuButtonWithBadge("Uren", () => _Open(host), MaterialIconKind.ClockOutline);
         badge.Tone = SideMenuButtonBadgeTone.Success;
         _controller.AttachBadge(badge);
@@ -65,7 +68,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     {
         if (_host is { } host && _controller is { } controller)
         {
-            controller.UpdateProjectFallback(host.ActiveSessionWorkingDirectory);
+            controller.UpdateProjectFallback(host.ActiveProjectId);
         }
     }
 
