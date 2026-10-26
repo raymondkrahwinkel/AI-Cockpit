@@ -263,6 +263,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: Productivity 0.6.2 is ready for its first store release with its category, icon, project links and
+  planning-and-tracking audience in place, and it can be selected in the manual publisher.
 - fixed: a prompt supplied to `StartSessionAsync` is submitted as the new desktop session's first turn once its
   runtime is ready, instead of being left in the composer for an operator to send manually.
 - fixed: Quit from the tray and the restart after an update now close Cockpit the same way as closing it from the desktop,
