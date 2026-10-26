@@ -340,6 +340,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **typing on a website in the Browser tab.** No character reached a page, so a search box such as YouTube's
+  or a form stayed empty, and Enter sent no form. Letters, digits, accents (also through a dead key), Enter, Tab, the
+  arrows and Ctrl+A, Ctrl+C and Ctrl+V all reach the page now, and only the browser's own keys stay in Cockpit.
 - fixed: **the Browser tab fits the page on a display scaled above 100%.** At 125% or 150% the page was drawn too
   large, so its right side, its scrollbars and the buttons at the bottom of a dialog fell outside the tab. Dragging a
   scrollbar past the edge of the tab and slow touchpad scrolling work too now.
