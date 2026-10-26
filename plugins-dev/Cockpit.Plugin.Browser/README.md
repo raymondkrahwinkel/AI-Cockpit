@@ -24,8 +24,20 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   (`browser_list_shared_tabs`, `browser_read_tab`, `browser_screenshot_tab`) answers only the transport-verified
   caller, reads in-process through `ExecuteDevToolsMethod`, and writes each read to `consent-audit.jsonl` as a
   Bypassed line with `PreApprovedBy: tab grant <id>`. No tool touches cookies, storage, other tabs or DevTools.
+- **Controlling a shared tab (AC-1728):** `request_tab_control(reason, tabId?)` opens the same card on the asking
+  session's behalf with Control picked; a control grant sits on the same (session, tab) key, and a tab has one
+  controller. `browser_click`, `browser_type`, `browser_press_key`, `browser_scroll` and `browser_navigate` (same origin
+  only) go in through CEF's OSR input (`SendMouseClickEvent`, `SendKeyEvent`), never DevTools `Input.*` or a port,
+  and each lands in the consent audit; of typed text only its length and the field, never the text. The operator's own
+  click or key takes over. Each action is decided again on CEF's UI thread right before it goes in (same grant, same
+  origin, and for keys a focused frame on that origin); a click must land on the top document, as DevTools'
+  `DOM.getNodeForLocation` says, never in a frame. While a tab is controlled, every form submission and non-GET
+  navigation in any frame waits in `OnBeforeResourceLoad` (`ContinueAsync`) until the operator sends it (the very
+  request continues, body and all) or drops it; one to another origin is cancelled, and so is the top frame leaving
+  the origin unless the address bar sent it; no file picker opens. While a submission waits, DevTools reads of that
+  tab do not answer. A page's own `fetch` is not covered: a page of the granted origin could always send data itself.
 - **Headless renders:** `--screenshot <png> --scene plugin:browser-tab` (also `browser-workspace` in the main window, `browser-rail`, `browser-floating`, `browser-codec`,
-  `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
+  `browser-shared`, `browser-share-paused`, `browser-workspace-shared`, `browser-tab-controlled`, `browser-form-held`, `browser-took-over`, `browser-workspace-controlled`, `browser-engine-download`, `browser-engine-missing`), with a page placeholder.
 
 ## The agent profile (AC-1713)
 

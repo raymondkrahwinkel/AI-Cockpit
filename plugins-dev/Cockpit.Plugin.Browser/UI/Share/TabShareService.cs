@@ -11,9 +11,11 @@ namespace Cockpit.Plugin.Browser.UI.Share;
 // Sharing one of Raymond's tabs with one agent session (AC-1714): the consent card that grants it, and the answer to
 // every read the backend passes on. The grant is checked on the UI thread right before and right after the read, so
 // Stop sharing, closing the tab or a move to another site refuses the very next call.
-internal sealed class TabShareService : IDisposable
+internal sealed partial class TabShareService : IDisposable
 {
     public const string Watch = "watch";
+
+    public const string Control = "control";
 
     private static readonly TimeSpan CardTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(10);
@@ -44,6 +46,7 @@ internal sealed class TabShareService : IDisposable
         }));
         model.TabClosed += tab => Grants.TabClosed(tab.Id);
         model.Changed += _WatchNavigation;
+        Grants.Changed += () => Dispatcher.UIThread.Post(_SyncControlled);
     }
 
     public TabGrantRegistry Grants { get; }
@@ -74,11 +77,11 @@ internal sealed class TabShareService : IDisposable
                 new ConsentChoice("mode", "What the agent may do",
                 [
                     new ConsentOption(Watch, "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
-                    new ConsentOption("control", "Control", "Click, type, scroll and navigate within this site.", Enabled: false) { Note = "not in this version" },
+                    new ConsentOption(Control, "Control", $"Watch, plus click, type, scroll and navigate, only within {origin}. Every form submission asks you again."),
                 ], AllowMultiple: true),
             ],
             ApproveLabel = "Share watching",
-            Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"],
+            Never = NeverCovered,
         };
 
         using var timeout = new CancellationTokenSource(CardTimeout);
@@ -90,9 +93,10 @@ internal sealed class TabShareService : IDisposable
 
         var paneId = picked[0];
         var name = sessions.FirstOrDefault(session => session.PaneId == paneId)?.Name ?? paneId;
+        var mode = chosen.TryGetValue("mode", out var modes) && modes.Contains(Control) ? Control : Watch;
         if (_model.Tabs.Contains(tab))
         {
-            Grants.Share(paneId, name, tab.Id, origin, Watch);
+            Grants.Share(paneId, name, tab.Id, origin, mode);
         }
     }
 
@@ -134,6 +138,11 @@ internal sealed class TabShareService : IDisposable
 
     private async Task<TabShareAnswer> _HandleAsync(TabShareRequest request)
     {
+        if (ControlTools.Contains(request.Tool))
+        {
+            return await _ControlAsync(request);
+        }
+
         if (request.Tool == "list")
         {
             var tabs = Grants.ForSession(request.PaneId)
@@ -201,6 +210,8 @@ internal sealed class TabShareService : IDisposable
     {
         foreach (var tab in _model.Tabs.Where(tab => _watched.Add(tab.Id)))
         {
+            tab.View.OperatorInput += () => _OperatorInput(tab);
+            tab.View.SubmitHeld += (method, url) => _SubmitHeld(tab, method, url);
             tab.Changed += () =>
             {
                 if (Grants.ForTab(tab.Id).Count > 0)

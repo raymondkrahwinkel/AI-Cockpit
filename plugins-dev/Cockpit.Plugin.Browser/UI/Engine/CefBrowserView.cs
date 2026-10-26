@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Cockpit.Plugin.Browser.UI.Share;
 using Xilium.CefGlue;
 
 namespace Cockpit.Plugin.Browser.UI.Engine;
@@ -28,6 +29,12 @@ internal sealed class CefBrowserView : Control
         const r=navigator.requestMediaKeySystemAccess;if(r){navigator.requestMediaKeySystemAccess=function(){return r.apply(this,arguments).catch(x=>{say('codec');throw x;});};}
         })();
         """;
+
+    // AC-1728: the origin an agent controls this tab on, or null. While set, every form submission and non-GET
+    // navigation in any frame waits in OnBeforeResourceLoad for the operator; the page's scripts have no say in it.
+    private volatile string? _controlOrigin;
+    private readonly object _holdGate = new();
+    private CefCallback? _held;
 
     private readonly object _gate = new();
     private readonly BrowserEngine _engine;
@@ -83,6 +90,33 @@ internal sealed class CefBrowserView : Control
 
     public event Action<string>? PopupRequested;
 
+    // AC-1728: the operator's own click or key in this view, so an agent controlling the tab pauses for him.
+    public event Action? OperatorInput;
+
+    // AC-1728: a navigation held while the tab is controlled, as its method and target address, on the UI thread.
+    public event Action<string, string>? SubmitHeld;
+
+    public string? ControlOrigin
+    {
+        get => _controlOrigin;
+        set => _controlOrigin = value;
+    }
+
+    // Lets exactly the held request go on, body and all; nothing is copied or sent again (measured, AC-1728).
+    public void ReleaseHeldSubmit() => _TakeHeld()?.Continue();
+
+    public void DropHeldSubmit() => _TakeHeld()?.Cancel();
+
+    private CefCallback? _TakeHeld()
+    {
+        lock (_holdGate)
+        {
+            var held = _held;
+            _held = null;
+            return held;
+        }
+    }
+
     public bool IsMuted { get; private set; }
 
     public void Navigate(string url)
@@ -101,6 +135,100 @@ internal sealed class CefBrowserView : Control
     public void GoForward() => _browser?.GoForward();
 
     public void Reload() => _browser?.Reload();
+
+    // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host. The
+    // gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses, and the task
+    // says whether the input went in. Coordinates are the page's CSS pixels at 100% zoom.
+    public Task<bool> AgentClick(int x, int y, Func<string?, string?, bool> gate, string frames)
+    {
+        var mouse = new CefMouseEvent(x, y, CefEventFlags.None);
+        return _Agent((main, focused) => gate(main, focused) && _FrameSignature() == frames, host =>
+        {
+            host.SetFocus(true);
+            host.SendMouseMoveEvent(mouse, false);
+            host.SendMouseClickEvent(mouse, CefMouseButtonType.Left, false, 1);
+            host.SendMouseClickEvent(mouse, CefMouseButtonType.Left, true, 1);
+        });
+    }
+
+    public Task<bool> AgentType(string text, Func<string?, string?, bool> gate)
+    {
+        var keys = text.Select(character => new CefKeyEvent { EventType = CefKeyEventType.Char, Character = character, UnmodifiedCharacter = character, WindowsKeyCode = character }).ToList();
+        return _Agent(gate, host =>
+        {
+            host.SetFocus(true);
+            foreach (var key in keys)
+            {
+                host.SendKeyEvent(key);
+            }
+        });
+    }
+
+    // A Windows key code from KeyCodes.FromName; Enter also sends its character, which is what submits a form.
+    public Task<bool> AgentKey(int code, Func<string?, string?, bool> gate) => _Agent(gate, host =>
+    {
+        host.SetFocus(true);
+        host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.RawKeyDown, WindowsKeyCode = code });
+        if (code == 0x0D)
+        {
+            host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = code });
+        }
+
+        host.SendKeyEvent(new CefKeyEvent { EventType = CefKeyEventType.KeyUp, WindowsKeyCode = code });
+    });
+
+    public Task<bool> AgentScroll(int dx, int dy, Func<string?, string?, bool> gate)
+    {
+        var mouse = new CefMouseEvent((int)(_viewSize.Width / 2), (int)(_viewSize.Height / 2), CefEventFlags.None);
+        return _Agent(gate, host => host.SendMouseWheelEvent(mouse, dx, dy));
+    }
+
+    public Task<bool> AgentNavigate(string url, Func<string?, string?, bool> gate) => _Agent(gate, host => host.GetBrowser().GetMainFrame().LoadUrl(url));
+
+    // The browser's frames as one string, read on CEF's UI thread; null when there is no browser.
+    public Task<string?> FrameSignatureAsync()
+    {
+        var done = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_browser is null)
+        {
+            done.SetResult(null);
+            return done.Task;
+        }
+
+        CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() => done.TrySetResult(_FrameSignature())));
+        return done.Task;
+    }
+
+    private string? _FrameSignature() =>
+        _browser is { } browser ? string.Join(",", browser.GetFrameIdentifiers().Order(StringComparer.Ordinal)) : null;
+
+    private Task<bool> _Agent(Func<string?, string?, bool> gate, Action<CefBrowserHost> input)
+    {
+        if (_browser is not { } browser)
+        {
+            return Task.FromResult(false);
+        }
+
+        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CefRuntime.PostTask(CefThreadId.UI, new ActionTask(() =>
+        {
+            try
+            {
+                var allowed = gate(browser.GetMainFrame()?.Url, browser.GetFocusedFrame()?.Url);
+                if (allowed)
+                {
+                    input(browser.GetHost());
+                }
+
+                done.TrySetResult(allowed);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                done.TrySetResult(false);
+            }
+        }));
+        return done.Task;
+    }
 
     public void SetMuted(bool muted)
     {
@@ -226,6 +354,7 @@ internal sealed class CefBrowserView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        OperatorInput?.Invoke();
         Focus();
         var mouse = _Mouse(e);
         var button = _Button(e.GetCurrentPoint(this).Properties.PointerUpdateKind);
@@ -267,6 +396,7 @@ internal sealed class CefBrowserView : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        OperatorInput?.Invoke();
         _SendKey(e, CefKeyEventType.RawKeyDown);
         e.Handled = true;
     }
@@ -467,6 +597,12 @@ internal sealed class CefBrowserView : Control
         private readonly LifeSpanHandler _lifeSpan = new(owner);
         private readonly DisplayHandler _display = new(owner);
         private readonly LoadHandler _load = new(owner);
+        private readonly RequestHandler _request = new(owner);
+        private readonly DialogHandler _dialog = new(owner);
+
+        protected override CefRequestHandler GetRequestHandler() => _request;
+
+        protected override CefDialogHandler GetDialogHandler() => _dialog;
 
         protected override CefRenderHandler GetRenderHandler() => _render;
 
@@ -475,6 +611,63 @@ internal sealed class CefBrowserView : Control
         protected override CefDisplayHandler GetDisplayHandler() => _display;
 
         protected override CefLoadHandler GetLoadHandler() => _load;
+    }
+
+    // AC-1728: a controlled tab's navigations go through the submit hold; everything else keeps CEF's defaults.
+    private sealed class RequestHandler(CefBrowserView owner) : CefRequestHandler
+    {
+        private readonly SubmitHold _hold = new(owner);
+
+        protected override CefResourceRequestHandler? GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request,
+            bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling) =>
+            isNavigation && owner._controlOrigin is not null ? _hold : null;
+    }
+
+    // The request itself waits (ContinueAsync) until the operator sends or drops it, in every frame; one to another
+    // origin is cancelled outright. OnBeforeBrowse would not do: the body is not there yet (measured, CEF 154).
+    private sealed class SubmitHold(CefBrowserView owner) : CefResourceRequestHandler
+    {
+        protected override CefCookieAccessFilter? GetCookieAccessFilter(CefBrowser browser, CefFrame frame, CefRequest request) => null;
+
+        protected override CefReturnValue OnBeforeResourceLoad(CefBrowser browser, CefFrame frame, CefRequest request, CefCallback callback)
+        {
+            var source = request.TransitionType & CefTransitionType.SourceMask;
+            var (method, url) = (request.Method, request.Url);
+            switch (ControlPolicy.Navigation(owner._controlOrigin, method, source == CefTransitionType.FormSubmit, url, frame.IsMain, source == CefTransitionType.Explicit))
+            {
+                case ControlPolicy.Verdict.Drop:
+                    return CefReturnValue.Cancel;
+                case ControlPolicy.Verdict.Hold:
+                    CefCallback? previous;
+                    lock (owner._holdGate)
+                    {
+                        previous = owner._held;
+                        owner._held = callback;
+                    }
+
+                    previous?.Cancel();
+                    _OnUi(() => owner.SubmitHeld?.Invoke(method, url));
+                    return CefReturnValue.ContinueAsync;
+                default:
+                    return CefReturnValue.Continue;
+            }
+        }
+    }
+
+    // AC-1728: no file picker opens while an agent controls the tab, so a click cannot hand it a file.
+    private sealed class DialogHandler(CefBrowserView owner) : CefDialogHandler
+    {
+        protected override bool OnFileDialog(CefBrowser browser, CefFileDialogMode mode, string title, string defaultFilePath,
+            string[] acceptFilters, string[] acceptExtensions, string[] acceptDescriptions, CefFileDialogCallback callback)
+        {
+            if (owner._controlOrigin is null)
+            {
+                return false;
+            }
+
+            callback.Cancel();
+            return true;
+        }
     }
 
     private sealed class LifeSpanHandler(CefBrowserView owner) : CefLifeSpanHandler

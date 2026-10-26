@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: in the Browser plugin an agent session can ask to control a shared tab, and you can give it control yourself
+  on the share card: it may then click, type, scroll and navigate in that one tab, only on that site. An amber line and
+  a bar say who controls it and what it last did, **Stop** ends it at once, and your own click or key in the tab takes
+  over until you **Give back**. Every form the tab would send waits for your **Send**, yours too while an agent
+  controls it; a form to another site, or the tab leaving the site, is refused. Every action is logged, typed text only
+  by its length.
 - added: a plugin can ask its question as a card under the assistant's conversation instead of over it, with
   buttons to approve, pick another option or say no.
 - changed: every MCP tool call in a conversation now shows by its server and tool, such as `browser.request_tab` or

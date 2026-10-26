@@ -88,7 +88,10 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         }
 
         var tabs = grants.Select(grant => grant.TabId).Distinct().Count();
-        return $"{text} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
+        var controllers = grants.Where(grant => grant.Controls).ToList();
+        return controllers.Count > 0
+            ? $"{text} · {controllers.Count} {(controllers.Count == 1 ? "tab" : "tabs")} controlled by {string.Join(", ", controllers.Select(grant => grant.SessionName).Distinct())}"
+            : $"{text} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
     }
 
     private BrowserHome _Home(ICockpitUiHost host)

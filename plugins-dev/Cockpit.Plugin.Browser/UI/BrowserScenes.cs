@@ -31,6 +31,10 @@ internal static class BrowserScenes
         // AC-1714, mockup screen 7: the active tab shared with one session, and the same tab after it moved to another site.
         ["browser-shared"] = () => _Shell(BrowserPlace.Tab, share: Shared.Reading),
         ["browser-share-paused"] = () => _Shell(BrowserPlace.Tab, share: Shared.Moved),
+        // AC-1728, mockup v2 screens 10 to 12: a controlled tab, a form held for Raymond, and Raymond taking over.
+        ["browser-tab-controlled"] = () => _Shell(BrowserPlace.Tab, share: Shared.Controlled),
+        ["browser-form-held"] = () => _Shell(BrowserPlace.Tab, share: Shared.FormHeld),
+        ["browser-took-over"] = () => _Shell(BrowserPlace.Tab, share: Shared.TookOver),
         ["browser-engine-download"] = () => _Empty(BrowserEngine.ForScene(
             BrowserEngineState.Fetching,
             progress: new CefRuntimeProgress("Downloading", 61_000_000, 172_752_666),
@@ -68,6 +72,16 @@ internal static class BrowserScenes
                 BrowserUi.WithShared(
                     BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3),
                     [new TabGrant("pane-1714", "AC-1714 statusline", "scene", "https://github.com", TabShareService.Watch)])),
+            // AC-1728, mockup v2 screen 10 in Cockpit's main window, with the controlled tab in the status bar.
+            ["browser-workspace-controlled"] = () => (
+                new WorkspaceTypeRegistration(BrowserUi.WorkspaceTypeId, "Browser", _ => _Shell(BrowserPlace.Tab, share: Shared.Controlled))
+                {
+                    IconKind = MaterialIconKind.Web,
+                    HeaderActions = [new ToolbarAction("Dock in the rail", MaterialIconKind.DockRight, () => Task.CompletedTask)],
+                },
+                BrowserUi.WithShared(
+                    BrowserUi.StatusText(BrowserPlace.Tab, BrowserEngineState.Ready, 3),
+                    [new TabGrant("pane-1714", "AC-1714 statusline", "scene", "https://github.com", TabShareService.Control)])),
         };
 
     private enum Shared
@@ -75,6 +89,9 @@ internal static class BrowserScenes
         None,
         Reading,
         Moved,
+        Controlled,
+        FormHeld,
+        TookOver,
     }
 
     private static Control _Shell(BrowserPlace place, bool codecUnsupported = false, bool agentSide = false, bool driving = false, Shared share = Shared.None)
@@ -98,11 +115,27 @@ internal static class BrowserScenes
         {
             var pr = model.Tabs[1];
             model.Activate(pr);
-            grants.Share("pane-1714", "AC-1714 statusline", pr.Id, "https://github.com", TabShareService.Watch);
+            var control = share is Shared.Controlled or Shared.FormHeld or Shared.TookOver;
+            grants.Share("pane-1714", "AC-1714 statusline", pr.Id, "https://github.com", control ? TabShareService.Control : TabShareService.Watch);
             grants.MarkRead(grants.ForTab(pr.Id)[0], DateTimeOffset.Now.AddSeconds(-12));
             if (share == Shared.Moved)
             {
                 grants.Navigated(pr.Id, "https://accounts.google.com");
+            }
+
+            if (control)
+            {
+                grants.MarkAction(grants.ForTab(pr.Id)[0], "click \u201cRe-run failed jobs\u201d", DateTimeOffset.Now.AddSeconds(-3));
+            }
+
+            if (share == Shared.FormHeld)
+            {
+                grants.Hold(pr.Id, "POST https://github.com/raymondkrahwinkel/AI-Cockpit/actions/runs/18734/rerun");
+            }
+
+            if (share == Shared.TookOver)
+            {
+                grants.TakeOver(pr.Id);
             }
         }
 

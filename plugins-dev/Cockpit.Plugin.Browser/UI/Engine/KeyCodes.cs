@@ -7,6 +7,24 @@ namespace Cockpit.Plugin.Browser.UI.Engine;
 // ponytail: no OEM punctuation keys; typed text covers them, add when a shortcut needs one.
 internal static class KeyCodes
 {
+    // AC-1728: a key an agent names ("Enter", "ArrowDown", "Backspace"), as Avalonia's Key or a DOM key name.
+    public static int FromName(string name)
+    {
+        var key = name switch
+        {
+            "ArrowUp" => nameof(Key.Up),
+            "ArrowDown" => nameof(Key.Down),
+            "ArrowLeft" => nameof(Key.Left),
+            "ArrowRight" => nameof(Key.Right),
+            "Backspace" => nameof(Key.Back),
+            "Esc" => nameof(Key.Escape),
+            " " => nameof(Key.Space),
+            _ => name,
+        };
+        // Enum.TryParse also takes "42" as a Key; a number is not a key name.
+        return int.TryParse(key, out _) == false && Enum.TryParse<Key>(key, ignoreCase: true, out var parsed) ? ToWindows(parsed) : 0;
+    }
+
     public static int ToWindows(Key key) => key switch
     {
         >= Key.A and <= Key.Z => 0x41 + (key - Key.A),

@@ -21,7 +21,17 @@ internal static class TabShareContract
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 }
 
-internal sealed record TabShareRequest(string Id, string PaneId, string Tool, string? TabId = null, string? Mode = null);
+// AC-1728: Text carries the typed text, the key, the address or the reason for asking; X and Y a point or a scroll.
+internal sealed record TabShareRequest(
+    string Id,
+    string PaneId,
+    string Tool,
+    string? TabId = null,
+    string? Mode = null,
+    string? Text = null,
+    double? X = null,
+    double? Y = null,
+    string? Selector = null);
 
 internal sealed record TabShareAnswer(
     string Id,
@@ -32,6 +42,7 @@ internal sealed record TabShareAnswer(
     string? Title = null,
     string? Text = null,
     string? ImagePng = null,
-    IReadOnlyList<SharedTabInfo>? Tabs = null);
+    IReadOnlyList<SharedTabInfo>? Tabs = null,
+    string? Action = null);
 
 internal sealed record SharedTabInfo(string TabId, string Title, string Url, string Mode, bool Paused);
