@@ -25,7 +25,7 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
             group.Min(row => row.ScheduleMinutes),
             group.Max(row => row.AlreadyBooked),
             group.Sum(row => row.Row.Minutes),
-            (long)group.Max(row => row.AlreadyBooked) + group.Where(row => row.Status == "booked").Sum(row => (long)row.Row.Minutes) > group.Min(row => row.ScheduleMinutes),
+            false,
             group.Last(row => row.Status is not null).PaneId,
             group.Where(row => row.Status == "booked").Sum(row => row.Row.Minutes)))
         .Where(day => day.Overrun || (long)day.AlreadyBooked + day.ProposedMinutes > day.ScheduleMinutes)
