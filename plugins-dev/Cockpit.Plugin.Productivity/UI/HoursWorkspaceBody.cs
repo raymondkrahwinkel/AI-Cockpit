@@ -563,14 +563,21 @@ internal sealed class HoursWorkspaceBody : UserControl
         Grid.SetColumn(description, 1);
         row.Children.Add(description);
 
-        var project = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        // A grid, not a horizontal stack, so a long name wraps inside its column instead of running over Duur.
+        var project = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 6 };
         if (!string.IsNullOrWhiteSpace(entry.ProjectId))
         {
-            project.Children.Add(Ui.Dot("CockpitStatusDoneBrush", 7));
+            var dot = Ui.Dot("CockpitStatusDoneBrush", 7);
+            dot.VerticalAlignment = VerticalAlignment.Top;
+            dot.Margin = new Thickness(0, 5, 0, 0);
+            project.Children.Add(dot);
         }
+
         var name = _controller.Names.Resolve(entry.ProjectId);
         var label = Ui.Hint(entry.ProjectId is null ? "— geen" : name.Label);
+        label.TextWrapping = TextWrapping.Wrap;
         ToolTip.SetTip(label, name.Tooltip);
+        Grid.SetColumn(label, 1);
         project.Children.Add(label);
         Grid.SetColumn(project, 2);
         row.Children.Add(project);

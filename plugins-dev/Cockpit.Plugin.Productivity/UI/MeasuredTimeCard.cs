@@ -2,10 +2,13 @@ using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Cockpit.Plugin.Productivity.Contracts;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Productivity.UI;
 
@@ -17,6 +20,9 @@ internal static class MeasuredTimeCard
 
     // The theme has no solid lavender; mockup v3 01 draws "jij, gemeten" in it.
     public static IBrush You { get; } = new ImmutableSolidColorBrush(Color.Parse("#B79CF0"));
+
+    // Set by the screenshot scenes, so a render shows the folds open.
+    internal static bool OpenFolds { get; set; }
 
     private static readonly IBrush[] ProjectPalette =
     [
@@ -89,7 +95,7 @@ internal static class MeasuredTimeCard
     // A row that unfolds into one line per session, longest first.
     private static Control _Fold(Control header, IEnumerable<(string Label, TimeSpan Time)> lines)
     {
-        var details = new StackPanel { Spacing = 3, Margin = new Thickness(15, 2, 0, 4) };
+        var details = new StackPanel { Spacing = 3, Margin = new Thickness(31, 0, 0, 4) };
         foreach (var (label, time) in lines.OrderByDescending(line => line.Time))
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,50"), ColumnSpacing = 10 };
@@ -102,9 +108,35 @@ internal static class MeasuredTimeCard
             details.Children.Add(row);
         }
 
-        return details.Children.Count == 0
-            ? header
-            : new Expander { Header = header, Content = details, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        if (details.Children.Count == 0)
+        {
+            return header;
+        }
+
+        // The host theme's quiet collapser, not an Expander: a checked toggle would otherwise take the accent fill.
+        var chevron = new MaterialIcon { Kind = MaterialIconKind.ChevronRight, Width = 13, Height = 13, VerticalAlignment = VerticalAlignment.Center };
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("16,*") };
+        head.Children.Add(chevron);
+        Grid.SetColumn(header, 1);
+        head.Children.Add(header);
+        var toggle = new ToggleButton
+        {
+            Classes = { "Collapser" },
+            Content = head,
+            Padding = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            IsChecked = OpenFolds,
+        };
+        void Show()
+        {
+            details.IsVisible = toggle.IsChecked == true;
+            chevron.Kind = toggle.IsChecked == true ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
+        }
+
+        toggle.IsCheckedChanged += (_, _) => Show();
+        Show();
+        return new StackPanel { Spacing = 2, Children = { toggle, details } };
     }
 
     private static Control _ProjectRow(ProjectTime project, double longest, ProjectName name)
@@ -122,7 +154,7 @@ internal static class MeasuredTimeCard
             Height = 12,
             CornerRadius = new CornerRadius(3),
             VerticalAlignment = VerticalAlignment.Center,
-            Background = ProjectBrush(project.ProjectId),
+            Background = You,
         };
         var share = project.Time.TotalMinutes / longest;
         var track = new Grid();

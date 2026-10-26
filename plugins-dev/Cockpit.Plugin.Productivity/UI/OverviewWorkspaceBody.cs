@@ -438,14 +438,19 @@ internal sealed class OverviewWorkspaceBody : UserControl
     {
         const string none = "";
         var names = _Names(snapshot);
+
+        // A folder from before AC-1737 counts with the project it resolves to, not as a second row of its own.
+        string Key(string? value) => names.Resolve(value).ProjectId ?? value ?? none;
         var measured = snapshot.Attention.MeasuredPerProject
             .Concat(snapshot.HistoricalMeasuredPerProject)
-            .GroupBy(project => project.ProjectId ?? none, StringComparer.Ordinal)
+            .GroupBy(project => Key(project.ProjectId), StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(project => project.Time.Ticks)), StringComparer.Ordinal);
         var own = snapshot.Entries
-            .GroupBy(entry => entry.ProjectId ?? none, StringComparer.Ordinal)
+            .GroupBy(entry => Key(entry.ProjectId), StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(entry => entry.Duration.Ticks)), StringComparer.Ordinal);
-        var agent = snapshot.AgentWithoutYouPerProject.ToDictionary(project => project.ProjectId ?? none, project => project.Time, StringComparer.Ordinal);
+        var agent = snapshot.AgentWithoutYouPerProject
+            .GroupBy(project => Key(project.ProjectId), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(project => project.Time.Ticks)), StringComparer.Ordinal);
 
         return measured.Keys.Concat(own.Keys).Concat(agent.Keys).Distinct(StringComparer.Ordinal)
             .Select(id =>
@@ -465,7 +470,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             .ToList();
     }
 
-    private const string SessionColumns = "*,100,46,62,52,64";
+    private const string SessionColumns = "*,124,44,60,50,62";
 
     private static Control _Sessions(ProductivityOverviewSnapshot snapshot)
     {

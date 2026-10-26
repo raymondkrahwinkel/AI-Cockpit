@@ -82,7 +82,11 @@ internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IR
             parts.Add(ticket);
         }
 
-        if (session.Name is { } name && string.Equals(name, session.Ticket, StringComparison.Ordinal) is false)
+        // A name that opens with its ticket ("AC-1764 sidebar") keeps only the rest beside the ticket.
+        var name = session.Ticket is { } prefix && session.Name?.StartsWith(prefix, StringComparison.Ordinal) == true
+            ? session.Name[prefix.Length..].TrimStart(' ', '·', '-', ':')
+            : session.Name;
+        if (string.IsNullOrWhiteSpace(name) is false)
         {
             parts.Add(name);
         }

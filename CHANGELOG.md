@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
+  get a dollar rate per million tokens in Productivity's settings; Overzicht names the profiles without one and
+  where to set it. Plugins read the profile of a usage record as `CockpitUsageDelta.ProfileLabel` (host 0.124.0).
+
 - added: **zoom and browser keys in the Browser tab.** Ctrl+plus, Ctrl+minus, Ctrl+0 and Ctrl+wheel zoom the page,
   and the zoom is kept per site, also after a restart. Alt+Left, Alt+Right, F5 and Ctrl+R go back, forward and reload.
 - added: **plugins hear about an account change.** A plugin that contributes an OAuth MCP server can now subscribe to
@@ -343,6 +347,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: **typing on a website in the Browser tab.** No character reached a page, so a search box such as YouTube's
   or a form stayed empty, and Enter sent no form. Letters, digits, accents (also through a dead key), Enter, Tab, the
   arrows and Ctrl+A, Ctrl+C and Ctrl+V all reach the page now, and only the browser's own keys stay in Cockpit.
+- fixed: **Productivity shows project names, tickets and sessions instead of ids.** Uren › Dag named a project by its
+  bare id and Snel vastleggen by the session's worktree folder; both now show the project's name, and a line saved
+  with a worktree folder counts with its project. Each project and Agents actief fold open per session as project ·
+  ticket · session name, and Overzicht's Agents table shows the ticket, the session name and the profile. An id that
+  belongs to no project reads "Onbekend project (…)" with a tooltip (Productivity 0.7.0).
+
 - fixed: **the Browser tab fits the page on a display scaled above 100%.** At 125% or 150% the page was drawn too
   large, so its right side, its scrollbars and the buttons at the bottom of a dialog fell outside the tab. Dragging a
   scrollbar past the edge of the tab and slow touchpad scrolling work too now.

@@ -11,6 +11,9 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     public const string WorkspaceTypeId = "workspace.productivity.hours";
     public const string OverviewWorkspaceTypeId = "workspace.productivity.overview";
 
+    // Uren · Dag and Overzicht with fixed data, for `--screenshot --scene plugin:<name>` (AC-1766).
+    public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> WorkspaceScenes => ProductivityScenes.Workspaces;
+
     private ICockpitUiHost? _host;
     private ProductivityController? _controller;
     private OverviewController? _overviewController;
