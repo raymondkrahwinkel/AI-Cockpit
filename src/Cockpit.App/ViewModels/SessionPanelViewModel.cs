@@ -185,6 +185,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private ConsentPromptViewModel? _pendingConsent;
 
+    public bool HasInlineConsent => PendingConsent?.IsInline == true;
+
     // The process this session runs in, once it has one (#78) — what the resource meter weighs, together with
     // everything that process spawns. Null for a session that is an HTTP call rather than a process (Ollama,
     // LM Studio), and null before launch.
@@ -1859,6 +1861,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         OnPropertyChanged(nameof(RequestsAttention));
         OnPropertyChanged(nameof(RailSortKey));
+        OnPropertyChanged(nameof(HasInlineConsent));
         OnConsentCardChanged();
     }
 
