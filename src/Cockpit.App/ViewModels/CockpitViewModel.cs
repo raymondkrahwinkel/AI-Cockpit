@@ -5513,7 +5513,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         OnPropertyChanged(nameof(ThisLaptopSectionExpanded));
         if (_layoutSettingsStore is not null)
         {
-            _ = _PersistLayoutSettingsAsync().ContinueWith(_ => { }, TaskScheduler.Default);
+            _ = _PersistSidebarSectionsAsync();
+        }
+    }
+
+    // The fold is a two-way binding, so its setter cannot await; this does, and a failed save is logged, not lost.
+    private async Task _PersistSidebarSectionsAsync()
+    {
+        try
+        {
+            await _PersistLayoutSettingsAsync();
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Saving which sidebar sections are folded failed.");
         }
     }
 

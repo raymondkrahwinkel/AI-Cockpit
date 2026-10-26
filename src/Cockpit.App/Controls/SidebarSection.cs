@@ -68,7 +68,7 @@ internal sealed class SidebarSection : ContentControl
 
     private static Control _Build(SidebarSection owner, INameScope scope)
     {
-        var chevron = CockpitIcons.Icon(MaterialIconKind.ChevronDown, 13);
+        var chevron = CockpitIcons.Icon(MaterialIconKind.ChevronDown, 12);
         chevron.VerticalAlignment = VerticalAlignment.Center;
         chevron.Bind(TemplatedControl.ForegroundProperty, owner.GetResourceObservable("CockpitTextFaintBrush"));
         chevron.Bind(MaterialIcon.KindProperty, owner.GetObservable(IsExpandedProperty,
@@ -106,7 +106,7 @@ internal sealed class SidebarSection : ContentControl
         var headerGrid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,*,Auto"),
-            ColumnSpacing = 6,
+            ColumnSpacing = 7,
             Children = { chevron, icon, title, count, trailing },
         };
         Grid.SetColumn(icon, 1);
@@ -116,7 +116,7 @@ internal sealed class SidebarSection : ContentControl
 
         var header = new Border
         {
-            Padding = new Thickness(8, 6),
+            Padding = new Thickness(9, 7),
             Background = Brushes.Transparent,
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = headerGrid,
@@ -132,7 +132,7 @@ internal sealed class SidebarSection : ContentControl
             owner.IsExpanded = !owner.IsExpanded;
         };
 
-        var body = new ContentPresenter { Margin = new Thickness(6, 0, 6, 6) };
+        var body = new ContentPresenter { Margin = new Thickness(4, 2, 4, 6) };
         body.Bind(ContentPresenter.ContentProperty, owner.GetObservable(ContentProperty));
         body.Bind(ContentPresenter.ContentTemplateProperty, owner.GetObservable(ContentTemplateProperty));
         body.Bind(Visual.IsVisibleProperty, owner.GetObservable(IsExpandedProperty));

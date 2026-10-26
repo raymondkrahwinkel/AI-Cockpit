@@ -182,12 +182,13 @@
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Grid.Column="0" Spacing="2">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Ellipse Width="8" Height="8"
+                                <!-- AC-1762: v8's `.sess` — a 12 px regular name, a 7 px dot. -->
+                                <Ellipse Width="7" Height="7"
                                          Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding Title}" FontSize="12"
                                            IsVisible="{Binding !IsRenaming}"/>
                                 <TextBox Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
-                                         Classes="Compact" MinWidth="110" FontWeight="SemiBold"
+                                         Classes="Compact" MinWidth="110" FontSize="12"
                                          KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
                                          AttachedToVisualTree="OnRenameBoxAttached"/>
                                 <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
@@ -222,8 +223,10 @@
                                 </Border>
                                 <TextBlock Text="{Binding ActiveProfileLabel}"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
+                                <TextBlock Text="·" Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"
+                                           IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 <TextBlock Text="{Binding SessionStatusLabel}"
-                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                           Foreground="{DynamicResource CockpitTextFaintBrush}" FontSize="11"/>
                                 <!-- AC-1096: what this session's processes still hold. Beside the status because that is
                                      the claim it qualifies: Idle says the agent stopped, not that its build did. -->
                                 <TextBlock Text="{Binding ProcessActivityLabel}"
@@ -702,9 +705,9 @@
                                                                    LogoPath="{Binding LogoPath}"
                                                                    ProjectName="{Binding Name}"
                                                                    IsVisible="{Binding LogoPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <!-- Hover-revealed quick start, mirroring the session rows' hover ✕. -->
                                         <Button Grid.Column="2" Classes="Subtle startProject"
                                                 Padding="4,0" VerticalAlignment="Center"
@@ -773,13 +776,16 @@
                                                                                         IsVisible="{Binding IsExpanded}"/>
                                                         </Panel>
                                                     </Button>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11"
-                                                               FontWeight="SemiBold" VerticalAlignment="Center"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                    <TextBlock Grid.Column="2" Text="{Binding CountLabel}" FontSize="11"
-                                                               VerticalAlignment="Center" Margin="0,0,4,0"
-                                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    <!-- AC-1762: v8's `.sidehead`, "Sessions · 2". -->
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                                        <TextBlock Text="{Binding Name}" FontSize="11"
+                                                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding CountLabel, StringFormat='· {0}'}" FontSize="11"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    </StackPanel>
                                                 </Grid>
                                             </Border>
 
@@ -829,9 +835,9 @@
                                                             ToolTip.Tip="Open this session; it runs on the server">
                                                         <StackPanel Spacing="2">
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
                                                                          Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                <TextBlock Text="{Binding Title}" FontSize="12"
                                                                            TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
                                                             <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
