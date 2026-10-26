@@ -1034,7 +1034,7 @@
             <!-- AC-1715: a consent card that asks to stand under the conversation (the assistant asking to look along on
                  a browser tab), straight above the composer; every other card stays the overlay below. -->
             <ContentControl DockPanel.Dock="Bottom" Margin="10,6" Content="{Binding Session.PendingConsent}"
-                            IsVisible="{Binding Session.PendingConsent.IsInline, FallbackValue=False}">
+                            IsVisible="{Binding Session.HasInlinePendingConsent}">
                 <ContentControl.ContentTemplate>
                     <DataTemplate x:DataType="vm:ConsentPromptViewModel">
                         <controls:ConsentBanner/>

@@ -1837,6 +1837,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public bool RequestsAttention =>
         SessionStatus is SessionStatus.NeedsAttention or SessionStatus.Failed || PendingConsent is not null;
 
+    public bool HasInlinePendingConsent => PendingConsent?.IsInline == true;
+
     // Sort key for the focus-rail's tile order (AC-444 #2): attention-needing sessions first, then the
     // sidebar's own order. A single int rather than two separate comparisons — `Controls.SessionTilePanel`
     // reads this off a plain attached property and stays unaware of what `SessionPanelViewModel` even is.
@@ -1859,6 +1861,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         OnPropertyChanged(nameof(RequestsAttention));
         OnPropertyChanged(nameof(RailSortKey));
+        OnPropertyChanged(nameof(HasInlinePendingConsent));
         OnConsentCardChanged();
     }
 
