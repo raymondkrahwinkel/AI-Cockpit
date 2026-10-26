@@ -457,7 +457,8 @@ internal static partial class Screenshotter
         // AC-1724: a plugin's prompt into a running session, on the host's own card on that session's pane.
         ["session-consent-plugin-prompt"] = (width, height) => new Window { Width = width, Height = height, Content = _PluginPromptConsentSession() },
         // AC-1714: a card with choices that belongs to no session, as the window shows it — the browser's share card.
-        ["window-consent-choices"] = (width, height) => new Window { Width = width, Height = height, Content = _WindowConsentChoices() },
+        ["window-consent-choices"] = (width, height) => new Window { Width = width, Height = height, Content = _WindowConsentChoices(_ShareCard()) },
+        ["window-consent-control"] = (width, height) => new Window { Width = width, Height = height, Content = _WindowConsentChoices(_ControlCard()) },
         // AC-700: the memory-cap warning in both of its states. The Kill button is the whole point of the second
         // one and it only exists as a binding — a test can say IsOverMemoryCap is true and still be looking at a
         // bar where nothing is drawn.
@@ -616,6 +617,9 @@ internal static partial class Screenshotter
         // AC-1523: an approval card with a 3,000-character behaviour prompt, and a short one beside it — the long
         // one pushed Approve/Deny out of the window, the short one must not grow empty space in return.
         ["assistant-chat-consent-long"] = (_, _) => _AssistantChatConsent(_LongProjectUpdate()),
+        // AC-1715: the assistant asks to look along; the card sits in its own conversation.
+        ["assistant-chat-look-along"] = (_, _) => _AssistantChatLookAlong(),
+        ["assistant-chat-look-along-others"] = (_, _) => _AssistantChatLookAlong(showOthers: true),
         ["assistant-chat-consent-short"] = (_, _) => _AssistantChatConsent("Project: Synvolution-MailCatch\nDescription: \"Mail sink\" → \"Mail sink for staging\""),
 
         // AC-776 Deel 1: the session-status pill in all six SessionStatus values, and the same pill's "⋯" flyout
@@ -2152,7 +2156,7 @@ internal static partial class Screenshotter
         "Let me clear out what is left over.",
         """{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""");
 
-    private static Border _WindowConsentChoices() =>
+    private static Border _WindowConsentChoices(ConsentRequest request) =>
         new()
         {
             Background = Avalonia.Application.Current!.FindResource("CockpitScrimBrush") as Avalonia.Media.IBrush,
@@ -2163,33 +2167,60 @@ internal static partial class Screenshotter
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 Content = new Controls.ConsentBanner
                 {
-                    DataContext = new ViewModels.ConsentPromptViewModel(
-                        new ConsentQuestion(
-                            Guid.NewGuid(),
-                            new ConsentRequest(
-                                "Share this tab with an agent",
-                                "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416 · profile Raymond (signed in)\nUntil you stop, the tab closes or the session ends.",
-                                new ConsentSource(null, "browser", "Browser"),
-                                "browser.share",
-                                ConsentRisk.Dangerous)
-                            {
-                                Choices =
-                                [
-                                    new ConsentChoice("session", "With", [
-                                        new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true),
-                                        new ConsentOption("pane-1720", "AC-1720 verify login · Claude")]),
-                                    new ConsentChoice("mode", "What the agent may do", [
-                                        new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
-                                        new ConsentOption("control", "Control", "Click, type, scroll and navigate within github.com. Every form submission asks again.", Enabled: false) { Note = "not in this version" }],
-                                        AllowMultiple: true),
-                                ],
-                                ApproveLabel = "Share watching",
-                                Never = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"],
-                            },
-                            CanRemember: false),
-                        new _NoConsentPrompts()),
+                    DataContext = new ViewModels.ConsentPromptViewModel(new ConsentQuestion(Guid.NewGuid(), request, CanRemember: false), new _NoConsentPrompts()),
                 },
             },
+        };
+
+    private const string SharedTab = "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416";
+
+    private static readonly string[] BrowserNever = ["Cookies and storage", "saved passwords and autofill", "other tabs", "downloads and uploads", "DevTools"];
+
+    // AC-1728, mockup v2 screen 9: the operator's own share card as the browser plugin sends it, Control a real choice.
+    private static ConsentRequest _ShareCard() =>
+        new(
+            "Share this tab with an agent",
+            $"{SharedTab} · your own profile, signed in\nThis one tab only, until you stop, the tab closes or the session ends.",
+            new ConsentSource(null, "browser", "Browser"),
+            "browser.share",
+            ConsentRisk.Dangerous)
+        {
+            Choices =
+            [
+                new ConsentChoice("session", "With", [
+                    new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true),
+                    new ConsentOption("pane-1720", "AC-1720 verify login · Claude")]),
+                new ConsentChoice("mode", "What the agent may do", [
+                    new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab.", Selected: true),
+                    new ConsentOption("control", "Control", "Watch, plus click, type, scroll and navigate, only within https://github.com. Every form submission asks you again.")],
+                    AllowMultiple: true),
+            ],
+            ApproveLabel = "Share watching",
+            Never = BrowserNever,
+        };
+
+    // AC-1728, mockup v2 screen 8: an agent session asks with request_tab_control; it is fixed, Control is picked, and
+    // its reason is shown as its own words.
+    private static ConsentRequest _ControlCard() =>
+        new(
+            "AC-1714 statusline asks to control this tab",
+            $"{SharedTab} · your own profile, signed in\n"
+            + "The agent says (its own words, not checked): \"I want to re-run the failed build job on this PR.\"\n"
+            + "This one tab only, until you stop, the tab closes or the session ends.",
+            new ConsentSource("pane-1714", "browser", "Browser"),
+            "browser.control",
+            ConsentRisk.Dangerous)
+        {
+            Choices =
+            [
+                new ConsentChoice("session", "With", [new ConsentOption("pane-1714", "AC-1714 statusline · Claude", Selected: true)]),
+                new ConsentChoice("mode", "What the agent may do", [
+                    new ConsentOption("watch", "Watch", "Address, title, page text (accessibility tree) and a screenshot of this one tab."),
+                    new ConsentOption("control", "Control", "Watch, plus click, type, scroll and navigate, only within https://github.com. Every form submission asks you again.", Selected: true)],
+                    AllowMultiple: true),
+            ],
+            ApproveLabel = "Allow control",
+            Never = BrowserNever,
         };
 
     private static SessionView _PluginPromptConsentSession()
@@ -3238,6 +3269,42 @@ internal static partial class Screenshotter
                     CanRemember: true),
                 new _NoConsentPrompts()),
         };
+        return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
+    }
+
+    // AC-1715: the card the Browser plugin raises for browser_request_tab, as the assistant's chat shows it (the plugin
+    // builds the same request; the host cannot reference it).
+    private static AssistantChatWindow _AssistantChatLookAlong(bool showOthers = false)
+    {
+        var session = new ViewModels.SessionViewModel { Title = "Assistant" };
+        session.Apply(new AssistantTextDelta { SessionId = "s1", BlockIndex = 0, Text = "I see you have PR #1416 open in the browser. May I look along on that tab? Then I can read the failing check." });
+        session.Apply(new ToolUseRequested { SessionId = "s1", ToolUseId = "toolu_look", ToolName = "mcp__cockpit-browser__browser_request_tab", InputJson = "{\"reason\":\"Why does the build fail on your PR?\"}" });
+        session.PendingConsent = new ViewModels.ConsentPromptViewModel(
+            new ConsentQuestion(
+                Guid.NewGuid(),
+                new ConsentRequest(
+                    "Look along on this tab?",
+                    "https://github.com/…/pull/1416 · your own profile\nThe session says: \"Why does the build fail on your PR?\"\n• I see: address, title, page text and a screenshot of only this tab\n• I control nothing",
+                    new ConsentSource(Cockpit.Core.Assistant.AssistantIdentity.PaneId, null, "Browser"),
+                    "browser.look-along",
+                    ConsentRisk.Dangerous)
+                {
+                    Choices =
+                    [
+                        new ConsentChoice("tab", "Which tab",
+                        [
+                            new ConsentOption("t1", "Fix statusline: ticket en fase tonen #1416", "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/1416", Selected: true),
+                            new ConsentOption("t2", "Lofi beats — YouTube", "https://www.youtube.com/watch?v=jfKfPfyJRdk"),
+                        ]),
+                    ],
+                    ApproveLabel = "Share this tab",
+                    Inline = true,
+                    OtherLabel = "Other tab…",
+                    Never = ["Cookies and storage", "passwords and autofill", "other tabs"],
+                },
+                CanRemember: false),
+            new _NoConsentPrompts(),
+            inlineSlot: true) { ShowOthers = showOthers };
         return new AssistantChatWindow { DataContext = _AssistantChatViewModel(session), Topmost = false, WindowStartupLocation = WindowStartupLocation.Manual };
     }
 
