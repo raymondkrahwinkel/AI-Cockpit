@@ -263,6 +263,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: an idle assistant conversation no longer records a binding error while no inline consent card is open.
 - fixed: Productivity 0.6.2 is ready for its first store release with its category, icon, project links and
   planning-and-tracking audience in place, and it can be selected in the manual publisher.
 - fixed: a prompt supplied to `StartSessionAsync` is submitted as the new desktop session's first turn once its
