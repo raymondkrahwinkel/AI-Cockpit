@@ -374,8 +374,9 @@ public sealed class ProductivityHoursJourneyTests
             () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
             "the week overview");
         Assert.Equal("36u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
-        // AC-1766: usage without a price makes the total a lower bound, and the detail says which profiles to price.
-        Assert.StartsWith("≥ $", _Control<TextBlock>(overviewScreen, "CostTile").Text);
+        // AC-1766: usage without a price makes the total a lower bound, and the detail says which profiles to price. The
+        // tile fills after the range applies, so it is awaited rather than read.
+        await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $184.20", "the week's cost, a lower bound");
         Assert.True(_Control<TextBlock>(overviewScreen, "YourTimeTileDetail").TextWrapping == Avalonia.Media.TextWrapping.Wrap);
         Assert.Contains("Overzicht", _Texts(overviewScreen));
         Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
@@ -422,8 +423,8 @@ public sealed class ProductivityHoursJourneyTests
         await _Until(
             () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
             "the historical aggregate including agent time");
-        // AC-1766: usage without a price makes the total a lower bound, and the detail says which profiles to price.
-        Assert.StartsWith("≥ $", _Control<TextBlock>(overviewScreen, "CostTile").Text);
+        // AC-1766: the legacy day carries no price, so its cost is a lower bound of nothing priced.
+        await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $0.00", "the historical day's cost, unpriced");
         Assert.Contains("legacy-model", _Texts(overviewScreen));
         Assert.Contains("3u00", _Texts(overviewScreen));
 
