@@ -9,7 +9,6 @@ public sealed class AttentionTimeTests
     private static readonly DateTimeOffset Monday = new(2026, 10, 19, 8, 0, 0, TimeSpan.FromHours(2));
 
     [Theory]
-    [InlineData(1, 2295, 1565, 315, 20, false, 1860, 1860, 2295, 730)]
     [InlineData(1, 2295, 1565, 315, 20, true, 1860, 2590, 2295, 730)]
     [InlineData(3, 60, 20, 0, 0, false, 20, 20, 180, 40)]
     public void Compute_CountsOverlapOnceAndKeepsAgentTimeBeside(

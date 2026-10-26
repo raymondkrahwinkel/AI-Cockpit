@@ -288,6 +288,21 @@ internal sealed class HoursWorkspaceBody : UserControl
         return header;
     }
 
+    private async Task _OpenAgentAsync(string paneId)
+    {
+        try
+        {
+            if (!await _host.FocusSessionAsync(paneId))
+            {
+                _host.ShowToast("De agentsessie is niet meer open.", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Warning);
+            }
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"De agentsessie kon niet worden geopend: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
+        }
+    }
+
     private async Task _SaveAsync()
     {
         bool succeeded;
@@ -416,6 +431,7 @@ internal sealed class HoursWorkspaceBody : UserControl
                 () => _ = _CopyAsync(),
                 () => _ = _GiveToAgentAsync(),
                 () => _ = _host.ShowSettingsAsync(),
+                paneId => _ = _OpenAgentAsync(paneId),
                 (edit, day, projectId) => _ = _EditCellAsync(edit, day, projectId))
             : null;
         _formDay.Text = "legt vast op " + (_controller.IsToday ? "vandaag, " : string.Empty) + date.ToString("ddd d MMM", Dutch);

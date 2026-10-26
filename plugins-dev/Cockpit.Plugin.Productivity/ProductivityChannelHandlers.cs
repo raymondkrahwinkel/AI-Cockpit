@@ -5,9 +5,9 @@ using Cockpit.Plugins.Abstractions.TimeTracking;
 
 namespace Cockpit.Plugin.Productivity;
 
-internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTimeEntries timeEntries)
+internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTimeEntries timeEntries, SemaphoreSlim reportGate)
 {
-    private readonly WeekOfferSender _offers = new(host.Actions, host.Sessions, timeEntries, host.Storage, TimeProvider.System);
+    private readonly WeekOfferSender _offers = new(host.Actions, host.Sessions, timeEntries, host.Storage, TimeProvider.System, reportGate);
 
     public IReadOnlyList<IDisposable> Register() =>
     [
@@ -156,7 +156,10 @@ internal sealed class ProductivityChannelHandlers(ICockpitHost host, ICockpitTim
         var frozen = (host.Storage.Get<FrozenProjectCell[]>(FrozenProjectCell.StorageKey(weekStart)) ?? [])
             .Select(cell => cell.ToProposalCell())
             .ToList();
-        return WeekProposal.Build(days, settings, frozen, names, overrides);
+        return WeekProposal.Build(days, settings, frozen, names, overrides) with
+        {
+            Report = host.Storage.Get<WeekReport>(WeekReport.StorageKey(weekStart)) ?? WeekReport.Empty,
+        };
     }
 
     private async Task<WeekOfferOptions> _OfferOptionsAsync(WeekOfferOptionsRequest request)

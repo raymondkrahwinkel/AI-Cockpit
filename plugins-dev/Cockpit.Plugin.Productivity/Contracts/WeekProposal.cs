@@ -53,6 +53,8 @@ internal sealed record ProposalDay(DateOnly Day, TimeSpan Schedule, TimeSpan Tot
 
 internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyList<ProposalLine> Lines)
 {
+    public WeekReport Report { get; init; } = WeekReport.Empty;
+
     private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
 
     // What goes to an agent: the open lines with only their open days. Booked never goes again.
@@ -152,7 +154,7 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
                 string.IsNullOrEmpty(line.Detail) ? label : $"{label} · {line.Detail}",
                 .. days.Select(day => Cell(line, day.Day)),
                 Text(_Sum(line.Cells.Select(cell => cell.Time))),
-                Status(line),
+                Report.AgentStatus(line.EntryId, line.ProjectId) is { Length: > 0 } outcome ? outcome : Status(line),
             ]);
         }
 

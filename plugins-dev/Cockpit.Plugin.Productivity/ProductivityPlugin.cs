@@ -17,8 +17,24 @@ public sealed class ProductivityPlugin : ICockpitPlugin
     {
     }
 
-    public void Initialize(ICockpitHost host) =>
-        _handlers = new ProductivityChannelHandlers(host, host.TimeEntries).Register();
+    public void Initialize(ICockpitHost host)
+    {
+        var reportGate = new SemaphoreSlim(1, 1);
+        _handlers = new ProductivityChannelHandlers(host, host.TimeEntries, reportGate).Register();
+        _ = _RegisterToolsAsync(host, reportGate);
+    }
+
+    private static async Task _RegisterToolsAsync(ICockpitHost host, SemaphoreSlim reportGate)
+    {
+        try
+        {
+            await host.AddMcpEndpoint("cockpit-productivity", new ProductivityMcpTools(new HoursResultReporter(host, reportGate))).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            host.ShowToast($"De uren-terugmelding kon niet worden gestart: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error);
+        }
+    }
 
     public void Dispose()
     {

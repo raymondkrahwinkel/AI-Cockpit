@@ -29,6 +29,7 @@ internal static class WeekView
         Action copy,
         Action giveToAgent,
         Action editInstructions,
+        Action<string> openAgent,
         Action<CellOverride?, DateOnly, string> edit)
     {
         var body = new StackPanel { Spacing = 12 };
@@ -51,7 +52,7 @@ internal static class WeekView
                 new Run(". Dezelfde weergave als nu, met het voorstel en de status van toen. Ruwe tijdlijn tot 90 dagen terug, daarna dagtotalen per project; eigen regels en terugmeldingen blijven altijd bewaard.")), 14));
         }
 
-        body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy, giveToAgent, edit));
+        body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy, giveToAgent, openAgent, edit));
         return body;
     }
 
@@ -173,10 +174,10 @@ internal static class WeekView
         }, 14);
     }
 
-    private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy, Action giveToAgent, Action<CellOverride?, DateOnly, string> edit)
+    private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy, Action giveToAgent, Action<string> openAgent, Action<CellOverride?, DateOnly, string> edit)
     {
         var days = week.VisibleDays;
-        var columns = "*," + string.Join(',', days.Select(_ => "62")) + ",62,250";
+        var columns = "*," + string.Join(',', days.Select(_ => "58")) + ",58,245";
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         heading.Children.Add(_Title(thisWeek ? "Voorstel per dag" : $"Voorstel per dag · week {weekNumber}"));
         var legend = new StackPanel
@@ -252,7 +253,7 @@ internal static class WeekView
                 }
             }
 
-            _Cell(row, _Status(line), 0, days.Count + 2);
+            _Cell(row, _Status(line, week.Report), 0, days.Count + 2);
             var border = _Line(row);
             if (line.Own)
             {
@@ -267,8 +268,14 @@ internal static class WeekView
         for (var index = 0; index < days.Count; index++)
         {
             var day = days[index];
-            var text = new TextBlock { Text = WeekProposal.Text(day.Total) + (day.OverSchedule ? " ⚠" : string.Empty), FontWeight = FontWeight.Bold };
-            if (day.OverSchedule)
+            var overrun = week.Report.Warnings.Any(warning => warning.Day == day.Day && warning.Overrun);
+            var reportedWarning = week.Report.Warnings.Any(warning => warning.Day == day.Day);
+            var text = new TextBlock { Name = "ProposalDayTotal", Text = WeekProposal.Text(day.Total) + (day.OverSchedule || reportedWarning ? " ⚠" : string.Empty), FontWeight = FontWeight.Bold };
+            if (overrun)
+            {
+                text.Themed(TextBlock.ForegroundProperty, "CockpitStatusErrorBrush");
+            }
+            else if (day.OverSchedule || reportedWarning)
             {
                 text.Themed(TextBlock.ForegroundProperty, Waiting);
             }
@@ -299,12 +306,47 @@ internal static class WeekView
             body.Children.Add(_Explanation(settings));
         }
 
+        if (week.Report.ReportedAt is { } reportedAt)
+        {
+            var notice = new TextBlock
+            {
+                Name = "AgentReportNotice",
+                Text = $"{(week.Report.IsGreen ? "✓" : "⚠ Overschrijding ·")} {week.Report.AgentName} meldde om {reportedAt.ToLocalTime():HH:mm}: {week.Report.BookedCount} regels geboekt ({string.Join(", ", week.Report.BookedDays.Select(day => day.ToDateTime(TimeOnly.MinValue).ToString("ddd", Dutch)))}), elk met een kenmerk zoals {week.Report.Rows.FirstOrDefault()?.Row.Marker}. Wat niet geboekt werd, staat weer open.",
+                TextWrapping = TextWrapping.Wrap,
+            };
+            notice.Themed(TextBlock.ForegroundProperty, week.Report.IsGreen ? "CockpitStatusDoneBrush" : "CockpitStatusErrorBrush");
+            body.Children.Add(Ui.Card(notice, 12));
+        }
+
+        foreach (var warning in week.Report.Warnings)
+        {
+            var brush = warning.Overrun ? "CockpitStatusErrorBrush" : Waiting;
+            var text = new TextBlock
+            {
+                Name = "AgentDayWarning",
+                Text = $"⚠ {warning.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} · {(warning.Overrun ? "overschrijding" : "niet geboekt: boven het schema")}. Schema {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}, al geboekt {WeekProposal.Text(TimeSpan.FromMinutes(warning.AlreadyBooked))} {warning.AlreadyBookedDescription}, voorstel {WeekProposal.Text(TimeSpan.FromMinutes(warning.ProposedMinutes))}: {WeekProposal.Text(TimeSpan.FromMinutes((long)warning.AlreadyBooked + warning.ProposedMinutes))} tegenover {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}. {(warning.Overrun ? "De agent meldde een boeking boven het schema." : warning.BookedMinutes == 0 ? "Niets geschreven, voorgelegd." : "Niet alles geboekt, voorgelegd.")}",
+                TextWrapping = TextWrapping.Wrap,
+            }.Themed(TextBlock.ForegroundProperty, brush);
+            var open = new Button { Name = "OpenReportAgent", Content = "Open de werkagent ›", Classes = { "Compact", "Subtle" } };
+            open.Click += (_, _) => openAgent(warning.PaneId);
+            body.Children.Add(Ui.Card(new StackPanel { Spacing = 6, Children = { text, open } }, 12).Themed(Border.BorderBrushProperty, brush));
+        }
+
         body.Children.Add(_Footer(week, thisWeek, copy, giveToAgent));
         return Ui.Card(body, 14);
     }
 
-    private static Control _Status(ProposalLine line)
+    private static Control _Status(ProposalLine line, WeekReport report)
     {
+        if (report.AgentStatus(line.EntryId, line.ProjectId) is { Length: > 0 } outcome)
+        {
+            var brush = outcome.Contains("overschrijding", StringComparison.Ordinal) ? "CockpitStatusErrorBrush"
+                : outcome.StartsWith("⚠", StringComparison.Ordinal) ? Waiting : "CockpitStatusDoneBrush";
+            var result = new TextBlock { Name = "AgentOutcome", Text = outcome, FontSize = 11.5, TextWrapping = TextWrapping.Wrap }.Themed(TextBlock.ForegroundProperty, brush);
+            ToolTip.SetTip(result, report.Reason(line.EntryId, line.ProjectId));
+            return result;
+        }
+
         var text = WeekProposal.Status(line);
         if (text.StartsWith("geboekt", StringComparison.Ordinal))
         {

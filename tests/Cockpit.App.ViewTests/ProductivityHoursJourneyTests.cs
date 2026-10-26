@@ -9,6 +9,8 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.Plugin.Productivity;
+using Cockpit.Plugin.Productivity.Contracts;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -24,7 +26,7 @@ using UiParts = productivityUi::Cockpit.Plugin.Productivity.UI;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// AC-1722 layer 2 view journey: one real Productivity UI and backend channel over host-owned time entries;
+/// AC-1722 layer 1 view journey: one real Productivity UI and backend channel over host-owned time entries;
 /// AC-1731 adds measured time, AC-1723 the week proposal and AC-1725 the confirmed handoff to an agent.
 /// </summary>
 [Collection("avalonia")]
@@ -54,6 +56,12 @@ public sealed class ProductivityHoursJourneyTests
             new("depot", "Depot"),
         ]));
         backend.GetProfilesAsync().Returns([new PluginProfileInfo("Codex", "Codex", string.Empty)]);
+        ProductivityMcpTools? reportTools = null;
+        backend.AddMcpEndpoint("cockpit-productivity", Arg.Any<object>(), Arg.Any<Func<bool>?>()).Returns(call =>
+        {
+            reportTools = call.ArgAt<ProductivityMcpTools>(1);
+            return Task.CompletedTask;
+        });
         using var plugin = new ProductivityPlugin();
         plugin.Initialize(backend);
 
@@ -171,7 +179,7 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains("syn-portal", _Texts(screen));
 
         _Control<TextBox>(screen, "Description").Text = "Vorige dag";
-        _Control<TextBox>(screen, "Duration").Text = "0:30";
+        _Control<TextBox>(screen, "Duration").Text = "0,5u";
         _Click(screen, "AddEntry");
         await _Until(() => _Texts(screen).Contains("Vorige dag"), "an earlier open entry");
         Assert.Single(_Buttons(screen, "EditEntry"));
@@ -212,7 +220,7 @@ public sealed class ProductivityHoursJourneyTests
             Assert.Equal(1, _Control<TabControl>(profileDialog, "OfferDestinationTabs").SelectedIndex);
         }
 
-        sessions.OpenSessions.Returns([new OpenCockpitSession("pane-agent", "Boekhouding", "Codex", "Idle")]);
+        sessions.OpenSessions.Returns([new OpenCockpitSession("pane-agent", "Werkagent", "Codex", "Idle")]);
         offerDialog = null;
         _Click(screen, "GiveToAgent");
         await _Until(() => offerDialog is not null, "the session offer dialog");
@@ -248,6 +256,89 @@ public sealed class ProductivityHoursJourneyTests
             await actions.Received(2).SendPromptToSessionAsync("pane-agent", Arg.Any<string>(), Arg.Any<string>());
             Assert.Equal(CockpitTimeEntryStatus.Open, timeEntries.Entries.Single(entry => entry.Id == unmarked.Id).Status);
         }
+
+        timeEntries.MarkFailure = null;
+        var beforeReport = timeEntries.Entries.ToArray();
+        var reportMonday = new DateOnly(2026, 10, 19);
+        CockpitTimeEntry[] bookedRows =
+        [
+            new(Guid.NewGuid(), "Weekstart met het team", _Local(2026, 10, 19).AddHours(9), TimeSpan.FromMinutes(60), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new(Guid.NewGuid(), "Telefonisch overleg met klant XXX", _Local(2026, 10, 20).AddHours(9), TimeSpan.FromMinutes(15), null, CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new(Guid.NewGuid(), "Overleg Acme sprintreview", _Local(2026, 10, 21).AddHours(9), TimeSpan.FromMinutes(150), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new(Guid.NewGuid(), "Afstemming review offerte", _Local(2026, 10, 23).AddHours(9), TimeSpan.FromMinutes(45), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+            new(Guid.NewGuid(), "Telefonisch overleg met klant XXX", _Local(2026, 10, 23).AddHours(13), TimeSpan.FromMinutes(15), null, CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+        ];
+        CockpitTimeEntry[] skippedRows =
+        [
+            new(Guid.NewGuid(), "Lunchsessie architectuur API", _Local(2026, 10, 22).AddHours(12), TimeSpan.FromMinutes(30), "syn-api", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
+        ];
+        int[] portalMinutes = [255, 285, 180, 270, 105];
+        int[] apiMinutes = [165, 180, 150, 180, 75];
+        timeEntries.Entries.Clear();
+        timeEntries.Seed([.. bookedRows, .. skippedRows]);
+        var offeredProposal = new WeekProposal(
+            [.. Enumerable.Range(0, 5).Select(offset => new ProposalDay(reportMonday.AddDays(offset), WeekSettings.Default.Schedule(reportMonday.AddDays(offset)), TimeSpan.Zero, TimeSpan.Zero))],
+            [
+                .. timeEntries.Entries.Select(entry => new ProposalLine(entry.Description, entry.ProjectId, entry.Id, entry.ProjectId ?? string.Empty, [new ProposalCell(DateOnly.FromDateTime(entry.StartedAt.LocalDateTime), entry.Duration, CockpitTimeEntryStatus.Open, entry.ProjectId)])),
+                new ProposalLine("Synvolution portal", "syn-portal", null, "SYN-412", [.. Enumerable.Range(0, 5).Select(offset => new ProposalCell(reportMonday.AddDays(offset), TimeSpan.FromMinutes(portalMinutes[offset]), CockpitTimeEntryStatus.Open, "syn-portal", Description: "SYN-412 tests klantportaal"))]),
+                new ProposalLine("Synvolution API", "syn-api", null, "SYN-398", [.. Enumerable.Range(0, 5).Select(offset => new ProposalCell(reportMonday.AddDays(offset), TimeSpan.FromMinutes(apiMinutes[offset]), CockpitTimeEntryStatus.Open, "syn-api", Description: "Bewust aangepaste omschrijving"))]),
+            ]);
+        var offeredDraft = WeekOfferPrompt.Build(offeredProposal, 43, string.Empty);
+        await channel.InvokeAsync(ProductivityChannel.SendWeekOffer, JsonSerializer.SerializeToElement(new WeekOfferSendRequest(WeekOfferDestination.Session("pane-agent", "Werkagent"), offeredDraft.Prompt, reportMonday, 43, offeredDraft.OwnEntryIds, offeredDraft.ProjectCells, "cockpit", offeredDraft.Rows, offeredDraft.Schedule), ProductivityChannel.Json));
+        backend.CurrentMcpCaller.Returns(new McpCaller("pane-agent", McpCallerKind.Session));
+        _Control<TextBox>(screen, "DayPicker").Text = "19-10-2026";
+        _Control<TextBox>(screen, "DayPicker").RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Enter });
+        await _Until(() => _Texts(screen).Contains("Weekstart met het team"), "the offered report week");
+        var resultItems = offeredDraft.Rows.Where(row => row.Day != reportMonday.AddDays(3)).Select(row => new HoursResultItem(row.Marker, "booked"))
+            .Concat(offeredDraft.Rows.Where(row => row.Day == reportMonday.AddDays(3)).Select(row => new HoursResultItem(row.Marker, "skipped", "boven het schema"))).ToArray();
+        var response = JsonDocument.Parse(await (reportTools ?? throw new InvalidOperationException("No Productivity MCP endpoint.")).ReportHoursResult("2026-10-19", resultItems, [new(reportMonday.AddDays(3), 60, "Overleg leverancier")]));
+        Assert.True(response.RootElement.GetProperty("ok").GetBoolean());
+        using var retryResponse = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", resultItems, [new(reportMonday.AddDays(3), 60, "Overleg leverancier")]));
+        Assert.True(retryResponse.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal(6, timeEntries.OutcomeWrites);
+        await _Until(() => _Texts(screen).Contains("✓ 4 van 5 dagen"), "the reported project status");
+        Assert.DoesNotContain("Agent", _Texts(screen));
+        Assert.Equal(5, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ geboekt"));
+        Assert.Single(screen.GetVisualDescendants().OfType<TextBlock>(), text => text.Name == "AgentOutcome" && text.Text == "⚠ niet geboekt · weer open");
+        Assert.Equal(2, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ 4 van 5 dagen"));
+        Assert.Single(timeEntries.Entries, entry => entry.Status == CockpitTimeEntryStatus.Open);
+        var savedReport = storage.Get<WeekReport>(WeekReport.StorageKey(reportMonday));
+        Assert.NotNull(savedReport);
+        Assert.Equal(13, savedReport.BookedCount);
+        Assert.Equal(3, savedReport.Rows.Count(row => row.Status == "skipped"));
+        var notice = _Control<TextBlock>(screen, "AgentReportNotice").Text ?? string.Empty;
+        Assert.Contains("Werkagent meldde om", notice, StringComparison.Ordinal);
+        Assert.Contains("13 regels geboekt (ma, di, wo, vr)", notice, StringComparison.Ordinal);
+        Assert.Contains("[cockpit:wk43-", notice, StringComparison.Ordinal);
+        var warningText = _Control<TextBlock>(screen, "AgentDayWarning").Text ?? string.Empty;
+        Assert.Contains("Niets geschreven, voorgelegd", warningText, StringComparison.Ordinal);
+        Assert.Contains("Overleg leverancier", warningText, StringComparison.Ordinal);
+        Assert.Contains("9:00 tegenover 8:00", warningText, StringComparison.Ordinal);
+        Assert.Single(screen.GetVisualDescendants().OfType<TextBlock>(), text => text.Name == "ProposalDayTotal" && text.Text == "8:00 ⚠");
+        _Click(screen, "OpenReportAgent");
+        await ui.Received(1).FocusSessionAsync("pane-agent");
+        scene.Window.Height = 1200;
+        _Render(scene.Window, "07-teruggemeld.png");
+        scene.Window.Height = 820;
+        var savedEdits = storage.Get<CellOverride[]>(CellOverride.StorageKey(reportMonday));
+        Assert.NotNull(savedEdits);
+        Assert.Equal("Bewust aangepaste omschrijving", savedEdits.Single(edit => edit.Day == reportMonday.AddDays(3) && edit.ProjectId == "syn-api").Description);
+        var overlapA = WeekOfferPrompt.Build(new WeekProposal(offeredProposal.Days,
+            [new ProposalLine("Overlap A", "parallel-a", null, string.Empty, [new ProposalCell(reportMonday, TimeSpan.FromHours(5), CockpitTimeEntryStatus.Open, "parallel-a")])]) { Report = savedReport }, 43, string.Empty);
+        await channel.InvokeAsync(ProductivityChannel.SendWeekOffer, JsonSerializer.SerializeToElement(new WeekOfferSendRequest(WeekOfferDestination.Session("pane-agent", "Werkagent"), overlapA.Prompt, reportMonday, 43, overlapA.OwnEntryIds, overlapA.ProjectCells, "cockpit", overlapA.Rows, overlapA.Schedule), ProductivityChannel.Json));
+        var afterOverlapA = storage.Get<WeekReport>(WeekReport.StorageKey(reportMonday));
+        Assert.NotNull(afterOverlapA);
+        var overlapB = WeekOfferPrompt.Build(new WeekProposal(offeredProposal.Days,
+            [new ProposalLine("Overlap B", "parallel-b", null, string.Empty, [new ProposalCell(reportMonday, TimeSpan.FromHours(5), CockpitTimeEntryStatus.Open, "parallel-b")])]) { Report = afterOverlapA }, 43, string.Empty);
+        await channel.InvokeAsync(ProductivityChannel.SendWeekOffer, JsonSerializer.SerializeToElement(new WeekOfferSendRequest(WeekOfferDestination.Session("pane-agent", "Werkagent"), overlapB.Prompt, reportMonday, 43, overlapB.OwnEntryIds, overlapB.ProjectCells, "cockpit", overlapB.Rows, overlapB.Schedule), ProductivityChannel.Json));
+        using var overlapResponseA = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", [new(overlapA.Rows.Single().Marker, "booked")], [new(reportMonday, 0)]));
+        using var overlapResponseB = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", [new(overlapB.Rows.Single().Marker, "booked")], [new(reportMonday, 0)]));
+        Assert.True(overlapResponseA.RootElement.GetProperty("ok").GetBoolean());
+        Assert.True(overlapResponseB.RootElement.GetProperty("ok").GetBoolean());
+        Assert.False(overlapResponseB.RootElement.GetProperty("isGreen").GetBoolean());
+        await _Until(() => _Texts(screen).Contains("⚠ overschrijding"), "the overrun across overlapping offers");
+        timeEntries.Entries.Clear();
+        timeEntries.Seed(beforeReport);
 
         var overviewFrom = _Local(2026, 10, 19);
         timeEntries.Seed(
@@ -423,6 +514,7 @@ public sealed class ProductivityHoursJourneyTests
         public CockpitRunningStopwatch? Running { get; private set; }
 
         public Exception? MarkFailure { get; set; }
+        public int OutcomeWrites { get; private set; }
 
         public Task<CockpitTimeEntry> AddAsync(string description, DateTimeOffset startedAt, TimeSpan duration, string? projectId, CockpitTimeEntrySource source, CancellationToken cancellationToken = default)
         {
@@ -496,8 +588,21 @@ public sealed class ProductivityHoursJourneyTests
             return Task.CompletedTask;
         }
 
-        public Task SetOutcomeAsync(IReadOnlyCollection<Guid> ids, CockpitTimeEntryOutcome outcome, string? reason = null, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task SetOutcomeAsync(IReadOnlyCollection<Guid> ids, CockpitTimeEntryOutcome outcome, string? reason = null, CancellationToken cancellationToken = default)
+        {
+            OutcomeWrites++;
+            var updated = Entries.Select(entry => ids.Contains(entry.Id) ? entry with
+            {
+                Status = outcome == CockpitTimeEntryOutcome.Booked ? CockpitTimeEntryStatus.Booked : CockpitTimeEntryStatus.Open,
+                OutcomeReason = reason,
+                OfferedAt = outcome == CockpitTimeEntryOutcome.Skipped ? null : entry.OfferedAt,
+                OfferedToPaneId = outcome == CockpitTimeEntryOutcome.Skipped ? null : entry.OfferedToPaneId,
+            } : entry).ToArray();
+            Entries.Clear();
+            Entries.AddRange(updated);
+
+            return Task.CompletedTask;
+        }
 
         public void Seed(params CockpitTimeEntry[] entries) => Entries.AddRange(entries);
     }
@@ -626,6 +731,8 @@ public sealed class ProductivityHoursJourneyTests
 
     private sealed class _Loopback : IPluginBackendChannel, IPluginUiChannel
     {
+        private readonly Dictionary<string, Action<PluginChannelEvent>> _events = new(StringComparer.Ordinal);
+        private long _sequence;
         private readonly Dictionary<string, Func<JsonElement, CancellationToken, Task<JsonElement>>> _handlers = new(StringComparer.Ordinal);
 
         public IDisposable Handle(string action, Func<JsonElement, CancellationToken, Task<JsonElement>> handler)
@@ -636,12 +743,17 @@ public sealed class ProductivityHoursJourneyTests
 
         public void Publish(string name, JsonElement payload)
         {
+            _events.GetValueOrDefault(name)?.Invoke(new PluginChannelEvent(name, ++_sequence, payload));
         }
 
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
             Task.Run(() => _handlers[action](payload, cancellationToken), cancellationToken);
 
-        public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new _Off(() => { });
+        public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler)
+        {
+            _events.Add(name, handler);
+            return new _Off(() => _events.Remove(name));
+        }
 
         private sealed class _Off(Action off) : IDisposable
         {
