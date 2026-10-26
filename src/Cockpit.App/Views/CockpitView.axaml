@@ -2252,7 +2252,10 @@
                               IsVisible="{Binding !SimpleView}" ItemsSource="{Binding DockPanels}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="docking:DockPanelRegistration">
+                            <!-- AC-1762: square corners — a tab meets the window edge and its neighbours, so a
+                                 rounded one read as a loose button floating in the strip. -->
                             <Button Classes="Subtle" Width="40" Padding="0" HorizontalContentAlignment="Stretch"
+                                    CornerRadius="0"
                                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ToggleDockPanelCommand}"
                                     CommandParameter="{Binding Id}"
