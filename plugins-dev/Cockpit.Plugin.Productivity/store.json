@@ -1,3 +1,8 @@
 {
+  "category": "Productivity",
+  "icon": "⏱️",
+  "homepage": "https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/docs/plugins",
+  "repository": "https://github.com/raymondkrahwinkel/AI-Cockpit",
+  "featured": false,
   "audience": ["planning-and-tracking-work"]
 }

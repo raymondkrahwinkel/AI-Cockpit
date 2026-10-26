@@ -77,6 +77,7 @@ on:
           - kubernetes
           - local-ci
           - prompt-library
+          - productivity
           - session-review
           - system-monitor
           - transcript-search
