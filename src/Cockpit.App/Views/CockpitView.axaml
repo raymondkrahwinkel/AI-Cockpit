@@ -644,11 +644,6 @@
                      remote window, whose Options would be this machine's and which keeps no state here. -->
                 <views:SidebarFooter DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
 
-                <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the
-                     session list. Built in code-behind from CockpitViewModel.PluginSideSections; hidden
-                     entirely when no plugin contributes a section (no visual noise at zero plugins). -->
-                <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
-
 
                 <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
                      entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
@@ -858,6 +853,11 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- Plugin-contributed left-menu cards (#14, AC-1763), straight after the sessions and servers so
+                             the whole sidebar scrolls as one. Built in code-behind from CockpitViewModel.PluginMenuGroups;
+                             hidden entirely when no plugin contributes anything. -->
+                        <StackPanel x:Name="PluginSectionsHost" Spacing="6" Margin="0,8,0,0" IsVisible="False"/>
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>

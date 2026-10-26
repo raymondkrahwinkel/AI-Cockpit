@@ -33,7 +33,7 @@ internal sealed class PluginLauncherButton : Button
         HorizontalAlignment = HorizontalAlignment.Stretch;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         Padding = new Thickness(10, 6);
-        CornerRadius = new CornerRadius(7);
+        CornerRadius = new CornerRadius(0);
         this.Bind(ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
         Click += (_, _) => onInvoke();
 

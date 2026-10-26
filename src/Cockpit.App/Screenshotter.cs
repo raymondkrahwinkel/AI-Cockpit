@@ -1092,14 +1092,32 @@ internal static partial class Screenshotter
         var hours = new SideMenuButtonBadge { Text = "4u30 vandaag", Tone = SideMenuButtonBadgeTone.Success };
         sink.AddPluginSideButton("productivity", "Uren", () => { }, hours, Material.Icons.MaterialIconKind.ClockOutline);
         sink.AddPluginSideButton("productivity", "Overzicht", () => { }, new SideMenuButtonBadge(), Material.Icons.MaterialIconKind.ViewDashboardOutline);
+        // A running stopwatch as in v3 #01/#09: red dot, the time, Stop, and what it is on.
         sink.AddPluginSideSection("productivity", "Tijd", () => new Border
         {
             Margin = new Thickness(6, 0),
             Padding = new Thickness(10, 8),
-            CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
             BorderBrush = Theming.ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39"),
-            Child = new TextBlock { Text = "0:23:41  Review offerte Acme", FontSize = 12 },
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = Avalonia.Media.Brushes.IndianRed, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
+                            new TextBlock { Text = "0:23:41", FontFamily = new Avalonia.Media.FontFamily("Consolas, monospace"), FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                            new Button { Content = "Stop", Classes = { "Subtle" }, Padding = new Thickness(8, 1), FontSize = 11 },
+                        },
+                    },
+                    new TextBlock { Text = "Review offerte Acme", FontSize = 12 },
+                },
+            },
         });
 
         sink.AddPluginSideButton("autopilot", "Autopilot", () => { });
