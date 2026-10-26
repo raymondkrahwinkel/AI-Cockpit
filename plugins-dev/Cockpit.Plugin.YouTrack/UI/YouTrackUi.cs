@@ -24,7 +24,7 @@ public sealed class YouTrackUi : ICockpitPluginUi
             // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
             _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, backend), "issues", width: 1280, height: 860);
 
-        host.AddSideMenuButton("YouTrack", OpenIssues);
+        host.AddSideMenuButton("YouTrack", OpenIssues, MaterialIconKind.CheckboxMarkedOutline);
         host.AddSessionHeaderItem(session => new YouTrackSessionHeaderControl(host, session, backend, settings));
 
         // Picking a ticket is an action, so it lives in the header's one menu rather than in a button of its own — two

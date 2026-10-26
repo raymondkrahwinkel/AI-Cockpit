@@ -110,7 +110,7 @@ public interface IPluginContributionSink
         string pluginId,
         string title,
         Action onInvoke,
-        SideMenuButtonBadge badge,
+        SideMenuButtonBadge? badge,
         MaterialIconKind iconKind) =>
         AddPluginSideButton(pluginId, title, onInvoke, badge);
 

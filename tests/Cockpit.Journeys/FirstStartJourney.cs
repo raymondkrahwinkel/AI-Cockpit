@@ -524,14 +524,11 @@ public sealed class FirstStartJourney
                     message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
             });
 
-            // AC-1762 and AC-1748: a section folded shut in the sidebar and the Assistant's "Icons only" are the layout's, so
+            // AC-1763 and AC-1748: a plugin card folded shut in the sidebar and the Assistant's "Icons only" are the layout's, so
             // they come back after a restart — and so does the way back, open and labels again.
             await Step.Run("a folded sidebar section and the Assistant's Icons only survive a restart", async () =>
             {
                 var stateRoot = Directory.CreateDirectory(Path.Combine(work, "sidebar")).FullName;
-                SidebarSection ThisLaptop(JourneyHost host) =>
-                    host.Window.GetVisualDescendants().OfType<SidebarSection>().Single(section => section.Title == "This laptop");
-
                 // AC-1763: a plugin with one button lands in the shared "Plugins" card, whose fold is remembered the same way.
                 SidebarSection PluginsCard(JourneyHost host)
                 {
@@ -556,23 +553,20 @@ public sealed class FirstStartJourney
                 await using (var first = JourneyHost.Desktop(stateRoot: stateRoot))
                 {
                     await first.StartDesktopAsync();
-                    HeadlessAvalonia.Run(() => ThisLaptop(first).IsExpanded = false);
                     var firstPlugins = PluginsCard(first);
                     HeadlessAvalonia.Run(() => firstPlugins.IsExpanded = false);
                     await first.Cockpit.SetAssistantThreadRailAsync(docked: false, AssistantThreadRail.IconsOnly);
-                    await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Select(key => key?.GetValue<string>()).SequenceEqual(["plugins", "this-laptop"]) == true
+                    await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Select(key => key?.GetValue<string>()).SequenceEqual(["plugins"]) == true
                         && layout["AssistantThreadRailWindow"]?.GetValue<string>() == "IconsOnly");
                 }
 
                 await using (var second = JourneyHost.Desktop(stateRoot: stateRoot))
                 {
                     await second.StartDesktopAsync();
-                    Assert.False(HeadlessAvalonia.Run(() => ThisLaptop(second).IsExpanded));
                     var secondPlugins = PluginsCard(second);
                     Assert.False(HeadlessAvalonia.Run(() => secondPlugins.IsExpanded));
                     HeadlessAvalonia.Run(() => secondPlugins.IsExpanded = true);
                     Assert.Equal(AssistantThreadRail.IconsOnly, second.Cockpit.AssistantThreadRailWindow);
-                    HeadlessAvalonia.Run(() => ThisLaptop(second).IsExpanded = true);
                     await second.Cockpit.SetAssistantThreadRailAsync(docked: false, AssistantThreadRail.Labels);
                     await LayoutHolds(layout => layout?["CollapsedSidebarSections"]?.AsArray().Count == 0
                         && layout["AssistantThreadRailWindow"]?.GetValue<string>() == "Labels");
@@ -580,7 +574,8 @@ public sealed class FirstStartJourney
 
                 await using var third = JourneyHost.Desktop(stateRoot: stateRoot);
                 await third.StartDesktopAsync();
-                Assert.True(HeadlessAvalonia.Run(() => ThisLaptop(third).IsExpanded));
+                var thirdPlugins = PluginsCard(third);
+                Assert.True(HeadlessAvalonia.Run(() => thirdPlugins.IsExpanded));
                 Assert.Equal(AssistantThreadRail.Labels, third.Cockpit.AssistantThreadRailWindow);
             });
 

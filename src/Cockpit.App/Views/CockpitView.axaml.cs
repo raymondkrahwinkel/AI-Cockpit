@@ -518,27 +518,39 @@ public partial class CockpitView : UserControl
 
     private void _RebuildPluginSections()
     {
-        if (PluginSectionsHost is null || DataContext is not CockpitViewModel cockpit)
+        if (PluginSectionsHost is null || SimplePluginSectionsHost is null || DataContext is not CockpitViewModel cockpit)
         {
             return;
         }
 
         PluginSectionsHost.Children.Clear();
+        SimplePluginSectionsHost.Children.Clear();
         var groups = cockpit.PluginMenuGroups;
         PluginSectionsHost.IsVisible = groups.Count > 0;
+        SimplePluginSectionsHost.IsVisible = groups.Count > 0;
 
         // AC-1763: one foldable card per plugin (its buttons and sections together), and one "Plugins" card for the
-        // plugins that contributed a single button. The gear is the card's, so it stands once.
+        // plugins that contributed a single button. The gear is the card's, so it stands once. AC-1790: the Simple rail
+        // carries a twin of every card, and folding one folds its twin, since both read the same remembered key.
         foreach (var group in groups)
         {
             Action? onSettings = group.PluginId is { } pluginId && cockpit.HasPluginSettings(pluginId)
                 ? () => _ = cockpit.OpenPluginSettingsAsync(pluginId)
                 : null;
-            PluginSectionsHost.Children.Add(PluginMenuCard.Build(
-                group,
-                onSettings,
-                cockpit.IsSidebarSectionExpanded(group.Key),
-                expanded => cockpit.SetSidebarSectionExpanded(group.Key, expanded)));
+            SidebarSection? panels = null;
+            SidebarSection? simple = null;
+            void SetExpanded(bool expanded)
+            {
+                cockpit.SetSidebarSectionExpanded(group.Key, expanded);
+                panels?.IsExpanded = expanded;
+                simple?.IsExpanded = expanded;
+            }
+
+            var isExpanded = cockpit.IsSidebarSectionExpanded(group.Key);
+            panels = PluginMenuCard.Build(group, onSettings, isExpanded, SetExpanded);
+            simple = PluginMenuCard.Build(group, onSettings, isExpanded, SetExpanded);
+            PluginSectionsHost.Children.Add(panels);
+            SimplePluginSectionsHost.Children.Add(simple);
         }
     }
 

@@ -11,7 +11,7 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.App.Controls;
 
 // AC-1763: what one PluginMenuGroup looks like in the sidebar — a SidebarSection holding the plugin's `.nav` rows, and
-// below them each of its sections under a `.sidehead`. The gear (one per plugin, not one per row) and the folded badge
+// below them each of its sections. The gear (one per plugin, not one per row) and the folded badge
 // total sit in the header, as in the mockups' "Companies · 2".
 internal static class PluginMenuCard
 {
@@ -25,22 +25,10 @@ internal static class PluginMenuCard
             body.Children.Add(new PluginLauncherButton(button.Title, button.OnInvoke, button.Badge, button.IconKind));
         }
 
+        // AC-1790: a section stands straight under the card's rows without a heading of its own (Raymond: the card is
+        // already named after the plugin, and the view says what it is).
         foreach (var section in group.Sections)
         {
-            // The card is already named after the plugin; a section called the same would only say it twice.
-            if (!string.Equals(section.Title, group.Title, StringComparison.OrdinalIgnoreCase))
-            {
-                var head = new TextBlock
-                {
-                    Text = section.Title,
-                    FontSize = 11,
-                    FontWeight = FontWeight.SemiBold,
-                    Margin = new Thickness(10, 8, 10, 4),
-                };
-                head.Bind(TextBlock.ForegroundProperty, head.GetResourceObservable("CockpitTextFaintBrush"));
-                body.Children.Add(head);
-            }
-
             body.Children.Add(section.CreateView());
         }
 
@@ -50,7 +38,7 @@ internal static class PluginMenuCard
         {
             var gear = new Button
             {
-                Content = CockpitIcons.Gear(),
+                Content = CockpitIcons.Gear(12),
                 Classes = { "Subtle" },
                 Padding = new Thickness(4, 2),
                 VerticalAlignment = VerticalAlignment.Center,
@@ -86,19 +74,23 @@ internal static class PluginMenuCard
     private sealed class BadgeTotalPill : Border
     {
         private readonly IReadOnlyList<SideMenuButtonBadge> _badges;
-        private readonly TextBlock _text = new() { FontSize = 10, FontWeight = FontWeight.SemiBold };
+        private readonly TextBlock _text = new() { FontSize = 11, FontWeight = FontWeight.Bold };
         private bool _folded;
 
         public BadgeTotalPill(IReadOnlyList<SideMenuButtonBadge> badges)
         {
             _badges = badges;
             VerticalAlignment = VerticalAlignment.Center;
-            Padding = new Thickness(7, 1);
-            CornerRadius = Application.Current?.TryFindResource("CockpitPillRadius", out var radius) == true && radius is CornerRadius pill
-                ? pill
-                : new CornerRadius(20);
-            Background = ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb");
-            _text.Foreground = ThemeBrush.Resolve("CockpitTextOnAccentBrush", "#ffffff");
+            // AC-1790: the mockups' `.bdg` — 18 high, at least 18 wide, padding 0/6, radius 9, the waiting amber with
+            // the window colour as text, 11 px bold.
+            Padding = new Thickness(6, 0);
+            MinWidth = 18;
+            Height = 18;
+            CornerRadius = new CornerRadius(9);
+            Background = ThemeBrush.Resolve("CockpitStatusWaitingBrush", "#E0A33E");
+            _text.Foreground = ThemeBrush.Resolve("CockpitWindowBgBrush", "#0f1116");
+            _text.HorizontalAlignment = HorizontalAlignment.Center;
+            _text.VerticalAlignment = VerticalAlignment.Center;
             Child = _text;
             _Render();
         }

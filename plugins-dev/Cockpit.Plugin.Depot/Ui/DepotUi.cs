@@ -47,7 +47,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         {
             // Side-menu callbacks are synchronous, so the wrapper observes and logs the detached dialog task.
             _ = _ShowInboxAsync(host, settings, inbox);
-        });
+        }, MaterialIconKind.InboxOutline);
         inbox.Changed += _ => badge.Primary = inbox.Total;
         // Startup continues while counts load; LoadCountsAsync logs failures and a later push can refresh the badge.
         _ = inbox.LoadCountsAsync();

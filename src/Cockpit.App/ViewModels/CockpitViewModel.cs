@@ -709,7 +709,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         string pluginId,
         string title,
         Action onInvoke,
-        SideMenuButtonBadge badge,
+        SideMenuButtonBadge? badge,
         MaterialIconKind iconKind) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke, badge, iconKind)));
 
@@ -5486,20 +5486,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // has touched — and a server that connects later — is open.
     private readonly HashSet<string> _collapsedSidebarSections = new(StringComparer.Ordinal);
 
-    internal static string ServerSectionKey(string serverName) => $"server:{serverName}";
-
-    public bool ProjectsSectionExpanded
-    {
-        get => IsSidebarSectionExpanded("projects");
-        set => SetSidebarSectionExpanded("projects", value);
-    }
-
-    public bool ThisLaptopSectionExpanded
-    {
-        get => IsSidebarSectionExpanded("this-laptop");
-        set => SetSidebarSectionExpanded("this-laptop", value);
-    }
-
     public bool IsSidebarSectionExpanded(string key) => !_collapsedSidebarSections.Contains(key);
 
     public void SetSidebarSectionExpanded(string key, bool expanded)
@@ -5509,8 +5495,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        OnPropertyChanged(nameof(ProjectsSectionExpanded));
-        OnPropertyChanged(nameof(ThisLaptopSectionExpanded));
         if (_layoutSettingsStore is not null)
         {
             _ = _PersistSidebarSectionsAsync();
@@ -5530,17 +5514,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // The startup load: the saved set replaces ours without writing it back, and the servers already listed follow it.
+    // The startup load: the saved set replaces ours without writing it back.
     private void _ApplyCollapsedSidebarSections(IReadOnlyList<string> keys)
     {
         _collapsedSidebarSections.Clear();
         _collapsedSidebarSections.UnionWith(keys);
-        OnPropertyChanged(nameof(ProjectsSectionExpanded));
-        OnPropertyChanged(nameof(ThisLaptopSectionExpanded));
-        foreach (var group in ServerGroups)
-        {
-            group.IsExpanded = IsSidebarSectionExpanded(ServerSectionKey(group.Name));
-        }
     }
 
     // The assistant's thread rail preference per host, labels or icons only when the labels fit (voorstel § 8.2).

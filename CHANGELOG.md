@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a plugin can give a sidebar button its own icon** without a counter, through a new
+  `AddSideMenuButton(title, onInvoke, iconKind)` overload (plugin SDK UI 3.12.0, Cockpit 0.126.0).
 - added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
   get a dollar rate per million tokens in Productivity's settings; Overzicht names the profiles without one and
   where to set it. Plugins read the profile of a usage record as `CockpitUsageDelta.ProfileLabel` (host 0.125.0, SDK 3.34.0).
@@ -498,11 +500,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - changed: **the plugins in the sidebar are cards.** Each plugin that adds buttons and a section gets one foldable
   card named after it, with its settings gear in the header; plugins with a single button share one "Plugins · n" card.
-  Rows look like the other sidebar rows, the fold is remembered across restarts, and a folded card shows the sum of
-  its counters.
-- changed: **the sidebar folds by section.** Projects, This laptop and every connected server are now cards with a
-  chevron, a count and, for a server, its latency; click a card's header to fold it away, and it stays folded after a
-  restart. Plugin store, Menu and Help at the bottom are plain rows with an icon instead of bordered buttons.
+  The cards stand at the bottom of the sidebar just above Plugin store, and in the Simple rail above Settings. The
+  fold is remembered across restarts, and a folded card shows the sum of its counters. A row shows the plugin's own
+  icon in the quieter secondary text colour, and a counter is a small amber pill. Depot, Schedules, GitHub Pull
+  Requests, GitHub Issues, YouTrack, Autopilot, Workflows, Prompt Library, Transcript Search and Productivity bring
+  their own icon, and Productivity's stopwatch sits straight under Overzicht.
 - changed: **the nightly ships only the Velopack files.** The nightly release no longer carries the Linux tarball, the
   macOS `.app.zip` and `.dmg` or the AppImage; the in-app updater and the plugin SDK are unchanged, and a nightly now
   comes in through the update channel. Stable releases still ship those packages.
