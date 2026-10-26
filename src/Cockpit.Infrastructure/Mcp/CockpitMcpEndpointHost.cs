@@ -18,6 +18,8 @@ using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.Infrastructure.Mcp;
 
+internal sealed record NodeListenAddress(System.Net.IPAddress Value);
+
 // AC-13/AC-12: hosts one loopback MCP server per cockpit endpoint, mounted at startup or by a plugin via
 // MountAsync; not written into the user-managed registry (AC-40). AC-790/AC-791/AC-856: with the node switch on,
 // a NodeOnly endpoint — and only that — also gets an HTTPS listener guarded by a persistent shared secret.
@@ -32,6 +34,7 @@ internal sealed class CockpitMcpEndpointHost
     private readonly NodeSelfSignedCertificate _nodeCertificate;
     private readonly NodeSharedSecret _nodeSharedSecret;
     private readonly SessionMcpMounts _mounts;
+    private readonly System.Net.IPAddress _nodeListenAddress;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
@@ -63,7 +66,8 @@ internal sealed class CockpitMcpEndpointHost
         NodeSelfSignedCertificate nodeCertificate,
         NodeSharedSecret nodeSharedSecret,
         SessionMcpMounts mounts,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        NodeListenAddress? nodeListenAddress = null)
     {
         _endpoints = [.. endpoints];
         _services = services;
@@ -73,6 +77,7 @@ internal sealed class CockpitMcpEndpointHost
         _nodeCertificate = nodeCertificate;
         _nodeSharedSecret = nodeSharedSecret;
         _mounts = mounts;
+        _nodeListenAddress = nodeListenAddress?.Value ?? System.Net.IPAddress.Any;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -205,7 +210,7 @@ internal sealed class CockpitMcpEndpointHost
 
                     // ponytail: one fixed port for every NodeOnly endpoint — a second one would collide and lose its
                     // network listener. Give them an offset each if a second NodeOnly endpoint ever mounts.
-                    options.Listen(System.Net.IPAddress.Any, nodeSettings.McpPort, listenOptions => listenOptions.UseHttps(_nodeCertificate.Value));
+                    options.Listen(_nodeListenAddress, nodeSettings.McpPort, listenOptions => listenOptions.UseHttps(_nodeCertificate.Value));
                 }
             });
 
@@ -272,7 +277,10 @@ internal sealed class CockpitMcpEndpointHost
             if (bindNodeListener)
             {
                 var nodeListenAddress = addresses.Addresses.FirstOrDefault(address => address.StartsWith("https://", StringComparison.Ordinal));
-                if (nodeListenAddress is not null && _GetReachableAddress() is { } reachableHost)
+                var reachableHost = _nodeListenAddress.Equals(System.Net.IPAddress.Any)
+                    ? _GetReachableAddress()
+                    : _nodeListenAddress.ToString();
+                if (nodeListenAddress is not null && reachableHost is not null)
                 {
                     var nodePort = new Uri(nodeListenAddress).Port;
                     nodeUrl = $"https://{reachableHost}:{nodePort}/mcp";
@@ -410,7 +418,7 @@ internal sealed class CockpitMcpEndpointHost
     {
         try
         {
-            var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, port);
+            var probe = new System.Net.Sockets.TcpListener(_nodeListenAddress, port);
             probe.Start();
             probe.Stop();
 

@@ -4,14 +4,14 @@ namespace Cockpit.Plugin.Slack.Tests;
 
 public class SlackConsentReplyParserTests
 {
-    [Theory]
-    [InlineData("ja")]
-    [InlineData("JA")]
-    [InlineData("  ja  ")]
-    public void ParsesJaAsApproved(string text)
+    [Fact]
+    public void ParsesJaAsApproved()
     {
-        Assert.True(SlackConsentReplyParser.TryParse(text, out var outcome));
-        Assert.Equal(ConsentOutcome.Approved, outcome);
+        foreach (var text in new[] { "ja", "JA", "  ja  " })
+        {
+            Assert.True(SlackConsentReplyParser.TryParse(text, out var outcome));
+            Assert.Equal(ConsentOutcome.Approved, outcome);
+        }
     }
 
     [Theory]

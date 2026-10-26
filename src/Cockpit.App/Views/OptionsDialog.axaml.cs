@@ -528,10 +528,14 @@ public partial class OptionsDialog : Window
     {
         var searching = !string.IsNullOrWhiteSpace(searchText);
         var matchCount = 0;
-        foreach (var row in _Descendants(root).Where(_IsSearchableInput).Select(control => _RowFor(root, control)).Distinct())
+        foreach (var row in _Descendants(root).Where(_IsSearchableInput).Select(control => _RowFor(root, control)).DistinctBy(row => row[^1]))
         {
-            var match = _Matches(searchText, row);
-            _SetSearchVisibility(row, searching ? match : null);
+            var match = row.Any(control => _Matches(searchText, control));
+            foreach (var control in row)
+            {
+                _SetSearchVisibility(control, searching ? match : null);
+            }
+
             matchCount += match ? 1 : 0;
         }
 
@@ -546,15 +550,40 @@ public partial class OptionsDialog : Window
         }
     }
 
-    private static Control _RowFor(Control root, Control control)
+    private static Control[] _RowFor(Control root, Control control)
     {
-        if (control.GetLogicalParent() is not Control { } parent || parent == root)
+        if (control.GetLogicalParent() is not Control { } parent)
         {
-            return control;
+            return [control];
         }
 
-        return parent.GetLogicalChildren().OfType<Control>().Count(_IsSearchableInput) == 1 ? parent : control;
+        var siblings = parent.GetLogicalChildren().OfType<Control>().ToList();
+        if (parent != root && siblings.Count(_IsSearchableInput) == 1)
+        {
+            return [parent];
+        }
+
+        // A plugin view may lay a field out flat — its label, then its input, then the next label — so the label
+        // has to come and go with its input, or a search leaves a column of labels without the boxes they name.
+        // A hint closing the panel after its last input belongs to that input the same way.
+        var index = siblings.IndexOf(control);
+        var row = new List<Control>();
+        if (index > 0 && _IsFieldLabel(siblings[index - 1]))
+        {
+            row.Add(siblings[index - 1]);
+        }
+
+        row.Add(control);
+        if (index == siblings.Count - 2 && _IsFieldLabel(siblings[^1]))
+        {
+            row.Add(siblings[^1]);
+        }
+
+        return [.. row];
     }
+
+    private static bool _IsFieldLabel(Control control) =>
+        !control.Classes.Contains("optionsSectionHeader") && !_Descendants(control).Any(_IsSearchableInput);
 
     private static bool _IsSearchableInput(Control control) => control is CheckBox or RadioButton or TextBox or NumericUpDown or ComboBox;
 

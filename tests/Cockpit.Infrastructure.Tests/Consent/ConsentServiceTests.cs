@@ -49,6 +49,7 @@ public sealed class ConsentServiceTests
         Assert.Empty(prompts);
         var entry = Assert.Single(entries);
         Assert.Equal(ConsentAuditAction.Bypassed, entry.Action);
+        Assert.Equal("daemon mode: read-free", entry.PreApprovedBy);
     }
 
     /// <summary>
@@ -211,14 +212,59 @@ public sealed class ConsentServiceTests
         Assert.Equal(2, System.Linq.Enumerable.Count(prompts));
     }
 
+    /// <summary>
+    /// L2c (contract), AC-1714: a card with choices hands back what the operator picked, and only that. A pick the
+    /// card did not offer or enable, no pick, a deadline, and a plugin pre-approving it are all a plain denial.
+    /// </summary>
     [Fact]
-    public void Respond_UnknownId_IsIgnored()
+    public async Task RequestConsentAsync_WithChoices_ReturnsOnlyAnOfferedPick_AndFailsClosedOtherwise()
     {
+        var entries = new List<ConsentAuditEntry>();
+        _audit.RecordAsync(Arg.Do<ConsentAuditEntry>(entries.Add), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         var broker = CreateBroker();
+        var answers = new Queue<IReadOnlyDictionary<string, IReadOnlyList<string>>?>();
+        var prompts = new List<ConsentPrompt>();
+        broker.PromptOpened += (_, prompt) =>
+        {
+            prompts.Add(prompt);
+            if (answers.TryDequeue(out var pick))
+            {
+                broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true, pick);
+            }
+        };
+        var request = Request(ConsentRisk.Dangerous, allowRemember: true) with
+        {
+            Choices =
+            [
+                new ConsentChoice("session", "With", [new ConsentOption("pane-a", "A"), new ConsentOption("pane-b", "B")]),
+                new ConsentChoice("mode", "May", [new ConsentOption("watch", "Watch"), new ConsentOption("control", "Control", Enabled: false)], AllowMultiple: true),
+            ],
+        };
 
-        var act = () => broker.Respond(Guid.NewGuid(), ConsentOutcome.Approved, remember: false);
+        answers.Enqueue(new Dictionary<string, IReadOnlyList<string>> { ["session"] = ["pane-b"], ["mode"] = ["watch"] });
+        var approved = await broker.RequestConsentAsync(request);
+        answers.Enqueue(new Dictionary<string, IReadOnlyList<string>> { ["session"] = ["pane-b"], ["mode"] = ["watch", "control"] });
+        var disabledPick = await broker.RequestConsentAsync(request);
+        answers.Enqueue(new Dictionary<string, IReadOnlyList<string>> { ["session"] = ["pane-a", "pane-b"], ["mode"] = ["watch"] });
+        var twoSessions = await broker.RequestConsentAsync(request);
+        answers.Enqueue(null);
+        var noPick = await broker.RequestConsentAsync(request);
+        using var deadline = new CancellationTokenSource();
+        var timedOut = broker.RequestConsentAsync(request, deadline.Token);
+        await deadline.CancelAsync();
+        var preApproved = await broker.RequestConsentAsync(request with { PreApprovedBy = "plugin policy" });
 
-        act();
+        Assert.True(approved.IsApproved);
+        Assert.Equal(["pane-b"], approved.Chosen!["session"]);
+        Assert.Equal(["watch"], approved.Chosen["mode"]);
+        Assert.Equal("session=pane-b; mode=watch", entries[0].Chosen);
+        Assert.All([disabledPick, twoSessions, noPick, await timedOut, preApproved], decision =>
+        {
+            Assert.False(decision.IsApproved);
+            Assert.Null(decision.Chosen);
+        });
+        Assert.Equal(5, prompts.Count);
+        Assert.All(prompts, prompt => Assert.False(prompt.CanRemember));
     }
 
     /// <summary>Every decision reaches the audit trail, carrying the ground-truth action rather than any framing.</summary>

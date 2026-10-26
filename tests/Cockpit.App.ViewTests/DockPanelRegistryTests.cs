@@ -15,25 +15,17 @@ public class DockPanelRegistryTests
     private static DockPanelRegistration _Panel(string id, string title = "T") =>
         new(id, title, MaterialIconKind.ViewDashboardOutline, () => new TextBlock());
 
+    // Changed is raised for the one that was taken, so a late-arriving panel is heard, and not for the refusal.
     [Fact]
     public void Register_TheFirstOfAnId_Wins_AndALaterOneIsRefused()
-    {
-        var registry = new DockPanelRegistry();
-
-        Assert.True(registry.Register(_Panel("assistant", "First")));
-        Assert.False(registry.Register(_Panel("assistant", "Second")));
-        Assert.Equal("First", registry.Panels.Single(panel => panel.Id == "assistant").Title);
-    }
-
-    [Fact]
-    public void Register_RaisesChanged_SoALateArrivingPanelIsHeard()
     {
         var registry = new DockPanelRegistry();
         var raised = 0;
         registry.Changed += (_, _) => raised++;
 
-        registry.Register(_Panel("assistant"));
-
+        Assert.True(registry.Register(_Panel("assistant", "First")));
+        Assert.False(registry.Register(_Panel("assistant", "Second")));
+        Assert.Equal("First", registry.Panels.Single(panel => panel.Id == "assistant").Title);
         Assert.Equal(1, raised);
     }
 }

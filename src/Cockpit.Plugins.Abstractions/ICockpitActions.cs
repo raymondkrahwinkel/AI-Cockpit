@@ -74,4 +74,17 @@ public interface ICockpitActions
     /// </remarks>
     Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory, TimeSpan? timeout, string? permission, Action<string> taskStarted) =>
         DelegateAsync(profileLabel, prompt, workingDirectory, timeout, permission);
+
+    /// <summary>
+    /// Submits <paramref name="prompt"/> as a turn in the running agent session <paramref name="paneId"/> (AC-1724),
+    /// but only after the operator approved it on the host's own confirmation card.
+    /// </summary>
+    /// <remarks>
+    /// The card names this plugin, the session, <paramref name="reason"/> and the prompt word for word; it is never
+    /// skipped and never remembered, and there is no overload without it. A session in the middle of a turn gets the
+    /// prompt after that turn. Throws when the operator declines, and when the pane is not an agent session (the
+    /// assistant's own included). Default throws; a plugin that calls it sets minHostVersion 0.108.0.
+    /// </remarks>
+    Task SendPromptToSessionAsync(string paneId, string prompt, string reason) =>
+        throw new NotSupportedException("This host cannot send a prompt to a session.");
 }

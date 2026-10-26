@@ -18,6 +18,7 @@
   <ItemGroup>
     <Compile Include="..\Shared\UsageSnapshotContract.cs" Link="UsageSnapshotContract.cs" />
     <Compile Include="..\Shared\TestSessions.cs" Link="TestSessions.cs" />
+    <Compile Include="..\..\plugins-dev\_shared\UI\SharedCharts.cs" Link="SharedUI\SharedCharts.cs" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
     <PackageReference Include="Avalonia.Skia" Version="12.1.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
@@ -47,9 +48,11 @@
                       ReferenceOutputAssembly="false" Private="false" />
     <!-- AC-1546: the Schedules screen's journey test builds the real screen on the real backend part, here because
          this harness is the one with the app's own theme, so the renders it writes look as the cockpit draws them. -->
-    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj" />
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj"
+                      SetConfiguration="Configuration=$(Configuration)" />
     <!-- Aliased: both parts compile the shared Contracts as source, so their internal types would clash by name. -->
-    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/UI/Cockpit.Plugin.Schedules.UI.csproj" Aliases="schedulesUi" />
+    <ProjectReference Include="../../plugins-dev/Cockpit.Plugin.Schedules/UI/Cockpit.Plugin.Schedules.UI.csproj"
+                      Aliases="schedulesUi" SetConfiguration="Configuration=$(Configuration)" />
     <!-- AC-1147: a build dependency only, same reasoning as the Diagram plugin above — LogPidPositiveControlTests
          runs its build output as two real processes rather than linking its types. -->
     <ProjectReference Include="../Cockpit.LogPidProbe/Cockpit.LogPidProbe.csproj"

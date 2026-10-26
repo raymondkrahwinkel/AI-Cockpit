@@ -38,6 +38,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
     <!-- The plugin's own runtime dependency: the Slack Socket Mode/Web API client. Not compile-only — it and
          its transitive deps ship in the plugin folder. Pinned exact version, not a floating range (criterion 6). -->
     <PackageReference Include="SlackNet" Version="0.17.11" />

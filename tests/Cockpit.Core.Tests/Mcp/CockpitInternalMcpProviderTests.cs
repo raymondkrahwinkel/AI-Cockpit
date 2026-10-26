@@ -110,7 +110,8 @@ public class CockpitInternalMcpProviderTests
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
+            loggerFactory: NullLoggerFactory.Instance,
+            nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
 
         await host.StartAsync(CancellationToken.None);
         return host;
@@ -132,7 +133,8 @@ public class CockpitInternalMcpProviderTests
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
+            loggerFactory: NullLoggerFactory.Instance,
+            nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
 
@@ -254,7 +256,8 @@ public class CockpitInternalMcpProviderTests
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
             mounts: new SessionMcpMounts(),
-            loggerFactory: NullLoggerFactory.Instance);
+            loggerFactory: NullLoggerFactory.Instance,
+            nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
         var loopbackUrl = Assert.Single(host.GetServers()).Url;
@@ -290,7 +293,8 @@ public class CockpitInternalMcpProviderTests
             nodeCertificate: _ThrowawayNodeCertificate(),
             nodeSharedSecret: new NodeSharedSecret(),
             mounts: mounts,
-            loggerFactory: NullLoggerFactory.Instance);
+            loggerFactory: NullLoggerFactory.Instance,
+            nodeListenAddress: new NodeListenAddress(IPAddress.Loopback));
 
         await host.MountAsync("cockpit-probe", new ProbeTools(), isEnabled: () => true);
         var url = Assert.IsType<string>(Assert.Single(host.GetServers()).Url);

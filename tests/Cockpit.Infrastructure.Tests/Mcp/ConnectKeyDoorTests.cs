@@ -617,7 +617,8 @@ public sealed class ConnectKeyDoorTests
                 _certificate,
                 new NodeSharedSecret(),
                 new SessionMcpMounts(),
-                _loggerFactory);
+                _loggerFactory,
+                new NodeListenAddress(System.Net.IPAddress.Loopback));
             await _host.StartAsync(CancellationToken.None);
             NodeUrl = Assert.Single(_host.GetNodeAddresses()).Url;
             return verifier;

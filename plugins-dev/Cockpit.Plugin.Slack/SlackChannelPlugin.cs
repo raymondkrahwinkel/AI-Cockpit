@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugin.Slack.Contracts;
 using Cockpit.Plugin.Slack.Settings;
 using Cockpit.Plugins.Abstractions;
@@ -17,13 +18,14 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
         Id: "slack",
         DisplayName: "Slack",
         Author: "Cockpit",
-        Description: "Talk to your assistant from Slack — a second door onto the same conversation the chat " +
-            "window shows. Connects over Socket Mode with a bot token and an app-level token via SlackNet; " +
+        Description: "Talk to your assistant in a private Slack DM linked to your account. Connects over Socket " +
+            "Mode with a bot token and an app-level token via SlackNet; " +
             "consent prompts relay as Approve/Deny Block Kit buttons with a \"type JA/NEE\" text fallback.");
 
     private ICockpitHost? _host;
     private SlackChannelSettings? _settings;
     private SlackGatewayConnection? _connection;
+    private ILogger? _logger;
     private readonly List<IDisposable> _handlers = [];
 
     public void ConfigureServices(IServiceCollection services)
@@ -34,6 +36,13 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
     {
         _host = host;
         _settings = new SlackChannelSettings(host.Storage);
+
+        if (AssistantChannelStorage.MigrateToSingleUser(host.Storage, SlackChannelSettings.ChannelIdKey) is { } notice)
+        {
+            host.ShowToast($"Slack: {notice} {SlackChannelSettings.ReauthorizationNotice}", PluginToastSeverity.Information);
+        }
+
+        _logger = host.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Slack");
 
         // AC-1394: the UI part's settings dialog lives in its own assembly now, so it tells us over the channel
         // when the operator saves — the same reconnect a save used to trigger directly through OnSettingsSaved.
@@ -63,7 +72,7 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
         if (settings.Access is not { } configured
             || string.IsNullOrWhiteSpace(settings.BotToken)
             || string.IsNullOrWhiteSpace(settings.AppLevelToken)
-            || string.IsNullOrWhiteSpace(settings.ChannelId))
+            || configured.Access is not { Audience: AssistantChannelAudience.SingleUser, UserIds.Count: 1 } access)
         {
             return;
         }
@@ -93,10 +102,11 @@ public sealed class SlackChannelPlugin : ICockpitPlugin
             gateway,
             settings.BotToken,
             settings.AppLevelToken,
-            settings.ChannelId,
-            configured.Access,
+            access.UserIds.Single(),
+            access,
             () => settings.Access?.Verbosity ?? AssistantChannelVerbosity.FinalAnswerOnly,
-            error => host.ShowToast(error, PluginToastSeverity.Error));
+            error => host.ShowToast(error, PluginToastSeverity.Error),
+            refusal => _logger?.LogInformation("{Refusal}", refusal));
     }
 
     public void Dispose()

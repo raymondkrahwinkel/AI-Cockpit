@@ -81,16 +81,16 @@ public sealed class SessionStartComposer(
     }
 
     // AC-544: the standing statusline instruction rides after the profile's own words, never instead of them; AC-490
-    // adds the job report for a job's run.
+    // adds the job report for a job's run; AC-1705's base instruction goes ahead of both.
     public static IReadOnlyDictionary<string, string> WithInstructions(
         IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun)
     {
         var merged = options is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
             : new Dictionary<string, string>(options, StringComparer.Ordinal);
-        var standing = isJobRun
+        var standing = SessionBaseInstruction.Text + "\n\n" + (isJobRun
             ? AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun
-            : AgentStatusSystemPrompt.Default;
+            : AgentStatusSystemPrompt.Default);
         merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(systemPrompt)
             ? standing
             : systemPrompt.Trim() + "\n\n" + standing;

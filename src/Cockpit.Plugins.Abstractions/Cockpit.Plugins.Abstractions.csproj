@@ -575,8 +575,41 @@
          A plugin that calls it sets minHostVersion 0.105.0. Additive — a minor; the major and abstractionsVersion stay 3. -->
     <!-- 3.26.0 (AC-1665): ICockpitHost.McpServerAccountChanged (default no-op), raised when the account behind a plugin's own
          MCP server may have changed. A plugin that subscribes sets minHostVersion 0.105.3. Additive — a minor; abstractionsVersion stays 3. -->
-    <Version>3.26.0</Version>
-    <AssemblyVersion>1.16.0.0</AssemblyVersion>
+    <!-- 3.17.0 (AC-1681): AssistantChannelStorage migrates legacy broad or channel audiences to one linked DM account
+         and persists a user-visible notice. A plugin that calls it sets minHostVersion 0.106.0. Additive; still v3. -->
+    <!-- 3.18.0 (AC-1729): added the host-owned ICockpitTimeEntries contract and textual side-menu badges. A plugin
+         that uses either sets minHostVersion 0.107.0. Additive; the major and abstractionsVersion stay 3. -->
+    <!-- 3.19.0 (AC-1724): added ICockpitActions.SendPromptToSessionAsync, a prompt into a running session behind the
+         host's own confirmation card. A plugin that calls it sets minHostVersion 0.108.0. Additive; still v3. -->
+    <!-- 3.20.0 (AC-1685): ICockpitHost.CurrentMcpCaller with McpCaller/McpCallerKind, the transport-verified caller's
+         kind (assistant, session or remote) and connect-key label. A plugin that reads it sets minHostVersion 0.109.0;
+         an older host answers null, which an owner-only tool refuses. Additive; the major and abstractionsVersion stay 3. -->
+    <!-- 3.21.0 (AC-1730): CapabilityCatalog gains `time.entries`, CapabilityCatalog.TimeEntries and Find. A manifest
+         names catalogue ids under `capabilities`; ICockpitHost.TimeEntries now needs `time.entries` and throws
+         UnauthorizedAccessException without it. Additive to the SDK surface; the major and abstractionsVersion stay 3. -->
+    <!-- 3.22.0 (AC-1710): in step with Cockpit.Plugins.Abstractions.UI 3.4.0 — DockPanelRegistration.KeepAlive and
+         CanFloat. A plugin that relies on either sets minHostVersion 0.111.0. Additive; still v3. -->
+    <!-- 3.23.0 (AC-1737): added PluginProjectInfo, ICockpitHost.GetProjectsAsync and GetSessionProjectIdAsync, the
+         projects as id and name and a pane's project. A plugin that calls them sets minHostVersion 0.112.0. Additive. -->
+    <!-- 3.24.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.6.0 — ICockpitUiHost.OpenDockPanelAsync (default
+         no-op). A plugin that calls it sets minHostVersion 0.113.0. Additive; still v3. -->
+    <!-- 3.25.0 (AC-1720): added ICockpitTimelineReader and ICockpitHost.Timeline (default unavailable), the timeline,
+         per-turn usage deltas and day aggregates of every session behind timeline.read-all. A plugin that reads it sets
+         minHostVersion 0.114.0. Additive; still v3. -->
+    <!-- 3.26.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.7.0 - WorkspaceTypeRegistration.HeaderActions.
+         A plugin that relies on them sets minHostVersion 0.115.0. Additive; still v3. -->
+    <!-- 3.27.0 (AC-1711): in step with Cockpit.Plugins.Abstractions.UI 3.8.0 - ICockpitUiHost.SetStatusText. A plugin
+         that calls it sets minHostVersion 0.116.0. Additive; still v3. -->
+    <!-- 3.28.0 (AC-1714): added ConsentRequest.Choices, ConsentChoice, ConsentOption and ConsentDecision.Chosen, a
+         consent card the operator answers by picking. A plugin that sets Choices sets minHostVersion 0.117.0. Additive; still v3. -->
+    <!-- 3.29.0 (AC-1725): OpenCockpitSession exposes optional ProfileLabel and Status values. A plugin that reads
+         them sets minHostVersion 0.119.0. Additive; still v3. -->
+    <!-- 3.30.0 (AC-1715): added ConsentRequest.Inline and ConsentRequest.OtherLabel, a card with choices that stands under
+         the session's conversation as buttons. A plugin that sets Inline sets minHostVersion 0.121.0. Additive; still v3. -->
+    <!-- 3.31.0 (AC-1726): the UI SDK adds FocusSessionAsync, host 0.122.0. -->
+    <!-- 3.32.0 (AC-1497): the Depot SaaS SDK additions above merged with main through 3.31.0. -->
+    <Version>3.32.0</Version>
+    <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>

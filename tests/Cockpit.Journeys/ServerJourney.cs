@@ -407,6 +407,7 @@ public sealed class ServerJourney
         };
         start.Environment[CockpitBuild.StateRootVariable] = stateRoot;
         start.Environment[ConnectKeyVerifier.BootstrapFileVariable] = keyFile;
+        start.Environment["COCKPIT_NODE_LISTEN_ADDRESS"] = "127.0.0.1";
         foreach (var (name, value) in environment ?? new Dictionary<string, string>())
         {
             start.Environment[name] = value;
@@ -431,7 +432,7 @@ public sealed class ServerJourney
 
     internal static int _McpPort(string output)
     {
-        var match = Regex.Match(output, @"Now listening on: https://0\.0\.0\.0:(\d+)");
+        var match = Regex.Match(output, @"Now listening on: https://127\.0\.0\.1:(\d+)");
         return match.Success
             ? int.Parse(match.Groups[1].Value)
             : throw new InvalidOperationException($"Cockpit.Server did not report its node listener:\n{output}");

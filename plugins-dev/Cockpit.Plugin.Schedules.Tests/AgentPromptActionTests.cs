@@ -33,7 +33,7 @@ public class AgentPromptActionTests
         var host = _Host(answer, "OK");
         var task = _Task(AgentPermission.Write, "/work") with { RunUnattended = unattended };
 
-        var result = await new AgentPromptAction(host, new TaskDelivery(host), TimeSpan.FromMilliseconds(50)).AdmitAsync(task, trigger, CancellationToken.None);
+        var result = await new AgentPromptAction(host, new TaskDelivery(host), _ConsentWait(answer)).AdmitAsync(task, trigger, CancellationToken.None);
 
         Assert.Equal(refusal, result);
         Assert.Equal(asked ? 1 : 0, host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ICockpitHost.RequestConsentAsync)));
@@ -64,6 +64,10 @@ public class AgentPromptActionTests
         Assert.Equal(toasts, host.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(ICockpitHost.ShowToast)));
         await host.Actions.Received(1).DelegateAsync("Local", "Summarise the notes.", "/work/notes", null, sentPermission, Arg.Any<Action<string>>());
     }
+
+    // Only the unanswered card may run into the wait: a short one on a card the fake answers at once would let a slow
+    // runner's deadline beat that answer, and read a "not approved" as "no answer" (AC-1648).
+    private static TimeSpan _ConsentWait(Answer answer) => answer == Answer.NoAnswer ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromMinutes(1);
 
     private static ScheduledTask _Task(AgentPermission permission, string directory) => EngineRig.NewTask("0 9 * * *") with
     {

@@ -16,6 +16,9 @@ public sealed record PluginSideButton(string PluginId, string Title, Action OnIn
 // A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
 
+// AC-1711: the one line of text a plugin shows in the status bar (`ICockpitUiHost.SetStatusText`), keyed by plugin.
+public sealed record PluginStatusText(string PluginId, string Text);
+
 // A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
 

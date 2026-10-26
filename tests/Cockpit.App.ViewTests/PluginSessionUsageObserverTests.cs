@@ -48,12 +48,29 @@ public class PluginSessionUsageObserverTests
             usage.RateLimits.Select(window => (window.Label, window.UsedPercent)));
     });
 
+    // AC-1737: the selected session's project follows the selection and its own ProjectId, with the same re-scope cue.
+    // Also covers the empty selection: no project and no usage.
     [Fact]
-    public void ActiveSessionUsage_IsNull_WhenNothingIsSelected() => HeadlessAvalonia.Run(() =>
+    public void ActiveProjectId_FollowsTheSelectedSessionsProject_AndIsNullWhenNothingIsSelected() => HeadlessAvalonia.Run(() =>
     {
-        var cockpit = new CockpitViewModel { SelectedSession = null };
-        var observer = new PluginSessionObserver(cockpit);
+        var cockpit = new CockpitViewModel();
+        var session = new TestSession { ProjectId = "cockpit" };
+        cockpit.Sessions.Add(session);
+        cockpit.SelectedSession = session;
 
+        var observer = new PluginSessionObserver(cockpit);
+        var fired = 0;
+        observer.ActiveSessionChanged += (_, _) => fired++;
+        Assert.Equal("cockpit", observer.ActiveProjectId);
+
+        session.ProjectId = "depot";
+
+        Assert.True(fired > 0, "the selected session's project moving is a re-scope cue");
+        Assert.Equal("depot", observer.ActiveProjectId);
+
+        cockpit.SelectedSession = null;
+
+        Assert.Null(observer.ActiveProjectId);
         Assert.Null(observer.ActiveSessionUsage);
     });
 

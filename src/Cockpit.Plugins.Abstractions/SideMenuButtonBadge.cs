@@ -17,6 +17,22 @@ public sealed class SideMenuButtonBadge
 {
     private int? _primary;
     private int? _secondary;
+    private string? _text;
+
+    public string? Text
+    {
+        get => _text;
+        set
+        {
+            if (_text == value)
+            {
+                return;
+            }
+
+            _text = value;
+            Changed?.Invoke();
+        }
+    }
 
     /// <summary>
     /// The main counter — the only one for a plugin that has just one number to show. <see langword="null"/>
@@ -69,6 +85,7 @@ public sealed class SideMenuButtonBadge
     /// </summary>
     public string ToDisplayText() => this switch
     {
+        { Text: { } text } => text,
         { Primary: null } => string.Empty,
         { Primary: { } primary, Secondary: null } => primary.ToString(CultureInfo.InvariantCulture),
         { Primary: { } primary, Secondary: { } secondary } =>

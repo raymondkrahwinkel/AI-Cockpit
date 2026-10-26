@@ -43,6 +43,22 @@ internal abstract class JsonlAuditLog<T>
 
     public async Task RecordAsync(T entry, CancellationToken cancellationToken = default)
     {
+        try
+        {
+            await RecordStrictAsync(entry, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // A broken audit log must not take the action down with it — losing the record is bad, blocking the
+            // operator's approved action (or a delegation) is worse. Logged rather than swallowed, so a silently
+            // unwritable log still surfaces.
+            _logger.LogWarning(ex, "Could not append to the {LogName} audit log at {Path}.", LogName, _logFilePath);
+        }
+    }
+
+    // A durable user-data log cannot report success after a failed append. Audit logs keep using RecordAsync.
+    protected async Task RecordStrictAsync(T entry, CancellationToken cancellationToken = default)
+    {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -55,13 +71,6 @@ internal abstract class JsonlAuditLog<T>
             var line = JsonSerializer.Serialize(PrepareForWrite(entry), SerializerOptions);
             await _AppendPrivateAsync(line + Environment.NewLine, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex)
-        {
-            // A broken audit log must not take the action down with it — losing the record is bad, blocking the
-            // operator's approved action (or a delegation) is worse. Logged rather than swallowed, so a silently
-            // unwritable log still surfaces.
-            _logger.LogWarning(ex, "Could not append to the {LogName} audit log at {Path}.", LogName, _logFilePath);
-        }
         finally
         {
             _writeLock.Release();
@@ -73,7 +82,7 @@ internal abstract class JsonlAuditLog<T>
 
     // AC-1446: up to `limit` entries from before the line starting at `beforeOffset` (the end when null), newest first,
     // each with its offset: unique and rising with the write order, where a timestamp is not (writers stamp before the
-    // lock). Stable because no trail is ever rotated or rewritten; only UsageHistoryLog rolls over, in a file of its own.
+    // lock). Stable: a paged trail never rolls over or loses days; only usage and the timeline do (AC-1719), unpaged.
     public async Task<IReadOnlyList<(T Entry, long Offset)>> ReadPageAsync(int limit, long? beforeOffset, CancellationToken cancellationToken = default)
     {
         if (beforeOffset is { } offset && !await _IsLineStartAsync(offset, cancellationToken).ConfigureAwait(false))

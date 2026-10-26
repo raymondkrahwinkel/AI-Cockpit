@@ -404,6 +404,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
+    // AC-1715: the running MCP call a card belongs to reads "waits for your choice" while it is open.
+    protected override void OnConsentCardChanged()
+    {
+        foreach (var row in Transcript.Where(row => row.IsToolUse && row.HasResult == false))
+        {
+            row.RefreshToolHeader();
+        }
+    }
+
     // AC-800: the rows the reading level shows, in transcript order — what the transcript views bind to. A hidden
     // row used to stay an item at zero height, so the panel built ten TranscriptRowViews per visible row.
     // `Transcript` stays the structure of record: `_FormGroups` walks it by index.
@@ -2326,7 +2335,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         IReadOnlyList<Core.Sessions.ImageAttachment> images = [Core.Sessions.ImageAttachment.FromBytes(screenshotPng, "image/png")];
 
-        await _control.SubmitAsync(new QueuedPrompt(caption, images));
+        await _control.SubmitForTheAgentAsync(new QueuedPrompt(caption, images));
         return true;
     }
 

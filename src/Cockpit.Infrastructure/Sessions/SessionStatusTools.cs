@@ -35,7 +35,9 @@ internal sealed class SessionStatusTools(
     // AC-1593: an organisation's shell ban covers these tools too; the shell switch alone does not, as it never did.
     IOrgPolicy? orgPolicy = null,
     // AC-1535: null only in a test graph that never queues; without a queue every run starts at once.
-    HeavyRunQueue? queue = null)
+    HeavyRunQueue? queue = null,
+    // AC-1717: null only in a test graph that keeps no session timeline.
+    SessionTimelineRecorder? timeline = null)
 {
     private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
         ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
@@ -76,6 +78,8 @@ internal sealed class SessionStatusTools(
                 new { ok = false, error = "No session matched that id — pass the COCKPIT_PANE_ID from this session's own environment as `session`." },
                 SerializerOptions);
         }
+
+        timeline?.RecordStatusline(caller, status ?? string.Empty);
 
         if (string.IsNullOrWhiteSpace(name))
         {
