@@ -36,6 +36,7 @@ internal sealed class BrowserEngine
     private readonly List<Task> _closing = [];
     private readonly CancellationTokenSource _stopping = new();
     private Task? _start;
+    private bool _cefLoaded;
     private CefRequestContext? _raymondProfile;
 
     public BrowserEngine(
@@ -94,6 +95,21 @@ internal sealed class BrowserEngine
 
     // Idempotent; completes when the engine is Ready or Unavailable, and never throws.
     public Task EnsureStartedAsync() => _start ??= _StartAsync();
+
+    // AC-1760: a failed fetch can be tried again in this process; once CEF has been loaded it cannot, CEF initializes
+    // once per process, and then only a restart helps.
+    public bool CanRetry => State == BrowserEngineState.Unavailable && _cefLoaded == false && _stopping.IsCancellationRequested == false
+        && OperatingSystem.IsMacOS() == false;
+
+    public Task RetryAsync()
+    {
+        if (CanRetry)
+        {
+            _start = null;
+        }
+
+        return EnsureStartedAsync();
+    }
 
     private async Task _StartAsync()
     {
@@ -157,6 +173,7 @@ internal sealed class BrowserEngine
         Environment.SetEnvironmentVariable("COCKPIT_CEF_RUNTIME_DIR", runtimeDir);
         _CreateOwnerOnly(_rootCachePath);
 
+        _cefLoaded = true;
         CefRuntime.Load(runtimeDir);
         CefRuntime.Initialize(new CefMainArgs([]), CreateSettings(runtimeDir, subprocess, _rootCachePath), new BrowserApp(), nint.Zero);
     }
