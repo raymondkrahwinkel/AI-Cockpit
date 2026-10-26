@@ -34,7 +34,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
   get a dollar rate per million tokens in Productivity's settings; Overzicht names the profiles without one and
-  where to set it. Plugins read the profile of a usage record as `CockpitUsageDelta.ProfileLabel` (host 0.124.0).
+  where to set it. Plugins read the profile of a usage record as `CockpitUsageDelta.ProfileLabel` (host 0.125.0, SDK 3.34.0).
 
 - added: **zoom and browser keys in the Browser tab.** Ctrl+plus, Ctrl+minus, Ctrl+0 and Ctrl+wheel zoom the page,
   and the zoom is kept per site, also after a restart. Alt+Left, Alt+Right, F5 and Ctrl+R go back, forward and reload.
