@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.App.Theming;
 using Cockpit.Plugins.Abstractions;
+using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
@@ -22,7 +23,12 @@ internal sealed class PluginLauncherButton : Button
     private readonly Border? _badgePill;
     private readonly TextBlock? _badgeText;
 
-    public PluginLauncherButton(string title, Action onInvoke, Action? onSettings = null, SideMenuButtonBadge? badge = null)
+    public PluginLauncherButton(
+        string title,
+        Action onInvoke,
+        Action? onSettings = null,
+        SideMenuButtonBadge? badge = null,
+        MaterialIconKind? iconKind = null)
     {
         HorizontalAlignment = HorizontalAlignment.Stretch;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -73,11 +79,19 @@ internal sealed class PluginLauncherButton : Button
             content.Children.Add(_badgePill);
         }
 
-        content.Children.Add(new TextBlock
+        var label = new StackPanel
         {
-            Text = title,
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
-        });
+        };
+        if (iconKind is { } icon)
+        {
+            label.Children.Add(CockpitIcons.Icon(icon, 13));
+        }
+
+        label.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
+        content.Children.Add(label);
 
         Content = content;
     }
@@ -120,6 +134,15 @@ internal sealed class PluginLauncherButton : Button
 
         var text = _badge.ToDisplayText();
         _badgeText.Text = text;
+        (_badgePill.Background, _badgeText.Foreground) = _badge.Tone switch
+        {
+            SideMenuButtonBadgeTone.Success =>
+                (ThemeBrush.Resolve("CockpitStatusDoneChipTintBrush", "#145AA576"), ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576")),
+            SideMenuButtonBadgeTone.Neutral =>
+                (ThemeBrush.Resolve("CockpitInsetBgBrush", "#16181d"), ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#9aa3b2")),
+            _ =>
+                (ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb"), ThemeBrush.Resolve("CockpitTextOnAccentBrush", "#ffffff")),
+        };
         _badgePill.IsVisible = text.Length > 0;
     }
 

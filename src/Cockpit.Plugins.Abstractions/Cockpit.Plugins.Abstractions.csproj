@@ -568,10 +568,14 @@
          consent card the operator answers by picking. A plugin that sets Choices sets minHostVersion 0.117.0. Additive; still v3. -->
     <!-- 3.29.0 (AC-1725): OpenCockpitSession exposes optional ProfileLabel and Status values. A plugin that reads
          them sets minHostVersion 0.119.0. Additive; still v3. -->
+    <!-- 3.31.0 (AC-1722, sync AC-1726): preserves the epic's side-menu icon and badge tone alongside main's 3.30.0 consent fields. -->
+    <!-- Side-menu launchers accept an optional Material icon and their badges expose an optional
+         Accent/Success/Neutral tone. A plugin that uses either sets minHostVersion 0.120.0. Additive; still v3. -->
     <!-- 3.30.0 (AC-1715): added ConsentRequest.Inline and ConsentRequest.OtherLabel, a card with choices that stands under
          the session's conversation as buttons. A plugin that sets Inline sets minHostVersion 0.121.0. Additive; still v3. -->
     <!-- 3.31.0 (AC-1726): the UI SDK adds FocusSessionAsync, host 0.122.0. -->
-    <Version>3.31.0</Version>
+    <!-- 3.32.0: combines the Productivity epic SDK with main's 3.31.0 focus contract. -->
+    <Version>3.32.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

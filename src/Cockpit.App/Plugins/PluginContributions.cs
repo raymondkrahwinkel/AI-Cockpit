@@ -3,6 +3,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.StatusBar;
+using Material.Icons;
 
 namespace Cockpit.App.Plugins;
 
@@ -11,7 +12,12 @@ public sealed record PluginSideSection(string PluginId, string Title, Func<Contr
 
 // A left-menu launcher button a plugin contributes (#72): which plugin, its title, and the click action.
 // `Badge` (AC-516) is the counter handle from `AddSideMenuButtonWithBadge`, or null for a plain button.
-public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke, SideMenuButtonBadge? Badge = null);
+public sealed record PluginSideButton(
+    string PluginId,
+    string Title,
+    Action OnInvoke,
+    SideMenuButtonBadge? Badge = null,
+    MaterialIconKind? IconKind = null);
 
 // A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
@@ -55,6 +61,14 @@ public interface IPluginContributionSink
     /// </summary>
     void AddPluginSideButton(string pluginId, string title, Action onInvoke, SideMenuButtonBadge? badge) =>
         AddPluginSideButton(pluginId, title, onInvoke);
+
+    void AddPluginSideButton(
+        string pluginId,
+        string title,
+        Action onInvoke,
+        SideMenuButtonBadge badge,
+        MaterialIconKind iconKind) =>
+        AddPluginSideButton(pluginId, title, onInvoke, badge);
 
     /// <summary>
     /// Registers a control shown in every session's header, built per session from that session's own context.

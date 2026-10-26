@@ -25,6 +25,7 @@ plugins-dev/Cockpit.Plugin.Kubernetes.Tests	111
 plugins-dev/Cockpit.Plugin.LocalCi.Tests	84
 plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests	14
 plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests	31
+plugins-dev/Cockpit.Plugin.Productivity.Tests	10
 plugins-dev/Cockpit.Plugin.Proxmox.Tests	13
 plugins-dev/Cockpit.Plugin.Schedules.Tests	38
 plugins-dev/Cockpit.Plugin.SessionReview.Tests	16

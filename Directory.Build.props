@@ -12,6 +12,8 @@
     <!-- 0.121.0: ConsentRequest.Inline and OtherLabel, a consent card under the conversation as buttons, and an MCP
          tool row named by its server and tool with "waits for your choice" while its card is open (AC-1715,
          Cockpit.Plugins.Abstractions 3.30.0); a plugin that sets Inline sets minHostVersion 0.121.0. -->
+    <!-- 0.120.0: plugin side-menu launchers may request a Material icon and set their badge tone (AC-1722,
+         Cockpit.Plugins.Abstractions 3.31.0, Cockpit.Plugins.Abstractions.UI 3.9.0). -->
     <!-- 0.119.0: OpenCockpitSession exposes its optional profile label and coarse status (AC-1725,
          Cockpit.Plugins.Abstractions 3.29.0); a plugin that reads them sets minHostVersion 0.119.0. -->
     <!-- 0.118.0: store index versions may carry `packages`, one zip per RID, and a host without a package for its RID
@@ -365,7 +367,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.122.0</VersionPrefix>
+    <VersionPrefix>0.123.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

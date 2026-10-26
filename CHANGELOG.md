@@ -32,6 +32,21 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: agents can report booked or skipped hours to Uren · Week. Only the session that received the proposal can
+  report it; the Agent column shows each result, skipped rows reopen, and bookings above the saved schedule stay red.
+- added: Uren · Week can give its open proposal to an existing agent session or start one from a profile. The dialog
+  previews the exact prompt, keeps the schedule limit and prior approval mandatory, and marks rows only after delivery;
+  its visible destination follows the saved choice, and a failed status update cannot resend an already delivered prompt.
+- added: Uren · Week, the hours proposal: per day the work schedule less your own entries, split over the projects in
+  the proposal by measured time and rounded to 5, 15 or 30 minutes, never above the schedule. Own entries stand as
+  their own rows, each line shows its status, earlier weeks keep the status of then, and "Kopieer als tabel" copies
+  the grid as tab-separated text. Schedule, rounding and private projects live in Productivity's settings (0.3.0).
+- added: a plugin's side-menu launcher can ask for a Material icon and set the tone of its badge (accent, success or
+  neutral); Productivity uses both for its hours entry. Needs SDK 3.26.0 (UI 3.7.0) and host 0.115.0.
+- added: Uren · Dag shows the time measured from your sessions beside your own entries: a strip of when you acted,
+  your entries and your agents, the measured time per project, your time and agent time. Your time counts each
+  minute once and gives it to the project you last acted on; an own entry over measured time wins it. The Uren badge
+  now counts measured plus own time. Productivity 0.2.0 asks for `timeline.read-all`.
 - added: plugins can open an existing session without changing or sending its input; a missing pane is reported.
 - added: in the Browser plugin an agent session can ask to control a shared tab, and you can give it control yourself
   on the share card: it may then click, type, scroll and navigate in that one tab, only on that site. An amber line and
