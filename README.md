@@ -283,7 +283,7 @@ own package cannot, and the Updates tab says so rather than offering a button th
 > The app is ad-hoc signed but not notarized, and Gatekeeper refuses a *quarantined* copy of such a bundle
 > outright — "is damaged and can't be opened", with no "Open Anyway" to click. That flag is written by whatever
 > program downloaded the file: a browser sets it, `curl` does not. So the command above installs a copy that
-> never had one, and the app opens on a double-click. Add ` -s -- nightly` to take the nightly instead.
+> never had one, and the app opens on a double-click. The nightly has no `.app.zip`, so this takes the latest stable; a nightly comes in through the in-app update channel.
 >
 > Took the `.dmg` and hit "is damaged" already? Remove *only* the quarantine flag:
 >

@@ -4,7 +4,7 @@
 # managed .NET assembly's signature and leaves the app unsigned.
 #
 # Usage:   curl -fsSL https://raw.githubusercontent.com/raymondkrahwinkel/AI-Cockpit/main/scripts/install-macos.sh | bash
-#          curl -fsSL …/install-macos.sh | bash -s -- nightly     # a release tag, instead of the latest stable
+#          curl -fsSL …/install-macos.sh | bash -s -- v1.2.3     # a release tag, instead of the latest stable
 
 set -euo pipefail
 
