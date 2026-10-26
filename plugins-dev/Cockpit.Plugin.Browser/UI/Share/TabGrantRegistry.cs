@@ -105,8 +105,15 @@ internal sealed class TabGrantRegistry
     // The tab's held submission sits on its controller; a tab without one holds nothing.
     public void Hold(string tabId, string submit) => _Change(() => _Each(tabId, grant => grant.HeldSubmit = grant.Controls ? submit : null));
 
+    // Nothing held is no change: TabShareService answers every Changed with a TakeHeld per tab, so signalling an empty
+    // take posted itself forever and starved Cockpit's UI thread (AC-1764).
     public string? TakeHeld(string tabId)
     {
+        if (ForTab(tabId).All(grant => grant.HeldSubmit is null))
+        {
+            return null;
+        }
+
         string? held = null;
         _Change(() => _Each(tabId, grant =>
         {
