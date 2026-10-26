@@ -277,6 +277,9 @@ public sealed class ProductivityHoursJourneyTests
             .Concat(offeredDraft.Rows.Where(row => skippedRows.Any(entry => entry.Id == row.EntryId)).Select(row => new HoursResultItem(row.Marker, "skipped", "boven het schema"))).ToArray();
         var response = JsonDocument.Parse(await (reportTools ?? throw new InvalidOperationException("No Productivity MCP endpoint.")).ReportHoursResult("2026-10-19", resultItems, [new(reportMonday.AddDays(3), 60)]));
         Assert.True(response.RootElement.GetProperty("ok").GetBoolean());
+        using var retryResponse = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", resultItems, [new(reportMonday.AddDays(3), 60)]));
+        Assert.True(retryResponse.RootElement.GetProperty("ok").GetBoolean());
+        Assert.Equal(16, timeEntries.OutcomeWrites);
         await _Until(() => _Texts(screen).Contains("✓ geboekt"), "the reported Agent column");
         Assert.Contains("Agent", _Texts(screen));
         Assert.Equal(13, screen.GetVisualDescendants().OfType<TextBlock>().Count(text => text.Name == "AgentOutcome" && text.Text == "✓ geboekt"));
@@ -289,6 +292,19 @@ public sealed class ProductivityHoursJourneyTests
         scene.Window.Height = 1600;
         _Render(scene.Window, "07-teruggemeld.png");
         scene.Window.Height = 820;
+        var projectProposal = new WeekProposal(offeredProposal.Days,
+            [new ProposalLine("Synvolution API", "syn-api", null, "SYN-398", [.. Enumerable.Range(0, 5).Select(offset => new ProposalCell(reportMonday.AddDays(offset), TimeSpan.FromHours(1), CockpitTimeEntryStatus.Open, "syn-api", Description: "Bewust aangepaste omschrijving"))])])
+        {
+            Report = storage.Get<WeekReport>(WeekReport.StorageKey(reportMonday)) ?? WeekReport.Empty,
+        };
+        var projectDraft = WeekOfferPrompt.Build(projectProposal, 43, string.Empty);
+        await channel.InvokeAsync(ProductivityChannel.SendWeekOffer, JsonSerializer.SerializeToElement(new WeekOfferSendRequest(WeekOfferDestination.Session("pane-agent", "Boekhouding"), projectDraft.Prompt, reportMonday, 43, projectDraft.OwnEntryIds, projectDraft.ProjectCells, "cockpit", projectDraft.Rows, projectDraft.Schedule), ProductivityChannel.Json));
+        var projectResults = projectDraft.Rows.Where(row => row.Day != reportMonday.AddDays(3)).Select(row => new HoursResultItem(row.Marker, "booked"))
+            .Concat(projectDraft.Rows.Where(row => row.Day == reportMonday.AddDays(3)).Select(row => new HoursResultItem(row.Marker, "skipped", "boven het schema"))).ToArray();
+        using var projectResponse = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", projectResults, [new(reportMonday.AddDays(3), 480)]));
+        Assert.True(projectResponse.RootElement.GetProperty("ok").GetBoolean());
+        await _Until(() => _Texts(screen).Contains("✓ 4 van 5 dagen"), "the project result across five days");
+        Assert.Equal("Bewust aangepaste omschrijving", storage.Get<CellOverride[]>(CellOverride.StorageKey(reportMonday))!.Single(edit => edit.Day == reportMonday.AddDays(3) && edit.ProjectId == "syn-api").Description);
         timeEntries.Entries.Clear();
         timeEntries.Seed(beforeReport);
 
@@ -466,6 +482,7 @@ public sealed class ProductivityHoursJourneyTests
         public CockpitRunningStopwatch? Running { get; private set; }
 
         public Exception? MarkFailure { get; set; }
+        public int OutcomeWrites { get; private set; }
 
         public Task<CockpitTimeEntry> AddAsync(string description, DateTimeOffset startedAt, TimeSpan duration, string? projectId, CockpitTimeEntrySource source, CancellationToken cancellationToken = default)
         {
@@ -541,13 +558,16 @@ public sealed class ProductivityHoursJourneyTests
 
         public Task SetOutcomeAsync(IReadOnlyCollection<Guid> ids, CockpitTimeEntryOutcome outcome, string? reason = null, CancellationToken cancellationToken = default)
         {
-            for (var index = 0; index < Entries.Count; index++)
+            OutcomeWrites++;
+            var updated = Entries.Select(entry => ids.Contains(entry.Id) ? entry with
             {
-                if (ids.Contains(Entries[index].Id))
-                {
-                    Entries[index] = Entries[index] with { Status = outcome == CockpitTimeEntryOutcome.Booked ? CockpitTimeEntryStatus.Booked : CockpitTimeEntryStatus.Open, OutcomeReason = reason };
-                }
-            }
+                Status = outcome == CockpitTimeEntryOutcome.Booked ? CockpitTimeEntryStatus.Booked : CockpitTimeEntryStatus.Open,
+                OutcomeReason = reason,
+                OfferedAt = outcome == CockpitTimeEntryOutcome.Skipped ? null : entry.OfferedAt,
+                OfferedToPaneId = outcome == CockpitTimeEntryOutcome.Skipped ? null : entry.OfferedToPaneId,
+            } : entry).ToArray();
+            Entries.Clear();
+            Entries.AddRange(updated);
 
             return Task.CompletedTask;
         }

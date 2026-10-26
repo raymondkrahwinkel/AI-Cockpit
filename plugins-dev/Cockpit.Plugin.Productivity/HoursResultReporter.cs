@@ -47,9 +47,22 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
                     throw new InvalidOperationException("Dit resultaat is al verwerkt; bied de open regel eerst opnieuw aan.");
                 }
 
-                if (row.Row.EntryId is { } id && !entries.Any(entry => entry.Id == id && entry.OfferedToPaneId == caller.PaneId))
+                if (row.PendingStatus is not null && (row.PendingStatus != item.Status || row.PendingReason != item.Reason))
                 {
-                    throw new UnauthorizedAccessException("De eigen regel is niet aan deze ontvanger aangeboden.");
+                    throw new InvalidOperationException("Herhaal het onderbroken resultaat ongewijzigd.");
+                }
+
+                if (row.Status is null && row.Row.EntryId is { } id)
+                {
+                    var entry = entries.SingleOrDefault(entry => entry.Id == id);
+                    var canWrite = entry is { Status: CockpitTimeEntryStatus.Offered } && entry.OfferedToPaneId == caller.PaneId;
+                    var recovered = row.PendingStatus == item.Status && entry is not null
+                        && entry.Status == (item.Status == "booked" ? CockpitTimeEntryStatus.Booked : CockpitTimeEntryStatus.Open)
+                        && entry.OutcomeReason == (string.IsNullOrWhiteSpace(item.Reason) ? null : item.Reason.Trim());
+                    if (!canWrite && !recovered)
+                    {
+                        throw new UnauthorizedAccessException("De eigen regel is niet aan deze ontvanger aangeboden of is inmiddels gewijzigd.");
+                    }
                 }
             }
 
@@ -59,7 +72,8 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
             }
 
             var already = request.AlreadyBooked.ToDictionary(day => day.Day, day => day.Minutes);
-            if (report.Rows.Any(row => already.TryGetValue(row.Row.Day, out var minutes) && minutes < row.AlreadyBooked))
+            var offers = request.Items.Select(item => rows[item.Marker].OfferId).ToHashSet();
+            if (report.Rows.Any(row => offers.Contains(row.OfferId) && already.TryGetValue(row.Row.Day, out var minutes) && minutes < row.AlreadyBooked))
             {
                 throw new InvalidOperationException("Een herhaald rapport mag eerder gemelde geboekte minuten niet verlagen.");
             }
@@ -72,23 +86,31 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
                     continue;
                 }
 
+                row = row with { PendingStatus = item.Status, PendingReason = item.Reason, AlreadyBooked = already.GetValueOrDefault(row.Row.Day, row.AlreadyBooked) };
+                rows[item.Marker] = row;
+                report = report with { Rows = rows.Values.ToList() };
+                host.Storage.Set(key, report);
+
                 if (row.Row.EntryId is { } id)
                 {
-                    await host.TimeEntries.SetOutcomeAsync([id], item.Status == "booked" ? CockpitTimeEntryOutcome.Booked : CockpitTimeEntryOutcome.Skipped, item.Reason, cancellationToken).ConfigureAwait(false);
+                    if (entries.Single(entry => entry.Id == id).Status == CockpitTimeEntryStatus.Offered)
+                    {
+                        await host.TimeEntries.SetOutcomeAsync([id], item.Status == "booked" ? CockpitTimeEntryOutcome.Booked : CockpitTimeEntryOutcome.Skipped, item.Reason, cancellationToken).ConfigureAwait(false);
+                    }
                 }
                 else
                 {
                     _ProjectOutcome(request.Week, row, item);
                 }
 
-                rows[item.Marker] = row with { Status = item.Status, Reason = item.Reason };
+                rows[item.Marker] = row with { Status = item.Status, Reason = item.Reason, PendingStatus = null, PendingReason = null };
                 report = report with { Rows = rows.Values.ToList() };
                 host.Storage.Set(key, report);
             }
 
             report = report with
             {
-                Rows = rows.Values.Select(row => already.TryGetValue(row.Row.Day, out var minutes) ? row with { AlreadyBooked = minutes } : row).ToList(),
+                Rows = rows.Values.Select(row => offers.Contains(row.OfferId) && already.TryGetValue(row.Row.Day, out var minutes) ? row with { AlreadyBooked = minutes } : row).ToList(),
                 AgentName = host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == caller.PaneId)?.Name ?? caller.PaneId,
                 ReportedAt = DateTimeOffset.Now,
                 BookedCount = request.Items.Count(item => item.Status == "booked"),
@@ -112,7 +134,9 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
         {
             var editsKey = CellOverride.StorageKey(week);
             var edits = host.Storage.Get<CellOverride[]>(editsKey) ?? [];
-            host.Storage.Set<CellOverride[]>(editsKey, [.. edits.Where(edit => edit.Day != row.Row.Day || edit.ProjectId != project), new(row.Row.Day, project, row.Row.Minutes, null)]);
+            var description = frozen.FirstOrDefault(cell => cell.Marker == item.Marker)?.Description
+                ?? edits.FirstOrDefault(edit => edit.Day == row.Row.Day && edit.ProjectId == project)?.Description;
+            host.Storage.Set<CellOverride[]>(editsKey, [.. edits.Where(edit => edit.Day != row.Row.Day || edit.ProjectId != project), new(row.Row.Day, project, row.Row.Minutes, description)]);
         }
     }
 

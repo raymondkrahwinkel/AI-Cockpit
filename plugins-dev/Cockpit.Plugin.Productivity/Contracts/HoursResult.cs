@@ -7,7 +7,7 @@ internal sealed record WeekOfferRow(DateOnly Day, int Sequence, int Minutes, Gui
     public string Marker => WeekOfferMarker.Format(ISOWeek.GetWeekOfYear(Day.ToDateTime(TimeOnly.MinValue)), Day, Sequence);
 }
 
-internal sealed record WeekReportedRow(WeekOfferRow Row, string PaneId, int ScheduleMinutes, string? Status = null, string? Reason = null, int AlreadyBooked = 0);
+internal sealed record WeekReportedRow(WeekOfferRow Row, string PaneId, int ScheduleMinutes, string? Status = null, string? Reason = null, int AlreadyBooked = 0, Guid OfferId = default, string? PendingStatus = null, string? PendingReason = null);
 internal sealed record HoursResultItem(string Marker, string Status, string? Reason = null);
 internal sealed record HoursAlreadyBooked(DateOnly Day, int Minutes);
 internal sealed record HoursResultRequest(DateOnly Week, IReadOnlyList<HoursResultItem> Items, IReadOnlyList<HoursAlreadyBooked> AlreadyBooked);
@@ -18,10 +18,10 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
     public static WeekReport Empty { get; } = new([], null, null, 0);
     public static string StorageKey(DateOnly week) => $"week-results.{week:yyyy-MM-dd}";
 
-    public IReadOnlyList<HoursDayWarning> Warnings => Rows.GroupBy(row => row.Row.Day)
+    public IReadOnlyList<HoursDayWarning> Warnings => Rows.GroupBy(row => (row.Row.Day, row.OfferId))
         .Where(group => group.Any(row => row.Status is not null))
         .Select(group => new HoursDayWarning(
-            group.Key,
+            group.Key.Day,
             group.Min(row => row.ScheduleMinutes),
             group.Max(row => row.AlreadyBooked),
             group.Sum(row => row.Row.Minutes),
@@ -29,6 +29,8 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
             group.Last(row => row.Status is not null).PaneId,
             group.Where(row => row.Status == "booked").Sum(row => row.Row.Minutes)))
         .Where(day => day.Overrun || (long)day.AlreadyBooked + day.ProposedMinutes > day.ScheduleMinutes)
+        .GroupBy(day => day.Day)
+        .Select(group => group.OrderByDescending(day => day.Overrun).ThenByDescending(day => (long)day.AlreadyBooked + day.ProposedMinutes).First())
         .ToList();
 
     public bool IsGreen => ReportedAt is not null && Warnings.All(day => !day.Overrun);
