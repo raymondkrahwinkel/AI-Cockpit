@@ -21,7 +21,7 @@ public sealed class HoursResultTests
         var reporter = new HoursResultReporter(host);
         var request = new HoursResultRequest(Monday, [new(WeekOfferMarker.Format(43, Monday, 1), "booked")], [new(Monday, alreadyBooked)]);
         var offered = Assert.Single(await entries.ListAsync(default, default));
-        entries.WhenForAnyArgs(substitute => substitute.SetOutcomeAsync(default!, default, default, default)).Do(call =>
+        entries.When(substitute => substitute.SetOutcomeAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CockpitTimeEntryOutcome>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())).Do(call =>
         {
             entries.ListAsync(Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns([offered with { Status = CockpitTimeEntryStatus.Booked }]);
             storage.FailNextSave = true;
@@ -34,7 +34,9 @@ public sealed class HoursResultTests
         Assert.Equal(!overrun, report.IsGreen);
         Assert.Equal(expectedStatus, report.AgentStatus(EntryId, "portal"));
         await entries.Received(1).SetOutcomeAsync(Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(EntryId)), CockpitTimeEntryOutcome.Booked, null, Arg.Any<CancellationToken>());
-        Assert.Equal("booked", storage.Get<WeekReport>(WeekReport.StorageKey(Monday))!.Rows.Single(row => row.Row.EntryId == EntryId).Status);
+        var saved = storage.Get<WeekReport>(WeekReport.StorageKey(Monday));
+        Assert.NotNull(saved);
+        Assert.Equal("booked", saved.Rows.Single(row => row.Row.EntryId == EntryId).Status);
     }
 
     [Fact]
@@ -46,8 +48,10 @@ public sealed class HoursResultTests
         var error = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => reporter.ReportAsync(new HoursResultRequest(Monday, [new(WeekOfferMarker.Format(43, Monday, 1), "booked")], [])));
 
         Assert.Contains("ontvanger", error.Message, StringComparison.Ordinal);
-        await entries.DidNotReceiveWithAnyArgs().SetOutcomeAsync(default!, default, default, default);
-        Assert.Null(Assert.Single(storage.Get<WeekReport>(WeekReport.StorageKey(Monday))!.Rows).Status);
+        await entries.DidNotReceive().SetOutcomeAsync(Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<CockpitTimeEntryOutcome>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        var saved = storage.Get<WeekReport>(WeekReport.StorageKey(Monday));
+        Assert.NotNull(saved);
+        Assert.Null(Assert.Single(saved.Rows).Status);
     }
 
     private static (ICockpitHost Host, ICockpitTimeEntries Entries, _Storage Storage) _Rig(string caller, int minutes = 480, int priorBooked = 0)

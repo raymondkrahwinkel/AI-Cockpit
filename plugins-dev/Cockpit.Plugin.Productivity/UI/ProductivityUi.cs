@@ -95,10 +95,17 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
 
     private static async Task _RefreshAsync(ICockpitUiHost host, ProductivityController controller)
     {
-        await controller.RefreshAsync();
-        if (controller.Error is { } error)
+        try
         {
-            host.ShowToast($"Uren kon niet verversen: {error}", PluginToastSeverity.Error);
+            await controller.RefreshAsync();
+            if (controller.Error is { } error)
+            {
+                host.ShowToast($"Uren kon niet verversen: {error}", PluginToastSeverity.Error);
+            }
+        }
+        catch (Exception exception)
+        {
+            host.ShowToast($"Uren kon niet verversen: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 }

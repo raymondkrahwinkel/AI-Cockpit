@@ -177,7 +177,7 @@ internal static class WeekView
     private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy, Action giveToAgent, Action<string> openAgent, Action<CellOverride?, DateOnly, string> edit)
     {
         var days = week.VisibleDays;
-        var columns = "*," + string.Join(',', days.Select(_ => "58")) + ",58,150,145";
+        var columns = "*," + string.Join(',', days.Select(_ => "58")) + ",58,245";
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         heading.Children.Add(_Title(thisWeek ? "Voorstel per dag" : $"Voorstel per dag · week {weekNumber}"));
         var legend = new StackPanel
@@ -213,7 +213,6 @@ internal static class WeekView
 
         _Cell(header, _Right(Ui.Hint("Week")), 0, days.Count + 1);
         _Cell(header, Ui.Hint("Status"), 0, days.Count + 2);
-        _Cell(header, Ui.Hint("Agent"), 0, days.Count + 3);
         table.Children.Add(_Line(header));
 
         var schedule = _Row(columns);
@@ -255,13 +254,6 @@ internal static class WeekView
             }
 
             _Cell(row, _Status(line, week.Report), 0, days.Count + 2);
-            var agentText = week.Report.AgentStatus(line.EntryId, line.ProjectId);
-            var agent = new TextBlock { Name = "AgentOutcome", Text = agentText, FontSize = 11.5, TextWrapping = TextWrapping.Wrap };
-            var agentBrush = agentText.Contains("overschrijding", StringComparison.Ordinal) ? "CockpitStatusErrorBrush"
-                : agentText.StartsWith("⚠", StringComparison.Ordinal) ? Waiting : "CockpitStatusDoneBrush";
-            agent.Themed(TextBlock.ForegroundProperty, agentBrush);
-            ToolTip.SetTip(agent, week.Report.Reason(line.EntryId, line.ProjectId));
-            _Cell(row, agent, 0, days.Count + 3);
             var border = _Line(row);
             if (line.Own)
             {
@@ -277,12 +269,13 @@ internal static class WeekView
         {
             var day = days[index];
             var overrun = week.Report.Warnings.Any(warning => warning.Day == day.Day && warning.Overrun);
-            var text = new TextBlock { Text = WeekProposal.Text(day.Total) + (day.OverSchedule || overrun ? " ⚠" : string.Empty), FontWeight = FontWeight.Bold };
+            var reportedWarning = week.Report.Warnings.Any(warning => warning.Day == day.Day);
+            var text = new TextBlock { Name = "ProposalDayTotal", Text = WeekProposal.Text(day.Total) + (day.OverSchedule || reportedWarning ? " ⚠" : string.Empty), FontWeight = FontWeight.Bold };
             if (overrun)
             {
                 text.Themed(TextBlock.ForegroundProperty, "CockpitStatusErrorBrush");
             }
-            else if (day.OverSchedule)
+            else if (day.OverSchedule || reportedWarning)
             {
                 text.Themed(TextBlock.ForegroundProperty, Waiting);
             }
@@ -318,7 +311,7 @@ internal static class WeekView
             var notice = new TextBlock
             {
                 Name = "AgentReportNotice",
-                Text = $"{(week.Report.IsGreen ? "✓" : "⚠ Overschrijding ·")} {week.Report.AgentName} meldde om {reportedAt.ToLocalTime():HH:mm}: {week.Report.BookedCount} regels geboekt. Wat niet geboekt werd, staat weer open.",
+                Text = $"{(week.Report.IsGreen ? "✓" : "⚠ Overschrijding ·")} {week.Report.AgentName} meldde om {reportedAt.ToLocalTime():HH:mm}: {week.Report.BookedCount} regels geboekt ({string.Join(", ", week.Report.BookedDays.Select(day => day.ToDateTime(TimeOnly.MinValue).ToString("ddd", Dutch)))}), elk met een kenmerk zoals {week.Report.Rows.FirstOrDefault()?.Row.Marker}. Wat niet geboekt werd, staat weer open.",
                 TextWrapping = TextWrapping.Wrap,
             };
             notice.Themed(TextBlock.ForegroundProperty, week.Report.IsGreen ? "CockpitStatusDoneBrush" : "CockpitStatusErrorBrush");
@@ -331,7 +324,7 @@ internal static class WeekView
             var text = new TextBlock
             {
                 Name = "AgentDayWarning",
-                Text = $"⚠ {warning.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} · {(warning.Overrun ? "overschrijding" : "niet geboekt: boven het schema")}. Schema {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}, al geboekt {WeekProposal.Text(TimeSpan.FromMinutes(warning.AlreadyBooked))}, voorstel {WeekProposal.Text(TimeSpan.FromMinutes(warning.ProposedMinutes))}. {(warning.Overrun ? "De agent meldde een boeking boven het schema." : warning.BookedMinutes == 0 ? "Niets geschreven, voorgelegd." : "Niet alles geboekt, voorgelegd.")}",
+                Text = $"⚠ {warning.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} · {(warning.Overrun ? "overschrijding" : "niet geboekt: boven het schema")}. Schema {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}, al geboekt {WeekProposal.Text(TimeSpan.FromMinutes(warning.AlreadyBooked))} {warning.AlreadyBookedDescription}, voorstel {WeekProposal.Text(TimeSpan.FromMinutes(warning.ProposedMinutes))}: {WeekProposal.Text(TimeSpan.FromMinutes((long)warning.AlreadyBooked + warning.ProposedMinutes))} tegenover {WeekProposal.Text(TimeSpan.FromMinutes(warning.ScheduleMinutes))}. {(warning.Overrun ? "De agent meldde een boeking boven het schema." : warning.BookedMinutes == 0 ? "Niets geschreven, voorgelegd." : "Niet alles geboekt, voorgelegd.")}",
                 TextWrapping = TextWrapping.Wrap,
             }.Themed(TextBlock.ForegroundProperty, brush);
             var open = new Button { Name = "OpenReportAgent", Content = "Open de werkagent ›", Classes = { "Compact", "Subtle" } };
@@ -345,9 +338,13 @@ internal static class WeekView
 
     private static Control _Status(ProposalLine line, WeekReport report)
     {
-        if (report.AgentStatus(line.EntryId, line.ProjectId) == "⚠ overschrijding")
+        if (report.AgentStatus(line.EntryId, line.ProjectId) is { Length: > 0 } outcome)
         {
-            return new TextBlock { Text = "⚠ overschrijding" }.Themed(TextBlock.ForegroundProperty, "CockpitStatusErrorBrush");
+            var brush = outcome.Contains("overschrijding", StringComparison.Ordinal) ? "CockpitStatusErrorBrush"
+                : outcome.StartsWith("⚠", StringComparison.Ordinal) ? Waiting : "CockpitStatusDoneBrush";
+            var result = new TextBlock { Name = "AgentOutcome", Text = outcome, FontSize = 11.5, TextWrapping = TextWrapping.Wrap }.Themed(TextBlock.ForegroundProperty, brush);
+            ToolTip.SetTip(result, report.Reason(line.EntryId, line.ProjectId));
+            return result;
         }
 
         var text = WeekProposal.Status(line);

@@ -114,6 +114,11 @@ internal sealed class HoursResultReporter(ICockpitHost host, SemaphoreSlim? repo
                 AgentName = host.Sessions.OpenSessions.FirstOrDefault(session => session.PaneId == caller.PaneId)?.Name ?? caller.PaneId,
                 ReportedAt = DateTimeOffset.Now,
                 BookedCount = request.Items.Count(item => item.Status == "booked"),
+                BookedDays = request.Items.Where(item => item.Status == "booked").Select(item => rows[item.Marker].Row.Day).Distinct().Order().ToList(),
+                AlreadyBookedDescriptions = report.AlreadyBookedDescriptions
+                    .Where(pair => request.AlreadyBooked.All(day => day.Day != pair.Key || string.IsNullOrWhiteSpace(day.Description)))
+                    .Concat(request.AlreadyBooked.Where(day => !string.IsNullOrWhiteSpace(day.Description)).Select(day => new KeyValuePair<DateOnly, string>(day.Day, day.Description ?? string.Empty)))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value),
             };
             host.Storage.Set(key, report);
             host.Channel.Publish("productivity.hours-reported", System.Text.Json.JsonSerializer.SerializeToElement(new { week = request.Week }, ProductivityChannel.Json));

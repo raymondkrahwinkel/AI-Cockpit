@@ -13,7 +13,7 @@ internal sealed class ProductivityMcpTools(HoursResultReporter reporter)
     public async Task<string> ReportHoursResult(
         [Description("The ISO Monday date of the offered week, yyyy-MM-dd (for example 2026-10-19). Include the year.")] string week,
         [Description("Results with marker, status (booked or skipped), and reason when skipped.")] HoursResultItem[] items,
-        [Description("Already booked minutes per day, with day as yyyy-MM-dd and minutes as a non-negative integer.")] HoursAlreadyBooked[]? alreadyBooked = null,
+        [Description("Already booked minutes per day: day as yyyy-MM-dd, minutes as a non-negative integer, and an optional description of what was already present.")] HoursAlreadyBooked[]? alreadyBooked = null,
         CancellationToken cancellationToken = default)
     {
         try

@@ -9,13 +9,15 @@ internal sealed record WeekOfferRow(DateOnly Day, int Sequence, int Minutes, Gui
 
 internal sealed record WeekReportedRow(WeekOfferRow Row, string PaneId, int ScheduleMinutes, string? Status = null, string? Reason = null, int AlreadyBooked = 0, Guid OfferId = default, string? PendingStatus = null, string? PendingReason = null, int KnownBookedAtOffer = 0);
 internal sealed record HoursResultItem(string Marker, string Status, string? Reason = null);
-internal sealed record HoursAlreadyBooked(DateOnly Day, int Minutes);
+internal sealed record HoursAlreadyBooked(DateOnly Day, int Minutes, string? Description = null);
 internal sealed record HoursResultRequest(DateOnly Week, IReadOnlyList<HoursResultItem> Items, IReadOnlyList<HoursAlreadyBooked> AlreadyBooked);
-internal sealed record HoursDayWarning(DateOnly Day, int ScheduleMinutes, int AlreadyBooked, int ProposedMinutes, bool Overrun, string PaneId, int BookedMinutes);
+internal sealed record HoursDayWarning(DateOnly Day, int ScheduleMinutes, int AlreadyBooked, int ProposedMinutes, bool Overrun, string PaneId, int BookedMinutes, string AlreadyBookedDescription);
 
 internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? AgentName, DateTimeOffset? ReportedAt, int BookedCount)
 {
     public static WeekReport Empty { get; } = new([], null, null, 0);
+    public IReadOnlyList<DateOnly> BookedDays { get; init; } = [];
+    public IReadOnlyDictionary<DateOnly, string> AlreadyBookedDescriptions { get; init; } = new Dictionary<DateOnly, string>();
     public static string StorageKey(DateOnly week) => $"week-results.{week:yyyy-MM-dd}";
 
     public IReadOnlyList<HoursDayWarning> Warnings => Rows.GroupBy(row => row.Row.Day)
@@ -26,7 +28,7 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
             var booked = group.Where(row => row.Status == "booked").Sum(row => row.Row.Minutes);
             return new HoursDayWarning(group.Key, group.Min(row => row.ScheduleMinutes), external,
                 group.Sum(row => row.Row.Minutes), (long)external + booked > group.Min(row => row.ScheduleMinutes),
-                group.Last(row => row.Status is not null).PaneId, booked);
+                group.Last(row => row.Status is not null).PaneId, booked, AlreadyBookedDescriptions.GetValueOrDefault(group.Key, string.Empty));
         })
         .Where(day => day.Overrun || (long)day.AlreadyBooked + day.ProposedMinutes > day.ScheduleMinutes)
         .ToList();
@@ -47,7 +49,7 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
             return $"✓ {booked} van {rows.Count} dagen";
         }
 
-        return rows.Any(row => row.Status == "skipped") ? "⚠ niet geboekt" : booked > 0 ? "✓ geboekt" : string.Empty;
+        return rows.Any(row => row.Status == "skipped") ? "⚠ niet geboekt · weer open" : booked > 0 ? "✓ geboekt" : string.Empty;
     }
 
     public string Reason(Guid? entryId, string? projectId) =>

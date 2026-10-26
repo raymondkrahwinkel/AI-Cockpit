@@ -144,8 +144,8 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
         var days = VisibleDays;
         List<string[]> rows =
         [
-            ["Regel", .. days.Select(day => day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)), "Week", "Status", "Agent"],
-            ["Schema (grens)", .. days.Select(day => Text(day.Schedule)), Text(_Sum(days.Select(day => day.Schedule))), string.Empty, string.Empty],
+            ["Regel", .. days.Select(day => day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)), "Week", "Status"],
+            ["Schema (grens)", .. days.Select(day => Text(day.Schedule)), Text(_Sum(days.Select(day => day.Schedule))), string.Empty],
         ];
         foreach (var line in Lines)
         {
@@ -154,13 +154,12 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
                 string.IsNullOrEmpty(line.Detail) ? label : $"{label} · {line.Detail}",
                 .. days.Select(day => Cell(line, day.Day)),
                 Text(_Sum(line.Cells.Select(cell => cell.Time))),
-                Status(line),
-                Report.AgentStatus(line.EntryId, line.ProjectId),
+                Report.AgentStatus(line.EntryId, line.ProjectId) is { Length: > 0 } outcome ? outcome : Status(line),
             ]);
         }
 
-        rows.Add(["Totaal voorstel", .. days.Select(day => Text(day.Total)), Text(_Sum(days.Select(day => day.Total))), string.Empty, string.Empty]);
-        rows.Add(["gemeten", .. days.Select(day => Text(day.Measured)), Text(_Sum(days.Select(day => day.Measured))), string.Empty, string.Empty]);
+        rows.Add(["Totaal voorstel", .. days.Select(day => Text(day.Total)), Text(_Sum(days.Select(day => day.Total))), string.Empty]);
+        rows.Add(["gemeten", .. days.Select(day => Text(day.Measured)), Text(_Sum(days.Select(day => day.Measured))), string.Empty]);
         return rows;
     }
 
