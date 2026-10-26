@@ -112,9 +112,9 @@ internal static class WeekOfferPrompt
             "| --- | --- |",
             .. proposal.VisibleDays.Select(day => $"| {_Date(day.Day)} | {WeekProposal.Text(day.Schedule)} |"),
             string.Empty,
-            HardBoundary,
+            instructions.Trim(),
             string.Empty,
-            PriorApproval,
+            instructions.Trim(),
         ]);
         if (string.IsNullOrWhiteSpace(instructions) == false)
         {
