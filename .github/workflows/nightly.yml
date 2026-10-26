@@ -449,7 +449,14 @@ jobs:
             echo "### Changes since the previous nightly"
             echo
             if [ -n "$previous" ] && git cat-file -e "${previous}^{commit}" 2>/dev/null; then
-              bash scripts/nightly-notes.sh "${previous}..HEAD"
+              # GitHub rejects a release body over 125000 characters (HTTP 422), which a long gap between
+              # nightlies (a merged epic) easily exceeds. Keep the first lines within 100000 characters and
+              # link the full list instead.
+              bash scripts/nightly-notes.sh "${previous}..HEAD" > changes.md
+              awk -v max=100000 -v total="$(wc -l < changes.md)" -v url="https://github.com/${GITHUB_REPOSITORY}/compare/${previous}...${GITHUB_SHA}" '
+                size + length($0) + 1 > max { exit }
+                { print; size += length($0) + 1; shown++ }
+                END { if (shown < total) print "\n… and " (total - shown) " more, full list: " url }' changes.md
             else
               echo "_No previous nightly in history — the most recent commits:_"
               echo
@@ -462,6 +469,9 @@ jobs:
             echo
             echo "The build is ad-hoc signed, not notarized, so a copy your *browser* fetched is quarantined and Gatekeeper calls it \"damaged and can't be opened\". It is not damaged — that flag is written by the downloader, and \`curl\` does not write one. Already took the .dmg? Clear only the quarantine flag with \`xattr -dr com.apple.quarantine /Applications/AI-Cockpit.app\` — not \`xattr -cr\`, which also wipes the extended attributes carrying each managed assembly's signature and leaves the app unsigned."
           } > nightly-notes.md
+
+          # Fail here, before the publish step deletes the live release, if the body is still too long.
+          [ "$(wc -m < nightly-notes.md)" -lt 120000 ] || { echo "::error::release notes exceed GitHub's body limit"; exit 1; }
 
       # Delete and recreate rather than update: an existing release keeps its old assets and — the part that
       # bites — its old tag, so 'nightly' kept pointing at the commit before last while the page claimed the new
