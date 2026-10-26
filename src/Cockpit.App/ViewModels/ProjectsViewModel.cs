@@ -542,13 +542,6 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         foreach (var group in _snapshot.SharedProjectGroups)
         {
-            if (group.Error is { Length: > 0 } || group.Notice is { Length: > 0 })
-            {
-                var section = GetSection(new SharedProjectLocation(group.SourceKey, group.SourceName, null));
-                section.Error = group.Error;
-                section.Notice = group.Notice;
-            }
-
             foreach (var offer in group.Projects)
             {
                 var location = new SharedProjectLocation(group.SourceKey, group.SourceName, offer.Organization);
@@ -577,9 +570,26 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             GetSection(location).HiddenCount++;
         }
 
+        foreach (var group in _snapshot.SharedProjectGroups)
+        {
+            var sourceSections = sections.Values.Where(section => !section.IsThisMachine && section.SourceKey == group.SourceKey).ToList();
+            if (sourceSections.Count == 0 && (group.Error is { Length: > 0 } || group.Notice is { Length: > 0 }))
+            {
+                sourceSections.Add(GetSection(new SharedProjectLocation(group.SourceKey, group.SourceName, null)));
+            }
+
+            foreach (var section in sourceSections)
+            {
+                section.Error = group.Error;
+                section.Notice = group.Notice;
+            }
+        }
+
+        var isFiltered = !string.IsNullOrWhiteSpace(SearchText) || SelectedCategory != "All";
         ProjectSections.Clear();
         foreach (var section in sections.Values
-            .Where(section => section.Items.Count > 0 || section.HiddenCount > 0 || section.Error is { Length: > 0 } || section.Notice is { Length: > 0 })
+            .Where(section => section.Items.Count > 0 || (!isFiltered
+                && (section.HiddenCount > 0 || section.Error is { Length: > 0 } || section.Notice is { Length: > 0 })))
             .OrderBy(section => section.IsThisMachine ? 0 : 1)
             .ThenBy(section => section.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(section => section.Host, StringComparer.CurrentCultureIgnoreCase))

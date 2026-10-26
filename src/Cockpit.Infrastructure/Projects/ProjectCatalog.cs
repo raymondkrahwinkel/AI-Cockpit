@@ -166,7 +166,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     {
         var hiddenIds = _hiddenSharedProjectLocations
             .Where(pair => string.Equals(pair.Value.SourceKey, sourceKey, StringComparison.Ordinal)
-                && string.Equals(pair.Value.Organization?.Slug, organizationSlug, StringComparison.Ordinal))
+                && string.Equals(pair.Value.Organization?.Slug ?? string.Empty, organizationSlug, StringComparison.Ordinal))
             .Select(pair => pair.Key)
             .ToHashSet(StringComparer.Ordinal);
 
@@ -328,6 +328,11 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                 {
                     boundLocations[project.Id] = location;
                 }
+            }
+
+            foreach (var state in result.ProjectReadStates.Where(state => hiddenIds.Contains(state.Id)))
+            {
+                hiddenLocations.TryAdd(state.Id, new SharedProjectLocation(source.Key, source.SourceName, null));
             }
         }
 

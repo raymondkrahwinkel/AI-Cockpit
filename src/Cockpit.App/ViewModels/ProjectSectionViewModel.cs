@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 
 namespace Cockpit.App.ViewModels;
 
-public sealed class ProjectSectionViewModel
+public sealed class ProjectSectionViewModel : ViewModelBase
 {
+    private bool _isCollapsed;
+
     public ProjectSectionViewModel(string key, string sourceKey, string organizationSlug, string name, string host, bool isThisMachine)
     {
         Key = key;
@@ -26,7 +28,11 @@ public sealed class ProjectSectionViewModel
 
     public bool IsThisMachine { get; }
 
-    public bool IsCollapsed { get; set; }
+    public bool IsCollapsed
+    {
+        get => _isCollapsed;
+        set => SetProperty(ref _isCollapsed, value);
+    }
 
     public string? Notice { get; set; }
 
