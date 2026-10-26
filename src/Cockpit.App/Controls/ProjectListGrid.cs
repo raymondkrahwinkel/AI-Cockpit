@@ -38,8 +38,9 @@ public sealed class ProjectListGrid : Grid
             {
                 list.SizeChanged += (_, sized) =>
                 {
-                    SetIsWide(list, sized.NewSize.Width >= WideListWidth);
-                    SetIsSmall(list, sized.NewSize.Width < SmallListWidth);
+                    var width = TopLevel.GetTopLevel(list)?.Bounds.Width ?? sized.NewSize.Width;
+                    SetIsWide(list, width >= WideListWidth);
+                    SetIsSmall(list, width < SmallListWidth);
                 };
             }
         });
