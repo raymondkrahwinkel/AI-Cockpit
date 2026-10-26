@@ -13,29 +13,23 @@ namespace Cockpit.App.ViewTests;
 public class SpawnedSessionBriefDeliveryTests
 {
     [Fact]
-    public void InjectAndSubmit_IntoASessionThatHasNotStarted_StrandsTheTextAndSaysSoInTheTranscript() => HeadlessAvalonia.Run(() =>
+    public void DeliverySeams_DistinguishComposerPlacementFromAHeldFirstTurn() => HeadlessAvalonia.Run(() =>
     {
-        // The control: this is what the spawn path used to do, and what it does to a pane whose runtime is not up.
-        var session = new SessionViewModel();
+        var direct = new SessionViewModel();
 
-        session.InjectAndSubmit("start on the migration");
+        direct.InjectAndSubmit("start on the migration");
 
-        Assert.Equal("start on the migration", session.InputText);
+        Assert.Equal("start on the migration", direct.InputText);
         Assert.Contains(
-            session.Transcript,
+            direct.Transcript,
             entry => entry.Kind == TranscriptEntryKind.Error && entry.Text.Contains("has not started yet"));
-    });
+        var held = new SessionViewModel();
 
-    [Fact]
-    public void SubmitPromptWhenReady_IntoASessionThatHasNotStarted_HoldsTheBriefInsteadOfFailingIntoTheTranscript() => HeadlessAvalonia.Run(() =>
-    {
-        var session = new SessionViewModel();
-
-        var wentOutNow = session.SubmitPromptWhenReady("start on the migration");
+        var wentOutNow = held.SubmitPromptWhenReady("start on the migration");
 
         Assert.False(wentOutNow);
-        Assert.True(session.HasPromptWaitingToBeDelivered);
-        Assert.Equal(string.Empty, session.InputText);
-        Assert.DoesNotContain(session.Transcript, entry => entry.Kind == TranscriptEntryKind.Error);
+        Assert.True(held.HasPromptWaitingToBeDelivered);
+        Assert.Equal(string.Empty, held.InputText);
+        Assert.DoesNotContain(held.Transcript, entry => entry.Kind == TranscriptEntryKind.Error);
     });
 }

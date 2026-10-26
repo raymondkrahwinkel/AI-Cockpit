@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: plugins that offer a running-session picker can show each session's profile and whether it is busy, waiting,
+  done or idle instead of making you choose from names alone.
 - added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
   for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
   installing something that cannot start.
@@ -230,6 +232,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: a prompt supplied to `StartSessionAsync` is submitted as the new desktop session's first turn once its
+  runtime is ready, instead of being left in the composer for an operator to send manually.
 - fixed: Quit from the tray and the restart after an update now close Cockpit the same way as closing it from the desktop,
   so plugins that tidy up on the way out (the browser's engine) get to do that on every route.
 - fixed: searching Options no longer leaves a plugin's field labels on screen without their boxes (the YouTrack
