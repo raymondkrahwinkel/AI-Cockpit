@@ -1,13 +1,13 @@
 {
   "id": "browser",
   "name": "Browser",
-  "version": "0.6.1",
+  "version": "0.6.0",
   "entryAssembly": "Cockpit.Plugin.Browser.dll",
   "entryType": "Cockpit.Plugin.Browser.BrowserPlugin",
   "uiAssembly": "Cockpit.Plugin.Browser.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Browser.UI.BrowserUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.119.0",
+  "minHostVersion": "0.121.0",
   "description": "A web browser inside Cockpit with your own profile, as a tab and in the rail, with tabs, an address bar and sound you can mute per tab. Share one tab with one agent session, only after you approve it, and stop sharing at any time. The engine (CEF) is fetched on first use for your platform and checked against a pinned checksum. Off on macOS for now.",
   "author": "Cockpit"
 }
