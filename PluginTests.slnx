@@ -55,6 +55,8 @@
     <Project Path="plugins-dev/Cockpit.Plugin.OpenRouterProvider.Tests/Cockpit.Plugin.OpenRouterProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpencodeProvider/Cockpit.Plugin.OpencodeProvider.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.OpencodeProvider.Tests/Cockpit.Plugin.OpencodeProvider.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Productivity/Cockpit.Plugin.Productivity.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Productivity.Tests/Cockpit.Plugin.Productivity.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox/Cockpit.Plugin.Proxmox.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Proxmox.Tests/Cockpit.Plugin.Proxmox.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Schedules/Cockpit.Plugin.Schedules.csproj" />
