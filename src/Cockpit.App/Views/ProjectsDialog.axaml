@@ -108,6 +108,9 @@
                                 <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource CockpitStatusErrorBrush}"
                                            IsVisible="{Binding HasError}"/>
+                                <TextBlock Text="{Binding Notice}" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                           IsVisible="{Binding HasNotice}"/>
 
                                 <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
                                     <ItemsControl.ItemsPanel>

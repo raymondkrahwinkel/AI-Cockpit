@@ -1568,6 +1568,10 @@
                                                HorizontalAlignment="Center"
                                                Foreground="{DynamicResource CockpitStatusErrorBrush}"
                                                IsVisible="{Binding HasError}"/>
+                                    <TextBlock Text="{Binding Notice}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                               IsVisible="{Binding HasNotice}"/>
 
                                     <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
                                         <ItemsControl.ItemsPanel>
