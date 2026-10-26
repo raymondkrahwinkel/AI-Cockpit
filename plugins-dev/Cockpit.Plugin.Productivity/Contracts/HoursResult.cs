@@ -27,7 +27,7 @@ internal sealed record WeekReport(IReadOnlyList<WeekReportedRow> Rows, string? A
             var external = group.GroupBy(row => row.OfferId).Max(offer => Math.Max(0, offer.Max(row => row.AlreadyBooked) - offer.Max(row => row.KnownBookedAtOffer)));
             var booked = group.Where(row => row.Status == "booked").Sum(row => row.Row.Minutes);
             return new HoursDayWarning(group.Key, group.Min(row => row.ScheduleMinutes), external,
-                group.Sum(row => row.Row.Minutes), false,
+                group.Sum(row => row.Row.Minutes), (long)external + booked > group.Min(row => row.ScheduleMinutes),
                 group.Last(row => row.Status is not null).PaneId, booked, AlreadyBookedDescriptions.GetValueOrDefault(group.Key, string.Empty));
         })
         .Where(day => day.Overrun || (long)day.AlreadyBooked + day.ProposedMinutes > day.ScheduleMinutes)
