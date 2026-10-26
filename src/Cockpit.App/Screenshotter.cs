@@ -2283,7 +2283,9 @@ internal static partial class Screenshotter
             Error: null,
             Notice: "Depot is unreachable — showing the last known list."));
         cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Synvolution", [], "Sign in to this Depot connection to see its shared projects."));
+            "Depot — Synvolution", [], Error: null, AllAdded: true));
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Personal", [], "Sign in to this Depot connection to see its shared projects."));
     }
 
     private static void _StageLongProjectText(ViewModels.CockpitViewModel cockpit)

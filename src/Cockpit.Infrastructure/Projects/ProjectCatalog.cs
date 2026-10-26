@@ -297,11 +297,12 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                     .ToList()
                 : [];
 
-            // AC-1758: a connection whose projects are all bound or hidden still gets its group (the view hides an
-            // empty one), and a stale list's "last known" line travels as a Notice, not as an Error that a success clears.
+            // AC-1758: a connection whose projects are all bound or hidden still gets its group (marked AllAdded, so the view
+            // keeps its heading), and a stale list's "last known" line travels as a Notice, not as an Error that a success clears.
             groups.Add(new SharedProjectGroup(
                 source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo,
-                source.Key, result.Succeeded ? result.Error : null));
+                source.Key, result.Succeeded ? result.Error : null,
+                AllAdded: result.Succeeded && result.Projects.Count > 0 && visible.Count == 0));
         }
 
         _sharedProjectGroups = groups;

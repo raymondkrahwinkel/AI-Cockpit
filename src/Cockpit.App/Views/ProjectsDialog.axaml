@@ -111,6 +111,9 @@
                                 <TextBlock Text="{Binding Notice}" FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                            IsVisible="{Binding HasNotice}"/>
+                                <TextBlock Text="All team projects from this server are already in your list." FontSize="11"
+                                           TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                           IsVisible="{Binding ShowsAllAdded}"/>
 
                                 <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
                                     <ItemsControl.ItemsPanel>

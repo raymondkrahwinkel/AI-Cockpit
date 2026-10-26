@@ -16,11 +16,11 @@ public sealed record ProjectCatalogSnapshot(
 public sealed record SharedProjectSourceInfo(string Key, string Name, bool CanPublish);
 
 // A source that could not be read carries its own error rather than failing the other groups (AC-245).
-// AC-1758: always one group per connection, empty or stale too; SourceKey tells two connections apart, and Notice is
-// the stale-list line ("last known list · <time>") that rides a successful read, kept apart from a real Error.
+// AC-1758: one group per connection. Notice is the stale "last known list" line, kept apart from Error; AllAdded
+// means every listed project is already bound or hidden here.
 public sealed record SharedProjectGroup(
     string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null,
-    string SourceKey = "", string? Notice = null);
+    string SourceKey = "", string? Notice = null, bool AllAdded = false);
 
 public sealed record SharedProjectOffer(
     string Id, string Name, string? Description = null, string? Role = null, SharedProjectOrganizationInfo? Organization = null);

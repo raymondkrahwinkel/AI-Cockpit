@@ -31,6 +31,7 @@ public sealed class ProjectCatalogSharedGroupsTests
 
         Assert.Equal(["synvolution", "stale", "wispslate"], groups.Select(group => group.SourceKey));
         Assert.Empty(groups[0].Projects);
+        Assert.True(groups[0].AllAdded);
         Assert.Null(groups[1].Error);
         Assert.Equal("Depot is unavailable; last known list.", groups[1].Notice);
         Assert.Equal(new SharedProjectOrganizationInfo("acme", "Acme", "Owner"), Assert.Single(groups[1].Projects).Organization);
