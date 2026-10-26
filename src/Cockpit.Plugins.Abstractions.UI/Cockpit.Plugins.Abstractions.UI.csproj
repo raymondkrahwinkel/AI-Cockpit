@@ -17,6 +17,13 @@
          host's copy. -->
     <!-- 3.3.0 (AC-1511): ICockpitUiHost.AddServerSettings (default no-op), a view for a server the plugin is installed
          on, with a channel to its backend part there. A plugin that calls it sets minHostVersion 0.92.0. -->
+    <!-- 3.4.0 (AC-1504): ICockpitUiHost.AddFirstStartRoute (default no-op) and FirstStartRoute, a way to begin on the first-run
+         wizard's "How do you want to start?" step. A plugin that calls it sets minHostVersion 0.94.0. -->
+    <!-- 3.5.0 (AC-1509): IFirstStartPluginUi and IFirstStartHost, first-start routes that exist from the very first start,
+         before the plugins initialize, with a restore from a backup target and a manifest apply. A plugin that implements
+         it sets minHostVersion 0.102.0. -->
+    <!-- 3.6.0 (AC-1660): ICockpitUiHost.SignOutMcpServerAsync (default no-op), the settings view's sign-out of its own MCP
+         server. A plugin that calls it sets minHostVersion 0.105.0. -->
     <!-- 3.4.0 (AC-1710): DockPanelRegistration.KeepAlive and CanFloat (init, default false). A plugin that relies on
          either sets minHostVersion 0.111.0; an older host ignores them. -->
     <!-- 3.5.0 (AC-1737): ICockpitUiHost.ActiveProjectId and GetProjectsAsync (both default), the selected session's
@@ -29,8 +36,8 @@
          bar. A plugin that calls it sets minHostVersion 0.116.0. -->
     <!-- 3.9.0 (AC-1722): ICockpitUiHost adds the icon-bearing side-menu badge overload. A plugin that uses it sets minHostVersion 0.120.0. -->
     <!-- 3.9.0 (AC-1726): FocusSessionAsync selects an existing pane without changing its input, host 0.122.0. -->
-    <!-- 3.10.0: combines the epic's icon overload with main's session focus contract. -->
-    <Version>3.10.0</Version>
+    <!-- 3.11.0 (AC-1497): combines the Depot SaaS UI contracts with main's 3.10.0 Productivity contracts. -->
+    <Version>3.11.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

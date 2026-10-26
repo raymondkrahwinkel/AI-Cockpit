@@ -3,7 +3,9 @@ extern alias UiAsm;
 using System.Text.Json;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
+using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
 using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
@@ -82,7 +84,8 @@ public class DepotSettingsControlTests
     // full end state a call-counting "did not sign in" assert alone would miss — nothing reclaimed silently.
     // AC-1394: what "memory sources untouched" now means from this UI-only substitute — ICockpitUiHost carries no
     // registry members at all, so the only way to see this refusal never reached the backend's own sync is that
-    // the channel itself was never invoked; DepotPluginSaveConnectionsTests pins the backend's own diff logic.
+    // the channel's save action was never invoked; DepotPluginSaveConnectionsTests pins the backend's own diff logic.
+    // Only that action: since AC-1640 every row asks the channel for its branding when it shows, a read-only call.
     [Fact]
     public async Task SignInAsync_RenameCollidesWithAnAlreadyStoredRow_RefusesTheWholeSave_AndLeavesStorageAndMemorySourcesUntouched()
     {
@@ -103,11 +106,45 @@ public class DepotSettingsControlTests
         await renamedRow.SignInAsync();
 
         _ = host.DidNotReceive().SignInMcpServerAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await host.Channel.DidNotReceive().InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
+        await host.Channel.DidNotReceive().InvokeAsync(DepotChannel.SaveConnections, Arg.Any<JsonElement>(), Arg.Any<CancellationToken>());
         Assert.Equal(2, settings.Connections.Count);
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-1" && connection.Name == "Work");
         Assert.Contains(settings.Connections, connection => connection.Id == "conn-2" && connection.Name == "Work2");
         Assert.Contains("Work", _AuthStatusText(renamedRow), StringComparison.Ordinal);
+    }
+
+    // AC-1660 (layer 2, panel): Sign out shows only while signed in, signs out under the stored name, and the
+    // connection stays with the row back on its sign-in prompt.
+    [Fact]
+    public async Task SignOutAsync_SignedInRow_SignsOutUnderTheStoredName_HidesTheButton_AndKeepsTheConnection()
+    {
+        var signedIn = true;
+        var host = Substitute.For<ICockpitUiHost>();
+        host.CreateHelpHint(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>()).Returns(_ => new Panel());
+        host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>())
+            .Returns(_ => signedIn ? PluginMcpAuthState.Authorized : PluginMcpAuthState.AuthorizationRequired);
+        host.SignOutMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            signedIn = false;
+            return Task.CompletedTask;
+        });
+        var settings = new DepotSettings(new FakePluginStorage())
+        {
+            Connections = [new DepotConnectionRegistration("conn-1", "Work", "https://depot.example.com")],
+        };
+        var view = new DepotSettingsControl(host, settings);
+        _Show(view);
+        var row = view.GetVisualDescendants().OfType<DepotConnectionRowControl>().Single();
+        await row.RefreshAuthStateAsync();
+        var signOut = row.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Sign out"));
+        Assert.True(signOut.IsVisible);
+
+        await row.SignOutAsync();
+
+        await host.Received(1).SignOutMcpServerAsync("Depot: Work", Arg.Any<CancellationToken>());
+        Assert.False(signOut.IsVisible);
+        Assert.Equal("Opens Depot's sign-in page in your browser.", _AuthStatusText(row));
+        Assert.Single(settings.Connections);
     }
 
     // GetVisualDescendants only sees anything once the control is attached under a shown TopLevel — an unattached

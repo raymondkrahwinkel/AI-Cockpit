@@ -117,6 +117,20 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Raised when the account behind one of this plugin's own OAuth servers may have changed (AC-1665): a sign-in
+    /// stored a new token, or the server was signed out. The argument is the server's name as this plugin contributed it.
+    /// </summary>
+    /// <remarks>
+    /// Never a token or an account id, and not raised for a silent renewal or for another plugin's server. For dropping
+    /// what was cached about the previous account. Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    event EventHandler<string>? McpServerAccountChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// Registers a handler for an intent other plugins can send to this one (AC-95), under
     /// <paramref name="action"/> — the receiving half of <see cref="SendIntent"/>. Registering the same action
     /// twice from one plugin throws.
@@ -287,6 +301,16 @@ public interface ICockpitHost
         Task.FromResult(Mcp.PluginMcpSignInOutcome.Unavailable);
 
     /// <summary>
+    /// Signs out of the MCP server this plugin contributed under <paramref name="name"/> (AC-1660): the host forgets
+    /// the tokens it keeps for it, so the next use asks for a sign-in again.
+    /// </summary>
+    /// <remarks>
+    /// Local only: nothing is revoked at the server, and a session started earlier keeps its token until it expires.
+    /// Read <see cref="GetMcpServerAuthStateAsync"/> afterwards for the standing; the default is a no-op.
+    /// </remarks>
+    Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
     /// Calls <paramref name="toolName"/> on the MCP server this plugin contributed under <paramref name="name"/>
     /// via <see cref="AddMcpServer"/> — on the app's own behalf, not a session's (AC-502), before any session
     /// exists.
@@ -337,6 +361,40 @@ public interface ICockpitHost
         IReadOnlyDictionary<string, object?>? arguments = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(Mcp.McpProbeResult.Failed);
+
+    /// <summary>
+    /// A handler that sends HTTP requests to the OAuth MCP server this plugin contributed under
+    /// <paramref name="name"/> through <see cref="Mcp.IPluginMcpProvider.GetMcpServers"/>, carrying the cockpit's
+    /// credential for it (AC-1587), for that server's own routes beside its MCP endpoint, such as a REST API or a
+    /// SignalR hub.
+    /// </summary>
+    /// <remarks>
+    /// The host sets the bearer on its own copy of each request, so neither the plugin's request, the response nor
+    /// an exception ever carries the token (Iron Law #8); this guards the handler's own surface, not an in-process
+    /// plugin that goes around it. Only the origin of that server's URL is served (scheme,
+    /// host and port; <c>ws</c>/<c>wss</c> count as <c>http</c>/<c>https</c>). A request for any other origin, or
+    /// for a name that is not one of this plugin's own OAuth servers, throws <see cref="HttpRequestException"/>.
+    /// Redirects come back as they are and are never followed. Without a usable credential the answer is a 401
+    /// that never reached the server; offer <see cref="SignInMcpServerAsync"/>. A 401 from the server renews the
+    /// credential the way the server's MCP connection does, and a request without a body is sent once more. It
+    /// serves as an <see cref="HttpClient"/>'s handler and from SignalR's
+    /// <c>HttpConnectionOptions.HttpMessageHandlerFactory</c>, WebSockets included. The default, for a host that
+    /// predates this member, is a handler that throws <see cref="HttpRequestException"/> on every request.
+    /// </remarks>
+    HttpMessageHandler CreateAuthorizedHandler(string name) => new Mcp.UnavailableAuthorizedHandler();
+
+    /// <summary>
+    /// The same handler as <see cref="CreateAuthorizedHandler(string)"/>, carrying a token for <paramref name="scope"/>
+    /// alone (AC-1586), narrowed from the cockpit's sign-in by a refresh (RFC 6749 §6), for a scope the plugin listed in
+    /// <see cref="Mcp.McpServerContribution.OAuthHostOnlyScopes"/>.
+    /// </summary>
+    /// <remarks>
+    /// That token stays in the cockpit: it is never stored with the sign-in and never handed to a session, so an agent
+    /// cannot use it. Its answers are those of the other overload, origin rule and 401s included; a server that states a
+    /// scope wider than <paramref name="scope"/> gets a 401 that never left the host (one it leaves out counts as asked). The
+    /// default, for a host that predates this member, is a handler that throws <see cref="HttpRequestException"/>.
+    /// </remarks>
+    HttpMessageHandler CreateAuthorizedHandler(string name, string scope) => new Mcp.UnavailableAuthorizedHandler();
 
     /// <summary>
     /// Sets the short free-text statusline shown under a session's title, in its header and the sidebar (#AC-13),
@@ -938,6 +996,38 @@ public interface ICockpitHost
     /// Default no-op so existing implementations keep compiling untouched.
     /// </summary>
     void AddHealthSection(Health.IPluginHealthSection section)
+    {
+    }
+
+    /// <summary>
+    /// Registers a place the cockpit's own portable settings can be kept for the operator (AC-540), so a fresh install
+    /// can take them over. The carrier only stores the blob; which settings go in is the host's choice.
+    /// </summary>
+    /// <remarks>
+    /// The host keeps one carrier: a second registration is ignored. Default no-op so existing implementations keep
+    /// compiling untouched.
+    /// </remarks>
+    void AddSettingsCarrier(Settings.SettingsCarrierRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// Registers a place a cockpit backup can be kept (AC-1508). The operator picks it beside the local file in
+    /// Options → Backup, and a scheduled backup can write to it; the host builds the archive and restores from it.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by <see cref="Backup.IBackupTarget.Id"/>: a second registration under an id already taken is ignored.
+    /// Default no-op so existing implementations keep compiling untouched.
+    /// </remarks>
+    void AddBackupTarget(Backup.IBackupTarget target)
+    {
+    }
+
+    /// <summary>
+    /// Withdraws the backup target registered under <paramref name="id"/>, for a target whose place is gone — a
+    /// connection the operator removed. An unknown id is a no-op, and so is the default.
+    /// </summary>
+    void RemoveBackupTarget(string id)
     {
     }
 

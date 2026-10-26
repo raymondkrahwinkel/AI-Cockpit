@@ -18,12 +18,16 @@ public sealed record PluginManifest(
     IReadOnlyList<string>? SecretKeys = null,
     string? UiAssembly = null,
     string? UiEntryType = null,
+    string? ExpectedMinVersion = null,
+    IReadOnlyList<PluginManifestSessionProvider>? SessionProviders = null,
     IReadOnlyList<string>? Capabilities = null)
 {
     // AC-1013: storage keys the host can't guess as credentials (beyond token/apiKey/secret/password/
     // webhook); read before load so matching values decrypt on the way in instead of reaching the plugin
     // as ciphertext. (Omitted: the install-time credential-intent framing; see ticket.)
     public IReadOnlyList<string> SecretKeys { get; } = SecretKeys ?? [];
+
+    public IReadOnlyList<PluginManifestSessionProvider> SessionProviders { get; } = SessionProviders ?? [];
 
     // AC-1730: what the plugin asks the host for, as written. An unknown name is kept so the load policy can refuse
     // the plugin with that name in the reason, rather than the folder vanishing as an unparsable manifest.
@@ -102,6 +106,8 @@ public sealed record PluginManifest(
                 GetOptionalStrings(root, "secretKeys"),
                 uiAssembly,
                 uiEntryType,
+                GetOptionalString(root, "expectedMinVersion"),
+                GetSessionProviders(root),
                 GetOptionalStrings(root, "capabilities"));
             return true;
         }
@@ -143,4 +149,27 @@ public sealed record PluginManifest(
                 .Where(value => !string.IsNullOrWhiteSpace(value)),
         ];
     }
+
+    private static IReadOnlyList<PluginManifestSessionProvider>? GetSessionProviders(JsonElement root)
+    {
+        if (!root.TryGetProperty("sessionProviders", out var element) || element.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var providers = new List<PluginManifestSessionProvider>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object
+                && TryGetNonEmptyString(item, "id", out var id)
+                && TryGetNonEmptyString(item, "name", out var name))
+            {
+                providers.Add(new PluginManifestSessionProvider(id, name));
+            }
+        }
+
+        return providers;
+    }
 }
+
+public sealed record PluginManifestSessionProvider(string Id, string Name);

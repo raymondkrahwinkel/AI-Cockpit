@@ -45,4 +45,14 @@ public sealed record SharedProject(string Id, string Name)
     /// does not say stays addable, and the host's own refusal is the answer.
     /// </summary>
     public bool HasRepository { get; init; } = true;
+
+    /// <summary>
+    /// The organization that owns this project, when its source can identify one.
+    /// </summary>
+    public SharedProjectOrganization? Organization { get; init; }
 }
+
+/// <summary>
+/// The organization a <see cref="SharedProject"/> belongs to.
+/// </summary>
+public sealed record SharedProjectOrganization(string Slug, string? Name, string? Role);

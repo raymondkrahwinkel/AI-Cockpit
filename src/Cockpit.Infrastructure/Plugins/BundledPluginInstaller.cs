@@ -60,8 +60,20 @@ public sealed class BundledPluginInstaller : ISingletonService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (await _ReadManifestIdAsync(source, cancellationToken).ConfigureAwait(false) is not { } id
-                || seeded.Contains(id))
+            if (await _ReadManifestAsync(source, cancellationToken).ConfigureAwait(false) is not { } manifest)
+            {
+                continue;
+            }
+
+            var id = manifest.Id;
+            if (saved.TryGetValue(id, out var registration)
+                && registration.ExpectedMinVersion != manifest.ExpectedMinVersion)
+            {
+                // Seeded or not: the bundle's expectation moves with the build, not with the seed.
+                await _registrations.SetExpectedMinVersionAsync(id, manifest.ExpectedMinVersion, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (seeded.Contains(id))
             {
                 continue;
             }
@@ -88,7 +100,7 @@ public sealed class BundledPluginInstaller : ISingletonService
         return installed;
     }
 
-    private static async Task<string?> _ReadManifestIdAsync(string folder, CancellationToken cancellationToken)
+    private static async Task<PluginManifest?> _ReadManifestAsync(string folder, CancellationToken cancellationToken)
     {
         var manifestPath = Path.Combine(folder, "plugin.json");
         if (!File.Exists(manifestPath))
@@ -97,6 +109,6 @@ public sealed class BundledPluginInstaller : ISingletonService
         }
 
         var json = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
-        return PluginManifest.TryParse(json, out var manifest, out _) && manifest is not null ? manifest.Id : null;
+        return PluginManifest.TryParse(json, out var manifest, out _) && manifest is not null ? manifest : null;
     }
 }

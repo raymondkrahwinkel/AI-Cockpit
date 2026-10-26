@@ -19,6 +19,11 @@ public interface IProjectOwnershipRegistry
     bool Register(ProjectOwnershipRegistration registration);
 
     /// <summary>
+    /// Records a live refresh from the source that already owns the project. Another source still cannot replace it.
+    /// </summary>
+    bool RegisterOrRefresh(ProjectOwnershipRegistration registration, string sourceName);
+
+    /// <summary>
     /// Every <see cref="HostProjectField"/> the claiming registration resolves for <paramref name="projectId"/>,
     /// or null when nothing ever claimed this project (AC-604 acceptance criterion 4).
     /// </summary>
@@ -37,6 +42,33 @@ public sealed class ProjectOwnershipRegistry : IProjectOwnershipRegistry, ISingl
         lock (_claims)
         {
             return !string.IsNullOrWhiteSpace(registration.ProjectId) && _claims.TryAdd(registration.ProjectId, registration);
+        }
+    }
+
+    public bool RegisterOrRefresh(ProjectOwnershipRegistration registration, string sourceName)
+    {
+        if (string.IsNullOrWhiteSpace(registration.ProjectId)
+            || registration.Default?.SourceName is not { } refreshedSource
+            || !string.Equals(refreshedSource, sourceName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        lock (_claims)
+        {
+            if (!_claims.TryGetValue(registration.ProjectId, out var current))
+            {
+                _claims.Add(registration.ProjectId, registration);
+                return true;
+            }
+
+            if (!string.Equals(current.Default?.SourceName, sourceName, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            _claims[registration.ProjectId] = registration;
+            return true;
         }
     }
 

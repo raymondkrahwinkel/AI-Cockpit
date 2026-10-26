@@ -102,8 +102,8 @@ public sealed class AssistantJourney
             await chat.SendCommand.ExecuteAsync(null);
             await turnEnded.Task.WaitAsync(Until.Ceiling);
             chat.Session.TurnEnded -= OnTurnEnded;
-            await Until.CollectionHolds(transcript, () => transcript.Any(row => row.IsInboxRow && row.Text.Contains("WM-12", StringComparison.Ordinal))
-                && transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.EndsWith("and Depot?", StringComparison.Ordinal)));
+            await Until.ItemsHold(transcript, () => transcript.Any(row => row.IsInboxRow && row.Text.Contains("WM-12", StringComparison.Ordinal))
+                && transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.EndsWith("and Depot?", StringComparison.Ordinal) && row.ThreadProjectIds.Contains(waymark.Id)));
         });
 
         var (reply, mail) = HeadlessAvalonia.Run(() => (

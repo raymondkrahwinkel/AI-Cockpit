@@ -1556,9 +1556,14 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
                                 <StackPanel Spacing="4" Margin="0,10,0,0">
-                                    <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="13" FontWeight="SemiBold"
-                                               HorizontalAlignment="Center"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <Button Content="↻ Refresh" Classes="Subtle"
+                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.RefreshSharedProjectsCommand}"/>
+                                        <ProgressBar Width="32" Height="4" IsIndeterminate="True"
+                                                     IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.IsRefreshingSharedProjects}"/>
+                                    </StackPanel>
                                     <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
                                                HorizontalAlignment="Center"
                                                Foreground="{DynamicResource CockpitStatusErrorBrush}"

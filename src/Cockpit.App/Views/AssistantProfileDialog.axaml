@@ -17,6 +17,12 @@
         <vm:AssistantProfileDialogViewModel/>
     </Design.DataContext>
 
+    <Window.Styles>
+        <Style Selector="ContentControl.firstRunProviderSettings StackPanel.advanced-provider-field">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
+    </Window.Styles>
+
     <DockPanel>
 
         <!-- Footer: Cancel/Save on the right, the status line taking the star column — the one thing in the band
@@ -30,7 +36,10 @@
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                     <Button Content="Cancel" Command="{Binding CancelCommand}"/>
-                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                    <Button Content="Set this up later" Command="{Binding SetUpLaterCommand}"
+                            IsVisible="{Binding CanSetUpLater}"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"
+                            IsVisible="{Binding ShowSave}"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -149,7 +158,14 @@
                          validation feedback that makes a path field usable. Embedded whole rather than reproduced,
                          since a plugin's config shape is opaque to the host and a second rendering of it would be a
                          copy that drifts. -->
-                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProviderMissing}">
+                    <!-- The first-run box below says this for the wizard, so the generic one stays out of its way. -->
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsPluginProviderMissing"/>
+                                <Binding Path="!$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).IsFirstRunSetup"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="Provider plugin not installed" FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                         <TextBlock Text="This profile's provider plugin is missing, disabled, or failed to load. Its settings are kept as-is and cannot be edited here until the plugin is available again."
@@ -157,11 +173,35 @@
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     </StackPanel>
 
-                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}" IsEnabled="{Binding !IsPluginProviderMissing}">
+                    <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                            CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8">
+                        <Border.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsPluginProviderMissing"/>
+                                <Binding Path="$parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).IsFirstRunSetup"/>
+                            </MultiBinding>
+                        </Border.IsVisible>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding SelectedProvider.Label, StringFormat='Finish {0} after Cockpit starts.'}"
+                                       FontWeight="SemiBold" FontSize="12"/>
+                <TextBlock Text="Choose Set this up later. Add its key and model later in Assistant options."
+                                       FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Spacing="4">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="IsPluginProvider"/>
+                                <Binding Path="!IsPluginProviderMissing"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
                         <TextBlock Text="Provider settings" FontSize="11"
-                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                   IsVisible="{Binding !IsPluginProviderMissing}"/>
-                        <ContentControl Content="{Binding PluginConfigView.View}" IsVisible="{Binding !IsPluginProviderMissing}"/>
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <ContentControl Content="{Binding PluginConfigView.View}"
+                                        Classes.firstRunProviderSettings="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).IsFirstRunSetup}"/>
                     </StackPanel>
 
                     <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
@@ -176,8 +216,8 @@
                          block below — the assistant reads it at start (SessionViewModel.StartWithProfileAsync).
                          Hidden for a provider that has permission modes, which would make it a dead control. -->
                     <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
-                              IsVisible="{Binding ShowAutoApproveTools}"
-                              ToolTip.Tip="The assistant starts with 'Allow all tools' already on"/>
+                              ToolTip.Tip="The assistant starts with 'Allow all tools' already on" IsVisible="{Binding ShowAutoApproveTools}">
+                    </CheckBox>
 
                     <!-- Session defaults: the provider's own declared start options, rendered generically from its
                          declaration. The wording deliberately differs from the profile editor's: there it says each

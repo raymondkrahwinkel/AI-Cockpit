@@ -24,6 +24,7 @@ using Cockpit.Core.Secrets;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Agents;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.HeavyRuns;
@@ -111,6 +112,20 @@ public sealed class CockpitBackend
         System.Net.IPAddress? nodeListenAddress = null)
     {
         var services = new ServiceCollection();
+        ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
+
+        // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
+        // A failure is logged and the start goes on: the next run of the sync finds the same difference again. Blocking is
+        // safe: Build runs before any UI thread or synchronisation context exists, and every await inside skips the context.
+        var syncLogger = loggerFactory.CreateLogger<SettingsCarrierSync>();
+        try
+        {
+            SettingsCarrierSync.ApplyIncomingAsync(CockpitConfigPath.Default, syncLogger).GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            syncLogger.LogWarning(exception, "Applying the settings taken over from another machine failed");
+        }
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();
@@ -209,7 +224,7 @@ public sealed class CockpitBackend
         }
 
         SeedPluginSettings();
-        plugins.Initialize(hostFor ?? _BackendHostFor());
+        plugins.Initialize(hostFor ?? BackendHostFor());
         _pluginsInitialized = true;
     }
 
@@ -290,6 +305,9 @@ public sealed class CockpitBackend
             worktreeReconciler.Start();
         }
 
+        // AC-1502: the scheduled backup, here so a headless server makes it too.
+        Services.GetService<ScheduledBackup>()?.Start();
+
         // AC-1535: the machine's load, sampled from the start, so the heavy-run queue's first decision is no guess.
         Services.GetService<MachineResources>()?.Start();
 
@@ -297,6 +315,9 @@ public sealed class CockpitBackend
         // once, and the catalog (which hands the watcher its projects, loading its settings on demand) must exist by then.
         _ = Services.GetService<IProjectCatalog>();
         Services.GetService<DepotSyncWatcher>()?.Start();
+
+        // AC-1510: after the plugins' Initialize, where a carrier registers.
+        Services.GetService<SettingsCarrierSync>()?.Start();
 
         // AC-644: the same crash net one layer up, for the claims a session that never closed left standing.
         if (Services.GetService<StaleClaimReaper>() is { } claimReaper)
@@ -332,6 +353,7 @@ public sealed class CockpitBackend
         [
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
+            Services.GetService<ScheduledBackup>(), Services.GetService<SettingsCarrierSync>(),
         ];
         foreach (var planner in planners)
         {
@@ -553,8 +575,9 @@ public sealed class CockpitBackend
     }
 #endif
 
-    // The windowless host for every plugin, sharing one observer, one actions surface and one cache file (AC-1294).
-    private Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> _BackendHostFor()
+    // The windowless host for every plugin, sharing one observer, one actions surface and one cache file (AC-1294). AC-1509:
+    // the desktop hands it to a plugin's first-start part too, which runs before there is a window to build its own host on.
+    public Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> BackendHostFor()
     {
         var registrationStore = Services.GetRequiredService<IPluginRegistrationStore>();
         var secretFieldStore = Services.GetRequiredService<IPluginSecretFieldStore>();

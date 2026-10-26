@@ -163,6 +163,42 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "settings.carrier",
+            "Keeping the cockpit's settings for the operator",
+            "Keeps the cockpit's portable settings, chosen by the host, so a fresh install can take them over.",
+            CapabilityRisk.Sensitive,
+            "0.94.0",
+            ["ICockpitHost.AddSettingsCarrier"],
+            []),
+
+        new(
+            "backup.target",
+            "Keeping the cockpit's backups",
+            "Keeps whole backups of the cockpit somewhere the operator picks, and hands them back for a restore.",
+            CapabilityRisk.Sensitive,
+            "0.101.0",
+            ["ICockpitHost.AddBackupTarget", "ICockpitHost.RemoveBackupTarget"],
+            []),
+
+        new(
+            "first-start.routes",
+            "A way to begin on the first start",
+            "Offers a choice on the first-run wizard, such as signing in somewhere, and can mark the wizard's work-kind question as answered.",
+            CapabilityRisk.Ambient,
+            "0.94.0",
+            ["ICockpitUiHost.AddFirstStartRoute", "IFirstStartPluginUi.CreateFirstStartRoutes", "IFirstStartPlugin.InitializeFirstStart"],
+            []),
+
+        new(
+            "first-start.setup",
+            "Setting up the cockpit on the first start",
+            "Restores a backup from one of its backup targets, or applies a provisioning manifest after the operator agrees to it, from its first-start route.",
+            CapabilityRisk.Sensitive,
+            "0.102.0",
+            ["IFirstStartHost.RestoreBackupAsync", "IFirstStartHost.ApplyManifestAsync"],
+            []),
+
+        new(
             "storage.secrets",
             "Storing credentials",
             "Writes and reads credentials in the cockpit's secret store — encrypted at rest and emptied from a credential-free backup.",
@@ -405,16 +441,16 @@ public static class CapabilityCatalog
             "Registers MCP servers the cockpit's own sessions will call, and drives their sign-in.",
             CapabilityRisk.Dangerous,
             "0.3.0",
-            ["ICockpitHost.AddMcpServer", "ICockpitHost.RemoveMcpServer", "ICockpitHost.GetMcpServerAuthStateAsync", "ICockpitHost.SignInMcpServerAsync", "ICockpitHost.SignInMcpServerWithGrantAsync"],
+            ["ICockpitHost.AddMcpServer", "ICockpitHost.RemoveMcpServer", "ICockpitHost.GetMcpServerAuthStateAsync", "ICockpitHost.SignInMcpServerAsync", "ICockpitHost.SignInMcpServerWithGrantAsync", "ICockpitHost.SignOutMcpServerAsync", "ICockpitHost.McpServerAccountChanged"],
             [new("serverName", "The MCP server the plugin may register or sign in.")]),
 
         new(
             "mcp.call",
             "Calling MCP tools",
-            "Calls and probes MCP tools through the host, under whatever credentials the host holds for that server.",
+            "Calls and probes MCP tools through the host, and sends requests to that server's own origin, under whatever credentials the host holds for it.",
             CapabilityRisk.Dangerous,
             "0.14.0",
-            ["ICockpitHost.CallMcpToolAsync", "ICockpitHost.ProbeMcpToolAsync"],
+            ["ICockpitHost.CallMcpToolAsync", "ICockpitHost.ProbeMcpToolAsync", "ICockpitHost.CreateAuthorizedHandler"],
             [
                 new("serverName", "The MCP server the plugin may call."),
                 new("toolName", "The tool on that server the plugin may call."),

@@ -1,3 +1,5 @@
+using Cockpit.Core.Plugins;
+
 namespace Cockpit.Core;
 
 // The host-side half of first-run provider detection (AC-510[b]): whether an executable named
@@ -10,6 +12,36 @@ public static class HostExecutableProbe
     // Resolves `command` against this process's real PATH, or null when it is not there.
     public static string? Resolve(string command) =>
         Resolve(command, Environment.GetEnvironmentVariable("PATH") ?? string.Empty);
+
+    public static string? Resolve(ProviderHostExecutable executable) =>
+        Resolve(
+            executable,
+            Environment.GetEnvironmentVariable("PATH") ?? string.Empty,
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    internal static string? Resolve(ProviderHostExecutable executable, string pathVariable, string userProfile)
+    {
+        if (Resolve(executable.Command, pathVariable) is { } fromPath)
+        {
+            return fromPath;
+        }
+
+        if (string.IsNullOrEmpty(userProfile))
+        {
+            return null;
+        }
+
+        foreach (var relativeDirectory in executable.UserProfileRelativeDirectories)
+        {
+            var directory = Path.Combine(userProfile, relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+            if (Resolve(executable.Command, directory) is { } resolved)
+            {
+                return resolved;
+            }
+        }
+
+        return null;
+    }
 
     // The probe over an explicit PATH-shaped string, so a test can drive it against a temp directory of real files. Internal for unit tests.
     internal static string? Resolve(string command, string pathVariable)

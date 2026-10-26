@@ -32,6 +32,8 @@ internal sealed class McpServerEntry
 
     public string? OAuthScopes { get; set; }
 
+    public string? OAuthHostOnlyScopes { get; set; }
+
     // Nullable and left out when there are none, the way `ProjectEntry.AdditionalInfo` is: most servers carry no
     // custom headers, and writing `"Headers": []` into every entry is noise in a file the operator reads and
     // hand-edits. Nullable also because a hand-edited config can put null here and the deserializer will assign it.
@@ -66,6 +68,7 @@ internal sealed class McpServerEntry
         OAuthAuthority = server.OAuthAuthority,
         OAuthClientId = server.OAuthClientId,
         OAuthScopes = server.OAuthScopes,
+        OAuthHostOnlyScopes = server.OAuthHostOnlyScopes,
         Headers = server.Headers.Count == 0 ? null : [.. server.Headers.Select(McpHeaderEntry.FromDomain)],
         PinnedCertificateFingerprint = server.PinnedCertificateFingerprint,
         KeyExpiresAt = server.KeyExpiresAt,
@@ -89,6 +92,7 @@ internal sealed class McpServerEntry
         OAuthAuthority = OAuthAuthority,
         OAuthClientId = OAuthClientId,
         OAuthScopes = OAuthScopes,
+        OAuthHostOnlyScopes = OAuthHostOnlyScopes,
         // A hand-edited config can leave a row half-written; an incomplete header is dropped rather than sent as a
         // blank field name, which some servers answer with a protocol error rather than a useful message.
         Headers = [.. (Headers ?? []).Select(entry => entry.ToDomain()).Where(header => header.IsComplete)],

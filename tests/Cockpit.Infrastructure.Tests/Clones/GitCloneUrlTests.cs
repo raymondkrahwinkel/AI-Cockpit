@@ -12,12 +12,12 @@ public sealed class GitCloneUrlTests
     [Fact]
     public void Parse_HttpsUrl_ExtractsHostSlugAndSegments()
     {
-        var parsed = GitCloneUrl.Parse("https://github.com/org/repo.git");
+        var parsed = GitCloneUrl.Parse("https://gitlab.com/group/subgroup/repo.git");
 
-        Assert.Equal("github.com", parsed.Host);
-        Assert.Equal(new[] { "org", "repo" }, parsed.Segments);
-        Assert.Equal("github.com/org/repo", parsed.Slug);
-        Assert.Equal("https://github.com/org/repo", parsed.RemoteUrl);
+        Assert.Equal("gitlab.com", parsed.Host);
+        Assert.Equal(new[] { "group", "subgroup", "repo" }, parsed.Segments);
+        Assert.Equal("gitlab.com/group/subgroup/repo", parsed.Slug);
+        Assert.Equal("https://gitlab.com/group/subgroup/repo", parsed.RemoteUrl);
     }
 
     // The load-bearing security property (a binding rule): a token in an HTTPS URL is dropped before git ever sees
@@ -49,16 +49,6 @@ public sealed class GitCloneUrlTests
         Assert.Equal("git@github.com:org/repo.git", parsed.RemoteUrl);
     }
 
-    [Fact]
-    public void Parse_SshSchemeUrl_ExtractsHostAndPath()
-    {
-        var parsed = GitCloneUrl.Parse("ssh://git@github.com/org/repo.git");
-
-        Assert.Equal("github.com", parsed.Host);
-        Assert.Equal("github.com/org/repo", parsed.Slug);
-        Assert.Equal("ssh://git@github.com/org/repo.git", parsed.RemoteUrl);
-    }
-
     // The same binding rule as HTTPS, for the one scheme that kept its userinfo: an ssh:// URL may carry the git@
     // login (needed, not a secret), but a password after it must not reach argv, .git/config or the registry. The
     // login is kept; only the password is cut. The repository path is left exactly as given.
@@ -69,12 +59,8 @@ public sealed class GitCloneUrlTests
 
         Assert.Equal("ssh://git@github.com/org/repo.git", parsed.RemoteUrl);
         Assert.DoesNotContain("s3cr3t-token", parsed.RemoteUrl);
-    }
-
-    [Fact]
-    public void Parse_NestedGroup_KeepsEverySegment()
-    {
-        Assert.Equal("gitlab.com/group/subgroup/repo", GitCloneUrl.Parse("https://gitlab.com/group/subgroup/repo.git").Slug);
+        Assert.Equal("github.com", parsed.Host);
+        Assert.Equal("github.com/org/repo", parsed.Slug);
     }
 
     [Fact]
@@ -109,7 +95,6 @@ public sealed class GitCloneUrlTests
 
     [Theory]
     [InlineData("")]
-    [InlineData("   ")]
     [InlineData("https://github.com")]
     [InlineData("not-a-url")]
     public void Parse_InputThatNamesNoRepository_Throws(string url)

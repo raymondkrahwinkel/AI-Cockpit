@@ -21,7 +21,7 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     public static readonly IReadOnlyList<WizardPlannedSlot> EpicPlan =
     [
         new(0, "What this is"),
-        new(10, "Your account"),
+        new(10, "Getting started"),
         new(20, "What you have"),
         new(25, "Your assistant"),
         new(30, "What you work on"),
@@ -29,13 +29,10 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
 
     private readonly IReadOnlyList<IFirstRunWizardStep> _steps;
     private readonly IReadOnlyList<Control> _stepContents;
-    private readonly IReadOnlyList<int> _navigableIndexes;
-    private readonly IReadOnlyList<int> _stepBarIndexByOrderedIndex;
-    private readonly IReadOnlyList<int> _stepNumberByOrderedIndex;
-    private readonly int _totalStepCount;
-    private int _position;
+    private readonly IReadOnlyList<WizardStepBarItemViewModel?> _barItemByOrderedIndex;
+    private int _current;
 
-    public FirstRunWizardViewModel(IReadOnlyList<IFirstRunWizardStep> steps, IReadOnlyList<WizardPlannedSlot>? plannedSlots = null)
+    public FirstRunWizardViewModel(IReadOnlyList<IFirstRunWizardStep> steps, IReadOnlyList<WizardPlannedSlot>? plannedSlots = null, int? startAtOrder = null)
     {
         if (steps.Count == 0)
         {
@@ -59,52 +56,56 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         _steps = ordered;
         _stepContents = [.. ordered.Select(step => step.BuildContent())];
 
+        var barItemByOrderedIndex = new WizardStepBarItemViewModel?[ordered.Count];
+
         if (plannedSlots is { Count: > 0 })
         {
-            var slots = plannedSlots.OrderBy(slot => slot.Order).ToList();
-            var stepBarIndexByOrderedIndex = new int[ordered.Count];
-            var stepNumberByOrderedIndex = new int[ordered.Count];
-
-            for (var slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+            foreach (var slot in plannedSlots.OrderBy(slot => slot.Order))
             {
-                var orderedIndex = ordered.FindIndex(step => step.Order == slots[slotIndex].Order);
+                var orderedIndex = ordered.FindIndex(step => step.Order == slot.Order);
                 if (orderedIndex >= 0)
                 {
-                    StepBar.Add(new WizardStepBarItemViewModel(ordered[orderedIndex].Title, ordered[orderedIndex].IsSkipped));
-                    stepBarIndexByOrderedIndex[orderedIndex] = slotIndex;
-                    stepNumberByOrderedIndex[orderedIndex] = slotIndex + 1;
+                    var barItem = new WizardStepBarItemViewModel(ordered[orderedIndex].Title, ordered[orderedIndex].IsSkipped);
+                    barItemByOrderedIndex[orderedIndex] = barItem;
+                    StepBar.Add(barItem);
                 }
                 else
                 {
-                    StepBar.Add(new WizardStepBarItemViewModel(slots[slotIndex].Title, isSkipped: false, notBuilt: true));
+                    StepBar.Add(new WizardStepBarItemViewModel(slot.Title, isSkipped: false, notBuilt: true));
                 }
             }
-
-            _stepBarIndexByOrderedIndex = stepBarIndexByOrderedIndex;
-            _stepNumberByOrderedIndex = stepNumberByOrderedIndex;
-            _totalStepCount = slots.Count;
         }
         else
         {
             for (var index = 0; index < ordered.Count; index++)
             {
-                StepBar.Add(new WizardStepBarItemViewModel(ordered[index].Title, ordered[index].IsSkipped));
+                var barItem = new WizardStepBarItemViewModel(ordered[index].Title, ordered[index].IsSkipped);
+                barItemByOrderedIndex[index] = barItem;
+                StepBar.Add(barItem);
             }
-
-            _stepBarIndexByOrderedIndex = [.. Enumerable.Range(0, ordered.Count)];
-            _stepNumberByOrderedIndex = [.. Enumerable.Range(1, ordered.Count)];
-            _totalStepCount = ordered.Count;
         }
 
-        // Skipped steps stay visible in the bar above but are never landed on — Back/Next only ever stop on one
-        // of these indexes. If every step happens to be skipped there is nothing left to walk, so the wizard shows
-        // the first one anyway rather than throwing on a state the operator did nothing to cause.
-        _navigableIndexes = [.. Enumerable.Range(0, ordered.Count).Where(index => !ordered[index].IsSkipped)];
-        if (_navigableIndexes.Count == 0)
+        _barItemByOrderedIndex = barItemByOrderedIndex;
+
+        // The choice step settles later questions while the wizard is open (AC-1504), so the skips are read again
+        // whenever its answers change rather than once here.
+        if (ordered.OfType<StartChoiceStep>().FirstOrDefault() is { } choice)
         {
-            _navigableIndexes = [0];
+            choice.ViewModel.AnswersChanged += (_, _) => RefreshSkips();
         }
 
+        if (ordered.OfType<ProviderStep>().FirstOrDefault()?.ViewModel is { } providers)
+        {
+            providers.NextBlockedChanged += (_, _) => RefreshSkips();
+        }
+
+        if (ordered.OfType<AssistantStep>().FirstOrDefault() is { } assistant)
+        {
+            assistant.ViewModel.NextBlockedChanged += (_, _) => RefreshSkips();
+        }
+
+        var navigable = _Navigable();
+        _current = navigable.FirstOrDefault(index => ordered[index].Order == startAtOrder, navigable[0]);
         _ApplyPosition();
     }
 
@@ -126,20 +127,29 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     [ObservableProperty]
     private bool _isLastStep;
 
+    // Why Next is off on this step; empty when it is on.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(NextCommand))]
+    private string _nextBlockedReason = "";
+
     [ObservableProperty]
     private string _stepProgressLabel = "";
 
     // Raised when the operator is done with the wizard — Skip, or Next on the last step. The window closes on this.
     public event EventHandler? RequestClose;
 
+    private bool CanGoNext() => NextBlockedReason.Length == 0;
+
     [RelayCommand(CanExecute = nameof(CanGoBack))]
     private void Back()
     {
-        _position--;
+        var navigable = _Navigable();
+        _current = navigable[navigable.IndexOf(_current) - 1];
         _ApplyPosition();
+        _steps[_current].Entered();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanGoNext))]
     private void Next()
     {
         if (IsLastStep)
@@ -149,8 +159,10 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
             return;
         }
 
-        _position++;
+        var navigable = _Navigable();
+        _current = navigable[navigable.IndexOf(_current) + 1];
         _ApplyPosition();
+        _steps[_current].Entered();
     }
 
     // AC-509 criterion 3: Skip leaves everything uninstalled — it does nothing here beyond closing the window.
@@ -164,7 +176,12 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
     // (AC-1280) has already done the first and asked for a restart, so both are skipped here.
     internal async Task FinishFromStartupAsync(IFirstRunWizardStateStore stateStore, Action startCockpit)
     {
-        if (_steps.OfType<RestoreStep>().Any(step => step.ViewModel.TookOver))
+        if (_steps.OfType<StartChoiceStep>().Any(step => step.RestoreViewModel.TookOver))
+        {
+            return;
+        }
+
+        if (_steps.OfType<ProviderStep>().Any(step => step.ViewModel?.RestartRequested == true))
         {
             return;
         }
@@ -173,19 +190,41 @@ public sealed partial class FirstRunWizardViewModel : ObservableObject
         startCockpit();
     }
 
+    // Reads every step's IsSkipped again: the bar strikes it through or not, and "Step n of N" counts accordingly.
+    internal void RefreshSkips() => _ApplyPosition();
+
+    // Skipped steps stay visible in the bar but are never landed on — Back/Next only ever stop on one of these
+    // indexes. If every step happens to be skipped there is nothing left to walk, so the wizard shows the first one
+    // anyway rather than throwing on a state the operator did nothing to cause.
+    private List<int> _Navigable()
+    {
+        var navigable = Enumerable.Range(0, _steps.Count).Where(index => !_steps[index].IsSkipped).ToList();
+
+        return navigable.Count == 0 ? [0] : navigable;
+    }
+
     private void _ApplyPosition()
     {
-        var stepIndex = _navigableIndexes[_position];
-        CurrentStepContent = _stepContents[stepIndex];
-        CanGoBack = _position > 0;
-        IsLastStep = _position == _navigableIndexes.Count - 1;
-        StepProgressLabel = $"Step {_stepNumberByOrderedIndex[stepIndex]} of {_totalStepCount}";
-
-        for (var index = 0; index < StepBar.Count; index++)
+        for (var index = 0; index < _steps.Count; index++)
         {
-            StepBar[index].IsCurrent = false;
+            if (_barItemByOrderedIndex[index] is { } barItem)
+            {
+                barItem.IsSkipped = _steps[index].IsSkipped;
+                barItem.IsCurrent = index == _current;
+            }
         }
 
-        StepBar[_stepBarIndexByOrderedIndex[stepIndex]].IsCurrent = true;
+        var navigable = _Navigable();
+        var position = navigable.IndexOf(_current);
+        CurrentStepContent = _stepContents[_current];
+        CanGoBack = position > 0;
+        NextBlockedReason = _steps[_current].NextBlockedReason ?? "";
+        IsLastStep = position == navigable.Count - 1;
+
+        // Skipped steps are not steps: they are left out of both numbers. A planned slot nothing is registered for
+        // still counts, because it is dim, not skipped.
+        var counted = StepBar.Where(item => !item.IsSkipped).ToList();
+        var number = _barItemByOrderedIndex[_current] is { } current ? counted.IndexOf(current) + 1 : 0;
+        StepProgressLabel = $"Step {number} of {counted.Count}";
     }
 }

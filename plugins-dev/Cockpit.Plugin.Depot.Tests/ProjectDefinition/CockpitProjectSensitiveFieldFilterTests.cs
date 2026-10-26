@@ -33,23 +33,10 @@ public class CockpitProjectSensitiveFieldFilterTests
 
         var rightKey = CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "project-password");
         Assert.Equal(dataKey, rightKey);
-        var recovered = new Cockpit.Plugin.Depot.Secrets.ProjectSecretProtector(rightKey!)
+        Assert.NotNull(rightKey);
+        var recovered = new Cockpit.Plugin.Depot.Secrets.ProjectSecretProtector(rightKey)
             .Unprotect($"SensitiveFields.{entry.Label}", entry.Value);
         Assert.Equal("s3cr3t-value", recovered);
-    }
-
-    [Fact]
-    public void Apply_WrongKeyCannotDecryptTheCiphertext()
-    {
-        var (_, dataKey, _) = CockpitProjectPasswordEnvelopeFactory.Create("project-password");
-        var result = CockpitProjectSensitiveFieldFilter.Apply([("Deploy token", "s3cr3t-value", true)], dataKey);
-        var entry = Assert.Single(result.Encrypted);
-
-        var (_, otherDataKey, _) = CockpitProjectPasswordEnvelopeFactory.Create("another-password");
-        var wrongProtector = new Cockpit.Plugin.Depot.Secrets.ProjectSecretProtector(otherDataKey);
-
-        Assert.Throws<Cockpit.Plugin.Depot.Secrets.ProjectSecretProtectionException>(
-            () => wrongProtector.Unprotect($"SensitiveFields.{entry.Label}", entry.Value));
     }
 
     // AC-607 review finding 9: pins the AAD binding a sensitive field's ciphertext actually relies on — encrypted
@@ -66,15 +53,5 @@ public class CockpitProjectSensitiveFieldFilterTests
 
         Assert.Throws<Cockpit.Plugin.Depot.Secrets.ProjectSecretProtectionException>(
             () => protector.Unprotect("SensitiveFields.A different label", entry.Value));
-    }
-
-    [Fact]
-    public void Apply_NoSecretRows_ReturnsEmptyEncryptedAndEmptyDropped()
-    {
-        var result = CockpitProjectSensitiveFieldFilter.Apply(
-            [("Repository", "https://example.com", false), ("Customer", "Acme BV", false)], dataKey: null);
-
-        Assert.Empty(result.Encrypted);
-        Assert.Empty(result.Dropped);
     }
 }

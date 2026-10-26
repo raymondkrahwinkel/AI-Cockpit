@@ -24,6 +24,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     private readonly ILogger<DepotSyncWatcher> _logger;
     private readonly TimeProvider _time;
+    private readonly SemaphoreSlim _pollingGate = new(1, 1);
+    private readonly Dictionary<ISharedProjectSource, Action<string?>> _sourceHandlers =
+        new(ReferenceEqualityComparer.Instance);
 
     // The last checksum seen per project id, so a project checked for the first time never reports a change it has
     // nothing to compare against, and a project that goes quiet stays quiet. Concurrent: "Sync now" reaches this
@@ -37,15 +40,20 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // The projects whose last check failed, so a lasting failure is logged once, on the way in, not every tick.
     private readonly ConcurrentDictionary<string, byte> _failing = new(StringComparer.Ordinal);
 
+    // AC-1503: the projects `OnFailing` already told someone about, kept for the whole session so a flapping check says it once.
+    private readonly ConcurrentDictionary<string, byte> _told = new(StringComparer.Ordinal);
+
     // What each project was bound to when last seen, so an unbind or a rebind drops its baseline and its flag.
     private readonly ConcurrentDictionary<string, string> _boundTo = new(StringComparer.Ordinal);
 
+    // A stale project snapshot may remove old baselines, but never one seeded after that snapshot started.
+    private readonly ConcurrentDictionary<string, long> _seedRevision = new(StringComparer.Ordinal);
+    private long _nextSeedRevision;
+
     private ITimer? _timer;
 
-    // AC-1380: an int, not a bool — the tick now runs on the threadpool, where two overlapping ticks could
-    // otherwise both read this false before either sets it. "Sync now" deliberately never claims it (see
-    // `SyncNowAsync`), so it still cannot serialise against a tick — only `_lastChecksum` guards that.
-    private int _polling;
+    // One gate for the periodic pass and source nudges: a second tick is skipped, while a nudge waits and is not lost.
+    // "Sync now" deliberately stays outside it; `_lastChecksum` still makes that explicit user action safe.
     private bool _disposed;
 
     public DepotSyncWatcher(ILogger<DepotSyncWatcher>? logger = null)
@@ -69,6 +77,13 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     // adoption is done. Set by the cockpit, which owns the badge and logo store that read it.
     public Func<string, bool, byte[]?, Task>? OnChecked { get; set; }
 
+    // AC-1503: told once per project and session, the first time a check cannot get an answer (project id, reason),
+    // so "not signed in" is said to the operator and not only logged. Set by the cockpit, which owns the toasts.
+    public Action<string, string>? OnFailing { get; set; }
+
+    // AC-1663: whether Depot is waiting for the operator to sign in; then `OnFailing` stays quiet. Set by the cockpit.
+    public Func<Task<bool>>? WaitsForSignIn { get; set; }
+
     // Starts polling the clock; the first pass runs at once so the baseline is laid at start. Idempotent.
     public void Start()
     {
@@ -86,15 +101,17 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     {
         // A pass that outlasts the interval must not have a second one started on top of it: two checks racing to
         // update `_lastChecksum` is how a change is reported twice, or not at all.
-        if (BoundProjects is null || Interlocked.CompareExchange(ref _polling, 1, 0) != 0)
+        if (BoundProjects is null || !await _pollingGate.WaitAsync(0, cancellationToken).ConfigureAwait(true))
         {
             return;
         }
 
         try
         {
+            var seedRevision = _CaptureSeedRevision();
             var current = await BoundProjects().ConfigureAwait(true);
-            await _ForgetStaleAsync(current).ConfigureAwait(true);
+            _Watch(current.Select(bound => bound.Source));
+            await _ForgetStaleAsync(current, seedRevision).ConfigureAwait(true);
             foreach (var bound in current)
             {
                 await _CheckAsync(bound, cancellationToken);
@@ -102,7 +119,95 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
         finally
         {
-            Interlocked.Exchange(ref _polling, 0);
+            _pollingGate.Release();
+        }
+    }
+
+    // The event-driven seam: the same one-project check as a tick, under the same gate, without clearing AC-1570's
+    // sticky flag. A source event maps its own id to this local project id before entering here.
+    public Task CheckNowAsync(string projectId, CancellationToken cancellationToken = default) =>
+        _CheckNowAsync(bound => bound.ProjectId == projectId, cancellationToken);
+
+    private async Task _CheckNowAsync(
+        Func<DepotBoundProject, bool> include,
+        CancellationToken cancellationToken = default)
+    {
+        if (BoundProjects is null)
+        {
+            return;
+        }
+
+        await _pollingGate.WaitAsync(cancellationToken).ConfigureAwait(true);
+        try
+        {
+            var seedRevision = _CaptureSeedRevision();
+            var current = await BoundProjects().ConfigureAwait(true);
+            _Watch(current.Select(bound => bound.Source));
+            await _ForgetStaleAsync(current, seedRevision).ConfigureAwait(true);
+            foreach (var bound in current.Where(include))
+            {
+                await _CheckAsync(bound, cancellationToken).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _pollingGate.Release();
+        }
+    }
+
+    internal void Watch(ISharedProjectSource source) => _Watch([source]);
+
+    internal void SeedBaseline(string projectId, string sharedId, string checksum)
+    {
+        lock (_lastChecksum)
+        {
+            _lastChecksum[projectId] = checksum;
+            _boundTo[projectId] = sharedId;
+            _seedRevision[projectId] = ++_nextSeedRevision;
+        }
+    }
+
+    private void _Watch(IEnumerable<ISharedProjectSource> sources)
+    {
+        lock (_sourceHandlers)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            foreach (var source in sources)
+            {
+                if (_sourceHandlers.ContainsKey(source))
+                {
+                    continue;
+                }
+
+                Action<string?> handler = sharedId => _OnSourceChanged(source, sharedId);
+                _sourceHandlers.Add(source, handler);
+                source.Changed += handler;
+            }
+        }
+    }
+
+    // Source.Changed is an Action event, so its async handler must be void; failures are logged here.
+    private async void _OnSourceChanged(ISharedProjectSource source, string? sharedId)
+    {
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            await _CheckNowAsync(
+                bound => ReferenceEquals(bound.Source, source)
+                    && (sharedId is null || string.Equals(bound.SharedId, sharedId, StringComparison.Ordinal)))
+                .ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Checking a project after {Source} reported a change failed.", source.SourceName);
         }
     }
 
@@ -114,8 +219,9 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             return;
         }
 
+        var seedRevision = _CaptureSeedRevision();
         var current = await BoundProjects().ConfigureAwait(true);
-        await _ForgetStaleAsync(current).ConfigureAwait(true);
+        await _ForgetStaleAsync(current, seedRevision).ConfigureAwait(true);
         if (current.FirstOrDefault(candidate => candidate.ProjectId == projectId) is { } bound)
         {
             await _CheckAsync(bound, cancellationToken, clearFlag: true).ConfigureAwait(true);
@@ -124,7 +230,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
 
     // A project that is no longer bound, or is bound to another shared project, starts over: no baseline, no flag, and
     // the catalog is told the flag is gone.
-    private async Task _ForgetStaleAsync(IReadOnlyList<DepotBoundProject> current)
+    private async Task _ForgetStaleAsync(IReadOnlyList<DepotBoundProject> current, long seedRevision)
     {
         var stale = new List<string>();
         foreach (var (projectId, sharedId) in _boundTo)
@@ -140,8 +246,14 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             bool wasFlagged;
             lock (_lastChecksum)
             {
+                if (_seedRevision.TryGetValue(projectId, out var revision) && revision > seedRevision)
+                {
+                    continue;
+                }
+
                 _boundTo.TryRemove(projectId, out _);
                 _lastChecksum.TryRemove(projectId, out _);
+                _seedRevision.TryRemove(projectId, out _);
                 _failing.TryRemove(projectId, out _);
                 wasFlagged = _changed.TryRemove(projectId, out _);
             }
@@ -158,6 +270,14 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
     }
 
+    private long _CaptureSeedRevision()
+    {
+        lock (_lastChecksum)
+        {
+            return _nextSeedRevision;
+        }
+    }
+
     private async Task _CheckAsync(DepotBoundProject bound, CancellationToken cancellationToken, bool clearFlag = false)
     {
         SharedProjectBindingResult result;
@@ -169,7 +289,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             if (completed != bindingTask)
             {
                 timeoutCts.Cancel();
-                _NoteFailure(bound.ProjectId, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.");
+                await _NoteFailureAsync(bound.ProjectId, $"no answer within {SourceTimeout.TotalSeconds:0} seconds.").ConfigureAwait(true);
                 return;
             }
 
@@ -180,7 +300,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             // Not signed in, unreachable, the project no longer exists. None of that is news every tick, and
             // nothing has been remembered that did not happen — the next tick tries again.
             _logger.LogDebug(exception, "Checking {ProjectId} for a Depot change failed; the next check will try again.", bound.ProjectId);
-            _NoteFailure(bound.ProjectId, exception.Message);
+            await _NoteFailureAsync(bound.ProjectId, exception.Message).ConfigureAwait(true);
             return;
         }
 
@@ -190,7 +310,7 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
             // this used to return on it without a word anywhere.
             var reason = result.Error is { Length: > 0 } error ? error : "no checksum came back.";
             _logger.LogDebug("Checking {ProjectId} for a Depot change returned nothing usable: {Reason}", bound.ProjectId, reason);
-            _NoteFailure(bound.ProjectId, reason);
+            await _NoteFailureAsync(bound.ProjectId, reason).ConfigureAwait(true);
             return;
         }
 
@@ -224,11 +344,32 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
         }
     }
 
-    private void _NoteFailure(string projectId, string reason)
+    private async Task _NoteFailureAsync(string projectId, string reason)
     {
         if (_failing.TryAdd(projectId, 0))
         {
             _logger.LogInformation("Checking {ProjectId} for a Depot change started failing: {Reason}", projectId, reason);
+        }
+
+        // AC-1663: the host names a pending sign-in itself, once; nothing is claimed here, so a later failure is still said.
+        if (WaitsForSignIn is { } waits && await waits().ConfigureAwait(true))
+        {
+            return;
+        }
+
+        // Claimed only once someone listens: the first pass runs at start, before the app has hung its toast on this, and a
+        // failure it found then must still be said by the next check.
+        if (OnFailing is { } tell && _told.TryAdd(projectId, 0))
+        {
+            try
+            {
+                tell(projectId, reason);
+            }
+            catch (Exception exception)
+            {
+                // A toast that could not be shown must not cost the other projects their check.
+                _logger.LogWarning(exception, "Telling that checking {ProjectId} for a Depot change failed did not work.", projectId);
+            }
         }
     }
 
@@ -249,8 +390,20 @@ public sealed class DepotSyncWatcher : ISingletonService, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        lock (_sourceHandlers)
+        {
+            foreach (var (source, handler) in _sourceHandlers)
+            {
+                source.Changed -= handler;
+            }
+
+            _sourceHandlers.Clear();
+        }
+
         BoundProjects = null;
         OnChecked = null;
+        OnFailing = null;
+        WaitsForSignIn = null;
         _timer?.Dispose();
         _timer = null;
     }

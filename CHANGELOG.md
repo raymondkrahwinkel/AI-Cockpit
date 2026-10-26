@@ -32,6 +32,22 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **plugins hear about an account change.** A plugin that contributes an OAuth MCP server can now subscribe to
+  `McpServerAccountChanged` and drop what it cached about the previous account when someone signs in as another user
+  or signs out. Only the plugin's own servers raise it, and it carries the server name, never a token.
+- added: **sign out of a Depot connection.** A connection row in the Depot settings now has a "Sign out" button while
+  it is signed in. It forgets the cockpit's token for that connection and keeps the connection itself, so signing in
+  again is one click. Depot itself is not asked to revoke the token, and a session already running keeps its own until
+  it expires.
+- added: **the limits your organisation sets now hold.** When a provisioning manifest carries a `policy`, the cockpit
+  keeps to it in every session, without rewriting your own settings: lift the policy and your own choices apply again.
+  Sessions start at most in the permission mode it allows, delegated tasks stay under its ceiling, and approving every
+  tool call can be switched off. Terminal and shell access for agents can be turned off. A profile on a provider or
+  model the organisation does not list does not start and says why. "Drafts only, never send" can be put in every
+  session's instructions, shown in Options as an instruction rather than a block. Scheduled backups can be made at
+  least as often, kept at least as many and sent only to targets the organisation names, and keys and tokens can be
+  kept out of every backup. Each limit is marked "Managed by <organisation>" where you would change it.
+- added: When a Depot profile belongs to more than one organization during first-run setup, the cockpit now asks which organization to use before it applies any settings.
 - added: agents can report booked or skipped hours to Uren · Week. Only the session that received the proposal can
   report it; the Agent column shows each result, skipped rows reopen, and bookings above the saved schedule stay red.
 - added: Uren · Week can give its open proposal to an existing agent session or start one from a profile. The dialog
@@ -223,6 +239,65 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Keys and tokens are write-only there: the screen only shows that one is set, an untouched Save keeps it and an
   emptied field clears it. Every change shows in the server's audit log by setting name, never by value. The plugin
   has to be running on the server and installed on this desktop too.
+- added: **Your settings follow you between machines through Depot.** With a Depot connection, the cockpit keeps your
+  portable settings (profiles, projects, theme, shortcuts, notifications and the like, never credentials or paths on
+  this machine) in your own account space, and picks up what you changed on another machine at the next start. A
+  setting changed on both machines is never overwritten: you choose per setting which one stays. A change made while
+  Depot cannot be reached is said once and sent when it can be reached again. Settings your organisation manages stay
+  as it set them.
+
+- added: **A managed start now opens the way your organisation chose.** When the provisioning manifest names a work kind, a
+  reading level or the Simple view for the first start, the cockpit applies them as defaults: it opens in Simple, installs the
+  plugins your stores recommend for that work kind, and gives the organisation's profiles that reading level. What it cannot
+  apply (an unknown work kind, a reading level without a profile to put it on) is listed in the provisioning report.
+
+- added: **Depot inbox** in the side menu, its badge the unread messages over every Depot connection, and an **Inbox**
+  tab in the Depot panel. It updates live when Depot reports a change, shows one connection's inbox at a time with a
+  filter per organization, and opens a message in Depot (**Open in Depot** for a note invitation, **Decide in Depot**
+  for the rest) or marks it read. A sign-in that expired clears the list; a Depot that does not answer keeps the last
+  list, dimmed. Each Depot connection asks for one more sign-in before its inbox shows.
+
+- added: a plugin can keep an OAuth scope for the cockpit alone. No token a session or an agent gets carries it; Depot's
+  inbox scope is the first, so an agent with the Depot connection cannot read your inbox.
+
+- added: **Sign in to a Depot on the very first start.** The first-run wizard's "How do you want to start?" now offers
+  **Sign in to a Depot** from the first launch on. Enter your Depot's address and sign in (your browser opens only when
+  you click), then **restore your latest backup** from your Depot, or **set up from your profile and organisation**
+  after you have seen what that installs. A Depot that does not set anything up for you simply does not offer the
+  second choice. Offline or skipped, nothing about Depot is saved: you can connect later from the Depot settings.
+
+- added: **Depot as a place for your backups.** Under Options → Backup, **Where to** now offers each Depot connection
+  beside a file. A backup goes to your own account space in Depot, **Restore** lists what is there, and the scheduled
+  backup can write there too. A backup that did not arrive whole is removed and reported, never listed; one larger than
+  Depot accepts is refused with Depot's reason; a connection that is not signed in says so.
+
+- added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
+  sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
+- added: an organisation can give the assistant a **rule set** through its provisioning manifest. It reaches the
+  assistant ahead of what you asked it to remember, shows read-only under Options → Assistant, and leaves with the
+  manifest. Your own memory is never written by it, and it is not in a backup or a memory export.
+
+- added: a Depot-bound project whose check cannot get an answer, typically because the connection is not signed in,
+  now says so once with a **Open Depot settings** button, instead of the Depot sync going silent.
+
+- added: after a restore, the next start tells you which sign-ins came back empty and asks for each of them, with a
+  **Sign in** button that opens that plugin's settings. A backup made with its credentials, or one with nothing left
+  out, asks for nothing.
+
+- added: **managed settings** from a provisioning manifest. A setting, plugin or profile an organisation locks is
+  read-only in Options with "Managed by <organisation>", any change to it is refused and logged, and your own value is
+  kept aside and comes back when the lock is lifted. Applying a manifest again no longer overwrites a value you chose
+  yourself; it keeps yours and says the default changed. What is managed stays out of a backup.
+
+- added: **Publish folder here…** in the Depot file browser. An Editor links a folder of the machine Cockpit runs on to
+  a folder in the Depot project and presses **Publish now**: Cockpit shows what is new, changed, removed or skipped,
+  asks, and then sends only what changed. A file that was changed in Depot since the last publication is a second
+  question and is overwritten only on a yes. A file removed locally is moved to Depot's trash, and only if this link
+  published it. Dot folders, links and files without an extension are left out, with at most 1000 files per run.
+- added: **Upload** in the Depot file browser. An Editor picks one or more files and they land in the selected folder
+  (the root when none is selected); text files become documents, everything else a file in the project. A path that
+  already exists is replaced only after a yes, and Depot's reason shows when it refuses a file.
+
 - added: a Depot change is now seen from the start and stays on the project card until you press **Sync now**, 
   instead of showing up 15 to 30 minutes late and vanishing at the next check. A server reports the flag in its project
   list and runs **Sync now** for a connected desktop, and its log says when Depot reported a change or a check started failing.
@@ -263,6 +338,50 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **already available providers show up during first start.** Step 4 now offers bundled and approved installed
+  provider plugins such as Claude and Codex even when step 3 did not install anything or request a restart.
+- fixed: **you choose what powers the assistant during first start.** The assistant step now offers the providers you
+  picked or installed, alongside Ollama and LM Studio, without choosing one for you. Its existing profile editor shows
+  only the provider details needed there, and lets you finish setting up an installed provider later.
+- fixed: **Claude Code carries through first start.** "Install and restart" now installs and asks for permission in
+  the setup itself, returns to "Your assistant" with Claude Code selected, and creates that assistant profile once
+  Claude Code has started; opening Options is no longer part of setup.
+- fixed: **Claude Code is found in its native install location.** First start and new Claude sessions now find the
+  launcher in `~/.local/bin` even when a GUI launch does not carry that directory on `PATH`.
+- fixed: **the assistant step counts the providers you chose.** A provider ticked in "What you have" is listed on "Your
+  assistant" with what is still to do (install it, approve it), instead of the page saying only Ollama and LM Studio are
+  available. Plugins start after the setup, so such a provider can be picked as the assistant's profile once the cockpit has started.
+- fixed: **Next waits for what you ticked in "What you have".** A provider you ticked and did not install holds Next, with
+  "Press Install for what you ticked, or untick it."; Next itself never installs, and what a found CLI ticks for you counts too.
+- fixed: **Next waits for a profile when the assistant is on.** With "Enable the assistant" ticked and no profile, Next is off
+  and says why; Back, Skip and switching the assistant off still work.
+
+- fixed: **the first start says what "Set up from my profile and organisation" installs.** The screen before "Set it up" names
+  your organisation instead of an id and lists the plugins, profiles, projects and settings it brings, with counts and
+  names. After "Set it up" it says what was set up, or why nothing was, and Next waits until you have made that choice.
+
+- fixed: **a restored Depot connection asks for its sign-in once, and stays until you answer.** After a restore the
+  notice names the connection, stays on screen with a **Sign in** button that opens the Depot settings, and the
+  startup check no longer says it a second time. A cockpit that never was a node no longer asks for a node secret.
+- fixed: **the Projects page reads Depot again after you sign in or switch account.** The red "Sign in to this Depot
+  connection" line, or the other account's shared projects, no longer wait for Refresh.
+- fixed: **searching Options no longer shows a raw error.** Typing in the Options search box could fill the left
+  pane with a JSON exception when a plugin's token had been emptied by a credential-free backup restore or a
+  forgotten-password reset. An emptied value now reads as not set, and a plugin page that cannot be opened says so in
+  one line on its own page instead of breaking the search.
+- fixed: **one sign-in message after a restore, not a string of toasts.** After restoring a backup the cockpit asks you to
+  sign in again with one message and a Sign in button. A scheduled backup, the settings sync and the Depot check no longer
+  add their own "sign-in needed" toast on top while that sign-in is pending. A failed backup still shows on the Backup page.
+- fixed: **a Depot connection no longer shows the previous account's projects.** Signing in as someone else on the same
+  connection, or signing out, now clears the project list the cockpit remembered for it. Before, with Depot unreachable,
+  the last list of the account that had just left could still be shown as the "last known list".
+- fixed: Options → Backup now says when and where the last scheduled backup went ("Last backup: 2026-10-24 12:00 to
+  Depot: Staging."), where the line stayed empty after a run that succeeded. A run that happened since the cockpit
+  started shows when Options opens, without a restart; a failure that is still standing is shown instead.
+- fixed: startup no longer replaces `cockpit.json` once per bundled plugin when nothing changed, and batches
+  first-install pins into one save, removing avoidable disk I/O and sharing-violation windows.
+- fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
+  saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
 - fixed: an idle assistant conversation no longer records a binding error while no inline consent card is open.
 - fixed: Productivity 0.6.2 is ready for its first store release with its category, icon, project links and
   planning-and-tracking audience in place, and it can be selected in the manual publisher.
@@ -343,6 +462,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: a Kimi or opencode session started on a model the agent does not offer, or refuses, now fails to start
+  and says why, instead of quietly running on the agent's own default model. This also applies to a model chosen in
+  the profile's launch options; a stale "Default model" in the provider's own settings is still skipped quietly.
 - changed: plugins can now be told which MCP servers a session mounts (`SessionResourceRequest.McpServers`), and what a plugin puts in a session's environment, such as `GH_REPO`, now also reaches SDK sessions and sessions on the headless server, not only terminal panes.
 - changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
   made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
@@ -358,6 +480,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   What you see and click is unchanged. Needs Cockpit 0.86.0; Autopilot 0.24.3.
 - changed: Autopilot ships its workspace and settings in an assembly of their own, so its backend part names no window
   library and loads on a server without one. Nothing changes on screen. Autopilot 0.24.4.
+
+### Removed
+
+- removed: the Depot plugin no longer falls back to a Depot's MCP tools when that Depot is too old to list its
+  projects over REST; such a Depot now says it is too old. The plugin itself talks to Depot over REST and the event
+  channel only, and a session still gets the Depot MCP server as before. Depot 0.21.0.
 
 ### Added
 

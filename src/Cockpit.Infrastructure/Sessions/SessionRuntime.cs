@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -24,11 +25,15 @@ internal sealed class SessionRuntime : ISessionRuntime
     private readonly ISessionDriverFactory _driverFactory;
     private readonly ISessionMemoryLimiter? _memoryLimiter;
     private readonly ISessionProcessAnchor? _processAnchorFactory;
+    private readonly IOrgPolicy? _orgPolicy;
     private readonly List<SessionEvent> _events = [];
     private readonly List<string> _currentTurnText = [];
     private readonly Lock _eventsLock = new();
 
     private ISessionDriver? _driver;
+
+    // AC-1593: the policy as read at the last start or switch; a change applies from the next one, not mid-session.
+    private ProvisionPolicy? _policy;
     private CancellationTokenSource? _lifetime;
     private Task? _pump;
 
@@ -52,12 +57,14 @@ internal sealed class SessionRuntime : ISessionRuntime
         ISessionDriverFactory driverFactory,
         SessionProfile? profile,
         ISessionMemoryLimiter? memoryLimiter = null,
-        ISessionProcessAnchor? processAnchor = null)
+        ISessionProcessAnchor? processAnchor = null,
+        IOrgPolicy? orgPolicy = null)
     {
         _driverFactory = driverFactory;
         Profile = profile;
         _memoryLimiter = memoryLimiter;
         _processAnchorFactory = processAnchor;
+        _orgPolicy = orgPolicy;
     }
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
@@ -75,6 +82,8 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     // AC-693: the pump ends when the driver's stream does, so a death out of band shows here, not only at DisposeAsync.
     public bool IsRunning => _pump is { IsCompleted: false };
+
+    public ProvisionPolicy? Policy => _policy;
 
     public string? LastAssistantText { get; private set; }
 
@@ -111,8 +120,16 @@ internal sealed class SessionRuntime : ISessionRuntime
         // Picking the driver is deferred to here rather than to the constructor: it depends on the profile's
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
+        _policy = await _ReadPolicyAsync(cancellationToken);
+        (launchOptions, model) = LaunchPermissionClamp.PinModel(_policy, profile, launchOptions, model);
+        launchOptions = LaunchPermissionClamp.WithNeverSend(_policy, launchOptions);
         _driver = _driverFactory.Create(profile);
+        var clampedTo = _ClampStart(ref permissionMode, ref launchOptions);
         await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, projectId, _lifetime.Token);
+        if (clampedTo is not null && _policy is not null)
+        {
+            _Publish(new SessionError { SessionId = _lastSessionId, Message = OrgPolicyCeilings.StartedClamped(_policy, permissionMode ?? clampedTo, clampedTo) });
+        }
 
         // AC-661: cap the driver's own child (a spawned CLI) the moment it exists, before it has run a turn and
         // spawned anything itself. A provider that is an HTTP call has no process and nothing to cap.
@@ -138,20 +155,67 @@ internal sealed class SessionRuntime : ISessionRuntime
     public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
         _driver?.CompactContextAsync(cancellationToken) ?? Task.CompletedTask;
 
-    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
-        _driver?.SetPermissionModeAsync(mode, cancellationToken) ?? Task.CompletedTask;
+    public async Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default)
+    {
+        if (_driver is not null)
+        {
+            await _EnsureOptionAllowedAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
+            await _driver.SetPermissionModeAsync(mode, cancellationToken);
+        }
+    }
 
-    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
-        _driver?.SetModelAsync(model, cancellationToken) ?? Task.CompletedTask;
+    public async Task SetModelAsync(string? model, CancellationToken cancellationToken = default)
+    {
+        if (_driver is not null)
+        {
+            await _EnsureModelAllowedAsync(model, cancellationToken);
+            await _driver.SetModelAsync(model, cancellationToken);
+        }
+    }
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) =>
         _driver?.SetMaxThinkingTokensAsync(maxThinkingTokens, cancellationToken) ?? Task.CompletedTask;
 
-    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
-        _driver?.SetLiveOptionAsync(key, value, cancellationToken) ?? Task.CompletedTask;
+    // The permission mode also travels as a plain live option, so it meets the same ceiling here.
+    public async Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
+    {
+        if (_driver is null)
+        {
+            return;
+        }
 
-    public Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default) =>
-        _driver?.SetAutoApproveToolsAsync(autoApprove, cancellationToken) ?? Task.CompletedTask;
+        if (string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase) || OrgPolicyCeilings.IsUnsupervisedKey(key))
+        {
+            await _EnsureOptionAllowedAsync(key, value, cancellationToken);
+        }
+
+        if (string.Equals(key, WellKnownPluginSessionOptions.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            await _EnsureModelAllowedAsync(value, cancellationToken);
+        }
+
+        await _driver.SetLiveOptionAsync(key, value, cancellationToken);
+    }
+
+    public async Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default)
+    {
+        if (_driver is null)
+        {
+            return;
+        }
+
+        if (autoApprove)
+        {
+            _policy = await _ReadPolicyAsync(cancellationToken);
+            if (_policy is not null && OrgPolicyCeilings.AutoApproveForbidden(_policy))
+            {
+                _Publish(new SessionError { SessionId = _lastSessionId, Message = OrgPolicyCeilings.AutoApproveRefused(_policy) });
+                autoApprove = false;
+            }
+        }
+
+        await _driver.SetAutoApproveToolsAsync(autoApprove, cancellationToken);
+    }
 
     public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default) =>
         _driver?.SetDelegatedToolGateAsync(ceiling, allowedTools, cancellationToken) ?? Task.CompletedTask;
@@ -256,6 +320,50 @@ internal sealed class SessionRuntime : ISessionRuntime
         finally
         {
             _lifetime = null;
+        }
+    }
+
+    private async Task<ProvisionPolicy?> _ReadPolicyAsync(CancellationToken cancellationToken) =>
+        _orgPolicy is null ? null : await _orgPolicy.ReadAsync(cancellationToken);
+
+    // The mode the driver runs in is the launch option, else the typed mode, else the profile's own default
+    // (PluginSessionDriverAdapter). The typed mode alone is not what runs when an option is there, so it is clamped quietly.
+    private string? _ClampStart(ref string? permissionMode, ref IReadOnlyDictionary<string, string>? launchOptions)
+    {
+        var ceiling = OrgPolicyCeilings.MaxPermissionMode(_policy);
+        var fallback = permissionMode ?? Profile?.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode);
+        permissionMode = OrgPolicyCeilings.Clamp(ceiling, permissionMode) ?? permissionMode;
+        var (clamped, lowered) = LaunchPermissionClamp.Clamp(ceiling, launchOptions, fallback);
+        if (clamped is null)
+        {
+            return null;
+        }
+
+        launchOptions = clamped;
+        permissionMode = clamped.GetValueOrDefault(WellKnownPluginSessionOptions.PermissionMode) ?? permissionMode;
+        return lowered ? ceiling : null;
+    }
+
+    private async Task _EnsureModelAllowedAsync(string? model, CancellationToken cancellationToken)
+    {
+        _policy = await _ReadPolicyAsync(cancellationToken);
+        if (OrgProviderPolicy.SwitchRefusal(_policy, Profile, model) is { } refusal)
+        {
+            throw new OrgPolicyRefusedException(refusal);
+        }
+    }
+
+    // Refused rather than ignored, so no caller records a switch that never happened.
+    private async Task _EnsureOptionAllowedAsync(string key, string value, CancellationToken cancellationToken)
+    {
+        _policy = await _ReadPolicyAsync(cancellationToken);
+        var ceiling = OrgPolicyCeilings.MaxPermissionMode(_policy);
+        var refused = string.Equals(key, WellKnownPluginSessionOptions.PermissionMode, StringComparison.OrdinalIgnoreCase)
+            ? OrgPolicyCeilings.Clamp(ceiling, value) is not null
+            : OrgPolicyCeilings.SafeOption(ceiling, key, value) is not null;
+        if (_policy is not null && ceiling is not null && refused)
+        {
+            throw new OrgPolicyRefusedException(OrgPolicyCeilings.SwitchRefused(_policy, value, ceiling));
         }
     }
 

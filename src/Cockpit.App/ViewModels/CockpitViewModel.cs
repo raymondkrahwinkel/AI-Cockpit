@@ -5,6 +5,7 @@ using System.Collections.Specialized;
 using System.Runtime.InteropServices;
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.Backup;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -58,6 +59,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.UsagePill;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Core.Abstractions.Clones;
@@ -147,6 +149,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly IShortcutSettingsStore? _shortcutSettingsStore;
     private readonly IBackupService? _backupService;
+    private readonly IRegisteredBackupTargets? _backupTargets;
     // The assistant's own memory files, loose from the rest of the cockpit backup (AC-657) — same service the
     // assistant's remember/note_state MCP tools write through.
     private readonly IAssistantMemory? _assistantMemory;
@@ -178,6 +181,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _samplingResources;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
+    private readonly IManagedSettings? _managedSettingsReader;
     private readonly IWorktreeSettingsStore? _worktreeSettingsStore;
     private readonly ICloneSettingsStore? _cloneSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
@@ -1577,6 +1581,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _terminalSettingsStatus = string.Empty;
+
+    // AC-1507: the cockpit.json paths a manifest locks here, each with who manages it; Options marks those fields read-only.
+    [ObservableProperty]
+    private IReadOnlyDictionary<string, string> _managedSettings = new Dictionary<string, string>();
 
     // The worktree-root override (AC-85); blank uses the default. Bound in Options → Sessions.
     [ObservableProperty]
@@ -3346,8 +3354,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Func<ISessionHandle, string, Task<SessionViewModel>>? remotePaneOver = null,
         IServerSignIns? serverSignIns = null,
         // AC-1534: the providers' own profile views, so Admin › Profiles on a server opens the one this laptop shows.
-        IPluginProviderConfigViews? providerConfigViews = null)
+        IPluginProviderConfigViews? providerConfigViews = null,
+        IManagedSettings? managedSettings = null,
+        IBackupScheduleStore? backupScheduleStore = null,
+        IRegisteredBackupTargets? backupTargets = null,
+        IOrgPolicy? orgPolicy = null)
     {
+        _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
         _providerConfigViews = providerConfigViews;
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly what
@@ -3385,7 +3398,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
             nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
             behaviourSync,
-            remoteServers);
+            remoteServers,
+            orgPolicy);
         _ = Security.RefreshAsync();
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
@@ -3398,7 +3412,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
         // where the page renders its defaults rather than the dialog failing to open.
-        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog);
+        AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
         _ = AssistantOptions.RefreshAsync();
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
@@ -3419,6 +3433,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // does not care — reads as not packaged, which is the answer that offers less rather than more.
         CanUpdateItself = (updateSupportProbe?.Detect() ?? UpdateSupport.NotPackaged) == UpdateSupport.Supported;
         _backupService = backupService;
+        _backupTargets = backupTargets;
+        ScheduledBackupSettings = backupScheduleStore is null ? null : new BackupScheduleViewModel(backupScheduleStore, logger);
+        if (ScheduledBackupSettings is { } scheduledBackupSettings)
+        {
+            // Construction cannot await; the wrapper observes and logs the detached initial schedule load.
+            _ = LoadScheduledBackupSettingsAsync(scheduledBackupSettings, logger);
+        }
         _assistantMemory = assistantMemory;
         _appRestart = appRestartService;
         // AC-478: whether this process was launched in safe mode, read off the diagnostics plugin loading was given the
@@ -3597,6 +3618,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadLayoutSettingsAsync(seedCurrentStand: true);
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
+        // Construction cannot await policy metadata; the task logs failures and updates the bindings when ready.
+        _ = LoadManagedSettingsAsync();
         _ = LoadShortcutSettingsAsync();
         _ = LoadDebugSettingsAsync();
         _ = LoadRenderingSettingsAsync();
@@ -4534,6 +4557,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // rather than showing two controls that swallow a click and do nothing.
     public bool CanBackUp => _backupService is not null;
 
+    // AC-1502: the scheduled backup's settings; null in the design-time view model, which has no store.
+    public BackupScheduleViewModel? ScheduledBackupSettings { get; internal set; }
+
     // Same reasoning as CanBackUp, for the assistant-memory-only export/restore (AC-657).
     public bool CanBackUpAssistantMemory => _assistantMemory is not null;
 
@@ -4950,7 +4976,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Writes the whole cockpit to `archivePath` (#70). The view picks the file; this decides what
     // goes in it, and says afterwards what was left out — a backup without keys is only useful if you know which
     // ones you will have to enter again.
-    public async Task CreateBackupAsync(string archivePath)
+    public Task CreateBackupAsync(string archivePath) =>
+        _CreateBackupAsync((backups, options, token) => backups.WriteAsync(archivePath, options, token), Path.GetFileName(archivePath));
+
+    // AC-1508: the same backup, handed to a target a plugin registered instead of a file.
+    public async Task CreateBackupAsync(IBackupTarget target)
+    {
+        await _CreateBackupAsync(
+            (backups, options, token) => backups.WriteAsync(
+                (archive, deliver) => target.WriteAsync($"cockpit-backup-{DateTime.Now:yyyyMMdd-HHmmss}.zip", archive, deliver),
+                options,
+                token),
+            target.DisplayName);
+
+        if (BackupDestination?.Target == target)
+        {
+            await LoadTargetBackupsAsync();
+        }
+    }
+
+    private async Task _CreateBackupAsync(Func<IBackupService, BackupOptions, CancellationToken, Task<BackupManifest>> write, string where)
     {
         if (_backupService is not { } backups)
         {
@@ -4972,16 +5017,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             var chosen = BackupPlugins.Where(plugin => plugin.Selected).Select(plugin => plugin.Id).ToList();
 
-            var manifest = await backups.WriteAsync(
-                archivePath,
-                new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles, chosen),
-                cancellation.Token);
+            var manifest = await write(backups, new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles, chosen), cancellation.Token);
 
             var stripped = manifest.RemovedSecrets.Count == 0
                 ? string.Empty
                 : $" {manifest.RemovedSecrets.Count} were left out and must be entered again after a restore.";
 
-            BackupStatus = $"Backed up to {Path.GetFileName(archivePath)}.{stripped}";
+            BackupStatus = $"Backed up to {where}.{stripped}";
         }
         catch (OperationCanceledException)
         {
@@ -5005,7 +5047,43 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Preview archive settings/plugins before asking what to restore (#70). Move replaced data aside rather than
     // deleting it, then restart to load the restored state; a null choice cancels.
-    public async Task RestoreBackupAsync(string archivePath, Func<BackupManifest, Task<RestoreOptions?>> choose)
+    public Task RestoreBackupAsync(string archivePath, Func<BackupManifest, Task<RestoreOptions?>> choose) =>
+        _RestoreBackupAsync(
+            (backups, token) => backups.ReadManifestAsync(archivePath, token),
+            (backups, options, progress, token) => backups.RestoreAsync(archivePath, options, progress, token),
+            choose);
+
+    // AC-1508: fetched whole before anything is asked, so the manifest shown is the one restored.
+    // ponytail: held in memory, fine at a Depot backup's 10 MiB cap; stage to disk if a target holds far larger ones.
+    public async Task RestoreBackupAsync(IBackupTarget target, string id, Func<BackupManifest, Task<RestoreOptions?>> choose)
+    {
+        using var fetched = new MemoryStream();
+        await _RestoreBackupAsync(
+            async (_, token) =>
+            {
+                BackupStatus = $"Fetching the backup from {target.DisplayName}…";
+                await using (var source = await target.OpenReadAsync(id, token))
+                {
+                    await source.CopyToAsync(fetched, token);
+                }
+
+                fetched.Position = 0;
+                var manifest = await BackupManifest.ReadAsync(fetched, token);
+                BackupStatus = string.Empty;
+                return manifest;
+            },
+            (backups, options, progress, token) =>
+            {
+                fetched.Position = 0;
+                return backups.RestoreAsync(fetched, options, progress, token);
+            },
+            choose);
+    }
+
+    private async Task _RestoreBackupAsync(
+        Func<IBackupService, CancellationToken, Task<BackupManifest>> readManifest,
+        Func<IBackupService, RestoreOptions, IProgress<RestoreProgress>, CancellationToken, Task<RestoreReport>> restore,
+        Func<BackupManifest, Task<RestoreOptions?>> choose)
     {
         if (_backupService is not { } backups)
         {
@@ -5018,7 +5096,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         try
         {
-            var manifest = await backups.ReadManifestAsync(archivePath, cancellation.Token);
+            var manifest = await readManifest(backups, cancellation.Token);
 
             if (await choose(manifest) is not { } options)
             {
@@ -5031,7 +5109,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _lastRestoreStage = null;
 
             var progress = new RestoreProgressReporter(this);
-            var report = await backups.RestoreAsync(archivePath, options, progress, cancellation.Token);
+            var report = await restore(backups, options, progress, cancellation.Token);
 
             // How far it got is not asked for back: the stage arrived over `progress` on the way, and a second
             // channel for the same fact is one that can disagree with the first.
@@ -5175,8 +5253,81 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public IReadOnlyList<string> InstalledPluginIds =>
         Plugins.Plugins.Select(plugin => plugin.Discovered.FolderId).ToList();
 
+    // AC-1508: where Create backup sends the archive and Restore reads it — a file the operator picks, or a plugin's target.
+    private static readonly BackupDestination FileDestination = new("A file you choose", "file");
+
+    public ObservableCollection<BackupDestination> BackupDestinations { get; } = [FileDestination];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBackupToTarget))]
+    private BackupDestination? _backupDestination = FileDestination;
+
+    public bool IsBackupToTarget => BackupDestination?.Target is not null;
+
+    // The backups the chosen target holds, newest first; Restore puts back the selected one.
+    public ObservableCollection<BackupTargetChoice> TargetBackups { get; } = [];
+
+    [ObservableProperty]
+    private BackupTargetChoice? _targetBackup;
+
+    // What listing the target said: none yet, or why it could not be read — a sign-in it needs, say. Never silent.
+    [ObservableProperty]
+    private string _targetBackupsStatus = string.Empty;
+
+    partial void OnBackupDestinationChanged(BackupDestination? value)
+    {
+        // Generated property hooks cannot await; the loader logs failures and surfaces them in the status text.
+        _ = LoadTargetBackupsAsync();
+    }
+
+    public async Task LoadTargetBackupsAsync()
+    {
+        TargetBackups.Clear();
+        TargetBackupsStatus = string.Empty;
+        if (BackupDestination?.Target is not { } target)
+        {
+            return;
+        }
+
+        TargetBackupsStatus = $"Reading the backups on {target.DisplayName}…";
+        try
+        {
+            foreach (var entry in (await target.ListAsync()).OrderByDescending(entry => entry.CreatedAt))
+            {
+                TargetBackups.Add(new BackupTargetChoice(entry));
+            }
+
+            TargetBackup = TargetBackups.FirstOrDefault();
+            TargetBackupsStatus = TargetBackups.Count == 0 ? $"{target.DisplayName} holds no backups yet." : string.Empty;
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Loading backups from {Target} failed.", target.DisplayName);
+            TargetBackupsStatus = $"{target.DisplayName}: {exception.Message}";
+        }
+    }
+
+    private void _RefreshBackupDestinations()
+    {
+        var chosen = BackupDestination?.Id;
+        var registered = _backupTargets?.All ?? [];
+
+        BackupDestinations.Clear();
+        BackupDestinations.Add(FileDestination);
+        foreach (var target in registered)
+        {
+            BackupDestinations.Add(new BackupDestination(target.DisplayName, target.Id, target));
+        }
+
+        BackupDestination = BackupDestinations.FirstOrDefault(destination => destination.Id == chosen) ?? FileDestination;
+        ScheduledBackupSettings?.RefreshTargets(registered);
+    }
+
     public void RefreshBackupPlugins()
     {
+        _RefreshBackupDestinations();
+        _ = ScheduledBackupSettings?.RefreshStatusAsync();
+
         var selected = BackupPlugins
             .Where(plugin => !plugin.Selected)
             .Select(plugin => plugin.Id)
@@ -5506,6 +5657,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _cloneSettingsStore.SaveAsync(new CloneSettings { Root = root });
         CloneRoot = root ?? string.Empty;
         CloneSettingsStatus = "Saved";
+    }
+
+    private async Task LoadManagedSettingsAsync()
+    {
+        try
+        {
+            if (_managedSettingsReader is not null)
+            {
+                ManagedSettings = await _managedSettingsReader.ReadAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Loading managed settings failed.");
+        }
+    }
+
+    private static async Task LoadScheduledBackupSettingsAsync(
+        BackupScheduleViewModel scheduledBackupSettings,
+        ILogger<CockpitViewModel>? logger)
+    {
+        try
+        {
+            await scheduledBackupSettings.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            logger?.LogWarning(exception, "Loading the backup schedule failed.");
+        }
     }
 
     private async Task LoadTerminalSettingsAsync()
@@ -6996,6 +7176,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _optionsStaged = true;
+        // Opening stays synchronous for callers; the policy-only refresh logs failures and updates bindings when ready.
+        _ = LoadManagedSettingsAsync();
         Security.SuspendPersistence = true;
         AssistantOptions.SuspendPersistence = true;
         _updateChoicesAtOpen =
@@ -7028,7 +7210,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             seen.Add(row.FolderId);
             if (PluginSettings.TryGetValue(row.FolderId, out var registration))
             {
-                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, registration.CreateView, unavailableReason: null, registration.Category));
+                PluginOptionsRows.Add(new PluginOptionsRowViewModel(row.FolderId, row.DisplayName, registration.CreateView, unavailableReason: null, registration.Category, _logger));
             }
             else
             {
@@ -7047,7 +7229,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
-            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, unavailableReason: null, registration.Category));
+            PluginOptionsRows.Add(new PluginOptionsRowViewModel(pluginId, registration.PluginName, registration.CreateView, unavailableReason: null, registration.Category, _logger));
         }
 
     }

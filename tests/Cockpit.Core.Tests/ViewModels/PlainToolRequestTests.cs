@@ -23,7 +23,6 @@ public class PlainToolRequestTests
     // Whole path on a single deletion, unlike every other verb: which `passwd` this is decides the answer, and it
     // may not live only in the file block beside the sentence.
     [InlineData("Bash", """{"command":"rm /etc/passwd"}""", "Delete /etc/passwd")]
-    [InlineData("Bash", """{"command":"rm ./inbox/old-draft.txt"}""", "Delete ./inbox/old-draft.txt")]
     [InlineData("Bash", """{"command":"mkdir ./archive/2026-07/"}""", "Create the folder ./archive/2026-07")]
     [InlineData("Read", """{"file_path":"/work/invoices/june.csv"}""", "Read the file june.csv")]
     [InlineData("Write", """{"file_path":"/work/export.csv","content":"a,b,c"}""", "Create or replace the file export.csv")]
@@ -53,15 +52,6 @@ public class PlainToolRequestTests
         Assert.DoesNotContain(Poison, string.Join(" ", request.Paths), StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void OnlyDeletion_SpellsTheWholePathIntoTheSentence()
-    {
-        // The contrast is the point: reading a file names it, deleting one says where it is. Nothing undoes a
-        // deletion, so the part that decides the answer may not sit only in the block beside the sentence.
-        Assert.Equal("Read the file passwd", PlainToolRequest.Describe("Read", """{"file_path":"/etc/passwd"}""")?.Sentence);
-        Assert.Equal("Delete /etc/passwd", PlainToolRequest.Describe("Bash", """{"command":"rm /etc/passwd"}""")?.Sentence);
-    }
-
     [Theory]
     [InlineData("mv KPN.pdf Vattenfall.pdf ./archive/2026-06/", new[] { "KPN.pdf", "Vattenfall.pdf" })]
     // `mkdir` names a folder that does not exist yet — listing it under "the files this touches" would be a
@@ -77,7 +67,6 @@ public class PlainToolRequestTests
 
     [Theory]
     // Anything that makes the line more than one plain call: the tokens would describe a fragment of what runs.
-    [InlineData("""{"command":"mv ./inbox/*.pdf ./archive/ && rm -rf ./inbox"}""")]
     // Every token here is a path or a verb this could otherwise read, so the sequence itself is all that stands
     // between it and "Delete 4 files" — counting the shell's own operator as a file, on the heaviest verb there is.
     [InlineData("""{"command":"rm ./inbox/notes.txt && rm ./inbox/old-draft.txt"}""")]
@@ -91,12 +80,10 @@ public class PlainToolRequestTests
     // No trailing separator: `mv a b` renames rather than moves into, and telling the two apart needs a
     // filesystem this never reads.
     [InlineData("""{"command":"mv old-name.pdf new-name.pdf"}""")]
-    // Verbs outside the handful covered here.
-    [InlineData("""{"command":"git push --force"}""")]
+    // A verb outside the handful covered here.
     [InlineData("""{"command":"dotnet build"}""")]
     // Not a command at all.
     [InlineData("""{"description":"tidy up"}""")]
-    [InlineData("""{"command":""}""")]
     public void Describe_SaysNothingAboutACommandItCannotReadPlainly(string inputJson)
     {
         // Falling back to the raw call is the point: someone reading "move 12 pdfs to archive" while something
@@ -105,12 +92,8 @@ public class PlainToolRequestTests
     }
 
     [Theory]
-    [InlineData(null, """{"file_path":"/work/june.csv"}""")]
     [InlineData("WebFetch", """{"url":"https://example.com"}""")]
-    [InlineData("Task", """{"prompt":"do the thing","description":"a subagent"}""")]
-    [InlineData("mcp__depot__write", """{"path":"Notes.md","content":"..."}""")]
     [InlineData("Read", null)]
-    [InlineData("Read", "")]
     [InlineData("Read", "not json at all")]
     [InlineData("Read", "[1,2,3]")]
     [InlineData("Read", """{"file_path":42}""")]

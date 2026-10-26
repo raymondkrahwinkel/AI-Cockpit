@@ -2,7 +2,7 @@
 
   <!-- AC-1392: the plugins that ship with the app, built and copied beside a project's output as bundled-plugins/<id>,
        the folder BundledPluginInstaller installs from. Imported by Cockpit.App, and by Cockpit.Backend.Tests so a
-       backend without App can be shown loading the same ten. -->
+       backend without App can be shown loading the same two. -->
 
   <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a
        plugin, so an operator has them out of the box instead of having to know they exist. Referenced with
@@ -21,53 +21,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.TranscriptSearch\Cockpit.Plugin.TranscriptSearch.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- The clock: a Dashboard workspace with nothing to put on it is a worse first impression than one that
-         already has a clock, and it proves the widget SDK end to end from outside the host. Its former other
-         half, the system monitor, is its own plugin from the store — one plugin per widget, so wanting a clock
-         is not also wanting a CPU meter. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Clock\Cockpit.Plugin.Clock.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- The usage-trend widget (AC-54): bundled beside the clock so the ctx/5h/wk trend is there out of the box,
-         and it exercises the AC-54 read surface (ICockpitSessionObserver.ActiveSessionUsage) from a real plugin. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.UsageTrend\Cockpit.Plugin.UsageTrend.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- The example workspace (AC-122): bundled so the plugin-owned full-surface workspace type is there out of
-         the box, and it exercises the workspace-type SDK — a plugin drawing a whole workspace with a real host
-         session embedded in it — from a real plugin, the way UsageTrend exercises the widget SDK. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ExampleWorkspace\Cockpit.Plugin.ExampleWorkspace.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- The example companion tool (AC-240): bundled so the plugin-owned companion-window mini-tool is there out
-         of the box, and it exercises the companion-tool SDK — a plugin drawing an icon and handling a click in
-         the companion window — from a real plugin, the way ExampleWorkspace exercises the workspace-type SDK. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ExampleCompanionTool\Cockpit.Plugin.ExampleCompanionTool.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- Autopilot (AC-94, skeleton AC-149): bundled so its workspace and settings are there out of the box; it
-         registers a plugin workspace type through the AC-122 SDK. The run flow lands in later sub-tickets. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- Fan-out (AC-467): bundled beside Autopilot, the other surface that runs agents in their own worktrees.
-         Where Autopilot drives one run through to a merge-ready PR, this puts several agents on one task at once
-         and tiles them, so the operator picks the take. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.FanOut\Cockpit.Plugin.FanOut.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
-    <!-- Claude as a provider plugin (Phase 4): Claude used to be a core feature and is now a plugin like the
-         others here, so an operator gets it out of the box. Both its routes register — the interactive TUI (TTY)
-         and the headless SDK route, whose tool approvals ride the control protocol in-band. -->
-    <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.ClaudeProvider\Cockpit.Plugin.ClaudeProvider.csproj"
-                      ReferenceOutputAssembly="false" Private="false"
-                      SetConfiguration="Configuration=$(Configuration)" />
     <ProjectReference Include="$(_BundledPluginsDev)Cockpit.Plugin.Depot\Cockpit.Plugin.Depot.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
@@ -88,15 +41,6 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <BundledPlugin Include="TranscriptSearch" FolderId="transcript-search" />
-    <BundledPlugin Include="GitStatus" FolderId="git-status" />
-    <BundledPlugin Include="Clock" FolderId="clock" />
-    <BundledPlugin Include="UsageTrend" FolderId="usage-trend" />
-    <BundledPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
-    <BundledPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
-    <BundledPlugin Include="Autopilot" FolderId="autopilot" />
-    <BundledPlugin Include="FanOut" FolderId="fan-out" />
-    <BundledPlugin Include="ClaudeProvider" FolderId="claude-provider" />
     <BundledPlugin Include="Depot" FolderId="depot" />
     <BundledPlugin Include="Schedules" FolderId="schedules" />
   </ItemGroup>

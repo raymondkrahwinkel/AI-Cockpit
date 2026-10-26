@@ -23,6 +23,7 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
     private readonly CockpitViewModel _cockpit;
     private readonly ILogger<PluginUpdateChecker> _logger;
     private readonly Version _hostVersion;
+    private readonly IPluginRegistrationStore? _registrations;
 
     // (FolderId, LatestVersion) pairs already toasted this run — a later 15-minute pass only toasts a
     // version bump beyond what is already in here, never the same update twice.
@@ -36,7 +37,8 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         CockpitViewModel cockpit,
         ILogger<PluginUpdateChecker> logger,
         Func<string, string, bool>? isUpdateStaged = null,
-        Version? hostVersion = null)
+        Version? hostVersion = null,
+        IPluginRegistrationStore? registrations = null)
     {
         _getInstalledPluginsAsync = getInstalledPluginsAsync;
         _isUpdateStaged = isUpdateStaged ?? ((entryId, latestVersion) => cockpit.Plugins.IsUpdateStaged(entryId, latestVersion));
@@ -46,23 +48,88 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker
         _cockpit = cockpit;
         _logger = logger;
         _hostVersion = hostVersion ?? HostVersionInfo.Current;
+        _registrations = registrations;
     }
 
     public async Task CheckNowAsync(CancellationToken cancellationToken = default)
     {
         try
         {
+            // AC-1500: checked before the store, so a plugin under the bundle's minimum is reported offline too.
+            var belowMinimum = await _FindBelowBundledMinimumAsync(cancellationToken).ConfigureAwait(false);
+            _NotifyBelowMinimum(belowMinimum);
             var updates = await _FindUpdatesAsync(cancellationToken).ConfigureAwait(false);
             // AC-76: the full current set feeds the persistent sidebar badge (not just the newly-detected ones the
             // toast dedups), so an update stays visible in the main window until it is installed.
             _cockpit.Plugins.SetUpdateBadgeCount(updates.Count);
-            _NotifyNewUpdates(updates);
+            _NotifyNewUpdates([.. updates.Where(update => !belowMinimum.Any(below => below.FolderId == update.FolderId))]);
         }
         catch (Exception exception)
         {
             // Fail-silent: a store network/parse failure (or a discovery I/O error) must never crash the
             // app or break the 15-minute timer loop — just skip this pass and try again next tick.
             _logger.LogWarning(exception, "Plugin update check failed; skipping this pass.");
+        }
+    }
+
+    private async Task<IReadOnlyList<(string FolderId, string Name, string Installed, string Minimum)>> _FindBelowBundledMinimumAsync(CancellationToken cancellationToken)
+    {
+        if (_registrations is null)
+        {
+            return [];
+        }
+
+        var installed = await _getInstalledPluginsAsync(cancellationToken).ConfigureAwait(false);
+        var saved = await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
+        var belowMinimum = new List<(string FolderId, string Name, string Installed, string Minimum)>();
+        foreach (var plugin in installed)
+        {
+            if (!saved.TryGetValue(plugin.FolderId, out var registration))
+            {
+                continue;
+            }
+
+            if (registration.ExpectedMinVersion is not { } minimum)
+            {
+                continue;
+            }
+
+            if (!PluginVersion.IsBelowBundledMinimum(plugin.Manifest.Version, minimum, registration.VersionChosen))
+            {
+                continue;
+            }
+
+            belowMinimum.Add((plugin.FolderId, plugin.Manifest.Name, plugin.Manifest.Version, minimum));
+        }
+
+        return belowMinimum;
+    }
+
+    private void _NotifyBelowMinimum(IReadOnlyList<(string FolderId, string Name, string Installed, string Minimum)> belowMinimum)
+    {
+        foreach (var plugin in belowMinimum)
+        {
+            if (_notifiedUpdates.Add((plugin.FolderId, plugin.Minimum)))
+            {
+                _toastService.Show(
+                    $"{plugin.Name} {plugin.Installed} is older than the {plugin.Minimum} this cockpit expects",
+                    ToastSeverity.Warning,
+                    "Update",
+                    // A toast action is synchronous, so the wrapper observes and logs the detached update task.
+                    () => _ = _UpdateStorePluginAsync(plugin.FolderId));
+            }
+        }
+    }
+
+    private async Task _UpdateStorePluginAsync(string folderId)
+    {
+        try
+        {
+            await _cockpit.Plugins.UpdateStorePluginAsync(folderId);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Updating plugin {PluginId} from its store failed.", folderId);
         }
     }
 

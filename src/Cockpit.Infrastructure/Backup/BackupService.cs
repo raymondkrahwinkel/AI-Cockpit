@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -24,7 +25,8 @@ internal sealed class BackupService(
     IPluginStoreConfigStore stores,
     IPluginStoreClient storeClient,
     IPluginProvisioningService provisioning,
-    ILogger<BackupService> logger) : IBackupService, ISingletonService
+    ILogger<BackupService> logger,
+    IOrgPolicy? orgPolicy = null) : IBackupService, ISingletonService
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -38,6 +40,24 @@ internal sealed class BackupService(
 
     private static string CockpitDirectory => CockpitConfigPath.Root;
 
+    // AC-1502: how many backups and restores are in flight, so the scheduled one can stand aside for them.
+    private int _running;
+
+    public bool IsBusy => Volatile.Read(ref _running) > 0;
+
+    private async Task<T> _WhileBusyAsync<T>(Func<Task<T>> run)
+    {
+        Interlocked.Increment(ref _running);
+        try
+        {
+            return await run().ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _running);
+        }
+    }
+
     // Backup and restore stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
     // that is a world-readable 1777 /tmp, and a restore unpacks the whole archive — every credential — there
     // for its duration. Staged here, in an owner-only directory, that window is not readable by other users.
@@ -47,12 +67,47 @@ internal sealed class BackupService(
     // whichever thread called this — the UI thread, in practice. The awaiter still marshals the continuation back
     // to the caller's dispatcher, so BackupStatus updates land on the UI thread exactly as before.
     public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
-        Task.Run(() => WriteIntoAsync(archivePath, CockpitDirectory, options, cancellationToken), cancellationToken);
+        _WhileBusyAsync(() => Task.Run(() => WriteIntoAsync(archivePath, CockpitDirectory, options, cancellationToken), cancellationToken));
+
+    public Task<BackupManifest> WriteAsync(
+        Func<Stream, CancellationToken, Task> deliver,
+        BackupOptions options,
+        CancellationToken cancellationToken = default) =>
+        _WhileBusyAsync(() => Task.Run(() => WriteIntoAsync(deliver, "a stream", CockpitDirectory, options, cancellationToken), cancellationToken));
+
+    // AC-1501: a path is the local folder it sits in, as a target — so the route everyone has today goes through the
+    // same seam a plugin's target will, rather than beside it.
+    internal Task<BackupManifest> WriteIntoAsync(string archivePath, string root, BackupOptions options, CancellationToken cancellationToken)
+    {
+        var archiveDirectory = Path.GetDirectoryName(Path.GetFullPath(archivePath))
+            ?? throw new ArgumentException("The backup path must name a file inside a folder.", nameof(archivePath));
+        var folder = new LocalFolderBackupTarget(archiveDirectory, StagingIn(root));
+
+        return WriteIntoAsync(
+            (archive, token) => folder.WriteAsync(Path.GetFileName(archivePath), archive, token),
+            archivePath,
+            root,
+            options,
+            cancellationToken);
+    }
 
     // The root is a parameter for the same reason the restore's is: neither half of this service may be pointed at
     // the operator's real cockpit directory by a test. The public pair is the only place that names it.
-    internal async Task<BackupManifest> WriteIntoAsync(string archivePath, string root, BackupOptions options, CancellationToken cancellationToken)
+    internal async Task<BackupManifest> WriteIntoAsync(
+        Func<Stream, CancellationToken, Task> deliver,
+        string destination,
+        string root,
+        BackupOptions options,
+        CancellationToken cancellationToken)
     {
+        // AC-1593: one guard where every backup is written, so a forbidden key ring stays out whatever the checkboxes said;
+        // the profiles' own config directories hold the agents' logins, so they stay out with it.
+        if ((options.IncludeCredentials || options.IncludeProfileConfigs) && OrgPolicyCeilings.CredentialsForbidden(orgPolicy?.Current))
+        {
+            logger.LogInformation("Keys, tokens and agent logins are left out of this backup: {By} forbids them", orgPolicy?.Current?.By);
+            options = options with { IncludeCredentials = false, IncludeProfileConfigs = false };
+        }
+
         if (!Directory.Exists(root))
         {
             throw new InvalidOperationException("There is nothing to back up: this cockpit has never saved anything.");
@@ -90,7 +145,10 @@ internal sealed class BackupService(
                         continue;
                     }
 
-                    archive.CreateEntryFromFile(file, entryName, CompressionLevel.Optimal);
+                    // Everything named here is a file the cockpit itself swaps into place; a backup that lands mid-swap waits it out.
+                    await CockpitConfigFileAccess.WhenNotBeingReplacedAsync(
+                        () => Task.FromResult(archive.CreateEntryFromFile(file, entryName, CompressionLevel.Optimal)),
+                        cancellationToken);
                 }
 
                 if (options.IncludeProfileConfigs)
@@ -113,15 +171,22 @@ internal sealed class BackupService(
                 await JsonSerializer.SerializeAsync(stream, manifest, Json, cancellationToken);
             }
 
-            await MoveIntoPlaceAsync(staging, archivePath, cancellationToken);
+            // Handed over only once it is whole, and read back from staging: `deliver` is the target's, not ours.
+            BackupManifest written;
+            await using (var archive = File.OpenRead(staging))
+            {
+                await deliver(archive, cancellationToken);
+                archive.Position = 0;
+                written = await BackupManifest.ReadAsync(archive, cancellationToken);
+            }
 
             logger.LogInformation(
                 "Wrote a backup to {Path} ({Credentials}, {Secrets} secret(s) stripped)",
-                archivePath,
+                destination,
                 options.IncludeCredentials ? "with credentials" : "without credentials",
                 removed.Count);
 
-            return await ReadManifestAsync(archivePath, cancellationToken);
+            return written;
         }
         finally
         {
@@ -176,15 +241,8 @@ internal sealed class BackupService(
 
     public async Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default)
     {
-        using var archive = ZipFile.OpenRead(archivePath);
-
-        var entry = archive.GetEntry(BackupManifest.FileName)
-            ?? throw new InvalidOperationException("This zip is not a cockpit backup: it has no backup.json.");
-
-        await using var stream = entry.Open();
-
-        return await JsonSerializer.DeserializeAsync<BackupManifest>(stream, Json, cancellationToken)
-            ?? throw new InvalidOperationException("This backup's manifest could not be read.");
+        await using var stream = File.OpenRead(archivePath);
+        return await BackupManifest.ReadAsync(stream, cancellationToken);
     }
 
     // Same offload as WriteAsync, and for the same reason (AC-747): ZipFile.ExtractToDirectory unpacks the whole
@@ -194,7 +252,46 @@ internal sealed class BackupService(
         RestoreOptions options,
         IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, progress, cancellationToken), cancellationToken);
+        _WhileBusyAsync(() => Task.Run(() => RestoreIntoAsync(archivePath, CockpitDirectory, options, progress, cancellationToken), cancellationToken));
+
+    public Task<RestoreReport> RestoreAsync(
+        Stream source,
+        RestoreOptions options,
+        IProgress<RestoreProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        _WhileBusyAsync(() => Task.Run(() => RestoreIntoAsync(source, CockpitDirectory, options, progress, cancellationToken), cancellationToken));
+
+    // AC-1501: fetched whole into the owner-only staging first (AC-45), then restored exactly as a file is — the
+    // manifest check, the unpack and the aside all stay the one path. A stop while fetching is a report, as ever.
+    internal async Task<RestoreReport> RestoreIntoAsync(
+        Stream source,
+        string root,
+        RestoreOptions options,
+        IProgress<RestoreProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        CockpitConfigPath.EnsurePrivateDirectory(StagingIn(root));
+        var fetched = Path.Combine(StagingIn(root), $"cockpit-restore-{Guid.NewGuid():n}.zip");
+
+        try
+        {
+            try
+            {
+                await using var file = File.Create(fetched);
+                await source.CopyToAsync(file, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return new RestoreReport(Stopped: true, []);
+            }
+
+            return await RestoreIntoAsync(fetched, root, options, progress, cancellationToken);
+        }
+        finally
+        {
+            File.Delete(fetched);
+        }
+    }
 
     // The root is a parameter because a restore into the operator's real cockpit is not something a test may do.
     // A stop is REPORTED, not thrown, against the usual reading of a CancellationToken (AC-1281): stopping leaves
@@ -295,7 +392,10 @@ internal sealed class BackupService(
                 options.Plugins.Count,
                 aside);
 
-            return new RestoreReport(Stopped: false, fetched.Notes);
+            var emptied = EmptiedSignIn.From(incoming, manifest.RemovedSecrets, options);
+            RestoredSignIns.Save(root, emptied);
+
+            return new RestoreReport(Stopped: false, fetched.Notes) { EmptiedSignIns = emptied };
         }
         finally
         {
@@ -371,6 +471,13 @@ internal sealed class BackupService(
         }
 
         result["Plugins"] = restoredPlugins;
+
+        // AC-1507: the applier's record is this machine's, so a restore keeps it, and with it what is managed here.
+        result.Remove(nameof(CockpitConfigFile.Provisioning));
+        if (current[nameof(CockpitConfigFile.Provisioning)] is { } provisioning)
+        {
+            result[nameof(CockpitConfigFile.Provisioning)] = provisioning.DeepClone();
+        }
 
         await File.WriteAllTextAsync(currentFile, result.ToJsonString(Json), cancellationToken);
     }
@@ -760,7 +867,8 @@ internal sealed class BackupService(
         BackupOptions options,
         CancellationToken cancellationToken)
     {
-        var settings = JsonNode.Parse(await File.ReadAllTextAsync(file, cancellationToken))
+        // A settings save swaps this file while a backup may be reading it (AC-1497).
+        var settings = JsonNode.Parse(await CockpitConfigFileAccess.ReadWhenNotBeingReplacedAsync(file, cancellationToken))
             ?? throw new InvalidOperationException("cockpit.json could not be read, so the backup would not have been one.");
 
         // AC-1277: leaving a plugin out no longer strips its registration here. That registration — the menu, and
@@ -773,6 +881,9 @@ internal sealed class BackupService(
         var removed = options.IncludeCredentials
             ? []
             : SecretScrubber.Scrub(settings, SecretKeyHolder.Shared.Fields);
+
+        // AC-1507: what a manifest manages comes back from the manifest, not from an archive.
+        settings.AsObject().Remove(nameof(CockpitConfigFile.Provisioning));
 
         var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
         await using var stream = entry.Open();

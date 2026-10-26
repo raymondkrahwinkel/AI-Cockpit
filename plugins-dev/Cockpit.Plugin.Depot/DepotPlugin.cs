@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
@@ -12,7 +13,7 @@ namespace Cockpit.Plugin.Depot;
 // Depot as a project memory source (AC-165/166) with a settings view for connecting one or more instances
 // (AC-243); each connection registers its own memory source (AC-501, see `DepotMemorySource`). Since AC-504
 // each connection's MCP server is offered per-project rather than pushed into the shared registry.
-public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
+public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStartPlugin
 {
     // Kept from Initialize so GetMcpServers can read the current connection list each time the host asks, rather
     // than a snapshot taken once — the same reason YouTrackPlugin keeps its own settings reference.
@@ -22,7 +23,20 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // to wire CheckReachability, even though this call site only reads Registration.Scheme back out.
     private ICockpitHost? _host;
 
+    // AC-1509: the host Initialize gave, once it ran; until then a first-start sign-in only writes storage and its backup target.
+    private ICockpitHost? _initializedHost;
+
+    // AC-1509: the Depot a first-start sign-in is signing in to, offered to the host before it is a connection.
+    private volatile DepotConnectionRegistration? _pending;
+
     private readonly List<IDisposable> _handlers = [];
+
+    private Inbox.DepotInbox? _inbox;
+    private Events.DepotEvents? _events;
+    private ILogger? _logger;
+
+    // A 100 MiB file on a slow link must not hit the default 100 second timeout.
+    private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
 
     // DEP-264: the grant Depot redeems an installation token with, accepted only from its own built-in client.
     private const string InstallTokenGrant = "urn:depot:grant-type:install_token";
@@ -30,6 +44,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     private const string DepotClientId = "depot";
 
     internal const string InvalidInstallTokenMessage = "That installation token is not valid any more. Make a new one in Depot under Account.";
+
+    internal Events.DepotEvents Events => _events ?? throw new InvalidOperationException("Depot events are not initialized.");
 
     public PluginMetadata Metadata { get; } = new(
         Id: "depot",
@@ -50,6 +66,22 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         var settings = new DepotSettings(host.Storage);
         _settings = settings;
         _host = host;
+        _initializedHost = host;
+
+        // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
+        host.McpServerAccountChanged += (_, serverName) =>
+        {
+            foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
+            {
+                DepotProjectListingSource.Forget(host, connection);
+            }
+
+            // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
+            foreach (var source in host.SharedProjectSources.OfType<DepotSharedProjectSource>().Where(candidate => candidate.McpServerName == serverName))
+            {
+                source.RaiseAccountChanged();
+            }
+        };
 
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this
         // channel action is what that view's own Save/Sign-in route now asks for instead of touching the
@@ -58,6 +90,55 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             _SaveConnectionsAsync(host, settings, payload, cancellationToken)));
         _handlers.Add(host.Channel.Handle(DepotChannel.ConnectWithInstallToken, (payload, cancellationToken) =>
             _ConnectWithInstallTokenAsync(host, settings, payload, cancellationToken)));
+        _handlers.Add(host.Channel.Handle(DepotChannel.Branding, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotBrandingRequest>(DepotChannel.Json)
+                ?? throw new InvalidOperationException("Depot branding request is missing.");
+            var connection = settings.Connections.FirstOrDefault(candidate => candidate.Id == request.ConnectionId);
+            var branding = connection is null
+                ? DepotBrandingSnapshot.Default
+                : await DepotBranding.For(host).GetAsync(connection, cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.SerializeToElement(new DepotBrandingAnswer(branding.Name, branding.Logo), DepotChannel.Json);
+        }));
+
+        // AC-1568: the file browser's Depot calls, one handler per action.
+        var browser = new Browser.DepotBrowserService(host, () => settings.Connections);
+        _HandleBrowser(host, DepotBrowserChannel.Projects, browser.ProjectsAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Tree, browser.TreeAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Read, browser.ReadAsync);
+        _HandleBrowser(host, DepotBrowserChannel.DownloadUrl, browser.DownloadUrlAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Share, browser.ShareAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Unshare, browser.UnshareAsync);
+        _HandleBrowser(host, DepotBrowserChannel.Upload, browser.UploadAsync);
+
+        // AC-1574: publishing a local folder or file to a Depot project, one handler per action.
+        var publisher = new Publishing.DepotPublishService(host, () => settings.Connections, settings, host.Cache, _publishHttp);
+        _HandlePublish(host, DepotPublishChannel.List, publisher.ListAsync);
+        _HandlePublish(host, DepotPublishChannel.Add, publisher.AddAsync);
+        _HandlePublish(host, DepotPublishChannel.Remove, publisher.RemoveAsync);
+        _HandlePublish(host, DepotPublishChannel.Plan, publisher.PlanAsync);
+        _HandlePublish(host, DepotPublishChannel.Run, publisher.RunAsync);
+
+        // AC-1586: the Depot inbox, over REST and the inbox hub with a host-only token for depot.inbox alone.
+        _inbox = new Inbox.DepotInbox(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope),
+            (connection, userId, onPush, onClosed) => new Inbox.SignalRDepotInboxHub(
+                connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope), onPush, onClosed),
+            page => host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)),
+            _logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
+        var inbox = _inbox;
+        _handlers.Add(host.Channel.Handle(DepotInboxChannel.Unread, async (_, cancellationToken) =>
+            JsonSerializer.SerializeToElement(await inbox.UnreadAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json)));
+        _HandleInbox(host, DepotInboxChannel.List, inbox.ListAsync);
+        _HandleInbox(host, DepotInboxChannel.MarkRead, inbox.MarkReadAsync);
+
+        _events = new Events.DepotEvents(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName),
+            (connection, userId, onEvent, onReconnected, onClosed) => new Events.SignalRDepotEventHub(
+                connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onEvent, onReconnected, onClosed),
+            _logger);
 
         // AC-499: declared unconditionally, even with zero connections — fixes the doorless-dead-end bug where
         // zero connections meant no "Depot" option anywhere and no way to reach this plugin's settings.
@@ -80,9 +161,22 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
         // AC-245: one shared-project source per connection, so the Projects workspace can list what this connection
         // shares beside the local projects. Same zero-connections-means-nothing rule as the memory sources above.
-        foreach (var source in DepotMemorySource.BuildSharedProjectSources(settings.Connections, host))
+        foreach (var pair in DepotMemorySource.BuildRegistrationPairs(settings.Connections, host))
         {
-            host.AddSharedProjectSource(source);
+            host.AddSharedProjectSource(new DepotSharedProjectSource(pair.Connection, pair.Registration.Scheme, host, _events));
+        }
+
+        // AC-1508: each connection's account space is a place a cockpit backup can be kept.
+        foreach (var connection in settings.Connections)
+        {
+            host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, connection.Id));
+        }
+
+        // AC-1510: the first connection's account space carries the cockpit's portable settings; the host keeps one
+        // carrier, so a connection added later carries them from the next start.
+        if (settings.Connections.FirstOrDefault() is { } first)
+        {
+            host.AddSettingsCarrier(new Backup.DepotSettingsCarrier(host, () => settings.Connections, first.Id).Registration(first));
         }
 
         // AC-504: session delivery now asks via GetMcpServers instead of the shared registry, so reclaim what
@@ -90,6 +184,56 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         // locking across calls, so parallel calls would race on the same stale snapshot and drop a connection.
         _ = _ReclaimPushedMcpServersSequentiallyAsync(host, settings.Connections);
     }
+
+    // AC-1509: route C before Initialize, on the host the first-start phase gives. The settings are read here too, so the
+    // host's sign-in finds the pending Depot through GetMcpServers before Initialize ran.
+    public void InitializeFirstStart(ICockpitHost host)
+    {
+        var settings = new DepotSettings(host.Storage);
+        _settings ??= settings;
+        _host ??= host;
+
+        var firstStart = new FirstStart.DepotFirstStart(
+            host, settings, connection => _pending = connection, () => _initializedHost, () => _events);
+        _handlers.Add(host.Channel.Handle(DepotChannel.FirstStartSignIn, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotFirstStartSignInRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no Depot.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await firstStart.SignInAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+        _handlers.Add(host.Channel.Handle(DepotChannel.FirstStartManifest, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotFirstStartManifestRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no organization.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await firstStart.ReadManifestAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+    }
+
+    private void _HandleBrowser<T>(
+        ICockpitHost host, string action, Func<DepotBrowserRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotBrowserRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
+    private void _HandleInbox(ICockpitHost host, string action, Func<DepotInboxRequest, CancellationToken, Task<DepotInboxPage>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotInboxRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
+    private void _HandlePublish<T>(
+        ICockpitHost host, string action, Func<DepotPublishRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotPublishRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
 
     private static async Task _ReclaimPushedMcpServersSequentiallyAsync(ICockpitHost host, IReadOnlyList<DepotConnectionRegistration> connections)
     {
@@ -104,24 +248,24 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // read fresh (DepotSettings.Connections' own doc) before anything writes it, so `before` is genuinely the
     // pre-save state the diff below needs — writing it from the UI first, ahead of this call, would have this
     // read see its own "after" and turn the whole diff into a no-op.
-    private static async Task<JsonElement> _SaveConnectionsAsync(
+    private async Task<JsonElement> _SaveConnectionsAsync(
         ICockpitHost host, DepotSettings settings, JsonElement payload, CancellationToken cancellationToken)
     {
         var request = payload.Deserialize<DepotSaveConnectionsRequest>(DepotChannel.Json)
             ?? throw new ArgumentException("The request names no connections.", nameof(payload));
 
-        await _WriteConnectionsAsync(
+        await WriteConnectionsAsync(
             host,
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url))],
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, _events).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
 
     // AC-1511: a connection signed in with an installation token instead of a browser — the only way on a server.
     // The connection is written first, since the host finds the server to redeem at under its registered name; a
     // token Depot refuses puts the list back as it was, so it never leaves a connection that cannot sign in.
-    private static async Task<JsonElement> _ConnectWithInstallTokenAsync(
+    private async Task<JsonElement> _ConnectWithInstallTokenAsync(
         ICockpitHost host, DepotSettings settings, JsonElement payload, CancellationToken cancellationToken)
     {
         var request = payload.Deserialize<DepotInstallTokenRequest>(DepotChannel.Json)
@@ -146,11 +290,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
 
         var id = existing?.Id ?? (string.IsNullOrWhiteSpace(request.Connection.Id) ? Guid.NewGuid().ToString("n") : request.Connection.Id);
         var connection = new DepotConnectionRegistration(id, name, url);
-        await _WriteConnectionsAsync(
+        await WriteConnectionsAsync(
             host,
             settings,
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken, _events).ConfigureAwait(false);
 
         var outcome = await host.SignInMcpServerWithGrantAsync(
             connection.McpServerName,
@@ -162,7 +306,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             return _InstallTokenAnswer(true, "Signed in.");
         }
 
-        await _WriteConnectionsAsync(host, settings, before, cancellationToken).ConfigureAwait(false);
+        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events).ConfigureAwait(false);
         return _InstallTokenAnswer(false, outcome switch
         {
             PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
@@ -175,8 +319,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         JsonSerializer.SerializeToElement(new DepotInstallTokenAnswer(success, message), DepotChannel.Json);
 
     // The write both channel actions share: storage first, then the registries diffed against what was there.
-    private static async Task _WriteConnectionsAsync(
-        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after, CancellationToken cancellationToken)
+    internal static async Task WriteConnectionsAsync(
+        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after,
+        CancellationToken cancellationToken, Events.DepotEvents? events = null)
     {
         var before = settings.Connections;
 
@@ -193,12 +338,30 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             .ToList();
 
         _SyncMemorySources(host, before, after);
-        _SyncSharedProjectSources(host, before, after);
+        _SyncSharedProjectSources(host, before, after, events);
+        _SyncBackupTargets(host, settings, before, after);
 
         foreach (var orphanedName in orphanedNames)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await host.RemoveMcpServer(orphanedName).ConfigureAwait(false);
+        }
+    }
+
+    // AC-1508: a target reads its connection by id on every call, so a rename needs nothing; only additions and removals do.
+    private static void _SyncBackupTargets(
+        ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> before, IReadOnlyList<DepotConnectionRegistration> after)
+    {
+        var kept = after.Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var gone in before.Where(connection => !kept.Contains(connection.Id)))
+        {
+            host.RemoveBackupTarget(Backup.DepotBackupTarget.IdFor(gone.Id));
+        }
+
+        var had = before.Select(connection => connection.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var added in after.Where(connection => !had.Contains(connection.Id)))
+        {
+            host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, added.Id));
         }
     }
 
@@ -259,7 +422,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // sources instead. A separate pass rather than folded into that method: the two registries are independent
     // (ISharedProjectSourceRegistry, not IProjectMemorySourceRegistry) and keeping the diff loops apart means a
     // future change to one shape never has to reason about the other's equality rules.
-    private static void _SyncSharedProjectSources(ICockpitHost host, IReadOnlyList<DepotConnectionRegistration> before, IReadOnlyList<DepotConnectionRegistration> after)
+    private static void _SyncSharedProjectSources(
+        ICockpitHost host,
+        IReadOnlyList<DepotConnectionRegistration> before,
+        IReadOnlyList<DepotConnectionRegistration> after,
+        Events.DepotEvents? events)
     {
         // Diffed by (Key, Connection) rather than by Key alone: DepotSharedProjectSource is a plain class with no
         // value equality of its own, and the first connection's Key is always the bare "depot" scheme regardless of
@@ -297,7 +464,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
                 continue;
             }
 
-            host.AddSharedProjectSource(new DepotSharedProjectSource(entry.Connection, entry.Key, host));
+            host.AddSharedProjectSource(events is null
+                ? new DepotSharedProjectSource(entry.Connection, entry.Key, host)
+                : new DepotSharedProjectSource(entry.Connection, entry.Key, host, events));
         }
     }
 
@@ -305,7 +474,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
     // this overload — the catalog always calls the scoped overload below — but the host falls back to it for
     // OAuth sign-in from this plugin's own settings view, which has no project to scope a call by.
     public IReadOnlyList<McpServerContribution> GetMcpServers() =>
-        _settings is null ? [] : _settings.Connections.Select(_ContributionFor).ToList();
+        _settings is null ? [] : [.. _settings.Connections.Append(_pending).OfType<DepotConnectionRegistration>().Select(_ContributionFor)];
 
     // The connection(s) whose memory-source scheme is among `projectMemorySchemes` (AC-504). `projectId`
     // is unused: the schemes already say which of this plugin's connections the project points at.
@@ -336,6 +505,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
             // Scheme+host+port of the stored base URL: Depot's protected-resource metadata names the origin as
             // its authorization_servers entry, not a subpath. Falls back to the base URL if unparseable (defensive only).
             OAuthAuthority = DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url,
+            // AC-1586/AC-1647: Depot's built-in client may request the host-only inbox and Cockpit API scopes;
+            // neither rides on a token handed to a session.
+            OAuthClientId = DepotClientId,
+            OAuthScopes = $"depot {Inbox.DepotInbox.Scope} depot.host offline_access",
+            OAuthHostOnlyScopes = $"{Inbox.DepotInbox.Scope} depot.host",
         };
     }
 
@@ -345,6 +519,20 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider
         {
             handler.Dispose();
         }
+
+        _publishHttp.Dispose();
+        // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
+        // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
+        _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the Depot inbox failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+        _ = _events?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot events failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
 
         _handlers.Clear();
     }

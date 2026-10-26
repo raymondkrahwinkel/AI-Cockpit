@@ -33,6 +33,11 @@ The clone and worktree roots start out at `/work/clones` and `/work/worktrees` (
 `COCKPIT_WORKTREE_ROOT`): the defaults lie under `/state`, which an agent session cannot enter. A root set in the app's
 settings stays; point it somewhere under `/work`.
 
+Provisioning (AC-1505): `COCKPIT_PROVISION_URL_FILE` names a secret holding an `https://` manifest URL (or set
+`COCKPIT_PROVISION_URL` itself). It is read on a first start only (no `cockpit.json` in `/state` yet), or with `--provision-reapply`.
+A one-time `?t=` token in it is never logged and is kept only as a hash once used. A manifest that cannot be fetched or
+is refused stops the server with exit code 78. Applying the manifest is still to come (AC-1506).
+
 ## Persistent data
 
 The image declares a `VOLUME` for every path below, so the host needs no setup and makes no choices: a start without

@@ -498,7 +498,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 // AC-1013: Gate B (AC-759) reads ConsentBypassAll alone, not the per-source lists — the paragraph
                 // describes the general expectation, and the per-call `approval` field (AssistantAgentMcpTools)
                 // corrects it when only one source was switched off individually.
-                consentCardAsks: !settings.ConsentBypassAll),
+                consentCardAsks: !settings.ConsentBypassAll,
+                orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true)),
             settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
@@ -899,14 +900,15 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         string? currentState = null,
         string? machineMemory = null,
         bool sdkAsksPermission = true,
-        bool consentCardAsks = true)
+        bool consentCardAsks = true,
+        string? orgRules = null)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
             ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] = AssistantStandingInstruction.Compose(
-            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks);
+            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks, orgRules);
 
         return options;
     }

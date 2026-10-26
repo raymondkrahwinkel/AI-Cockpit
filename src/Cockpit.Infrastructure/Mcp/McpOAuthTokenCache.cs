@@ -14,7 +14,8 @@ internal sealed class McpOAuthTokenCache(
     string? resourceUrl,
     IMcpOAuthTokenStore store,
     ILogger logger,
-    TimeSpan renewalMargin = default) : ITokenCache
+    TimeSpan renewalMargin = default,
+    (McpServerConfig Server, McpOAuthScopeNarrower Narrower)? hostOnlyScopes = null) : ITokenCache
 {
     public async ValueTask StoreTokensAsync(TokenContainer token, CancellationToken cancellationToken = default)
     {
@@ -33,25 +34,27 @@ internal sealed class McpOAuthTokenCache(
         var inheritable = existing is not null && existing.IsForResource(resourceUrl) ? existing.RefreshToken : null;
         var refreshToken = string.IsNullOrWhiteSpace(token.RefreshToken) ? inheritable : token.RefreshToken;
 
-        await store.SaveAsync(
-            serverId,
-            serverName,
-            new McpOAuthToken
-            {
-                AccessToken = token.AccessToken,
-                Scheme = string.IsNullOrWhiteSpace(token.TokenType) ? "Bearer" : token.TokenType,
-                RefreshToken = refreshToken,
-                ExpiresAt = _ExpiresAt(token),
-                Scope = token.Scope,
-                ResourceUrl = resourceUrl,
-                // AC-505: without these the refresh token is unusable beyond this connection — a fresh connect
-                // starts a brand-new provider with no client identity to present, so this restores it.
-                ClientId = token.ClientId,
-                ClientSecret = token.ClientSecret,
-                TokenEndpointAuthMethod = token.TokenEndpointAuthMethod,
-                AuthorizationServer = token.AuthorizationServer,
-            },
-            cancellationToken).ConfigureAwait(false);
+        var issued = new McpOAuthToken
+        {
+            AccessToken = token.AccessToken,
+            Scheme = string.IsNullOrWhiteSpace(token.TokenType) ? "Bearer" : token.TokenType,
+            RefreshToken = refreshToken,
+            ExpiresAt = _ExpiresAt(token),
+            Scope = token.Scope,
+            ResourceUrl = resourceUrl,
+            // AC-505: without these the refresh token is unusable beyond this connection — a fresh connect
+            // starts a brand-new provider with no client identity to present, so this restores it.
+            ClientId = token.ClientId,
+            ClientSecret = token.ClientSecret,
+            TokenEndpointAuthMethod = token.TokenEndpointAuthMethod,
+            AuthorizationServer = token.AuthorizationServer,
+        };
+
+        // AC-1586: before it is stored, since whatever is stored is what a session gets handed.
+        var stored = hostOnlyScopes is { } scopes
+            ? await scopes.Narrower.KeepHostOnlyScopesOffAsync(scopes.Server, issued, CancellationToken.None).ConfigureAwait(false)
+            : issued;
+        await store.SaveAsync(serverId, serverName, stored, CancellationToken.None).ConfigureAwait(false);
 
         // The expiry and whether a renewal is still possible — never the token, in any form, not even abbreviated
         // (Iron Law #8). Between this line and the coordinator's, a session that lost a server has a trail: when the
@@ -59,8 +62,8 @@ internal sealed class McpOAuthTokenCache(
         logger.LogInformation(
             "Stored a new access token for MCP server {Server}; it expires at {ExpiresAt} and {RefreshState}.",
             serverName,
-            _ExpiresAt(token),
-            string.IsNullOrWhiteSpace(refreshToken) ? "carries no refresh token, so it cannot renew itself" : "can renew itself");
+            stored.ExpiresAt,
+            string.IsNullOrWhiteSpace(stored.RefreshToken) ? "carries no refresh token, so it cannot renew itself" : "can renew itself");
     }
 
     public async ValueTask<TokenContainer?> GetTokensAsync(CancellationToken cancellationToken = default)
@@ -78,7 +81,9 @@ internal sealed class McpOAuthTokenCache(
         // ObtainedAt. AC-771: minus the caller's margin, since the SDK renews on IsExpired alone with no margin of
         // its own.
         var obtainedAt = DateTimeOffset.UtcNow;
-        int? remaining = stored.ExpiresAt is { } expiresAt
+        // AC-1586: a token that may still carry a host-only scope reads as expired, so the SDK renews and narrows it.
+        int? remaining = hostOnlyScopes is { } scopes && !McpOAuthScopeNarrower.IsSessionSafe(scopes.Server, stored) ? 0
+            : stored.ExpiresAt is { } expiresAt
             ? (int)Math.Max(0, Math.Round((expiresAt - renewalMargin - obtainedAt).TotalSeconds))
             : null;
 

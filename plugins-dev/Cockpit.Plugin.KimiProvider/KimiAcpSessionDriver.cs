@@ -299,29 +299,40 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             await SetLiveOptionAsync("mode", kimiMode, cancellationToken).ConfigureAwait(false);
         }
 
-        // P1-5: a stale/unconfigured KimiConfig.DefaultModel must never fail the whole session start. Validate
-        // it against the configOptions snapshot just rebuilt above (AC-272 "snapshot is authoritative") so an
-        // id the snapshot positively excludes is not even attempted, and wrap the attempt itself in try/catch as
-        // a best-effort belt-and-braces — an unconditional call here used to earn a -32602 that StartAsync threw
-        // straight through, wrecking the whole session over a model rename/removal upstream.
-        if (!string.IsNullOrWhiteSpace(effectiveModel) && _ShouldAttemptModelSwitch(effectiveModel))
+        // P1-5: a stale KimiConfig.DefaultModel never fails the start; it is tried only if the snapshot offers it, best-effort.
+        // AC-1593: a model the host states (an organisation's pin among them) is applied or the start fails with the
+        // reason, so kimi's own default never runs in its place.
+        if (!string.IsNullOrWhiteSpace(effectiveModel))
         {
-            try
+            var stated = !string.IsNullOrWhiteSpace(_ResolveOption(options, WellKnownPluginSessionOptions.Model, fallback: null));
+            if (_ModelChoice(effectiveModel) is { } choice)
             {
-                await SetLiveOptionAsync("model", effectiveModel, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await SetLiveOptionAsync("model", choice, cancellationToken).ConfigureAwait(false);
+                }
+                catch (KimiAcpException exception) when (stated)
+                {
+                    throw new KimiAcpException($"Kimi could not switch to the model {effectiveModel}, so the session does not start: {exception.Message}");
+                }
+                catch (KimiAcpException)
+                {
+                    // Best-effort: the session still starts on whatever model kimi's own snapshot already defaulted to.
+                }
             }
-            catch (KimiAcpException)
+            else if (stated)
             {
-                // Best-effort: the session still starts on whatever model kimi's own snapshot already defaulted to.
+                throw new KimiAcpException($"Kimi does not offer the model {effectiveModel}, so the session does not start.");
             }
         }
     }
 
-    // Skips the call only when the snapshot positively excludes this model (a "model" dimension is present and
-    // this value is not among its choices) — no "model" dimension at all in the snapshot is not evidence either
-    // way, so the attempt still goes ahead (best-effort try/catch above is what protects that case).
-    private bool _ShouldAttemptModelSwitch(string model) =>
-        _liveOptions.FirstOrDefault(option => option.Key == "model") is not { } modelOption || modelOption.Choices.Contains(model);
+    // The snapshot's own spelling of `model`, matched case-insensitively; the model itself when the snapshot has no
+    // "model" dimension (no evidence either way), and null when the snapshot positively excludes it.
+    private string? _ModelChoice(string model) =>
+        _liveOptions.FirstOrDefault(option => option.Key == "model") is not { } modelOption
+            ? model
+            : modelOption.Choices.FirstOrDefault(choice => string.Equals(choice, model, StringComparison.OrdinalIgnoreCase));
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {

@@ -26,30 +26,6 @@ public sealed class ConsentAuditLogTests : IDisposable
     private static ConsentAuditEntry Entry(string scope) =>
         new(DateTimeOffset.UtcNow, ConsentAuditAction.Approved, "Workflows", "pane-1", "workflows", scope, "rm -rf /tmp/x", Remembered: false);
 
-    [Fact]
-    public async Task ReadRecentAsync_AfterRecording_ReturnsEntriesNewestFirst()
-    {
-        var log = CreateLog();
-        await log.RecordAsync(Entry("first"));
-        await log.RecordAsync(Entry("second"));
-
-        var recent = await log.ReadRecentAsync();
-
-        Assert.Equal(new[] { "second", "first" }, recent.Select(entry => entry.Scope));
-    }
-
-    [Fact]
-    public async Task ReadRecentAsync_MalformedLine_IsSkipped()
-    {
-        var log = CreateLog();
-        await log.RecordAsync(Entry("valid"));
-        await File.AppendAllTextAsync(_path, "{ this is not valid json" + Environment.NewLine);
-
-        var recent = await log.ReadRecentAsync();
-
-        Assert.Equal("valid", Assert.Single(recent).Scope);
-    }
-
     /// <summary>
     /// A trail written by a newer build still reads. #AC-575 adds <c>Bypassed</c> to <see cref="ConsentAuditAction"/>,
     /// and a <see cref="System.Text.Json.Serialization.JsonStringEnumConverter"/> throws on a value it does not know

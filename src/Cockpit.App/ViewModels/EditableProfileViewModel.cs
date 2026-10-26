@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -127,6 +128,20 @@ public partial class EditableProfileViewModel : ViewModelBase
     // The permission-ceiling values offered in the delegation dropdown (AC-79), least- to most-permissive.
     public IReadOnlyList<string> PermissionCeilingChoices { get; } = ["plan", "default", "acceptEdits", "bypassPermissions"];
 
+    // AC-1593: the same values for the dropdown, with the ones above the organisation's delegation ceiling ruled out.
+    public IReadOnlyList<SelectableChoice> PermissionCeilingChoiceItems =>
+        [.. PermissionCeilingChoices.Select(value => new SelectableChoice(value, value, OrgPolicyCeilings.Allows(OrgPolicyCeilings.DelegationCeiling(_orgPolicy), value)))];
+
+    public string? PermissionCeilingManagedLabel => OrgPolicyMarking.AtMost(_orgPolicy, OrgPolicyCeilings.DelegationCeiling(_orgPolicy));
+
+    // AC-1593: an organisation that forbids auto-approve locks the checkbox; the stored value stays as it is.
+    public bool AutoApproveToolsEditable => !OrgPolicyCeilings.AutoApproveForbidden(_orgPolicy);
+
+    public string? AutoApproveToolsManagedLabel => OrgPolicyMarking.AutoApproveLabel(_orgPolicy);
+
+    // AC-1593: why sessions under this profile do not start, as stored; the profile itself is kept and stays editable.
+    public string? ProviderManagedLabel => OrgProviderPolicy.Refusal(_orgPolicy, _storedProfile);
+
     private SessionProviderOption _selectedProvider;
 
     // The provider dropdown writes null back when it cannot show the selection — a profile on a provider plugin that is
@@ -180,6 +195,8 @@ public partial class EditableProfileViewModel : ViewModelBase
     private IPluginProviderConfigView? _pluginConfigView;
 
     private readonly IPluginRegistrations? _pluginProviderRegistry;
+    private readonly ProvisionPolicy? _orgPolicy;
+    private readonly SessionProfile _storedProfile;
     private readonly IPluginProviderConfigViews? _pluginConfigViews;
 
     // Resolves whether the selected provider has a TTY route at all (AC-139), the same question
@@ -198,7 +215,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     // Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable
     // (removed, disabled, or failed to load) — the editor shows a "provider plugin not installed" state
     // instead of an empty settings region, and `ToProfile` preserves the original config as-is.
-    public bool IsPluginProviderMissing => IsPluginProvider && PluginConfigView is null;
+    public bool IsPluginProviderMissing =>
+        IsPluginProvider
+        && SelectedProvider.PluginProviderId is { Length: > 0 }
+        && PluginConfigView is null;
 
     public IReadOnlyList<SessionProviderOption> Providers { get; }
 
@@ -317,7 +337,9 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     // Whether the selected provider is registered by a plugin (#45) — swaps the fixed local-provider fields for
     // `PluginConfigView`'s content.
-    public bool IsPluginProvider => SelectedProvider.Value == SessionProvider.Plugin;
+    public bool IsPluginProvider =>
+        SelectedProvider.Value == SessionProvider.Plugin
+        && SelectedProvider.PluginProviderId is { Length: > 0 };
 
     // Whether this host runs terminals and the selected provider has a TTY route (AC-139).
     public bool HasTtyProvider => _hostRunsTty && SessionKindDefaults.HasTtyRoute(_ToRouteCheckProfile(), _ttyProviderResolver);
@@ -501,7 +523,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 // AC-1102: a key the profile does not store stays blank, never borrowing the option's declared
                 // default — Apply would persist that as the operator's own choice and pin a value nobody picked.
                 var value = storedDefaults?.GetValueOrDefault(option.Key);
-                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels, _orgPolicy));
             }
         }
 
@@ -550,8 +572,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         ITtySessionProviderResolver? ttyProviderResolver = null,
         ISessionLoginFlows? loginStarter = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
+        ProvisionPolicy? orgPolicy = null,
         bool hostRunsTty = true)
     {
+        _orgPolicy = orgPolicy;
+        _storedProfile = profile;
         _pluginConfigViews = pluginConfigViews;
         _tokenEstimator = tokenEstimator;
         _ttyProviderResolver = ttyProviderResolver;

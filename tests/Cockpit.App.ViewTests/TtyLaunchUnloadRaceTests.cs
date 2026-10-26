@@ -73,7 +73,7 @@ public class TtyLaunchUnloadRaceTests
         launcher.Launch(
                 Arg.Any<ITtySessionProvider>(), Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlyDictionary<string, string>>(),
                 Arg.Any<short>(), Arg.Any<short>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<string?>(),
-                Arg.Any<IReadOnlySet<string>?>(), Arg.Any<SessionResources?>(), Arg.Any<string?>())
+                Arg.Any<IReadOnlySet<string>?>(), Arg.Any<SessionResources?>(), Arg.Any<string?>(), Arg.Any<Action<string>?>())
             .Returns(_ =>
             {
                 launchStarted.TrySetResult();

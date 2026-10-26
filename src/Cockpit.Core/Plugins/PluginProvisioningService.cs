@@ -39,7 +39,7 @@ public sealed class PluginProvisioningService(IPluginStoreClient storeClient, IP
             }
 
             var outcome = installed.Staged ? PluginProvisionOutcome.Staged : PluginProvisionOutcome.Installed;
-            return new PluginProvisionResult(outcome, request.Id, request.Name, Error: null, download.Warning, installed.FolderId, installed.Sha256);
+            return new PluginProvisionResult(outcome, request.Id, request.Name, Error: null, download.Warning, installed.FolderId, installed.Sha256, installed.Manifest);
         }
         finally
         {

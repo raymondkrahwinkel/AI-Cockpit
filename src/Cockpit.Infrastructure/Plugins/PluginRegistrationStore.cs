@@ -71,6 +71,24 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
             file.Plugins[folderId] = entry;
         }, cancellationToken);
 
+    public Task SetExpectedMinVersionAsync(string folderId, string? expectedMinVersion, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(file =>
+        {
+            if (file.Plugins.TryGetValue(folderId, out var entry))
+            {
+                entry.ExpectedMinVersion = expectedMinVersion;
+            }
+        }, cancellationToken);
+
+    public Task SetVersionChosenAsync(string folderId, bool versionChosen, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(file =>
+        {
+            if (file.Plugins.TryGetValue(folderId, out var entry))
+            {
+                entry.VersionChosen = versionChosen;
+            }
+        }, cancellationToken);
+
     public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file => file.Plugins.Remove(folderId), cancellationToken);
 

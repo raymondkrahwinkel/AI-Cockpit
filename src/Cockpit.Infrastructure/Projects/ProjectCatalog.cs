@@ -48,13 +48,22 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
 
         // AC-762: a source that registers after the first read (plugin phase 2 runs after the window's first load)
         // gets its own read instead of leaving every card on it stuck until the operator opens Manage projects.
-        _sharedSources.Registered += source => { _ = _RefreshAfterRegistrationAsync(source); };
+        _sharedSources.Registered += source =>
+        {
+            _Watch(source);
+            _ = _RefreshAfterRegistrationAsync(source);
+        };
 
         // AC-894: the watcher asks which projects to poll every tick and reports each check back here.
         if (_depotSync is not null)
         {
             _depotSync.BoundProjects = DepotBoundProjectsAsync;
             _depotSync.OnChecked = SetRemoteChangeStateAsync;
+        }
+
+        foreach (var source in _sharedSources.Sources)
+        {
+            _Watch(source);
         }
     }
 
@@ -90,9 +99,31 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         });
 
     // The row just bound must not stay on offer until the next full reload: a fresh read finds it bound now.
-    public async Task<Project> AddBoundProjectAsync(Project project)
+    public async Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum)
     {
+        var sharedId = _BoundTo(project);
+        if (_depotSync is not null
+            && baselineChecksum is not { Length: > 0 }
+            && sharedId is { Length: > 0 }
+            && _ResolveSharedSource(project) is { } source)
+        {
+            try
+            {
+                var result = await source.PrepareBindingAsync(sharedId, CancellationToken.None).ConfigureAwait(false);
+                baselineChecksum = result.Succeeded ? result.Binding?.Checksum : null;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogDebug(exception, "Reading a baseline before binding {ProjectId} failed.", project.Id);
+            }
+        }
+
         var stored = await AddNewProjectAsync(project).ConfigureAwait(false);
+        if (_depotSync is not null && sharedId is { Length: > 0 } && baselineChecksum is { Length: > 0 } checksum)
+        {
+            _depotSync.SeedBaseline(stored.Id, sharedId, checksum);
+        }
+
         await RefreshSharedProjectsAsync().ConfigureAwait(false);
         return stored;
     }
@@ -205,6 +236,18 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         }
     }
 
+    private void _Watch(ISharedProjectSource source)
+    {
+        _depotSync?.Watch(source);
+        source.Changed += sharedId =>
+        {
+            if (sharedId is null)
+            {
+                _ = _RefreshAfterRegistrationAsync(source);
+            }
+        };
+    }
+
     private async Task _LoadSharedProjectsAsync(CancellationToken cancellationToken)
     {
         var sources = _sharedSources.Sources;
@@ -255,7 +298,7 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                 continue;
             }
 
-            groups.Add(new SharedProjectGroup(source.SourceName, visible, result.Succeeded ? null : result.Error));
+            groups.Add(new SharedProjectGroup(source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo));
         }
 
         _sharedProjectGroups = groups;
@@ -280,8 +323,10 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             if (byId.TryGetValue(boundTo, out var sharedProject))
             {
                 // AC-247/AC-763: every claimed field unlocks once the source says this role can write back.
-                _ownership.Register(new ProjectOwnershipRegistration(
-                    project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)));
+                _ownership.RegisterOrRefresh(
+                    new ProjectOwnershipRegistration(
+                        project.Id, new ProjectFieldOwnership(source.SourceName, IsEditable: sharedProject.CanWriteBack, Role: sharedProject.Role)),
+                    source.SourceName);
 
                 if (!string.Equals(project.SharedSourceName, source.SourceName, StringComparison.Ordinal))
                 {

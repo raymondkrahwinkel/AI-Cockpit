@@ -23,5 +23,18 @@ internal sealed class FirstRunWizardStateStore : IFirstRunWizardStateStore, ISin
         (await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false))?.FirstRunWizardVersion;
 
     public Task MarkCompletedAsync(int version, CancellationToken cancellationToken = default) =>
-        _configFile.UpdateAsync(file => file.FirstRunWizardVersion = version, cancellationToken);
+        _configFile.UpdateAsync(file =>
+        {
+            file.FirstRunWizardVersion = version;
+            file.FirstRunWizardResume = null;
+        }, cancellationToken);
+
+    public async Task<FirstRunWizardResumeState?> GetResumeStateAsync(CancellationToken cancellationToken = default) =>
+        (await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false))?.FirstRunWizardResume?.ToDomain();
+
+    public Task SaveResumeStateAsync(FirstRunWizardResumeState state, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return _configFile.UpdateAsync(file => file.FirstRunWizardResume = FirstRunWizardResumeEntry.FromDomain(state), cancellationToken);
+    }
 }

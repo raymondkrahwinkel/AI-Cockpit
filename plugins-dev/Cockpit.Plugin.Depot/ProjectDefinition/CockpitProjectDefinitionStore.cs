@@ -1,58 +1,81 @@
 using System.Text.Json;
+using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 
 namespace Cockpit.Plugin.Depot.ProjectDefinition;
 
-// Reads and writes `.cockpit/project.json` in a Depot project through a connection's own MCP server (AC-244), the same `ICockpitHost.CallMcpToolAsync` seam `DepotMemorySource` already uses for `list_projects`.
-// AC-244: a baseChecksum mismatch on write surfaces as an ordinary PluginMcpToolCallOutcome.Failed with Depot's own
-// error text — Depot's MCP layer carries no separate, typed conflict signal (its tool wrapper turns any handler
-// failure, conflict or otherwise, into the same shape: an error with only a message). AC-247 classifies that text
-// after the fact instead (see CockpitProjectDefinitionWriteResult.Failed) — WriteAsync itself stays a thin,
-// unopinionated relay of whatever Depot said.
+// Reads `.cockpit/project.json` inline from Depot's project feed and writes it through the checksum-guarded REST route.
 public static class CockpitProjectDefinitionStore
 {
     public const string DefinitionPath = ".cockpit/project.json";
 
     public static async Task<CockpitProjectDefinitionReadResult> ReadAsync(
-        ICockpitHost host, string mcpServerName, string depotProjectSlug, CancellationToken cancellationToken = default)
+        ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress,
+        HttpClient? httpClient = null, CancellationToken cancellationToken = default)
     {
-        var result = await host.CallMcpToolAsync(
-            mcpServerName,
-            "read",
-            new Dictionary<string, object?> { ["project"] = depotProjectSlug, ["path"] = DefinitionPath },
-            projectId: null,
-            cancellationToken).ConfigureAwait(false);
-
-        return result.Outcome switch
+        var source = httpClient is null
+            ? DepotProjectListingSource.For(host, connection)
+            : new DepotProjectListingSource(host, connection, httpClient);
+        var result = await source.ListAsync(cancellationToken).ConfigureAwait(false);
+        if (result.Outcome == DepotProjectListingOutcome.NotSignedIn)
         {
-            PluginMcpToolCallOutcome.AuthorizationRequired => CockpitProjectDefinitionReadResult.AuthorizationRequired,
-            PluginMcpToolCallOutcome.Success => _ParseReadEnvelope(result.Content ?? string.Empty),
-            _ => CockpitProjectDefinitionReadResult.Failed(
-                result.Error is { Length: > 0 } error ? error : "Depot did not return a project definition."),
+            return CockpitProjectDefinitionReadResult.AuthorizationRequired;
+        }
+
+        if (result.Outcome != DepotProjectListingOutcome.Success || !result.IncludesCockpit)
+        {
+            return CockpitProjectDefinitionReadResult.Failed(
+                result.Error is { Length: > 0 } error ? error : "Depot did not return project definitions through its REST API.");
+        }
+
+        var project = result.Projects.SingleOrDefault(candidate =>
+            string.Equals(candidate.Key, depotProjectAddress, StringComparison.OrdinalIgnoreCase));
+        if (project?.Cockpit is not { } cockpit)
+        {
+            return CockpitProjectDefinitionReadResult.Failed($"[NotFound] No Depot project '{depotProjectAddress}' was found.");
+        }
+
+        return cockpit.State switch
+        {
+            "ok" when cockpit.Definition is { } definition && cockpit.Checksum is { Length: > 0 } checksum =>
+                CockpitProjectDefinitionReadResult.Success(definition, checksum),
+            "absent" => CockpitProjectDefinitionReadResult.Failed($"[NotFound] '{DefinitionPath}' does not exist."),
+            "tooLarge" => CockpitProjectDefinitionReadResult.Failed($"'{DefinitionPath}' is larger than this Cockpit version accepts."),
+            "invalid" => CockpitProjectDefinitionReadResult.Failed($"'{DefinitionPath}' is not valid JSON."),
+            _ => CockpitProjectDefinitionReadResult.Failed("Depot's project definition came back in an unexpected shape."),
         };
     }
 
-    // `baseChecksum`: From a prior `ReadAsync` — omit only for a project's first write.
-    // `callerRole`: The caller's `CockpitProjectRole` on this project, when already known (e.g. from a prior
-    // `list_projects` row) — a role below Editor short-circuits here with
-    // `CockpitProjectDefinitionWriteResult.PermissionDenied` and never calls Depot at all. Omit (the
-    // default) to skip this local check and rely solely on Depot's own enforcement, which always applies
-    // regardless — this parameter only saves the round trip and lets a caller name the reason before it dims a
-    // field, it grants nothing Depot itself would not already refuse.
+    // `baseChecksum`: From a prior `ReadAsync`; an empty value sends If-None-Match: * for a project's first write.
+    // `callerRole`: The caller's `CockpitProjectRole` on this project, when already known. A current Depot's
+    // path-aware `cockpit.canWrite` wins; an older Depot without that field keeps the role-based guard.
     public static async Task<CockpitProjectDefinitionWriteResult> WriteAsync(
-        ICockpitHost host, string mcpServerName, string depotProjectSlug, CockpitProjectDefinition definition,
-        string? baseChecksum, CockpitProjectRole? callerRole = null, CancellationToken cancellationToken = default)
+        ICockpitHost host, DepotConnectionRegistration connection, string depotProjectAddress,
+        CockpitProjectDefinition definition, string? baseChecksum, CockpitProjectRole? callerRole = null,
+        HttpClient? httpClient = null, CancellationToken cancellationToken = default)
     {
-        if (callerRole is { } role && !role.CanWrite())
+        var listing = await (httpClient is null
+                ? DepotProjectListingSource.For(host, connection)
+                : new DepotProjectListingSource(host, connection, httpClient))
+            .ListAsync(cancellationToken).ConfigureAwait(false);
+        var listedProject = listing.Outcome == DepotProjectListingOutcome.Success
+            ? listing.Projects.SingleOrDefault(candidate =>
+                string.Equals(candidate.Key, depotProjectAddress, StringComparison.OrdinalIgnoreCase))
+            : null;
+        var listedRole = callerRole ?? CockpitProjectRoles.TryParse(listedProject?.Role);
+        if (listedProject?.Cockpit?.CanWrite is false)
         {
-            return CockpitProjectDefinitionWriteResult.PermissionDenied(role.WriteDeniedReason());
+            return CockpitProjectDefinitionWriteResult.PermissionDenied(
+                "This project's Cockpit definition is read-only for you.");
         }
 
-        // AC-607 decision 3: never forward an ExtensionData field a newer build wrote if it looks secret-shaped
-        // and is not already encrypted — checked both at the definition's own top level and inside each
-        // SensitiveFields row's own ExtensionData (finding 4). Applied to a copy, never definition itself —
-        // WriteAsync must not change what the caller still holds a reference to.
+        if (listedProject?.Cockpit?.CanWrite is null && listedRole is { } fallbackRole && !fallbackRole.CanWrite())
+        {
+            return CockpitProjectDefinitionWriteResult.PermissionDenied(fallbackRole.WriteDeniedReason());
+        }
+
+        // AC-607 decision 3: never forward a secret-shaped, unencrypted extension field. Apply the guard to a
+        // copy so WriteAsync never changes the definition the caller still holds.
         var (kept, droppedKeys) = CockpitProjectDefinitionExtensionDataGuard.Apply(definition.ExtensionData);
         var (sensitiveFieldsKept, sensitiveFieldsDroppedKeys) =
             CockpitProjectDefinitionExtensionDataGuard.ApplyToSensitiveFields(definition.SensitiveFields);
@@ -64,31 +87,36 @@ public static class CockpitProjectDefinitionStore
                 droppedKeys.Count == 0 ? definition.ExtensionData : kept,
                 sensitiveFieldsDroppedKeys.Count == 0 ? definition.SensitiveFields : sensitiveFieldsKept);
 
-        var arguments = new Dictionary<string, object?>
+        var address = depotProjectAddress.Split('/', 2);
+        if (address.Length != 2 || address.Any(string.IsNullOrWhiteSpace))
         {
-            ["project"] = depotProjectSlug,
-            ["path"] = DefinitionPath,
-            ["content"] = CockpitProjectDefinitionJson.Serialize(outgoing),
-        };
-        if (baseChecksum is { Length: > 0 })
-        {
-            arguments["baseChecksum"] = baseChecksum;
+            return CockpitProjectDefinitionWriteResult.Failed(
+                $"Depot project '{depotProjectAddress}' has no organization-qualified address.");
         }
 
-        var result = await host.CallMcpToolAsync(mcpServerName, "write", arguments, projectId: null, cancellationToken)
-            .ConfigureAwait(false);
+        DepotApiResult result;
+        try
+        {
+            using var api = new DepotApi(host, connection, httpClient);
+            var path = $"cockpit/projects/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/definition";
+            result = await api.PutJsonAsync(path, outgoing, baseChecksum, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return CockpitProjectDefinitionWriteResult.Failed(exception.Message);
+        }
 
         return result.Outcome switch
         {
-            PluginMcpToolCallOutcome.AuthorizationRequired => CockpitProjectDefinitionWriteResult.AuthorizationRequired,
-            PluginMcpToolCallOutcome.Success => _ParseWriteEnvelope(result.Content ?? string.Empty, allDroppedKeys),
-            _ => CockpitProjectDefinitionWriteResult.Failed(
-                result.Error is { Length: > 0 } error ? error : "Depot did not confirm the write."),
+            DepotApiOutcome.NotSignedIn => CockpitProjectDefinitionWriteResult.AuthorizationRequired,
+            DepotApiOutcome.Forbidden => CockpitProjectDefinitionWriteResult.PermissionDenied("You do not have permission to write this project definition."),
+            DepotApiOutcome.Conflict => CockpitProjectDefinitionWriteResult.Conflict(),
+            DepotApiOutcome.TooLarge => CockpitProjectDefinitionWriteResult.PayloadTooLarge("The project definition is larger than this Depot accepts."),
+            DepotApiOutcome.Success => _ParseWriteEnvelope(result.Content.Span, allDroppedKeys),
+            _ => CockpitProjectDefinitionWriteResult.Failed("Depot did not confirm the write."),
         };
     }
 
-    // A shallow copy of `definition` with `extensionData` and `sensitiveFields` substituted — every other field
-    // carried through unchanged, so the guard's refusal never reaches the caller's own object.
     private static CockpitProjectDefinition _WithGuardedData(
         CockpitProjectDefinition definition, Dictionary<string, JsonElement>? extensionData,
         List<CockpitProjectSensitiveFieldEntry>? sensitiveFields) => new()
@@ -107,27 +135,8 @@ public static class CockpitProjectDefinitionStore
         ExtensionData = extensionData,
     };
 
-    private static CockpitProjectDefinitionReadResult _ParseReadEnvelope(string json)
-    {
-        try
-        {
-            var envelope = JsonSerializer.Deserialize<_ReadEnvelope>(json, _SerializerOptions);
-            if (envelope?.Content is not { } content || envelope.Checksum is not { Length: > 0 } checksum)
-            {
-                return CockpitProjectDefinitionReadResult.Failed("Depot's read result came back in an unexpected shape.");
-            }
-
-            return CockpitProjectDefinitionJson.TryDeserialize(content, out var definition, out var parseError)
-                ? CockpitProjectDefinitionReadResult.Success(definition!, checksum)
-                : CockpitProjectDefinitionReadResult.Failed(parseError!);
-        }
-        catch (JsonException exception)
-        {
-            return CockpitProjectDefinitionReadResult.Failed($"Couldn't read Depot's response: {exception.Message}");
-        }
-    }
-
-    private static CockpitProjectDefinitionWriteResult _ParseWriteEnvelope(string json, IReadOnlyList<string> droppedExtensionKeys)
+    private static CockpitProjectDefinitionWriteResult _ParseWriteEnvelope(
+        ReadOnlySpan<byte> json, IReadOnlyList<string> droppedExtensionKeys)
     {
         try
         {
@@ -143,12 +152,6 @@ public static class CockpitProjectDefinitionStore
     }
 
     private static readonly JsonSerializerOptions _SerializerOptions = new(JsonSerializerDefaults.Web);
-
-    private sealed class _ReadEnvelope
-    {
-        public string? Content { get; set; }
-        public string? Checksum { get; set; }
-    }
 
     private sealed class _WriteEnvelope
     {

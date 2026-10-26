@@ -123,6 +123,10 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `plugins.channel` | Talking to its own UI | Ambient | 0.39.0 | — | `ICockpitHost.Channel` |
 | `health.sections` | Reporting its own health | Ambient | 0.65.0 | — | `ICockpitHost.AddHealthSection` |
 | `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
+| `settings.carrier` | Keeping the cockpit's settings for the operator | Sensitive | 0.94.0 | — | `ICockpitHost.AddSettingsCarrier` |
+| `backup.target` | Keeping the cockpit's backups | Sensitive | 0.101.0 | — | `ICockpitHost.AddBackupTarget`, `ICockpitHost.RemoveBackupTarget` |
+| `first-start.routes` | A way to begin on the first start | Ambient | 0.94.0 | — | `ICockpitUiHost.AddFirstStartRoute`, `IFirstStartPluginUi.CreateFirstStartRoutes`, `IFirstStartPlugin.InitializeFirstStart` |
+| `first-start.setup` | Setting up the cockpit on the first start | Sensitive | 0.102.0 | — | `IFirstStartHost.RestoreBackupAsync`, `IFirstStartHost.ApplyManifestAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
 | `clipboard.write` | Writing the clipboard | Sensitive | 0.3.0 | — | `ICockpitUiHost.SetClipboardTextAsync` |
 | `plugins.inventory` | Listing the installed plugins | Sensitive | 0.5.0 | — | `ICockpitHost.InstalledPlugins` |
@@ -149,8 +153,8 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `sessions.drive` | Typing into a running session | Dangerous | 0.3.0 | `paneId` | `ICockpitHost.SendToSessionAsync`, `ICockpitHost.InsertIntoSessionAsync`, `ICockpitHost.BindToSession`, `ICockpitActions.SendPromptToSessionAsync` |
 | `sessions.provide` | Being a session provider | Dangerous | 0.3.0 | — | `ICockpitHost.AddSessionProvider`, `ICockpitHost.AddTtyProvider`, `ICockpitUiHost.AddProviderConfigView` |
 | `sessions.resources` | Putting content into a session's context | Dangerous | 0.7.0 | — | `ICockpitHost.AddSessionResourceProvider`, `ICockpitHost.SessionResourceProviders` |
-| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync` |
-| `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync` |
+| `mcp.contribute` | Adding MCP servers | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpServer`, `ICockpitHost.RemoveMcpServer`, `ICockpitHost.GetMcpServerAuthStateAsync`, `ICockpitHost.SignInMcpServerAsync`, `ICockpitHost.SignInMcpServerWithGrantAsync`, `ICockpitHost.SignOutMcpServerAsync`, `ICockpitHost.McpServerAccountChanged` |
+| `mcp.call` | Calling MCP tools | Dangerous | 0.14.0 | `serverName`, `toolName` | `ICockpitHost.CallMcpToolAsync`, `ICockpitHost.ProbeMcpToolAsync`, `ICockpitHost.CreateAuthorizedHandler` |
 | `mcp.expose` | Serving its own MCP tools | Dangerous | 0.3.0 | `serverName` | `ICockpitHost.AddMcpEndpoint` |
 | `cli.managed` | Installing and running a managed CLI | Dangerous | 0.3.0 | `cliName` | `ICockpitHost.AddManagedCli`, `ICockpitHost.ResolveManagedCliPath`, `ICockpitHost.InstallManagedCliAsync`, `ICockpitHost.RemoveManagedCli`, `ICockpitHost.GetManagedCliStatusAsync`, `ICockpitHost.GetManagedCliAutoUpdateAsync`, `ICockpitHost.SetManagedCliAutoUpdateAsync` |
 | `time.entries` | Your own time entries | Sensitive | 0.107.0 | — | `ICockpitHost.TimeEntries` |
@@ -337,6 +341,9 @@ public interface ICockpitHost
     Task<bool> SetSessionNameAsync(string paneId, string name);                  // default false
     Task SuggestSessionName(string paneId, string name);                         // default no-op
     void AddHealthSection(IPluginHealthSection section);                         // default no-op
+    void AddSettingsCarrier(SettingsCarrierRegistration registration);          // default no-op
+    void AddBackupTarget(IBackupTarget target);                                 // default no-op
+    void RemoveBackupTarget(string id);                                         // default no-op
 }
 ```
 
@@ -369,10 +376,83 @@ names and keeps the tokens where `SignInMcpServerAsync` keeps them. The plugin p
 `PluginMcpSignInOutcome`, never a token; `Declined` means the server refused the grant. On a server, where no browser
 exists, this is the only sign-in there is. A plugin that calls it sets `minHostVersion` 0.92.0.
 
+`SignOutMcpServerAsync(name)` (AC-1660, host 0.105.0, SDK 3.25.0, and on `ICockpitUiHost` in UI 3.6.0) signs out of an MCP
+server the plugin contributed: the host forgets the tokens it keeps for it, including the host-only tokens of
+`CreateAuthorizedHandler(name, scope)`, so the next use asks for a sign-in again. Local only: the server is not asked to
+revoke anything, and a session started earlier keeps its token until it expires. Read `GetMcpServerAuthStateAsync`
+afterwards for the standing. A plugin that calls it sets `minHostVersion` 0.105.0.
+
+`McpServerAccountChanged` (AC-1665, host 0.105.3, SDK 3.26.0) is an event of `EventHandler<string>`, raised when the account
+behind one of the plugin's own MCP servers may have changed: a sign-in stored a new token, or the server was signed out.
+The argument is the server name as the plugin contributed it, never a token or an account id. A silent renewal, an
+abandoned sign-in and another plugin's server raise nothing. Use it to drop what the plugin cached about the previous
+account. A plugin that subscribes sets `minHostVersion` 0.105.3.
+
+`IBackupTarget` (AC-1501, SDK 3.8.0, namespace `Cockpit.Plugins.Abstractions.Backup`) is a place a cockpit backup is
+kept: `WriteAsync(name, stream)` keeps a finished archive and returns its id, `ListAsync()` names what it holds as
+`BackupTargetEntry` rows, and `OpenReadAsync(id)` hands one back as a stream. A write that fails must leave nothing
+`ListAsync` shows. The host's own target is a local folder. `AddBackupTarget(target)` (AC-1508, SDK 3.20.0, host 0.101.0)
+registers a plugin's target, keyed by its id: it is offered beside the local file in Options → Backup and to the
+scheduled backup, and `RemoveBackupTarget(id)` withdraws it. The Depot plugin registers one per connection, backed by
+that account's own space in Depot.
+`DeleteAsync(id)` (AC-1502, SDK 3.17.0) removes one backup for retention and returns `false` by default, meaning the
+target cannot delete: the host then keeps everything on it and says so once.
+
+`AddSettingsCarrier(registration)` (AC-540, SDK 3.9.0) registers the one place the cockpit's portable settings are kept:
+an opaque blob holding only what the host's white list carries, never a secret or a machine-bound path. Since AC-1510 the
+host pulls it at start and every 15 minutes and pushes a change shortly after a save, per setting against the base both
+machines last agreed on. A setting changed on both is offered to the operator as a choice; it is never merged quietly,
+and a setting a provisioning manifest manages is neither pushed nor taken over. A taken-over value lands at the next
+start. `SettingsCarrierRegistration.WriteIfUnchangedAsync` (SDK 3.23.0, host 0.104.0, optional `init`) writes only over
+the version the host names, the lowercase hex SHA-256 of the blob it last read or null for none, and returns `false`
+when the carrier holds something else by now. Without it the host reads, compares and writes, which leaves a window. A
+plugin that sets it sets `minHostVersion` 0.104.0. The Depot plugin carries the settings in the first connection's
+account space (`/cockpit/profile`, If-Match).
+
+`CreateAuthorizedHandler(name)` (AC-1587, SDK 3.19.0) gives a plugin an `HttpMessageHandler` for the routes of its own
+OAuth MCP server beside `/mcp`, such as a REST API or a SignalR hub. The host puts the bearer on its own copy of each
+request, so the plugin never sees the token. Only the origin of that server's URL is served (`ws`/`wss` count as
+`http`/`https`); any other origin, or a name that is not one of the plugin's own `GetMcpServers()` OAuth servers, throws
+`HttpRequestException`. Redirects are returned, not followed. Without a usable credential the answer is a 401 that never
+left the host; a 401 from the server renews the credential like the MCP connection does and resends a bodiless request
+once. Use it as `new HttpClient(host.CreateAuthorizedHandler(name))`, and for SignalR as
+`options.HttpMessageHandlerFactory = _ => host.CreateAuthorizedHandler(name)`, never `AccessTokenProvider`. It works the
+same on a desktop and on a server: the credential stays wherever the plugin's backend part runs.
+
+`CreateAuthorizedHandler(name, scope)` (AC-1586, SDK 3.22.0, host 0.103.0) is the same handler with a **host-only** token
+for `scope` alone, one of the scopes the contribution lists in `OAuthHostOnlyScopes`. The host gets it from the sign-in
+with a refresh-token grant that asks for that one scope (RFC 6749 §6), keeps it in memory only and never hands it to a
+session. Every token a session can be handed is narrowed the same way to the sign-in's scopes without the host-only
+ones. A scope the server states has to be within the request (one it leaves out counts as asked, RFC 6749 §5.1); a
+server that answers wider gives a session no token from that sign-in at all. Refreshes per server run one at a time
+and keep each rotated refresh token. Any other `scope`, or a server that will not narrow to it, is a 401 that never left
+the host. The Depot plugin uses it for
+`depot.inbox` (its `/cockpit/inbox` routes and `/hubs/inbox`).
+
 The UI host's `AddServerSettings(Func<IPluginUiChannel, Control> createView)` (AC-1511, host 0.92.0, SDK UI 3.3.0)
 registers the view an admin opens from **Admin → Plugins → Settings** for a server the plugin is also installed on. The
 channel it gets reaches the plugin's backend part **on that server**, through `POST /api/v1/plugins/{folderId}/channel/{action}`
 (admin keys only); it carries invokes, not events, and its audit line names the plugin and the action, never the payload.
+
+The UI host's `AddFirstStartRoute(FirstStartRoute route)` (AC-1504, host 0.94.0, SDK UI 3.4.0, namespace
+`Cockpit.Plugins.Abstractions.UI.Onboarding`) offers a way to begin on the first-run wizard's "How do you want to start?" step,
+next to the host's own "Start fresh" and "Restore a backup file". A route has an `Id`, a `Title`, a `Description` and a
+`CreateContent` factory; the content hangs under the choices once the route is picked. `AnswersWorkKind` (false by default)
+says the route settles "What you work on": the wizard strikes that step through and leaves it out of "Step n of N". The
+provider step is never skipped, because signing in to a provider is local. A route never picks a slot, so two plugins cannot collide; a second route with the
+same `Id` is ignored. Without a plugin that registers one, the step offers only the host's two choices.
+
+`AddFirstStartRoute` runs in `InitializeUi`, and on the very first start the wizard opens before that: such a route is
+there for **Run setup again** only. A route that must be there on the first start itself comes from
+`IFirstStartPluginUi.CreateFirstStartRoutes(IFirstStartHost host)` on the UI entry type (AC-1509, host 0.102.0, SDK UI
+3.5.0), which the host calls once per start before the wizard can open, in a light phase of its own: only that, and the
+backend entry type's `IFirstStartPlugin.InitializeFirstStart(ICockpitHost host)` (SDK 3.21.0) on a windowless host, so
+the backend part can register the channel handlers its route needs. `Initialize` and `InitializeUi` still run later,
+unchanged; `InitializeUi` gets the same UI part instance. The route's content reaches only what `IFirstStartHost` offers:
+`Channel`, the plugin's own channel; `RestoreBackupAsync(targetId, backupId)`, which restores a backup from a registered
+backup target the way the wizard's own restore does and restarts; and `ApplyManifestAsync(json, consent)`, which reads a
+provisioning manifest, hands what it would set up to `consent` as lines to show, and applies it only when that answers
+true. The bundled Depot plugin offers **Sign in to a Depot** this way.
 
 ### `IServiceProvider Services { get; }` {#iserviceprovider-services--get}
 The built host container. Resolve services you (or the host) registered:
@@ -1989,6 +2069,9 @@ public sealed record McpServerContribution(
 | `Url` | The server's HTTP endpoint, e.g. `https://x.youtrack.cloud/mcp`. |
 | `BearerToken` | Static bearer token sent as `Authorization: Bearer …`, or `null`/empty for no auth. |
 | `Scope` | Which session worlds this server fans out to **on first registration** — see below. |
+| `OAuthAuthority`, `OAuthClientId` (init) | Set `OAuthAuthority` for an OAuth server; `OAuthClientId` names a client the server already knows, else the cockpit registers itself (RFC 7591). |
+| `OAuthScopes` (init, AC-1586, host 0.103.0) | The scopes the sign-in asks for, space-separated, instead of what the server advertises. |
+| `OAuthHostOnlyScopes` (init, AC-1586, host 0.103.0) | Scopes among `OAuthScopes` that only the cockpit may spend, through `CreateAuthorizedHandler(name, scope)`. No token a session is handed carries one. |
 
 ### `McpContributionScope` {#mcpcontributionscope}
 

@@ -6,27 +6,21 @@ namespace Cockpit.Backend.Tests.Plugins;
 public class PluginStorageTests
 {
     [Fact]
-    public void SetThenGet_RoundTripsTypedValues()
+    public void SetThenGet_RoundTripsTypedValues_AndWritesThroughToPersist()
     {
-        var storage = new PluginStorage(new Dictionary<string, string>(), _ => { });
+        IReadOnlyDictionary<string, string>? persisted = null;
+        // A credential-free backup scrubs a secret to "" in place: reading it must not throw (Options search).
+        var storage = new PluginStorage(new Dictionary<string, string> { ["token"] = "" }, values => persisted = values);
+
+        Assert.Null(storage.Get<string>("token"));
 
         storage.Set("token", "ghp_secret");
         storage.Set("count", 42);
 
         Assert.Equal("ghp_secret", storage.Get<string>("token"));
         Assert.Equal(42, storage.Get<int>("count"));
-    }
-
-    [Fact]
-    public void Set_WritesThroughToPersist()
-    {
-        IReadOnlyDictionary<string, string>? persisted = null;
-        var storage = new PluginStorage(new Dictionary<string, string>(), values => persisted = values);
-
-        storage.Set("k", "v");
-
         Assert.NotNull(persisted);
-        Assert.Contains("k", persisted.Keys);
+        Assert.Contains("token", persisted.Keys);
     }
 
 }

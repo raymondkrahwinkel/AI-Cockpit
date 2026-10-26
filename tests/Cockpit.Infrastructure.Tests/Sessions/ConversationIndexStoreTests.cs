@@ -24,11 +24,10 @@ public sealed class ConversationIndexStoreTests : IDisposable
             new DateTimeOffset(2026, 10, day, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, day, 10, 0, 0, TimeSpan.Zero),
             "Done", new DateTimeOffset(2026, 10, day, 11, 0, 0, TimeSpan.Zero), false, false, transcript);
 
-    // One conversation per way of matching: its title, its project's name, a line of its transcript.
+    // One conversation per way of matching: its title, its project's name, a line of its transcript. The project
+    // and from filters are held by EarlierConversationsJourney.
     [Theory]
     [InlineData(null, null, null, "by-title,by-project,by-transcript")]
-    [InlineData("p-other", null, null, "by-title,by-transcript")]
-    [InlineData(null, "2026-10-04", null, "by-project,by-transcript")]
     [InlineData(null, null, "2026-10-06", "by-title,by-project")]
     public async Task SearchAsync_FindsByTitleProjectNameAndTranscript_WithAFragment_WithinTheFilters(string? projectId, string? from, string? to, string expected)
     {

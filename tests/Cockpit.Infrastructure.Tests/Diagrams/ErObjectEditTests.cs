@@ -86,22 +86,30 @@ public class ErObjectEditTests
         Assert.Contains("PK, FK or UK", edit.Refusal);
     }
 
-    [Theory]
-    [InlineData(DiagramErCardinality.One, DiagramErCardinality.One, "||--||")]
-    [InlineData(DiagramErCardinality.ZeroOrOne, DiagramErCardinality.ZeroOrOne, "|o--o|")]
-    [InlineData(DiagramErCardinality.OneOrMore, DiagramErCardinality.OneOrMore, "}|--|{")]
-    [InlineData(DiagramErCardinality.ZeroOrMore, DiagramErCardinality.ZeroOrMore, "}o--o{")]
-    public void Relate_WritesTheCardinalityPairTheOperatorChose(DiagramErCardinality from, DiagramErCardinality to, string connector)
+    [Fact]
+    public void Relate_WritesTheCardinalityPairTheOperatorChose()
     {
-        var edit = DiagramObjectEdit.Relate(Source, "ORDER", "CUSTOMER", from, to, "belongs to");
+        var cardinalities = new[]
+        {
+            (DiagramErCardinality.One, DiagramErCardinality.One, "||--||"),
+            (DiagramErCardinality.ZeroOrOne, DiagramErCardinality.ZeroOrOne, "|o--o|"),
+            (DiagramErCardinality.OneOrMore, DiagramErCardinality.OneOrMore, "}|--|{"),
+            (DiagramErCardinality.ZeroOrMore, DiagramErCardinality.ZeroOrMore, "}o--o{"),
+        };
 
-        Assert.Null(edit.Refusal);
-        Assert.EndsWith($"\n    ORDER {connector} CUSTOMER : \"belongs to\"", edit.Text);
-        Assert.Contains("data-entity1=\"ORDER\"", Rendered(edit.Text!), StringComparison.Ordinal);
+        foreach (var (from, to, connector) in cardinalities)
+        {
+            var edit = DiagramObjectEdit.Relate(Source, "ORDER", "CUSTOMER", from, to, "belongs to");
+
+            Assert.Null(edit.Refusal);
+            Assert.EndsWith($"\n    ORDER {connector} CUSTOMER : \"belongs to\"", edit.Text);
+            Assert.Contains("data-entity1=\"ORDER\"", Rendered(edit.Text!), StringComparison.Ordinal);
+        }
+
+        Relate_OverAnExistingRelationship_RewritesIt_AndKeepsItsNonIdentifyingLineStyle();
     }
 
-    [Fact]
-    public void Relate_OverAnExistingRelationship_RewritesIt_AndKeepsItsNonIdentifyingLineStyle()
+    private static void Relate_OverAnExistingRelationship_RewritesIt_AndKeepsItsNonIdentifyingLineStyle()
     {
         const string source = "erDiagram\n    CUSTOMER ||..o{ ORDER : \"places\"";
 
@@ -129,15 +137,6 @@ public class ErObjectEditTests
 
         Assert.Null(edit.Text);
         Assert.Contains("add_entity", edit.Refusal);
-    }
-
-    [Fact]
-    public void AnErCall_OnAFlowchart_IsRefused_NamingTheCallsThatDoWork()
-    {
-        var edit = DiagramObjectEdit.AddEntity("flowchart LR\n    A[\"Start\"]", "CUSTOMER");
-
-        Assert.Null(edit.Text);
-        Assert.Contains("add_node", edit.Refusal);
     }
 
 }

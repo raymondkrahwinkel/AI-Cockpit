@@ -39,6 +39,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // same run `LoadAsync` kicked off instead of racing it with a second, independent call.
     internal Task SharedProjectsLoadTask { get; private set; } = Task.CompletedTask;
 
+    [ObservableProperty]
+    private bool _isRefreshingSharedProjects;
+
     // Design-time constructor for the Avalonia previewer: projects kept in memory and no dialog service, so a rendered
     // surface can reach neither the operator's config nor a window that does not exist there. The commands are inert
     // in that context — see `_dialogs`.
@@ -368,12 +371,26 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _ApplyCurrent();
     }
 
+    [RelayCommand]
+    private async Task RefreshSharedProjectsAsync()
+    {
+        IsRefreshingSharedProjects = true;
+        try
+        {
+            await LoadSharedProjectsAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsRefreshingSharedProjects = false;
+        }
+    }
+
     private void _RepublishSharedProjectGroups()
     {
         SharedProjectGroups.Clear();
         foreach (var group in _snapshot.SharedProjectGroups)
         {
-            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error));
+            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error, group.SourceLogo));
         }
 
         OnPropertyChanged(nameof(HasSharedProjects));
@@ -402,7 +419,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowSharedProjectBindingDialogAsync(sharedProject.Id, group.SourceName, source.Key) is { } created)
         {
-            var stored = await AddBoundProjectAsync(created);
+            var stored = await AddBoundProjectAsync(created.Project, created.BaselineChecksum);
 
             // Selecting it belongs to this route and not to the shared tail: the operator just filled in a dialog
             // for this project, so it is what they are looking at. On the assistant's own route nobody clicked, and
@@ -413,9 +430,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
     // Stores `created`, a project just built from a shared definition, the way the assistant's bind does (AC-798):
     // both go through IProjectEditor.AddBoundProjectAsync.
-    internal async Task<Project> AddBoundProjectAsync(Project created)
+    internal async Task<Project> AddBoundProjectAsync(Project created, string? baselineChecksum)
     {
-        var stored = await _editor.AddBoundProjectAsync(created);
+        var stored = await _editor.AddBoundProjectAsync(created, baselineChecksum);
         _ApplyCurrent();
         return stored;
     }

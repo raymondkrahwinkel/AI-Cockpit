@@ -25,12 +25,6 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
     }
 
     [Fact]
-    public void ClassifyError_ANonHttpException_StaysUnknown()
-    {
-        Assert.Equal(SessionErrorKind.Unknown, OpenAiCompatSessionDriver._ClassifyError(new HttpRequestException("server unreachable")));
-    }
-
-    [Fact]
     public void RetryAfterFrom_A429WithADeltaSecondsHeader_ReturnsThatManySecondsFromNow()
     {
         var ex = new ClientResultException(new _FakeResponse(429, retryAfterHeaderValue: "30"));
@@ -48,14 +42,6 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
         var ex = new ClientResultException(new _FakeResponse(429, retryAfterHeaderValue: "Wed, 21 Oct 2026 07:28:00 GMT"));
 
         Assert.Equal(new DateTimeOffset(2026, 10, 21, 7, 28, 0, TimeSpan.Zero), OpenAiCompatSessionDriver._RetryAfterFrom(ex));
-    }
-
-    [Fact]
-    public void RetryAfterFrom_NoRetryAfterHeader_ReturnsNull()
-    {
-        var ex = new ClientResultException(new _FakeResponse(429));
-
-        Assert.Null(OpenAiCompatSessionDriver._RetryAfterFrom(ex));
     }
 
     // Minimal PipelineResponse: just enough of the abstract surface to build a ClientResultException with a

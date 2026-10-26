@@ -61,7 +61,7 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
 
     public Task<Project> AddNewProjectAsync(Project project) => throw new NotSupportedException(NoPath);
 
-    public Task<Project> AddBoundProjectAsync(Project project) => throw new NotSupportedException(NoPath);
+    public Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum) => throw new NotSupportedException(NoPath);
 
     public Task<bool> MarkOpenedAsync(string projectId, DateTimeOffset openedAt) =>
         throw new NotSupportedException("A server records its own sessions' starts.");

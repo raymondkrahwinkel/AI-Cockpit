@@ -57,6 +57,7 @@ internal sealed class ServerPluginSettings
                 await relay.SignInMcpServerAsync(folderId, name, cancellationToken).ConfigureAwait(false), ignoreCase: true, out var outcome)
                 ? outcome
                 : PluginMcpSignInOutcome.Unavailable,
+            (name, cancellationToken) => relay.SignOutMcpServerAsync(folderId, name, cancellationToken),
             profiles,
             projects,
             new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)));

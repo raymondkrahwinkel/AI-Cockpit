@@ -757,6 +757,7 @@ public partial class TtyView : UserControl
             // AC-779: Launcher.Launch can block for AC-646's 5s OAuth-renewal budget plus the pty spawn — offloaded
             // to the thread pool so that wait lands there instead of freezing the UI, same as AC-747's offload.
             // The await marshals the result back onto this thread exactly as before.
+            string? policyNotice = null;
             var pty = await Task.Run(() => launch.Launcher.Launch(
                 launch.Provider,
                 launch.Profile,
@@ -772,12 +773,19 @@ public partial class TtyView : UserControl
                 // AC-165: what the plugins gave this session, resolved before the launch was configured.
                 launch.Contributed,
                 // AC-218: the project this session runs under, so the MCP fan-out resolves against its registry view.
-                launch.ProjectId));
+                launch.ProjectId,
+                // AC-1593: what the organisation's policy changed about this launch, said in the pane rather than silently.
+                notice: message => policyNotice = message));
             // AC-1139: the pane may have closed while its pty started asynchronously.
             if (Parent is null)
             {
                 pty.Dispose();
                 return;
+            }
+
+            if (policyNotice is not null)
+            {
+                Terminal.Write(Encoding.UTF8.GetBytes($"{policyNotice}\r\n"));
             }
 
             _pty = pty;

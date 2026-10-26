@@ -14,7 +14,7 @@ public interface IProjectComposer
     /// Composes a local project bound to a shared definition, the "Add to my projects…" dialog's "Choose…" route
     /// with no window; null plus the reason when the definition cannot be read or the resource rows do not fit.
     /// </summary>
-    Task<(Project? Project, string? Refusal)> ComposeSharedProjectAsync(
+    Task<(SharedProjectBindResult? Result, string? Refusal)> ComposeSharedProjectAsync(
         string sharedProjectId,
         ISharedProjectSource source,
         string sourceDirectory,

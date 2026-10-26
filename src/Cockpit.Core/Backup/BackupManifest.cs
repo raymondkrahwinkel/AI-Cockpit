@@ -1,3 +1,6 @@
+using System.IO.Compression;
+using System.Text.Json;
+
 namespace Cockpit.Core.Backup;
 
 // The note a backup carries about itself (#70), written as `backup.json` at the root of the archive.
@@ -43,4 +46,19 @@ public sealed record BackupManifest(
         _ =>
             $"This backup was made by a newer cockpit (layout {Schema}, this one reads {CurrentSchema}). Update first — a partial restore of a layout we do not know is worse than none.",
     };
+
+    // The manifest of the archive in `archive`, which is left open for its owner (AC-1508: here, so a backup fetched
+    // from a target can be shown before it is restored).
+    public static async Task<BackupManifest> ReadAsync(Stream archive, CancellationToken cancellationToken = default)
+    {
+        using var zip = new ZipArchive(archive, ZipArchiveMode.Read, leaveOpen: true);
+
+        var entry = zip.GetEntry(FileName)
+            ?? throw new InvalidOperationException("This zip is not a cockpit backup: it has no backup.json.");
+
+        await using var stream = entry.Open();
+
+        return await JsonSerializer.DeserializeAsync<BackupManifest>(stream, cancellationToken: cancellationToken)
+            ?? throw new InvalidOperationException("This backup's manifest could not be read.");
+    }
 }

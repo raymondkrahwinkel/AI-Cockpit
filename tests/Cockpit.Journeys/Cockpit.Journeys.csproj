@@ -46,10 +46,29 @@
     <AssemblyMetadata Include="BrowserDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Browser\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="CockpitServerDirectory" Value="$(MSBuildThisFileDirectory)..\..\src\Cockpit.Server\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="EchoProviderDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.Plugin.EchoProvider\bin\$(Configuration)\$(TargetFramework)\" />
+    <AssemblyMetadata Include="GitStatusDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\" />
     <AssemblyMetadata Include="WorkflowsDirectory" Value="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Workflows\bin\$(Configuration)\$(TargetFramework)\" />
   </ItemGroup>
 
   <!-- The bundled plugins beside the output, where the desktop's startup installs them from. -->
   <Import Project="..\..\src\BundledPlugins.targets" />
+
+  <!-- The plugins the app no longer ships, installed beside the output so the startup journey still has a provider, workflow steps and autopilot to hold. -->
+  <ItemGroup>
+    <_StoreOnlyPlugin Include="Autopilot" FolderId="autopilot" />
+    <_StoreOnlyPlugin Include="ClaudeProvider" FolderId="claude-provider" />
+    <_StoreOnlyPlugin Include="CliAgentProvider" FolderId="cli-agent-provider" />
+    <_StoreOnlyPlugin Include="Clock" FolderId="clock" />
+    <_StoreOnlyPlugin Include="ExampleCompanionTool" FolderId="example-companion-tool" />
+    <_StoreOnlyPlugin Include="ExampleWorkspace" FolderId="example-workspace" />
+    <_StoreOnlyPlugin Include="FanOut" FolderId="fan-out" />
+    <_StoreOnlyPlugin Include="GitStatus" FolderId="git-status" />
+    <_StoreOnlyPlugin Include="GeminiProvider" FolderId="gemini-provider" />
+    <_StoreOnlyPlugin Include="TranscriptSearch" FolderId="transcript-search" />
+    <_StoreOnlyPlugin Include="UsageTrend" FolderId="usage-trend" />
+    <BundledPlugin Include="@(_StoreOnlyPlugin)" />
+    <ProjectReference Include="@(_StoreOnlyPlugin->'$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.%(Identity)\Cockpit.Plugin.%(Identity).csproj')"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+  </ItemGroup>
 
 </Project>

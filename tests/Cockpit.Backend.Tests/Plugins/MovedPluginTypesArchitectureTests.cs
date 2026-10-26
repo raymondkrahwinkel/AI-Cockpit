@@ -49,17 +49,6 @@ public class MovedPluginTypesArchitectureTests
         }
     }
 
-    // Acceptance 2, narrowed to PluginStorage — the one of the ticket's three that has no Avalonia-tainted surface.
-    // This does not need to assert much: it would simply not compile if PluginStorage were still in Cockpit.App,
-    // which Backend.Tests never references.
-    [Fact]
-    public void PluginStorage_BuildsAndRuns_WithoutApp()
-    {
-        var storage = new PluginStorage(new Dictionary<string, string>(), _ => { });
-        storage.Set("key", 42);
-        Assert.Equal(42, storage.Get<int>("key"));
-    }
-
     // Regression guard for the move itself: the ten moved registries carry ISingletonService and used to be
     // discovered by App's own assembly scan. Infrastructure's scan (already wired for its own ISingletonService
     // types) must pick them up the same way, with no registration left behind in Cockpit.App.

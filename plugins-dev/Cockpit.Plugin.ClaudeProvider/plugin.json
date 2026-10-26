@@ -1,11 +1,14 @@
 {
   "id": "claude-provider",
   "name": "Claude Code",
-  "version": "0.28.1",
+  "version": "0.28.3",
   "entryAssembly": "Cockpit.Plugin.ClaudeProvider.dll",
   "entryType": "Cockpit.Plugin.ClaudeProvider.ClaudeProviderPlugin",
   "uiAssembly": "Cockpit.Plugin.ClaudeProvider.UI.dll",
   "uiEntryType": "Cockpit.Plugin.ClaudeProvider.UI.ClaudeProviderUi",
+  "sessionProviders": [
+    { "id": "claude", "name": "Claude" }
+  ],
   "abstractionsVersion": 3,
   "minHostVersion": "0.90.0",
   "description": "Claude as a provider plugin (Fase 4). Runs the real interactive Claude TUI in a pane (TTY) and, headless, drives it over stream-json (SDK) with the cockpit's permission prompts, live model/permission/effort switching, and usage limits. Bundled and pre-approved: out of the box nothing changes. Requires the claude CLI installed and logged in on the machine running Cockpit.",

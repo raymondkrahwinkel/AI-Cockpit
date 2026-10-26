@@ -10,7 +10,7 @@ namespace Cockpit.Infrastructure.Configuration;
 // credentials are encrypted/decrypted, covering every section including a plugin's own storage.
 internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyHolder? keyHolder = null)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    internal static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
@@ -30,6 +30,9 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // still in flight — see UpdateAsync's own comment for why that beats trusting the write gate's poll order.
     private readonly Lock _tailLock = new();
     private Task _tail = Task.CompletedTask;
+
+    // AC-1510: said after every save of a config file, with its path, so the settings sync can push a change.
+    internal static event Action<string>? Written;
 
     public string ConfigFilePath => configFilePath;
 
@@ -175,7 +178,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         }
     }
 
-    private static async Task<T> WhenNotBeingReplacedAsync<T>(Func<Task<T>> read, CancellationToken cancellationToken)
+    internal static async Task<T> WhenNotBeingReplacedAsync<T>(Func<Task<T>> read, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + ReadContentionWindow;
         while (true)
@@ -256,6 +259,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     // already holds one, UpdateNowAsync's own or a CockpitConfigWriteBatch's held across the whole scope.
     internal async Task WriteNowAsync(CockpitConfigFile configFile)
     {
+        ManagedConfigKeys.Enforce(configFile);
         var document = JsonSerializer.SerializeToNode(configFile, SerializerOptions)
             ?? throw new InvalidOperationException("The cockpit configuration serialized to nothing.");
 
@@ -281,6 +285,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             _keyHolder.NoteUnprotectedSecretsWritten();
         }
 
+        Written?.Invoke(configFilePath);
         await Task.CompletedTask.ConfigureAwait(false);
     }
 

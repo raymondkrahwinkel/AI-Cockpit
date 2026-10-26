@@ -5,6 +5,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.UI.Onboarding;
 
 namespace Cockpit.App.Plugins;
 
@@ -43,12 +44,11 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
         {
             try
             {
-                if (activateUi(discovered, plugin) is not { } ui)
+                if (_Activate(discovered, plugin, activateUi) is not { } ui)
                 {
                     continue;
                 }
 
-                _ui[discovered] = ui;
                 var host = hostFor(discovered, ui);
                 _hosts[discovered] = host;
                 ui.InitializeUi(host);
@@ -59,6 +59,69 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
                 diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-ui", exception.Message);
             }
         }
+    }
+
+    // AC-1509: the light phase before the first-run wizard, so a plugin's route is there on the very first start. Only
+    // the backend part's InitializeFirstStart and the UI part's routes run; Initialize and InitializeUi stay where they
+    // were, and InitializeUi later takes the UI part activated here. A plugin that throws loses its route, nothing else.
+    public void InitializeFirstStart(
+        Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi,
+        Func<DiscoveredPlugin, ICockpitPlugin, ICockpitHost> backendHostFor,
+        Func<DiscoveredPlugin, IFirstStartHost> firstStartHostFor,
+        IFirstStartRouteRegistry routes)
+    {
+        foreach (var (discovered, plugin) in backend.LoadedParts)
+        {
+            try
+            {
+                if (plugin is IFirstStartPlugin firstStart)
+                {
+                    firstStart.InitializeFirstStart(backendHostFor(discovered, plugin));
+                }
+
+                if (_ActivateQuietly(discovered, plugin, activateUi) is not IFirstStartPluginUi ui)
+                {
+                    continue;
+                }
+
+                foreach (var route in ui.CreateFirstStartRoutes(firstStartHostFor(discovered)))
+                {
+                    if (!routes.Register(route, discovered.Manifest.Name))
+                    {
+                        logger.LogWarning("First-start route '{RouteId}' of plugin {PluginId} is already offered by another plugin; it is ignored.", route.Id, discovered.FolderId);
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Plugin {PluginId}'s first-start part failed; its first-start routes are skipped.", discovered.FolderId);
+                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize-first-start", exception.Message);
+            }
+        }
+    }
+
+    // A UI part that cannot load is InitializeUi's to record, once, with the reason; here it only offers no route.
+    private ICockpitPluginUi? _ActivateQuietly(DiscoveredPlugin discovered, ICockpitPlugin? plugin, Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi)
+    {
+        try
+        {
+            return _Activate(discovered, plugin, activateUi);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Plugin {PluginId}'s UI part did not load for the first start; InitializeUi reports it.", discovered.FolderId);
+            return null;
+        }
+    }
+
+    private ICockpitPluginUi? _Activate(DiscoveredPlugin discovered, ICockpitPlugin? plugin, Func<DiscoveredPlugin, ICockpitPlugin?, ICockpitPluginUi?> activateUi)
+    {
+        if (!_ui.TryGetValue(discovered, out var ui) && activateUi(discovered, plugin) is { } activated)
+        {
+            ui = _ui[discovered] = activated;
+        }
+
+        return ui;
     }
 
     // AC-1571: the UI part type and host of the plugin with manifest id `pluginId`, when that part is its own type. One the

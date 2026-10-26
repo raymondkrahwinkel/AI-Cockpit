@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 
@@ -379,4 +380,5 @@ public sealed record SessionLaunched(
     bool IsRunning,
     int? ProcessId,
     SessionCapabilities? Capabilities,
-    IReadOnlyList<SessionLiveOption> LiveOptions);
+    IReadOnlyList<SessionLiveOption> LiveOptions,
+    ProvisionPolicy? Policy = null);

@@ -1,7 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.LogicalTree;
 using Avalonia.Headless;
+using Avalonia.LogicalTree;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -202,11 +202,15 @@ internal static partial class Screenshotter
         // headless rendering can. Needs a session so `ShowSessionGrid` shows the toolbar the ⚙ lives in.
         ["workspace-layout-flyout"] = (width, height) => _MainWindowWithOneSession(width, height),
         ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
+        // AC-1503: what the first start after a restore says about the sign-ins that came back empty.
+        ["restore-signins"] = (width, height) => _MainWindowAfterARestore(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
         ["voice-transcribe"] = (_, _) => _OptionsOnTab("Voice"),
         ["voice-assistant"] = (_, _) => _OptionsAssistantPage(),
+        // AC-1567: the organisation's rule set as the read-only block on the same page.
+        ["options-assistant-org-rules"] = (_, _) => _OptionsAssistantPage(orgRules: true),
         // AC-1000: the consent-bypass state (one recognised source, one orphaned #K11 key) that used to render on
         // the old "voice-assistant" scene now lives on Security — its own scene rather than folding it into a plain
         // "security" scene, since nothing else needs that seeded ConsentBypassSources state.
@@ -216,6 +220,10 @@ internal static partial class Screenshotter
         ["options-apply-blocked"] = (_, _) => _OptionsApplyBlockedFooter(),
         // AC-289: a provider plugin's own page carrying the usage warnings it declared, moved there from Sessions.
         ["options-plugin-declared"] = (_, _) => _OptionsPluginDeclared(),
+        // AC-1508: Options → Backup with a Depot connection chosen under Where to, and the backups it holds.
+        ["options-backup-depot"] = (_, _) => _OptionsBackupToDepot(),
+        // AC-1662: the scheduled backup's status line after a successful run.
+        ["options-backup-status"] = (_, _) => _OptionsBackupStatus(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
@@ -335,6 +343,14 @@ internal static partial class Screenshotter
         // mismatch — the design-time instance's own two rows (one collision, one one-sided remote change) prove
         // both row shapes render and the warning note only shows for the collision.
         ["project-conflict"] = (_, _) => new ProjectDefinitionConflictDialog { DataContext = new ViewModels.ProjectDefinitionConflictViewModel() },
+        // AC-1510: settings both machines changed since they last agreed, one answered and two still open, so both row
+        // states and the enabled Apply show.
+        ["settings-conflict"] = (_, _) =>
+        {
+            var conflicts = new ViewModels.SettingsConflictViewModel();
+            conflicts.Rows[0].TakeTheirs = true;
+            return new SettingsConflictDialog { DataContext = conflicts };
+        },
         // --size 900x900) used to get the built-in size back regardless — the block rendered, but entirely below the
         // fold, which is what actually happened here (measured: at the built-in size only the section's heading,
         // half-cut, was ever on screen) (AC-246).
@@ -353,6 +369,9 @@ internal static partial class Screenshotter
         // AC-488: the same workspace with nothing staged, which is the only state the starting-point gallery is
         // drawn in. Its own scene rather than a fourth layout: what differs is what there is, not how it is laid out.
         ["projects-workspace-empty"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, withProjects: false),
+        ["projects-workspace-team-partial"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StagePartialTeamProjects),
+        ["projects-workspace-unreachable"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageUnreachableTeamProjects),
+        ["projects-workspace-long-text"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageLongProjectText),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -681,14 +700,25 @@ internal static partial class Screenshotter
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
 
-        // AC-1280: the restore step in the shell it lives in, claiming slot 10. Staged without a container — the
-        // page does nothing until a file is chosen, so there is no archive for a scene to depend on.
-        ["first-run-restore"] = (_, _) => new Views.Onboarding.FirstRunWizardWindow
-        {
-            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
-                [new Views.Onboarding.RestoreStep(new ViewModels.Onboarding.RestoreStepViewModel())],
-                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
-        },
+        // AC-1280: the restore page in the shell it lives in, on the choice step's "Restore a backup file" (AC-1504), in
+        // slot 10. Staged without a container — the page does nothing until a file is chosen, so there is no archive.
+        ["first-run-restore"] = (_, _) => _StartChoiceWizard(pickRestore: true, withPluginRoute: false),
+
+        // AC-1504: the choice step with a route a plugin offers, picked — the three choices of the design.
+        ["first-run-start-choice"] = (_, _) => _StartChoiceWizard(pickRestore: false, withPluginRoute: true),
+
+        // AC-1509: route C as the bundled Depot draws it — the sign-in, the choice between C1 and C2 after it, and offline.
+        ["first-run-depot-sign-in"] = (_, _) => _DepotRouteWizard(null),
+        ["first-run-depot-choice"] = (_, _) => _DepotRouteWizard(
+            """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[{"id":"a","createdAt":"2026-10-19T21:10:00+00:00","size":2168000}],"manifest":"{}","notes":[]}"""),
+        ["first-run-depot-org-choice"] = (_, _) => _DepotRouteWizard(
+            """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[],"candidates":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}],"notes":[]}"""),
+        // AC-1670: an organisation chosen, and the screen that says what it sets up before "Set it up" is pressed.
+        ["first-run-depot-consent"] = (_, _) => _DepotRouteWizard(
+            """{"state":"signed-in","message":"Signed in to depot.example.com.","targetId":"depot:scene","backups":[],"candidates":[{"slug":"acme","name":"Acme BV"},{"slug":"globex","name":"Globex"}],"manifest":"{\"format\":\"cockpit.provision\",\"formatVersion\":1,\"issuer\":{\"kind\":\"depot\",\"organization\":{\"id\":\"019f4da0d22e77d79401467fffa3c1ad\"}},\"plugins\":{\"required\":[{\"id\":\"claude-provider\"},{\"id\":\"git-status\"}]},\"settings\":{\"terminal.fontSize\":{\"value\":15,\"mode\":\"default\",\"by\":\"org\"},\"layout.sidebarWidth\":{\"value\":300,\"mode\":\"default\",\"by\":\"org\"}},\"profiles\":{\"items\":[{\"id\":\"dev\",\"label\":\"Acme dev\",\"by\":\"org\"}]},\"projects\":{\"own\":[{\"id\":\"site\",\"name\":\"Acme website\"}]}}","notes":[]}""",
+            chooseOrganization: true),
+        ["first-run-depot-offline"] = (_, _) => _DepotRouteWizard(
+            """{"state":"offline","message":"Couldn't reach https://depot.example.com. Check the address, or skip this and connect to Depot later from its settings."}"""),
 
         // AC-585: the assistant step in the shell it lives in, claiming slot 25 — no store wired, so it renders the
         // design-time AssistantStepViewModel (off, no profile, local-only note showing).
@@ -698,6 +728,34 @@ internal static partial class Screenshotter
                 [new Views.Onboarding.AssistantStep(new ViewModels.Onboarding.AssistantStepViewModel())],
                 ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
         },
+
+        // AC-1671: the assistant on, no profile yet, and two providers chosen in the previous step: Next is off with its reason.
+        ["first-run-assistant-chosen"] = (_, _) => _AssistantWithChosenProviders(),
+        // AC-1673: the choice and its Gemini details use the regular assistant profile editor in first-run mode.
+        ["first-run-assistant-provider-choice"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true),
+        ["first-run-assistant-gemini"] = (_, _) => _FirstRunAssistantProfile(openProviderList: false),
+        ["first-run-assistant-providers-local"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true, []),
+        ["first-run-assistant-providers-claude"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true,
+            [new SessionProviderOption("Claude", SessionProvider.Plugin, "claude-provider.claude")]),
+        ["first-run-assistant-providers-claude-codex"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true,
+            [
+                new SessionProviderOption("Claude", SessionProvider.Plugin, "claude-provider.claude"),
+                new SessionProviderOption("Codex (CLI)", SessionProvider.Plugin, _FakeCodexProviderRegistry.ProviderId),
+            ]),
+        ["first-run-assistant-providers-claude-gemini"] = (_, _) => _FirstRunAssistantProfile(openProviderList: true,
+            [
+                new SessionProviderOption("Claude", SessionProvider.Plugin, "claude-provider.claude"),
+                new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini"),
+                new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
+            ]),
+        // AC-1741: the same editor in first-run mode and in Options, per provider, to lay side by side.
+        ["first-run-assistant-claude-session-defaults"] = (_, _) => _FirstRunEditorWithDefaults("Claude"),
+        ["first-run-assistant-codex-session-defaults"] = (_, _) => _FirstRunEditorWithDefaults("Codex"),
+        ["assistant-profile-claude"] = (_, _) => _OptionsEditorWithDefaults("Claude"),
+        ["assistant-profile-codex"] = (_, _) => _OptionsEditorWithDefaults("Codex"),
+        ["first-run-assistant-claude-resumed"] = (_, _) => _AssistantWithDeferredClaude(),
+        // AC-1673: the two explicit choices from step 3; a found Claude CLI is visible but not selected.
+        ["first-run-provider-ticked"] = (_, _) => _ProviderStepTicked(),
 
         // Stage provider availability states directly so this headless scene does not depend on a store fetch
         // (AC-510[b]).
@@ -719,6 +777,269 @@ internal static partial class Screenshotter
         // this is the half of that sentence the two scenes above cannot show.
         ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
     };
+
+    private static Window _StartChoiceWizard(bool pickRestore, bool withPluginRoute)
+    {
+        var routes = new Plugins.FirstStartRouteRegistry();
+        if (withPluginRoute)
+        {
+            routes.Register(
+                new Cockpit.Plugins.Abstractions.UI.Onboarding.FirstStartRoute(
+                    "depot.sign-in",
+                    "Sign in to a Depot",
+                    "Restore your latest backup, or set up from your profile and your organisation.",
+                    () => new Avalonia.Controls.TextBlock { Text = "The plugin's own sign-in goes here.", Margin = new Avalonia.Thickness(4, 0) })
+                {
+                    IconKind = Material.Icons.MaterialIconKind.Cloud,
+                },
+                "Depot");
+        }
+
+        var step = new Views.Onboarding.StartChoiceStep(new ViewModels.Onboarding.RestoreStepViewModel(), routes);
+        var window = new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+        step.ViewModel.ChooseCommand.Execute(step.ViewModel.Options[pickRestore ? 1 : withPluginRoute ? 2 : 0]);
+
+        return window;
+    }
+
+    // The Depot plugin's UI part loaded from bundled-plugins as the app loads it, its route picked and, with `answer`, signed
+    // in: the backend part's answer is staged by the channel the scene hands the route, so no Depot is reached.
+    private static Window _DepotRouteWizard(string? answer, bool chooseOrganization = false)
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, Cockpit.Infrastructure.Plugins.BundledPluginInstaller.BundledFolderName, "depot");
+        if (!PluginManifest.TryParse(File.ReadAllText(Path.Combine(folder, "plugin.json")), out var manifest, out var error) || manifest is null)
+        {
+            throw new InvalidOperationException($"The bundled Depot plugin in {folder} has no readable plugin.json: {error}");
+        }
+
+        var discovered = new DiscoveredPlugin(folder, "depot", manifest, string.Empty, PluginLoadDecision.Load);
+        var ui = Plugins.PluginUiManager.ActivateUi(discovered, null) as Cockpit.Plugins.Abstractions.UI.Onboarding.IFirstStartPluginUi
+            ?? throw new InvalidOperationException("The bundled Depot plugin offers no first-start route.");
+        var routes = new Plugins.FirstStartRouteRegistry();
+        foreach (var route in ui.CreateFirstStartRoutes(new _SceneFirstStartHost(answer)))
+        {
+            routes.Register(route, manifest.Name);
+        }
+
+        var step = new Views.Onboarding.StartChoiceStep(new ViewModels.Onboarding.RestoreStepViewModel(), routes);
+        var window = new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([step], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+        step.ViewModel.ChooseCommand.Execute(step.ViewModel.Options[^1]);
+
+        var content = step.ViewModel.SelectedContent ?? throw new InvalidOperationException("The Depot route shows nothing.");
+        var controls = content.GetLogicalDescendants().OfType<Control>().ToList();
+        controls.OfType<TextBox>().First(box => box.Name == "DepotFirstStartUrl").Text = "https://depot.example.com";
+        if (answer is not null)
+        {
+            controls.OfType<Button>().First(button => button.Name == "DepotFirstStartSignIn").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        }
+
+        if (chooseOrganization)
+        {
+            Dispatcher.UIThread.RunJobs();
+            content.GetLogicalDescendants().OfType<Button>().First(button => button.Name == "DepotFirstStartSetUpOrganization").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        return window;
+    }
+
+    // What the Depot route may ask of the host, staged: its channel answers the sign-in with `answer`, and nothing restores.
+    private sealed class _SceneFirstStartHost(string? answer) : Cockpit.Plugins.Abstractions.UI.Onboarding.IFirstStartHost, Cockpit.Plugins.Abstractions.UI.IPluginUiChannel
+    {
+        public Cockpit.Plugins.Abstractions.UI.IPluginUiChannel Channel => this;
+
+        public Task<System.Text.Json.JsonElement> InvokeAsync(string action, System.Text.Json.JsonElement payload, CancellationToken cancellationToken = default) =>
+            Task.FromResult(System.Text.Json.JsonDocument.Parse(answer ?? "{}").RootElement);
+
+        public IDisposable Subscribe(string name, Action<Cockpit.Plugins.Abstractions.Channels.PluginChannelEvent> handler) => new _Nothing();
+
+        public Task<string> RestoreBackupAsync(string targetId, string backupId, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+        public async Task<IReadOnlyList<string>> ApplyManifestAsync(
+            string manifestJson, Func<IReadOnlyList<string>, Task<bool>> consent, CancellationToken cancellationToken = default)
+        {
+            if (Core.Provisioning.ProvisionManifestReader.Read(manifestJson).Manifest is { } manifest)
+            {
+                _ = await consent(Plugins.FirstStartHost.WhatItSetsUp(manifest, id => id == "git-status" ? "Git status" : null));
+            }
+
+            return [];
+        }
+
+        private sealed class _Nothing : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    private static Window _ProviderStepTicked()
+    {
+        var view = _ProviderStepCatalogue();
+        var viewModel = (ViewModels.Onboarding.ProviderStepViewModel)(view.DataContext ?? throw new InvalidOperationException("The provider step has no view model."));
+        foreach (var provider in viewModel.Providers.Where(provider => provider.Row.Id is "gemini-provider" or "cli-agent-provider"))
+        {
+            provider.IsSelected = true;
+        }
+
+        return new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel([new _SceneProviderStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+    }
+
+    private static (Cockpit.Infrastructure.Sessions.IPluginProviderRegistry Registry, string Id, string Name, Func<string?, Cockpit.Plugins.Abstractions.Sessions.IPluginProviderConfigView> View) _DefaultsProvider(string which) =>
+        which == "Codex"
+            ? (new _FakeCodexProviderRegistry(), _FakeCodexProviderRegistry.ProviderId, "Codex (CLI)", _ => new _CodexPlaceholderConfigView())
+            : (new _FakeClaudeProviderRegistry(), ClaudePluginProfile.ProviderId, "Claude", _ => new _PlaceholderConfigView());
+
+    private static Window _FirstRunEditorWithDefaults(string which)
+    {
+        var (registry, id, name, view) = _DefaultsProvider(which);
+        var option = new SessionProviderOption(name, SessionProvider.Plugin, id);
+        AssistantProfileSetup setup = new([option], option, static (_, _) => Task.CompletedTask);
+        return new AssistantProfileDialog
+        {
+            DataContext = new AssistantProfileDialogViewModel(pluginProviderRegistry: new Composition.PluginRegistrations(registry), pluginConfigViews: _ConfigViews(id, view), setup: setup),
+            Height = 1220,
+        };
+    }
+
+    private static Window _OptionsEditorWithDefaults(string which)
+    {
+        var (registry, id, name, view) = _DefaultsProvider(which);
+        var viewModel = new AssistantProfileDialogViewModel(
+            new _FakeAssistantProfileStore(new SessionProfile($"{name} (assistant)", new PluginProviderConfig(id, "{}"))),
+            new _FakeSessionProfileStore(),
+            new _FakeAssistantSessionHost(),
+            pluginProviderRegistry: new Composition.PluginRegistrations(registry),
+            pluginConfigViews: _ConfigViews(id, view));
+        viewModel.LoadAsync().GetAwaiter().GetResult();
+        return new AssistantProfileDialog { DataContext = viewModel, Height = 1220 };
+    }
+
+    private sealed class _FakeAssistantProfileStore(SessionProfile profile) : IAssistantProfileStore
+    {
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(profile));
+
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> RepointAsync(SessionProfile record, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(record, null, replacesStandingInstruction));
+
+        public Task<Cockpit.Core.Assistant.AssistantProfileSlot> UnsetAsync(string reason, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Assistant.AssistantProfileSlot(null, reason));
+    }
+
+    private static Window _FirstRunAssistantProfile(
+        bool openProviderList,
+        IReadOnlyList<SessionProviderOption>? stagedProviders = null)
+    {
+        var gemini = new SessionProviderOption("Gemini", SessionProvider.Plugin, "gemini-provider.gemini");
+        stagedProviders ??=
+        [
+            gemini,
+            new SessionProviderOption("OpenAI", SessionProvider.Plugin, "gemini-provider.openai"),
+            new SessionProviderOption("Codex (CLI)", SessionProvider.Plugin, _FakeCodexProviderRegistry.ProviderId),
+        ];
+        AssistantProfileSetup setup = new(
+            [
+                .. SessionProviderCatalog.Providers.Where(option => option.Value is SessionProvider.Ollama or SessionProvider.LmStudio),
+            .. stagedProviders,
+            ],
+            openProviderList ? null : stagedProviders.FirstOrDefault(provider => provider.PluginProviderId == gemini.PluginProviderId),
+            static (_, _) => Task.CompletedTask);
+        var configViews = new Plugins.PluginProviderConfigViews();
+        configViews.Register("gemini-provider.gemini", static _ => new _FirstRunGeminiConfigView());
+        var viewModel = new AssistantProfileDialogViewModel(pluginConfigViews: configViews, setup: setup);
+        var dialog = new AssistantProfileDialog { DataContext = viewModel };
+        if (openProviderList)
+        {
+            dialog.Opened += (_, _) => dialog.GetLogicalDescendants().OfType<ComboBox>()
+                .Single(combo => combo.ItemsSource?.Cast<SessionProviderOption>().Any() == true)
+                .IsDropDownOpen = true;
+        }
+
+        return dialog;
+    }
+
+    private sealed class _FirstRunGeminiConfigView : IPluginProviderConfigView
+    {
+        public Control View { get; } = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "API key", FontSize = 11 },
+                new TextBox { PasswordChar = '•', PlaceholderText = "Paste your Gemini API key" },
+                new TextBlock { Text = "Model", FontSize = 11 },
+                new AutoCompleteBox { PlaceholderText = "Type a model id" },
+            },
+        };
+
+        public bool TryGetConfigJson(out string configJson)
+        {
+            configJson = "{}";
+            return true;
+        }
+    }
+
+    private sealed class _SceneProviderStep(ViewModels.Onboarding.ProviderStepViewModel viewModel) : Views.Onboarding.IFirstRunWizardStep
+    {
+        public int Order => 20;
+
+        public string Title => "What you have";
+
+        public bool IsSkipped => false;
+
+        public string? NextBlockedReason => viewModel.NextBlockedReason;
+
+        public Control BuildContent() => new Views.Onboarding.ProviderStepView { DataContext = viewModel };
+    }
+
+    private static Window _AssistantWithChosenProviders()
+    {
+        var providers = new ViewModels.Onboarding.ProviderStepViewModel();
+        foreach (var (id, name) in new[] { ("claude-provider", "Claude Code"), ("codex-provider", "Codex") })
+        {
+            providers.Providers.Add(new ViewModels.Onboarding.ProviderPickerRowViewModel(
+                new ViewModels.StorePluginRowViewModel(new Core.Plugins.PluginStoreEntry(id, name, "d", "Cockpit", "1.0.0", []), Core.Plugins.PluginStoreConfig.Remote("https://plugins.example.org/index.json"), null),
+                ViewModels.Onboarding.ProviderDetectionState.NotApplicable) { IsSelected = true });
+        }
+
+        var viewModel = new ViewModels.Onboarding.AssistantStepViewModel(null, null, null, null, () => providers);
+        viewModel.AssistantOptions.IsEnabled = true;
+        var window = new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.AssistantStep(viewModel)], ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+
+        return window;
+    }
+
+    private static Window _AssistantWithDeferredClaude()
+    {
+        var viewModel = new ViewModels.Onboarding.AssistantStepViewModel();
+        viewModel.Restore(new Core.Abstractions.FirstRunWizardResumeState(
+            StartAtOrder: 25,
+            StartChoiceId: "start-fresh",
+            Providers: [new Core.Abstractions.FirstRunProviderChoice("claude-provider", "Claude Code")],
+            AssistantProviderId: Core.Profiles.ClaudePluginProfile.ProviderId,
+            AssistantProviderName: "Claude Code"));
+
+        return new Views.Onboarding.FirstRunWizardWindow
+        {
+            DataContext = new ViewModels.Onboarding.FirstRunWizardViewModel(
+                [new Views.Onboarding.AssistantStep(viewModel)],
+                ViewModels.Onboarding.FirstRunWizardViewModel.EpicPlan),
+        };
+    }
 
     private static Window _WorkKindWizard(int pluginCount)
     {
@@ -860,6 +1181,10 @@ internal static partial class Screenshotter
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
+        ["options-backup-depot"] = _ChooseSceneDepot,
+        ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
+        // AC-1509: both choices under the sign-in reach below the fold, so the step is scrolled to them.
+        ["first-run-depot-choice"] = window => window.GetVisualDescendants().OfType<ScrollViewer>().First(viewer => viewer.Extent.Height > viewer.Viewport.Height).ScrollToEnd(),
     };
 
     // Scrolls the ScrollViewer tagged `scrollerTag` so the TextBlock reading `headingText` lands at its top.
@@ -1700,6 +2025,15 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
+    private static MainWindow _MainWindowAfterARestore(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Depot: Staging"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
+        cockpit.Toasts.Add(new ViewModels.ToastViewModel(Core.Backup.EmptiedSignIn.Ask("Slack"), Core.Toasts.ToastSeverity.Warning, "Sign in", () => { }));
+
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
     // AC-1306: the sidebar's workspace tree with something to group — three Sessions tabs, one holding two
     // sessions, one holding one, one holding none. The default graph has a single tab, on which the tree is a
     // node with everything under it and neither the omitted-tabs note nor a second node ever renders.
@@ -1735,12 +2069,79 @@ internal static partial class Screenshotter
         return dialog;
     }
 
+    private static OptionsDialog _OptionsBackupToDepot()
+    {
+        return _OptionsOnTab("backup");
+    }
+
+    private static OptionsDialog _OptionsBackupStatus()
+    {
+        var dialog = _OptionsOnTab("backup");
+        var schedule = new BackupScheduleViewModel(new _SceneScheduleStore());
+        schedule.LoadAsync().GetAwaiter().GetResult();
+        var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
+        cockpit.ScheduledBackupSettings = schedule;
+        // The property does not notify: bind again so the section sees it.
+        dialog.DataContext = null;
+        dialog.DataContext = cockpit;
+        return dialog;
+    }
+
+    // A schedule that is on, and a run that went through a moment ago.
+    private sealed class _SceneScheduleStore : Cockpit.Core.Abstractions.Backup.IBackupScheduleStore
+    {
+        public Task<Cockpit.Core.Backup.BackupSchedule> LoadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Backup.BackupSchedule { Enabled = true });
+
+        public Task SaveAsync(Cockpit.Core.Backup.BackupSchedule schedule, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<Cockpit.Core.Backup.BackupScheduleState> LoadStateAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Cockpit.Core.Backup.BackupScheduleState(LastSuccess: DateTimeOffset.Now.AddHours(-2)));
+
+        public Task SaveStateAsync(Cockpit.Core.Backup.BackupScheduleState state, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    // After the dialog opened: opening refreshes the destinations from the registered targets, which a scene has none of.
+    private static void _ChooseSceneDepot(Window window)
+    {
+        var cockpit = (ViewModels.CockpitViewModel)(window.DataContext ?? throw new InvalidOperationException("The Options dialog has no cockpit."));
+        var depot = new BackupDestination("Depot: Home", "depot:home", new _SceneBackupTarget());
+        cockpit.BackupDestinations.Add(depot);
+        cockpit.BackupDestination = depot;
+    }
+
+    // Two backups in a Depot account space, as its listing returns them.
+    private sealed class _SceneBackupTarget : Cockpit.Plugins.Abstractions.Backup.IBackupTarget
+    {
+        public string Id => "depot:home";
+
+        public string DisplayName => "Depot: Home";
+
+        public Task<string> WriteAsync(string name, Stream archive, CancellationToken cancellationToken = default) => Task.FromResult("scene");
+
+        public Task<IReadOnlyList<Cockpit.Plugins.Abstractions.Backup.BackupTargetEntry>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Backup.BackupTargetEntry>>(
+            [
+                new("a", new DateTimeOffset(2026, 10, 19, 21, 10, 0, TimeSpan.Zero), 2168, null),
+                new("b", new DateTimeOffset(2026, 10, 18, 9, 0, 0, TimeSpan.Zero), 2140, null),
+            ]);
+
+        public Task<Stream> OpenReadAsync(string id, CancellationToken cancellationToken = default) => Task.FromResult<Stream>(new MemoryStream());
+    }
+
     // The Assistant category, enabled rather than dimmed under the off master switch, so its profile row renders
     // filled in rather than showing the design-time graph's "no profile store" fallback.
-    private static OptionsDialog _OptionsAssistantPage()
+    private static OptionsDialog _OptionsAssistantPage(bool orgRules = false)
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.AssistantOptions.IsEnabled = true;
+        if (orgRules)
+        {
+            cockpit.AssistantOptions.OrgRulesHeading = "Rule set of Acme";
+            cockpit.AssistantOptions.OrgRulesText = "Set by Acme. Where it conflicts with your own instructions or memory, this rule set wins.\n\n"
+                + "## Assistentregels Acme\n\n- Answer customers in Dutch.\n- Never paste customer data into a public channel.";
+        }
+
         // The design-time graph has no profile store, so the row would otherwise render an "Edit…" button with
         // nothing beside it — a state no real cockpit has (an unset slot fills in its reason instead).
         cockpit.AssistantOptions.ProfileLabel = "Claude (assistant) · claude · sonnet";
@@ -1824,7 +2225,10 @@ internal static partial class Screenshotter
 
     // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
     // each holds together and that all three carry the "From your team" section.
-    private static MainWindow _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode layout, bool withProjects = true)
+    private static MainWindow _ProjectsWorkspace(
+        Cockpit.Core.Projects.ProjectsLayoutMode layout,
+        Action<ViewModels.CockpitViewModel>? stage = null,
+        bool withProjects = true)
     {
         var cockpit = new ViewModels.CockpitViewModel();
 
@@ -1844,6 +2248,7 @@ internal static partial class Screenshotter
         {
             cockpit.Projects.StageDesignSample();
             cockpit.Projects.StageDesignSharedProjects();
+            stage?.Invoke(cockpit);
         }
 
         cockpit.Projects.LayoutMode = layout;
@@ -1851,6 +2256,84 @@ internal static partial class Screenshotter
         cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static void _StagePartialTeamProjects(ViewModels.CockpitViewModel cockpit)
+    {
+        cockpit.Projects.SharedProjectGroups.Clear();
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Work",
+            [
+                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
+                new SharedProjectOffer("depot:workspace-move", "Workspace migration (pending)", "Waiting for its project definition.", "Pending"),
+                new SharedProjectOffer("depot:reports", "Quarterly reports (timed out)", "Its project definition did not answer in time.", "Timeout"),
+            ],
+            "1 project is still loading; 1 project timed out."));
+    }
+
+    private static void _StageUnreachableTeamProjects(ViewModels.CockpitViewModel cockpit)
+    {
+        cockpit.Projects.SharedProjectGroups.Clear();
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Work",
+            [
+                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
+                new SharedProjectOffer("depot:runbook", "Operations runbook", "Last known team project.", "Viewer"),
+            ],
+            "Depot is unreachable — showing the last known list."));
+    }
+
+    private static void _StageLongProjectText(ViewModels.CockpitViewModel cockpit)
+    {
+        var noProfile = Project.Create("Research and discovery notes for the next workspace migration") with
+        {
+            Description = "A deliberately long project name and description that must wrap instead of hiding the next action on a narrow workspace.",
+        };
+        var job = new ProjectJob("Check every migration dependency before release", "Reads configuration and writes a release report.")
+        {
+            Id = "scene-migration-check",
+        };
+        var running = Project.Create("Release train") with
+        {
+            DefaultProfileLabel = "personal",
+            Description = "A project with an active session and a scheduled job.",
+            Jobs = [job],
+        };
+        var actions = cockpit.Projects.CardActions;
+        var runAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
+        var run = new ProjectJobRun("scene-release", running.Id, job.Id, runAt, runAt, "Checking the release notes.");
+
+        if (cockpit.Workspaces.Active is not { } activeWorkspace)
+        {
+            throw new InvalidOperationException("The Projects workspace scene has no active workspace.");
+        }
+
+        cockpit.Projects.Projects.Clear();
+        cockpit.Projects.Projects.Add(noProfile);
+        cockpit.Projects.Projects.Add(running);
+        cockpit.Projects.ProjectCategoryGroups.Clear();
+        cockpit.Projects.ProjectCategoryGroups.Add(new ViewModels.ProjectCategoryGroupViewModel(
+            null,
+            [
+                new ViewModels.ProjectCardViewModel(noProfile, "● This machine", actions),
+                new ViewModels.ProjectCardViewModel(running, "● This machine", actions, jobRuns: [run]),
+            ]));
+        cockpit.Sessions.Add(new ViewModels.SessionViewModel
+        {
+            Title = "Release validation",
+            ProjectId = running.Id,
+            WorkspaceId = activeWorkspace.Id,
+            SessionStatus = SessionStatus.Busy,
+        });
+        cockpit.Projects.SharedProjectGroups.Clear();
+        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
+            "Depot — Research",
+            [new SharedProjectOffer(
+                "depot:research",
+                "A very long shared-project name that needs to stay legible on a narrow workspace",
+                "A deliberately long description checks that a shared project card wraps the text without pushing its action out of view.",
+                "Viewer")],
+            Error: null));
     }
 
     // The preview reads its file off-thread, so the scene pumps the dispatcher until the navigation has landed.

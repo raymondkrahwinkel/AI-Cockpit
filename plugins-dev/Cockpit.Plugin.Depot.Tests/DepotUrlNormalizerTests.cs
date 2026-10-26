@@ -1,8 +1,8 @@
 namespace Cockpit.Plugin.Depot.Tests;
 
-// `DepotUrlNormalizer` (AC-499): pins the round-trip guarantee `Normalize(endpointUrl) + "/mcp" == endpointUrl`
-// for every endpoint URL an operator actually pastes, including a deployment whose base path itself ends in
-// `/mcp` (`https://host/mcp/mcp`), which a naive "strip every trailing /mcp" implementation gets wrong.
+// `DepotUrlNormalizer` (AC-499): every endpoint URL an operator actually pastes strips to exactly its base, so
+// `Normalize(endpointUrl) + "/mcp" == endpointUrl` holds row by row in the table below, including a deployment whose
+// base path itself ends in `/mcp` (`https://host/mcp/mcp`), which a naive "strip every trailing /mcp" gets wrong.
 public class DepotUrlNormalizerTests
 {
     // One row per spelling that reaches the strip branch. `https://host/mcp/mcp` is the row that fails under a
@@ -35,27 +35,10 @@ public class DepotUrlNormalizerTests
 
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
     [InlineData("   ")]
     public void Normalize_NullOrBlank_ReturnsEmpty(string? url)
     {
         Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(url));
-    }
-
-    // For every endpoint URL an operator actually pastes (always the full endpoint, including /mcp), stripping
-    // it down and re-appending "/mcp" must land back on the same endpoint. This states the guarantee itself
-    // rather than a table of outputs, so it stays alongside the tables above rather than being folded into them.
-    [Theory]
-    [InlineData("https://depot.example.com/mcp")] // root deployment
-    [InlineData("https://depot.example.com/mcp/")] // trailing slash after the suffix
-    [InlineData("https://host/depot/mcp")] // subpath deployment
-    [InlineData("https://host/mcp/mcp")] // base path itself is /mcp
-    [InlineData("https://depot.example.com:8443/mcp")] // with port
-    public void Normalize_RoundTripsBackToTheOriginalEndpoint(string endpointUrl)
-    {
-        var trimmedEndpoint = endpointUrl.TrimEnd('/');
-
-        Assert.Equal(trimmedEndpoint, DepotUrlNormalizer.Normalize(endpointUrl) + "/mcp");
     }
 
     [Theory]

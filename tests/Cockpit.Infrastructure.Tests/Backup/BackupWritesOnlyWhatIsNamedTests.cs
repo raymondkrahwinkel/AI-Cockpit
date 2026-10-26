@@ -40,6 +40,8 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
         root.Write("mcp-permission.json", "{}");
         root.Write("assistant-memory.md", "what the assistant was told to remember");
         root.Write("assistant-state.md", "where it left the conversation");
+        // AC-1567: the organisation's rule set comes back from the manifest, like the provisioning record does.
+        root.Write("assistant-org-rules.md", "# Rule set of Acme");
         root.Write("project-logos/acme.png", "not really a png");
         root.Write("plugins/youtrack/plugin.json", """{"id":"youtrack","version":"1.4.0"}""");
         root.Write("plugins/youtrack/Cockpit.Plugins.YouTrack.dll", "megabytes, in real life");
@@ -87,7 +89,8 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
               "Plugins": {
                 "youtrack": { "Enabled": true, "PinnedSha256": "aaa111", "Data": { "instance": "https://youtrack.example" } },
                 "docker": { "Enabled": true, "PinnedSha256": "bbb222", "Data": { "socket": "npipe://./pipe/docker_engine", "token": "s3cr3t" } }
-              }
+              },
+              "Provisioning": { "Managed": { "Terminal.FontSize": { "By": "Acme", "Value": "15" } } }
             }
             """);
         root.Write("plugins/youtrack/plugin.json", """{"id":"youtrack","version":"1.4.0"}""");
@@ -100,7 +103,11 @@ public sealed class BackupWritesOnlyWhatIsNamedTests
 
         using var written = ZipFile.OpenRead(archive);
         await using var settings = written.GetEntry("cockpit/cockpit.json")!.Open();
-        var docker = JsonNode.Parse(settings)!["Plugins"]!["docker"]!;
+        var archived = JsonNode.Parse(settings) ?? throw new InvalidOperationException("The archived cockpit.json is empty.");
+        var docker = archived["Plugins"]?["docker"] ?? throw new InvalidOperationException("The archive holds no docker registration.");
+
+        // AC-1507: what a manifest manages comes back from the manifest, never from an archive.
+        Assert.Null(archived["Provisioning"]);
 
         Assert.Equal("npipe://./pipe/docker_engine", docker["Data"]!["socket"]!.GetValue<string>());
         Assert.Equal("bbb222", docker["PinnedSha256"]!.GetValue<string>());

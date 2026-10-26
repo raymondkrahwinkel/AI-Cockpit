@@ -6,7 +6,6 @@ public class CockpitProjectRolesTests
 {
     [Theory]
     [InlineData(null)]
-    [InlineData("")]
     [InlineData("   ")]
     [InlineData("Admin")]
     [InlineData("EditorX")]

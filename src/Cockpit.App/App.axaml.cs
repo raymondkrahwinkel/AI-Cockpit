@@ -19,20 +19,27 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Infrastructure.Projects;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Provisioning;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Provisioning;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -155,11 +162,23 @@ public partial class App : Application
     // goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
     private void _StartCockpitAndOnboard(IClassicDesktopStyleApplicationLifetime desktop)
     {
+        InitializeFirstStart();
+
         // Read before either window exists, the same way _IsLockedAtStartup reads its own decision: this picks
         // which window shows next, so it has to be known before that window is built rather than raced against it.
         if (_NeedsOnboarding())
         {
-            _ShowOnboardingWizard(desktop);
+            var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
+            var resume = _ReadFirstRunResume(stateStore);
+            if (Program.Provisioning?.Failure is null && FirstRunWizardResume.NeedsLoadedProviders(resume))
+            {
+                _StartCockpit(desktop);
+                _ = _ShowResumedOnboardingAsync();
+            }
+            else
+            {
+                _ShowOnboardingWizard(desktop, stateStore, resume);
+            }
 
             return;
         }
@@ -185,12 +204,57 @@ public partial class App : Application
 
     // Keep the wizard open until the cockpit is shown so desktop lifetime never sees zero windows. Building it
     // here avoids IFirstRunWizard's close-before-return contract (AC-512); Closing covers every exit route.
-    private void _ShowOnboardingWizard(IClassicDesktopStyleApplicationLifetime desktop)
+    private static FirstRunWizardResumeState? _ReadFirstRunResume(IFirstRunWizardStateStore stateStore)
     {
-        var stateStore = Program.Services.GetRequiredService<IFirstRunWizardStateStore>();
-        var viewModel = new FirstRunWizardViewModel(
-            [.. Program.Services.GetServices<IFirstRunWizardStep>()],
-            FirstRunWizardViewModel.EpicPlan);
+        try
+        {
+            return stateStore.GetResumeStateAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Reading the first-run wizard resume state failed; setup will start without it.");
+            // A damaged hand-off must not keep first start from opening; the operator can make the choices again.
+            return null;
+        }
+    }
+
+    private static async Task _ShowResumedOnboardingAsync()
+    {
+        try
+        {
+            await Program.Services.GetRequiredService<IFirstRunWizard>().ShowAsync();
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Reopening first-start setup after provider loading failed.");
+        }
+    }
+
+    private void _ShowOnboardingWizard(
+        IClassicDesktopStyleApplicationLifetime desktop,
+        IFirstRunWizardStateStore stateStore,
+        FirstRunWizardResumeState? resume)
+    {
+        IFirstRunWizardStep[] steps = [.. Program.Services.GetServices<IFirstRunWizardStep>()];
+
+        FirstRunWizardResume.Apply(
+            steps,
+            resume,
+            Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>());
+
+        // AC-1505: a failed --provision lands on slot 10 with its reason, on the choice step (AC-1504).
+        int? startAtOrder = resume?.StartAtOrder;
+        if (Program.Provisioning?.Failure is { } provisioningFailure && steps.OfType<StartChoiceStep>().FirstOrDefault() is { } choiceStep)
+        {
+            choiceStep.Notice = provisioningFailure;
+            startAtOrder = choiceStep.Order;
+        }
+
+        var viewModel = new FirstRunWizardViewModel(steps, FirstRunWizardViewModel.EpicPlan, startAtOrder);
         var window = new FirstRunWizardWindow { DataContext = viewModel };
         var finished = false;
 
@@ -421,6 +485,9 @@ public partial class App : Application
         mcpSignInNotice.Watch();
         _ = mcpSignInNotice.CheckAsync();
 
+        _SayWhenDepotSyncCannotCheck(Program.Services.GetRequiredService<CockpitViewModel>());
+        _AskWhenSettingsConflict();
+
         // AC-1519: name the panes whose leftover session this start stopped, so a pane reading Idle says why.
         _NotifyStoppedLeftovers();
 
@@ -465,7 +532,8 @@ public partial class App : Application
             Program.Services.GetService<IMcpToolTokenEstimator>(),
             Program.Services.GetService<ITtySessionProviderResolver>(),
             Program.Services.GetService<ISessionLoginFlows>(),
-            Program.Services.GetService<IPluginProviderConfigViews>());
+            Program.Services.GetService<IPluginProviderConfigViews>(),
+            Program.Services.GetService<IOrgPolicy>());
 
         // AC-1002: Options → MCP Servers, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.
@@ -530,6 +598,23 @@ public partial class App : Application
                 assistantIndicator.SetCollapsed(cockpitViewModel.SidebarCollapsed);
             }
         };
+    }
+
+    // AC-1509: the plugins' first-start routes, before the wizard can open. Plugin phase 2 below runs only once the wizard
+    // is done, so without this a plugin's route would exist for "Run setup again" and never on the first start itself.
+    // Internal so the journeys run it in App's order.
+    internal static void InitializeFirstStart()
+    {
+        if (Program.Services.GetService<PluginManager>() is null)
+        {
+            return;
+        }
+
+        Program.Services.GetRequiredService<PluginUiManager>().InitializeFirstStart(
+            PluginUiManager.ActivateUi,
+            Program.Services.GetRequiredService<CockpitBackend>().BackendHostFor(),
+            discovered => new FirstStartHost(discovered.FolderId, discovered.Manifest.Name, Program.Services),
+            Program.Services.GetRequiredService<IFirstStartRouteRegistry>());
     }
 
     // Phase 2 of the plugin lifecycle: the backend's half (AC-1392) with a DesktopBackendHost per plugin carrying the
@@ -654,9 +739,242 @@ public partial class App : Application
         // later launches perform only a small, non-writing config read.
         Program.Services.GetRequiredService<McpOAuthTokenAdoption>().RunAsync().GetAwaiter().GetResult();
 
+        _AskForRestoredSignIns(cockpit);
+
+        // AC-1506: provisioning's second phase, now that a connection's plugin can redeem the token. Not awaited here:
+        // a plugin's sign-in may need this thread. What is left for the operator to do arrives as one toast.
+        if (Program.Provisioning is { Failure: null } provisioning)
+        {
+            _ = _FinishProvisioningAsync(provisioning);
+        }
+
         // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
         // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
+        _ApplyDeferredAssistantProfile();
+    }
+
+    private static void _ApplyDeferredAssistantProfile()
+    {
+        var coordinator = Program.Services.GetRequiredService<DeferredAssistantProfileCoordinator>();
+        var pendingAssistantName = coordinator.PendingAssistantName;
+        var assistantName = string.IsNullOrWhiteSpace(pendingAssistantName)
+            ? "The selected assistant"
+            : pendingAssistantName;
+        try
+        {
+            if (!coordinator.ApplyAsync().GetAwaiter().GetResult())
+            {
+                Program.Services.GetRequiredService<IToastService>().Show(
+                    $"{assistantName} could not be started. Run setup again and try again.",
+                    ToastSeverity.Error);
+            }
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(
+                exception,
+                "Applying the deferred first-run assistant profile for {AssistantName} failed.",
+                assistantName);
+            Program.Services.GetRequiredService<IToastService>().Show(
+                $"{assistantName} could not be set as your assistant. Run setup again and try again.",
+                ToastSeverity.Error);
+        }
+    }
+
+    // AC-1503: what a restore left empty, one toast each so every line has its own button. The button opens the plugin's
+    // own settings where the existing Sign in runs; nothing opens a browser by itself (AC-1517).
+    private static void _AskForRestoredSignIns(CockpitViewModel cockpit)
+    {
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+
+        var notice = Program.Services.GetRequiredService<McpSignInNotice>();
+
+        foreach (var signIn in RestoredSignIns.Take(CockpitBuild.StateRoot))
+        {
+            // A stored MCP token names its server and no plugin; the plugin that contributed that server owns its Sign in.
+            var serverPlugin = signIn.PluginId is null ? _PluginContributing(signIn.Label) : null;
+
+            if ((signIn.PluginId ?? serverPlugin) is { } pluginId && cockpit.HasPluginSettings(pluginId))
+            {
+                var name = serverPlugin is null ? cockpit.PluginSettings[pluginId].PluginName : signIn.Label;
+                // Sticky: after a restore this is the only place the operator is told, and five seconds is not enough to read it.
+                // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
+                toasts.Show(
+                    EmptiedSignIn.Ask(name),
+                    ToastSeverity.Warning,
+                    [new ToastAction("Sign in", () => _ = _OpenPluginSettingsAsync(cockpit, pluginId))],
+                    sticky: true);
+
+                if (serverPlugin is not null)
+                {
+                    // The startup check would name the same server a second time.
+                    notice.Announced(signIn.Label);
+                }
+            }
+            else
+            {
+                toasts.Show(EmptiedSignIn.Ask(signIn.Label), ToastSeverity.Warning);
+            }
+        }
+    }
+
+    // The plugin whose IPluginMcpProvider lists a server of this name, or null when none does.
+    private static string? _PluginContributing(string serverName)
+    {
+        foreach (var (discovered, plugin) in Program.Services.GetRequiredService<PluginManager>().LoadedParts)
+        {
+            try
+            {
+                if (plugin is IPluginMcpProvider provider && provider.GetMcpServers().Any(server => string.Equals(server.Name, serverName, StringComparison.Ordinal)))
+                {
+                    return discovered.FolderId;
+                }
+            }
+            catch (Exception exception)
+            {
+                Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.RestoredSignIns").LogWarning(exception,"Plugin {Plugin} failed to list its MCP servers while a restored sign-in was matched.", discovered.FolderId);
+            }
+        }
+
+        return null;
+    }
+
+    // AC-1503: a bound project whose Depot check cannot get an answer (typically: not signed in) is said once, with the way
+    // to the Depot settings, instead of the sync going quiet for good.
+    private static void _SayWhenDepotSyncCannotCheck(CockpitViewModel cockpit)
+    {
+        if (Program.Services.GetService<DepotSyncWatcher>() is not { } watcher)
+        {
+            return;
+        }
+
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+        var catalog = Program.Services.GetRequiredService<IProjectCatalog>();
+        var signIns = Program.Services.GetService<PluginSignInStanding>();
+        watcher.WaitsForSignIn = () => signIns is null ? Task.FromResult(false) : signIns.WaitsAsync("depot");
+        watcher.OnFailing = (projectId, reason) =>
+        {
+            var name = catalog.Current.Settings.Projects.FirstOrDefault(project => project.Id == projectId)?.Name ?? projectId;
+            var message = $"The Depot sync cannot check {name}: {reason}";
+
+            if (cockpit.HasPluginSettings("depot"))
+            {
+                // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
+                toasts.Show(message, ToastSeverity.Warning, "Open Depot settings", () => _ = _OpenPluginSettingsAsync(cockpit, "depot"));
+            }
+            else
+            {
+                toasts.Show(message, ToastSeverity.Warning);
+            }
+        };
+    }
+
+    // AC-1510: a setting changed both here and on another machine is the operator's choice, offered from a toast so it
+    // never interrupts; the dialog lists every open one again, so a toast dismissed unread loses nothing.
+    private static void _AskWhenSettingsConflict()
+    {
+        if (Program.Services.GetService<SettingsCarrierSync>() is not { } sync)
+        {
+            return;
+        }
+
+        var toasts = Program.Services.GetRequiredService<IToastService>();
+        sync.Restart = () => Program.Services.GetRequiredService<IAppRestartService>().Restart();
+        sync.OnConflicts = conflicts => Dispatcher.UIThread.Post(() => toasts.Show(
+            $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
+            ToastSeverity.Warning,
+            "Choose",
+            // Toast actions cannot return a task; the handler logs and surfaces failures itself.
+            () => _ = _ChooseSettingsAsync(sync)));
+    }
+
+    private static async Task _ChooseSettingsAsync(SettingsCarrierSync sync)
+    {
+        try
+        {
+            if (sync.Conflicts is not { Count: > 0 } conflicts
+                || Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+            {
+                return;
+            }
+
+            var answers = await new SettingsConflictDialog { DataContext = new SettingsConflictViewModel(conflicts) }
+                .ShowDialog<IReadOnlyDictionary<string, bool>?>(owner);
+            if (answers is { Count: > 0 })
+            {
+                await sync.ResolveAsync(answers);
+            }
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.SettingsSync").LogWarning(exception, "Applying the settings choices failed");
+            Program.Services.GetRequiredService<IToastService>().Show($"Your choices could not be applied: {exception.Message}", ToastSeverity.Error);
+        }
+    }
+
+    private static async Task _FinishProvisioningAsync(ProvisioningOutcome provisioning)
+    {
+        try
+        {
+            await _FinishProvisioningCoreAsync(provisioning);
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Provisioning")
+                .LogWarning(exception, "Finishing provisioning failed.");
+        }
+    }
+
+    private static async Task _FinishProvisioningCoreAsync(ProvisioningOutcome provisioning)
+    {
+        var finished = await ProvisionManifestApplier.FinishAsync(
+            provisioning,
+            Program.Services.GetRequiredService<PluginChannelHub>(),
+            CockpitBuild.StateRoot,
+            Program.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Cockpit.Provisioning"));
+        Program.Provisioning = finished;
+        var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
+        // The report only knows plugin ids; the user should read the name the button shows.
+        var named = (finished.Manifest?.Connections ?? []).Select(connection => connection.Plugin).Distinct().Where(cockpit.HasPluginSettings).ToList();
+        var open = finished.Report
+            .Where(line => line.Reason is ProvisionManifestApplier.SignInNeeded or ProvisionManifestApplier.TokenNeeded or ProvisionManifestApplier.ConnectionSkipped)
+            .Select(line => named.Aggregate(line.Detail, (detail, plugin) => detail?.Replace(
+                $"the settings of plugin {plugin} and", $"the {cockpit.PluginSettings[plugin].PluginName} settings and")))
+            .ToList();
+        if (open.Count == 0)
+        {
+            return;
+        }
+
+        var message = $"This cockpit was set up for you. Still to do: {string.Join("; ", open)}.";
+        var signInPlugin = (finished.Manifest?.Connections ?? [])
+            .Where(connection => finished.Report.Any(line => line.Reason == ProvisionManifestApplier.SignInNeeded && line.Path == $"connections.{connection.Id}"))
+            .Select(connection => connection.Plugin)
+            .FirstOrDefault(cockpit.HasPluginSettings);
+        if (signInPlugin is null)
+        {
+            Program.Services.GetRequiredService<IToastService>().Show(message, ToastSeverity.Information);
+            return;
+        }
+
+        Program.Services.GetRequiredService<IToastService>().Show(
+            message, ToastSeverity.Information, $"Open {cockpit.PluginSettings[signInPlugin].PluginName} settings",
+            // A toast action is synchronous, so the wrapper observes and logs the detached settings task.
+            () => _ = _OpenPluginSettingsAsync(cockpit, signInPlugin));
+    }
+
+    private static async Task _OpenPluginSettingsAsync(CockpitViewModel cockpit, string pluginId)
+    {
+        try
+        {
+            await cockpit.OpenPluginSettingsAsync(pluginId);
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.PluginSettings")
+                .LogWarning(exception, "Opening settings for plugin {PluginId} failed.", pluginId);
+        }
     }
 
     private static void _RegisterInstalledTemplates(IWorkflowTemplateLibrary library, IWorkflowTemplateRegistry registry)

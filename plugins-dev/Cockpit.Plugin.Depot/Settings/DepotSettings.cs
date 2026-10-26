@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 
 namespace Cockpit.Plugin.Depot.Settings;
@@ -27,6 +28,13 @@ internal sealed class DepotSettings(IPluginStorage storage)
             return storage.Get<List<DepotConnectionRegistration>>("connections") ?? [];
         }
         set => storage.Set("connections", value.ToList());
+    }
+
+    // AC-1574: the folder-to-Depot links. A setting, so it goes with a backup; the manifest of what each one published is cache.
+    public IReadOnlyList<DepotPublication> Publications
+    {
+        get => storage.Get<List<DepotPublication>>("publications") ?? [];
+        set => storage.Set("publications", value.ToList());
     }
 
     private void _MigrateStoredUrlsOnce()

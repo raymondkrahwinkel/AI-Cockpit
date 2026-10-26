@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
@@ -9,7 +12,7 @@ namespace Cockpit.Infrastructure.Tests.Projects;
 public sealed class DepotSyncWatcherTests : IDisposable
 {
     private readonly _Clock _time = new();
-    private readonly ISharedProjectSource _source = Substitute.For<ISharedProjectSource>();
+    private readonly _Source _source = new();
     private readonly DepotSyncWatcher _watcher;
     private readonly BlockingCollection<bool> _reports = [];
     private string _checksum = "a";
@@ -17,8 +20,7 @@ public sealed class DepotSyncWatcherTests : IDisposable
 
     public DepotSyncWatcherTests()
     {
-        _source.PrepareBindingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(SharedProjectBindingResult.Success(new SharedProjectBinding("p") { Checksum = _checksum })));
+        _source.Answer = () => SharedProjectBindingResult.Success(new SharedProjectBinding("p") { Checksum = _checksum });
         _watcher = new DepotSyncWatcher(null, _time)
         {
             BoundProjects = () => Task.FromResult<IReadOnlyList<DepotBoundProject>>(_bound ? [new DepotBoundProject("p", _source, "shared")] : []),
@@ -50,6 +52,70 @@ public sealed class DepotSyncWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task SourceChange_ChecksTheBoundProjectOnce_AndSetsTheFlagWithoutAdvancingTheClock()
+    {
+        await _watcher.RunOnceAsync();
+        Assert.False(_Next());
+        _source.PrepareCalls = 0;
+        var before = _time.GetUtcNow();
+        _checksum = "b";
+
+        _source.RaiseChanged("shared");
+
+        Assert.True(_Next());
+        Assert.Equal(before, _time.GetUtcNow());
+        Assert.Equal(1, _source.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task BindingWithReadChecksum_ReportsFirstLaterRemoteChange()
+    {
+        var settings = ProjectSettings.Empty;
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(settings));
+        store.SaveAsync(Arg.Any<ProjectSettings>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            settings = call.Arg<ProjectSettings>();
+            return Task.CompletedTask;
+        });
+        var sources = new SharedProjectSourceRegistry();
+        sources.Register(_source);
+        var catalog = new ProjectCatalog(store, new ProjectOwnershipRegistry(), sources, depotSync: _watcher);
+        var boundProjects = _watcher.BoundProjects;
+        Assert.NotNull(boundProjects);
+        var snapshotTaken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSnapshot = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _watcher.BoundProjects = async () =>
+        {
+            var snapshot = await boundProjects();
+            snapshotTaken.TrySetResult();
+            await releaseSnapshot.Task;
+            return snapshot;
+        };
+        _watcher.OnChecked = (_, changed, _) =>
+        {
+            _reports.Add(changed);
+            return Task.CompletedTask;
+        };
+        var project = new Project("p", "Bound project")
+        {
+            Resources = [new ProjectResource("fake:shared", ProjectResourceRole.Memory)],
+            SharedSourceName = _source.SourceName,
+        };
+
+        var stalePass = _watcher.RunOnceAsync();
+        await snapshotTaken.Task;
+        await catalog.AddBoundProjectAsync(project, "a");
+        releaseSnapshot.SetResult();
+        await stalePass;
+        _checksum = "b";
+
+        await _watcher.CheckNowAsync(project.Id);
+
+        Assert.True(_Next());
+    }
+
+    [Fact]
     public void UnboundProject_LosesItsFlagAndItsBaseline()
     {
         _watcher.Start();
@@ -69,6 +135,27 @@ public sealed class DepotSyncWatcherTests : IDisposable
         Assert.False(_Next());
     }
 
+    [Fact]
+    public async Task ACheckThatCannotAnswer_IsToldOnce_AlsoWhenItFirstFailedBeforeAnyoneListened_AndAfterRecovering()
+    {
+        var told = new List<(string ProjectId, string Reason)>();
+
+        // The first pass runs at start, before anyone listens: what it found is still said by the next check.
+        _source.Answer = () => SharedProjectBindingResult.Failed("Not signed in.");
+        await _watcher.RunOnceAsync();
+        _watcher.OnFailing = (projectId, reason) => told.Add((projectId, reason));
+        await _watcher.RunOnceAsync();
+        await _watcher.RunOnceAsync();
+        await _watcher.RunOnceAsync();
+
+        _source.Answer = () => SharedProjectBindingResult.Success(new SharedProjectBinding("p") { Checksum = "a" });
+        await _watcher.RunOnceAsync();
+        _source.Answer = () => SharedProjectBindingResult.Failed("Not signed in.");
+        await _watcher.RunOnceAsync();
+
+        Assert.Equal([("p", "Not signed in.")], told);
+    }
+
     public void Dispose()
     {
         _watcher.Dispose();
@@ -77,6 +164,40 @@ public sealed class DepotSyncWatcherTests : IDisposable
 
     private bool _Next() =>
         _reports.TryTake(out var changed, TimeSpan.FromSeconds(10)) ? changed : throw new TimeoutException("The watcher reported no check.");
+
+    private sealed class _Source : ISharedProjectSource
+    {
+        public Func<SharedProjectBindingResult> Answer { get; set; } = () => SharedProjectBindingResult.Failed("No answer.");
+
+        public int PrepareCalls { get; set; }
+
+        public event Action<string?>? Changed;
+
+        public string Key => "fake";
+
+        public string SourceName => "Fake";
+
+        public bool CanPublish => false;
+
+        public void RaiseChanged(string? id) => Changed?.Invoke(id);
+
+        public Task<SharedProjectBindingResult> PrepareBindingAsync(string id, CancellationToken cancellationToken)
+        {
+            PrepareCalls++;
+            return Task.FromResult(Answer());
+        }
+
+        public Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(SharedProjectListResult.Success([new SharedProject("fake:shared", "p")]));
+
+        public Task<SharedProjectWriteBackResult> WriteBackAsync(
+            string id, SharedProjectDefinitionEdit edit, string baseChecksum, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<SharedProjectPublishTargetListResult> ListPublishTargetsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<SharedProjectPublishResult> PublishAsync(
+            string targetId, SharedProjectPublishDefinition definition, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
 
     // Timers fire, and repeat, only when the clock is advanced past them.
     private sealed class _Clock : TimeProvider

@@ -15,10 +15,21 @@ internal static class DepotChannel
     // Event, payload ignored: the backend part asks the UI part to open this plugin's settings.
     public const string OpenSettings = "open-settings";
 
+    // Payload: DepotBrandingRequest. Reads the authenticated instance branding in the backend, where DepotApi and
+    // the host-owned token live. Answers a DepotBrandingAnswer; logo bytes are null for the standard icon fallback.
+    public const string Branding = "branding";
+
     // AC-1511. Payload: DepotInstallTokenRequest. Adds the connection, or updates the one with its id or URL, through
     // the same write SaveConnections does, then signs it in by redeeming the installation token at Depot — no
     // browser, which a server does not have. A token Depot refuses changes nothing. Answers a DepotInstallTokenAnswer.
     public const string ConnectWithInstallToken = "connect-with-install-token";
+
+    // AC-1509, the first start's route C. Payload: DepotFirstStartSignInRequest. Signs in to the Depot at that address through
+    // the host's own sign-in and writes the connection only once that succeeded, so a skip or an offline machine leaves
+    // none behind. Then reads what the account holds for the two choices. Answers a DepotFirstStartAnswer.
+    public const string FirstStartSignIn = "first-start-sign-in";
+
+    public const string FirstStartManifest = "first-start-manifest";
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 }
@@ -33,6 +44,10 @@ internal sealed record DepotSaveConnectionsRequest(IReadOnlyList<DepotConnection
 
 internal sealed record DepotSaveConnectionsAnswer(bool Success);
 
+internal sealed record DepotBrandingRequest(string ConnectionId);
+
+internal sealed record DepotBrandingAnswer(string Name, byte[]? Logo);
+
 // The token is a credential: the generated ToString would print it into any log line or exception that names the
 // request, so it is masked here.
 internal sealed record DepotInstallTokenRequest(DepotConnectionPayload Connection, string Token)
@@ -42,3 +57,36 @@ internal sealed record DepotInstallTokenRequest(DepotConnectionPayload Connectio
 
 // `Message` is the sentence for the operator, the same in the desktop's row and the server's view.
 internal sealed record DepotInstallTokenAnswer(bool Success, string Message);
+
+internal sealed record DepotFirstStartSignInRequest(string Url);
+
+// `State` is one of the DepotFirstStartState values; `Message` the sentence for the operator. Signed in: `TargetId` names
+// the account space as a backup target, `Backups` lists it newest first, and `Manifest` is the account's
+// /cockpit/manifest document — null when the server has none (a 404) or it could not be read, which `Notes` then says.
+internal sealed record DepotFirstStartAnswer(
+    string State,
+    string Message,
+    string? TargetId = null,
+    IReadOnlyList<DepotFirstStartBackup>? Backups = null,
+    string? Manifest = null,
+    IReadOnlyList<string>? Notes = null,
+    IReadOnlyList<DepotFirstStartCandidate>? Candidates = null);
+
+internal sealed record DepotFirstStartBackup(string Id, DateTimeOffset CreatedAt, long Size);
+
+internal sealed record DepotFirstStartCandidate(string Slug, string Name);
+
+internal sealed record DepotFirstStartManifestRequest(string TargetId, string Organization);
+
+internal sealed record DepotFirstStartManifestAnswer(string? Manifest, IReadOnlyList<string>? Notes = null);
+
+internal static class DepotFirstStartState
+{
+    public const string SignedIn = "signed-in";
+
+    public const string Offline = "offline";
+
+    public const string NotSignedIn = "not-signed-in";
+
+    public const string Invalid = "invalid";
+}

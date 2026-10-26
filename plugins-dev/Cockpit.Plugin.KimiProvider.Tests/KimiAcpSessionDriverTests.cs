@@ -148,6 +148,26 @@ public class KimiAcpSessionDriverTests
     // above) must not fail the whole session start — best-effort, the session simply starts on whatever model
     // kimi's own snapshot already defaulted to.
 
+    // AC-1593: a model the host states (an organisation's pin) is matched in kimi's own spelling, and kimi refusing it
+    // fails the start with the reason rather than leaving kimi's own default running.
+    [Fact]
+    public async Task Start_WithAStatedModelKimiRefuses_FailsTheStart()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new KimiAcpSessionDriver(() => fake, _DefaultConfig(), "kimi");
+
+        var options = new Dictionary<string, string> { [WellKnownPluginSessionOptions.Model] = "Kimi-K2" };
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "session/new", """{"sessionId":"session_1","configOptions":[{"id":"model","name":"Model","currentValue":"kimi-default","options":[{"value":"kimi-default"},{"value":"kimi-k2"}]}]}""");
+        var setConfig = await _WaitForRequestAsync(fake, "session/set_config_option");
+        await fake.PushStdoutAsync($$$"""{"id":{{{setConfig.GetProperty("id").GetInt64()}}},"error":{"code":-32602,"message":"model unavailable"}}""");
+
+        var refused = await Assert.ThrowsAsync<KimiAcpException>(() => startTask);
+        Assert.Equal("kimi-k2", setConfig.GetProperty("params").GetProperty("value").GetString());
+        Assert.Contains("does not start", refused.Message);
+    }
+
     [Fact]
     public async Task Start_WithPlanPermissionMode_SetsKimiModeToPlan()
     {

@@ -10,8 +10,10 @@ namespace Cockpit.Backend.Tests.Plugins;
 /// </summary>
 public class ProjectOwnershipRegistryTests
 {
+    // AC-604 acceptance criterion 4: an unclaimed project resolves null, not an empty dictionary — the editor
+    // reads null as "draw exactly as always", which an empty-but-non-null dictionary would not signal the same way.
     [Fact]
-    public void Register_TwoPluginsClaimingTheSameProject_KeepsTheFirst()
+    public void Register_TwoPluginsClaimingTheSameProject_KeepsTheFirst_AndAProjectNoOneClaimedResolvesNull()
     {
         var registry = new ProjectOwnershipRegistry();
 
@@ -19,7 +21,11 @@ public class ProjectOwnershipRegistryTests
         Assert.False(registry.Register(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Another plugin"))));
 
         var resolved = registry.Resolve("proj-1");
-        Assert.Equal("Depot — Work", resolved![HostProjectField.Name]!.SourceName);
+        Assert.NotNull(resolved);
+        var name = resolved[HostProjectField.Name];
+        Assert.NotNull(name);
+        Assert.Equal("Depot — Work", name.SourceName);
+        Assert.Null(registry.Resolve("proj-vanished"));
     }
 
     [Fact]
@@ -31,29 +37,20 @@ public class ProjectOwnershipRegistryTests
     }
 
     [Fact]
-    public void Resolve_AProjectNoOneClaimed_IsNull()
-    {
-        // AC-604 acceptance criterion 4: an unclaimed project resolves null, not an empty dictionary — the editor
-        // reads null as "draw exactly as always", which an empty-but-non-null dictionary would not signal the same way.
-        var registry = new ProjectOwnershipRegistry();
-        registry.Register(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Depot — Work")));
-
-        Assert.Null(registry.Resolve("proj-vanished"));
-    }
-
-    [Fact]
     public void Resolve_AProjectWideDefault_ClaimsEveryField()
     {
         var registry = new ProjectOwnershipRegistry();
         registry.Register(new ProjectOwnershipRegistration("proj-1", new ProjectFieldOwnership("Depot — Work", IsEditable: true)));
 
-        var resolved = registry.Resolve("proj-1")!;
+        var resolved = registry.Resolve("proj-1");
 
+        Assert.NotNull(resolved);
         Assert.All(Enum.GetValues<HostProjectField>(), field =>
         {
-            Assert.NotNull(resolved[field]);
-            Assert.Equal("Depot — Work", resolved[field]!.SourceName);
-            Assert.True(resolved[field]!.IsEditable);
+            var owner = resolved[field];
+            Assert.NotNull(owner);
+            Assert.Equal("Depot — Work", owner.SourceName);
+            Assert.True(owner.IsEditable);
         });
     }
 
@@ -70,8 +67,9 @@ public class ProjectOwnershipRegistryTests
             },
         });
 
-        var resolved = registry.Resolve("proj-1")!;
+        var resolved = registry.Resolve("proj-1");
 
+        Assert.NotNull(resolved);
         Assert.NotNull(resolved[HostProjectField.Name]);
         Assert.Null(resolved[HostProjectField.WorktreeSwitch]);
     }
@@ -89,8 +87,9 @@ public class ProjectOwnershipRegistryTests
             },
         });
 
-        var resolved = registry.Resolve("proj-1")!;
+        var resolved = registry.Resolve("proj-1");
 
+        Assert.NotNull(resolved);
         Assert.NotNull(resolved[HostProjectField.Name]);
         Assert.Null(resolved[HostProjectField.Description]);
         Assert.Null(resolved[HostProjectField.Logo]);

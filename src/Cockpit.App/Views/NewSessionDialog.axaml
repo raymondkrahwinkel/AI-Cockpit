@@ -96,12 +96,35 @@
                     <StackPanel Grid.Column="1">
                         <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                                   HorizontalAlignment="Stretch">
+                            <!-- AC-1593: a profile outside the organisation's providers stays listed, not selectable. -->
+                            <ComboBox.Styles>
+                                <Style Selector="ComboBoxItem" x:DataType="profiles:SessionProfile">
+                                    <Setter Property="IsEnabled">
+                                        <MultiBinding Converter="{x:Static conv:OrgProviderConverter.Allowed}">
+                                            <Binding Path="."/>
+                                            <Binding Path="$parent[ComboBox].((vm:NewSessionDialogViewModel)DataContext).OrgPolicy"/>
+                                        </MultiBinding>
+                                    </Setter>
+                                </Style>
+                            </ComboBox.Styles>
                             <ComboBox.ItemTemplate>
                                 <DataTemplate x:DataType="profiles:SessionProfile">
-                                    <TextBlock Text="{Binding ., Converter={x:Static conv:ProfileDisplayConverter.Instance}}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding ., Converter={x:Static conv:ProfileDisplayConverter.Instance}}"/>
+                                        <TextBlock Classes="optionsHint" VerticalAlignment="Center">
+                                            <TextBlock.Text>
+                                                <MultiBinding Converter="{x:Static conv:OrgProviderConverter.Label}">
+                                                    <Binding Path="."/>
+                                                    <Binding Path="$parent[ComboBox].((vm:NewSessionDialogViewModel)DataContext).OrgPolicy"/>
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
+                        <TextBlock Text="{Binding SelectedProfileRefusal}" Classes="optionsHint" Margin="0,3,0,0"
+                                   IsVisible="{Binding SelectedProfileRefusal, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                         <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
                                    FontSize="11" Margin="0,3,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
@@ -328,11 +351,14 @@
                                     <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
                                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
-                                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
-                                              DisplayMemberBinding="{Binding Label}"
-                                              IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                              PlaceholderText="(CLI default)"/>
+                                    <StackPanel Grid.Column="1" Spacing="2" IsVisible="{Binding !IsFreeText}">
+                                        <ComboBox ItemsSource="{Binding ChoiceItems}" Classes="policyChoices"
+                                                  SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                  DisplayMemberBinding="{Binding Label}"
+                                                  IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                                  PlaceholderText="(CLI default)"/>
+                                        <TextBlock Text="{Binding ManagedLabel}" IsVisible="{Binding ManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="optionsHint"/>
+                                    </StackPanel>
                                     <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
                                              PlaceholderText="(CLI default)"/>
                                 </Grid>
@@ -360,11 +386,14 @@
                                     <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                                Margin="0,0,8,0" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}"
                                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
-                                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
-                                              DisplayMemberBinding="{Binding Label}"
-                                              IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
-                                              PlaceholderText="(provider default)"/>
+                                    <StackPanel Grid.Column="1" Spacing="2" IsVisible="{Binding !IsFreeText}">
+                                        <ComboBox ItemsSource="{Binding ChoiceItems}" Classes="policyChoices"
+                                                  SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                  DisplayMemberBinding="{Binding Label}"
+                                                  IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                                  PlaceholderText="(provider default)"/>
+                                        <TextBlock Text="{Binding ManagedLabel}" IsVisible="{Binding ManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="optionsHint"/>
+                                    </StackPanel>
                                     <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
                                              PlaceholderText="(provider default)"/>
                                 </Grid>

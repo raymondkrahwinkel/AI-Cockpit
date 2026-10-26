@@ -9,9 +9,21 @@ namespace Cockpit.Core.Abstractions.Backup;
 public interface IBackupService
 {
     /// <summary>
+    /// Whether a backup or a restore is running right now (AC-1502): a scheduled backup waits instead of starting
+    /// beside it.
+    /// </summary>
+    bool IsBusy => false;
+
+    /// <summary>
     /// Writes an archive to <paramref name="archivePath"/> and returns what it says about itself — including the secrets it stripped, which the operator will have to type in again.
     /// </summary>
     Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Builds the same archive and hands it, whole and readable, to <paramref name="deliver"/> — a backup target's
+    /// write (AC-1501). The archive is staged first, so a target never receives a half-built one.
+    /// </summary>
+    Task<BackupManifest> WriteAsync(Func<Stream, CancellationToken, Task> deliver, BackupOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads a backup's manifest without restoring it, so the operator can be shown what they are about to overwrite themselves with.
@@ -27,6 +39,16 @@ public interface IBackupService
     /// </summary>
     Task<RestoreReport> RestoreAsync(
         string archivePath,
+        RestoreOptions options,
+        IProgress<RestoreProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same restore, off a stream a backup target opened (AC-1501). It is copied into staging first and then
+    /// restored exactly as a file is; a stop while copying comes back as a report, like every other stop.
+    /// </summary>
+    Task<RestoreReport> RestoreAsync(
+        Stream source,
         RestoreOptions options,
         IProgress<RestoreProgress>? progress = null,
         CancellationToken cancellationToken = default);

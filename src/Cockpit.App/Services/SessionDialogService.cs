@@ -19,6 +19,7 @@ using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Updates;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -52,6 +53,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     // The assistant's own profile slot (AC-543) — its own section of the config, not an entry in `_profileStore`.
     private readonly IAssistantProfileStore _assistantProfileStore;
+    private readonly IOrgPolicy _orgPolicy;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -72,8 +74,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         SurfaceWindows surfaces,
         IAssistantProfileStore assistantProfileStore,
         ISessionLoginFlows loginFlows,
-        IPluginProviderConfigViews pluginConfigViews)
+        IPluginProviderConfigViews pluginConfigViews,
+        IOrgPolicy orgPolicy)
     {
+        _orgPolicy = orgPolicy;
         _pluginConfigViews = pluginConfigViews;
         _assistantProfileStore = assistantProfileStore;
         _surfaces = surfaces;
@@ -117,7 +121,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _plugins,
             _ttyProviderResolver, _worktreeManager, _tokenEstimator,
-            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch);
+            _projectStore, _oauthCoordinator, _loginFlows, _shellAccessSwitch, _orgPolicy);
         await viewModel.LoadAsync();
 
         // AC-164: project before prefill, matched by id from the loaded list — selecting it runs the dialog's
@@ -220,9 +224,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await _surfaces.ShowAsync(typeof(NewSessionDialog), dialog, owner, () => chosen);
     }
 
-    public async Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant)
+    public async Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant, AssistantProfileSetup? setup = null)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        if (OwnerWindow() is not { } owner)
         {
             return;
         }
@@ -233,7 +237,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             var viewModel = new AssistantProfileDialogViewModel(
                 _assistantProfileStore, _profileStore, assistant, _loginChecker,
-                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews);
+                _plugins, _mcpServerCatalog, _tokenEstimator, _ttyProviderResolver, _pluginConfigViews, setup);
             await viewModel.LoadAsync();
 
             return new AssistantProfileDialog { DataContext = viewModel };
@@ -337,7 +341,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<ProjectDefinitionConflictResolution?>(owner);
     }
 
-    public async Task<Project?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey)
+    public async Task<SharedProjectBindResult?> ShowSharedProjectBindingDialogAsync(string sharedProjectId, string sourceName, string sourceKey)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -345,7 +349,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var key = (typeof(SharedProjectBindingDialog), sharedProjectId);
-        if (_surfaces.TryActivateAsync(key) is Task<Project?> open)
+        if (_surfaces.TryActivateAsync(key) is Task<SharedProjectBindResult?> open)
         {
             return await open;
         }
@@ -365,7 +369,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        Project? saved = null;
+        SharedProjectBindResult? saved = null;
         viewModel.CloseRequested += result => saved = result;
 
         var dialog = new SharedProjectBindingDialog { DataContext = viewModel };

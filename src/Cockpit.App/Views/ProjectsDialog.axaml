@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:sharedProjects="using:Cockpit.Core.Projects"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -94,8 +95,16 @@
                                 <!-- Same heading, same card and same wording as the Projects page's own section
                                      (AC-772 criterion 23) — one control rather than two templates that have to be
                                      kept in step by hand, which is how "Not set up yet" survived in two places. -->
-                                <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="12"
-                                           FontWeight="SemiBold" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="7">
+                                    <Grid Width="20" Height="20">
+                                        <icons:MaterialIcon Kind="Database" Width="20" Height="20"
+                                                            IsVisible="{Binding !HasLogo}"/>
+                                        <Image Source="{Binding Logo}" Stretch="Uniform" IsVisible="{Binding HasLogo}"/>
+                                    </Grid>
+                                    <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="12"
+                                               VerticalAlignment="Center" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                </StackPanel>
                                 <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource CockpitStatusErrorBrush}"
                                            IsVisible="{Binding HasError}"/>

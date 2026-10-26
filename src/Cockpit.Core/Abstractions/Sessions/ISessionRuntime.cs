@@ -1,6 +1,7 @@
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Provisioning;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
@@ -51,6 +52,11 @@ public interface ISessionRuntime : IAsyncDisposable
     /// True once <see cref="StartAsync"/> has brought a driver up and the event pump is running.
     /// </summary>
     bool IsRunning { get; }
+
+    /// <summary>
+    /// AC-1593: the organisation's policy as read at the last start or switch; null when none applies.
+    /// </summary>
+    ProvisionPolicy? Policy => null;
 
     /// <summary>
     /// The assistant text of the most recently completed turn — a delegated task's result (#67).

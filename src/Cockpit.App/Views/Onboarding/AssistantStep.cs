@@ -14,8 +14,19 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
         IAssistantSettingsStore settingsStore,
         IAssistantProfileStore profileStore,
         ISessionDialogService dialogService,
-        IPluginRegistrations pluginProviderRegistry)
-        : this(new AssistantStepViewModel(settingsStore, profileStore, dialogService, pluginProviderRegistry))
+        IPluginRegistrations pluginProviderRegistry,
+        ProviderStep providerStep,
+        IFirstRunWizardStateStore wizardState,
+        DeferredAssistantProfileCoordinator coordinator)
+        : this(new AssistantStepViewModel(
+            settingsStore,
+            profileStore,
+            dialogService,
+            pluginProviderRegistry,
+            () => providerStep.ViewModel,
+            wizardState,
+            coordinator.Remember,
+            coordinator.ApplyAsync))
     {
     }
 
@@ -24,12 +35,18 @@ internal sealed class AssistantStep : IFirstRunWizardStep, ISingletonService
 
     internal AssistantStepViewModel ViewModel { get; }
 
+    internal void Restore(FirstRunWizardResumeState state) => ViewModel.Restore(state);
+
     public int Order => 25;
 
     // Matches the epic's own label for this slot (AC-509's EpicPlan).
     public string Title => "Your assistant";
 
     public bool IsSkipped => false;
+
+    public string? NextBlockedReason => ViewModel.NextBlockedReason;
+
+    public void Entered() => ViewModel.RefreshChosenProviders();
 
     public Control BuildContent() => new AssistantStepView { DataContext = ViewModel };
 }

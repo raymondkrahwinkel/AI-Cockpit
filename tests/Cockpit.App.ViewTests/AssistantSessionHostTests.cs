@@ -1375,6 +1375,43 @@ public class AssistantSessionHostTests
         }
     }
 
+    /// <summary>
+    /// AC-1567: the organisation's rule set reaches the start between the built-in layer and the operator's own memory,
+    /// read off disk like the memory is — and a profile that replaces the built-in layer does not take it away.
+    /// </summary>
+    [Fact]
+    public async Task TheOrgRuleSet_GoesIntoTheStartAheadOfThePersonalMemory_EvenUnderAProfileThatReplacesTheBuiltInLayer()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var memory = new AssistantMemoryFile(
+                Path.Combine(directory.FullName, "assistant-memory.md"), Path.Combine(directory.FullName, "assistant-state.md"));
+            await memory.RememberAsync("The operator is called Raymond.", AssistantMemoryScope.Behaviour);
+            await File.WriteAllTextAsync(Path.Combine(directory.FullName, "assistant-org-rules.md"), "# Rule set of Acme\n\nAnswer in Dutch.\n");
+
+            var driver = Substitute.For<ISessionDriver>();
+            driver.Events.Returns(_EmptyEvents());
+            var factory = Substitute.For<ISessionDriverFactory>();
+            factory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+            var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
+                () => TestSessions.Pane(new SessionManager(factory))));
+            var slot = new AssistantProfileSlot(_Profile() with { SystemPrompt = "Be brief." }, ReplacesStandingInstruction: true);
+            var host = Dispatcher.UIThread.Invoke(() => _Host(enabled: true, slot: slot, cockpit: cockpit, memory: memory));
+
+            Assert.NotNull(await Dispatcher.UIThread.InvokeAsync(() => host.EnsureStartedAsync()));
+
+            var prompt = driver.ReceivedCalls().Single(call => call.GetMethodInfo().Name == nameof(ISessionDriver.StartAsync))
+                .GetArguments().OfType<IReadOnlyDictionary<string, string>>().Single()[WellKnownPluginSessionOptions.AppendSystemPrompt];
+            var rules = prompt.IndexOf("# Rule set of Acme", StringComparison.Ordinal);
+            Assert.InRange(rules, 1, prompt.IndexOf(AssistantStandingInstruction.MemoryHeading, StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory.FullName, recursive: true);
+        }
+    }
+
     /// <summary>A session whose runtime is up, which is the state that cannot be produced without a real child process.</summary>
     private static SessionViewModel? _Pane(IAssistantSession? session) => (session as SessionPanelHandle)?.Pane as SessionViewModel;
 

@@ -1,11 +1,16 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Shared;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 // See DepotSettingsControl.cs for why this is a tuple alias, not a new record type.
 using DepotSaveResult = (bool Success, string? DuplicateName);
@@ -45,8 +50,12 @@ internal sealed class DepotConnectionRowControl : UserControl
     private string? _storedUrl;
     private readonly TextBox _name;
     private readonly TextBox _url;
+    private readonly TextBlock _brandName;
+    private readonly Image _brandLogo;
+    private readonly MaterialIcon _defaultBrandIcon;
     private readonly TextBlock _authStatus;
     private readonly Button _signIn;
+    private readonly Button _signOut;
     private readonly TextBox _token;
     private readonly Button _signInWithToken;
     private bool _isBusy;
@@ -64,6 +73,9 @@ internal sealed class DepotConnectionRowControl : UserControl
 
         _name = new TextBox { Text = existing?.Name ?? string.Empty, PlaceholderText = "Name (e.g. Work, Personal)" };
         _url = new TextBox { Text = existing?.Url ?? string.Empty, PlaceholderText = "https://depot.example.com" };
+        _brandName = new TextBlock { Text = "Depot", FontSize = 13, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        _brandLogo = new Image { Width = 24, Height = 24, Stretch = Stretch.Uniform, IsVisible = false };
+        _defaultBrandIcon = new MaterialIcon { Kind = MaterialIconKind.Database, Width = 24, Height = 24 };
         // VerticalAlignment.Center on both this label and the button below (idiom also used by SettingsHelpRow and
         // PluginToolbarHost's own icon+text row): a horizontal StackPanel stretches its children to the row's full
         // height by default, which would otherwise top-align this text against a Sign-in button whose own content
@@ -82,6 +94,10 @@ internal sealed class DepotConnectionRowControl : UserControl
         // same idiom as SettingsHelpRow's "?" hint and the other ToolTip.SetTip calls throughout this codebase.
         ToolTip.SetTip(_signIn, "Signing in opens Depot's sign-in page in your default browser.");
         _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
+
+        // AC-1660: shown only while signed in; forgets the token and keeps the connection.
+        _signOut = new Button { Content = "Sign out", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), IsVisible = false };
+        _signOut.Click += async (_, _) => await SignOutAsync().ConfigureAwait(true);
 
         // AC-1511: the second way in, beside the browser — an installation token made in Depot under Account. It is
         // handed to the backend part once and cleared from the box; nothing in this plugin keeps it.
@@ -104,14 +120,22 @@ internal sealed class DepotConnectionRowControl : UserControl
         // idiom SettingsHelpRow's "*,Auto" input+hint row uses, mirrored because the fixed column is on the left
         // here. Margin on the TextBlock replaces the StackPanel's Spacing, same idiom SettingsHelpRow uses for its
         // own "?" hint.
-        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        var signInRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*") };
         _authStatus.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_signIn, 0);
-        Grid.SetColumn(_authStatus, 1);
+        Grid.SetColumn(_signOut, 1);
+        Grid.SetColumn(_authStatus, 2);
         signInRow.Children.Add(_signIn);
+        signInRow.Children.Add(_signOut);
         signInRow.Children.Add(_authStatus);
 
         var panel = new StackPanel { Spacing = 6 };
+        var brand = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
+        Grid.SetColumn(_brandName, 1);
+        brand.Children.Add(_defaultBrandIcon);
+        brand.Children.Add(_brandLogo);
+        brand.Children.Add(_brandName);
+        panel.Children.Add(brand);
         panel.Children.Add(_Hint("Name"));
         panel.Children.Add(_name);
         panel.Children.Add(_Hint("Instance URL — with or without a trailing /mcp, both work"));
@@ -123,6 +147,11 @@ internal sealed class DepotConnectionRowControl : UserControl
         Content = new Border { Padding = new Thickness(0, 8, 0, 12), Child = panel };
 
         _OnFieldsChanged();
+        if (existing is not null)
+        {
+            // Construction cannot await optional branding; the task logs failures and keeps the default branding.
+            _ = LoadBrandingAsync();
+        }
     }
 
     public string Id => _id;
@@ -162,6 +191,11 @@ internal sealed class DepotConnectionRowControl : UserControl
                 PluginMcpAuthState.Authorized => "Signed in.",
                 _ => ReadyToSignInMessage,
             };
+            _signOut.IsVisible = state == PluginMcpAuthState.Authorized;
+            if (state == PluginMcpAuthState.Authorized)
+            {
+                await LoadBrandingAsync(cancellationToken).ConfigureAwait(true);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -220,6 +254,11 @@ internal sealed class DepotConnectionRowControl : UserControl
 
             _authStatus.Text = "Signing in…";
             var outcome = await _host.SignInMcpServerAsync(stored.McpServerName).ConfigureAwait(true);
+            if (outcome == PluginMcpSignInOutcome.Authorized)
+            {
+                _signOut.IsVisible = true;
+                await LoadBrandingAsync().ConfigureAwait(true);
+            }
             // Unreachable names the address the plugin actually tried — the outcome enum itself carries no detail
             // (PluginMcpSignInOutcome's own doc comment: "a network/store failure", nothing more specific), but this
             // row already knows which URL it dialed, so the message says at least that much instead of leaving the
@@ -288,18 +327,101 @@ internal sealed class DepotConnectionRowControl : UserControl
                     new DepotInstallTokenRequest(new DepotConnectionPayload(registration.Id, registration.Name, registration.Url), token),
                     DepotChannel.Json)).ConfigureAwait(true);
             var result = answer.Deserialize<DepotInstallTokenAnswer>(DepotChannel.Json);
-            _authStatus.Text = result?.Message ?? "Sign-in didn't complete — see the log, or try again.";
             if (result?.Success == true)
             {
                 _storedName = registration.McpServerName;
                 _storedUrl = registration.Url;
+                _signOut.IsVisible = true;
+                await LoadBrandingAsync().ConfigureAwait(true);
             }
+            _authStatus.Text = result?.Message ?? "Sign-in didn't complete — see the log, or try again.";
         }
         finally
         {
             _isBusy = false;
             _signIn.IsEnabled = _ContentValidationReason() is null;
             _signInWithToken.IsEnabled = true;
+        }
+    }
+
+    // AC-1660: forgets this connection's token on whichever host keeps it, locally only; the connection stays. The
+    // standing is read back afterwards, so a host that could not sign out still shows "Signed in.".
+    public async Task SignOutAsync()
+    {
+        if (_isBusy || _storedName is not { } storedName)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        _signIn.IsEnabled = false;
+        _signInWithToken.IsEnabled = false;
+        _signOut.IsEnabled = false;
+        _authStatus.Text = "Signing out…";
+        try
+        {
+            await _host.SignOutMcpServerAsync(storedName).ConfigureAwait(true);
+            _signOut.IsVisible = false;
+            _authStatus.Text = ReadyToSignInMessage;
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: signing out of connection '{_id}' failed: {exception}");
+            _authStatus.Text = "Sign-out didn't complete — try again.";
+            return;
+        }
+        finally
+        {
+            _isBusy = false;
+            _signIn.IsEnabled = _ContentValidationReason() is null;
+            _signInWithToken.IsEnabled = true;
+            _signOut.IsEnabled = true;
+        }
+
+        await RefreshAuthStateAsync().ConfigureAwait(true);
+    }
+
+    internal async Task LoadBrandingAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var answer = await _host.Channel.InvokeAsync(
+                DepotChannel.Branding,
+                JsonSerializer.SerializeToElement(new DepotBrandingRequest(_id), DepotChannel.Json),
+                cancellationToken).ConfigureAwait(true);
+            var branding = answer.Deserialize<DepotBrandingAnswer>(DepotChannel.Json);
+            _brandName.Text = string.IsNullOrWhiteSpace(branding?.Name) ? "Depot" : branding.Name;
+
+            Bitmap? bitmap = null;
+            if (branding?.Logo is { Length: > 0 } bytes)
+            {
+                try
+                {
+                    var raster = SvgRasterizer.LooksLikeSvg(bytes) ? SvgRasterizer.Rasterize(bytes, 64) : bytes;
+                    if (raster is not null)
+                    {
+                        bitmap = new Bitmap(new MemoryStream(raster));
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Trace.TraceWarning($"Depot: decoding branding for connection '{_id}' failed: {exception}");
+                    // An unsupported asset format costs the custom picture, never the connection row.
+                }
+            }
+
+            _brandLogo.Source = bitmap;
+            _brandLogo.IsVisible = bitmap is not null;
+            _defaultBrandIcon.IsVisible = bitmap is null;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: loading branding for connection '{_id}' failed: {exception}");
+            // Branding is decoration; auth and settings remain usable when an older backend cannot answer it.
         }
     }
 

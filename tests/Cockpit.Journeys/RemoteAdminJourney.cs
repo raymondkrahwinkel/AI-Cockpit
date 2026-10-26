@@ -76,7 +76,9 @@ public sealed class RemoteAdminJourney
         // above the pairing port, so that is the port found free.
         var checksumFile = Path.Combine(root, "echo-checksum.txt");
         var port = _FreeDoorPort();
-        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook", pluginStore: store, withEchoPlugin: false, withBrowserPlugin: true);
+        var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(
+            stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook",
+            pluginStore: store, withEchoPlugin: false, withGitStatus: true, withBrowserPlugin: true);
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile,
@@ -416,7 +418,16 @@ public sealed class RemoteAdminJourney
             // desktop's "browser" only follows the link to its loopback; a token signs Work in at a fake Depot, the same token on
             // Spare is refused, Remove takes Spare off the server, and the view reopened lists Work alone, signed in.
             var installToken = $"journey-install-{Guid.NewGuid():N}";
-            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(installToken));
+            var depotDocuments = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+            var depotArtifacts = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
+            var depotShares = new System.Collections.Concurrent.ConcurrentDictionary<Guid, string>();
+            var depotCalls = new System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)>();
+            var depotBranding = new FakeDepotBranding(
+                "White-label Depot", "brand-v1", Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+                customLogo: true);
+            await using var depot = await LoopbackHttpServer.StartAsync(_FakeDepot(
+                installToken, depotDocuments, depotArtifacts, depotShares, depotCalls, depotBranding));
             using var depotBrowser = new HttpClient();
             var browserVisits = new List<Task<HttpResponseMessage>>();
             foreach (var remote in cockpit.Services.GetRequiredService<IRemoteServers>().Servers)
@@ -431,6 +442,7 @@ public sealed class RemoteAdminJourney
             var depotUrl = depot.BaseUrl.TrimEnd('/');
             var depotHasSettings = HeadlessAvalonia.Run(() => admin.Plugins.Single(plugin => plugin.Id == "depot").HasSettings);
             var (browser, signedIn, reused, reopenedDepot) = ("", "", "", "");
+            byte[] customLogo = [];
             await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
                 var work = _DepotRows(window)[0];
@@ -440,24 +452,120 @@ public sealed class RemoteAdminJourney
                 _DepotStatus(work).Text = "";
                 _Box(work, DepotTokenBox).Text = installToken;
                 signedIn = await _PressDepotAsync(work, "Sign in with token");
+                await Until.Holds(_DepotBrandName(work), () => _DepotBrandName(work).Text == "White-label Depot");
+                customLogo = _DepotLogoHash(work);
                 _Click(window, "+ Add connection");
                 var spare = _DepotRows(window)[1];
                 _FillDepotRow(spare, "Spare", depotUrl.Replace("127.0.0.1", "localhost", StringComparison.Ordinal), installToken);
                 reused = await _PressDepotAsync(spare, "Sign in with token");
                 _Click(spare, "Remove connection");
             });
+            depotBranding.Name = "White-label Depot";
+            depotBranding.Fingerprint = "brand-v2";
+            depotBranding.Logo = Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+            byte[] changedLogo = [];
             await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
             {
                 var rows = _DepotRows(window);
                 var status = _DepotStatus(rows[0]);
                 await Until.Holds(status, () => status.Text == "Signed in.");
+                var logo = _DepotBrandLogo(rows[0]);
+                await Until.Holds(logo, () => logo.Source is Avalonia.Media.Imaging.Bitmap);
+                await Until.Holds(logo, () => !_DepotLogoHash(rows[0]).SequenceEqual(customLogo));
+                changedLogo = _DepotLogoHash(rows[0]);
                 reopenedDepot = $"{rows.Count} {_Box(rows[0], "Name (e.g. Work, Personal)").Text}: {status.Text}";
+            });
+            depotBranding.Name = "Depot";
+            depotBranding.Fingerprint = "default";
+            depotBranding.Logo = Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+            depotBranding.CustomLogo = false;
+            byte[] defaultLogo = [];
+            await _SaveServerSettingsAsync(admin, "depot", _IsDepotView, async window =>
+            {
+                var work = _DepotRows(window)[0];
+                await Until.Holds(_DepotBrandName(work), () => _DepotBrandName(work).Text == "Depot");
+                var logo = _DepotBrandLogo(work);
+                await Until.Holds(logo, () => logo.Source is Avalonia.Media.Imaging.Bitmap);
+                await Until.Holds(logo, () => !_DepotLogoHash(work).SequenceEqual(changedLogo));
+                defaultLogo = _DepotLogoHash(work);
             });
             var serverState = "";
             await Until.ReloadHolds(
                 async () => serverState = await _ReadSharedAsync(Path.Combine(stateRoot, "cockpit.json")),
                 () => serverState.Contains("Depot: Work", StringComparison.Ordinal) && serverState.Contains(depotUrl, StringComparison.Ordinal)
                     && !serverState.Contains("localhost", StringComparison.Ordinal) && !serverState.Contains("Depot: Spare", StringComparison.Ordinal));
+
+            // AC-1573: the file browser's upload reaches the server's Depot connection through the channel relay, and the file
+            // is in the browser's tree afterwards.
+            // The plugin's storage holds the connection list as an escaped JSON string; its id is a fresh guid.
+            var depotId = System.Text.RegularExpressions.Regex.Match(serverState, @"Id\\u0022:\\u0022(?<id>[0-9a-f]{32})\\u0022,\\u0022Name\\u0022:\\u0022Work").Groups["id"].Value;
+            var uploaded = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-upload", new { connectionId = depotId, project = "acme/cockpit", path = "notes/journey.md", content = "# from the journey" });
+            var depotTree = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-tree", new { connectionId = depotId, project = "acme/cockpit" });
+            var openedDocument = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-read", new { connectionId = depotId, project = "acme/cockpit", path = "notes/journey.md" });
+            Assert.True(uploaded["status"]?.GetValue<string>() == "ok", uploaded.ToJsonString());
+            Assert.Equal("# from the journey", depotDocuments["notes/journey.md"]);
+            Assert.Contains(depotTree["data"]?["nodes"]?.AsArray() ?? [], node => node?["path"]?.GetValue<string>() == "notes/journey.md");
+            Assert.Equal("# from the journey", openedDocument["data"]?.GetValue<string>());
+
+            // AC-1574: publishing a folder of this machine to the Depot project, through the same relay. A first run puts both
+            // files there, a changed document goes with exactly one write guarded by the checksum it replaces, and a file
+            // removed locally is moved to Depot's trash (a soft delete, guarded by its checksum) rather than unlinked.
+            var publishSource = Path.Combine(root, "publish-source");
+            Directory.CreateDirectory(publishSource);
+            await File.WriteAllTextAsync(Path.Combine(publishSource, "a.md"), "# first\r\n");
+            await File.WriteAllBytesAsync(Path.Combine(publishSource, "b.png"), [1, 2, 3, 4]);
+            await Task.WhenAll(Enumerable.Range(0, 33).Select(index =>
+                File.WriteAllTextAsync(Path.Combine(publishSource, $"bulk-{index:00}.md"), $"# bulk {index}\r\n")));
+            var linked = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/publish-add", new { connectionId = depotId, project = "acme/cockpit", source = publishSource, targetFolder = "pub" });
+            var linkId = linked["data"]?["id"]?.GetValue<string>() ?? "";
+            async Task<string?> publishFingerprint() =>
+                (await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-plan", new { connectionId = depotId, id = linkId }))["data"]?["fingerprint"]?.GetValue<string>();
+            var firstRun = await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true, planFingerprint = await publishFingerprint() });
+            Assert.True(firstRun["status"]?.GetValue<string>() == "ok", firstRun.ToJsonString());
+            Assert.Equal("# first\r\n", depotDocuments["pub/a.md"]);
+            Assert.Equal(new byte[] { 1, 2, 3, 4 }, depotArtifacts["pub/b.png"]);
+            Assert.Equal(34, depotDocuments.Keys.Count(path => path.StartsWith("pub/", StringComparison.Ordinal)));
+            Assert.Contains(depotCalls, call => call.Tool == "write-batch" && call.Path == "34");
+
+            // AC-1638: the file browser creates and revokes the public link over /sync. The copied URL works anonymously
+            // until that real DELETE reaches Depot; removing only the browser row would leave this request alive.
+            var sharedArtifact = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-share",
+                new { connectionId = depotId, project = "acme/cockpit", path = "pub/b.png", mode = "public" });
+            var shareId = sharedArtifact["data"]?["shareId"]?.GetValue<string>()
+                ?? throw new InvalidOperationException($"Depot did not return a share id: {sharedArtifact}");
+            var copiedShareUrl = sharedArtifact["data"]?["url"]?.GetValue<string>()
+                ?? throw new InvalidOperationException($"Depot did not return a share link: {sharedArtifact}");
+            using var liveShare = await depotBrowser.GetAsync(copiedShareUrl);
+            var unsharedArtifact = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-unshare",
+                new { connectionId = depotId, project = "acme/cockpit", path = "pub/b.png", shareId });
+            using var deadShare = await depotBrowser.GetAsync(copiedShareUrl);
+            Assert.Equal((HttpStatusCode.OK, "ok", HttpStatusCode.NotFound),
+                (liveShare.StatusCode, unsharedArtifact["status"]?.GetValue<string>(), deadShare.StatusCode));
+
+            var truncated = await setup.SendAsync<JsonObject>(
+                HttpMethod.Post, "api/v1/plugins/depot/channel/browser-read", new { connectionId = depotId, project = "acme/cockpit", path = "pub/bulk-32.md" });
+            Assert.Equal("error", truncated["status"]?.GetValue<string>());
+
+            var firstChecksum = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("# first\r\n")));
+            var writesBefore = depotCalls.Count(call => call.Tool == "write" && call.Path == "pub/a.md");
+            await File.WriteAllTextAsync(Path.Combine(publishSource, "a.md"), "# second\r\n");
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true, planFingerprint = await publishFingerprint() });
+            var rewrites = depotCalls.Where(call => call.Tool == "write" && call.Path == "pub/a.md").Skip(writesBefore).ToList();
+            Assert.Equal(("# second\r\n", 1, firstChecksum), (depotDocuments["pub/a.md"], rewrites.Count, rewrites.SingleOrDefault().BaseChecksum));
+
+            File.Delete(Path.Combine(publishSource, "b.png"));
+            await setup.SendAsync<JsonObject>(HttpMethod.Post, "api/v1/plugins/depot/channel/publish-run", new { connectionId = depotId, id = linkId, confirmed = true, planFingerprint = await publishFingerprint() });
+            var removal = depotCalls.Single(call => call.Tool == "delete");
+            Assert.Equal(("pub/b.png", "artifact", false), (removal.Path, removal.Kind, removal.Hard));
+            Assert.False(depotArtifacts.ContainsKey("pub/b.png"));
 
             string? issued = null;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -714,6 +822,8 @@ public sealed class RemoteAdminJourney
             Assert.Equal(
                 ("Signed in.", "Signed in.", "That installation token is not valid any more. Make a new one in Depot under Account.", "1 Work: Signed in."),
                 (browser, signedIn, reused, reopenedDepot));
+            Assert.False(customLogo.SequenceEqual(changedLogo));
+            Assert.True(customLogo.SequenceEqual(defaultLogo));
             Assert.Equal([HttpStatusCode.OK], (await Task.WhenAll(browserVisits)).Select(visit => visit.StatusCode));
             Assert.Contains((Laptop, "plugin_channel"), assistantAudit);
             var auditTrail = await File.ReadAllTextAsync(Path.Combine(stateRoot, "node-access-audit.jsonl"));
@@ -740,7 +850,13 @@ public sealed class RemoteAdminJourney
 
     // Depot as the server reaches it (AC-1511, DEP-264 not yet rolled out): its OAuth metadata and a token endpoint that
     // redeems one installation token once, for Depot's own client.
-    private static RequestDelegate _FakeDepot(string installToken)
+    private static RequestDelegate _FakeDepot(
+        string installToken,
+        System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
+        System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, string> shares,
+        System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls,
+        FakeDepotBranding branding)
     {
         var redeemed = 0;
         var challenge = "";
@@ -749,6 +865,72 @@ public sealed class RemoteAdminJourney
             var origin = $"{context.Request.Scheme}://{context.Request.Host}";
             switch (context.Request.Path.Value)
             {
+                case "/cockpit/branding" when
+                    context.Request.Headers.Authorization.ToString() is var authorization
+                    && (authorization == "Bearer journey-access" || authorization == $"Bearer {DepotBrowserToken}"):
+                    context.Response.Headers.ETag = $"\"{branding.Fingerprint}\"";
+                    if (context.Request.Headers.IfNoneMatch == $"\"{branding.Fingerprint}\"")
+                    {
+                        context.Response.StatusCode = StatusCodes.Status304NotModified;
+                        return;
+                    }
+
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        branding.Name,
+                        branding.Fingerprint,
+                        assets = new
+                        {
+                            icon = $"{origin}/branding/{branding.Fingerprint}/icon",
+                            logoLight = branding.CustomLogo ? $"{origin}/branding/{branding.Fingerprint}/logo-light" : null,
+                            logoDark = (string?)null,
+                        },
+                    });
+                    return;
+                case { } asset when asset.StartsWith($"/branding/{branding.Fingerprint}/", StringComparison.Ordinal):
+                    context.Response.ContentType = "image/png";
+                    await context.Response.Body.WriteAsync(branding.Logo);
+                    return;
+                case "/cockpit/projects" when
+                    context.Request.Headers.Authorization.ToString() is var projectsAuthorization
+                    && (projectsAuthorization == "Bearer journey-access" || projectsAuthorization == $"Bearer {DepotBrowserToken}"):
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        projects = new[]
+                        {
+                            new { slug = "cockpit", address = "acme/cockpit", name = "Cockpit", role = "Editor" },
+                        },
+                    });
+                    return;
+                case { } sync when sync.StartsWith("/sync/acme/cockpit/", StringComparison.Ordinal)
+                    && context.Request.Headers.Authorization.ToString() is var syncAuthorization
+                    && (syncAuthorization == "Bearer journey-access" || syncAuthorization == $"Bearer {DepotBrowserToken}"):
+                    await _FakeDepotSyncAsync(context, documents, artifacts, shares, calls);
+                    return;
+                case { } shared when shared.StartsWith("/artifact/p/", StringComparison.Ordinal):
+                    if (Guid.TryParse(shared["/artifact/p/".Length..], out var shareId)
+                        && shares.TryGetValue(shareId, out var sharedPath)
+                        && artifacts.TryGetValue(sharedPath, out var sharedContent))
+                    {
+                        await context.Response.Body.WriteAsync(sharedContent);
+                        return;
+                    }
+
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return;
+                case "/mcp" when context.Request.Headers.Authorization == "Bearer journey-access":
+                    await _FakeDepotMcpAsync(context);
+                    return;
+                case { } upload when upload.StartsWith("/upload/", StringComparison.Ordinal) && HttpMethods.IsPut(context.Request.Method):
+                    using (var body = new MemoryStream())
+                    {
+                        await context.Request.Body.CopyToAsync(body);
+                        var path = Uri.UnescapeDataString(upload["/upload/".Length..]);
+                        artifacts[path] = body.ToArray();
+                        await context.Response.WriteAsJsonAsync(new { path, checksum = Convert.ToHexStringLower(SHA256.HashData(body.ToArray())), bytesWritten = body.Length });
+                    }
+
+                    return;
                 case "/.well-known/oauth-protected-resource":
                     await context.Response.WriteAsJsonAsync(new { resource = $"{origin}/mcp", authorization_servers = new[] { origin } });
                     return;
@@ -801,6 +983,208 @@ public sealed class RemoteAdminJourney
             }
         };
     }
+
+    private sealed class FakeDepotBranding(string name, string fingerprint, byte[] logo, bool customLogo)
+    {
+        public string Name { get; set; } = name;
+
+        public string Fingerprint { get; set; } = fingerprint;
+
+        public byte[] Logo { get; set; } = logo;
+
+        public bool CustomLogo { get; set; } = customLogo;
+    }
+
+    private static async Task _FakeDepotSyncAsync(
+        HttpContext context,
+        System.Collections.Concurrent.ConcurrentDictionary<string, string> documents,
+        System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> artifacts,
+        System.Collections.Concurrent.ConcurrentDictionary<Guid, string> shares,
+        System.Collections.Concurrent.ConcurrentQueue<(string Tool, string Path, string? BaseChecksum, string? Kind, bool? Hard)> calls)
+    {
+        var operation = context.Request.Path.Value?["/sync/acme/cockpit/".Length..] ?? string.Empty;
+        if (HttpMethods.IsGet(context.Request.Method) && operation == "files")
+        {
+            var prefix = context.Request.Query["path"].ToString();
+            await context.Response.WriteAsJsonAsync(new
+            {
+                entries = documents.Where(pair => prefix.Length == 0 || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
+                    .Select(pair => new { path = pair.Key, size = Encoding.UTF8.GetByteCount(pair.Value), checksum = _Checksum(pair.Value) }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsGet(context.Request.Method) && operation == "artifacts")
+        {
+            var prefix = context.Request.Query["path"].ToString();
+            await context.Response.WriteAsJsonAsync(new
+            {
+                entries = artifacts.Where(pair => prefix.Length == 0 || pair.Key == prefix || pair.Key.StartsWith(prefix + "/", StringComparison.Ordinal))
+                    .Select(pair => new { path = pair.Key, size = pair.Value.Length, checksum = Convert.ToHexStringLower(SHA256.HashData(pair.Value)) }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsGet(context.Request.Method) && operation == "shares")
+        {
+            await context.Response.WriteAsJsonAsync(new
+            {
+                shares = shares.Select(pair => new
+                {
+                    shareId = pair.Key,
+                    path = pair.Value,
+                    isPublic = true,
+                    url = $"{context.Request.Scheme}://{context.Request.Host}/artifact/p/{pair.Key}",
+                }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "shares")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var path = request.RootElement.GetProperty("path").GetString() ?? string.Empty;
+            var shareId = Guid.NewGuid();
+            shares[shareId] = path;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                shareId,
+                path,
+                isPublic = request.RootElement.GetProperty("mode").GetString() == "public",
+                url = $"{context.Request.Scheme}://{context.Request.Host}/artifact/p/{shareId}",
+            });
+            return;
+        }
+
+        if (HttpMethods.IsDelete(context.Request.Method) && operation.StartsWith("shares/", StringComparison.Ordinal))
+        {
+            var shareId = Guid.Parse(operation["shares/".Length..]);
+            shares.TryRemove(shareId, out _);
+            await context.Response.WriteAsJsonAsync(new { revoked = true });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "read")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var paths = request.RootElement.EnumerateArray().Select(path => path.GetString() ?? string.Empty).ToList();
+            await context.Response.WriteAsJsonAsync(new
+            {
+                files = paths.Where(documents.ContainsKey).Select(path => new
+                {
+                    path,
+                    content = documents[path],
+                    size = Encoding.UTF8.GetByteCount(documents[path]),
+                    checksum = _Checksum(documents[path]),
+                }),
+                missing = paths.Where(path => !documents.ContainsKey(path)),
+                truncated = paths.Contains("pub/bulk-32.md", StringComparer.Ordinal),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "write")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            calls.Enqueue(("write-batch", request.RootElement.GetArrayLength().ToString(System.Globalization.CultureInfo.InvariantCulture), null, null, null));
+            var results = new List<object>();
+            foreach (var entry in request.RootElement.EnumerateArray())
+            {
+                var path = entry.GetProperty("path").GetString() ?? string.Empty;
+                var content = entry.GetProperty("content").GetString() ?? string.Empty;
+                var baseChecksum = entry.TryGetProperty("baseChecksum", out var guard) && guard.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? guard.GetString()
+                    : null;
+                calls.Enqueue(("write", path, baseChecksum, null, null));
+                if (baseChecksum is not null && documents.TryGetValue(path, out var current) && _Checksum(current) != baseChecksum)
+                {
+                    results.Add(new { path, status = "conflict", checksum = _Checksum(current), message = "Changed in Depot." });
+                    continue;
+                }
+
+                documents[path] = content;
+                results.Add(new { path, status = "written", checksum = _Checksum(content), message = (string?)null });
+            }
+
+            await context.Response.WriteAsJsonAsync(new { results });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "uploads")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var uploads = request.RootElement.GetProperty("files").EnumerateArray().Select(file =>
+            {
+                var path = file.GetProperty("path").GetString() ?? string.Empty;
+                calls.Enqueue(("request_upload", path, null, null, null));
+                return new { path, uploadUrl = $"{context.Request.Scheme}://{context.Request.Host}/upload/{Uri.EscapeDataString(path)}" };
+            }).ToList();
+            await context.Response.WriteAsJsonAsync(new { uploads });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "downloads")
+        {
+            using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+            var prefix = request.RootElement.GetProperty("prefix").GetString() ?? string.Empty;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                files = artifacts.Keys.Where(path => path.StartsWith(prefix, StringComparison.Ordinal)).Select(path =>
+                    new { path, downloadUrl = $"{context.Request.Scheme}://{context.Request.Host}/download/{Uri.EscapeDataString(path)}" }),
+            });
+            return;
+        }
+
+        if (HttpMethods.IsPost(context.Request.Method) && operation == "delete")
+        {
+            var path = context.Request.Query["path"].ToString();
+            var kind = context.Request.Query["kind"].ToString();
+            var hard = bool.TryParse(context.Request.Query["hard"], out var hardDelete) && hardDelete;
+            calls.Enqueue(("delete", path, context.Request.Query["baseChecksum"], kind, hard));
+            documents.TryRemove(path, out _);
+            artifacts.TryRemove(path, out _);
+            await context.Response.WriteAsJsonAsync(new { path });
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+    }
+
+    // Just enough of Depot's MCP for sign-in and the agent-facing server registration; no file tool is offered.
+    // document and `list` handing it back.
+    private static async Task _FakeDepotMcpAsync(HttpContext context)
+    {
+        if (!HttpMethods.IsPost(context.Request.Method))
+        {
+            context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+            return;
+        }
+
+        using var request = await System.Text.Json.JsonDocument.ParseAsync(context.Request.Body);
+        var root = request.RootElement;
+        if (!root.TryGetProperty("id", out var id))
+        {
+            context.Response.StatusCode = StatusCodes.Status202Accepted;
+            return;
+        }
+
+        object result = root.GetProperty("method").GetString() switch
+        {
+            "initialize" => new
+            {
+                protocolVersion = root.GetProperty("params").GetProperty("protocolVersion").GetString(),
+                capabilities = new { tools = new { } },
+                serverInfo = new { name = "fake-depot", version = "1" },
+            },
+            "tools/call" when root.GetProperty("params").GetProperty("name").GetString() == "ping" =>
+                new { content = new[] { new { type = "text", text = "{}" } } },
+            _ => new { tools = Array.Empty<object>() },
+        };
+
+        await context.Response.WriteAsJsonAsync(new { jsonrpc = "2.0", id, result });
+    }
+
+    private static string _Checksum(string text) => Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
 
     // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
     // closes only once the server took the save, so a refusal fails here with what the window said.
@@ -893,6 +1277,21 @@ public sealed class RemoteAdminJourney
     private static TextBlock _DepotStatus(Control row) =>
         row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Button>().Any(button => Equals(button.Content, "Sign in")))
             .Children.OfType<TextBlock>().Single();
+
+    private static Grid _DepotBrand(Control row) =>
+        row.GetLogicalDescendants().OfType<Grid>().First(grid => grid.Children.OfType<Image>().Any());
+
+    private static TextBlock _DepotBrandName(Control row) => _DepotBrand(row).Children.OfType<TextBlock>().Single();
+
+    private static Image _DepotBrandLogo(Control row) => _DepotBrand(row).Children.OfType<Image>().Single();
+
+    private static byte[] _DepotLogoHash(Control row)
+    {
+        using var encoded = new MemoryStream();
+        Assert.IsType<Avalonia.Media.Imaging.Bitmap>(_DepotBrandLogo(row).Source)
+            .Save(encoded, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        return SHA256.HashData(encoded.ToArray());
+    }
 
     private const string DepotBrowserCode = "journey-browser-code";
 

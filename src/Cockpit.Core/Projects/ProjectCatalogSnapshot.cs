@@ -16,6 +16,7 @@ public sealed record ProjectCatalogSnapshot(
 public sealed record SharedProjectSourceInfo(string Key, string Name, bool CanPublish);
 
 // A source that could not be read carries its own error rather than failing the other groups (AC-245).
-public sealed record SharedProjectGroup(string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error);
+public sealed record SharedProjectGroup(
+    string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null);
 
 public sealed record SharedProjectOffer(string Id, string Name, string? Description = null, string? Role = null);

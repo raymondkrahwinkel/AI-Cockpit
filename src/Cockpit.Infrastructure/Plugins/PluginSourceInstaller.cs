@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -20,6 +21,7 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
     {
         var saved = await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
         var installed = new List<string>();
+        var registrationsToSave = new List<(string Id, PluginRegistration Registration)>();
 
         foreach (var source in sourceFolders)
         {
@@ -56,9 +58,18 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
             // Pin the whole installed closure, not just the entry assembly (AC-43), so a later swapped dependency
             // DLL re-triggers consent.
             var sha = await PluginClosureHash.OfInstalledFolderAsync(target, cancellationToken).ConfigureAwait(false);
-            await registrations.SaveAsync(manifest.Id, new PluginRegistration(Enabled: true, PinnedSha256: sha), cancellationToken).ConfigureAwait(false);
+            registrationsToSave.Add((manifest.Id, new PluginRegistration(Enabled: true, PinnedSha256: sha)));
 
             installed.Add(manifest.Id);
+        }
+
+        // Copying and hashing stay outside this scope because the batch holds the config write gate until disposal.
+        await using (CockpitConfigWriteBatch.Begin())
+        {
+            foreach (var (id, registration) in registrationsToSave)
+            {
+                await registrations.SaveAsync(id, registration, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return installed;

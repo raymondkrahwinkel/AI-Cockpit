@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia">
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:vm="using:Cockpit.App.ViewModels">
 
     <!-- Cockpit theme: flat, hairline-bordered, quiet — in two variants (AC-860). A colour lives once per variant
          in the ThemeDictionaries; a brush is declared once, below them, and follows the active variant through
@@ -1670,6 +1671,11 @@
     </Style>
     <Style Selector="TextBlock.optionsHint.error">
         <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+    </Style>
+
+    <!-- AC-1593: a choice the organisation's policy rules out stays listed, but cannot be picked. -->
+    <Style Selector="ComboBox.policyChoices ComboBoxItem" x:DataType="vm:SelectableChoice">
+        <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
     </Style>
 
     <!-- AC-1000: the sidebar's live-search match-count badge, one per category, only visible while searching. -->

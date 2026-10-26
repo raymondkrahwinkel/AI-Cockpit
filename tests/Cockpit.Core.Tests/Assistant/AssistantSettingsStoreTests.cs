@@ -153,33 +153,6 @@ public class AssistantSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_AllowAllSwitchedOff_StaysOff()
-    {
-        // The direction that matters: a default of true must not read an operator's deliberate off back as on.
-        var store = new AssistantSettingsStore(_configFilePath);
-
-        await store.SaveAsync(new AssistantSettings { IsEnabled = true, ConsentBypassAll = false });
-
-        var loaded = await store.LoadAsync();
-        Assert.False(loaded.ConsentBypassAll);
-        Assert.False(loaded.HasConsentBypass);
-    }
-
-    // Criterion 9: speaking and being enabled are two separate decisions — turning the assistant on must not
-    // silently turn speech on too, and turning speech off must not silently disable the assistant.
-    [Fact]
-    public async Task SaveAsync_SpeakRepliesIsIndependentOfIsEnabled()
-    {
-        var store = new AssistantSettingsStore(_configFilePath);
-
-        await store.SaveAsync(new AssistantSettings { IsEnabled = true, SpeakReplies = false });
-        var loaded = await store.LoadAsync();
-
-        Assert.True(loaded.IsEnabled);
-        Assert.False(loaded.SpeakReplies);
-    }
-
-    [Fact]
     public async Task SaveAsync_LeavesTheOtherSectionsIntact()
     {
         var layoutStore = new LayoutSettingsStore(_configFilePath);

@@ -828,6 +828,12 @@ public partial class OptionsDialog : Window
             return;
         }
 
+        if (cockpit.BackupDestination?.Target is { } target)
+        {
+            await cockpit.CreateBackupAsync(target);
+            return;
+        }
+
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             // The one string here that names the app: this dialog is the OS's, drawn among windows from every
@@ -854,6 +860,32 @@ public partial class OptionsDialog : Window
             return;
         }
 
+        // The archive says what it carries; the operator says what of it comes back. Reading first and asking
+        // second is the whole difference between a restore and a surprise.
+        async Task<RestoreOptions?> ChooseAsync(BackupManifest manifest)
+        {
+            var dialog = new RestoreSelectionDialog
+            {
+                DataContext = new RestoreSelectionViewModel(manifest, cockpit.InstalledPluginIds),
+            };
+
+            return await dialog.ShowDialog<RestoreOptions?>(this);
+        }
+
+        if (cockpit.BackupDestination?.Target is { } target)
+        {
+            if (cockpit.TargetBackup is { } chosen)
+            {
+                await cockpit.RestoreBackupAsync(target, chosen.Entry.Id, ChooseAsync);
+            }
+            else
+            {
+                cockpit.BackupStatus = $"Pick a backup on {target.DisplayName} to restore first.";
+            }
+
+            return;
+        }
+
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Restore from a backup",
@@ -863,17 +895,7 @@ public partial class OptionsDialog : Window
 
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
-            // The archive says what it carries; the operator says what of it comes back. Reading first and asking
-            // second is the whole difference between a restore and a surprise.
-            await cockpit.RestoreBackupAsync(path, async manifest =>
-            {
-                var dialog = new RestoreSelectionDialog
-                {
-                    DataContext = new RestoreSelectionViewModel(manifest, cockpit.InstalledPluginIds),
-                };
-
-                return await dialog.ShowDialog<RestoreOptions?>(this);
-            });
+            await cockpit.RestoreBackupAsync(path, ChooseAsync);
         }
     }
 

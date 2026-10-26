@@ -14,6 +14,7 @@ public interface ITtyLauncher
     /// Spawns <paramref name="provider"/>'s CLI in a sized pseudo console under <paramref name="profile"/>; owns
     /// and deletes its launch files on dispose. Carries <paramref name="paneId"/> as <c>COCKPIT_PANE_ID</c>
     /// (#AC-13) for self-labelling, an MCP narrowing (#44), plugin <paramref name="contributed"/> (AC-165), and <paramref name="projectId"/> (AC-218).
+    /// <paramref name="notice"/> hears, before the launch returns, what the organisation's policy changed about it (AC-1593).
     /// </summary>
     IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -26,5 +27,6 @@ public interface ITtyLauncher
         string? paneId = null,
         IReadOnlySet<string>? enabledMcpServerNames = null,
         SessionResources? contributed = null,
-        string? projectId = null);
+        string? projectId = null,
+        Action<string>? notice = null);
 }

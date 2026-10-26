@@ -97,7 +97,7 @@ public class ProviderStepViewTests
             Assert.True(viewModel.IsOffline);
 
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text).ToList();
-            Assert.Contains(texts, text => text is not null && text.Contains("Couldn't reach the plugin store", StringComparison.Ordinal));
+            Assert.Contains(viewModel.OfflineMessage, texts);
             // The local-providers note is unaffected by being offline (criterion 3) — still on screen.
             Assert.Contains(texts, text => text is not null && text.Contains(viewModel.LocalProvidersText, StringComparison.Ordinal));
         }
@@ -147,8 +147,11 @@ public class ProviderStepViewTests
                 window.GetVisualDescendants().OfType<Button>(),
                 button => ReferenceEquals(button.Command, viewModel.InstallSelectedCommand));
 
-            // The catalogue scene starts with the found, compatible, not-yet-installed row (claude-provider)
-            // pre-selected as a suggestion (criterion 4).
+            Assert.False(install.IsEffectivelyEnabled, "nothing checked means nothing to install");
+
+            viewModel.Providers.Single(row => row.Row.Id == "claude-provider").IsSelected = true;
+            window.UpdateLayout();
+
             Assert.True(install.IsEffectivelyEnabled);
 
             foreach (var row in viewModel.Providers)

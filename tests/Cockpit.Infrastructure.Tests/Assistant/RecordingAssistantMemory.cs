@@ -28,6 +28,8 @@ internal sealed class RecordingAssistantMemory : IAssistantMemory
     public Task<string> ReadCurrentStateAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(CurrentState);
 
+    public Task<string> ReadOrgRulesAsync(CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
     public Task NoteCurrentStateAsync(string text, CancellationToken cancellationToken = default)
     {
         Noted.Add(text);

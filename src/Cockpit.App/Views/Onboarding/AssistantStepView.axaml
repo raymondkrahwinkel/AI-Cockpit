@@ -11,15 +11,14 @@
         <vm:AssistantStepViewModel/>
     </Design.DataContext>
 
-    <!-- AC-585: explains the assistant and turns it on, reusing AssistantOptionsViewModel — the same view model
-         Options → Voice → Assistant edits — for IsEnabled and the profile label/reason (criterion 3). Nothing here
-         ever binds to a consent-bypass or permission-mode setting: the hard boundary the ticket draws is kept by
-         this view simply never offering either control, not by hiding a preselected one. -->
+    <!-- AC-585: explains the assistant and turns it on, reusing AssistantOptionsViewModel for IsEnabled and the
+         profile label/reason. The profile itself is edited in the regular assistant profile dialog (AC-1741), so
+         the permission mode a session default offers is the one Options → Assistant offers. -->
     <StackPanel Margin="4,4" Spacing="10">
         <StackPanel Spacing="2">
             <TextBlock Text="Your assistant" FontSize="16" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                       Text="One assistant sits above every workspace, reachable by voice or text. It can look up what's running, and start or stop agents for you."/>
+                       Text="Choose what powers the assistant you can reach from every workspace."/>
         </StackPanel>
 
         <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
@@ -29,7 +28,7 @@
                 <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                            Text="Push-to-talk: hold F10 (changeable later), or use the chip in the sidebar. It never accepts consent on your behalf — a spoken &quot;yes&quot; is never an approval; that click stays yours."/>
                 <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                           Text="It runs as a real session the moment you wake it — that's why you pick its profile below, the same as any other session."/>
+                           Text="Pick where it runs below. You can fill in the provider details now or finish them later."/>
             </StackPanel>
         </Border>
 
@@ -42,10 +41,22 @@
                        IsVisible="{Binding OnlyLocalProvidersAvailable}">
                 <Run Text="Only "/>
                 <Run Text="{Binding LocalProvidersText}" FontWeight="SemiBold"/>
-                <Run Text=" are available on this machine right now — that's not a blocker, but its profile can only run on one of those two until another provider is added."/>
+                <Run Text=" are available on this machine right now."/>
             </TextBlock>
 
-            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,8"
+                    IsVisible="{Binding HasDeferredAssistant}">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding DeferredAssistantName}" FontWeight="SemiBold" FontSize="12.5"/>
+                    <TextBlock Text="{Binding DeferredAssistantMessage}" TextWrapping="Wrap" FontSize="11.5"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                        IsVisible="{Binding !HasDeferredAssistant}">
                 <TextBlock Text="{Binding AssistantOptions.ProfileLabel}"
                            IsVisible="{Binding AssistantOptions.ProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
@@ -53,7 +64,7 @@
                            IsVisible="{Binding AssistantOptions.ProfileUnsetReason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="330"/>
-                <Button Content="Choose profile…" VerticalAlignment="Center" Command="{Binding EditProfileCommand}"/>
+                <Button Content="Choose provider…" VerticalAlignment="Center" Command="{Binding EditProfileCommand}"/>
             </StackPanel>
         </StackPanel>
 

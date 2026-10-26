@@ -27,10 +27,9 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
         Row = row;
         Detection = detection;
 
-        // A suggestion, never a decision already made (AC-510[b] criterion 4): only a CLI provider this host actually
-        // found, not incompatible, starts checked — Skip/Next must be free to leave it exactly that, a suggestion
-        // nobody acted on.
-        IsSelected = detection == ProviderDetectionState.Found && !row.IsIncompatible && !row.IsInstalled;
+        // Detection is information, not a choice. Starting a Found row checked made an untouched provider look like
+        // the operator's assistant choice after restart (AC-1673).
+        IsSelected = false;
     }
 
     public StorePluginRowViewModel Row { get; }
@@ -62,6 +61,17 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
     [ObservableProperty]
     private string _outcomeBrushKey = "CockpitTextSecondaryBrush";
 
+    // True once this row's install landed (or was staged) in this wizard.
+    [ObservableProperty]
+    private bool _wasInstalled;
+
+    // How the assistant step names this row: what the operator did with it in this step, never that it is already usable.
+    public string ChosenLine => WasInstalled
+        ? Row.Name
+        : $"{Row.Name} (not added yet)";
+
+    partial void OnWasInstalledChanged(bool value) => OnPropertyChanged(nameof(ChosenLine));
+
     public bool HasOutcome => !string.IsNullOrEmpty(OutcomeText);
 
     partial void OnOutcomeTextChanged(string? value) => OnPropertyChanged(nameof(HasOutcome));
@@ -70,15 +80,23 @@ public sealed partial class ProviderPickerRowViewModel : ObservableObject
     // (`PluginProvisionOutcome`), translated to a line the operator reads instead of a raw result object.
     public void ApplyOutcome(PluginProvisionResult result)
     {
+        WasInstalled = result.Outcome is PluginProvisionOutcome.Installed or PluginProvisionOutcome.Staged;
         (OutcomeText, OutcomeBrushKey) = result.Outcome switch
         {
             PluginProvisionOutcome.Installed =>
-                ("Installed — open the plugin store afterwards to approve it. It does nothing until you do.", "CockpitStatusDoneBrush"),
+                ("Installed — review it before Cockpit restarts.", "CockpitStatusWaitingBrush"),
             PluginProvisionOutcome.Staged =>
                 ("Already installed — the new bytes take effect after you restart the cockpit.", "CockpitStatusWaitingBrush"),
             PluginProvisionOutcome.Incompatible =>
                 ($"Can't install: {result.Error}", "CockpitStatusErrorBrush"),
             _ => ($"Couldn't install: {result.Error ?? "unknown error"}", "CockpitStatusErrorBrush"),
         };
+    }
+
+    public void MarkReady()
+    {
+        WasInstalled = true;
+        OutcomeText = "Ready — Cockpit will restart with this choice.";
+        OutcomeBrushKey = "CockpitStatusDoneBrush";
     }
 }

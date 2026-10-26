@@ -63,4 +63,7 @@
                       ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
+  <!-- AC-1509: the scenes of route C draw the bundled Depot plugin's own UI part, loaded from bundled-plugins as the app does. -->
+  <Import Project="..\..\src\BundledPlugins.targets" />
+
 </Project>

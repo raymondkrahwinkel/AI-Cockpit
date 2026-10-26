@@ -2,14 +2,13 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Depot;
 
-// How one Depot connection names its projects: `org/slug` once its list_projects rows carry an `address` (Depot E1), a bare slug before.
+// How one Depot connection names its projects: `org/slug` once the project listing carries an address, a bare slug before.
 internal sealed class DepotProjectAddressing
 {
     private static readonly ConditionalWeakTable<ICockpitHost, ConcurrentDictionary<string, DepotProjectAddressing>> _instances = new();
@@ -17,24 +16,31 @@ internal sealed class DepotProjectAddressing
     private readonly ICockpitHost _host;
     private readonly DepotConnectionRegistration _connection;
     private readonly string _scheme;
-    private IReadOnlyList<DepotMemorySource.ListedProject> _rows = [];
+    private readonly DepotProjectListingSource _projects;
+    private IReadOnlyList<DepotProjectListing> _rows = [];
     private int _upgradeStarted;
 
-    private DepotProjectAddressing(ICockpitHost host, DepotConnectionRegistration connection, string scheme)
+    private DepotProjectAddressing(
+        ICockpitHost host, DepotConnectionRegistration connection, string scheme, DepotProjectListingSource projects)
     {
         _host = host;
         _connection = connection;
         _scheme = scheme;
+        _projects = projects;
     }
 
-    public static DepotProjectAddressing For(ICockpitHost host, DepotConnectionRegistration connection, string scheme) =>
-        _instances.GetOrCreateValue(host).GetOrAdd(
-            $"{connection.Id}|{scheme}|{connection.Url}", _ => new DepotProjectAddressing(host, connection, scheme));
+    public static DepotProjectAddressing For(
+        ICockpitHost host, DepotConnectionRegistration connection, string scheme, HttpClient? httpClient = null) =>
+        httpClient is null
+            ? _instances.GetOrCreateValue(host).GetOrAdd(
+                $"{connection.Id}|{scheme}|{connection.Url}",
+                _ => new DepotProjectAddressing(host, connection, scheme, DepotProjectListingSource.For(host, connection)))
+            : new DepotProjectAddressing(host, connection, scheme, new DepotProjectListingSource(host, connection, httpClient));
 
     private bool Addressed => _rows.Any(row => row.Address is not null);
 
-    // Remembers the latest list_projects rows and, at the first sight of addresses, upgrades the bare references stored under this scheme.
-    public async Task ObserveAsync(IReadOnlyList<DepotMemorySource.ListedProject> rows, CancellationToken cancellationToken)
+    // Remembers the latest rows and, at the first sight of addresses, upgrades bare references stored under this scheme.
+    public async Task ObserveAsync(IReadOnlyList<DepotProjectListing> rows, CancellationToken cancellationToken)
     {
         _rows = rows;
         if (Addressed && Interlocked.Exchange(ref _upgradeStarted, 1) == 0)
@@ -75,7 +81,7 @@ internal sealed class DepotProjectAddressing
             : reference;
     }
 
-    private static string? _Upgraded(string value, IReadOnlyList<DepotMemorySource.ListedProject> rows)
+    private static string? _Upgraded(string value, IReadOnlyList<DepotProjectListing> rows)
     {
         if (_IsQualified(value, rows))
         {
@@ -87,7 +93,7 @@ internal sealed class DepotProjectAddressing
         return matches.Count == 1 ? matches[0].Address + value[parts[0].Length..] : null;
     }
 
-    private static bool _IsQualified(string value, IReadOnlyList<DepotMemorySource.ListedProject> rows)
+    private static bool _IsQualified(string value, IReadOnlyList<DepotProjectListing> rows)
     {
         var parts = value.Split('/', 3);
         return parts.Length > 1 && rows.Any(row => string.Equals(row.Address, $"{parts[0]}/{parts[1]}", StringComparison.OrdinalIgnoreCase));
@@ -95,14 +101,10 @@ internal sealed class DepotProjectAddressing
 
     private async Task _LoadAsync(CancellationToken cancellationToken)
     {
-        var result = await _host.CallMcpToolAsync(
-            _connection.McpServerName, "list_projects", new Dictionary<string, object?> { ["includeSummary"] = false }, projectId: null, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (result is { Outcome: PluginMcpToolCallOutcome.Success }
-            && DepotMemorySource.TryParseProjects(result.Content ?? string.Empty, out var rows, out _))
+        var result = await _projects.ListAsync(cancellationToken).ConfigureAwait(false);
+        if (result.Outcome == DepotProjectListingOutcome.Success)
         {
-            await ObserveAsync(rows, cancellationToken).ConfigureAwait(false);
+            await ObserveAsync(result.Projects, cancellationToken).ConfigureAwait(false);
         }
     }
 

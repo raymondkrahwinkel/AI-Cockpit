@@ -1,9 +1,9 @@
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
-using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Projects;
 using NSubstitute;
+using System.Net;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -21,21 +21,25 @@ public class DepotProjectAddressingTests
     private static ICockpitHost HostListing(string listProjectsJson, params string[] storedValues)
     {
         var host = Substitute.For<ICockpitHost>();
-        host.CallMcpToolAsync(Arg.Any<string>(), "list_projects", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success(listProjectsJson)));
-        host.CallMcpToolAsync(Arg.Any<string>(), "append", Arg.Any<IReadOnlyDictionary<string, object?>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(PluginMcpToolCallResult.Success("{}")));
+        host.Cache.Returns(new InMemoryPluginCache());
+        host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _Handler(listProjectsJson));
         host.RewriteProjectReferencesAsync("depot", Arg.Any<Func<string, string?>>(), Arg.Any<CancellationToken>())
             .Returns(call => Task.FromResult(storedValues.Count(value => call.ArgAt<Func<string, string?>>(1)(value) is not null)));
         return host;
     }
 
-    private static async Task<string?> AppendedProjectAsync(ICockpitHost host, string storedValue)
+    private sealed class _Handler(string content) : HttpMessageHandler
     {
-        await RegistrationFor(host).AppendNoteAsync!(storedValue, "note", CancellationToken.None);
-        var append = host.ReceivedCalls().Last(call => call.GetArguments() is [_, "append", ..]);
-        return (string?)((IReadOnlyDictionary<string, object?>)append.GetArguments()[2]!)["project"];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(content) });
     }
+
+    private static Task<ProjectMemorySourceLocationsResult> _ListLocationsAsync(ICockpitHost host) =>
+        (RegistrationFor(host).ListLocationsAsync ?? throw new InvalidOperationException("The registration lists no locations."))(CancellationToken.None);
+
+    private static Task<string> ProjectArgumentAsync(ICockpitHost host, string storedValue) =>
+        DepotProjectAddressing.For(host, new DepotConnectionRegistration("c1", "Work", "https://depot.example.com"), "depot")
+            .ProjectArgumentAsync(storedValue, CancellationToken.None);
 
     [Theory]
     [InlineData("cockpit", "cockpit")]
@@ -43,9 +47,10 @@ public class DepotProjectAddressingTests
     public async Task ADepotWithoutAddresses_GetsTheBareSlug_AndNothingIsRewritten(string stored, string expectedProject)
     {
         var host = HostListing(Legacy, stored);
-        await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+        var location = Assert.Single((await _ListLocationsAsync(host)).Locations);
 
-        Assert.Equal(expectedProject, await AppendedProjectAsync(host, stored));
+        Assert.Equal(("cockpit", "Cockpit", "Project · Owner"), (location.Value, location.Name, location.Detail));
+        Assert.Equal(expectedProject, await ProjectArgumentAsync(host, stored));
         await host.DidNotReceive().RewriteProjectReferencesAsync(Arg.Any<string>(), Arg.Any<Func<string, string?>>(), Arg.Any<CancellationToken>());
     }
 
@@ -55,11 +60,11 @@ public class DepotProjectAddressingTests
     public async Task ADepotWithAddresses_UpgradesBareReferences_AndSendsTheAddress(string stored, string expectedProject)
     {
         var host = HostListing(Addressed, stored);
-        var locations = await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+        var locations = await _ListLocationsAsync(host);
 
         Assert.Equal("wispslate/cockpit", locations.Locations.Single().Value);
-        Assert.Equal(expectedProject, await AppendedProjectAsync(host, stored));
-        Func<string, string?> rewrite = (Func<string, string?>)host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]!;
+        Assert.Equal(expectedProject, await ProjectArgumentAsync(host, stored));
+        var rewrite = Assert.IsType<Func<string, string?>>(host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]);
         Assert.Equal("wispslate/cockpit", rewrite("cockpit"));
         Assert.Null(rewrite("wispslate/cockpit"));
         Assert.Equal("wispslate/cockpit/notes.md", rewrite("cockpit/notes.md"));
@@ -77,10 +82,10 @@ public class DepotProjectAddressingTests
     public async Task ABareReferenceWithNoSingleMatch_IsLeftAlone_AndTheOperatorIsTold(string stored)
     {
         var host = HostListing(TwoOrganizations, stored);
-        await RegistrationFor(host).ListLocationsAsync!(CancellationToken.None);
+        await _ListLocationsAsync(host);
 
         host.Received(1).ShowToast(Arg.Is<string>(message => message.Contains(stored)), PluginToastSeverity.Warning, Arg.Any<string?>(), Arg.Any<Action?>());
-        var rewrite = (Func<string, string?>)host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]!;
+        var rewrite = Assert.IsType<Func<string, string?>>(host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]);
         Assert.Null(rewrite(stored));
     }
 }

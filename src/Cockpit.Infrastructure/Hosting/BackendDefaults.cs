@@ -63,7 +63,7 @@ internal sealed class BackendProjectComposer : IProjectComposer
 {
     internal const string Refusal = "This cockpit runs without its project dialogs, and composing a project goes through them.";
 
-    public Task<(Project? Project, string? Refusal)> ComposeSharedProjectAsync(
+    public Task<(SharedProjectBindResult? Result, string? Refusal)> ComposeSharedProjectAsync(
         string sharedProjectId,
         ISharedProjectSource source,
         string sourceDirectory,

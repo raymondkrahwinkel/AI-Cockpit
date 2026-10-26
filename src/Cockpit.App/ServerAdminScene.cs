@@ -214,7 +214,7 @@ internal static class ServerAdminScene
 
         public Task<Project> AddNewProjectAsync(Project project) => throw new NotSupportedException();
 
-        public Task<Project> AddBoundProjectAsync(Project project) => throw new NotSupportedException();
+        public Task<Project> AddBoundProjectAsync(Project project, string? baselineChecksum) => throw new NotSupportedException();
 
         public Task<Project?> UpdateStoredProjectAsync(Project project) => Task.FromResult<Project?>(project);
 

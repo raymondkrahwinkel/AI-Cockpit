@@ -65,7 +65,7 @@
         <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
             <TextBlock Text="Add AI providers" FontSize="16" FontWeight="SemiBold"/>
             <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                       Text="Optional — install one now, or skip and add it later from the plugin store. &quot;Found&quot; only means a matching command exists on this machine; whether it is logged in is something only the provider itself can tell you, after it is installed."/>
+                       Text="Optional — add one now, or skip and do it later. &quot;Found&quot; only means its app is on this machine; Cockpit checks whether it is ready after it starts."/>
         </StackPanel>
 
         <!-- Always shown, on any network (criterion 3): the two core local providers need neither an install nor internet. -->
@@ -80,7 +80,7 @@
         </Border>
 
         <Panel Grid.Row="2">
-            <TextBlock Text="Checking your configured plugin store…" IsVisible="{Binding IsLoading}"
+            <TextBlock Text="Checking what you can add…" IsVisible="{Binding IsLoading}"
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12"/>
 
             <!-- Offline / store unreachable (criterion 3): a plain statement of fact, not styled as an error —
@@ -95,15 +95,15 @@
                     </MultiBinding>
                 </Border.IsVisible>
                 <StackPanel Spacing="4">
-                    <TextBlock Text="Couldn't reach the plugin store" FontWeight="SemiBold" FontSize="12.5"/>
+                    <TextBlock Text="Couldn't check what's available" FontWeight="SemiBold" FontSize="12.5"/>
                     <TextBlock Text="{Binding OfflineMessage}" TextWrapping="Wrap" FontSize="11.5"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                               Text="No internet, no cloud providers to add — Ollama and LM Studio above are unaffected, and you can add a provider any time later from the plugin store."/>
+                               Text="No internet, nothing online to add — Ollama and LM Studio above are unaffected, and you can try again later."/>
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="Your configured plugin store doesn't list any AI providers right now."
+            <TextBlock Text="Nothing else is available to add right now."
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12">
                 <TextBlock.IsVisible>
                     <MultiBinding Converter="{x:Static BoolConverters.And}">
@@ -150,7 +150,7 @@
             <TextBlock Text="{Binding SummaryMessage}" TextWrapping="Wrap" FontSize="11.5"
                        IsVisible="{Binding SummaryMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-            <Button Content="Install selected" Classes="Accent" HorizontalAlignment="Left"
+            <Button Content="Install and restart" Classes="Accent" HorizontalAlignment="Left"
                     Command="{Binding InstallSelectedCommand}"
                     IsVisible="{Binding HasProviders}"/>
         </StackPanel>

@@ -5,6 +5,10 @@ namespace Cockpit.Core.Plugins;
 // non-numeric bump (`1.2.0-beta` → `1.2.0`) still surfaces as an available update.
 public static class PluginVersion
 {
+    // AC-1500: a bundled plugin whose installed version is under what this build's bundle expects, unless the operator chose that version.
+    public static bool IsBelowBundledMinimum(string installed, string? expectedMin, bool versionChosen) =>
+        !versionChosen && expectedMin is not null && IsNewer(expectedMin, installed);
+
     public static bool IsNewer(string candidate, string current)
     {
         if (System.Version.TryParse(candidate, out var candidateVersion) && System.Version.TryParse(current, out var currentVersion))

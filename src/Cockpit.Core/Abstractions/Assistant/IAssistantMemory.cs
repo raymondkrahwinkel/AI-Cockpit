@@ -18,6 +18,12 @@ public interface IAssistantMemory
     Task RememberAsync(string text, AssistantMemoryScope scope, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The rule set the organisation provisioned for the assistant (AC-1567), as the applier wrote it. Read-only:
+    /// nothing on this interface writes it, and it is in neither export nor import. Empty when there is none.
+    /// </summary>
+    Task<string> ReadOrgRulesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Where the conversation stands right now (AC-596) — what carries across the restart the assistant makes when
     /// its context has grown too big. Empty when it has not said.
     /// </summary>

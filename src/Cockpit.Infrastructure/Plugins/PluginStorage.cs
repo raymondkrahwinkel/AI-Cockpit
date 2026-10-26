@@ -66,7 +66,9 @@ public sealed class PluginStorage : IPluginStorage
             _values.TryGetValue(key, out json);
         }
 
-        return json is null ? default : JsonSerializer.Deserialize<T>(json);
+        // A credential-free backup or a forgotten-password reset scrubs a secret to "" rather than to JSON, so an
+        // empty value reads as unset instead of throwing at whichever plugin view asks for it first.
+        return string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json);
     }
 
     public void Set<T>(string key, T value)

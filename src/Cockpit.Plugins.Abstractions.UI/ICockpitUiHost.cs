@@ -8,6 +8,7 @@ using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.UI.Onboarding;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Material.Icons;
@@ -60,6 +61,14 @@ public interface ICockpitUiHost
     /// one in this window's own process; it carries invokes only. Default no-op, so existing hosts keep compiling.
     /// </summary>
     void AddServerSettings(Func<IPluginUiChannel, Control> createView)
+    {
+    }
+
+    /// <summary>
+    /// Offers a way to begin on the first-run wizard's "How do you want to start?" step, next to the host's own
+    /// choices. Default no-op, so existing hosts keep compiling.
+    /// </summary>
+    void AddFirstStartRoute(FirstStartRoute route)
     {
     }
 
@@ -345,4 +354,9 @@ public interface ICockpitUiHost
     /// Starts the sign-in of the MCP server <paramref name="name"/> this plugin contributed.
     /// </summary>
     Task<PluginMcpSignInOutcome> SignInMcpServerAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Signs out of the MCP server <paramref name="name"/> this plugin contributed, forgetting its token locally (AC-1660).
+    /// </summary>
+    Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -31,20 +31,6 @@ public class ProjectLogoStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task APickedFile_IsCopiedAndItsPathReturned()
-    {
-        var source = WriteFile("source.png", Png());
-        var store = Store();
-
-        var stored = await store.SaveAsync("p1", source);
-
-        Assert.NotNull(stored);
-        Assert.True(File.Exists(stored!));
-        Assert.NotEqual(source, stored);
-        Assert.True(store.IsStoredCopy(stored));
-    }
-
-    [Fact]
     public async Task AnIdThatClimbsOutOfTheFolder_StoresInsideItAnyway()
     {
         // A project id is data from cockpit.json — a hand-written or shared one can hold anything, and it used to
@@ -55,8 +41,10 @@ public class ProjectLogoStoreTests : IDisposable
         var stored = await store.SaveAsync("../../escaped", source);
 
         Assert.NotNull(stored);
-        Assert.StartsWith(Path.GetFullPath(_root), Path.GetFullPath(stored!));
+        Assert.StartsWith(Path.GetFullPath(_root), Path.GetFullPath(stored));
         Assert.True(store.IsStoredCopy(stored));
+        Assert.True(File.Exists(stored));
+        Assert.NotEqual(source, stored);
     }
 
     [Fact]

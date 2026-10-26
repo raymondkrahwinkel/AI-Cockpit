@@ -40,23 +40,23 @@ public sealed class Ac1280WizardRestoreStepTests
             var stateStore = Substitute.For<IFirstRunWizardStateStore>();
             var restart = Substitute.For<IAppRestartService>();
             var backups = new _RestoreThat(outcome);
-            var step = new RestoreStep(new RestoreStepViewModel(backups, stateStore, restart));
+            var step = new StartChoiceStep(new RestoreStepViewModel(backups, stateStore, restart));
             var wizard = new FirstRunWizardViewModel([new WelcomeStep(), step], FirstRunWizardViewModel.EpicPlan);
 
             wizard.NextCommand.Execute(null);
 
             if (outcome == "stopped")
             {
-                backups.WhenReported = step.ViewModel.Stop;
+                backups.WhenReported = step.RestoreViewModel.Stop;
             }
 
             if (outcome != "skipped")
             {
-                await step.ViewModel.RestoreAsync("backup.zip");
+                await step.RestoreViewModel.RestoreAsync("backup.zip");
             }
 
-            Assert.Equal(takesTheWizardOver, step.ViewModel.TookOver);
-            Assert.Contains(status, step.ViewModel.Status);
+            Assert.Equal(takesTheWizardOver, step.RestoreViewModel.TookOver);
+            Assert.Contains(status, step.RestoreViewModel.Status);
             restart.Received(takesTheWizardOver ? 1 : 0).Restart();
 
             // The wizard never walks on by itself, whatever happened: the operator is still looking at this step.
@@ -81,6 +81,16 @@ public sealed class Ac1280WizardRestoreStepTests
 
         public Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException("These tests only restore.");
+
+        public Task<BackupManifest> WriteAsync(Func<Stream, CancellationToken, Task> deliver, BackupOptions options, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("These tests only restore.");
+
+        public Task<RestoreReport> RestoreAsync(
+            Stream source,
+            RestoreOptions options,
+            IProgress<RestoreProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("These tests restore from a file.");
 
         public Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default) =>
             Task.FromResult(new BackupManifest(

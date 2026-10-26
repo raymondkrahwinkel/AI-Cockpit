@@ -491,7 +491,11 @@
                             <ComboBox ItemsSource="{Binding TerminalFontChoices}"
                                       SelectedItem="{Binding TerminalFontSelection}"
                                       Width="260"
+                                      IsEnabled="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Editable}, ConverterParameter=Terminal.FontFamily}"
                                       ToolTip.Tip="Pick a common monospace font, or choose Custom… to enter your own"/>
+                            <TextBlock Text="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Label}, ConverterParameter=Terminal.FontFamily}"
+                                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes="optionsHint" VerticalAlignment="Center"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding IsTerminalFontCustom}">
@@ -499,6 +503,7 @@
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding TerminalCustomFontFamily}" Width="260"
+                                     IsEnabled="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Editable}, ConverterParameter=Terminal.FontFamily}"
                                      PlaceholderText="e.g. JetBrains Mono, monospace"
                                      ToolTip.Tip="Type a font family name; a comma-separated fallback list also works"/>
                         </StackPanel>
@@ -507,9 +512,13 @@
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
-                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"
+                                           IsEnabled="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Editable}, ConverterParameter=Terminal.FontSize}"/>
                             <materialIcons:MaterialIcon Classes="hint"
                                 ToolTip.Tip="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."/>
+                            <TextBlock Text="{Binding ManagedSettings, Converter={x:Static conv:ManagedSettingConverter.Label}, ConverterParameter=Terminal.FontSize}"
+                                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Classes="optionsHint" VerticalAlignment="Center"/>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
@@ -1041,6 +1050,22 @@
                                         ToolTip.Tip="Provider, session defaults, MCP servers and environment variables — and the restart that applies a permission mode"/>
                             </StackPanel>
 
+                            <!-- AC-1567: the organisation's rule set, read-only. Worded as an instruction the assistant
+                                 follows, never as something Cockpit enforces (manifest §3.6 rule 6). -->
+                            <Border IsVisible="{Binding AssistantOptions.OrgRulesHeading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="6" Padding="12" MaxWidth="560" HorizontalAlignment="Left">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding AssistantOptions.OrgRulesHeading}" FontWeight="SemiBold"/>
+                                        <materialIcons:MaterialIcon Classes="hint"
+                                            ToolTip.Tip="Set by your organisation and given to the assistant ahead of what you asked it to remember. It is an instruction to the assistant, not something Cockpit enforces. It is replaced on the next setup from your organisation, so it cannot be edited here."/>
+                                    </StackPanel>
+                                    <TextBlock Text="Managed by your organisation · read-only" Classes="optionsHint"/>
+                                    <SelectableTextBlock Text="{Binding AssistantOptions.OrgRulesText}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Classes="optionsSectionHeader" Text="3. REPLIES"/>
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Read replies out loud" FontWeight="SemiBold"/>
@@ -1198,7 +1223,10 @@
                                 ToolTip.Tip="When on, an agent can ask to read a terminal pane you have open — you approve each pane, watch every line live, and it reads only from the moment you approve (never the earlier scrollback). It cannot type into a terminal yet. Off by default: while off the feature is not offered to any agent at all."/>
                         </StackPanel>
                         <CheckBox Content="Allow agents to read my open terminals (with per-pane approval)"
-                                  IsChecked="{Binding Security.TerminalAccessEnabled}"/>
+                                  IsChecked="{Binding Security.TerminalAccessEnabled}"
+                                  IsEnabled="{Binding Security.TerminalAccessEditable}"/>
+                        <TextBlock Text="{Binding Security.TerminalAccessManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding Security.TerminalAccessManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <!-- AC-1066: a session on a provider with no built-in shell (every non-Claude, non-ACP
                              provider) otherwise cannot run rg/git/dotnet/python3 at all. Off by default, like
@@ -1210,7 +1238,10 @@
                                 ToolTip.Tip="When on, any session — including a delegated one on a provider with no built-in shell (Bash is a Claude Code CLI feature, not something the cockpit supplies) — can run a command such as rg, git, dotnet or python3 and read its exit code, stdout and stderr. There is no command allow-list: what runs is decided by the session's permission mode, exactly as for any other write/destructive tool. Off by default: while off the feature is not offered to any agent at all."/>
                         </StackPanel>
                         <CheckBox Content="Allow agents to run shell commands"
-                                  IsChecked="{Binding Security.ShellAccessEnabled}"/>
+                                  IsChecked="{Binding Security.ShellAccessEnabled}"
+                                  IsEnabled="{Binding Security.ShellAccessEditable}"/>
+                        <TextBlock Text="{Binding Security.ShellAccessManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding Security.ShellAccessManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <!-- AC-575: the assistant may skip the Cockpit consent card, per source. Two
                              checkboxes per row rather than one three-state picker, and the rows come from
@@ -1271,6 +1302,16 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- AC-1593: an organisation's neverSend, honest about what it is (AC-494): a promise in
+                             every session's instructions, which a connector outside the cockpit does not see. Last,
+                             so the numbering above holds whether it shows or not. Codex terminal: follows (AC-1609). -->
+                        <TextBlock Classes="optionsSectionHeader" Text="5. SENDING" IsVisible="{Binding Security.NeverSendManaged}"/>
+                        <StackPanel IsVisible="{Binding Security.NeverSendManaged}">
+                            <CheckBox Content="Drafts only, never send" IsChecked="True" IsEnabled="False"
+                                      ToolTip.Tip="Every session whose provider takes instructions is told never to send, submit, book or pay anything: it prepares, and a person decides and sends. Kimi and opencode sessions cannot take instructions and say so when they start, and a Codex terminal pane does not receive them yet. This is an instruction to the assistant, not a technical block: a connector the assistant reaches outside the cockpit, such as a claude.ai mail connector, can still send if the assistant does not follow it."/>
+                            <TextBlock Text="{Binding Security.NeverSendManagedLabel}" Classes="optionsHint"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -1810,9 +1851,13 @@
                         </StackPanel>
 
                         <CheckBox Content="Include my keys and tokens" IsChecked="{Binding BackupIncludesCredentials}"
+                                  IsEnabled="{Binding Security.BackupCredentialsEditable}"
                                   ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."/>
+                        <TextBlock Text="{Binding Security.BackupCredentialsManagedLabel}" Classes="optionsHint"
+                                   IsVisible="{Binding Security.BackupCredentialsManagedLabel, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                         <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
+                                  IsEnabled="{Binding Security.BackupCredentialsEditable}"
                                   ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside the cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>
 
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
@@ -1827,6 +1872,18 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <StackPanel x:Name="BackupDestinationRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,10,0,0">
+                            <TextBlock Text="Where to" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding BackupDestinations}" SelectedItem="{Binding BackupDestination}" MinWidth="240"
+                                      ToolTip.Tip="A file you pick on this machine, or a place a plugin keeps backups for you, such as your Depot account. Create backup writes there; Restore reads from there."/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding IsBackupToTarget}">
+                            <TextBlock Text="Backup to restore" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding TargetBackups}" SelectedItem="{Binding TargetBackup}" MinWidth="240"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TargetBackupsStatus}" IsVisible="{Binding TargetBackupsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                             <Button Content="Create backup…" Classes="Accent" Click="OnCreateBackup" IsEnabled="{Binding CanBackUp}"/>
@@ -1845,7 +1902,31 @@
                         <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="2. ASSISTANT MEMORY ONLY"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="2. SCHEDULED BACKUP"/>
+                        <StackPanel x:Name="BackupScheduleSection" Spacing="6"
+                                    IsVisible="{Binding ScheduledBackupSettings, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <CheckBox Content="Back up the cockpit on a schedule" IsChecked="{Binding ScheduledBackupSettings.Enabled}"
+                                      ToolTip.Tip="Made by the cockpit itself, on a server too, with the same contents as Create backup above and without your keys and tokens. It waits while a backup or a restore is running, and a failed one is tried again at the next check."/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="How often" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding ScheduledBackupSettings.Intervals}" SelectedItem="{Binding ScheduledBackupSettings.Interval}" Width="140"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="How many to keep" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding ScheduledBackupSettings.Keep}" Minimum="1" Maximum="365" Increment="1" FormatString="0" Width="104"
+                                               ToolTip.Tip="The oldest backups beyond this number are removed from the target after each new one. Only backups this scheduled backup made are ever counted or removed. Backups you made by hand, or that another cockpit put on the same target, stay. A target that cannot remove backups keeps them all, and says so."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Where to" Width="140" FontSize="11" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding ScheduledBackupSettings.Targets}" SelectedItem="{Binding ScheduledBackupSettings.Target}" MinWidth="240"/>
+                            </StackPanel>
+                            <TextBlock Classes="immediate" Text="Saved as you change it and not undone by Cancel."/>
+                            <TextBlock Text="{Binding ScheduledBackupSettings.Status}"
+                                       IsVisible="{Binding ScheduledBackupSettings.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="3. ASSISTANT MEMORY ONLY"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Assistant memory only" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

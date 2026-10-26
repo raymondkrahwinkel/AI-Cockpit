@@ -12,6 +12,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.HeavyRuns;
 using Cockpit.Infrastructure.ManagedCli;
@@ -20,6 +21,7 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Backup;
 using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -31,6 +33,7 @@ using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Settings;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.Tracking;
@@ -288,6 +291,43 @@ public class PluginBackendHost(
     public void AddHealthSection(IPluginHealthSection section) =>
         services.GetRequiredService<PluginHealthSections>().Add(pluginId, section);
 
+    public void AddSettingsCarrier(SettingsCarrierRegistration registration)
+    {
+        _RegisterSignInStanding();
+        services.GetRequiredService<SettingsCarriers>().Add(pluginId, registration);
+    }
+
+    public void AddBackupTarget(IBackupTarget target)
+    {
+        _RegisterSignInStanding();
+        services.GetRequiredService<BackupTargets>().Add(pluginId, target);
+    }
+
+    // AC-1663: lets a background job of this plugin ask whether the plugin waits for a sign-in.
+    private void _RegisterSignInStanding() => services.GetService<PluginSignInStanding>()?.Register(pluginId, _WaitsForSignInAsync);
+
+    // True when one of this plugin's own OAuth servers has no usable sign-in; the host names that itself, once (AC-1517).
+    private async Task<bool> _WaitsForSignInAsync(CancellationToken cancellationToken)
+    {
+        if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
+        {
+            return false;
+        }
+
+        foreach (var server in _OwnMcpServerContributions().Where(server => server.Auth == McpServerAuth.OAuth))
+        {
+            if (await coordinator.GetStateAsync(server, cancellationToken).ConfigureAwait(false) == McpAuthState.AuthorizationRequired)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void RemoveBackupTarget(string id) =>
+        services.GetRequiredService<BackupTargets>().Remove(id);
+
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(key) || await _ProjectOfAsync(paneId, cancellationToken) is not { } projectId)
@@ -511,6 +551,8 @@ public class PluginBackendHost(
                     ApiKey = refreshed.ApiKey,
                     OAuthAuthority = refreshed.OAuthAuthority,
                     OAuthClientId = refreshed.OAuthClientId,
+                    OAuthScopes = refreshed.OAuthScopes,
+                    OAuthHostOnlyScopes = refreshed.OAuthHostOnlyScopes,
                 };
             }
 
@@ -606,6 +648,29 @@ public class PluginBackendHost(
         }
     }
 
+    // AC-1660: only this plugin's own OAuth servers, like CreateAuthorizedHandler, then the dialog's own sign-out, which
+    // forgets the stored token; another plugin's or the registry's sign-in is never this plugin's to end. The host-only
+    // tokens of AC-1586 are held only while that stored record stands, so they lapse with it.
+    public async Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default)
+    {
+        if (services.GetService<IMcpOAuthCoordinator>() is not { } coordinator)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_OwnOAuthServer(name) is { } server)
+            {
+                await coordinator.SignOutAsync(server, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-sign-out", exception.Message);
+        }
+    }
+
     // AC-1511: the same server lookup as SignInMcpServerAsync, then a grant redeemed without a browser. The plugin
     // hands over the grant's parameters and gets an outcome back, never a token.
     public async Task<PluginMcpSignInOutcome> SignInMcpServerWithGrantAsync(
@@ -620,7 +685,66 @@ public class PluginBackendHost(
             return PluginMcpSignInOutcome.Unavailable;
         }
 
-        return await redeemer.RedeemAsync(server, grantType, parameters, cancellationToken).ConfigureAwait(false);
+        var outcome = await redeemer.RedeemAsync(server, grantType, parameters, cancellationToken).ConfigureAwait(false);
+        if (outcome == PluginMcpSignInOutcome.Authorized && _OwnOAuthServer(server.Name) is not null)
+        {
+            // The redeemer stores its token itself and never passes the coordinator, so it is said here, for own servers only.
+            _RaiseAccountChanged(server.Name);
+        }
+
+        return outcome;
+    }
+
+    // AC-1665: handlers of this plugin only; one relay on the coordinator, made when the first one subscribes.
+    private EventHandler<string>? _accountChanged;
+    private bool _relayingAccountChanges;
+    private readonly Lock _accountChangedLock = new();
+
+    public event EventHandler<string>? McpServerAccountChanged
+    {
+        add
+        {
+            lock (_accountChangedLock)
+            {
+                _accountChanged += value;
+                if (!_relayingAccountChanges && services.GetService<IMcpOAuthCoordinator>() is { } coordinator)
+                {
+                    _relayingAccountChanges = true;
+                    coordinator.AccountChanged += server =>
+                    {
+                        if (_OwnOAuthServer(server.Name) is not null)
+                        {
+                            _RaiseAccountChanged(server.Name);
+                        }
+                    };
+                }
+            }
+        }
+        remove
+        {
+            lock (_accountChangedLock)
+            {
+                _accountChanged -= value;
+            }
+        }
+    }
+
+    private void _RaiseAccountChanged(string name)
+    {
+        EventHandler<string>? handlers;
+        lock (_accountChangedLock)
+        {
+            handlers = _accountChanged;
+        }
+
+        try
+        {
+            handlers?.Invoke(this, name);
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Record(pluginId, pluginName, "mcp-account-changed", exception.Message);
+        }
     }
 
     // Calls a tool on this plugin's own MCP server via `IMcpToolInvoker` (AC-502), never opening a browser
@@ -659,6 +783,31 @@ public class PluginBackendHost(
             return PluginMcpToolCallResult.Failed(_UnwrapToolInvocationError(toolName, exception.Message));
         }
     }
+
+    // AC-1587: only this plugin's own OAuth servers, never the cross-plugin lookup sign-in uses, since this one spends
+    // the credential. Redirects are not followed, so a server cannot steer the bearer to another origin.
+    public HttpMessageHandler CreateAuthorizedHandler(string name) =>
+        new PluginMcpAuthorizedHandler(
+            name,
+            () => _OwnOAuthServer(name),
+            services.GetService<IMcpOAuthCoordinator>(),
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+
+    // AC-1586: the same, with a host-only token for `scope` alone, which no session is ever handed.
+    public HttpMessageHandler CreateAuthorizedHandler(string name, string scope)
+    {
+        var hostOnly = services.GetService<McpOAuthHostOnlyTokens>();
+        return new PluginMcpAuthorizedHandler(
+            name,
+            () => _OwnOAuthServer(name),
+            hostOnly is null ? null : (server, cancellationToken) => hostOnly.AcquireAsync(server, scope, rejected: null, cancellationToken),
+            hostOnly is null ? null : (server, rejected, cancellationToken) => hostOnly.AcquireAsync(server, scope, rejected, cancellationToken),
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false });
+    }
+
+    private McpServerConfig? _OwnOAuthServer(string name) =>
+        _OwnMcpServerContributions().FirstOrDefault(
+            server => string.Equals(server.Name, name, StringComparison.Ordinal) && server.Auth == McpServerAuth.OAuth);
 
     // AC-748: the MCP client SDK prefixes failed-call messages with "An error occurred invoking '{toolName}': ".
     // Stripped once here rather than in every caller that pattern-matches the tool's own error text

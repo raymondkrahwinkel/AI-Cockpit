@@ -94,6 +94,10 @@ internal sealed class CockpitConfigFile
     // The quick-note key (AC-492) — the desktop-wide key and whether it is armed; owned by the quick-note-settings store.
     public QuickNoteSettingsEntry? QuickNotes { get; set; }
 
+    // The scheduled backup (AC-1502) — whether it runs, how often, how many it keeps, where to, and how the last runs
+    // went; owned by the backup-schedule store.
+    public BackupScheduleEntry? Backup { get; set; }
+
     // Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.
     public TerminalSettingsEntry? Terminal { get; set; }
 
@@ -179,7 +183,15 @@ internal sealed class CockpitConfigFile
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? FirstRunWizardVersion { get; set; }
 
+    // AC-1673: one restart hand-off owned by the first-run state store. Completion or Skip removes it.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public FirstRunWizardResumeEntry? FirstRunWizardResume { get; set; }
+
     // AC-767: managed-CLI names excluded from auto-update — an exception list, so an absent section
     // means auto-update stays on for every CLI, existing or future, with no migration needed.
     public List<string> ManagedCliAutoUpdateDisabled { get; set; } = [];
+
+    // AC-1507: the provisioning applier's own record; absent on a machine nothing was provisioned onto.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProvisioningStateEntry? Provisioning { get; set; }
 }

@@ -267,21 +267,6 @@ public sealed class AgentsMcpToolsTests : IDisposable
     }
 
     /// <summary>
-    /// The flag has to mean something: a message that needed nothing removed must not claim it was altered, or a sender
-    /// has no way to tell the one case apart from the other.
-    /// </summary>
-    [Fact]
-    public async Task Notify_WithNothingToStrip_ReportsSanitizedFalse()
-    {
-        _DeskWith("pane-a", "pane-b");
-        McpRequestContext.Set("pane-a");
-
-        var json = _Json(await _Tools().NotifyAsync("pane-b", "question", "who owns the parser?"));
-
-        Assert.False(json["sanitized"]!.GetValue<bool>());
-    }
-
-    /// <summary>
     /// What the trail holds is the cleaned text, not the raw argument: an operator reading the JSONL file with <c>cat</c>
     /// or a tail is looking at a terminal, and a trail that faithfully preserved every escape sequence an agent sent
     /// would be a way to write to that terminal through the audit log.

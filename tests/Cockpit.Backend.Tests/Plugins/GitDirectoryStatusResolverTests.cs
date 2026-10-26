@@ -3,6 +3,11 @@ using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Backend.Tests.Plugins;
 
+internal sealed class PosixFactAttribute : FactAttribute
+{
+    public PosixFactAttribute(string windowsCoverage) => Skip = OperatingSystem.IsWindows() ? windowsCoverage : null;
+}
+
 /// <summary>
 /// The Autopilot isolation gate is fail-closed (AC-174): a run drops worktree isolation only for a directory that is
 /// provably not a git repository. This resolver must therefore never report <see cref="GitDirectoryStatus.NotARepository"/>
@@ -42,7 +47,7 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
         Assert.Equal(GitDirectoryStatus.Unknown, GitDirectoryStatusResolver.Resolve(nested, gitConfirmedRepository: false));
     }
 
-    [Fact]
+    [PosixFact("Windows requires Developer Mode or elevated symlink permission; the Linux CI run covers this path.")]
     public void Resolve_ThroughASymlinkIntoARepository_IsUnknown_NotNotARepository()
     {
         // A symlink pointing into a repository must not read as "no .git": git walks the physical tree, so resolving the

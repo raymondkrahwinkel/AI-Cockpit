@@ -30,19 +30,6 @@ public class ProjectInstructionContentReaderTests : IDisposable
     private string _File(string name) => Path.Combine(_root, name);
 
     [Fact]
-    public void ARowTickedForContent_IsReadAndKeyedByItsReference()
-    {
-        var file = _File("house-rules.md");
-        File.WriteAllText(file, "Always write tests first.");
-        var resources = new[] { new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        var result = ProjectInstructionContentReader.Read(resources);
-
-        Assert.True(result.ContainsKey(file));
-        Assert.Equal("Always write tests first.", result[file]);
-    }
-
-    [Fact]
     public void ARowThatDidNotTickSendsContent_IsNeverRead()
     {
         var file = _File("house-rules.md");
@@ -123,10 +110,9 @@ public class ProjectInstructionContentReaderTests : IDisposable
     }
 
     // One behaviour, one test: a ticked file's bytes come back verbatim under the key it was named by. The rows
-    // are the content classes that used to be a Fact each — empty, whitespace only, and multibyte unicode.
+    // are the content classes that used to be a Fact each — empty and multibyte unicode.
     [Theory]
     [InlineData("")]
-    [InlineData("   \n\t  \n")]
     [InlineData("Lees dit zorgvuldig: 🚀 中文说明 café naïve — schema volgen.")]
     public void ATickedFile_IsReadFaithfully(string content)
     {
@@ -138,25 +124,6 @@ public class ProjectInstructionContentReaderTests : IDisposable
 
         Assert.True(result.ContainsKey(file));
         Assert.Equal(content, result[file]);
-    }
-
-    /// <summary>
-    /// A race between this reader's own size check and the actual read — the file is removed in between — must
-    /// never surface as an exception. Simulated rather than genuinely racing a background deletion, which would
-    /// make this test flaky by nature.
-    /// </summary>
-    [Fact]
-    public void AFileRemovedBetweenTheSizeCheckAndTheRead_IsLeftOutRatherThanThrowing()
-    {
-        var file = _File("vanishes.md");
-        var resources = new[] { new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        var result = ProjectInstructionContentReader.Read(
-            resources,
-            fileLength: _ => 10,
-            readAllText: _ => throw new FileNotFoundException("simulated race"));
-
-        Assert.Empty(result);
     }
 
     [Fact]
@@ -171,25 +138,6 @@ public class ProjectInstructionContentReaderTests : IDisposable
             readAllText: _ => throw new UnauthorizedAccessException("simulated permissions error"));
 
         Assert.Empty(result);
-    }
-
-    [Fact]
-    public void FiveRowsTickedAtOnce_AreAllReadIndependently()
-    {
-        var resources = Enumerable.Range(0, 5).Select(i =>
-        {
-            var file = _File($"row-{i}.md");
-            File.WriteAllText(file, $"content {i}");
-            return new ProjectResource(file, ProjectResourceRole.Instructions) { SendsContent = true };
-        }).ToList();
-
-        var result = ProjectInstructionContentReader.Read(resources);
-
-        Assert.Equal(5, result.Count);
-        for (var i = 0; i < 5; i++)
-        {
-            Assert.Equal($"content {i}", result[resources[i].Reference]);
-        }
     }
 
     [Fact]

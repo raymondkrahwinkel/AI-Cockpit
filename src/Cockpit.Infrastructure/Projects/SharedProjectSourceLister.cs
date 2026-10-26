@@ -8,11 +8,10 @@ namespace Cockpit.Infrastructure.Projects;
 // copy of it"; this is what keeps that true once the assistant's read gateway lives outside App).
 public static class SharedProjectSourceLister
 {
-    // Mutable, not readonly: a test shrinks this to keep its timeout scenario fast, then restores it (AC-797).
-    public static TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    // Depot reads six definitions in parallel with a 10-second per-project timeout, so 90 seconds leaves room for five batches.
+    // Keep this whole-source bound for a source that hangs before it can report partial progress.
+    public static TimeSpan Timeout = TimeSpan.FromSeconds(90);
 
-    // Never throws: a call superseded by a newer load (its `cancellationToken` cancelled) also lands here as an
-    // (ignored by the caller) failure rather than an unobserved exception on a fire-and-forget call (AC-797).
     public static async Task<SharedProjectListResult> ListWithTimeoutAsync(ISharedProjectSource source, CancellationToken cancellationToken)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
