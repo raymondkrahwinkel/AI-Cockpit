@@ -65,22 +65,43 @@ internal sealed partial class TabShareMcpTools(ICockpitHost host, TabShareBridge
             return _Error(NoCaller);
         }
 
-        var answer = await bridge.AskAsync(caller, "screenshot", tabId).ConfigureAwait(false);
+        return await _ImageResultAsync(caller, "browser_screenshot_tab", await bridge.AskAsync(caller, "screenshot", tabId).ConfigureAwait(false)).ConfigureAwait(false);
+    }
+
+    [McpServerTool(Name = "browser_request_tab")]
+    [Description("Asks the operator to look along on one of their browser tabs, as a card in your own conversation. Nothing is read until they pick a tab and approve. On approval you get that tab's id, address, title and a screenshot straight back, and browser_read_tab and browser_screenshot_tab work on it from then on, until the operator stops sharing. Refused when they decline or do not answer: do not ask again unless they invite you to. Watching only; you cannot control the page.")]
+    public async Task<CallToolResult> RequestTab([Description("One short sentence for the operator: what you want to see and why.")] string reason)
+    {
+        if (_Caller() is not { } caller)
+        {
+            return _Error(NoCaller);
+        }
+
+        var answer = await bridge.AskAsync(new TabShareRequest(Guid.NewGuid().ToString("N"), caller, "request", Text: reason), RequestTimeout).ConfigureAwait(false);
+        return await _ImageResultAsync(caller, "browser_request_tab", answer).ConfigureAwait(false);
+    }
+
+    // The tab as one result: address and title as text, the screenshot as an image block, in the same call.
+    private async Task<CallToolResult> _ImageResultAsync(string caller, string tool, TabShareAnswer answer)
+    {
         if (answer.Ok == false || answer.ImagePng is not { Length: > 0 } png)
         {
             return _Error(answer.Error ?? "No screenshot came back from the tab.");
         }
 
-        await _AuditAsync(caller, "browser_screenshot_tab", tabId, answer.Origin).ConfigureAwait(false);
+        await _AuditAsync(caller, tool, answer.TabId ?? "?", answer.Origin).ConfigureAwait(false);
         return new CallToolResult
         {
             Content =
             [
-                new TextContentBlock { Text = $"{answer.Title} · {answer.Url}. {UntrustedNote}" },
+                new TextContentBlock { Text = $"Tab {answer.TabId}: {answer.Title} · {answer.Url}. {UntrustedNote}" },
                 ImageContentBlock.FromBytes(Convert.FromBase64String(png), "image/png"),
             ],
         };
     }
+
+    // The card waits up to two minutes (TabShareService); the answer path gets a little longer than that.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(2.5);
 
     private const string NoCaller = "This tool only answers a session of this cockpit, identified by its own connection.";
 

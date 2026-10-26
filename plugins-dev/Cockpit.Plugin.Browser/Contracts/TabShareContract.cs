@@ -43,6 +43,7 @@ internal sealed record TabShareAnswer(
     string? Text = null,
     string? ImagePng = null,
     IReadOnlyList<SharedTabInfo>? Tabs = null,
-    string? Action = null);
+    string? Action = null,
+    string? TabId = null);
 
 internal sealed record SharedTabInfo(string TabId, string Title, string Url, string Mode, bool Paused);
