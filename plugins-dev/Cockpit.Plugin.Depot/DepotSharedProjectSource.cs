@@ -103,6 +103,11 @@ internal sealed class DepotSharedProjectSource(
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
         }
+        catch (Exception exception)
+        {
+            host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot")
+                .LogWarning(exception, "Refreshing the project list after changes for {Connection} failed.", connection.Name);
+        }
         finally
         {
             lock (_projectListRefreshLock)
