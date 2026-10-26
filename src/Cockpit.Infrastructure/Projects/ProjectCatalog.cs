@@ -25,6 +25,8 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
     private ProjectSettings _settings = ProjectSettings.Empty;
     private bool _loaded;
     private IReadOnlyList<SharedProjectGroup> _sharedProjectGroups = [];
+    private IReadOnlyDictionary<string, SharedProjectLocation> _boundProjectLocations = new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, SharedProjectLocation> _hiddenSharedProjectLocations = new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
     private ProjectCatalogSnapshot _current = ProjectCatalogSnapshot.Empty;
 
     // Cancels a shared-project read still running when a newer one starts, so a slow connection cannot overwrite a
@@ -154,6 +156,26 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             return Task.FromResult<(ProjectSettings?, bool)>((settings.WithoutProject(projectId), true));
         });
 
+    public Task HideSharedProjectAsync(string sharedProjectId) =>
+        _WriteAsync(settings => Task.FromResult(
+            settings.IsSharedProjectHidden(sharedProjectId)
+                ? ((ProjectSettings?)null, true)
+                : (settings with { HiddenSharedProjectIds = [.. settings.HiddenSharedProjectIds, sharedProjectId] }, true)));
+
+    public Task UnhideSharedProjectsAsync(string sourceKey, string organizationSlug)
+    {
+        var hiddenIds = _hiddenSharedProjectLocations
+            .Where(pair => string.Equals(pair.Value.SourceKey, sourceKey, StringComparison.Ordinal)
+                && string.Equals(pair.Value.Organization?.Slug, organizationSlug, StringComparison.Ordinal))
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return _WriteAsync(settings => Task.FromResult(
+            hiddenIds.Count == 0
+                ? ((ProjectSettings?)null, true)
+                : (settings with { HiddenSharedProjectIds = settings.HiddenSharedProjectIds.Where(id => !hiddenIds.Contains(id)).ToList() }, true)));
+    }
+
     public Task RefreshSharedProjectsAsync(CancellationToken cancellationToken = default)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -258,7 +280,8 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             return;
         }
 
-        var (boundIds, hiddenIds) = SharedProjectSourceLister.VisibilityFilterIds(await _ReadSettingsAsync().ConfigureAwait(false));
+        var settings = await _ReadSettingsAsync().ConfigureAwait(false);
+        var (boundIds, hiddenIds) = SharedProjectSourceLister.VisibilityFilterIds(settings);
         var results = await Task.WhenAll(sources.Select(source => SharedProjectSourceLister.ListWithTimeoutAsync(source, cancellationToken)))
             .ConfigureAwait(false);
 
@@ -282,6 +305,31 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
 
             return Task.FromResult<(ProjectSettings?, bool)>((ReferenceEquals(reconciled, settings) ? null : reconciled, true));
         }).ConfigureAwait(false);
+
+        var boundLocations = new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
+        var hiddenLocations = new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
+        foreach (var (source, result) in sources.Zip(results))
+        {
+            foreach (var shared in result.Projects)
+            {
+                var location = new SharedProjectLocation(
+                    source.Key,
+                    source.SourceName,
+                    shared.Organization is { } organization
+                        ? new SharedProjectOrganizationInfo(organization.Slug, organization.Name, organization.Role)
+                        : null);
+
+                if (hiddenIds.Contains(shared.Id))
+                {
+                    hiddenLocations[shared.Id] = location;
+                }
+
+                foreach (var project in settings.Projects.Where(project => string.Equals(_BoundTo(project), shared.Id, StringComparison.Ordinal)))
+                {
+                    boundLocations[project.Id] = location;
+                }
+            }
+        }
 
         var groups = new List<SharedProjectGroup>();
         foreach (var (source, result) in sources.Zip(results))
@@ -310,6 +358,8 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
         }
 
         _sharedProjectGroups = groups;
+        _boundProjectLocations = boundLocations;
+        _hiddenSharedProjectLocations = hiddenLocations;
         _PublishAndRaise();
     }
 
@@ -481,6 +531,10 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
             [.. _sharedSources.Sources.Select(source => new SharedProjectSourceInfo(source.Key, source.SourceName, source.CanPublish))],
             _sharedProjectGroups,
             claims,
-            remoteChanged));
+            remoteChanged)
+        {
+            BoundProjectLocations = _boundProjectLocations,
+            HiddenSharedProjectLocations = _hiddenSharedProjectLocations,
+        });
     }
 }

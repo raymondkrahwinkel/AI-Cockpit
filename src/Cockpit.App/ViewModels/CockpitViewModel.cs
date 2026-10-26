@@ -3482,6 +3482,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
+        Projects.SetSessionCounter(projectId => Sessions.Count(session => session.ProjectId == projectId), Sessions);
         _projectQuickStart = projectQuickStart;
         _projectJobHistory = projectJobHistory;
 

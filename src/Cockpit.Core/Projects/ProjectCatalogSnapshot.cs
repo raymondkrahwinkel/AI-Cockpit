@@ -9,6 +9,14 @@ public sealed record ProjectCatalogSnapshot(
     IReadOnlyDictionary<string, string?> OwnershipClaims,
     IReadOnlySet<string> RemoteChangedProjectIds)
 {
+    // AC-1599: groups intentionally omit already-bound and hidden offers, but the Projects workspace still needs
+    // their source and organization to put local rows under the right B2 section.
+    public IReadOnlyDictionary<string, SharedProjectLocation> BoundProjectLocations { get; init; } =
+        new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, SharedProjectLocation> HiddenSharedProjectLocations { get; init; } =
+        new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal);
+
     public static ProjectCatalogSnapshot Empty { get; } = new(
         ProjectSettings.Empty, [], [], new Dictionary<string, string?>(), new HashSet<string>());
 }
@@ -32,3 +40,6 @@ public sealed record SharedProjectOffer(
 
 // Core carries no Plugins.Abstractions reference, so the organization is copied by value.
 public sealed record SharedProjectOrganizationInfo(string Slug, string? Name, string? Role);
+
+public sealed record SharedProjectLocation(
+    string SourceKey, string SourceName, SharedProjectOrganizationInfo? Organization);

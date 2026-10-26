@@ -42,6 +42,10 @@ internal sealed class RemoteProjects(BackendApiClient client) : IServerProjects
     // sync runs on the server itself.
     public Task RefreshSharedProjectsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+    public Task HideSharedProjectAsync(string sharedProjectId) => throw new NotSupportedException(NoPath);
+
+    public Task UnhideSharedProjectsAsync(string sourceKey, string organizationSlug) => throw new NotSupportedException(NoPath);
+
     // AC-1570: the server runs the check, then the list is read again for the flag. An operate key may not ask for it.
     public async Task SyncNowAsync(string projectId)
     {
