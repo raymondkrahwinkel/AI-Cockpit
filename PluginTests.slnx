@@ -13,6 +13,8 @@
   <Folder Name="/plugins-dev/">
     <Project Path="plugins-dev/Cockpit.Plugin.Autopilot/Cockpit.Plugin.Autopilot.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.Autopilot.Tests/Cockpit.Plugin.Autopilot.Tests.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Browser/Cockpit.Plugin.Browser.csproj" />
+    <Project Path="plugins-dev/Cockpit.Plugin.Browser.Tests/Cockpit.Plugin.Browser.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.ClaudeProvider/Cockpit.Plugin.ClaudeProvider.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests/Cockpit.Plugin.ClaudeProvider.Tests.csproj" />
     <Project Path="plugins-dev/Cockpit.Plugin.CliAgentProvider/Cockpit.Plugin.CliAgentProvider.csproj" />

@@ -33,6 +33,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Added
 
 - added: plugins can open an existing session without changing or sending its input; a missing pane is reported.
+- added: in the Browser plugin an agent session can ask to control a shared tab, and you can give it control yourself
+  on the share card: it may then click, type, scroll and navigate in that one tab, only on that site. An amber line and
+  a bar say who controls it and what it last did, **Stop** ends it at once, and your own click or key in the tab takes
+  over until you **Give back**. Every form the tab would send waits for your **Send**, yours too while an agent
+  controls it; a form to another site, or the tab leaving the site, is refused. Every action is logged, typed text only
+  by its length.
 - added: a plugin can ask its question as a card under the assistant's conversation instead of over it, with
   buttons to approve, pick another option or say no.
 - changed: every MCP tool call in a conversation now shows by its server and tool, such as `browser.request_tab` or
@@ -43,6 +49,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one
   for your platform, and shows a plugin with no zip for it as incompatible ("No package for osx-arm64") instead of
   installing something that cannot start.
+- added: an agent or the assistant can ask to look along on one of your browser tabs. A card appears in its own
+  conversation with your active tab already picked; nothing is read until you approve, and a No or no answer reads
+  nothing. After you approve it gets that tab's address, title and a screenshot at once, under the same stop-at-any-time
+  sharing as any other shared tab.
+- added: in the Browser plugin you can share the tab you are looking at with one agent session, after you pick that
+  session on a card. The agent can then read only that tab (address, title, text and a screenshot), never cookies or
+  other tabs; every read is logged, a bar says who is watching, and **Stop sharing** ends it at once. If the tab moves
+  to another site, sharing pauses until you say to keep sharing there.
 - added: a consent card can ask you to pick, for example which session and what an agent may do, and over the whole
   window when it belongs to no session. Such a card always waits for you: it is never remembered or skipped, and
   Escape or a timeout refuses it.
@@ -56,6 +70,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - added: the session timeline and the usage history keep their raw lines for 90 days; older days are folded
   into one line per session and day (agent time, waiting time, operator actions, tokens, reported cost and turns)
   that stays. Your own time entries are never folded or removed.
+- added: the Browser plugin lets you browse inside Cockpit with your own profile, as a tab or in the rail (also in its
+  own window), with tabs, an address bar, sound and mute per tab. YouTube plays; a page that needs a video format the
+  built-in browser lacks offers **Open in system browser**. The engine downloads once on first use. Off on macOS for now.
+- added: a session that mounts Playwright MCP gets its own headless Chromium with an empty profile, handed over at launch
+  on the SDK and the TTY route and on the headless server; it stops with the session and with the cockpit. The browser is
+  Playwright's own, fetched on first use (checked against a pinned SHA-256), with Chrome or Edge as the fallback.
+- added: the Browser's **Agents** side shows the tabs of the browsers your agents use, each with the session it belongs
+  to, and a live picture of the tab you select (only while it is on screen). **Take over** lets you click and type in the
+  tab while that session's browser calls are refused with a clear message until you **Give back**; **Stop agent** closes
+  that session's browser, and its next browser call says you stopped it.
 - added: a plugin can read your Cockpit projects by id and name, and which project the selected session belongs to,
   so it can keep a project instead of a folder name. In a plugin's settings for a server, it sees that server's projects.
 - added: a plugin can bring its own dock panel into view (`OpenDockPanelAsync`), so a button like **Dock in the rail**
@@ -301,6 +325,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: plugins can now be told which MCP servers a session mounts (`SessionResourceRequest.McpServers`), and what a plugin puts in a session's environment, such as `GH_REPO`, now also reaches SDK sessions and sessions on the headless server, not only terminal panes.
 - changed: Depot projects are linked as `organization/project` as soon as the Depot gives organizations, and links you
   made earlier are moved over on the first contact, with a line in the log. A Depot without organizations keeps working
   as before, and a link that matches no single project is left alone with a warning. Needs Cockpit 0.91.0; Depot 0.11.11.

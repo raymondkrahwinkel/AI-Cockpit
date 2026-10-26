@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The CEF subprocess (renderer, GPU, utility) of the browser plugin (AC-1711). Its own exe so it can carry its
+       own app.manifest. A plain build lands in Subprocess/ of the plugin's bin/; the store zip carries a self-contained
+       publish per RID in that same folder (AC-1740), so the plugin's load context never sees its runtime DLLs. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <BaseOutputPath>..\bin\</BaseOutputPath>
+    <OutDir Condition="'$(RuntimeIdentifier)' == ''">..\bin\$(Configuration)\$(TargetFramework)\Subprocess\</OutDir>
+    <!-- A per-RID publish builds outside the plugin's output, which the store zip is made from. -->
+    <OutDir Condition="'$(RuntimeIdentifier)' != ''">..\bin\subprocess-rid\$(Configuration)\$(RuntimeIdentifier)\</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CefGlue.Next.Core" Version="154.8037.98" />
+  </ItemGroup>
+
+</Project>

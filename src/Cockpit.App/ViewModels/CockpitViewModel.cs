@@ -3104,13 +3104,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context — seeds three sample
     // sessions across different providers and statuses so the render shows the overview + grid without a real DI-backed
     // session behind each one (AC-953).
-    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, ISessionRegistration? sessionRegistry = null)
-        : this(dockPanelRegistry, sessionRegistry, withSamples: true)
+    public CockpitViewModel(IDockPanelRegistry? dockPanelRegistry = null, ISessionRegistration? sessionRegistry = null, IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
+        : this(dockPanelRegistry, sessionRegistry, withSamples: true, workspaceTypeRegistry)
     {
     }
 
     // AC-1487: `withSamples: false` is the `--remote` window's, which shows the server's sessions and none of its own.
-    private CockpitViewModel(IDockPanelRegistry? dockPanelRegistry, ISessionRegistration? sessionRegistry, bool withSamples)
+    private CockpitViewModel(IDockPanelRegistry? dockPanelRegistry, ISessionRegistration? sessionRegistry, bool withSamples, IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
     {
         // A test that reads the panes through the registry passes one; the sample sessions below then reach it too.
         _sessionRegistry = sessionRegistry;
@@ -3123,7 +3123,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _WireDockPanelChanges();
 
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
-        Workspaces = new WorkspacesViewModel();
+        // AC-1711: a scene passes the plugin workspace types it shows (--scene plugin:<name>).
+        Workspaces = new WorkspacesViewModel(null, workspaceTypes: workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
 
@@ -6281,7 +6282,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-165: what the plugins give this session, resolved now that the pane has a project, as the SDK route does.
         var contributed = _sessionResourceResolver is null
             ? SessionResources.Empty
-            : await _sessionResourceResolver.ResolveAsync(tty.PaneId);
+            : await _sessionResourceResolver.ResolveAsync(
+                tty.PaneId,
+                McpServerRegistryFilter.EffectiveSessionSelection(request.EnabledMcpServerNames, request.Profile.EnabledMcpServerNames));
         tty.LaunchConfigured(
             request.Profile,
             isClaudeProfile ? SessionOptionCatalog.ResolvePermissionMode(request.PermissionMode).Value : null,
