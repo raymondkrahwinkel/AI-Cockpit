@@ -109,8 +109,9 @@ internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IR
         var folder = Path.GetFileName(Path.TrimEndingDirectorySeparator(value.Trim()));
         var shortId = folder[(folder.LastIndexOf('-') + 1)..];
         if (shortId.Length == 8
-            && sessions.FirstOrDefault(session => session.ProjectId is not null && session.PaneId.StartsWith(shortId, StringComparison.OrdinalIgnoreCase)) is { } session
-            && projects.FirstOrDefault(project => string.Equals(project.Id, session.ProjectId, StringComparison.Ordinal)) is { } bySession)
+            && sessions.Where(session => session.PaneId.StartsWith(shortId, StringComparison.OrdinalIgnoreCase))
+                .Select(session => projects.FirstOrDefault(project => string.Equals(project.Id, session.ProjectId, StringComparison.Ordinal)))
+                .FirstOrDefault(project => project is not null) is { } bySession)
         {
             return bySession;
         }
