@@ -129,6 +129,32 @@ internal sealed class HoursWorkspaceBody : UserControl
         }
     }
 
+    private async Task _GiveToAgentAsync()
+    {
+        if (_controller.Week is not { } week || week.OpenLines.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var weekNumber = ISOWeek.GetWeekOfYear(_controller.WeekStart.ToDateTime(TimeOnly.MinValue));
+            var settings = _host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
+            var draft = WeekOfferPrompt.Build(week, weekNumber, settings.AgentInstructions);
+            var options = await _controller.GetWeekOfferOptionsAsync(_host.ActiveProjectId);
+            await _host.ShowDialogAsync(
+                $"Geef aan een agent · week {weekNumber}",
+                () => new WeekOfferDialog(_controller, _host, options, draft, _controller.WeekStart, weekNumber, _host.ActiveProjectId),
+                $"week-offer.{_controller.WeekStart:yyyy-MM-dd}",
+                width: 980,
+                height: 696);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Het urenvoorstel kon niet worden geopend: {exception.Message}", PluginToastSeverity.Error);
+        }
+    }
+
     private async Task _EditCellAsync(CellOverride? edit, DateOnly day, string projectId)
     {
         var key = CellOverride.StorageKey(_controller.WeekStart);
@@ -388,6 +414,8 @@ internal sealed class HoursWorkspaceBody : UserControl
                 ISOWeek.GetWeekOfYear(_controller.WeekStart.ToDateTime(TimeOnly.MinValue)),
                 day => _ = _controller.ShowWeekAsync(false, day),
                 () => _ = _CopyAsync(),
+                () => _ = _GiveToAgentAsync(),
+                () => _ = _host.ShowSettingsAsync(),
                 (edit, day, projectId) => _ = _EditCellAsync(edit, day, projectId))
             : null;
         _formDay.Text = "legt vast op " + (_controller.IsToday ? "vandaag, " : string.Empty) + date.ToString("ddd d MMM", Dutch);

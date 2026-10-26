@@ -18,6 +18,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
     private readonly WeekSettings _settings;
     private readonly TextBox[] _hours;
     private readonly ComboBox _rounding = new() { ItemsSource = new[] { "5 minuten", "15 minuten", "30 minuten" }, Width = 140 };
+    private readonly TextBox _instructions;
     private readonly StackPanel _projects = new() { Spacing = 4 };
     private readonly List<(string Id, CheckBox Box)> _private = [];
 
@@ -26,6 +27,14 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         _host = host;
         _controller = controller;
         _settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
+        _instructions = new TextBox
+        {
+            Name = "AgentInstructions",
+            Text = _settings.AgentInstructions,
+            AcceptsReturn = true,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            MinHeight = 110,
+        };
         _hours = [.. _settings.ScheduleMinutes.Select((minutes, index) => new TextBox { Name = $"Schedule{index}", Text = (minutes / 60.0).ToString("0.##", Dutch), Width = 56 })];
         _rounding.SelectedIndex = Array.IndexOf([5, 15, 30], _settings.RoundingMinutes) is var index and >= 0 ? index : 1;
 
@@ -46,6 +55,9 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
                 new TextBlock { Text = "Projecten in het voorstel", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
                 new TextBlock { Text = "Een privé-project telt wel als jouw tijd, maar komt niet in het voorstel.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 _projects,
+                new TextBlock { Text = "Instructies voor de boekingsagent", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
+                new TextBlock { Text = "Deze tekst is bewerkbaar. De harde schemagrens en het verplichte akkoord staan vast buiten deze tekst.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                _instructions,
             },
         };
         _ = _LoadProjectsAsync();
@@ -69,7 +81,10 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         var settings = new WeekSettings(
             minutes,
             new[] { 5, 15, 30 }[Math.Max(_rounding.SelectedIndex, 0)],
-            [.. _settings.PrivateProjects.Where(id => _private.All(project => project.Id != id)), .. _private.Where(project => project.Box.IsChecked == true).Select(project => project.Id)]);
+            [.. _settings.PrivateProjects.Where(id => _private.All(project => project.Id != id)), .. _private.Where(project => project.Box.IsChecked == true).Select(project => project.Id)])
+        {
+            AgentInstructions = _instructions.Text ?? string.Empty,
+        };
         commit = () =>
         {
             _host.Storage.Set(WeekSettings.StorageKey, settings);

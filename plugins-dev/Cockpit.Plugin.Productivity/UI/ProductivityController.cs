@@ -90,6 +90,20 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
         await RefreshAsync().ConfigureAwait(false);
     }
 
+    public Task<WeekOfferOptions> GetWeekOfferOptionsAsync(string? projectId) =>
+        _AskAsync<WeekOfferOptions>(ProductivityChannel.WeekOfferOptions, new WeekOfferOptionsRequest(projectId));
+
+    public async Task SendWeekOfferAsync(WeekOfferSendRequest request)
+    {
+        var result = await _AskAsync<WeekOfferSendResult>(ProductivityChannel.SendWeekOffer, request).ConfigureAwait(false);
+        if (result.FinalizationError is { } error)
+        {
+            throw new WeekOfferFinalizationException(result.PaneId, new InvalidOperationException(error));
+        }
+
+        await RefreshAsync().ConfigureAwait(false);
+    }
+
     public Task<bool> AddAsync(string description, string durationText, string? projectId) =>
         _SaveAsync(null, description, durationText, projectId, _EntryStart());
 

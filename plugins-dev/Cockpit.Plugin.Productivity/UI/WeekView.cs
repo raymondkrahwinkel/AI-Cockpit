@@ -27,6 +27,8 @@ internal static class WeekView
         int weekNumber,
         Action<DateOnly> openDay,
         Action copy,
+        Action giveToAgent,
+        Action editInstructions,
         Action<CellOverride?, DateOnly, string> edit)
     {
         var body = new StackPanel { Spacing = 12 };
@@ -36,7 +38,7 @@ internal static class WeekView
             cards.Children.Add(_ScheduleCard(settings));
             var included = _IncludedCard(settings, projects.Count > 0
                 ? projects
-                : [.. week.Lines.Where(line => line.Own == false && line.ProjectId is not null).Select(line => new PluginProjectInfo(line.ProjectId ?? string.Empty, line.Label))]);
+                : [.. week.Lines.Where(line => line.Own == false && line.ProjectId is not null).Select(line => new PluginProjectInfo(line.ProjectId ?? string.Empty, line.Label))], editInstructions);
             Grid.SetColumn(included, 1);
             cards.Children.Add(included);
             body.Children.Add(cards);
@@ -49,7 +51,7 @@ internal static class WeekView
                 new Run(". Dezelfde weergave als nu, met het voorstel en de status van toen. Ruwe tijdlijn tot 90 dagen terug, daarna dagtotalen per project; eigen regels en terugmeldingen blijven altijd bewaard.")), 14));
         }
 
-        body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy, edit));
+        body.Children.Add(_ProposalCard(week, settings, thisWeek, weekNumber, openDay, copy, giveToAgent, edit));
         return body;
     }
 
@@ -131,7 +133,7 @@ internal static class WeekView
         }, 14);
     }
 
-    private static Control _IncludedCard(WeekSettings settings, IReadOnlyList<PluginProjectInfo> projects)
+    private static Control _IncludedCard(WeekSettings settings, IReadOnlyList<PluginProjectInfo> projects, Action editInstructions)
     {
         var chips = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (var project in projects)
@@ -154,8 +156,8 @@ internal static class WeekView
 
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         heading.Children.Add(_Title("Wat er meegaat"));
-        var instructions = new Button { Content = "Instructies bewerken", IsEnabled = false, Classes = { "Compact" } };
-        ToolTip.SetTip(instructions, "komt");
+        var instructions = new Button { Content = "Instructies bewerken", Classes = { "Compact" } };
+        instructions.Click += (_, _) => editInstructions();
         Grid.SetColumn(instructions, 1);
         heading.Children.Add(instructions);
 
@@ -171,7 +173,7 @@ internal static class WeekView
         }, 14);
     }
 
-    private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy, Action<CellOverride?, DateOnly, string> edit)
+    private static Control _ProposalCard(WeekProposal week, WeekSettings settings, bool thisWeek, int weekNumber, Action<DateOnly> openDay, Action copy, Action giveToAgent, Action<CellOverride?, DateOnly, string> edit)
     {
         var days = week.VisibleDays;
         var columns = "*," + string.Join(',', days.Select(_ => "62")) + ",62,250";
@@ -297,7 +299,7 @@ internal static class WeekView
             body.Children.Add(_Explanation(settings));
         }
 
-        body.Children.Add(_Footer(week, thisWeek, copy));
+        body.Children.Add(_Footer(week, thisWeek, copy, giveToAgent));
         return Ui.Card(body, 14);
     }
 
@@ -348,7 +350,7 @@ internal static class WeekView
                 new Run($", afgerond op {settings.RoundingMinutes}m; het afrondverschil gaat naar het grootste project. Wat er al in de boekhouding staat, rekent de agent zelf mee.")),
         };
 
-    private static Control _Footer(WeekProposal week, bool thisWeek, Action copy)
+    private static Control _Footer(WeekProposal week, bool thisWeek, Action copy, Action giveToAgent)
     {
         var copyButton = new Button { Name = "CopyTable", Content = "Kopieer als tabel" };
         copyButton.Click += (_, _) => copy();
@@ -357,24 +359,24 @@ internal static class WeekView
         {
             Name = "GiveToAgent",
             Content = thisWeek ? "Geef aan een agent…" : $"Geef {openCount} open regels aan een agent…",
-            IsEnabled = false,
+            IsEnabled = openCount > 0,
             Classes = { "Accent" },
         };
-        ToolTip.SetTip(agent, "komt");
+        agent.Click += (_, _) => giveToAgent();
+        if (openCount == 0)
+        {
+            ToolTip.SetTip(agent, "Er zijn geen open regels.");
+        }
         var hint = Ui.Hint(thisWeek
             ? "Per regel één omschrijving: de tickets van die dag. Je kunt elk vak aanpassen."
             : "Alleen open regels gaan mee. Geboekte regels zijn alleen-lezen en gaan nooit opnieuw mee.");
         hint.VerticalAlignment = VerticalAlignment.Center;
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), ColumnSpacing = 10 };
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 10 };
         footer.Children.Add(hint);
         Grid.SetColumn(copyButton, 1);
         footer.Children.Add(copyButton);
         Grid.SetColumn(agent, 2);
         footer.Children.Add(agent);
-        var soon = Ui.Tag("komt");
-        soon.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(soon, 3);
-        footer.Children.Add(soon);
         return footer;
     }
 

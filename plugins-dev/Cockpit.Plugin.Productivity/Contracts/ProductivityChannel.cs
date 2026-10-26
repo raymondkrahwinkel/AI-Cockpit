@@ -15,6 +15,8 @@ internal static class ProductivityChannel
     public const string UpdateStopwatch = "productivity.time.stopwatch.update";
     public const string StopStopwatch = "productivity.time.stopwatch.stop";
     public const string Week = "productivity.time.week";
+    public const string WeekOfferOptions = "productivity.time.week.offer-options";
+    public const string SendWeekOffer = "productivity.time.week.send-offer";
 
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 }
@@ -71,6 +73,18 @@ internal sealed record ProductivitySaveRequest(
 
 // DayStarts holds the eight local midnights from Monday to the next Monday.
 internal sealed record ProductivityWeekRequest(IReadOnlyList<DateTimeOffset> DayStarts);
+
+internal sealed record WeekOfferOptionsRequest(string? ProjectId);
+
+internal sealed record WeekOfferChoice(
+    WeekOfferDestination Destination,
+    string? ProfileLabel = null,
+    string? Status = null);
+
+internal sealed record WeekOfferOptions(
+    IReadOnlyList<WeekOfferChoice> Sessions,
+    IReadOnlyList<WeekOfferChoice> Profiles,
+    WeekOfferDestination? Remembered);
 
 internal sealed record ProductivityDeleteRequest(Guid Id);
 

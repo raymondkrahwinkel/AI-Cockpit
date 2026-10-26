@@ -12,6 +12,8 @@ using Cockpit.Plugin.Productivity;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
@@ -23,7 +25,7 @@ namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// AC-1722 layer 2 view journey: one real Productivity UI and backend channel over host-owned time entries;
-/// AC-1731 adds the measured time from the session timeline beside them; AC-1723 the week proposal and its table.
+/// AC-1731 adds measured time, AC-1723 the week proposal and AC-1725 the confirmed handoff to an agent.
 /// </summary>
 [Collection("avalonia")]
 public sealed class ProductivityHoursJourneyTests
@@ -34,10 +36,16 @@ public sealed class ProductivityHoursJourneyTests
         var timeEntries = new _TimeEntries();
         var channel = new _Loopback();
         var backend = Substitute.For<ICockpitHost>();
+        var storage = new _Storage();
+        var actions = Substitute.For<ICockpitActions>();
+        var sessions = Substitute.For<ICockpitSessionObserver>();
+        sessions.OpenSessions.Returns([]);
         backend.Channel.Returns(channel);
+        backend.Actions.Returns(actions);
+        backend.Sessions.Returns(sessions);
+        backend.Storage.Returns(storage);
         backend.TimeEntries.Returns(timeEntries);
         backend.Timeline.Returns(new _Timeline());
-        backend.Storage.Returns(Substitute.For<IPluginStorage>());
         backend.GetProjectsAsync().Returns(Task.FromResult<IReadOnlyList<PluginProjectInfo>>(
         [
             new("syn-portal", "Synvolution portal"),
@@ -45,16 +53,28 @@ public sealed class ProductivityHoursJourneyTests
             new("syn-api", "Synvolution API"),
             new("depot", "Depot"),
         ]));
+        backend.GetProfilesAsync().Returns([new PluginProfileInfo("Codex", "Codex", string.Empty)]);
         using var plugin = new ProductivityPlugin();
         plugin.Initialize(backend);
 
         var ui = Substitute.For<ICockpitUiHost>();
         ui.Channel.Returns(channel);
+        ui.Storage.Returns(storage);
+        ui.ActiveProjectId.Returns("cockpit");
         ui.ActiveSessionWorkingDirectory.Returns(Path.Combine("work", "cockpit"));
         ui.OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId).Returns(Task.CompletedTask);
         ui.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         string? copied = null;
+        string? sentPrompt = null;
+        Control? offerDialog = null;
         ui.SetClipboardTextAsync(Arg.Do<string>(text => copied = text)).Returns(Task.CompletedTask);
+        actions.SendPromptToSessionAsync("pane-agent", Arg.Do<string>(text => sentPrompt = text), Arg.Any<string>()).Returns(Task.CompletedTask);
+        ui.ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>())
+            .Returns(call =>
+            {
+                offerDialog = call.ArgAt<Func<Control>>(1)();
+                return Task.CompletedTask;
+            });
         var badge = new SideMenuButtonBadge();
         Action? open = null;
         Action? openOverview = null;
@@ -182,6 +202,53 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Equal(header, table[0].Split('\t'));
         Assert.Equal(screen.GetVisualDescendants().OfType<Grid>().Count(grid => grid.Name == "ProposalRow") + 4, table.Length);
 
+        _Click(screen, "ThisWeek");
+        await _Until(() => _Texts(screen).Contains("Telefonisch overleg met klant XXX"), "this week's proposal");
+        _Click(screen, "GiveToAgent");
+        await _Until(() => offerDialog is not null, "the offer dialog");
+        var profileDialog = offerDialog ?? throw new InvalidOperationException("No profile offer dialog.");
+        using (var profileScene = RenderedScene.Show(profileDialog, 980, 696))
+        {
+            Assert.Equal(1, _Control<TabControl>(profileDialog, "OfferDestinationTabs").SelectedIndex);
+        }
+
+        sessions.OpenSessions.Returns([new OpenCockpitSession("pane-agent", "Boekhouding", "Codex", "Idle")]);
+        offerDialog = null;
+        _Click(screen, "GiveToAgent");
+        await _Until(() => offerDialog is not null, "the session offer dialog");
+        var dialog = offerDialog ?? throw new InvalidOperationException("No offer dialog.");
+        using var offerScene = RenderedScene.Show(dialog, 980, 696);
+        var preview = _Control<TextBox>(dialog, "PromptPreview").Text ?? string.Empty;
+        Assert.Contains("Boek per dag nooit meer dan het schema", preview, StringComparison.Ordinal);
+        Assert.Contains("Schrijf niets voordat je dat akkoord hebt", preview, StringComparison.Ordinal);
+        Assert.False(_Control<Button>(dialog, "SendOffer").IsEnabled);
+        _Control<CheckBox>(dialog, "ConfirmOffer").IsChecked = true;
+        await _Until(() => _Control<Button>(dialog, "SendOffer").IsEnabled, "the confirmed send button");
+        _Render(offerScene.Window, "05-geef-aan-agent.png");
+        _Click(dialog, "SendOffer");
+        await _Until(() => sentPrompt is not null && timeEntries.Entries.Where(entry => entry.Description is "Telefonisch overleg met klant XXX" or "Uitwerking voorstel").All(entry => entry.Status == CockpitTimeEntryStatus.Offered), "the delivered and offered rows");
+        Assert.Equal(preview, sentPrompt);
+        await _Until(() => _Texts(screen).Any(text => text.Contains("aangeboden", StringComparison.OrdinalIgnoreCase)), "the offered week status");
+
+        var unmarked = await timeEntries.AddAsync("Nog te verwerken", DateTimeOffset.Now, TimeSpan.FromMinutes(15), "cockpit", CockpitTimeEntrySource.Duration);
+        timeEntries.MarkFailure = new InvalidOperationException("The time-entry store is unavailable.");
+        _Click(screen, "ThisWeek");
+        await _Until(() => _Texts(screen).Contains("Nog te verwerken"), "the next open proposal");
+        offerDialog = null;
+        _Click(screen, "GiveToAgent");
+        await _Until(() => offerDialog is not null, "the next offer dialog");
+        var failedDialog = offerDialog ?? throw new InvalidOperationException("No finalization failure dialog.");
+        using (var failedScene = RenderedScene.Show(failedDialog, 980, 696))
+        {
+            _Control<CheckBox>(failedDialog, "ConfirmOffer").IsChecked = true;
+            _Click(failedDialog, "SendOffer");
+            await _Until(() => _Texts(failedDialog).Any(text => text.Contains("Het urenvoorstel is afgeleverd", StringComparison.Ordinal)), "the delivered offer with failed status update");
+            Assert.False(_Control<Button>(failedDialog, "SendOffer").IsEnabled);
+            Assert.False(_Control<CheckBox>(failedDialog, "ConfirmOffer").IsEnabled);
+            await actions.Received(2).SendPromptToSessionAsync("pane-agent", Arg.Any<string>(), Arg.Any<string>());
+            Assert.Equal(CockpitTimeEntryStatus.Open, timeEntries.Entries.Single(entry => entry.Id == unmarked.Id).Status);
+        }
+
         var overviewFrom = _Local(2026, 10, 19);
         timeEntries.Seed(
             new CockpitTimeEntry(Guid.NewGuid(), "Weekstart met het team", overviewFrom.AddHours(7).AddMinutes(20), TimeSpan.FromHours(1), "syn-portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open),
@@ -208,6 +275,9 @@ public sealed class ProductivityHoursJourneyTests
         await ui.Received(1).OpenWorkspaceAsync("workspace.productivity.overview");
         var overviewScreen = workspaces["workspace.productivity.overview"].CreateBody(Substitute.For<IWorkspaceContext>());
         using var overviewScene = RenderedScene.Show(overviewScreen, 1280, 1000);
+        _Control<DatePicker>(overviewScreen, "CustomFrom").SelectedDate = overviewFrom;
+        _Control<DatePicker>(overviewScreen, "CustomTo").SelectedDate = overviewFrom.AddDays(4);
+        _Click(overviewScreen, "ApplyCustomRange");
         await _Until(
             () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
             "the week overview");
@@ -352,6 +422,8 @@ public sealed class ProductivityHoursJourneyTests
 
         public CockpitRunningStopwatch? Running { get; private set; }
 
+        public Exception? MarkFailure { get; set; }
+
         public Task<CockpitTimeEntry> AddAsync(string description, DateTimeOffset startedAt, TimeSpan duration, string? projectId, CockpitTimeEntrySource source, CancellationToken cancellationToken = default)
         {
             var entry = new CockpitTimeEntry(Guid.NewGuid(), description, startedAt, duration, projectId, source, CockpitTimeEntryStatus.Open);
@@ -406,13 +478,37 @@ public sealed class ProductivityHoursJourneyTests
         public Task<CockpitRunningStopwatch?> GetRunningStopwatchAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Running);
 
-        public Task MarkOfferedAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset offeredAt, string paneId, CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
+        public Task MarkOfferedAsync(IReadOnlyCollection<Guid> ids, DateTimeOffset offeredAt, string paneId, CancellationToken cancellationToken = default)
+        {
+            if (MarkFailure is { } failure)
+            {
+                throw failure;
+            }
+
+            for (var index = 0; index < Entries.Count; index++)
+            {
+                if (ids.Contains(Entries[index].Id))
+                {
+                    Entries[index] = Entries[index] with { Status = CockpitTimeEntryStatus.Offered, OfferedAt = offeredAt, OfferedToPaneId = paneId };
+                }
+            }
+
+            return Task.CompletedTask;
+        }
 
         public Task SetOutcomeAsync(IReadOnlyCollection<Guid> ids, CockpitTimeEntryOutcome outcome, string? reason = null, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
         public void Seed(params CockpitTimeEntry[] entries) => Entries.AddRange(entries);
+    }
+
+    private sealed class _Storage : IPluginStorage
+    {
+        private readonly Dictionary<string, object?> _values = [];
+
+        public T? Get<T>(string key) => _values.GetValueOrDefault(key) is T value ? value : default;
+
+        public void Set<T>(string key, T value) => _values[key] = value;
     }
 
     // Today: one action three hours ago, ten measured minutes clear of the entries made now. Before today: a
@@ -453,7 +549,7 @@ public sealed class ProductivityHoursJourneyTests
             }
 
             var now = DateTimeOffset.Now;
-            var morning = from.AddHours(9);
+            var morning = new DateTimeOffset(from.Date.AddHours(9));
             CockpitTimelineLine[] lines = from <= now && now < to
                 ? [_Act(now.AddHours(-3), "cockpit")]
                 : [

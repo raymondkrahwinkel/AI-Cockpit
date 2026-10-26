@@ -10,6 +10,8 @@ internal sealed record WeekSettings(int[] ScheduleMinutes, int RoundingMinutes, 
 
     public static WeekSettings Default { get; } = new([480, 480, 480, 480, 240, 0, 0], 15, []);
 
+    public string AgentInstructions { get; init; } = WeekOfferPrompt.DefaultInstructions;
+
     public TimeSpan Schedule(DateOnly day) => TimeSpan.FromMinutes(ScheduleMinutes[((int)day.DayOfWeek + 6) % 7]);
 }
 
