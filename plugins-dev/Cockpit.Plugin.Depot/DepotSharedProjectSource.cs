@@ -66,7 +66,8 @@ internal sealed class DepotSharedProjectSource(
             Changed?.Invoke($"{scheme}:{address}");
         }
 
-        if (string.Equals(cockpitEvent.Kind, "changed", StringComparison.Ordinal)
+        if (string.Equals(cockpitEvent.Kind, "created", StringComparison.Ordinal)
+            || string.Equals(cockpitEvent.Kind, "changed", StringComparison.Ordinal)
             || string.Equals(cockpitEvent.Kind, "deleted", StringComparison.Ordinal)
             || string.Equals(cockpitEvent.Kind, "definitionChanged", StringComparison.Ordinal))
         {
