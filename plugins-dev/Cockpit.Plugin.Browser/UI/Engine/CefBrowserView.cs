@@ -331,9 +331,11 @@ internal sealed class CefBrowserView : Control
         }
 
         context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+        // AC-1761: the source rect in pixels. The two-argument overload passes the bitmap's size in DIPs as the source,
+        // which Skia reads as pixels, so above 100% only the top-left part was drawn, stretched (measured at 125%).
         if (_bitmap is not null)
         {
-            context.DrawImage(_bitmap, new Rect(_bitmap.Size));
+            context.DrawImage(_bitmap, new Rect(_bitmap.PixelSize.ToSize(1)), new Rect(_bitmap.Size));
         }
     }
 
