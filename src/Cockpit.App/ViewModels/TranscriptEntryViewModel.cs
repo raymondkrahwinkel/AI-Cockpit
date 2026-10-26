@@ -216,16 +216,47 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     {
         get
         {
-            var name = string.IsNullOrEmpty(ToolName) ? "Tool" : ToolName;
+            var name = string.IsNullOrEmpty(ToolName) ? "Tool" : McpDisplayName(ToolName);
             if (Machine is { Length: > 0 })
             {
                 name = $"{name} on {Machine}";
+            }
+
+            if (WaitsForChoice)
+            {
+                return $"{name} waits for your choice…";
             }
 
             var summary = _ToolSummary(InputJson);
             return summary.Length == 0 ? name : $"{name}  ·  {summary}";
         }
     }
+
+    // AC-1715: an MCP call by its server and tool, "mcp__cockpit-browser__browser_request_tab" as "browser.request_tab":
+    // the "cockpit-" of a cockpit server and the tool's own server prefix are dropped. Anything else is left as it is.
+    public static string McpDisplayName(string toolName)
+    {
+        var parts = toolName.Split("__");
+        if (parts is not ["mcp", { Length: > 0 } server, { Length: > 0 } tool])
+        {
+            return toolName;
+        }
+
+        server = server.StartsWith("cockpit-", StringComparison.Ordinal) ? server["cockpit-".Length..] : server;
+        tool = tool.StartsWith(server + "_", StringComparison.Ordinal) ? tool[(server.Length + 1)..] : tool;
+        return $"{server}.{tool}";
+    }
+
+    // AC-1715: a consent card carries no tool-use id, so the call it belongs to is taken as the session's newest MCP
+    // call still running while that session holds a card.
+    private bool WaitsForChoice =>
+        HasResult == false
+        && ToolName?.StartsWith("mcp__", StringComparison.Ordinal) == true
+        && Session is { PendingConsent: not null } session
+        && ReferenceEquals(session.Transcript.LastOrDefault(row => row.HasResult == false && row.ToolName?.StartsWith("mcp__", StringComparison.Ordinal) == true), this);
+
+    // Raised by the session when its consent card opens or closes, so the waiting row says so and stops saying it.
+    public void RefreshToolHeader() => OnPropertyChanged(nameof(ToolHeader));
 
     // --- Background tool calls (AC-1056) ----------------------------------------------------------------------
 

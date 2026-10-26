@@ -15,7 +15,7 @@
          default of true — the assistant's chat window opens before its session exists (AC-959), so the scrim stood
          over the whole window and swallowed every click until one arrived. -->
     <Border Background="{DynamicResource CockpitScrimBrush}"
-            IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}">
+            IsVisible="{Binding PendingConsent.IsOverlay, FallbackValue=False}">
         <ContentControl Content="{Binding PendingConsent}"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         MaxWidth="560" Margin="24">

@@ -32,6 +32,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: a plugin can ask its question as a card under the assistant's conversation instead of over it, with
+  buttons to approve, pick another option or say no. A tool call from a plugin now shows by its short name, such as
+  `browser.request_tab`, and says it "waits for your choice" while its card is open.
 - added: plugins that offer a running-session picker can show each session's profile and whether it is busy, waiting,
   done or idle instead of making you choose from names alone.
 - added: a plugin store can publish one zip per platform for a plugin with native parts. Cockpit downloads the one

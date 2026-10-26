@@ -3691,7 +3691,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            pane.PendingConsent = new ConsentPromptViewModel(prompt, consent);
+            pane.PendingConsent = new ConsentPromptViewModel(prompt, consent, inlineSlot: ReferenceEquals(pane, _assistantSession));
 
             // AC-1305: this and the close side are the open and shut of every banner there is, so the Simple stand's
             // notification list is recomputed from both. `OnSessionPropertyChanged` is the net under them, for the
