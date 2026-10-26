@@ -338,6 +338,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **agents get their own browser on Ubuntu 24.04 again.** On Linux the agent browser now starts the
+  installed Chrome before the downloaded headless shell, which Ubuntu's AppArmor stops from sandboxing, and a
+  browser that fails to start says why in the log instead of leaving the session silently without one.
 - fixed: **already available providers show up during first start.** Step 4 now offers bundled and approved installed
   provider plugins such as Claude and Codex even when step 3 did not install anything or request a restart.
 - fixed: **you choose what powers the assistant during first start.** The assistant step now offers the providers you
