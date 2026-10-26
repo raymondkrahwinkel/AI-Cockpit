@@ -237,6 +237,8 @@ public interface ICockpitPluginUi
   for an unknown pane. The selected session's project is `ActiveProjectId` (AC-1737, host 0.112.0); a backend part
   asks `GetSessionProjectIdAsync(paneId)`, and both find the name in `GetProjectsAsync()`. To put text in a pane's input without sending it — what `InjectIntoActiveSessionAsync` did
   for the selected pane — a UI part calls `InsertIntoSessionAsync(paneId, text)`; `SendToSessionAsync` submits it.
+  To show an existing pane without touching its input, use `await uiHost.FocusSessionAsync(paneId)`
+  (host 0.122.0, SDK 3.31.0, UI SDK 3.9.0). It returns false if the pane is absent or focus is unavailable.
   A backend part does the same through `ICockpitHost.InsertIntoSessionAsync(paneId, text)` (AC-1399, host 0.44.0),
   which answers false for an unknown pane or one without an input, so the caller can say so.
 - **No `Services`.** The UI part cannot resolve the container, so it cannot reach its backend part around the

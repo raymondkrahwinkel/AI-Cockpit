@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: plugins can open an existing session without changing or sending its input; a missing pane is reported.
 - added: a plugin can ask its question as a card under the assistant's conversation instead of over it, with
   buttons to approve, pick another option or say no.
 - changed: every MCP tool call in a conversation now shows by its server and tool, such as `browser.request_tab` or

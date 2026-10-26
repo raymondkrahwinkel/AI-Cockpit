@@ -27,7 +27,8 @@
          workspace is active. A plugin that relies on them sets minHostVersion 0.115.0; an older host ignores them. -->
     <!-- 3.8.0 (AC-1711): ICockpitUiHost.SetStatusText (default no-op), one line of the plugin's own text in the status
          bar. A plugin that calls it sets minHostVersion 0.116.0. -->
-    <Version>3.8.0</Version>
+    <!-- 3.9.0 (AC-1726): FocusSessionAsync selects an existing pane without changing its input, host 0.122.0. -->
+    <Version>3.9.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>
