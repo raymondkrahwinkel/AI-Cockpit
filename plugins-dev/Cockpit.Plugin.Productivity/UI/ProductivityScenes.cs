@@ -40,12 +40,14 @@ internal static class ProductivityScenes
                 var host = SceneHost.Create(new SceneChannel());
                 var controller = new ProductivityController(host.Channel, new FixedTime());
                 controller.UpdateProjectFallback(Cockpit);
+                // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
                 controller.RefreshAsync().GetAwaiter().GetResult();
                 return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host)) { IconKind = MaterialIconKind.ClockOutline }, null);
             },
             ["productivity-overview"] = () =>
             {
                 var controller = new OverviewController(new SceneChannel(), new FixedTime());
+                // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
                 controller.RefreshAsync().GetAwaiter().GetResult();
                 return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overzicht", _ => new OverviewWorkspaceBody(controller, () => { })) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
             },
@@ -126,14 +128,17 @@ internal static class ProductivityScenes
         {
             object answer = action switch
             {
-                ProductivityChannel.Snapshot => _Snapshot(payload.Deserialize<ProductivitySnapshotRequest>(ProductivityChannel.Json)!),
-                ProductivityChannel.Overview => _Overview(payload.Deserialize<ProductivityOverviewRequest>(ProductivityChannel.Json)!),
+                ProductivityChannel.Snapshot => _Snapshot(_Read<ProductivitySnapshotRequest>(payload, action)),
+                ProductivityChannel.Overview => _Overview(_Read<ProductivityOverviewRequest>(payload, action)),
                 _ => throw new NotSupportedException($"The scene does not answer '{action}'."),
             };
             return Task.FromResult(JsonSerializer.SerializeToElement(answer, answer.GetType(), ProductivityChannel.Json));
         }
 
         public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new Nothing();
+
+        private static T _Read<T>(JsonElement payload, string action) =>
+            payload.Deserialize<T>(ProductivityChannel.Json) ?? throw new InvalidOperationException($"The '{action}' request was empty.");
 
         private static ProductivitySnapshot _Snapshot(ProductivitySnapshotRequest request)
         {
@@ -202,7 +207,9 @@ internal static class ProductivityScenes
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>))
             {
                 var result = type.GetGenericArguments()[0];
-                return typeof(Task).GetMethod(nameof(Task.FromResult))!.MakeGenericMethod(result).Invoke(null, [result.IsValueType ? Activator.CreateInstance(result) : null]);
+                var fromResult = typeof(Task).GetMethod(nameof(Task.FromResult))
+                    ?? throw new MissingMethodException(nameof(Task), nameof(Task.FromResult));
+                return fromResult.MakeGenericMethod(result).Invoke(null, [result.IsValueType ? Activator.CreateInstance(result) : null]);
             }
 
             return type.IsValueType ? Activator.CreateInstance(type) : null;
