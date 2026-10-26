@@ -38,6 +38,50 @@ public sealed record PluginSessionBannerItem(Func<IPluginSessionContext, Control
 // at the top, not below every plugin that happens to contribute a button instead.
 public sealed record PluginMenuEntry(string PluginId, PluginSideButton? Button, PluginSideSection? Section);
 
+// AC-1763: one sidebar card. A plugin's own buttons and sections share the card named after it (`plugin:{id}`);
+// plugins that contributed a single button and nothing else share the one "Plugins" card (`plugins`).
+public sealed record PluginMenuGroup(
+    string Key,
+    string Title,
+    string? PluginId,
+    IReadOnlyList<PluginSideButton> Buttons,
+    IReadOnlyList<PluginSideSection> Sections)
+{
+    public const string CollectedKey = "plugins";
+
+    // What the header shows while the card is folded: the numeric badges added up. A text badge ("0u25 vandaag") has
+    // no number to add, so it only shows on its own row.
+    public int BadgeTotal => Buttons.Sum(button => button.Badge?.Primary ?? 0);
+
+    // `ordered` is the operator's order (AC-937's list); cards keep the position of their plugin's first entry, and
+    // the collected card comes last.
+    public static IReadOnlyList<PluginMenuGroup> Group(IEnumerable<PluginMenuEntry> ordered, Func<string, string> displayName)
+    {
+        var groups = new List<PluginMenuGroup>();
+        var collected = new List<PluginSideButton>();
+        foreach (var plugin in ordered.GroupBy(entry => entry.PluginId))
+        {
+            var buttons = plugin.Select(entry => entry.Button).OfType<PluginSideButton>().ToList();
+            var sections = plugin.Select(entry => entry.Section).OfType<PluginSideSection>().ToList();
+            if (sections.Count == 0 && buttons.Count == 1)
+            {
+                collected.AddRange(buttons);
+            }
+            else
+            {
+                groups.Add(new PluginMenuGroup($"plugin:{plugin.Key}", displayName(plugin.Key), plugin.Key, buttons, sections));
+            }
+        }
+
+        if (collected.Count > 0)
+        {
+            groups.Add(new PluginMenuGroup(CollectedKey, "Plugins", null, collected, []));
+        }
+
+        return groups;
+    }
+}
+
 // A plugin's settings view: which plugin it belongs to, the plugin's own name (what the dialog is titled,
 // wherever it is opened from — the manager's gear, a left-menu gear, or the plugin itself), and the factory
 // that builds it. No factory (AC-289) is a plugin whose page holds only what the host draws from its declarations.

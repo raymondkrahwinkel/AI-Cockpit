@@ -364,14 +364,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             .OrderBy(entry => _MenuOrderOf(entry.PluginId))
             .ToList();
 
-    // AC-937: the entries drawn directly in the sidebar — a pinned plugin, or any section (an inline accordion
-    // behind a flyout would be the wrong control, so a section never collapses regardless of its plugin's pin).
-    public IReadOnlyList<PluginMenuEntry> PinnedMenuEntries =>
-        VisibleMenuEntries.Where(entry => entry.Section is not null || _IsPinnedToSidebar(entry.PluginId)).ToList();
+    // AC-1763: the cards the sidebar draws, one per plugin (plus the shared "Plugins" card), in the order of
+    // VisibleMenuEntries.
+    public IReadOnlyList<PluginMenuGroup> PluginMenuGroups => PluginMenuGroup.Group(VisibleMenuEntries, _PluginDisplayName);
 
-    // AC-937: the entries collapsed behind "Plugins ›" — an unpinned button, and only a button; see PinnedMenuEntries.
-    public IReadOnlyList<PluginMenuEntry> CollapsedMenuEntries =>
-        VisibleMenuEntries.Where(entry => entry.Section is null && !_IsPinnedToSidebar(entry.PluginId)).ToList();
+    // The manifest's name, or the settings registration's, or the id itself for a plugin the manager has not listed.
+    private string _PluginDisplayName(string pluginId) =>
+        Plugins.Plugins.FirstOrDefault(row => row.FolderId == pluginId)?.DisplayName
+        ?? (PluginSettings.TryGetValue(pluginId, out var registration) ? registration.PluginName : pluginId);
 
     // The toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left
     // menu, so a plugin hidden there does not surface a toolbar button either. This is the one list the strip draws

@@ -27,7 +27,7 @@
              and the workflow templates come from, and it is the one thing in that menu people go looking
              for. A door you have to open a drawer to find is a door most people never open. -->
         <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                Padding="10,6" CornerRadius="7" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                Padding="10,6" CornerRadius="0" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                 Command="{Binding OpenPluginStoreCommand}"
                 ToolTip.Tip="Browse, install and update plugins — and the workflow templates they ship with">
             <DockPanel>
@@ -63,7 +63,7 @@
              kind of thing, and a row that is styled differently reads as a different kind of control.
              AC-937: right-hand flush-list Flyout, same shell as "Plugins ›", not a MenuFlyout card. -->
         <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                Padding="10,6" CornerRadius="7" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                Padding="10,6" CornerRadius="0" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                 ToolTip.Tip="Profiles, MCP servers, plugins, options and about">
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <materialIcons:MaterialIcon Kind="Menu" Width="16" Height="16"/>
@@ -110,7 +110,7 @@
              one findable door to it, plus the two things that need no browser at all: a glossary and
              re-running first-run setup. AC-937: same flush-list Flyout shell as "Menu"/"Plugins ›". -->
         <Button x:Name="HelpButton" Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                Padding="10,6" CornerRadius="7" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                Padding="10,6" CornerRadius="0" Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                 ToolTip.Tip="The online guide, a glossary of terms, and re-running first-run setup">
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <materialIcons:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>

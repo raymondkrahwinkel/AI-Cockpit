@@ -140,7 +140,7 @@ internal sealed class SidebarSection : ContentControl
         var card = new Border
         {
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(9),
+            CornerRadius = new CornerRadius(0),
             Child = new StackPanel { Children = { header, body } },
         };
         card.Bind(Border.BackgroundProperty, owner.GetResourceObservable("CockpitSecondaryBgBrush"));
