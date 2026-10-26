@@ -3,6 +3,7 @@ using System.Text.Json;
 using Avalonia.Threading;
 using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.TimeTracking;
 using Cockpit.Plugins.Abstractions.UI;
 
@@ -35,7 +36,14 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
 
     public string? Error { get; private set; }
 
+    // The selected session's project id (AC-1737), the default project of a new line.
     public string? ProjectFallback { get; private set; }
+
+    public ProjectNames Names { get; private set; } = ProjectNames.Empty;
+
+    public IReadOnlyList<PluginProjectInfo> Projects { get; private set; } = [];
+
+    public IReadOnlyList<SessionLabel> Sessions { get; private set; } = [];
 
     public bool IsToday => SelectedDate == _Today();
 
@@ -51,11 +59,9 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
         _PublishChanged();
     }
 
-    public void UpdateProjectFallback(string? workingDirectory)
+    public void UpdateProjectFallback(string? projectId)
     {
-        ProjectFallback = string.IsNullOrWhiteSpace(workingDirectory)
-            ? null
-            : Path.GetFileName(Path.TrimEndingDirectorySeparator(workingDirectory));
+        ProjectFallback = string.IsNullOrWhiteSpace(projectId) ? null : projectId;
         _PublishChanged();
     }
 
@@ -201,6 +207,9 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
         TodayTotal = snapshot.TodayTotal;
         Day = snapshot.Day;
         Stopwatch = snapshot.Stopwatch;
+        Projects = snapshot.Projects;
+        Sessions = snapshot.Sessions;
+        Names = new ProjectNames(snapshot.Projects, snapshot.Sessions);
         Week = ShowWeek
             ? await _AskAsync<WeekProposal>(
                 ProductivityChannel.Week,

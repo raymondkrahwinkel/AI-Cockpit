@@ -140,7 +140,10 @@ internal sealed class CockpitTimelineReader : ICockpitTimelineReader, ISingleton
         delta.CacheReadInputTokens,
         delta.CacheCreationInputTokens,
         delta.TotalCostUsd,
-        delta.Turns);
+        delta.Turns)
+    {
+        ProfileLabel = delta.ProfileLabel,
+    };
 
     private static CockpitTimelineDay _ToDay(SessionDayAggregate day) => new(
         day.PaneId,

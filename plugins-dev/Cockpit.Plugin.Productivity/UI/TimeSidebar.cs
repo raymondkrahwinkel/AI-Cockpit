@@ -84,7 +84,7 @@ internal sealed class TimeSidebar : UserControl
         Grid.SetRow(description, 1);
         Grid.SetColumnSpan(description, 2);
         card.Children.Add(description);
-        var details = Ui.Hint($"{stopwatch.ProjectId ?? "geen project"} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm}");
+        var details = Ui.Hint($"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm}");
         Grid.SetRow(details, 2);
         Grid.SetColumnSpan(details, 2);
         card.Children.Add(details);

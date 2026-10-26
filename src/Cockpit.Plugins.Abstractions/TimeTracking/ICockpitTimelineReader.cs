@@ -64,7 +64,13 @@ public sealed record CockpitUsageDelta(
     int CacheReadInputTokens,
     int CacheCreationInputTokens,
     double CostUsd,
-    int Turns);
+    int Turns)
+{
+    /// <summary>
+    /// The profile the session ran under — whose account the tokens came off — or null when the host did not record it.
+    /// </summary>
+    public string? ProfileLabel { get; init; }
+}
 
 /// <summary>
 /// One session's local day older than the raw retention (90 days): its timeline and usage folded into one line.

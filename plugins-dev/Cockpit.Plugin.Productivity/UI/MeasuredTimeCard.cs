@@ -36,7 +36,7 @@ internal static class MeasuredTimeCard
         return ProjectPalette[hash % (uint)ProjectPalette.Length];
     }
 
-    public static Control Build(AttentionTime? day, string title)
+    public static Control Build(AttentionTime? day, string title, ProjectNames names, IReadOnlyList<SessionLabel> sessions)
     {
         var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         heading.Children.Add(new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeight.SemiBold });
@@ -59,14 +59,23 @@ internal static class MeasuredTimeCard
         });
 
         var longest = day.MeasuredPerProject.Count == 0 ? 1 : day.MeasuredPerProject.Max(project => project.Time.TotalMinutes);
+        var byPane = sessions.ToDictionary(session => session.PaneId, StringComparer.Ordinal);
+        string Session(string? pane, bool withProject) => pane is not null && byPane.TryGetValue(pane, out var session)
+            ? names.Describe(session, withProject)
+            : "zonder sessie";
         foreach (var project in day.MeasuredPerProject)
         {
-            body.Children.Add(_ProjectRow(project, longest));
+            var perSession = day.You.Where(span => span.Owner == project.ProjectId)
+                .GroupBy(span => span.PaneId)
+                .Select(group => (Session(group.Key, false), TimeSpan.FromTicks(group.Sum(span => span.Duration.Ticks))));
+            body.Children.Add(_Fold(_ProjectRow(project, longest, names.Resolve(project.ProjectId)), perSession));
         }
 
         var measured = day.Measured - day.Overlap;
         body.Children.Add(_Summary("Jouw tijd", Ui.Duration(day.YourTime), $"= gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(day.Own)}"));
-        body.Children.Add(_Summary("Agents actief", Ui.Duration(day.AgentTime), "· naast jou, niet erbij"));
+        var agents = day.Agents.GroupBy(span => span.Owner)
+            .Select(group => (Session(group.Key, true), TimeSpan.FromTicks(group.Sum(span => span.Duration.Ticks))));
+        body.Children.Add(_Fold(_Summary("Agents actief", Ui.Duration(day.AgentTime), "· naast jou, niet erbij"), agents));
         body.Children.Add(Ui.Hint("Regels en gemeten tijd op hetzelfde moment tellen één keer; de regel wint het project."));
         return Ui.Card(body, 14);
     }
@@ -77,15 +86,37 @@ internal static class MeasuredTimeCard
     private static Control _Dot(IBrush brush) =>
         new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = brush, VerticalAlignment = VerticalAlignment.Center };
 
-    private static Control _ProjectRow(ProjectTime project, double longest)
+    // A row that unfolds into one line per session, longest first.
+    private static Control _Fold(Control header, IEnumerable<(string Label, TimeSpan Time)> lines)
+    {
+        var details = new StackPanel { Spacing = 3, Margin = new Thickness(15, 2, 0, 4) };
+        foreach (var (label, time) in lines.OrderByDescending(line => line.Time))
+        {
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,50"), ColumnSpacing = 10 };
+            row.Children.Add(new TextBlock { Text = label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis }
+                .Themed(TextBlock.ForegroundProperty, "CockpitTextSecondaryBrush"));
+            var value = Ui.Hint(Ui.Duration(time));
+            value.HorizontalAlignment = HorizontalAlignment.Right;
+            Grid.SetColumn(value, 1);
+            row.Children.Add(value);
+            details.Children.Add(row);
+        }
+
+        return details.Children.Count == 0
+            ? header
+            : new Expander { Header = header, Content = details, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+    }
+
+    private static Control _ProjectRow(ProjectTime project, double longest, ProjectName name)
     {
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("130,*,50"), ColumnSpacing = 10 };
         row.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 7,
-            Children = { _Dot(ProjectBrush(project.ProjectId)), new TextBlock { Text = project.ProjectId ?? "geen project", TextTrimming = TextTrimming.CharacterEllipsis } },
+            Children = { _Dot(ProjectBrush(project.ProjectId)), new TextBlock { Text = name.Label, TextTrimming = TextTrimming.CharacterEllipsis } },
         });
+        ToolTip.SetTip(row, name.Tooltip);
         var bar = new Border
         {
             Height = 12,

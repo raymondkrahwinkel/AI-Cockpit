@@ -465,7 +465,9 @@ internal sealed class HoursWorkspaceBody : UserControl
         _error.IsVisible = _controller.Error is not null;
         _measured.Content = MeasuredTimeCard.Build(
             _controller.Day,
-            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}");
+            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}",
+            _controller.Names,
+            _controller.Sessions);
         _RenderRunning();
         _RenderRows();
     }
@@ -515,7 +517,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         row.Children.Add(identity);
         Grid.SetColumn(actions, 1);
         row.Children.Add(actions);
-        var details = Ui.Hint($"{stopwatch.ProjectId ?? "geen project"} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm} · ook zichtbaar in de zijbalk");
+        var details = Ui.Hint($"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm} · ook zichtbaar in de zijbalk");
         Grid.SetRow(details, 1);
         row.Children.Add(details);
         _running.Children.Add(new Border
@@ -566,7 +568,10 @@ internal sealed class HoursWorkspaceBody : UserControl
         {
             project.Children.Add(Ui.Dot("CockpitStatusDoneBrush", 7));
         }
-        project.Children.Add(Ui.Hint(entry.ProjectId ?? "— geen"));
+        var name = _controller.Names.Resolve(entry.ProjectId);
+        var label = Ui.Hint(entry.ProjectId is null ? "— geen" : name.Label);
+        ToolTip.SetTip(label, name.Tooltip);
+        project.Children.Add(label);
         Grid.SetColumn(project, 2);
         row.Children.Add(project);
 
@@ -604,30 +609,31 @@ internal sealed class HoursWorkspaceBody : UserControl
             .Themed(Border.BorderBrushProperty, "CockpitHairlineSoftBrush");
     }
 
-    private string? _Project()
-    {
-        if (_project.SelectedItem is not string selected || selected == "Geen project")
-        {
-            return null;
-        }
+    private string? _Project() => (_project.SelectedItem as _ProjectChoice)?.Id;
 
-        const string prefix = "Project: ";
-        const string suffix = " (actieve workspace)";
-        return selected.StartsWith(prefix, StringComparison.Ordinal)
-            ? selected[prefix.Length..].Replace(suffix, string.Empty, StringComparison.Ordinal)
-            : selected;
-    }
-
+    // Every project by name, the selected session's marked; a stored value that is no project (a folder from before
+    // AC-1737) is offered as the project it resolves to, so saving the line repairs it.
     private void _SetProject(string? projectId)
     {
-        var options = new List<string> { "Geen project" };
-        if (!string.IsNullOrWhiteSpace(projectId))
+        var names = _controller.Names;
+        var resolved = names.Resolve(projectId);
+        var selected = resolved.ProjectId ?? projectId;
+        var options = new List<_ProjectChoice> { new(null, "Geen project") };
+        options.AddRange(_controller.Projects.Select(project => new _ProjectChoice(
+            project.Id,
+            $"Project: {project.Name}" + (project.Id == _controller.ProjectFallback ? " (actieve workspace)" : string.Empty))));
+        if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
         {
-            options.Insert(0, $"Project: {projectId}" + (projectId == _controller.ProjectFallback ? " (actieve workspace)" : string.Empty));
+            options.Add(new _ProjectChoice(selected, $"Project: {resolved.Label}"));
         }
 
         _project.ItemsSource = options;
-        _project.SelectedIndex = 0;
+        _project.SelectedItem = options.FirstOrDefault(option => option.Id == selected) ?? options[0];
+    }
+
+    private sealed record _ProjectChoice(string? Id, string Label)
+    {
+        public override string ToString() => Label;
     }
 
     private Control _WeekLabel()
