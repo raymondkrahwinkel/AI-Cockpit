@@ -53,6 +53,8 @@ internal sealed record ProposalDay(DateOnly Day, TimeSpan Schedule, TimeSpan Tot
 
 internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyList<ProposalLine> Lines)
 {
+    public WeekReport Report { get; init; } = WeekReport.Empty;
+
     private static readonly CultureInfo Dutch = CultureInfo.GetCultureInfo("nl-NL");
 
     // What goes to an agent: the open lines with only their open days. Booked never goes again.
@@ -142,8 +144,8 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
         var days = VisibleDays;
         List<string[]> rows =
         [
-            ["Regel", .. days.Select(day => day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)), "Week", "Status"],
-            ["Schema (grens)", .. days.Select(day => Text(day.Schedule)), Text(_Sum(days.Select(day => day.Schedule))), string.Empty],
+            ["Regel", .. days.Select(day => day.Day.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)), "Week", "Status", "Agent"],
+            ["Schema (grens)", .. days.Select(day => Text(day.Schedule)), Text(_Sum(days.Select(day => day.Schedule))), string.Empty, string.Empty],
         ];
         foreach (var line in Lines)
         {
@@ -153,11 +155,12 @@ internal sealed record WeekProposal(IReadOnlyList<ProposalDay> Days, IReadOnlyLi
                 .. days.Select(day => Cell(line, day.Day)),
                 Text(_Sum(line.Cells.Select(cell => cell.Time))),
                 Status(line),
+                Report.AgentStatus(line.EntryId, line.ProjectId),
             ]);
         }
 
-        rows.Add(["Totaal voorstel", .. days.Select(day => Text(day.Total)), Text(_Sum(days.Select(day => day.Total))), string.Empty]);
-        rows.Add(["gemeten", .. days.Select(day => Text(day.Measured)), Text(_Sum(days.Select(day => day.Measured))), string.Empty]);
+        rows.Add(["Totaal voorstel", .. days.Select(day => Text(day.Total)), Text(_Sum(days.Select(day => day.Total))), string.Empty, string.Empty]);
+        rows.Add(["gemeten", .. days.Select(day => Text(day.Measured)), Text(_Sum(days.Select(day => day.Measured))), string.Empty, string.Empty]);
         return rows;
     }
 

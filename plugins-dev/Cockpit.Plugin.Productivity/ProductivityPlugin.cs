@@ -17,8 +17,12 @@ public sealed class ProductivityPlugin : ICockpitPlugin
     {
     }
 
-    public void Initialize(ICockpitHost host) =>
-        _handlers = new ProductivityChannelHandlers(host, host.TimeEntries).Register();
+    public void Initialize(ICockpitHost host)
+    {
+        var reportGate = new SemaphoreSlim(1, 1);
+        _handlers = new ProductivityChannelHandlers(host, host.TimeEntries, reportGate).Register();
+        _ = host.AddMcpEndpoint("cockpit-productivity", new ProductivityMcpTools(new HoursResultReporter(host, reportGate)));
+    }
 
     public void Dispose()
     {

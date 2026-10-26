@@ -36,18 +36,22 @@ internal sealed record FrozenProjectCell(
     string Description,
     string Marker,
     DateTimeOffset OfferedAt,
-    string PaneId)
+    string PaneId,
+    CockpitTimeEntryStatus Status = CockpitTimeEntryStatus.Offered,
+    string? OutcomeReason = null)
 {
     public static string StorageKey(DateOnly weekStart) => $"week-offers.{weekStart:yyyy-MM-dd}";
 
     public ProposalCell ToProposalCell() =>
-        new(Day, TimeSpan.FromMinutes(Minutes), CockpitTimeEntryStatus.Offered, ProjectId, OfferedAt, Description: Description);
+        new(Day, TimeSpan.FromMinutes(Minutes), Status, ProjectId, OfferedAt, OutcomeReason, Description);
 }
 
 internal sealed record WeekOfferDraft(
     string Prompt,
     IReadOnlyList<Guid> OwnEntryIds,
-    IReadOnlyList<WeekOfferProjectCell> ProjectCells);
+    IReadOnlyList<WeekOfferProjectCell> ProjectCells,
+    IReadOnlyList<WeekOfferRow> Rows,
+    IReadOnlyDictionary<DateOnly, int> Schedule);
 
 internal static class WeekOfferPrompt
 {
@@ -67,6 +71,7 @@ internal static class WeekOfferPrompt
         var sequences = new Dictionary<DateOnly, int>();
         var ownIds = new List<Guid>();
         var projectCells = new List<WeekOfferProjectCell>();
+        var offeredRows = new List<WeekOfferRow>();
         var lines = new List<string>
         {
             $"Boek dit urenvoorstel voor week {weekNumber}.",
@@ -77,9 +82,11 @@ internal static class WeekOfferPrompt
         };
         foreach (var row in rows)
         {
-            var sequence = sequences.GetValueOrDefault(row.Cell.Day) + 1;
+            var previous = proposal.Report.Rows.Where(offered => offered.Row.Day == row.Cell.Day).Select(offered => offered.Row.Sequence).DefaultIfEmpty().Max();
+            var sequence = Math.Max(sequences.GetValueOrDefault(row.Cell.Day), previous) + 1;
             sequences[row.Cell.Day] = sequence;
             var marker = WeekOfferMarker.Format(weekNumber, row.Cell.Day, sequence);
+            offeredRows.Add(new WeekOfferRow(row.Cell.Day, sequence, (int)Math.Round(row.Cell.Time.TotalMinutes), row.Line.EntryId, row.Line.ProjectId));
             var description = row.Line.Own ? row.Line.Label : row.Cell.Description ?? row.Line.Detail;
             var project = row.Line.Own ? row.Line.Detail : row.Line.Label;
             lines.Add($"| {_Date(row.Cell.Day)} | {WeekProposal.Text(row.Cell.Time)} | {_Text(project)} | {_Text(description)} {marker} | {(row.Line.Own ? "eigen" : string.Empty)} |");
@@ -117,7 +124,9 @@ internal static class WeekOfferPrompt
         return new WeekOfferDraft(
             string.Join('\n', lines),
             [.. ownIds.Distinct()],
-            projectCells);
+            projectCells,
+            offeredRows,
+            proposal.Days.ToDictionary(day => day.Day, day => (int)day.Schedule.TotalMinutes));
     }
 
     private static string _Date(DateOnly day) =>
@@ -152,7 +161,9 @@ internal sealed record WeekOfferSendRequest(
     int WeekNumber,
     IReadOnlyList<Guid> OwnEntryIds,
     IReadOnlyList<WeekOfferProjectCell> ProjectCells,
-    string? ProjectId);
+    string? ProjectId,
+    IReadOnlyList<WeekOfferRow> Rows,
+    IReadOnlyDictionary<DateOnly, int> Schedule);
 
 internal sealed record WeekOfferSendResult(string PaneId, string? FinalizationError = null);
 
@@ -167,9 +178,23 @@ internal sealed class WeekOfferSender(
     ICockpitSessionObserver sessions,
     ICockpitTimeEntries timeEntries,
     IPluginStorage storage,
-    TimeProvider time)
+    TimeProvider time,
+    SemaphoreSlim reportGate)
 {
     public async Task<WeekOfferSendResult> SendAsync(WeekOfferSendRequest request)
+    {
+        await reportGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await _SendAsync(request).ConfigureAwait(false);
+        }
+        finally
+        {
+            reportGate.Release();
+        }
+    }
+
+    private async Task<WeekOfferSendResult> _SendAsync(WeekOfferSendRequest request)
     {
         var paneId = request.Destination.Kind switch
         {
@@ -186,6 +211,12 @@ internal sealed class WeekOfferSender(
             }
 
             _FreezeProjectCells(request, offeredAt, paneId);
+            var key = WeekReport.StorageKey(request.WeekStart);
+            var report = storage.Get<WeekReport>(key) ?? WeekReport.Empty;
+            var retained = report.Rows.Where(old => request.Rows.All(row => row.EntryId is not null
+                ? row.EntryId != old.Row.EntryId
+                : old.Row.EntryId is not null || row.Day != old.Row.Day || row.ProjectId != old.Row.ProjectId));
+            storage.Set(key, report with { Rows = [.. retained, .. request.Rows.Select(row => new WeekReportedRow(row, paneId, request.Schedule[row.Day]))] });
             storage.Set(WeekOfferDestination.StorageKey(request.ProjectId), request.Destination);
         }
         catch (Exception exception)

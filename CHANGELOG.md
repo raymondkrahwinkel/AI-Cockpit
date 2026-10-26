@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: agents can report booked or skipped hours to Uren · Week. Only the session that received the proposal can
+  report it; the Agent column shows each result, skipped rows reopen, and bookings above the saved schedule stay red.
 - added: Uren · Week can give its open proposal to an existing agent session or start one from a profile. The dialog
   previews the exact prompt, keeps the schedule limit and prior approval mandatory, and marks rows only after delivery;
   its visible destination follows the saved choice, and a failed status update cannot resend an already delivered prompt.

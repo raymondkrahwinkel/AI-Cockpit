@@ -197,7 +197,9 @@ internal sealed class WeekOfferDialog : UserControl
                 _weekNumber,
                 _draft.OwnEntryIds,
                 _draft.ProjectCells,
-                _projectId));
+                _projectId,
+                _draft.Rows,
+                _draft.Schedule));
             _host.ShowToast("Het urenvoorstel is aan de agent gegeven.", PluginToastSeverity.Success);
             this.FindAncestorOfType<Window>()?.Close();
         }

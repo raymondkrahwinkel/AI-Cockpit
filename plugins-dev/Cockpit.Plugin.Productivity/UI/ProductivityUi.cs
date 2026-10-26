@@ -14,12 +14,14 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     private ICockpitUiHost? _host;
     private ProductivityController? _controller;
     private OverviewController? _overviewController;
+    private IDisposable? _reports;
 
     public void InitializeUi(ICockpitUiHost host)
     {
         _host = host;
         _controller = new ProductivityController(host.Channel, TimeProvider.System);
         _overviewController = new OverviewController(host.Channel, TimeProvider.System);
+        _reports = host.Channel.Subscribe("productivity.hours-reported", message => { _ = _RefreshAsync(host, _controller); });
         _controller.UpdateProjectFallback(host.ActiveSessionWorkingDirectory);
         var badge = host.AddSideMenuButtonWithBadge("Uren", () => _Open(host), MaterialIconKind.ClockOutline);
         badge.Tone = SideMenuButtonBadgeTone.Success;
@@ -49,6 +51,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
 
     public void Dispose()
     {
+        _reports?.Dispose();
         if (_host is { } host)
         {
             host.ActiveSessionChanged -= _ActiveSessionChanged;
