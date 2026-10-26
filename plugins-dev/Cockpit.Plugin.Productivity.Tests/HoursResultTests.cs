@@ -60,7 +60,7 @@ public sealed class HoursResultTests
         host.Storage.Returns(storage);
         entries.ListAsync(Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>()).Returns([new CockpitTimeEntry(EntryId, "Portal", new DateTimeOffset(2026, 10, 19, 9, 0, 0, TimeSpan.FromHours(2)), TimeSpan.FromMinutes(minutes), "portal", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Offered, OfferedToPaneId: "receiver")]);
         WeekReportedRow[] prior = priorBooked > 0 ? [new(new WeekOfferRow(Monday, 2, priorBooked, Guid.NewGuid(), "other"), "receiver", 480, "booked", OfferId: Guid.NewGuid())] : [];
-        storage.Set(WeekReport.StorageKey(Monday), new WeekReport([.. prior, new(new WeekOfferRow(Monday, 1, minutes, EntryId, "portal"), "receiver", 480, OfferId: Guid.NewGuid())], null, null, 0));
+        storage.Set(WeekReport.StorageKey(Monday), new WeekReport([.. prior, new(new WeekOfferRow(Monday, 1, minutes, EntryId, "portal"), "receiver", 480, OfferId: Guid.NewGuid(), KnownBookedAtOffer: priorBooked)], null, null, 0));
         return (host, entries, storage);
     }
 

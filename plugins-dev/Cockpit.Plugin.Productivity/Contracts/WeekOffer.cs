@@ -217,7 +217,8 @@ internal sealed class WeekOfferSender(
                 ? row.EntryId != old.Row.EntryId
                 : old.Row.EntryId is not null || row.Day != old.Row.Day || row.ProjectId != old.Row.ProjectId));
             var offerId = Guid.NewGuid();
-            storage.Set(key, report with { Rows = [.. retained, .. request.Rows.Select(row => new WeekReportedRow(row, paneId, request.Schedule[row.Day], OfferId: offerId))] });
+            storage.Set(key, report with { Rows = [.. retained, .. request.Rows.Select(row => new WeekReportedRow(row, paneId, request.Schedule[row.Day], OfferId: offerId,
+                KnownBookedAtOffer: report.Rows.Where(previous => previous.Row.Day == row.Day && previous.Status == "booked").Sum(previous => previous.Row.Minutes)))] });
             storage.Set(WeekOfferDestination.StorageKey(request.ProjectId), request.Destination);
         }
         catch (Exception exception)

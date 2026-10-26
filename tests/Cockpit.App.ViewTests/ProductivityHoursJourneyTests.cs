@@ -305,6 +305,18 @@ public sealed class ProductivityHoursJourneyTests
         Assert.True(projectResponse.RootElement.GetProperty("ok").GetBoolean());
         await _Until(() => _Texts(screen).Contains("✓ 4 van 5 dagen"), "the project result across five days");
         Assert.Equal("Bewust aangepaste omschrijving", storage.Get<CellOverride[]>(CellOverride.StorageKey(reportMonday))!.Single(edit => edit.Day == reportMonday.AddDays(3) && edit.ProjectId == "syn-api").Description);
+        var overlapA = WeekOfferPrompt.Build(new WeekProposal(offeredProposal.Days,
+            [new ProposalLine("Overlap A", "parallel-a", null, string.Empty, [new ProposalCell(reportMonday, TimeSpan.FromHours(5), CockpitTimeEntryStatus.Open, "parallel-a")])]) { Report = storage.Get<WeekReport>(WeekReport.StorageKey(reportMonday))! }, 43, string.Empty);
+        await channel.InvokeAsync(ProductivityChannel.SendWeekOffer, JsonSerializer.SerializeToElement(new WeekOfferSendRequest(WeekOfferDestination.Session("pane-agent", "Boekhouding"), overlapA.Prompt, reportMonday, 43, overlapA.OwnEntryIds, overlapA.ProjectCells, "cockpit", overlapA.Rows, overlapA.Schedule), ProductivityChannel.Json));
+        var overlapB = WeekOfferPrompt.Build(new WeekProposal(offeredProposal.Days,
+            [new ProposalLine("Overlap B", "parallel-b", null, string.Empty, [new ProposalCell(reportMonday, TimeSpan.FromHours(5), CockpitTimeEntryStatus.Open, "parallel-b")])]) { Report = storage.Get<WeekReport>(WeekReport.StorageKey(reportMonday))! }, 43, string.Empty);
+        await channel.InvokeAsync(ProductivityChannel.SendWeekOffer, JsonSerializer.SerializeToElement(new WeekOfferSendRequest(WeekOfferDestination.Session("pane-agent", "Boekhouding"), overlapB.Prompt, reportMonday, 43, overlapB.OwnEntryIds, overlapB.ProjectCells, "cockpit", overlapB.Rows, overlapB.Schedule), ProductivityChannel.Json));
+        using var overlapResponseA = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", [new(overlapA.Rows.Single().Marker, "booked")], [new(reportMonday, 0)]));
+        using var overlapResponseB = JsonDocument.Parse(await reportTools.ReportHoursResult("2026-10-19", [new(overlapB.Rows.Single().Marker, "booked")], [new(reportMonday, 0)]));
+        Assert.True(overlapResponseA.RootElement.GetProperty("ok").GetBoolean());
+        Assert.True(overlapResponseB.RootElement.GetProperty("ok").GetBoolean());
+        Assert.False(overlapResponseB.RootElement.GetProperty("isGreen").GetBoolean());
+        await _Until(() => _Texts(screen).Contains("⚠ overschrijding"), "the overrun across overlapping offers");
         timeEntries.Entries.Clear();
         timeEntries.Seed(beforeReport);
 
