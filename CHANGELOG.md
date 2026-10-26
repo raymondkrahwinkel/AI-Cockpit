@@ -382,6 +382,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   first-install pins into one save, removing avoidable disk I/O and sharing-violation windows.
 - fixed: a backup no longer fails with "The process cannot access the file" when it starts while the cockpit is
   saving its settings, for example right after start or a sign-in; it waits the save out and carries the settings whole.
+- fixed: an idle assistant conversation no longer records a binding error while no inline consent card is open.
 - fixed: Productivity 0.6.2 is ready for its first store release with its category, icon, project links and
   planning-and-tracking audience in place, and it can be selected in the manual publisher.
 - fixed: a prompt supplied to `StartSessionAsync` is submitted as the new desktop session's first turn once its
