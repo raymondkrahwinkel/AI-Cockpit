@@ -570,7 +570,8 @@
          them sets minHostVersion 0.119.0. Additive; still v3. -->
     <!-- 3.30.0 (AC-1715): added ConsentRequest.Inline and ConsentRequest.OtherLabel, a card with choices that stands under
          the session's conversation as buttons. A plugin that sets Inline sets minHostVersion 0.121.0. Additive; still v3. -->
-    <Version>3.30.0</Version>
+    <!-- 3.31.0 (AC-1726): the UI SDK adds FocusSessionAsync, host 0.122.0. -->
+    <Version>3.31.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

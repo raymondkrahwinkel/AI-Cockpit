@@ -279,6 +279,12 @@ public interface ICockpitUiHost
     Task InsertIntoSessionAsync(string paneId, string text);
 
     /// <summary>
+    /// Shows the existing session in this window without changing or sending its input. Returns false when
+    /// the pane is absent or this host cannot focus sessions. Requires host 0.122.0.
+    /// </summary>
+    Task<bool> FocusSessionAsync(string paneId) => Task.FromResult(false);
+
+    /// <summary>
     /// The project-memory rows of the session <paramref name="paneId"/>'s project.
     /// </summary>
     Task<IReadOnlyList<ProjectMemoryRow>> GetProjectMemoryRowsAsync(string? paneId = null, CancellationToken cancellationToken = default);
