@@ -8,6 +8,7 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
+    <!-- 0.122.0: ICockpitUiHost.FocusSessionAsync opens an existing pane without input side effects (SDK 3.31.0, UI 3.9.0). -->
     <!-- 0.121.0: ConsentRequest.Inline and OtherLabel, a consent card under the conversation as buttons, and an MCP
          tool row named by its server and tool with "waits for your choice" while its card is open (AC-1715,
          Cockpit.Plugins.Abstractions 3.30.0); a plugin that sets Inline sets minHostVersion 0.121.0. -->
@@ -364,7 +365,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.121.0</VersionPrefix>
+    <VersionPrefix>0.122.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
