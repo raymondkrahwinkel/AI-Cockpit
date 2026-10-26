@@ -37,7 +37,6 @@ public class RealWorkflowsTests
     [InlineData("release.yml", "publish", "it uses a matrix")]
     [InlineData("nightly.yml", "release", "exchanges artifacts with another job")]
     [InlineData("release.yml", "changelog", "exchanges artifacts with another job")]
-    [InlineData("publish-plugin.yml", "publish", "exchanges artifacts with another job")]
     public void MatrixAndArtifactJobsAreRefusedWithTheRightReason(string workflow, string jobId, string reason)
     {
         var verdict = _VerdictsFor(workflow).Single(v => v.JobId == jobId);
@@ -50,6 +49,7 @@ public class RealWorkflowsTests
     [InlineData("nightly.yml", "changes")]
     [InlineData("release.yml", "gate")]
     [InlineData("release.yml", "finalize")]
+    [InlineData("publish-plugin.yml", "publish")]
     [InlineData("publish-updated-plugins.yml", "discover")]
     public void PlainLinuxJobsInThisRepositoryCanRunLocally(string workflow, string jobId)
     {
