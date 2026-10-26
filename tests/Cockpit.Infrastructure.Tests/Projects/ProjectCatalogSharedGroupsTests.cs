@@ -20,7 +20,14 @@ public sealed class ProjectCatalogSharedGroupsTests
         var stale = new SharedProjectListResult(
             true,
             [new SharedProject("depot:p", "P") { Organization = new SharedProjectOrganization("acme", "Acme", "Owner") }],
-            "Depot is unavailable; last known list.");
+            "Depot is unavailable; last known list.")
+        {
+            ProjectReadStates =
+            [
+                new SharedProjectReadStatus("depot:p", "P", "Owner", SharedProjectReadState.Ok),
+                new SharedProjectReadStatus("depot:nodef", "No definition", "Editor", SharedProjectReadState.Absent),
+            ],
+        };
         var catalog = await _LoadAsync(
             new ProjectSettings { Projects = [bound] },
             _Source("synvolution", SharedProjectListResult.Success([new SharedProject("depot:bound", "Bound")])),
@@ -34,7 +41,10 @@ public sealed class ProjectCatalogSharedGroupsTests
         Assert.True(groups[0].AllAdded);
         Assert.Null(groups[1].Error);
         Assert.Equal("Depot is unavailable; last known list.", groups[1].Notice);
-        Assert.Equal(new SharedProjectOrganizationInfo("acme", "Acme", "Owner"), Assert.Single(groups[1].Projects).Organization);
+        Assert.Equal(new SharedProjectOrganizationInfo("acme", "Acme", "Owner"), groups[1].Projects[0].Organization);
+        Assert.Equal(
+            new SharedProjectOffer("depot:nodef", "No definition", Role: "Editor", Unavailable: "No Cockpit project definition yet."),
+            Assert.Single(groups[1].Projects, offer => !offer.CanAdd));
         Assert.Equal("Sign in to this Depot connection.", groups[2].Error);
     }
 

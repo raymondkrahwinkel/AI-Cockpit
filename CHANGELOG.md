@@ -341,7 +341,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - fixed: **the Projects page shows every connected Depot again.** A Depot whose team projects were all added or
   hidden already, or whose list could not be refreshed, used to vanish from "From your team". Each connection now keeps
   its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"
-  line, and a failing one shows why.
+  line, and a failing one shows why. A team project that has no Cockpit project definition yet now shows in its
+  server's section too, saying so, instead of being left out without a word.
 - fixed: **agents get their own browser on Ubuntu 24.04 again.** On Linux the agent browser now starts the
   installed Chrome before the downloaded headless shell, which Ubuntu's AppArmor stops from sandboxing, and a
   browser that fails to start says why in the log instead of leaving the session silently without one.
