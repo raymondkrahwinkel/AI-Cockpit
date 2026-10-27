@@ -39,6 +39,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   CLI as `agent`; the server only downloads, checks the checksum and hands the copy over. Run
   `docker compose up -d` once with the new `compose.yaml`, or the two new volumes stay anonymous.
 
+- added: **server admins can issue connect keys that never expire.** Server policy can disable permanent keys, and
+  the Connect keys page and node tool make the choice explicit without changing the existing 30-day default.
 - added: **a plugin can give a sidebar button its own icon** without a counter, through a new
   `AddSideMenuButton(title, onInvoke, iconKind)` overload (plugin SDK UI 3.12.0, Cockpit 0.126.0).
 - added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
