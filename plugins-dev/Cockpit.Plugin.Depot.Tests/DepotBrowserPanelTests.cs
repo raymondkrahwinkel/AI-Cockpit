@@ -8,6 +8,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using Material.Icons.Avalonia;
 using NSubstitute;
 using DepotBrowserPanel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserPanel;
 using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
@@ -58,6 +59,20 @@ public class DepotBrowserPanelTests
 
         Assert.True(frame.PixelSize.Width > 0);
         Assert.True(_UploadButton(panel).IsVisible);
+        var selected = Assert.Single(panel.GetVisualDescendants().OfType<TreeViewItem>(), item => item.IsSelected);
+        var rowHeader = Assert.IsType<StackPanel>(selected.Header);
+        var rowName = Assert.Single(rowHeader.Children.OfType<TextBlock>(), block => block.Text == "Notes.md");
+        var rowMetadata = Assert.Single(rowHeader.Children.OfType<TextBlock>(), block => block.Text?.Contains("2 KB", StringComparison.Ordinal) == true);
+        Assert.Equal(13, rowName.FontSize);
+        Assert.Equal(Avalonia.Media.FontWeight.Normal, rowName.FontWeight);
+        Assert.Equal(11, rowMetadata.FontSize);
+        Assert.Equal("#FF656C78", rowMetadata.Foreground?.ToString()?.ToUpperInvariant());
+        var selectedLayout = Assert.Single(selected.GetVisualDescendants().OfType<Border>(), border => border.Name == "PART_LayoutRoot");
+        Assert.Equal("#292563EB", selectedLayout.Background?.ToString()?.ToUpperInvariant());
+        var detail = (_Button(panel, "Download") ?? throw new InvalidOperationException("The Download button was not rendered."))
+            .GetVisualAncestors().OfType<StackPanel>().First(candidate => candidate.Parent is ScrollViewer);
+        var detailHeading = Assert.IsType<StackPanel>(detail.Children[0]);
+        Assert.Contains(detailHeading.Children.OfType<MaterialIcon>(), icon => icon.Width == 16 && icon.Height == 16);
         Assert.DoesNotContain(markdownView, panel.GetVisualDescendants());
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("Console.WriteLine", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A following heading", StringComparison.Ordinal) == true);

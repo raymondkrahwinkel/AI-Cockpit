@@ -5,6 +5,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Styling;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.UI;
 using Material.Icons;
@@ -121,6 +122,7 @@ internal sealed class DepotBrowserPanel : UserControl
 
     private Control _FilesLayout(Button refresh)
     {
+        _AddTreeSelectionStyles();
         foreach (var button in new[] { _signIn, _upload, _publishFolder })
         {
             button.Classes.Add("Compact");
@@ -166,6 +168,26 @@ internal sealed class DepotBrowserPanel : UserControl
         layout.Children.Add(_publications);
         layout.Children.Add(body);
         return layout;
+    }
+
+    private void _AddTreeSelectionStyles()
+    {
+        foreach (var state in new[] { new[] { ":selected" }, new[] { ":selected", ":pointerover" }, new[] { ":pressed", ":selected", ":pointerover" } })
+        {
+            _tree.Styles.Add(new Style(selector =>
+            {
+                var item = selector.OfType<TreeViewItem>();
+                foreach (var pseudoClass in state)
+                {
+                    item = item.Class(pseudoClass);
+                }
+
+                return item.Template().OfType<Border>().Name("PART_LayoutRoot");
+            })
+            {
+                Setters = { new Setter(Border.BackgroundProperty, _Brush("CockpitAccentSelectionBrush")) },
+            });
+        }
     }
 
     private static TabControl _Tabs(Control files, Control inbox, bool openInbox)
@@ -361,13 +383,12 @@ internal sealed class DepotBrowserPanel : UserControl
         var kind = item.Kind switch
         {
             DepotTreeKind.Folder => MaterialIconKind.FolderOutline,
-            DepotTreeKind.Document => MaterialIconKind.FileDocumentOutline,
-            _ when item.Node?.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true => MaterialIconKind.FileImageOutline,
+            _ when item.Node is { } fileNode => _Icon(fileNode),
             _ => MaterialIconKind.FileOutline,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         row.Children.Add(new MaterialIcon { Kind = kind, Width = 16, Height = 16 });
-        row.Children.Add(new TextBlock { Text = item.Name, VerticalAlignment = VerticalAlignment.Center });
+        row.Children.Add(new TextBlock { Text = item.Name, FontSize = 13, FontWeight = FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
         if (item.Node is { ShareId: not null } shared)
         {
             row.Children.Add(new MaterialIcon { Kind = shared.IsPublic ? MaterialIconKind.Earth : MaterialIconKind.LinkVariant, Width = 12, Height = 12 });
@@ -375,11 +396,18 @@ internal sealed class DepotBrowserPanel : UserControl
 
         if (item.Node is { } node)
         {
-            row.Children.Add(_Faint($"{_Size(node.Size)}  {node.Modified?.ToLocalTime():yyyy-MM-dd}"));
+            row.Children.Add(_Metadata($"{_Size(node.Size)}  {node.Modified?.ToLocalTime():yyyy-MM-dd}", 11, new Thickness(6, 0, 0, 0)));
         }
 
         return row;
     }
+
+    private static MaterialIconKind _Icon(DepotBrowserNode node) => node.Kind switch
+    {
+        DepotBrowserKind.Document => MaterialIconKind.FileDocumentOutline,
+        _ when node.ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true => MaterialIconKind.FileImageOutline,
+        _ => MaterialIconKind.FileOutline,
+    };
 
     private async Task ShowAsync(DepotTreeItem item)
     {
@@ -416,8 +444,11 @@ internal sealed class DepotBrowserPanel : UserControl
         }
 
         _detailContainer.IsVisible = true;
-        _detail.Children.Add(new TextBlock { Text = item.Name, FontSize = 13.5, FontWeight = FontWeight.SemiBold });
-        _detail.Children.Add(_Faint($"{node.Path} · {_Size(node.Size)} · {node.Modified?.ToLocalTime():yyyy-MM-dd HH:mm}"));
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        heading.Children.Add(new MaterialIcon { Kind = _Icon(node), Width = 16, Height = 16 });
+        heading.Children.Add(new TextBlock { Text = item.Name, FontSize = 13.5, FontWeight = FontWeight.SemiBold });
+        _detail.Children.Add(heading);
+        _detail.Children.Add(_Metadata($"{node.Path} · {_Size(node.Size)} · {node.Modified?.ToLocalTime():yyyy-MM-dd HH:mm}", 11.5));
         var download = _Button("Download");
         if (interactive)
         {
@@ -771,6 +802,15 @@ internal sealed class DepotBrowserPanel : UserControl
     }
 
     private static TextBlock _Faint(string text) => new() { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = _Brush("CockpitTextSecondaryBrush") };
+
+    private static TextBlock _Metadata(string text, double fontSize, Thickness margin = default) => new()
+    {
+        Text = text,
+        FontSize = fontSize,
+        Margin = margin,
+        VerticalAlignment = VerticalAlignment.Center,
+        Foreground = _Brush("CockpitTextFaintBrush"),
+    };
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
