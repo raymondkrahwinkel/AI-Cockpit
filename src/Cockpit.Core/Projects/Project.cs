@@ -24,6 +24,9 @@ public sealed record Project(string Id, string Name)
     // The Git URL `SourceDirectory` was cloned from (AC-90), so the manager can show where it came from. Null when the folder was picked rather than cloned.
     public string? GitUrl { get; init; }
 
+    // An opaque identity a plugin assigns when it binds this project to a shared source; equal keys mean the same project.
+    public string? SharedSourceKey { get; init; }
+
     // The profile its sessions start under, matched by label the way `NewSessionPrefill.ProfileLabel` is —
     // deliberately a label and not a profile: a project points at a profile, it does not own or extend one. A
     // label matching no profile leaves the dialog on its own default rather than failing the start.

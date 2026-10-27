@@ -517,7 +517,8 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         {
             var remoteId = _ElementId(incoming);
             var localProject = remoteId is null ? null : localProjects.OfType<JsonObject>().FirstOrDefault(project => _ElementId(project) == projectIds.GetValueOrDefault(remoteId))
-                ?? localProjects.OfType<JsonObject>().FirstOrDefault(project => _SameGitUrl(incoming, project));
+                ?? localProjects.OfType<JsonObject>().FirstOrDefault(project => _SameGitUrl(incoming, project))
+                ?? localProjects.OfType<JsonObject>().FirstOrDefault(project => _SameSharedSourceKey(incoming, project));
             if (remoteId is null || _ElementId(localProject) is not { } localId || remoteId == localId)
             {
                 continue;
@@ -539,6 +540,11 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         try { return GitCloneUrl.Parse(leftUrl).NormalizedKey == GitCloneUrl.Parse(rightUrl).NormalizedKey; }
         catch (FormatException) { return false; }
     }
+
+    private static bool _SameSharedSourceKey(JsonObject left, JsonObject right) =>
+        _Text(left, "SharedSourceKey", out var leftKey)
+        && _Text(right, "SharedSourceKey", out var rightKey)
+        && string.Equals(leftKey, rightKey, StringComparison.Ordinal);
 
     private static bool _Text(JsonObject value, string name, out string text)
     {
