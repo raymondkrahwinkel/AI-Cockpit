@@ -1539,7 +1539,7 @@
          a project card already carries a full border at rest, so the selected state lifts the whole border to
          the accent colour rather than just one edge — same "filled card + accent" language as sessionItem.active,
          adapted to a card instead of a flat row. Background/border live here rather than inline on the Border
-         (see ProjectsDialog.axaml) so this style setter can actually win. -->
+         (see ProjectsWorkspace.axaml) so this style setter can actually win. -->
     <Style Selector="Border.projectCard">
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>

@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:controls="using:Cockpit.App.Controls"
-             xmlns:views="using:Cockpit.App.Views"
              x:Class="Cockpit.App.Controls.ProjectsWorkspace"
              x:DataType="vm:ProjectsViewModel"
              Focusable="True">
@@ -50,8 +49,8 @@
                         <LineBreak/>
                         <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
                     </TextBlock>
-                    <Button Content="Manage projects" Classes="Subtle" Margin="16,6,16,16" HorizontalAlignment="Left"
-                            Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).ManageProjectsCommand}"/>
+                    <Button Content="+ New project" Classes="Subtle" Margin="16,6,16,16" HorizontalAlignment="Left"
+                            Command="{Binding AddProjectCommand}"/>
                 </StackPanel>
             </ScrollViewer>
         </DockPanel>

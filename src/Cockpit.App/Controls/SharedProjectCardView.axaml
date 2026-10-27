@@ -13,7 +13,7 @@
          which reads as a fault — there is nothing wrong with a project you simply have not added. -->
     <Border Width="278" Margin="8" Padding="16"
             CornerRadius="{StaticResource CockpitPanelRadius}"
-            Background="{DynamicResource CockpitPanelBgBrush}" Opacity="0.85"
+            Background="{DynamicResource CockpitPanelBgBrush}"
             BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
         <StackPanel Spacing="8">
             <Grid ColumnDefinitions="*,Auto">

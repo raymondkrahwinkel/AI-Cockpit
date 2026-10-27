@@ -332,10 +332,8 @@ internal static partial class Screenshotter
         // project-editor-resources or project-editor-resource-scopes above, the same "no room left under the fold"
         // reasoning both of those scenes' own remarks already give, and see _ProjectEditorWithSecretPath's own remarks
         ["project-editor-secret-path"] = (_, _) => _ProjectEditorWithSecretPath(),
-        ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
         // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
-        ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
         // AC-246: the "Finish setting up…" bind step — bare, Profile required and Folder optional, matching the AC-242
         // mockup section 4.
         ["shared-project-binding"] = (_, _) => new SharedProjectBindingDialog { DataContext = new ViewModels.SharedProjectBindingDialogViewModel() },
@@ -359,7 +357,6 @@ internal static partial class Screenshotter
         // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
-        ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -1685,13 +1682,7 @@ internal static partial class Screenshotter
     private static ManageProfilesDialog _ManageProfilesSdkOnlyDefaultKind() =>
         _ManageProfilesEditing(new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model"));
 
-    // A Codex-shaped plugin profile that stores one of its four declared start options and leaves three unset — the
-    // state the profile editor produces since AC-1102, when it stopped persisting a default nobody chose. Both
-    // control shapes are here: Sandbox and Approval draw combo boxes (one set, one not), Model and Effort declare no
-    // choices and draw text boxes, so the unset placeholder is visible in each of the two places it can appear.
-    // Rendered in the Options dialog rather than the standalone editor: that is where the operator meets this block,
-    // and its detail column is the narrower of the two — the width at which an unset row would truncate if it were
-    // going to. Taller than the page rests at, so SESSION DEFAULTS is above the fold.
+    // Renders set and unset plugin start options in the narrower Options-dialog detail column (AC-1102).
     private static OptionsDialog _ManageProfilesPluginOptionDefaults()
     {
         var profile = new SessionProfile(

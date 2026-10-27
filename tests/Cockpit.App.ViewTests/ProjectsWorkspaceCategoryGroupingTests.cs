@@ -29,7 +29,7 @@ namespace Cockpit.App.ViewTests;
 /// (<c>ProjectsViewModel.RecentProjects</c>) instead of grouped by category the way the Manage-projects dialog
 /// (AC-618) already does. Measured against the real markup, not the view model alone: the fix's own nesting —
 /// a category ItemsControl wrapping a per-category cards ItemsControl — hit the exact <c>$parent[ItemsControl]</c>
-/// trap <c>ProjectsDialog.axaml</c> already had to work around (see that file's own comment), so a Start click has
+/// trap the former projects dialog had to work around, so a Start click has
 /// to actually reach <see cref="CockpitViewModel.StartProjectSessionCommand"/> rather than silently binding to
 /// nothing.
 /// </summary>

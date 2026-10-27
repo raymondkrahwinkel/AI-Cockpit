@@ -6834,15 +6834,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Task OptionsAsync() => _ShowOptionsAsync();
 
     // Opens the projects manager (AC-161) — its own window, not a corner of Options.
-    [RelayCommand]
-    private async Task ManageProjectsAsync()
-    {
-        if (_dialogService is not null)
-        {
-            await _dialogService.ShowProjectsDialogAsync(Projects);
-        }
-    }
-
     // Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
     // so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
     [RelayCommand]
