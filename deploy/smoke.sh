@@ -205,7 +205,7 @@ for what in certificate secret environ apphome; do
   [ "$(field "$direct" $what)" = read ] || fail "control: the server's own user cannot read $what ($(field "$direct" $what)), so the denial proves nothing"
 done
 bare=$(dc exec -T -u app -e COCKPIT_PANE_ID=smoke-pane cockpit \
-  sudo -n -u agent NODE_OPTIONS=--require=/work/smoke-probe.js /usr/local/bin/codex --version | sed -n 's/^PROBE //p')
+  sudo -n -u agent NODE_OPTIONS=--require=/work/smoke-probe.js /usr/local/libexec/cockpit-cli-exec codex --version | sed -n 's/^PROBE //p')
 echo "a bare sudo: $bare"
 [ "$(field "$bare" uid)" = "$agent_uid" ] || fail "control: the bare sudo did not run as agent"
 [ "$(field "$bare" pane)" = null ] || fail "control: a bare sudo kept COCKPIT_PANE_ID, so the env check proves nothing"

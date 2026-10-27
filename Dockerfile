@@ -57,11 +57,13 @@ RUN groupadd --gid 1701 agent-run \
     && chgrp -R agent-run /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
         /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
     && chmod -R o-rwx /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
-        /usr/lib/git-core /usr/bin/git /usr/bin/git-*
+        /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
+    && install -d -m 0755 /usr/local/libexec
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/claude
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/codex
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/git
 # AC-1649: the wrappers' one way into a CLI, agent-run's alone like the binaries; and the server's way to place one.
+# Their directory is made above, open to all: a COPY would make it with the first file's owner and mode.
 COPY --chown=root:agent-run --chmod=0750 deploy/cockpit-cli-exec.sh /usr/local/libexec/cockpit-cli-exec
 COPY --chmod=0755 deploy/cockpit-cli-promote.sh /usr/local/libexec/cockpit-cli-promote
 COPY --chmod=0440 deploy/sudoers-agent /etc/sudoers.d/cockpit-agent
