@@ -1139,6 +1139,11 @@ internal static partial class Screenshotter
             var start = window.GetVisualDescendants().OfType<SplitButton>().First(button => button.IsEffectivelyVisible);
             start.Flyout?.ShowAt(start);
         },
+        ["projects-workspace-more-open"] = window =>
+        {
+            var more = window.GetVisualDescendants().OfType<Button>().First(button => ToolTip.GetTip(button) is "More for this project");
+            more.Flyout?.ShowAt(more);
+        },
         ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["first-run-work-kind"] = _ChooseWorkKind,

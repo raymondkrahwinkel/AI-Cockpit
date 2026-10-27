@@ -17,6 +17,9 @@ public partial class ProjectSectionHeader : UserControl
     public static readonly StyledProperty<ICommand?> TryAgainCommandProperty =
         AvaloniaProperty.Register<ProjectSectionHeader, ICommand?>(nameof(TryAgainCommand));
 
+    public static readonly StyledProperty<ICommand?> UnhideCommandProperty =
+        AvaloniaProperty.Register<ProjectSectionHeader, ICommand?>(nameof(UnhideCommand));
+
     public ProjectSectionHeader()
     {
         InitializeComponent();
@@ -38,6 +41,12 @@ public partial class ProjectSectionHeader : UserControl
     {
         get => GetValue(TryAgainCommandProperty);
         set => SetValue(TryAgainCommandProperty, value);
+    }
+
+    public ICommand? UnhideCommand
+    {
+        get => GetValue(UnhideCommandProperty);
+        set => SetValue(UnhideCommandProperty, value);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

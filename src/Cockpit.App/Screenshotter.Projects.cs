@@ -40,6 +40,8 @@ internal static partial class Screenshotter
         new("projects-workspace-detail", (_, _) => _ProjectsWorkspace(cockpit => _StageTwoConnectionsSelecting(cockpit, "Cockpit"))),
         new("projects-workspace-detail-team", (_, _) => _ProjectsWorkspace(cockpit => _StageTwoConnectionsSelecting(cockpit, "API Gateway"))),
         new("projects-workspace-split-open", (_, _) => _ProjectsWorkspace(_StageTwoConnections)),
+        new("projects-workspace-more-open", (_, _) => _ProjectsWorkspace(_StageTwoConnections)),
+        new("projects-workspace-hidden", (_, _) => _ProjectsWorkspace(_StageTwoConnectionsWithHidden)),
     ];
 
     private static Dictionary<string, Func<int, int, Window>> _WithProjectScenes(Dictionary<string, Func<int, int, Window>> scenes)
@@ -118,7 +120,9 @@ internal static partial class Screenshotter
         };
 
     // The mockup's dataset (b2-01/b2-02), spread over two connections so each section heading names its own server.
-    private static void _StageTwoConnections(CockpitViewModel cockpit)
+    private static void _StageTwoConnections(CockpitViewModel cockpit) => _StageTwoConnections(cockpit, withHidden: false);
+
+    private static void _StageTwoConnections(CockpitViewModel cockpit, bool withHidden)
     {
         var cicd = _Project("Synvolution-CICD", "Claude · Sonnet", TimeSpan.FromHours(2),
             "Pipelines, runners and release automation for every Synvolution service.", "Synvolution") with
@@ -189,6 +193,9 @@ internal static partial class Screenshotter
             ],
             RemoteChangedProjectIds = new HashSet<string>(StringComparer.Ordinal) { flow.Id },
             BoundProjectLocations = bound,
+            HiddenSharedProjectLocations = withHidden
+                ? new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal) { ["hidden"] = _AtSynvolution() }
+                : new Dictionary<string, SharedProjectLocation>(StringComparer.Ordinal),
         };
 
         cockpit.Projects.StageSnapshot(snapshot);
@@ -200,6 +207,8 @@ internal static partial class Screenshotter
             .SelectMany(section => section.Items)
             .First(row => row.Id == flow.Id);
     }
+
+    private static void _StageTwoConnectionsWithHidden(CockpitViewModel cockpit) => _StageTwoConnections(cockpit, withHidden: true);
 
     private static void _StageTwoConnectionsSelecting(CockpitViewModel cockpit, string name)
     {

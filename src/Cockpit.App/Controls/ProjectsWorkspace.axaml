@@ -31,7 +31,8 @@
                                 <StackPanel>
                                     <controls:ProjectSectionHeader
                                         ToggleCommand="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).ToggleSectionCommand}"
-                                        TryAgainCommand="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).RefreshSharedProjectsCommand}"/>
+                                        TryAgainCommand="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).RefreshSharedProjectsCommand}"
+                                        UnhideCommand="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).UnhideSharedProjectsCommand}"/>
                                     <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding !IsCollapsed}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:ProjectListItemViewModel">

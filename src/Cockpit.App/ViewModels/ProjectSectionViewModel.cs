@@ -44,6 +44,12 @@ public sealed class ProjectSectionViewModel : ViewModelBase
 
     public int HiddenCount { get; set; }
 
+    public bool HasHiddenProjects => !IsThisMachine && HiddenCount > 0;
+
+    public string HiddenLabel => $"· {HiddenCount} hidden";
+
+    public (string SourceKey, string OrganizationSlug) SharedProjectSection => (SourceKey, OrganizationSlug);
+
     public int ShownCount { get; set; }
 
     public int TotalCount => HereCount + ToAddCount + HiddenCount;
@@ -79,11 +85,6 @@ public sealed class ProjectSectionViewModel : ViewModelBase
             if (toAdd > 0)
             {
                 parts.Add($"{toAdd} to add");
-            }
-
-            if (HiddenCount > 0)
-            {
-                parts.Add($"{HiddenCount} hidden");
             }
 
             if (ShownCount + HiddenCount < TotalCount)

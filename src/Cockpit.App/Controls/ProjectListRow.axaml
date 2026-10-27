@@ -136,6 +136,9 @@
                                             Padding="8,6" Content="Add to my projects…" IsVisible="{Binding CanAdd}"
                                             Command="{Binding Add}" CommandParameter="{Binding SharedProject}"/>
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            Padding="8,6" Content="Hide on this machine" IsVisible="{Binding !IsOnThisMachine}"
+                                            Command="{Binding Hide}" CommandParameter="{Binding Id}"/>
+                                    <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             Padding="8,6" Content="Start, but change something first…" IsVisible="{Binding CanStart}"
                                             Command="{Binding Actions.StartWithOptions, FallbackValue={x:Null}}"
                                             CommandParameter="{Binding Project}"/>

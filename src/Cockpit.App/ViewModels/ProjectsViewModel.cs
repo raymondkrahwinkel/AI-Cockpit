@@ -470,8 +470,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     [RelayCommand]
     public async Task HideSharedProjectAsync(string sharedProjectId)
     {
+        var rows = ProjectSections.SelectMany(section => section.Items).ToList();
+        var selectedIndex = SelectedListItem?.Id == sharedProjectId
+            ? rows.FindIndex(item => item.Id == sharedProjectId)
+            : -1;
         await _catalog.HideSharedProjectAsync(sharedProjectId).ConfigureAwait(true);
         await LoadSharedProjectsAsync().ConfigureAwait(true);
+        if (selectedIndex >= 0)
+        {
+            var remainingRows = ProjectSections.SelectMany(section => section.Items).ToList();
+            SelectedListItem = remainingRows.ElementAtOrDefault(selectedIndex) ?? remainingRows.LastOrDefault();
+        }
     }
 
     [RelayCommand]
