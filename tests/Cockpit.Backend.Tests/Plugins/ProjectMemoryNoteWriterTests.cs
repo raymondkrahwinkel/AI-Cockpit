@@ -21,7 +21,7 @@ public class ProjectMemoryNoteWriterTests
     private static Project _Project(string? memoryRef) => new("p1", "Project") { MemoryRef = memoryRef };
 
     [Fact]
-    public async Task ASourceWithoutAppendNoteAsync_IsNotWritable_AndIsNeverCalled()
+    public async Task AppendAsync_RejectsUnwritableSources_AndPassesOnlyTheStampedValueToWritableOnes()
     {
         // A third-party plugin built before this member exists reads as null: it keeps loading, and the host must
         // say "no" up front rather than let the operator type a note that has nowhere to go.
@@ -32,17 +32,13 @@ public class ProjectMemoryNoteWriterTests
         var result = await writer.AppendAsync(project, "hello", CancellationToken.None);
 
         Assert.Equal(ProjectMemoryAppendOutcome.Failed, result.Outcome);
-    }
 
-    [Fact]
-    public async Task AWritableSource_ReceivesTheBareValue_AndOnlyAStampedBlock()
-    {
         // The block is the whole of what a plugin gets — never existing content — so the API itself, not an
         // agreement, is what makes replacing impossible. The stamp carries a UTC offset so the file reads outside
         // Cockpit half a year later.
         string? receivedValue = null;
         string? receivedBlock = null;
-        var writer = _Writer(new ProjectMemorySourceRegistration("depot", "Depot project", "Read it there.")
+        var writableWriter = _Writer(new ProjectMemorySourceRegistration("depot", "Depot project", "Read it there.")
         {
             AppendNoteAsync = (value, block, _) =>
             {
@@ -51,12 +47,12 @@ public class ProjectMemoryNoteWriterTests
                 return Task.FromResult(ProjectMemoryAppendResult.Success);
             },
         });
-        var project = _Project("Depot:cockpit");
+        var writableProject = _Project("Depot:cockpit");
 
-        Assert.True(writer.CanAppend(project));
-        var result = await writer.AppendAsync(project, "  call Olaf back  ", CancellationToken.None);
+        Assert.True(writableWriter.CanAppend(writableProject));
+        var writableResult = await writableWriter.AppendAsync(writableProject, "  call Olaf back  ", CancellationToken.None);
 
-        Assert.Equal(ProjectMemoryAppendOutcome.Success, result.Outcome);
+        Assert.Equal(ProjectMemoryAppendOutcome.Success, writableResult.Outcome);
         Assert.Equal("cockpit", receivedValue);
         Assert.Matches(@"^\n## \d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}\n\ncall Olaf back\n$", receivedBlock);
     }
