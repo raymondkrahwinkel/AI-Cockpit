@@ -109,6 +109,16 @@ public sealed record WorkspaceSettings
         && Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is { } workspace
         && workspace.Type != WorkspaceType.Projects;
 
+    // AC-1750: these settings with `workspaceId` replaced by `workspace` in the same strip position, and that one active.
+    public WorkspaceSettings WithReplaced(string workspaceId, Workspace workspace) =>
+        _IndexOf(workspaceId) < 0
+            ? this
+            : (this with
+            {
+                Workspaces = [.. Workspaces.Select(existing => existing.Id == workspaceId ? workspace : existing)],
+                CollapsedSidebarWorkspaceIds = [.. CollapsedSidebarWorkspaceIds.Where(id => id != workspaceId)],
+            }).WithActive(workspace.Id);
+
     // These settings with `workspace` swapped in by id (a no-op when it holds no such workspace).
     public WorkspaceSettings WithUpdated(Workspace workspace) =>
         this with { Workspaces = [.. Workspaces.Select(existing => existing.Id == workspace.Id ? workspace : existing)] };

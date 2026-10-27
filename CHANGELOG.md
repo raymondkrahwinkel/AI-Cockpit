@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **preview tabs and one tab per item for plugin workspaces.** A plugin can open a workspace for one item (a file,
+  say): opening the same item again brings its tab forward instead of adding another. A preview tab has an italic title and a
+  "preview" label, and the next preview replaces it in the same place; double-click it to keep it open. A plugin can also set
+  its tab's title and mark it with a dot for unsaved changes. Plugins use `OpenWorkspaceAsync(typeId, WorkspaceOpenOptions)`
+  (plugin SDK 3.39.0, plugin SDK UI 3.13.0, Cockpit 0.131.0).
 - added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
   4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;

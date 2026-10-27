@@ -30,6 +30,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     private readonly Dictionary<string, Control> _pluginBodies = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IWorkspaceContext> _pluginContexts = new(StringComparer.Ordinal);
 
+    // AC-1750: the marks bodies put on their tabs, by workspace id. Not persisted: a body sets its own again once built.
+    private readonly Dictionary<string, WorkspaceMarker> _markers = new(StringComparer.Ordinal);
+
     // Set when the saved workspaces could not be read — see `InitializeAsync`. Persistence stays off for the rest of the run.
     private bool _loadFailed;
 
@@ -283,6 +286,85 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         var title = _workspaceTypes?.WorkspaceTypes.FirstOrDefault(registration => registration.Id == type.Id)?.Title ?? type.Id;
         return _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(title), type)));
     }
+
+    // AC-1750: one instance of a plugin type by key, or the preview tab, which a new preview replaces in the same strip position.
+    public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options)
+    {
+        if (options.InstanceKey is null && !options.Preview)
+        {
+            return OpenWorkspaceAsync(workspaceTypeId);
+        }
+
+        var type = WorkspaceType.FromId(workspaceTypeId);
+        if (options.InstanceKey is { } key
+            && Settings.Workspaces.FirstOrDefault(workspace => workspace.Type == type && workspace.InstanceKey == key) is { } keyed)
+        {
+            return _ApplyAsync(Settings.WithActive(keyed.Id));
+        }
+
+        var title = options.Title
+            ?? _workspaceTypes?.WorkspaceTypes.FirstOrDefault(registration => registration.Id == type.Id)?.Title
+            ?? type.Id;
+        var created = Workspace.Create(options.InstanceKey is null ? _UniqueName(title) : title, type) with
+        {
+            InstanceKey = options.InstanceKey,
+            IsPreview = options.Preview,
+        };
+
+        return options.Preview && Settings.Workspaces.FirstOrDefault(workspace => workspace.IsPreview) is { } preview
+            ? _ApplyAsync(Settings.WithReplaced(preview.Id, created))
+            : _ApplyAsync(Settings.WithWorkspace(created));
+    }
+
+    // AC-1750: makes a preview tab a kept one, so the next preview opens beside it. A no-op on a tab that is not a preview.
+    public async Task PinWorkspaceAsync(string workspaceId)
+    {
+        if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { IsPreview: true } preview)
+        {
+            return;
+        }
+
+        await _ApplyAsync(Settings.WithUpdated(preview with { IsPreview = false }));
+        (_pluginContexts.GetValueOrDefault(workspaceId) as WorkspaceContext)?.SetPreview(false);
+    }
+
+    // AC-1750: a double-click on a tab pins a preview, renames a plain workspace, and leaves a keyed one alone: its body owns the title.
+    public Task DoubleClickTabAsync(WorkspaceTabViewModel tab)
+    {
+        if (tab.IsPreview)
+        {
+            return PinWorkspaceAsync(tab.Id);
+        }
+
+        if (tab.CanRename)
+        {
+            tab.BeginRename();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void _SetMarker(string workspaceId, WorkspaceMarker? marker)
+    {
+        if (marker is { } set)
+        {
+            _markers[workspaceId] = set;
+        }
+        else
+        {
+            _markers.Remove(workspaceId);
+        }
+
+        if (Tabs.FirstOrDefault(tab => tab.Id == workspaceId) is { } shown)
+        {
+            shown.Marker = marker;
+        }
+    }
+
+    private Task _SetTitleAsync(string workspaceId, string title) =>
+        string.IsNullOrWhiteSpace(title) || Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
+            ? Task.CompletedTask
+            : _ApplyAsync(Settings.WithUpdated(workspace with { Name = title.Trim() }));
 
     // AC-1013: Whether closing this workspace would do anything. False for the last one — the cockpit...
     // Answering false is what greys the ✕ and the menu entry of the last desk and of the projects overview, a fixture.
@@ -695,6 +777,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
             _pluginContexts.Remove(staleId);
             _pluginBodies.Remove(staleId);
+            _markers.Remove(staleId);
         }
 
         if (Active is { } active
@@ -702,6 +785,16 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             && !_pluginBodies.ContainsKey(active.Id)
             && _workspaceTypes?.CreateBody(active.Type.Id, active.Id) is { } built)
         {
+            if (built.Context is WorkspaceContext context)
+            {
+                var workspaceId = active.Id;
+                context.InstanceKey = active.InstanceKey;
+                context.SetPreview(active.IsPreview);
+                context.TitleSet = title => _ = _SetTitleAsync(workspaceId, title);
+                context.MarkerSet = marker => _SetMarker(workspaceId, marker);
+                context.PinRequested = () => _ = PinWorkspaceAsync(workspaceId);
+            }
+
             _pluginContexts[active.Id] = built.Context;
             _pluginBodies[active.Id] = built.Registration.CreateBody(built.Context);
         }
@@ -712,7 +805,10 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         Tabs.Clear();
         foreach (var workspace in Settings.Workspaces)
         {
-            Tabs.Add(new WorkspaceTabViewModel(workspace, isActive: workspace.Id == Active?.Id, icon: _IconFor(workspace)));
+            Tabs.Add(new WorkspaceTabViewModel(workspace, isActive: workspace.Id == Active?.Id, icon: _IconFor(workspace))
+            {
+                Marker = _markers.TryGetValue(workspace.Id, out var marker) ? marker : null,
+            });
         }
     }
 

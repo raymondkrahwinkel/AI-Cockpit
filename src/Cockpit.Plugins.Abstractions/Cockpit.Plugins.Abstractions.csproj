@@ -620,7 +620,9 @@
          workspace's section headings; host 0.127.0. A host older than this simply does not read it, so a plugin that
          implements it needs no newer minHostVersion. Additive; still v3. -->
     <!-- 3.38.0 (AC-1827): ICockpitHost.AddStartupStep, a plugin's own step on the splash. A plugin that calls it sets minHostVersion 0.130.0. Additive; still v3. -->
-    <Version>3.38.0</Version>
+    <!-- 3.39.0 (AC-1750): IWorkspaceContext.InstanceKey, IsPreview, SetTitle, SetMarker, Pin and Pinned, plus WorkspaceMarker.
+         A plugin that relies on them sets minHostVersion 0.131.0. Additive; still v3. -->
+    <Version>3.39.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

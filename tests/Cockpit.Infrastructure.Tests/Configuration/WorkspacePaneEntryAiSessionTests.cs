@@ -33,15 +33,13 @@ public class WorkspacePaneEntryAiSessionTests
 
     // One behaviour, one test: ToDomain reads the stored string through a single case-insensitive TryParse and
     // falls back to Sdk on anything it does not recognise — a future kind (a blank goes the same way) or a differently cased name.
-    [Theory]
-    [InlineData("some-future-kind", PaneSessionKind.Sdk)]
-    [InlineData("tty", PaneSessionKind.Tty)]
-    public void ToDomain_ReadsTheSessionKindString_FallingBackToSdkWhenItIsNotOne(string stored, PaneSessionKind expected)
+    [Fact]
+    public void ToDomain_ReadsTheSessionKindString_FallingBackToSdkWhenItIsNotOne()
     {
-        var entry = new WorkspacePaneEntry { Id = "p1", Kind = nameof(PaneKind.AiSession), SessionKind = stored };
+        static PaneSessionKind Read(string stored) =>
+            new WorkspacePaneEntry { Id = "p1", Kind = nameof(PaneKind.AiSession), SessionKind = stored }.ToDomain().SessionKind;
 
-        var pane = entry.ToDomain();
-
-        Assert.Equal(expected, pane.SessionKind);
+        Assert.Equal(PaneSessionKind.Sdk, Read("some-future-kind"));
+        Assert.Equal(PaneSessionKind.Tty, Read("tty"));
     }
 }

@@ -112,6 +112,8 @@ internal sealed class ServerPluginUiHost(
 
     public Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
+    public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => Task.CompletedTask;
+
     public Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
 
     public void SetStatusText(string? text)

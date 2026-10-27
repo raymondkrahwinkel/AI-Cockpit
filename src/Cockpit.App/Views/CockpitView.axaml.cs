@@ -855,12 +855,12 @@ public partial class CockpitView : UserControl
 
     private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingTab = null;
 
-    // Double-click a tab to rename it in place — the same inline edit a session row uses.
+    // Double-click a tab to rename it in place — the same inline edit a session row uses; on a preview tab it pins it.
     private void OnWorkspaceTabDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is Border { DataContext: WorkspaceTabViewModel tab })
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
         {
-            tab.BeginRename();
+            _ = cockpit.Workspaces.DoubleClickTabAsync(tab);
         }
     }
 
@@ -868,7 +868,7 @@ public partial class CockpitView : UserControl
     // read it straight off the sender — the same shape as the session rows' context menu.
     private void OnRenameWorkspaceRequested(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: WorkspaceTabViewModel tab })
+        if (sender is Control { DataContext: WorkspaceTabViewModel { CanRename: true } tab })
         {
             tab.BeginRename();
         }
