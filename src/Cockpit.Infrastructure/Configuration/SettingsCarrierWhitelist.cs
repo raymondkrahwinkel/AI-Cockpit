@@ -55,11 +55,18 @@ internal static class SettingsCarrierWhitelist
         StringComparer.Ordinal);
 
     // The blob a carrier is handed: cockpit.json as it is on disk, cut down to `Carried`.
-    public static byte[] Extract(JsonObject cockpitJson) =>
-        JsonSerializer.SerializeToUtf8Bytes(_Keep(cockpitJson, ""));
+    public static byte[] Extract(JsonObject cockpitJson) => Extract(cockpitJson, SettingsCarrierFilter.All);
 
-    private static JsonNode? _Keep(JsonNode? node, string path)
+    public static byte[] Extract(JsonObject cockpitJson, SettingsCarrierFilter filter) =>
+        JsonSerializer.SerializeToUtf8Bytes(_Keep(cockpitJson, "", filter));
+
+    private static JsonNode? _Keep(JsonNode? node, string path, SettingsCarrierFilter filter)
     {
+        if (!filter.Allows(path) || path == "Profiles[]" && node is JsonObject profile && !filter.AllowsProfile(profile["Label"]?.GetValue<string>()))
+        {
+            return null;
+        }
+
         if (_Leaves.Contains(path))
         {
             return node?.DeepClone();
@@ -75,13 +82,17 @@ internal static class SettingsCarrierWhitelist
                     var child = Reaches(named) ? named : $"{path}.*";
                     if (Reaches(child))
                     {
-                        kept[key] = _Keep(value, child);
+                        if (_Keep(value, child, filter) is { } valueKept)
+                        {
+                            kept[key] = valueKept;
+                        }
                     }
                 }
 
                 return kept;
             case JsonArray array:
-                return new JsonArray([.. array.Select(item => _Keep(item, path + "[]"))]);
+                var items = array.Select(item => _Keep(item, path + "[]", filter));
+                return path == "Profiles" ? new JsonArray([.. items.Where(item => item is not null)]) : new JsonArray([.. items]);
             default:
                 return null;
         }
@@ -91,4 +102,48 @@ internal static class SettingsCarrierWhitelist
     public static bool Reaches(string path) => _Leaves.Contains(path) || _Ancestors.Contains(path);
 
     public static bool IsLeaf(string path) => _Leaves.Contains(path);
+}
+
+internal sealed class SettingsCarrierFilter
+{
+    private static readonly IReadOnlyDictionary<string, string[]> CategoryRoots = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["Profiles"] = ["Profiles", "CategoryOrder"],
+        ["Plugins"] = ["Plugins"],
+        ["Notifications"] = ["Notifications"],
+        ["Shortcuts"] = ["Shortcuts"],
+        ["SessionBehaviour"] = ["SessionSwitching", "TranscriptDisplay", "UsagePill", "SessionBehavior"],
+        ["Usage"] = ["UsageThresholds"],
+        ["Appearance"] = ["Terminal", "Layout"],
+        ["Updates"] = ["Updates"],
+    };
+
+    private readonly HashSet<string>? _categories;
+    private readonly HashSet<string>? _profiles;
+
+    private SettingsCarrierFilter(HashSet<string>? categories, HashSet<string>? profiles) => (_categories, _profiles) = (categories, profiles);
+
+    public static SettingsCarrierFilter All { get; } = new(null, null);
+
+    public static SettingsCarrierFilter FromConfig(JsonObject config, string carrierId)
+    {
+        if (config["SettingsSync"]?["Categories"] is not JsonObject categories)
+        {
+            return All;
+        }
+
+        var categoriesForCarrier = categories
+            .Where(pair => CategoryRoots.ContainsKey(pair.Key) && pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId))
+            .Select(pair => pair.Key);
+        var profiles = config["SettingsSync"]?["Profiles"] as JsonObject;
+        var profilesForCarrier = profiles?
+            .Where(pair => pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId))
+            .Select(pair => pair.Key);
+        return new([.. categoriesForCarrier], profilesForCarrier is null ? null : [.. profilesForCarrier]);
+    }
+
+    public bool Allows(string path) => _categories is null || path.Length == 0 || !CategoryRoots.Values.SelectMany(roots => roots).Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal)) ||
+        _categories.Any(category => CategoryRoots[category].Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal)));
+
+    public bool AllowsProfile(string? label) => _profiles is null || label is not null && _profiles.Contains(label);
 }
