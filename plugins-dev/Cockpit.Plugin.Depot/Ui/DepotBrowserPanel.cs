@@ -397,12 +397,6 @@ internal sealed class DepotBrowserPanel : UserControl
                 _AddExcerpt(shown);
             }
 
-            var document = await _model.RenderDocumentAsync(_project, node).ConfigureAwait(true);
-            if (_Accepted(document) && document.Data is { } view)
-            {
-                _detail.Children.Add(view);
-            }
-
             return;
         }
 
