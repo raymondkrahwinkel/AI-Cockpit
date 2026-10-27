@@ -35,8 +35,8 @@ public sealed class OpenRouterModelIntelligenceTests : IDisposable
 
         await service.GetSnapshotsAsync();
 
-        Assert.True(File.Exists(Path.Combine(root, "model-intelligence", "openrouter-models.json")));
-        Assert.Empty(Directory.GetFiles(_root, "openrouter-models.json", SearchOption.TopDirectoryOnly));
+        Assert.True(File.Exists(Path.Combine(root, "model-intelligence", "openrouter-models.v2.json")));
+        Assert.Empty(Directory.GetFiles(_root, "openrouter-models.v2.json", SearchOption.TopDirectoryOnly));
     }
 
     public void Dispose()

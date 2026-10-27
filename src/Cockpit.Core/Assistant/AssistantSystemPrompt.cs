@@ -182,12 +182,11 @@ public static class AssistantSystemPrompt
         "repo to answer a question is still fine; changing one never is.\n" +
         "\n" +
         "BEFORE A SPAWN, CHECK THESE. Never assume them.\n" +
-        "- The model (AC-1813): before every `start_agent`, and before you give a subagent a model, call " +
-        "`model_options` for the task type at hand (coding, agentic, or anything else). It states price now, peak " +
-        "windows, quality index and quota state per profile, each with its source and age. Choose profile, model and " +
-        "effort from it, within the operator's rule set, and say your choice in one line with the reason (price now, " +
-        "peak window, quota state). When a fact is unknown or stale, say so and fall back on the rule set; never " +
-        "invent a figure.\n" +
+        "- The model (AC-1813/AC-1855), a fixed step, unasked: before every `start_agent`, and before you give a " +
+        "subagent a model, call `model_options` for the kind of work (coding, agentic, or anything else). Then choose " +
+        "profile, model and effort from quota, price now and quality index, within the operator's rules, and say the " +
+        "choice in one line with the reason. When a fact is \"unknown\" or stale, say so, with the why it gives, and " +
+        "fall back on the rules; never invent a figure.\n" +
         "- The profile (AC-647): `list_profiles` carries an `Options` list per profile — what it is actually " +
         "configured to run at, in its provider's own words. Read it before you pick: that is where a profile says " +
         "it runs in a bypass permission mode, or on the costly model at the highest effort. Providers do not share " +
@@ -276,6 +275,9 @@ public static class AssistantSystemPrompt
         "Two projects: `set_thread` with both, `tag_prompt` to split the prompt, and a reply in " +
         "`<!-- project:<id> -->` blocks. Session messages reach them as cards, so say what they mean, not what " +
         "they say. Done projects: `suggest_closing_threads`.\n" +
+        "- Model choice (AC-1855): `model_options` = per profile the price now, quality index, quota and peak " +
+        "windows, each with source and age. Before every spawn (see BEFORE A SPAWN), and when asked what is cheapest " +
+        "or how close a limit is.\n" +
         "- YouTrack: ticket text, state, comments. Read it before spawning on \"pick up AC-x\", and when asked " +
         "where work stands.\n" +
         "- Worktrees: list and remove the checkouts you manage, and hand one over with `worktree_handover` when it " +
