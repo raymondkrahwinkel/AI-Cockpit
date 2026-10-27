@@ -33,9 +33,10 @@ public sealed class DockPanelKeepAliveFloatTests
 
     // L2a (UI behaviour): criteria 1 and 2. The floating row also carries L2e (state): the stand survives a restart.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AKeptPanel_KeepsOneViewInstance_InTheRailAndInItsOwnWindow(bool floating)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task AKeptPanel_KeepsOneViewInstance_InTheRailAndInItsOwnWindow(bool floating, bool simple)
     {
         await HeadlessAvalonia.RunAsync(async () =>
         {
@@ -43,6 +44,7 @@ public sealed class DockPanelKeepAliveFloatTests
             var layout = _LayoutStore(new LayoutSettings { AssistantDocked = true });
             layout.When(store => store.SaveAsync(Arg.Any<LayoutSettings>())).Do(call => saved = call.Arg<LayoutSettings>());
             var cockpit = _Cockpit(layout, _Panels());
+            cockpit.SimpleView = simple;
 
             var main = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };
             main.Show();
@@ -53,6 +55,25 @@ public sealed class DockPanelKeepAliveFloatTests
                 Dispatcher.UIThread.RunJobs();
                 var view = _RailContent(main);
                 Assert.NotNull(view);
+
+                if (simple)
+                {
+                    // AC-1824 (L2a): the Simple rail opens and closes the panel, keeps its own stand, and a stand switch keeps the view.
+                    Assert.True(cockpit.ShowDockRail);
+                    Assert.Equal(KeptId, cockpit.EffectiveOpenDockPanelId);
+                    Assert.Null(cockpit.OpenDockPanelId);
+                    Assert.Equal(KeptId, saved?.SimpleOpenDockPanelId);
+
+                    await cockpit.ToggleDockPanelCommand.ExecuteAsync(KeptId);
+                    Assert.Null(cockpit.EffectiveOpenDockPanelId);
+
+                    cockpit.SimpleView = false;
+                    cockpit.SimpleView = true;
+                    await cockpit.ToggleDockPanelCommand.ExecuteAsync(KeptId);
+                    Dispatcher.UIThread.RunJobs();
+                    Assert.Same(view, _RailContent(main));
+                    return;
+                }
 
                 if (!floating)
                 {

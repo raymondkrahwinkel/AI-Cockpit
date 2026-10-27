@@ -2279,11 +2279,9 @@
                 <!-- Tab strip: one button per registered panel, icon over rotated title, anchored to the top of
                      the rail. Stays on screen in both the collapsed and the expanded state, so switching panels
                      or closing the open one is always a single click away. -->
-                <!-- AC-1303: not in the Simple stand. What stands in the rail there follows from which session is
-                     picked, so a tab would be a second, contradicting way to say it — and `ToggleDockPanel` writes
-                     the panels stand's own `OpenDockPanelId`, which this stand must leave exactly as it found. -->
+                <!-- AC-1824: the Simple stand lists the plugin panels only; its assistant follows the picked session. -->
                 <ItemsControl DockPanel.Dock="Right" Width="40" VerticalAlignment="Top"
-                              IsVisible="{Binding !SimpleView}" ItemsSource="{Binding DockPanels}">
+                              IsVisible="{Binding HasRailTabs}" ItemsSource="{Binding RailTabs}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="docking:DockPanelRegistration">
                             <!-- AC-1762: square corners — a tab meets the window edge and its neighbours, so a

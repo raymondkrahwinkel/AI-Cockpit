@@ -40,6 +40,9 @@ public sealed record LayoutSettings
     // 40px strip. Only one panel can be open at a time.
     public string? OpenDockPanelId { get; init; }
 
+    // AC-1824: the same for the Simple stand, which keeps its own rail state apart from the panels stand's.
+    public string? SimpleOpenDockPanelId { get; init; }
+
     // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). A
     // separate field from `OpenDockPanelId`: the assistant can be docked while the rail itself is collapsed.
     public bool AssistantDocked { get; init; }

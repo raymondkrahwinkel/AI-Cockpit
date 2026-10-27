@@ -1015,6 +1015,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     private string? _openDockPanelId;
 
+    // AC-1824: the Simple stand's own open plugin panel (never the assistant, which that stand docks by role) —
+    // kept apart from `OpenDockPanelId` so each stand remembers its own rail.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    private string? _simpleOpenDockPanelId;
+
     partial void OnSidebarWidthChanged(double value)
     {
         OnPropertyChanged(nameof(MaxDockRailWidth));
@@ -1082,6 +1088,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         OnPropertyChanged(nameof(AssistantDocked));
         OnPropertyChanged(nameof(DockPanels));
+        OnPropertyChanged(nameof(RailTabs));
+        OnPropertyChanged(nameof(HasRailTabs));
         OnPropertyChanged(nameof(HasDockPanels));
         OnPropertyChanged(nameof(ShowDockRail));
         OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
@@ -1109,6 +1117,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
     [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(RailTabs))]
+    [NotifyPropertyChangedFor(nameof(HasRailTabs))]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
     private bool _simpleView;
@@ -1207,7 +1217,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
     // session would leave the assistant tab open there too, on a rail the operator had closed.
     public string? EffectiveOpenDockPanelId => SimpleView
-        ? SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
+        ? SimpleOpenDockPanelId is { } simpleId && RailTabs.Any(panel => panel.Id == simpleId) ? simpleId
+            : SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
         : OpenDockPanelId is { } id && !IsDockPanelFloating(id) ? id : null; // AC-1710: floating is not open here
 
     partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
@@ -1286,6 +1297,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // The conversation went (closed, AC-1304's third door): nothing picked is Home.
             SimplePage = SimplePage.Home;
+        }
+
+        // AC-1824: the assistant docks by role on an agent pick, so it takes the rail from an open plugin panel.
+        if (SimpleStandDocksTheAssistant)
+        {
+            SimpleOpenDockPanelId = null;
         }
 
         // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
@@ -1403,10 +1420,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // (AC-953: the Assistant's tab is withdrawn while it is undocked, which is exactly when that happens).
     public bool HasDockPanels => DockPanels.Count > 0;
 
-    // AC-1303: whether the rail stands at all. The Simple stand answers it differently: it draws no tab strip, so
-    // a rail with nothing open there would be exactly the 40px strip of chrome the line above rejects — and one
-    // you could not even click your way out of.
-    public bool ShowDockRail => SimpleView ? SimpleStandDocksTheAssistant : HasDockPanels;
+    // AC-1303: whether the rail stands at all. The Simple stand has it when it docks the assistant, or (AC-1824)
+    // when plugin panels give it tabs to click; otherwise it would be an empty 40px strip.
+    public bool ShowDockRail => SimpleView ? SimpleStandDocksTheAssistant || HasRailTabs : HasDockPanels;
+
+    // AC-1824: the tabs on the rail. The Simple stand docks the assistant by role, so it has no tab there.
+    public IReadOnlyList<DockPanelRegistration> RailTabs =>
+        SimpleView ? DockPanels.Where(panel => panel.Id != AssistantIndicatorCoordinator.DockPanelId).ToList() : DockPanels;
+
+    public bool HasRailTabs => RailTabs.Count > 0;
+
+    // Opens a panel on the stand that is on screen; null closes it.
+    internal void SetOpenDockPanel(string? panelId)
+    {
+        if (SimpleView)
+        {
+            SimpleOpenDockPanelId = panelId;
+        }
+        else
+        {
+            OpenDockPanelId = panelId;
+        }
+    }
 
     // AC-951: the rail reads the registry directly, so it needs telling when that changes — a panel can arrive
     // (or, since AC-953, be withdrawn) long after this view model is built.
@@ -1420,6 +1455,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         registry.Changed += (_, _) =>
         {
             OnPropertyChanged(nameof(DockPanels));
+            OnPropertyChanged(nameof(RailTabs));
+            OnPropertyChanged(nameof(HasRailTabs));
             OnPropertyChanged(nameof(HasDockPanels));
             OnPropertyChanged(nameof(ShowDockRail));
         };
@@ -5440,6 +5477,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
+        SimpleOpenDockPanelId = settings.SimpleOpenDockPanelId;
 
         // AC-1710: a file from before the floating stand carries only the assistant's own flag.
         _floatingDockPanelIds.Clear();
@@ -5473,6 +5511,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         FocusRailWeight = GlobalFocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
+        SimpleOpenDockPanelId = SimpleOpenDockPanelId,
         AssistantDocked = AssistantDocked,
         FloatingDockPanelIds = [.. _floatingDockPanelIds.Order(StringComparer.Ordinal)],
         OpenInSimpleView = OpenInSimpleView,
@@ -5647,7 +5686,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task ToggleDockPanel(string panelId)
     {
-        OpenDockPanelId = OpenDockPanelId == panelId ? null : panelId;
+        SetOpenDockPanel((SimpleView ? SimpleOpenDockPanelId : OpenDockPanelId) == panelId ? null : panelId);
 
         if (_layoutSettingsStore is null)
         {
