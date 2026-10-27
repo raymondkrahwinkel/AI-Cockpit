@@ -11,6 +11,11 @@ public static class ModelIntelligenceServiceCollectionExtensions
         services.AddSingleton<IModelIntelligence>(new OpenRouterModelIntelligence(cacheRoot));
         services.AddSingleton<IModelObservationStore>(new ModelObservationStore(cacheRoot));
         services.AddSingleton<LocalModelIntelligenceReader>();
+        services.AddSingleton<IModelIntelligenceOptions>(provider => new ModelIntelligenceOptionsService(
+            provider.GetRequiredService<IModelIntelligence>(),
+            provider.GetRequiredService<ModelPictureReader>(),
+            provider.GetRequiredService<IModelObservationStore>(),
+            new Configuration.CockpitConfigFileAccess(Configuration.CockpitConfigPath.Default)));
         return services;
     }
 }

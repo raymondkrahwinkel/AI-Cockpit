@@ -75,6 +75,9 @@
                             Click="OnOpenPluginStore" ToolTip.Tip="{Binding PluginStoreUrl}"/>
                 </StackPanel>
 
+                <TextBlock Text="{Binding ModelDataText}" TextWrapping="Wrap" FontSize="11"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+
                 <TextBlock Text="{Binding LicenseText}" TextWrapping="Wrap" FontSize="11"
                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
             </StackPanel>

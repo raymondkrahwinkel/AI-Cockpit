@@ -54,6 +54,24 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
         }
     }
 
+    public async Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await _WriteCacheAsync(await _FetchAsync(cancellationToken), cancellationToken);
+            return true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException or IOException)
+        {
+            return false;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<_Cache> _FetchAsync(CancellationToken cancellationToken)
     {
         using var client = _handler is null ? new HttpClient() : new HttpClient(_handler, disposeHandler: false);
