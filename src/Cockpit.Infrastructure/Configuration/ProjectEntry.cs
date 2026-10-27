@@ -32,6 +32,8 @@ internal sealed partial class ProjectEntry
 
     public string? GitUrl { get; set; }
 
+    public string? SharedSourceKey { get; set; }
+
     public string? DefaultProfileLabel { get; set; }
 
     public string? BehaviorPrompt { get; set; }
@@ -98,6 +100,7 @@ internal sealed partial class ProjectEntry
             ? null
             : [.. project.SourceDirectories.Select(ProjectRepositoryEntry.FromDomain)],
         GitUrl = project.GitUrl,
+        SharedSourceKey = project.SharedSourceKey,
         DefaultProfileLabel = project.DefaultProfileLabel,
         BehaviorPrompt = project.BehaviorPrompt,
         Assistant = string.IsNullOrWhiteSpace(project.Assistant) ? null : project.Assistant,
@@ -141,6 +144,7 @@ internal sealed partial class ProjectEntry
                     ? [new ProjectRepository(SourceDirectory)]
                     : [],
             GitUrl = GitUrl,
+            SharedSourceKey = SharedSourceKey,
             DefaultProfileLabel = DefaultProfileLabel,
             BehaviorPrompt = behaviorPrompt,
             Assistant = assistant,

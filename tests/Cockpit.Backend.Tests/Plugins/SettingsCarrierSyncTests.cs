@@ -46,6 +46,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Empty(b.Sync.Conflicts);
         Assert.Equal((18, 18), (_Local(b)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
         await _AssertProjectsWithDifferentIdsAndTheSameGitUrlMergeAsync();
+        await _AssertProjectsWithDifferentIdsAndTheSameSharedSourceKeyMergeAsync();
     }
 
     // Acceptance 4: a key the manifest manages (AC-1507), a leaf or a whole dictionary, is neither pushed nor taken over.
@@ -88,12 +89,28 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Equal("/srv/Cockpit", project?["SourceDirectory"]?.GetValue<string>());
     }
 
-    private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config)
+    // AC-1837: shared-source identity joins machine-local project ids when no repository identity is available.
+    private async Task _AssertProjectsWithDifferentIdsAndTheSameSharedSourceKeyMergeAsync()
+    {
+        var space = new _Space();
+        var a = _Machine("shared-source-desktop", """{"Projects":[{"Id":"desktop","Name":"Cockpit","SharedSourceKey":"depot:depot.example.com/krahwinkel-it/cockpit","SourceDirectory":"C:/src/Cockpit"}]}""", space);
+        var b = _Machine("shared-source-hub", """{"Projects":[{"Id":"hub","Name":"Cockpit","SharedSourceKey":"depot:depot.example.com/krahwinkel-it/cockpit","SourceDirectory":"/srv/Cockpit"}]}""", space);
+
+        await a.Sync.RunOnceAsync();
+        await b.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
+
+        var project = Assert.Single(_Local(b)["Projects"]!.AsArray());
+        Assert.Equal("hub", project?["Id"]?.GetValue<string>());
+        Assert.Equal("/srv/Cockpit", project?["SourceDirectory"]?.GetValue<string>());
+    }
+
+    private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config, _Space? space = null)
     {
         var path = CockpitConfigPath.For(Directory.CreateDirectory(Path.Combine(_root, name)).FullName);
         File.WriteAllText(path, config);
         var carriers = new SettingsCarriers(NullLogger<SettingsCarriers>.Instance);
-        carriers.Add("fake", _space.Carrier);
+        carriers.Add("fake", (space ?? _space).Carrier);
         return (path, new SettingsCarrierSync(carriers, path, null, null, TimeProvider.System));
     }
 
