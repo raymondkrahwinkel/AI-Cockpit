@@ -24,12 +24,12 @@ public class CodexModelCatalogTests
         Assert.Equal(new[] { "gpt-5.6-terra", "gpt-5.6-luna" }, listing.Ids);
         Assert.Equal("gpt-5.6-terra", listing.DefaultId);
         Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"thread/start\""));
+        await _ParsesEachModelsOwnSupportedReasoningEffortsAsync();
     }
 
     // AC-1101: each model reports its own reasoning-effort presets — sol/terra offer "ultra", others do not — so
     // the effort control must read this per model rather than assume every model offers the same fixed set.
-    [Fact]
-    public async Task ListAsync_ParsesEachModelsOwnSupportedReasoningEfforts()
+    private static async Task _ParsesEachModelsOwnSupportedReasoningEffortsAsync()
     {
         var fake = new FakeCliSubprocess();
         var listTask = CodexModelCatalog.ListAsync(() => fake, _DefaultConfig(), "codex", CancellationToken.None);
