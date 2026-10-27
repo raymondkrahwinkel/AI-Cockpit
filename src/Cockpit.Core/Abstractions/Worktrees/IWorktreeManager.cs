@@ -30,6 +30,12 @@ public interface IWorktreeManager
     /// </summary>
     Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default);
 
+    /// <summary>Returns the origin remote URL, or the sole remote URL, for a local worktree.</summary>
+    Task<string?> DetectRemoteUrlAsync(string directory, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns a credential-free normalized Git URL, or null when the input is invalid or carries credentials.</summary>
+    string? NormalizeGitUrl(string url);
+
     /// <summary>
     /// Creates a worktree for <paramref name="sessionId"/> on new branch <paramref name="branch"/>: fast-forwards
     /// the source when clean (AC-349), else forks local HEAD. <paramref name="handling"/> gates that move to

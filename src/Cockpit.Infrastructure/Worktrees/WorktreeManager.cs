@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
+using Cockpit.Infrastructure.Clones;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Core.Sessions;
 using System.Text.Json;
@@ -99,6 +100,38 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
             Path.GetFullPath(root),
             head.StandardOutput.Trim(),
             branch.Equals("HEAD", StringComparison.Ordinal) ? null : branch);
+    }
+
+    public async Task<string?> DetectRemoteUrlAsync(string directory, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            return null;
+        }
+
+        var remotes = await GitCli.RunAsync(directory, ["remote"], cancellationToken, timeout: TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+        if (remotes.ExitCode != 0)
+        {
+            return null;
+        }
+
+        var names = remotes.StandardOutput.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var remote = names.FirstOrDefault(name => string.Equals(name, "origin", StringComparison.Ordinal))
+            ?? (names.Length == 1 ? names[0] : null);
+        if (remote is null)
+        {
+            return null;
+        }
+
+        var url = await GitCli.RunAsync(directory, ["remote", "get-url", remote], cancellationToken, timeout: TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+        return url.ExitCode == 0 && !string.IsNullOrWhiteSpace(url.StandardOutput) ? url.StandardOutput.Trim() : null;
+    }
+
+    public string? NormalizeGitUrl(string url)
+    {
+        if (GitCloneUrl.CarriesCredentials(url)) return null;
+        try { return GitCloneUrl.Parse(url).RemoteUrl; }
+        catch (FormatException) { return null; }
     }
 
     public async Task<WorktreeRecord> CreateAsync(
