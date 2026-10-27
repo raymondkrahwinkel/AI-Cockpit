@@ -39,6 +39,30 @@ internal static class ServerGroupScene
         return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
     }
 
+    // AC-1762 (mockups Company v8 #22 and Productivity v3 #09): the panels sidebar with two projects, this laptop with two
+    // workspaces and one server — the server open or folded shut.
+    public static MainWindow Sidebar(int width, int height, bool collapsed)
+    {
+        var cockpit = new CockpitViewModel { SidebarWidth = 240 };
+        cockpit.Projects.StageDesignSample();
+        var second = new Cockpit.Core.Projects.Project("proj-depot", "Depot");
+        cockpit.Projects.Projects.Add(second);
+        cockpit.Projects.SidebarProjects.Add(second);
+
+        var infra = Cockpit.Core.Workspaces.Workspace.Create("Infra", Cockpit.Core.Workspaces.WorkspaceType.Sessions);
+        cockpit.Workspaces.Settings = cockpit.Workspaces.Settings.WithWorkspace(infra)
+            .WithActive(cockpit.Workspaces.Settings.Workspaces[0].Id);
+        cockpit.Sessions[2].WorkspaceId = infra.Id;
+
+        cockpit.ShowServers(new SceneServers(_Server(admin: true)), SessionViewModel.OverRemoteAsync, new SceneSignIns());
+        if (collapsed)
+        {
+            cockpit.ServerGroups[0].IsExpanded = false;
+        }
+
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 

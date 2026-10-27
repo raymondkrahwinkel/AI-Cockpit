@@ -611,7 +611,8 @@
          the session's conversation as buttons. A plugin that sets Inline sets minHostVersion 0.121.0. Additive; still v3. -->
     <!-- 3.31.0 (AC-1726): the UI SDK adds FocusSessionAsync, host 0.122.0. -->
     <!-- 3.33.0 (AC-1497): combines the Depot SaaS SDK additions with main's 3.32.0 Productivity contracts. -->
-    <Version>3.33.0</Version>
+    <!-- 3.34.0 (AC-1766): CockpitUsageDelta.ProfileLabel. A plugin that reads it sets minHostVersion 0.125.0. Additive; still v3. -->
+    <Version>3.34.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -102,6 +102,16 @@ public sealed class Ac1297SegmentSwitchTests
                 Assert.Equal(ProjectsLayoutMode.List, cockpit.Projects.LayoutMode);
                 Assert.True(_On(_ProjectsSegment(window, "List")), "clicking the active segment must not blank it");
                 Assert.False(_On(_ProjectsSegment(window, "Cards")));
+
+                // AC-1793: a Panels tab stands down in Simple, and comes back as it was left.
+                cockpit.ShowSimpleViewCommand.Execute(null);
+                window.UpdateLayout();
+                Assert.False(_ProjectsSegment(window, "List").IsEffectivelyVisible, "the Projects tab must not draw over Simple");
+
+                cockpit.ShowPanelsViewCommand.Execute(null);
+                window.UpdateLayout();
+                Assert.True(_ProjectsSegment(window, "List").IsEffectivelyVisible);
+                Assert.True(_On(_ProjectsSegment(window, "List")));
             }
             finally
             {

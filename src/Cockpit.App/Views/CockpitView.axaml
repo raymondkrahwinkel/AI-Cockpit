@@ -641,19 +641,22 @@
                      remote window, whose Options would be this machine's and which keeps no state here. -->
                 <views:SidebarFooter DockPanel.Dock="Bottom" IsVisible="{Binding !IsRemoteWindow}"/>
 
-                <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the
-                     session list. Built in code-behind from CockpitViewModel.PluginSideSections; hidden
-                     entirely when no plugin contributes a section (no visual noise at zero plugins). -->
+                <!-- Plugin-contributed left-menu cards (#14, AC-1763), docked above the footer and below the session
+                     list, where the plugins always stood. Built in code-behind from CockpitViewModel.PluginMenuGroups;
+                     hidden entirely when no plugin contributes anything. -->
                 <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
 
-
+                <!-- AC-1790: Projects scroll with the sessions, so a tall list never runs under the plugin cards docked
+                     below; with room to spare it stands exactly where it did. -->
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
                 <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
                      entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
                      ▶ starts on the project's own defaults and skips the dialog; the context menu holds the slower
                      routes for when the operator wants to change something the project would otherwise decide.
                      Deliberately the recent few and not all of them: this strip is for reaching what you are busy
                      with, and the overview is where the whole list lives. -->
-                <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10"
+                <StackPanel Spacing="2" Margin="0,0,0,10"
                             IsVisible="{Binding Projects.HasProjects}">
                     <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,0,2">
                         <TextBlock Grid.Column="0" Text="Projects" FontSize="11" FontWeight="SemiBold"
@@ -727,7 +730,6 @@
                             ToolTip.Tip="Open the projects overview"/>
                 </StackPanel>
 
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Spacing="2">
                         <!-- AC-1306: the session list as a workspace tree.
                              WHAT THIS TREE GROUPS: *where a session stands* — a workspace tab, and the sessions
@@ -870,7 +872,9 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
                     </StackPanel>
+                </StackPanel>
                 </ScrollViewer>
             </DockPanel>
         </Border>
@@ -953,6 +957,11 @@
                         </DockPanel>
                     </Button>
                 </StackPanel>
+
+                <!-- AC-1790: the same plugin cards as the panels sidebar, above Settings and Help, so a plugin's buttons and
+                     its stopwatch are there in this stand too (Raymond). Filled in code-behind with PluginSectionsHost. -->
+                <StackPanel DockPanel.Dock="Bottom" x:Name="SimplePluginSectionsHost" Spacing="4" Margin="0,0,0,8"
+                            IsVisible="False"/>
 
                 <!-- AC-1304: the first of the three doors onto the start screen. It does not open the New-session
                      dialog the panels stand's own "+ New session" opens — in this stand the question comes first
@@ -1184,478 +1193,481 @@
                 </DockPanel>
             </Border>
 
-            <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
-                 active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
-                 drives the affordance, so a dashboard never asks for something it cannot hold. -->
-            <DockPanel Grid.Row="1" IsVisible="{Binding Workspaces.IsDashboardActive}">
+            <!-- AC-1793: the Panels stand's workspace bodies, one switch for all of them. Simple has no workspace tabs,
+                 so a tab left open here would draw under its pages; hidden, not rebuilt, it comes back as it was left. -->
+            <Panel Grid.Row="1" IsVisible="{Binding !SimpleView}">
+                <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
+                     active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
+                     drives the affordance, so a dashboard never asks for something it cannot hold. -->
+                <DockPanel IsVisible="{Binding Workspaces.IsDashboardActive}">
 
-                <!-- The dashboard's own toolbar. "Add widget" used to live only in the centred empty state,
-                     which put it underneath the widgets the moment there were any — it needs a home that does
-                     not move, and the dashboard's other controls belong beside it rather than scattered. -->
-                <DockPanel DockPanel.Dock="Top" Margin="12,12,12,0">
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
-                        <!-- Disabled, not hidden, while no plugin contributes a widget: the button is the answer
-                             to "how do I fill this dashboard", so it has to stay visible and say why it cannot. -->
-                        <Button Content="+ Add widget" Classes="Accent" Padding="10,4"
-                                IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
-                                ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
-                        <!-- A plain Flyout over an ItemsControl of buttons rather than a MenuFlyout with an
-                             ItemsSource: the latter's containers never materialised here, leaving an enabled
-                             button that opened an empty popup. This shape is the gallery — icon, title and the
-                             one-liner the widget describes itself with. -->
-                        <Button.Flyout>
-                            <Flyout Placement="Bottom">
-                                <ItemsControl ItemsSource="{Binding Workspaces.AvailableWidgets}" MinWidth="220">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="widgets:WidgetRegistration">
-                                            <Button Classes="Subtle" HorizontalAlignment="Stretch"
-                                                    HorizontalContentAlignment="Left" Padding="8,6"
-                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"
-                                                    CommandParameter="{Binding}">
-                                                <DockPanel>
-                                                    <Panel Margin="0,0,8,0" VerticalAlignment="Center">
-                                                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
-                                                                                    IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
-                                                        <TextBlock Text="{Binding Icon}"
-                                                                   IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNull}}"/>
-                                                    </Panel>
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                                                        <TextBlock Text="{Binding Description}" FontSize="11" Opacity="0.7"
-                                                                   TextWrapping="Wrap" MaxWidth="180"/>
-                                                    </StackPanel>
-                                                </DockPanel>
-                                            </Button>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Flyout>
-                        </Button.Flyout>
-                        </Button>
-
-                        <!-- The dashboard's grid shape. Its own settings, not the app's — each dashboard is laid
-                             out on its own, and this is where §4g's Columns/Rows live. -->
-                        <Button Classes="Subtle" Padding="7,4" ToolTip.Tip="Dashboard settings">
-                            <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
+                    <!-- The dashboard's own toolbar. "Add widget" used to live only in the centred empty state,
+                         which put it underneath the widgets the moment there were any — it needs a home that does
+                         not move, and the dashboard's other controls belong beside it rather than scattered. -->
+                    <DockPanel DockPanel.Dock="Top" Margin="12,12,12,0">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                            <!-- Disabled, not hidden, while no plugin contributes a widget: the button is the answer
+                                 to "how do I fill this dashboard", so it has to stay visible and say why it cannot. -->
+                            <Button Content="+ Add widget" Classes="Accent" Padding="10,4"
+                                    IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
+                                    ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
+                            <!-- A plain Flyout over an ItemsControl of buttons rather than a MenuFlyout with an
+                                 ItemsSource: the latter's containers never materialised here, leaving an enabled
+                                 button that opened an empty popup. This shape is the gallery — icon, title and the
+                                 one-liner the widget describes itself with. -->
                             <Button.Flyout>
-                                <Flyout Placement="BottomEdgeAlignedRight">
-                                    <StackPanel Spacing="10" MinWidth="200" Margin="4">
-                                        <TextBlock Text="Dashboard grid" FontWeight="SemiBold"/>
-                                        <DockPanel>
-                                            <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
-                                                           Minimum="1" Maximum="256"
-                                                           Value="{Binding Workspaces.DashboardColumnsSetting}"/>
-                                            <TextBlock Text="Columns" VerticalAlignment="Center"/>
-                                        </DockPanel>
-                                        <DockPanel>
-                                            <!-- The bounds match DashboardLayout's Min/Max constants; the record
-                                                 clamps anyway, so a drifted literal here cannot reach the grid. -->
-                                            <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
-                                                           Minimum="1" Maximum="256"
-                                                           Value="{Binding Workspaces.DashboardRowsSetting}"/>
-                                            <TextBlock Text="Rows" VerticalAlignment="Center"/>
-                                        </DockPanel>
-                                        <TextBlock Text="Rows are a starting height — the dashboard grows past it as you add widgets."
-                                                   FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxWidth="190"/>
-                                        <CheckBox Content="Show grid lines" IsChecked="{Binding Workspaces.DashboardShowGridLines}"
-                                                  ToolTip.Tip="Draw the cells widgets snap to — handy while arranging"/>
-
-                                        <!-- Export/import live with the dashboard's other controls rather than in
-                                             the toolbar: they are things you do once, not affordances the
-                                             arranging needs in front of it. -->
-                                        <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Margin="0,4,0,0"/>
-                                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                                Padding="6,4" Content="Export this dashboard…" Click="OnExportDashboardPressed"
-                                                ToolTip.Tip="Save it to a file — to keep, or to hand to someone. Credentials are left out."/>
-                                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                                Padding="6,4" Content="Import a dashboard…" Click="OnImportDashboardPressed"
-                                                ToolTip.Tip="Add a dashboard from a file, alongside the ones you have"/>
-                                    </StackPanel>
+                                <Flyout Placement="Bottom">
+                                    <ItemsControl ItemsSource="{Binding Workspaces.AvailableWidgets}" MinWidth="220">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="widgets:WidgetRegistration">
+                                                <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left" Padding="8,6"
+                                                        Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"
+                                                        CommandParameter="{Binding}">
+                                                    <DockPanel>
+                                                        <Panel Margin="0,0,8,0" VerticalAlignment="Center">
+                                                            <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
+                                                                                        IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                                                            <TextBlock Text="{Binding Icon}"
+                                                                       IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNull}}"/>
+                                                        </Panel>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                            <TextBlock Text="{Binding Description}" FontSize="11" Opacity="0.7"
+                                                                       TextWrapping="Wrap" MaxWidth="180"/>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </Flyout>
                             </Button.Flyout>
-                        </Button>
-                    </StackPanel>
+                            </Button>
 
-                    <TextBlock Text="{Binding Workspaces.Active.Name}" FontWeight="SemiBold"
-                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <!-- The dashboard's grid shape. Its own settings, not the app's — each dashboard is laid
+                                 out on its own, and this is where §4g's Columns/Rows live. -->
+                            <Button Classes="Subtle" Padding="7,4" ToolTip.Tip="Dashboard settings">
+                                <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
+                                <Button.Flyout>
+                                    <Flyout Placement="BottomEdgeAlignedRight">
+                                        <StackPanel Spacing="10" MinWidth="200" Margin="4">
+                                            <TextBlock Text="Dashboard grid" FontWeight="SemiBold"/>
+                                            <DockPanel>
+                                                <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
+                                                               Minimum="1" Maximum="256"
+                                                               Value="{Binding Workspaces.DashboardColumnsSetting}"/>
+                                                <TextBlock Text="Columns" VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                            <DockPanel>
+                                                <!-- The bounds match DashboardLayout's Min/Max constants; the record
+                                                     clamps anyway, so a drifted literal here cannot reach the grid. -->
+                                                <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
+                                                               Minimum="1" Maximum="256"
+                                                               Value="{Binding Workspaces.DashboardRowsSetting}"/>
+                                                <TextBlock Text="Rows" VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                            <TextBlock Text="Rows are a starting height — the dashboard grows past it as you add widgets."
+                                                       FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxWidth="190"/>
+                                            <CheckBox Content="Show grid lines" IsChecked="{Binding Workspaces.DashboardShowGridLines}"
+                                                      ToolTip.Tip="Draw the cells widgets snap to — handy while arranging"/>
+
+                                            <!-- Export/import live with the dashboard's other controls rather than in
+                                                 the toolbar: they are things you do once, not affordances the
+                                                 arranging needs in front of it. -->
+                                            <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Margin="0,4,0,0"/>
+                                            <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                    Padding="6,4" Content="Export this dashboard…" Click="OnExportDashboardPressed"
+                                                    ToolTip.Tip="Save it to a file — to keep, or to hand to someone. Credentials are left out."/>
+                                            <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                    Padding="6,4" Content="Import a dashboard…" Click="OnImportDashboardPressed"
+                                                    ToolTip.Tip="Add a dashboard from a file, alongside the ones you have"/>
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Workspaces.Active.Name}" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
+
+                    <!-- The grid, its drag ghost and the empty state share one cell. A Panel rather than more
+                         DockPanel children: only a DockPanel's last child fills, so the grid would be docked to the
+                         left the moment anything followed it. -->
+                    <Panel>
+
+                    <!-- The cells, under everything and never in the way of a pointer. Same margin as the grid it
+                         traces, so the lines land on the boundaries the widgets actually snap to. -->
+                    <controls:DashboardGridLines Margin="12" IsHitTestVisible="False"
+                                                 IsVisible="{Binding Workspaces.DashboardShowGridLines}"
+                                                 Columns="{Binding Workspaces.DashboardColumns}"
+                                                 Rows="{Binding Workspaces.DashboardRows}"
+                                                 LineBrush="{DynamicResource CockpitHairlineBrush}"/>
+
+                    <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
+                         configured height as widgets are added (rows are a starting height, not a cap). The panel
+                         builds its definitions from them itself — the view cannot, because it has to find the panel
+                         to do it and the panel does not exist until a layout pass creates it. -->
+                    <!-- The drop lives on the grid, not the panes: an arrangement rebuilds nothing, but the pointer
+                         has to be tracked across cells the dragged pane does not occupy. -->
+                    <ItemsControl x:Name="DashboardGrid" Margin="12"
+                                  ItemsSource="{Binding Workspaces.WidgetPanes}"
+                                  IsVisible="{Binding !Workspaces.ShowDashboardEmptyState}"
+                                  PointerMoved="OnDashboardPointerMoved"
+                                  PointerReleased="OnDashboardPointerReleased">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <controls:DashboardCellsPanel Columns="{Binding Workspaces.DashboardColumns}"
+                                                              Rows="{Binding Workspaces.DashboardRows}"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerTheme>
+                            <ControlTheme TargetType="ContentPresenter" x:DataType="vm:WidgetPaneViewModel">
+                                <Setter Property="Grid.Column" Value="{Binding Column}"/>
+                                <Setter Property="Grid.Row" Value="{Binding Row}"/>
+                                <Setter Property="Grid.ColumnSpan" Value="{Binding ColumnSpan}"/>
+                                <Setter Property="Grid.RowSpan" Value="{Binding RowSpan}"/>
+                            </ControlTheme>
+                        </ItemsControl.ItemContainerTheme>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:WidgetPaneViewModel">
+                                <Border Margin="4" CornerRadius="8" Background="{DynamicResource CockpitPanelBgBrush}"
+                                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+                                    <DockPanel>
+                                        <!-- Pane chrome. The gear is bound to HasConfig: a widget that declared no
+                                             settings form shows no gear at all, rather than one that opens nothing. -->
+                                        <!-- The header is the drag handle: dragging the widget's own body would fight
+                                             whatever the plugin's control does with a pointer, and a header is where
+                                             a pane is grabbed everywhere else in the cockpit. -->
+                                        <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6" Background="Transparent"
+                                                   Cursor="Hand" PointerPressed="OnWidgetHeaderPressed">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
+                                                <Button Classes="Subtle" Padding="5,0" Click="OnWidgetRefreshPressed"
+                                                        ToolTip.Tip="Refresh">
+                                                    <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
+                                                </Button>
+                                                <Button Classes="Subtle" Padding="5,0" Click="OnWidgetConfigPressed"
+                                                        IsVisible="{Binding HasConfig}" ToolTip.Tip="Widget settings">
+                                                    <materialIcons:MaterialIcon Kind="Cog" Width="12" Height="12"/>
+                                                </Button>
+                                                <Button Classes="Subtle" Padding="5,0" Click="OnWidgetRemovePressed"
+                                                        ToolTip.Tip="Remove widget">
+                                                    <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                                </Button>
+                                            </StackPanel>
+                                            <Panel Margin="0,0,6,0" VerticalAlignment="Center">
+                                                <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="14" Height="14"
+                                                                            IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                                                <TextBlock Text="{Binding Icon}"
+                                                           IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNull}}"/>
+                                            </Panel>
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
+                                        <!-- The plugin's own control, built once per instance and hosted as-is. The
+                                             resize grip sits over its bottom-right corner: a widget is sized by
+                                             dragging the corner, and the grip has to be reachable whatever the
+                                             plugin drew underneath it. -->
+                                        <Panel>
+                                            <ContentControl Margin="8,0,8,8" Content="{Binding View}"/>
+                                            <Border Width="14" Height="14" Margin="0,0,2,2" Background="Transparent"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Cursor="BottomRightCorner" PointerPressed="OnWidgetResizePressed"
+                                                    ToolTip.Tip="Drag to resize">
+                                                <Path Data="M 10,0 L 10,10 L 0,10" Stroke="{DynamicResource CockpitTextFaintBrush}"
+                                                      StrokeThickness="1.5" Margin="2"/>
+                                            </Border>
+                                        </Panel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Where the dragged or resized widget will land. Shown during the gesture and applied on
+                         release: without it you are dragging blind, and applying on every pointer move rewrote
+                         cockpit.json on every pixel. Its rectangle is set in code — it is measured in the grid's
+                         cells, which nothing here can bind to. -->
+                    <Border x:Name="WidgetDropGhost" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
+                            Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
+                            CornerRadius="8" BorderThickness="2"
+                            BorderBrush="{DynamicResource CockpitAccentBrush}"
+                            Background="{DynamicResource CockpitPanelBgBrush}" Opacity="0.55"/>
+
+                    <!-- The dashboard's empty state carries no button of its own: the toolbar's "Add widget" is
+                         always there, and two buttons doing one thing is how the old one ended up buried under the
+                         widgets it created. -->
+                    <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Width="56" Height="56" CornerRadius="14"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                HorizontalAlignment="Center" Margin="0,0,0,16">
+                            <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="24" Height="24"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                        <TextBlock Text="Use “+ Add widget” above to fill this dashboard. Widgets come from plugins — install more from the store."
+                                   TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </StackPanel>
+                    </Panel>
                 </DockPanel>
 
-                <!-- The grid, its drag ghost and the empty state share one cell. A Panel rather than more
-                     DockPanel children: only a DockPanel's last child fills, so the grid would be docked to the
-                     left the moment anything followed it. -->
-                <Panel>
+                <!-- The projects overview (AC-162): what there is to work on, and everything you do with it — start,
+                     open the folder, edit, add a new one. A workspace surface like the session grid and the dashboard
+                     rather than a window of its own, so it lives inside the shell the operator already has open and
+                     needs no second window lifetime. Written for someone who does not want to know what a profile or
+                     an MCP server is: a card says what the project is, when it was last worked on, and has one
+                     obvious button. -->
+                <ScrollViewer IsVisible="{Binding Workspaces.IsProjectsActive}">
+                    <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center">
+                        <TextBlock Text="What do you want to work on?" FontSize="21" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"/>
+                        <!-- Not "everything it needs is already set up" any more (AC-772): that sentence contradicted the
+                             card right underneath it saying a project still needed a profile. -->
+                        <TextBlock Text="Pick a project to begin."
+                                   FontSize="13" Margin="0,6,0,18" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
-                <!-- The cells, under everything and never in the way of a pointer. Same margin as the grid it
-                     traces, so the lines land on the boundaries the widgets actually snap to. -->
-                <controls:DashboardGridLines Margin="12" IsHitTestVisible="False"
-                                             IsVisible="{Binding Workspaces.DashboardShowGridLines}"
-                                             Columns="{Binding Workspaces.DashboardColumns}"
-                                             Rows="{Binding Workspaces.DashboardRows}"
-                                             LineBrush="{DynamicResource CockpitHairlineBrush}"/>
+                        <!-- The statistics row (projects / worked on / sessions open) stood here. Removed (AC-772): it is
+                             a dashboard gesture in front of the thing you came for, and it answers no question this
+                             screen raises. -->
 
-                <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
-                     configured height as widgets are added (rows are a starting height, not a cap). The panel
-                     builds its definitions from them itself — the view cannot, because it has to find the panel
-                     to do it and the panel does not exist until a layout pass creates it. -->
-                <!-- The drop lives on the grid, not the panes: an arrangement rebuilds nothing, but the pointer
-                     has to be tracked across cells the dragged pane does not occupy. -->
-                <ItemsControl x:Name="DashboardGrid" Margin="12"
-                              ItemsSource="{Binding Workspaces.WidgetPanes}"
-                              IsVisible="{Binding !Workspaces.ShowDashboardEmptyState}"
-                              PointerMoved="OnDashboardPointerMoved"
-                              PointerReleased="OnDashboardPointerReleased">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <controls:DashboardCellsPanel Columns="{Binding Workspaces.DashboardColumns}"
-                                                          Rows="{Binding Workspaces.DashboardRows}"/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemContainerTheme>
-                        <ControlTheme TargetType="ContentPresenter" x:DataType="vm:WidgetPaneViewModel">
-                            <Setter Property="Grid.Column" Value="{Binding Column}"/>
-                            <Setter Property="Grid.Row" Value="{Binding Row}"/>
-                            <Setter Property="Grid.ColumnSpan" Value="{Binding ColumnSpan}"/>
-                            <Setter Property="Grid.RowSpan" Value="{Binding RowSpan}"/>
-                        </ControlTheme>
-                    </ItemsControl.ItemContainerTheme>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="vm:WidgetPaneViewModel">
-                            <Border Margin="4" CornerRadius="8" Background="{DynamicResource CockpitPanelBgBrush}"
+                        <!-- The layout choice (AC-772). Three arrangements of the same page, remembered per operator —
+                             and set here rather than in an Options page, since this is the only screen it changes and
+                             you can see what it does while you pick it. Hidden with no projects: a choice of how to
+                             arrange nothing is not a choice. -->
+                        <StackPanel HorizontalAlignment="Center" Margin="0,0,0,6"
+                                    IsVisible="{Binding Projects.HasProjects}">
+                            <!-- One framed track holding all segments (AC-789), not a row of separate pills: the border
+                                 and the inset surface belong to this Border, `Button.Segment` draws neither. Plain Buttons
+                                 with an `on` class bound to the layout, same form as ViewModeSwitch (AC-1297): nothing owns
+                                 the selection, a click is only a command. -->
+                            <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2"
+                                    HorizontalAlignment="Center"
+                                    Background="{DynamicResource CockpitInsetBgBrush}"
                                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
-                                <DockPanel>
-                                    <!-- Pane chrome. The gear is bound to HasConfig: a widget that declared no
-                                         settings form shows no gear at all, rather than one that opens nothing. -->
-                                    <!-- The header is the drag handle: dragging the widget's own body would fight
-                                         whatever the plugin's control does with a pointer, and a header is where
-                                         a pane is grabbed everywhere else in the cockpit. -->
-                                    <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6" Background="Transparent"
-                                               Cursor="Hand" PointerPressed="OnWidgetHeaderPressed">
-                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
-                                            <Button Classes="Subtle" Padding="5,0" Click="OnWidgetRefreshPressed"
-                                                    ToolTip.Tip="Refresh">
-                                                <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
-                                            </Button>
-                                            <Button Classes="Subtle" Padding="5,0" Click="OnWidgetConfigPressed"
-                                                    IsVisible="{Binding HasConfig}" ToolTip.Tip="Widget settings">
-                                                <materialIcons:MaterialIcon Kind="Cog" Width="12" Height="12"/>
-                                            </Button>
-                                            <Button Classes="Subtle" Padding="5,0" Click="OnWidgetRemovePressed"
-                                                    ToolTip.Tip="Remove widget">
-                                                <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
-                                            </Button>
+                                <StackPanel Orientation="Horizontal" Spacing="1">
+                                    <Button Classes="Segment" Classes.on="{Binding Projects.IsCardsLayout}"
+                                            Command="{Binding Projects.SetLayoutModeCommand}"
+                                            CommandParameter="Cards"
+                                            ToolTip.Tip="One card per project">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="14" Height="14"/>
+                                            <TextBlock Text="Cards"/>
                                         </StackPanel>
-                                        <Panel Margin="0,0,6,0" VerticalAlignment="Center">
-                                            <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="14" Height="14"
-                                                                        IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
-                                            <TextBlock Text="{Binding Icon}"
-                                                       IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNull}}"/>
-                                        </Panel>
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </DockPanel>
-                                    <!-- The plugin's own control, built once per instance and hosted as-is. The
-                                         resize grip sits over its bottom-right corner: a widget is sized by
-                                         dragging the corner, and the grip has to be reachable whatever the
-                                         plugin drew underneath it. -->
-                                    <Panel>
-                                        <ContentControl Margin="8,0,8,8" Content="{Binding View}"/>
-                                        <Border Width="14" Height="14" Margin="0,0,2,2" Background="Transparent"
-                                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                Cursor="BottomRightCorner" PointerPressed="OnWidgetResizePressed"
-                                                ToolTip.Tip="Drag to resize">
-                                            <Path Data="M 10,0 L 10,10 L 0,10" Stroke="{DynamicResource CockpitTextFaintBrush}"
-                                                  StrokeThickness="1.5" Margin="2"/>
-                                        </Border>
-                                    </Panel>
-                                </DockPanel>
+                                    </Button>
+                                    <Button Classes="Segment" Classes.on="{Binding Projects.IsListLayout}"
+                                            Command="{Binding Projects.SetLayoutModeCommand}"
+                                            CommandParameter="List"
+                                            ToolTip.Tip="Wide rows — twice as many projects on a screen">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <materialIcons:MaterialIcon Kind="ViewListOutline" Width="14" Height="14"/>
+                                            <TextBlock Text="List"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <!-- Not offered until LastOpenedAt is verified reliable enough to order by
+                                         (ProjectsDisplaySettings.ContinueLayoutAvailable) — a segment that lands on an
+                                         empty date is worse than no segment. -->
+                                    <Button Classes="Segment" Classes.on="{Binding Projects.IsContinueLayout}"
+                                            IsVisible="{Binding Projects.ShowContinueLayoutOption}"
+                                            Command="{Binding Projects.SetLayoutModeCommand}"
+                                            CommandParameter="Continue"
+                                            ToolTip.Tip="Carry on where you left off">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <materialIcons:MaterialIcon Kind="Restore" Width="14" Height="14"/>
+                                            <TextBlock Text="Continue"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
                             </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                            <TextBlock Text="Remembered for next time — change it whenever you like"
+                                       FontSize="11" Margin="0,6,0,12" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
 
-                <!-- Where the dragged or resized widget will land. Shown during the gesture and applied on
-                     release: without it you are dragging blind, and applying on every pointer move rewrote
-                     cockpit.json on every pixel. Its rectangle is set in code — it is measured in the grid's
-                     cells, which nothing here can bind to. -->
-                <Border x:Name="WidgetDropGhost" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
-                        Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
-                        CornerRadius="8" BorderThickness="2"
-                        BorderBrush="{DynamicResource CockpitAccentBrush}"
-                        Background="{DynamicResource CockpitPanelBgBrush}" Opacity="0.55"/>
+                        <!-- Grouped by category (AC-618/AC-655): the same `ProjectCategoryGroups` the Manage-projects
+                             dialog already builds, so this picker and that dialog agree on headings and order instead
+                             of each sorting the same projects its own way.
 
-                <!-- The dashboard's empty state carries no button of its own: the toolbar's "Add widget" is
-                     always there, and two buttons doing one thing is how the old one ended up buried under the
-                     widgets it created. -->
-                <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
+                             The card itself is `ProjectCardView` (AC-772) — one control, shared with the List layout
+                             below and with the Manage-projects window, so a wording or layout change is made once. -->
+                        <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}"
+                                      IsVisible="{Binding Projects.IsCardsLayout}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                                    <StackPanel Spacing="4" Margin="0,10,0,0">
+                                        <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding HasHeader}"/>
+
+                                        <ItemsControl ItemsSource="{Binding Cards}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel HorizontalAlignment="Center"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                                    <!-- AC-1304: this surface's answer for a job, unchanged — the
+                                                         New-session dialog seeded with the job's prompt (AC-491). -->
+                                                    <controls:ProjectCardView JobCommand="{Binding Actions.StartJob}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- The List layout (AC-772): the same projects, the same categories and the same actions, in
+                             wide rows instead of cards. Two panels rather than one panel that reshapes itself — the two
+                             arrangements share their content through `ProjectCardViewModel` and their wording through
+                             the row/card controls, which is where sharing actually pays. -->
+                        <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}"
+                                      IsVisible="{Binding Projects.IsListLayout}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
+                                    <StackPanel Spacing="4" Margin="0,10,0,0">
+                                        <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding HasHeader}"/>
+                                        <ItemsControl ItemsSource="{Binding Cards}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                                    <controls:ProjectRowView/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- The Continue layout (AC-772): what was worked on last, first — the page answering "what was
+                             I doing" rather than "what is there". Not offered yet; see the segment's own remark. -->
+                        <ItemsControl ItemsSource="{Binding Projects.RecentCards}"
+                                      IsVisible="{Binding Projects.IsContinueLayout}" Margin="0,10,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProjectCardViewModel">
+                                    <controls:ProjectRowView/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- AC-248: the projects a colleague shares that this machine has not added yet, which used to
+                             show up only in the separate Manage-projects window. Declared once, outside the three layout
+                             panels above, so every layout shows it and none of them can drift (AC-772 criterion 20) —
+                             and drawn by the same `SharedProjectCardView` that window uses, so the wording matches
+                             there too. "From your team", not "Shared via": the old heading left it open whether it was
+                             shared *by* the operator or *with* them. -->
+                        <ItemsControl ItemsSource="{Binding Projects.SharedProjectGroups}" IsVisible="{Binding Projects.HasSharedProjects}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
+                                    <StackPanel Spacing="4" Margin="0,10,0,0">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                            <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                            <Button Content="↻ Refresh" Classes="Subtle"
+                                                    Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.RefreshSharedProjectsCommand}"/>
+                                            <ProgressBar Width="32" Height="4" IsIndeterminate="True"
+                                                         IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.IsRefreshingSharedProjects}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                                                   HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource CockpitStatusErrorBrush}"
+                                                   IsVisible="{Binding HasError}"/>
+
+                                        <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel HorizontalAlignment="Center"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="sharedProjects:SharedProjectOffer">
+                                                    <!-- Three-deep nested ItemsControls, so $parent[UserControl] (not [ItemsControl])
+                                                         reaches CockpitView itself. FinishSettingUpCommand lives on Projects, unlike
+                                                         the local-project cards' commands, which travel on the card. -->
+                                                    <controls:SharedProjectCardView
+                                                        AddCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.FinishSettingUpCommand}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- AC-488: where "No projects yet" stood. Saying a cockpit has no projects is the one thing
+                             this screen already showed by being empty; the gallery offers something to press instead. -->
+                        <Panel IsVisible="{Binding !Projects.HasProjects}">
+                            <controls:StartingPointsView DataContext="{Binding Projects}"/>
+                        </Panel>
+
+                        <!-- AC-248: only shown when no source is registered at all — a signed-out connection already
+                             speaks for itself via its own group's Error text. Host-generic wording (AC-244). -->
+                        <TextBlock IsVisible="{Binding Projects.HasNoSharedProjectSources}" FontSize="11"
+                                   HorizontalAlignment="Center" Margin="0,14,0,0" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}">
+                            Projects can also come from a plugin, shared with your team.
+                            <LineBreak/>
+                            <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
+                        </TextBlock>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"
+                                    HorizontalAlignment="Center">
+                            <!-- AC-488: quiet while the gallery is up. It is criterion 4's escape either way, but an
+                                 Accent button under the starting points would be the loudest thing on the one screen
+                                 whose whole point is that the tiles come first. -->
+                            <Button Classes.Accent="{Binding Projects.HasProjects}" Content="+ New project" Padding="14,7"
+                                    Command="{Binding Projects.AddProjectCommand}"/>
+                            <Button Content="Manage projects" Classes="Subtle"
+                                    Command="{Binding ManageProjectsCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
+                     a Sessions workspace being active, so a dashboard never shows it. -->
+                <StackPanel MaxWidth="320" IsVisible="{Binding ShowSessionEmptyState}"
                             HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Border Width="56" Height="56" CornerRadius="14"
-                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
-                            HorizontalAlignment="Center" Margin="0,0,0,16">
-                        <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="24" Height="24"
-                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
+                    <!-- The mark, where a tile with the letters "AI" in it used to stand in for one (AC-430). Only
+                         the height is set: the mark is wider than it is tall and squaring it off would deform it. -->
+                    <Image Source="/Assets/BrandMark.png" Height="56" Stretch="Uniform"
+                           RenderOptions.BitmapInterpolationMode="HighQuality"
+                           HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                    <TextBlock Text="No sessions yet" FontSize="16" FontWeight="SemiBold"
                                HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                    <TextBlock Text="Use “+ Add widget” above to fill this dashboard. Widgets come from plugins — install more from the store."
+                    <TextBlock Text="Start a session to begin. You pick the profile — and with it the provider — and its defaults up front."
                                TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
+                    <Button Content="+ New session" Command="{Binding NewSessionCommand}"
+                            Classes="Accent" HorizontalAlignment="Center"/>
                 </StackPanel>
-                </Panel>
-            </DockPanel>
 
-            <!-- The projects overview (AC-162): what there is to work on, and everything you do with it — start,
-                 open the folder, edit, add a new one. A workspace surface like the session grid and the dashboard
-                 rather than a window of its own, so it lives inside the shell the operator already has open and
-                 needs no second window lifetime. Written for someone who does not want to know what a profile or
-                 an MCP server is: a card says what the project is, when it was last worked on, and has one
-                 obvious button. -->
-            <ScrollViewer Grid.Row="1" IsVisible="{Binding Workspaces.IsProjectsActive}">
-                <StackPanel MaxWidth="920" Margin="24,28" HorizontalAlignment="Center">
-                    <TextBlock Text="What do you want to work on?" FontSize="21" FontWeight="SemiBold"
-                               HorizontalAlignment="Center"/>
-                    <!-- Not "everything it needs is already set up" any more (AC-772): that sentence contradicted the
-                         card right underneath it saying a project still needed a profile. -->
-                    <TextBlock Text="Pick a project to begin."
-                               FontSize="13" Margin="0,6,0,18" HorizontalAlignment="Center"
-                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-
-                    <!-- The statistics row (projects / worked on / sessions open) stood here. Removed (AC-772): it is
-                         a dashboard gesture in front of the thing you came for, and it answers no question this
-                         screen raises. -->
-
-                    <!-- The layout choice (AC-772). Three arrangements of the same page, remembered per operator —
-                         and set here rather than in an Options page, since this is the only screen it changes and
-                         you can see what it does while you pick it. Hidden with no projects: a choice of how to
-                         arrange nothing is not a choice. -->
-                    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,6"
-                                IsVisible="{Binding Projects.HasProjects}">
-                        <!-- One framed track holding all segments (AC-789), not a row of separate pills: the border
-                             and the inset surface belong to this Border, `Button.Segment` draws neither. Plain Buttons
-                             with an `on` class bound to the layout, same form as ViewModeSwitch (AC-1297): nothing owns
-                             the selection, a click is only a command. -->
-                        <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2"
-                                HorizontalAlignment="Center"
-                                Background="{DynamicResource CockpitInsetBgBrush}"
-                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
-                            <StackPanel Orientation="Horizontal" Spacing="1">
-                                <Button Classes="Segment" Classes.on="{Binding Projects.IsCardsLayout}"
-                                        Command="{Binding Projects.SetLayoutModeCommand}"
-                                        CommandParameter="Cards"
-                                        ToolTip.Tip="One card per project">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <materialIcons:MaterialIcon Kind="ViewGridOutline" Width="14" Height="14"/>
-                                        <TextBlock Text="Cards"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button Classes="Segment" Classes.on="{Binding Projects.IsListLayout}"
-                                        Command="{Binding Projects.SetLayoutModeCommand}"
-                                        CommandParameter="List"
-                                        ToolTip.Tip="Wide rows — twice as many projects on a screen">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <materialIcons:MaterialIcon Kind="ViewListOutline" Width="14" Height="14"/>
-                                        <TextBlock Text="List"/>
-                                    </StackPanel>
-                                </Button>
-                                <!-- Not offered until LastOpenedAt is verified reliable enough to order by
-                                     (ProjectsDisplaySettings.ContinueLayoutAvailable) — a segment that lands on an
-                                     empty date is worse than no segment. -->
-                                <Button Classes="Segment" Classes.on="{Binding Projects.IsContinueLayout}"
-                                        IsVisible="{Binding Projects.ShowContinueLayoutOption}"
-                                        Command="{Binding Projects.SetLayoutModeCommand}"
-                                        CommandParameter="Continue"
-                                        ToolTip.Tip="Carry on where you left off">
-                                    <StackPanel Orientation="Horizontal" Spacing="5">
-                                        <materialIcons:MaterialIcon Kind="Restore" Width="14" Height="14"/>
-                                        <TextBlock Text="Continue"/>
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
-                        </Border>
-                        <TextBlock Text="Remembered for next time — change it whenever you like"
-                                   FontSize="11" Margin="0,6,0,12" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    </StackPanel>
-
-                    <!-- Grouped by category (AC-618/AC-655): the same `ProjectCategoryGroups` the Manage-projects
-                         dialog already builds, so this picker and that dialog agree on headings and order instead
-                         of each sorting the same projects its own way.
-
-                         The card itself is `ProjectCardView` (AC-772) — one control, shared with the List layout
-                         below and with the Manage-projects window, so a wording or layout change is made once. -->
-                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}"
-                                  IsVisible="{Binding Projects.IsCardsLayout}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
-                                <StackPanel Spacing="4" Margin="0,10,0,0">
-                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
-                                               HorizontalAlignment="Center"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding HasHeader}"/>
-
-                                    <ItemsControl ItemsSource="{Binding Cards}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel HorizontalAlignment="Center"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                                <!-- AC-1304: this surface's answer for a job, unchanged — the
-                                                     New-session dialog seeded with the job's prompt (AC-491). -->
-                                                <controls:ProjectCardView JobCommand="{Binding Actions.StartJob}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <!-- The List layout (AC-772): the same projects, the same categories and the same actions, in
-                         wide rows instead of cards. Two panels rather than one panel that reshapes itself — the two
-                         arrangements share their content through `ProjectCardViewModel` and their wording through
-                         the row/card controls, which is where sharing actually pays. -->
-                    <ItemsControl ItemsSource="{Binding Projects.ProjectCategoryGroups}"
-                                  IsVisible="{Binding Projects.IsListLayout}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProjectCategoryGroupViewModel">
-                                <StackPanel Spacing="4" Margin="0,10,0,0">
-                                    <TextBlock Text="{Binding CategoryName}" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding HasHeader}"/>
-                                    <ItemsControl ItemsSource="{Binding Cards}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                                <controls:ProjectRowView/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <!-- The Continue layout (AC-772): what was worked on last, first — the page answering "what was
-                         I doing" rather than "what is there". Not offered yet; see the segment's own remark. -->
-                    <ItemsControl ItemsSource="{Binding Projects.RecentCards}"
-                                  IsVisible="{Binding Projects.IsContinueLayout}" Margin="0,10,0,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProjectCardViewModel">
-                                <controls:ProjectRowView/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <!-- AC-248: the projects a colleague shares that this machine has not added yet, which used to
-                         show up only in the separate Manage-projects window. Declared once, outside the three layout
-                         panels above, so every layout shows it and none of them can drift (AC-772 criterion 20) —
-                         and drawn by the same `SharedProjectCardView` that window uses, so the wording matches
-                         there too. "From your team", not "Shared via": the old heading left it open whether it was
-                         shared *by* the operator or *with* them. -->
-                    <ItemsControl ItemsSource="{Binding Projects.SharedProjectGroups}" IsVisible="{Binding Projects.HasSharedProjects}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SharedProjectGroupViewModel">
-                                <StackPanel Spacing="4" Margin="0,10,0,0">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
-                                        <TextBlock Text="{Binding SourceName, StringFormat='From your team · {0}'}" FontSize="13" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                        <Button Content="↻ Refresh" Classes="Subtle"
-                                                Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.RefreshSharedProjectsCommand}"/>
-                                        <ProgressBar Width="32" Height="4" IsIndeterminate="True"
-                                                     IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.IsRefreshingSharedProjects}"/>
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
-                                               HorizontalAlignment="Center"
-                                               Foreground="{DynamicResource CockpitStatusErrorBrush}"
-                                               IsVisible="{Binding HasError}"/>
-
-                                    <ItemsControl ItemsSource="{Binding Projects}" IsVisible="{Binding HasProjects}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel HorizontalAlignment="Center"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="sharedProjects:SharedProjectOffer">
-                                                <!-- Three-deep nested ItemsControls, so $parent[UserControl] (not [ItemsControl])
-                                                     reaches CockpitView itself. FinishSettingUpCommand lives on Projects, unlike
-                                                     the local-project cards' commands, which travel on the card. -->
-                                                <controls:SharedProjectCardView
-                                                    AddCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.FinishSettingUpCommand}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <!-- AC-488: where "No projects yet" stood. Saying a cockpit has no projects is the one thing
-                         this screen already showed by being empty; the gallery offers something to press instead. -->
-                    <Panel IsVisible="{Binding !Projects.HasProjects}">
-                        <controls:StartingPointsView DataContext="{Binding Projects}"/>
-                    </Panel>
-
-                    <!-- AC-248: only shown when no source is registered at all — a signed-out connection already
-                         speaks for itself via its own group's Error text. Host-generic wording (AC-244). -->
-                    <TextBlock IsVisible="{Binding Projects.HasNoSharedProjectSources}" FontSize="11"
-                               HorizontalAlignment="Center" Margin="0,14,0,0" TextWrapping="Wrap" TextAlignment="Center"
-                               Foreground="{DynamicResource CockpitTextFaintBrush}">
-                        Projects can also come from a plugin, shared with your team.
-                        <LineBreak/>
-                        <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
-                    </TextBlock>
-
-                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"
-                                HorizontalAlignment="Center">
-                        <!-- AC-488: quiet while the gallery is up. It is criterion 4's escape either way, but an
-                             Accent button under the starting points would be the loudest thing on the one screen
-                             whose whole point is that the tiles come first. -->
-                        <Button Classes.Accent="{Binding Projects.HasProjects}" Content="+ New project" Padding="14,7"
-                                Command="{Binding Projects.AddProjectCommand}"/>
-                        <Button Content="Manage projects" Classes="Subtle"
-                                Command="{Binding ManageProjectsCommand}"/>
-                    </StackPanel>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
-                 a Sessions workspace being active, so a dashboard never shows it. -->
-            <StackPanel Grid.Row="1" MaxWidth="320" IsVisible="{Binding ShowSessionEmptyState}"
+                <!-- Plugin workspace: the plugin owns the whole body (AC-122). Shown instead of the session/widget
+                     grids when a plugin-registered type is active. An unknown type — its plugin is not installed —
+                     shows a placeholder rather than an empty surface, and the body appears the moment the plugin
+                     registers. -->
+                <ContentControl Content="{Binding Workspaces.ActivePluginBody}"
+                                IsVisible="{Binding Workspaces.ActivePluginBody, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                <Border IsVisible="{Binding Workspaces.ShowUnknownPluginWorkspace}"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
-                <!-- The mark, where a tile with the letters "AI" in it used to stand in for one (AC-430). Only
-                     the height is set: the mark is wider than it is tall and squaring it off would deform it. -->
-                <Image Source="/Assets/BrandMark.png" Height="56" Stretch="Uniform"
-                       RenderOptions.BitmapInterpolationMode="HighQuality"
-                       HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                <TextBlock Text="No sessions yet" FontSize="16" FontWeight="SemiBold"
-                           HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                <TextBlock Text="Start a session to begin. You pick the profile — and with it the provider — and its defaults up front."
-                           TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                           Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
-                <Button Content="+ New session" Command="{Binding NewSessionCommand}"
-                        Classes="Accent" HorizontalAlignment="Center"/>
-            </StackPanel>
-
-            <!-- Plugin workspace: the plugin owns the whole body (AC-122). Shown instead of the session/widget
-                 grids when a plugin-registered type is active. An unknown type — its plugin is not installed —
-                 shows a placeholder rather than an empty surface, and the body appears the moment the plugin
-                 registers. -->
-            <ContentControl Grid.Row="1"
-                            Content="{Binding Workspaces.ActivePluginBody}"
-                            IsVisible="{Binding Workspaces.ActivePluginBody, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
-            <Border Grid.Row="1" IsVisible="{Binding Workspaces.ShowUnknownPluginWorkspace}"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                <StackPanel Spacing="8" MaxWidth="360">
-                    <materialIcons:MaterialIcon Kind="PuzzleOutline" Width="28" Height="28"
-                                                HorizontalAlignment="Center" Opacity="0.6"/>
-                    <TextBlock Text="This workspace's plugin is not installed."
-                               HorizontalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold"/>
-                    <TextBlock Text="Install or enable the plugin that provides it, and this workspace comes back."
-                               HorizontalAlignment="Center" TextAlignment="Center" FontSize="12"
-                               Opacity="0.7" TextWrapping="Wrap"/>
-                </StackPanel>
-            </Border>
+                    <StackPanel Spacing="8" MaxWidth="360">
+                        <materialIcons:MaterialIcon Kind="PuzzleOutline" Width="28" Height="28"
+                                                    HorizontalAlignment="Center" Opacity="0.6"/>
+                        <TextBlock Text="This workspace's plugin is not installed."
+                                   HorizontalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold"/>
+                        <TextBlock Text="Install or enable the plugin that provides it, and this workspace comes back."
+                                   HorizontalAlignment="Center" TextAlignment="Center" FontSize="12"
+                                   Opacity="0.7" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </Panel>
 
             <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
             <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
@@ -2270,7 +2282,10 @@
                               IsVisible="{Binding !SimpleView}" ItemsSource="{Binding DockPanels}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="docking:DockPanelRegistration">
+                            <!-- AC-1762: square corners — a tab meets the window edge and its neighbours, so a
+                                 rounded one read as a loose button floating in the strip. -->
                             <Button Classes="Subtle" Width="40" Padding="0" HorizontalContentAlignment="Stretch"
+                                    CornerRadius="0"
                                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1"
                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ToggleDockPanelCommand}"
                                     CommandParameter="{Binding Id}"

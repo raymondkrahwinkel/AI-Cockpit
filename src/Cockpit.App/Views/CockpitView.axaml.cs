@@ -11,7 +11,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
-using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Help;
@@ -519,59 +518,40 @@ public partial class CockpitView : UserControl
 
     private void _RebuildPluginSections()
     {
-        if (PluginSectionsHost is null || DataContext is not CockpitViewModel cockpit)
+        if (PluginSectionsHost is null || SimplePluginSectionsHost is null || DataContext is not CockpitViewModel cockpit)
         {
             return;
         }
-
-        var pinned = cockpit.PinnedMenuEntries;
-        var collapsed = cockpit.CollapsedMenuEntries;
 
         PluginSectionsHost.Children.Clear();
-        if (pinned.Count == 0 && collapsed.Count == 0)
+        SimplePluginSectionsHost.Children.Clear();
+        var groups = cockpit.PluginMenuGroups;
+        PluginSectionsHost.IsVisible = groups.Count > 0;
+        SimplePluginSectionsHost.IsVisible = groups.Count > 0;
+
+        // AC-1763: one foldable card per plugin (its buttons and sections together), and one "Plugins" card for the
+        // plugins that contributed a single button. The gear is the card's, so it stands once. AC-1790: the Simple rail
+        // carries a twin of every card, and folding one folds its twin, since both read the same remembered key.
+        foreach (var group in groups)
         {
-            PluginSectionsHost.IsVisible = false;
-            return;
+            Action? onSettings = group.PluginId is { } pluginId && cockpit.HasPluginSettings(pluginId)
+                ? () => _ = cockpit.OpenPluginSettingsAsync(pluginId)
+                : null;
+            SidebarSection? panels = null;
+            SidebarSection? simple = null;
+            void SetExpanded(bool expanded)
+            {
+                cockpit.SetSidebarSectionExpanded(group.Key, expanded);
+                panels?.IsExpanded = expanded;
+                simple?.IsExpanded = expanded;
+            }
+
+            var isExpanded = cockpit.IsSidebarSectionExpanded(group.Key);
+            panels = PluginMenuCard.Build(group, onSettings, isExpanded, SetExpanded);
+            simple = PluginMenuCard.Build(group, onSettings, isExpanded, SetExpanded);
+            PluginSectionsHost.Children.Add(panels);
+            SimplePluginSectionsHost.Children.Add(simple);
         }
-
-        PluginSectionsHost.IsVisible = true;
-
-        // Pinned entries are drawn from the one ordered list, so a section the operator moved to the top is at the
-        // top — rather than below every plugin that happens to contribute a button.
-        foreach (var entry in pinned)
-        {
-            PluginSectionsHost.Children.Add(_BuildMenuControl(cockpit, entry));
-        }
-
-        // AC-937: everything not pinned collapses behind one "Plugins ›" launcher, drawn only when there is
-        // something to collapse — an empty flyout would be a door to nothing.
-        if (collapsed.Count > 0)
-        {
-            var collapsedControls = collapsed.Select(entry => _BuildMenuControl(cockpit, entry)).ToList();
-            var collapsedBadges = collapsed
-                .Select(entry => entry.Button?.Badge)
-                .Where(badge => badge is not null)
-                .Select(badge => badge!)
-                .ToList();
-            PluginSectionsHost.Children.Add(new PluginsMenuButton(collapsedControls, collapsedBadges));
-        }
-    }
-
-    // Shared by the pinned entries drawn directly and the collapsed ones drawn inside the "Plugins ›" flyout (AC-937)
-    // — the same PluginLauncherButton/PluginSectionControl instance either way.
-    private Control _BuildMenuControl(CockpitViewModel cockpit, PluginMenuEntry entry)
-    {
-        var pluginId = entry.PluginId;
-        Action? onSettings = cockpit.HasPluginSettings(pluginId)
-            ? () => _ = cockpit.OpenPluginSettingsAsync(pluginId)
-            : null;
-
-        return entry switch
-        {
-            { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings, launcher.Badge, launcher.IconKind),
-            { Section: { } section } => new PluginSectionControl(section.Title, section.CreateView(), onSettings),
-            _ => throw new InvalidOperationException($"'{pluginId}' contributed a menu entry that is neither a button nor a section."),
-        };
     }
 
     private void OnRootKeyDown(object? sender, KeyEventArgs e)

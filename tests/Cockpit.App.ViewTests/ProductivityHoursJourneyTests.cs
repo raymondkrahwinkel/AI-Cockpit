@@ -91,7 +91,7 @@ public sealed class ProductivityHoursJourneyTests
         var workspaces = new Dictionary<string, WorkspaceTypeRegistration>(StringComparer.Ordinal);
         ui.AddSideMenuButtonWithBadge("Uren", Arg.Do<Action>(value => open = value), MaterialIconKind.ClockOutline).Returns(badge);
         menuItems.Add("Uren");
-        ui.When(host => host.AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>()))
+        ui.When(host => host.AddSideMenuButton(Arg.Any<string>(), Arg.Any<Action>(), Arg.Any<MaterialIconKind>()))
             .Do(call =>
             {
                 menuItems.Add(call.ArgAt<string>(0));
@@ -174,9 +174,10 @@ public sealed class ProductivityHoursJourneyTests
             new CockpitTimeEntry(Guid.NewGuid(), "Geboekte regel", previousDay.AddHours(10), TimeSpan.FromMinutes(40), "cockpit", CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Booked));
         _Click(screen, "PreviousDay");
         await _Until(() => _Texts(screen).Contains("Aangeboden regel") && _Texts(screen).Contains("Geboekte regel"), "the previous day");
-        await _Until(() => _Texts(screen).Contains("syn-api"), "the measured time of a day with timeline data");
+        // AC-1766: measured time names its project ("Synvolution API"), not the bare id the timeline carries.
+        await _Until(() => _Texts(screen).Contains("Synvolution API"), "the measured time of a day with timeline data");
         Assert.Single(screen.GetVisualDescendants().OfType<Control>(), control => control.Name == "TimelineStrip");
-        Assert.Contains("syn-portal", _Texts(screen));
+        Assert.Contains("Synvolution portal", _Texts(screen));
 
         _Control<TextBox>(screen, "Description").Text = "Vorige dag";
         _Control<TextBox>(screen, "Duration").Text = "0,5u";
@@ -373,13 +374,15 @@ public sealed class ProductivityHoursJourneyTests
             () => _NamedText(overviewScreen, "YourTimeTile") == "31u00",
             "the week overview");
         Assert.Equal("36u", _Control<TextBlock>(overviewScreen, "ScheduleTile").Text);
-        Assert.Equal("geen prijs", _Control<TextBlock>(overviewScreen, "CostTile").Text);
+        // AC-1766: usage without a price makes the total a lower bound, and the detail says which profiles to price. The
+        // tile fills after the range applies, so it is awaited rather than read.
+        await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $184.20", "the week's cost, a lower bound");
         Assert.True(_Control<TextBlock>(overviewScreen, "YourTimeTileDetail").TextWrapping == Avalonia.Media.TextWrapping.Wrap);
         Assert.Contains("Overzicht", _Texts(overviewScreen));
         Assert.Contains("Jouw tijd per dag, met de agents ernaast", _Texts(overviewScreen));
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
         Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
-        Assert.Contains("geen prijs", _Texts(overviewScreen));
+        Assert.StartsWith("zonder tarief:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
         _Control<Button>(overviewScreen, "OpenHoursTab");
         _Control<Button>(overviewScreen, "OverviewTab");
         _Control<Button>(overviewScreen, "PreviousOverviewRange");
@@ -420,7 +423,8 @@ public sealed class ProductivityHoursJourneyTests
         await _Until(
             () => _NamedText(overviewScreen, "YourTimeTile") == "3u00",
             "the historical aggregate including agent time");
-        Assert.Equal("geen prijs", _Control<TextBlock>(overviewScreen, "CostTile").Text);
+        // AC-1766: the legacy day carries no price, so its cost is a lower bound of nothing priced.
+        await _Until(() => _NamedText(overviewScreen, "CostTile") == "≥ $0.00", "the historical day's cost, unpriced");
         Assert.Contains("legacy-model", _Texts(overviewScreen));
         Assert.Contains("3u00", _Texts(overviewScreen));
 

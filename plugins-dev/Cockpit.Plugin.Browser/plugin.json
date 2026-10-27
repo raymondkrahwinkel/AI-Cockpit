@@ -1,7 +1,7 @@
 {
   "id": "browser",
   "name": "Browser",
-  "version": "0.8.1",
+  "version": "0.8.3",
   "entryAssembly": "Cockpit.Plugin.Browser.dll",
   "entryType": "Cockpit.Plugin.Browser.BrowserPlugin",
   "uiAssembly": "Cockpit.Plugin.Browser.UI.dll",

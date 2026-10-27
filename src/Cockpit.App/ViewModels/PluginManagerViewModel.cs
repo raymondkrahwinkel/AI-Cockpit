@@ -440,28 +440,6 @@ public partial class PluginManagerViewModel : ViewModelBase
             : $"'{row.DisplayName}' shown in the left menu again.";
     }
 
-    // Pins or unpins the plugin's contributions top-level in the sidebar, out of the collapsed "Plugins ›" menu
-    // (AC-937) — a separate axis from #72's order/hide, so neither is touched here.
-    [RelayCommand(CanExecute = nameof(CanChangePlugins))]
-    private async Task TogglePluginPinnedAsync(PluginRowViewModel row)
-    {
-        if (_registrationStore is null)
-        {
-            return;
-        }
-
-        var pinned = !row.PinnedToSidebar;
-        var order = Math.Max(Plugins.IndexOf(row), 0);
-
-        await _registrationStore.SaveMenuPreferenceAsync(row.FolderId, order, row.HiddenInMenu, pinned);
-        _contributionSink?.ApplyPluginMenuPreference(row.FolderId, order, row.HiddenInMenu, pinned);
-        await LoadAsync();
-
-        StatusMessage = pinned
-            ? $"'{row.DisplayName}' pinned to the sidebar."
-            : $"'{row.DisplayName}' moved into 'Plugins ›'.";
-    }
-
     [RelayCommand(CanExecute = nameof(CanChangePlugins))]
     private async Task DisablePluginAsync(PluginRowViewModel row)
     {

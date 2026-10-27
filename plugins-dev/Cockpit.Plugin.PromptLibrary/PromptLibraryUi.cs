@@ -1,5 +1,6 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
@@ -14,7 +15,8 @@ public sealed class PromptLibraryUi : ICockpitPluginUi
         host.AddSideMenuButton(
             "Prompt Library",
             // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-            () => _ = host.ShowDialogAsync("Prompt Library", () => new PromptLibraryDialogControl(settings, host), "library", width: 900, height: 620));
+            () => _ = host.ShowDialogAsync("Prompt Library", () => new PromptLibraryDialogControl(settings, host), "library", width: 900, height: 620),
+            MaterialIconKind.BookOpenVariant);
 
         // Quick-insert palette (#: prompt quick-inject): a small search-and-inject dialog reached by the
         // keyboard shortcut and the command palette (no separate menu button — that duplicated "Prompt Library").

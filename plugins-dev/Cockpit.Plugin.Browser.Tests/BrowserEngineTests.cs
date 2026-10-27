@@ -1,3 +1,4 @@
+using Avalonia.Input;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
 
@@ -6,15 +7,30 @@ namespace Cockpit.Plugin.Browser.Tests;
 // AC-1711. Criterion 2 by hand as well: after a real start no port of the process tree listens (netstat, see the PR).
 public class BrowserEngineTests
 {
-    // L2b (boundary): a debugging port would open every tab of every profile in the process to the whole machine.
+    // L2b (boundary): a debugging port would open every tab of every profile in the process to the whole machine. And
+    // the view keeps only the keys that make no text (AC-1784): Avalonia drops the character of a handled key down,
+    // so a handled letter never reached the page; the real typing, YouTube included, is measured in the PR.
     [Fact]
-    public void TheEngineSettings_OpenNoDebuggingPort_AndIgnoreTheProcessCommandLine()
+    public void TheEngineSettings_OpenNoDebuggingPort_AndIgnoreTheProcessCommandLine_AndTheViewLetsTextKeysThrough()
     {
         var settings = BrowserEngine.CreateSettings("runtime", "subprocess", "cache");
 
         Assert.Equal(0, settings.RemoteDebuggingPort);
         Assert.True(settings.CommandLineArgsDisabled);
         Assert.DoesNotContain(BrowserEngine.Switches, entry => entry.Key.StartsWith("remote-debugging", StringComparison.Ordinal));
+
+        var view = CefBrowserView.ForScene(BrowserEngine.ForScene(BrowserEngineState.Ready));
+        bool Handled(Key key, string? symbol, KeyModifiers modifiers = KeyModifiers.None)
+        {
+            var e = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, KeySymbol = symbol, KeyModifiers = modifiers };
+            view.RaiseEvent(e);
+            return e.Handled;
+        }
+
+        Assert.Equal(
+            (false, false, false, true, true, true, true, true),
+            (Handled(Key.A, "a"), Handled(Key.E, "ë"), Handled(Key.Space, " "), Handled(Key.Tab, "\t"), Handled(Key.Enter, "\r"),
+                Handled(Key.Left, null), Handled(Key.V, "\u0016", KeyModifiers.Control), Handled(Key.R, "\u0012", KeyModifiers.Control)));
     }
 
     // L2d (platform/fallback): an engine that cannot load is a reason on the panel, never an exception in Cockpit. A

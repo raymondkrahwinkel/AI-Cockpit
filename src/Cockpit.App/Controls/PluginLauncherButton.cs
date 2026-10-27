@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
-using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.App.Theming;
 using Cockpit.Plugins.Abstractions;
@@ -9,9 +8,9 @@ using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
-// AC-1013: A plugin's left-menu launcher (#14) with an optional settings gear nested inside it — the
-// gear's `Button.Click` must be stopped from bubbling to the launcher's own click. `badge` (AC-516) reuses
-// the plugin store's count-pill look, subscribing on attach/unsubscribing on detach to avoid duplicate handlers.
+// AC-1013/AC-1763: A plugin's left-menu launcher (#14) as the mockups' `.nav` row — icon 16 + label, no border, hover
+// tint — inside its plugin's SidebarSection. `badge` (AC-516) reuses the plugin store's count-pill look, subscribing on
+// attach/unsubscribing on detach to avoid duplicate handlers.
 internal sealed class PluginLauncherButton : Button
 {
     // Avalonia's "Button" selector matches the type exactly, so without this a derived button is styled by nothing at
@@ -26,50 +25,29 @@ internal sealed class PluginLauncherButton : Button
     public PluginLauncherButton(
         string title,
         Action onInvoke,
-        Action? onSettings = null,
         SideMenuButtonBadge? badge = null,
         MaterialIconKind? iconKind = null)
     {
+        Classes.Add("Subtle");
         HorizontalAlignment = HorizontalAlignment.Stretch;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        Padding = new Thickness(10, 6);
+        CornerRadius = new CornerRadius(0);
+        this.Bind(ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
         Click += (_, _) => onInvoke();
 
         var content = new DockPanel();
 
-        if (onSettings is not null)
-        {
-            var gear = new Button
-            {
-                Content = CockpitIcons.Gear(),
-                Classes = { "Subtle" },
-                Padding = new Thickness(6, 2),
-                Margin = new Thickness(6, 0, -6, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            ToolTip.SetTip(gear, $"{title} settings");
-            gear.Click += (_, e) =>
-            {
-                e.Handled = true;
-                onSettings();
-            };
-            DockPanel.SetDock(gear, Dock.Right);
-            content.Children.Add(gear);
-        }
-
         if (badge is not null)
         {
             _badge = badge;
-            _badgeText = new TextBlock
-            {
-                FontSize = 10,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = ThemeBrush.Resolve("CockpitTextOnAccentBrush", "#ffffff"),
-            };
+            // AC-1790: the mockups' `.nav .cnt` — 10.5 px, padding 0/6, radius 8, a tint with a matching ring.
+            _badgeText = new TextBlock { FontSize = 10.5 };
             _badgePill = new Border
             {
-                Background = ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb"),
-                CornerRadius = _Radius("CockpitPillRadius", 20),
-                Padding = new Thickness(7, 1),
+                CornerRadius = new CornerRadius(8),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(6, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(6, 0, 0, 0),
                 Child = _badgeText,
@@ -79,18 +57,22 @@ internal sealed class PluginLauncherButton : Button
             content.Children.Add(_badgePill);
         }
 
+        // AC-1790: v3/v8 `.nav` — icon 16 at .9 opacity, gap 8, a 13 px label in the secondary colour. Set on the icon
+        // and the label themselves, because the Subtle button's own foreground is the primary text colour.
         var label = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
+            Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        if (iconKind is { } icon)
-        {
-            label.Children.Add(CockpitIcons.Icon(icon, 13));
-        }
-
-        label.Children.Add(new TextBlock { Text = title, VerticalAlignment = VerticalAlignment.Center });
+        // A row without an icon of its own gets the plugin puzzle piece, so the labels of a card line up.
+        var icon = CockpitIcons.Icon(iconKind ?? MaterialIconKind.PuzzleOutline, 16);
+        icon.Opacity = 0.9;
+        icon.Bind(ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
+        label.Children.Add(icon);
+        var text = new TextBlock { Text = title, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
+        text.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
+        label.Children.Add(text);
         content.Children.Add(label);
 
         Content = content;
@@ -134,20 +116,19 @@ internal sealed class PluginLauncherButton : Button
 
         var text = _badge.ToDisplayText();
         _badgeText.Text = text;
-        (_badgePill.Background, _badgeText.Foreground) = _badge.Tone switch
+        // The default tone is the mockups' plain `.cnt` (the waiting amber), Success is `.cnt.ok`.
+        (_badgePill.Background, _badgePill.BorderBrush, _badgeText.Foreground) = _badge.Tone switch
         {
             SideMenuButtonBadgeTone.Success =>
-                (ThemeBrush.Resolve("CockpitStatusDoneChipTintBrush", "#145AA576"), ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576")),
+                (ThemeBrush.Resolve("CockpitStatusDoneChipTintBrush", "#145AA576"), ThemeBrush.Resolve("CockpitStatusDoneRingTintBrush", "#1F5AA576"),
+                    ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5AA576")),
             SideMenuButtonBadgeTone.Neutral =>
-                (ThemeBrush.Resolve("CockpitInsetBgBrush", "#16181d"), ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#9aa3b2")),
+                (ThemeBrush.Resolve("CockpitInsetBgBrush", "#16181d"), ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39"),
+                    ThemeBrush.Resolve("CockpitTextSecondaryBrush", "#9aa3b2")),
             _ =>
-                (ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb"), ThemeBrush.Resolve("CockpitTextOnAccentBrush", "#ffffff")),
+                (ThemeBrush.Resolve("CockpitStatusWaitingChipTintBrush", "#14E0A33E"), ThemeBrush.Resolve("CockpitStatusWaitingRingTintBrush", "#1FE0A33E"),
+                    ThemeBrush.Resolve("CockpitStatusWaitingBrush", "#E0A33E")),
         };
         _badgePill.IsVisible = text.Length > 0;
     }
-
-    private static CornerRadius _Radius(string key, double fallback) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius
-            ? radius
-            : new CornerRadius(fallback);
 }

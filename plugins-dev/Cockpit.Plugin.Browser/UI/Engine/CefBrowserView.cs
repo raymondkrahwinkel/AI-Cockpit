@@ -442,13 +442,22 @@ internal sealed class CefBrowserView : Control
     {
         base.OnKeyDown(e);
         OperatorInput?.Invoke();
-        e.Handled = true;
         if (_BrowserKey(e))
         {
+            e.Handled = true;
             return;
         }
 
         _SendKey(e, CefKeyEventType.RawKeyDown);
+        // AC-1784: a key that makes text stays unhandled, because Avalonia drops the WM_CHAR of a handled key down,
+        // so no TextInput (and no character in the page) came at all (measured). Tab, Enter and the rest stay here.
+        e.Handled = e.KeySymbol is not { Length: > 0 } symbol || char.IsControl(symbol[0]);
+        if (e.Key == Key.Enter)
+        {
+            // Below 32 Avalonia raises no TextInput, and Enter's character is what submits a form or breaks a line.
+            var enter = new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = 0x0D, Modifiers = _Modifiers(e.KeyModifiers) };
+            _OnHost(host => host.SendKeyEvent(enter));
+        }
     }
 
     protected override void OnKeyUp(KeyEventArgs e)

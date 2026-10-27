@@ -4,6 +4,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.Workflows;
+using Material.Icons;
 
 namespace Cockpit.Plugin.Workflows.UI;
 
@@ -17,7 +18,7 @@ public sealed class WorkflowsUi : ICockpitPluginUi
         var settings = new WorkflowsSettings(host.Storage);
         host.AddSettings(() => new WorkflowsSettingsControl(host, settings));
 
-        host.AddSideMenuButton("Workflows", () => _OpenEditor(host));
+        host.AddSideMenuButton("Workflows", () => _OpenEditor(host), MaterialIconKind.SitemapOutline);
         host.AddShortcut(new PluginShortcut("workflows.open", "Workflow editor", "Ctrl+Shift+W", () => _OpenEditor(host)));
     }
 

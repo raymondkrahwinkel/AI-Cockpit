@@ -67,6 +67,11 @@ public sealed record LayoutSettings
 
     public AssistantThreadRail AssistantThreadRailDock { get; init; }
 
+    // AC-1762: the left sidebar's foldable sections that are folded shut, by key (`plugin:{id}` and `plugins` since
+    // AC-1790). A section not listed is open, so an empty list — and a file from before this field — is
+    // everything open.
+    public IReadOnlyList<string> CollapsedSidebarSections { get; init; } = [];
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;

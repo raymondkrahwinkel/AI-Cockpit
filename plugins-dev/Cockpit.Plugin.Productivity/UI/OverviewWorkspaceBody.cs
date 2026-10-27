@@ -189,19 +189,26 @@ internal sealed class OverviewWorkspaceBody : UserControl
             .Where(owner => owner is not null)
             .Distinct(StringComparer.Ordinal)
             .Count();
-        var cost = snapshot.Timeline.Usage.Sum(usage => usage.CostUsd) + snapshot.Timeline.Days.Sum(day => day.ReportedCostUsd);
+        var costs = _Costs(snapshot, snapshot.Timeline.Usage, snapshot.Timeline.Days);
+        var cost = costs.Sum(value => value ?? 0);
         var tokens = snapshot.Timeline.Usage.Sum(usage => (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens)
             + snapshot.Timeline.Days.Sum(day => (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens);
-        var hasUnpriced = snapshot.Timeline.Usage.Any(usage => _TokenCount(usage) > 0 && usage.CostUsd == 0)
-            || snapshot.Timeline.Days.Any(day => _TokenCount(day) > 0 && day.ReportedCostUsd == 0);
-        var costText = hasUnpriced ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture);
+        var unpriced = snapshot.Timeline.Usage.Where(usage => ProfileRates.Cost(usage, snapshot.RatesPerMillionTokens) is null)
+            .Select(usage => usage.ProfileLabel ?? "onbekend profiel")
+            .Concat(snapshot.Timeline.Days.Where(day => ProfileRates.Cost(day) is null).Select(_ => "eerdere dagen"))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var costText = cost.ToString("$0.00", CultureInfo.InvariantCulture);
+        var costDetail = unpriced.Count == 0
+            ? $"{_Tokens(tokens)} tokens · gemeld of uit je tarief"
+            : $"zonder tarief: {string.Join(", ", unpriced)} · stel het in onder Instellingen › Productivity";
         var schedule = _ScheduledMinutes(snapshot.ScheduleMinutes, from, to);
         var values = new[]
         {
             ("YourTimeTile", "Jouw tijd", Ui.Duration(includeAgent ? snapshot.WithAgentWithoutYou : snapshot.YourTime), $"gemeten {Ui.Duration(measured)} + eigen {Ui.Duration(snapshot.Attention.Own)} − {Ui.Duration(snapshot.Attention.Overlap)} overlap"),
             ("AgentTimeTile", "Agents (actief)", Ui.Duration(snapshot.Attention.AgentTime), $"{sessions} sessies · naast jouw tijd"),
             ("ScheduleTile", "Schema", schedule == 0 ? "—" : _WholeDuration(schedule), schedule == 0 ? "geen schema ingesteld" : _ScheduleDetail(snapshot.ScheduleMinutes)),
-            ("CostTile", "Kosten", costText, costText == "geen prijs" ? $"{_Tokens(tokens)} tokens · geen tarief" : $"{cost.ToString("$0.##", CultureInfo.InvariantCulture)} gemeld"),
+            ("CostTile", "Kosten", unpriced.Count == 0 ? costText : $"≥ {costText}", costDetail),
             ("OwnEntriesTile", "Eigen regels", snapshot.Entries.Count.ToString(CultureInfo.InvariantCulture), $"{snapshot.Entries.Count(entry => entry.Status == Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimeEntryStatus.Open)} open"),
         };
         for (var index = 0; index < values.Length; index++)
@@ -364,10 +371,10 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private static Control _Projects(ProductivityOverviewSnapshot snapshot, bool includeAgent)
     {
-        var projects = _ProjectRows(snapshot, includeAgent);
+        var projects = _ProjectRows(snapshot);
         var maximum = projects.Count == 0
             ? 1
-            : projects.Max(project => (project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero)).TotalMinutes);
+            : projects.Max(project => (project.Measured + project.Own + project.Agent).TotalMinutes);
         var body = new StackPanel
         {
             Spacing = 7,
@@ -390,27 +397,26 @@ internal sealed class OverviewWorkspaceBody : UserControl
                     new TextBlock { Text = project.Label, TextTrimming = TextTrimming.CharacterEllipsis },
                 },
             });
+            ToolTip.SetTip(row, project.Tooltip);
             var segments = new List<ChartSegment>
             {
                 new("gemeten", project.Measured.TotalMinutes, Lavender),
                 new("eigen regels", project.Own.TotalMinutes, Own, true),
             };
-            if (includeAgent)
-            {
-                segments.Add(new ChartSegment("agent zonder jou", project.Agent.TotalMinutes, Agent));
-            }
-
+            // The agents' time stands beside yours in the bar; it joins the total only with "+ agent zonder jou".
+            segments.Add(new ChartSegment("agent zonder jou", project.Agent.TotalMinutes, Agent));
+            var barTime = project.Measured + project.Own + project.Agent;
             var totalTime = project.Measured + project.Own + (includeAgent ? project.Agent : TimeSpan.Zero);
             var chart = new HorizontalBarChartControl
             {
                 Height = 30,
                 MinWidth = 25,
                 Segments = segments,
-                TooltipText = project.Label,
+                TooltipText = $"{project.Label} · jij {Ui.Duration(project.Measured + project.Own)} · agent zonder jou {Ui.Duration(project.Agent)}",
             };
             var scale = new Grid { Name = "ProjectBarScale" };
-            scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(1, totalTime.TotalMinutes), GridUnitType.Star)));
-            scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(0, maximum - totalTime.TotalMinutes), GridUnitType.Star)));
+            scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(1, barTime.TotalMinutes), GridUnitType.Star)));
+            scale.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(Math.Max(0, maximum - barTime.TotalMinutes), GridUnitType.Star)));
             scale.Children.Add(chart);
             Grid.SetColumn(scale, 1);
             row.Children.Add(scale);
@@ -428,28 +434,33 @@ internal sealed class OverviewWorkspaceBody : UserControl
         return Ui.Card(body, 14);
     }
 
-    private static IReadOnlyList<_ProjectRow> _ProjectRows(ProductivityOverviewSnapshot snapshot, bool includeAgent)
+    private static IReadOnlyList<_ProjectRow> _ProjectRows(ProductivityOverviewSnapshot snapshot)
     {
         const string none = "";
-        var names = snapshot.Projects.ToDictionary(project => project.Id, project => project.Name, StringComparer.Ordinal);
+        var names = _Names(snapshot);
+
+        // A folder from before AC-1737 counts with the project it resolves to, not as a second row of its own.
+        string Key(string? value) => names.Resolve(value).ProjectId ?? value ?? none;
         var measured = snapshot.Attention.MeasuredPerProject
             .Concat(snapshot.HistoricalMeasuredPerProject)
-            .GroupBy(project => project.ProjectId ?? none, StringComparer.Ordinal)
+            .GroupBy(project => Key(project.ProjectId), StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(project => project.Time.Ticks)), StringComparer.Ordinal);
         var own = snapshot.Entries
-            .GroupBy(entry => entry.ProjectId ?? none, StringComparer.Ordinal)
+            .GroupBy(entry => Key(entry.ProjectId), StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(entry => entry.Duration.Ticks)), StringComparer.Ordinal);
-        var agent = includeAgent
-            ? snapshot.AgentWithoutYouPerProject.ToDictionary(project => project.ProjectId ?? none, project => project.Time, StringComparer.Ordinal)
-            : new Dictionary<string, TimeSpan>(StringComparer.Ordinal);
+        var agent = snapshot.AgentWithoutYouPerProject
+            .GroupBy(project => Key(project.ProjectId), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => TimeSpan.FromTicks(group.Sum(project => project.Time.Ticks)), StringComparer.Ordinal);
 
         return measured.Keys.Concat(own.Keys).Concat(agent.Keys).Distinct(StringComparer.Ordinal)
             .Select(id =>
             {
                 var brush = MeasuredTimeCard.ProjectBrush(id);
                 var color = brush is ISolidColorBrush solid ? solid.Color : Lavender;
+                var name = names.Resolve(id);
                 return new _ProjectRow(
-                    id.Length == 0 ? "geen project" : names.GetValueOrDefault(id, id),
+                    name.Label,
+                    name.Tooltip,
                     measured.GetValueOrDefault(id),
                     own.GetValueOrDefault(id),
                     agent.GetValueOrDefault(id),
@@ -459,6 +470,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             .ToList();
     }
 
+    private const string SessionColumns = "*,124,44,60,50,62";
+
     private static Control _Sessions(ProductivityOverviewSnapshot snapshot)
     {
         var body = new StackPanel
@@ -467,7 +480,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             Children =
             {
                 new TextBlock { Text = "Agents", FontSize = 15, FontWeight = FontWeight.SemiBold },
-                _TableHead(["Sessie", "Profiel", "Actief", "Zonder jou", "Tokens", "Kosten"], "120,104,58,68,58,66"),
+                _TableHead(["Sessie", "Profiel", "Actief", "Zonder jou", "Tokens", "Kosten"], SessionColumns),
             },
         };
         var active = snapshot.Attention.Agents
@@ -482,32 +495,34 @@ internal sealed class OverviewWorkspaceBody : UserControl
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
         var historical = snapshot.Timeline.Days.GroupBy(value => value.PaneId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
-        var sessions = rawUsage.Keys.Concat(historical.Keys).Concat(active.Keys).Distinct(StringComparer.Ordinal).ToList();
+        var names = _Names(snapshot);
+        var labels = snapshot.Sessions.ToDictionary(session => session.PaneId, StringComparer.Ordinal);
+        var sessions = rawUsage.Keys.Concat(historical.Keys).Concat(active.Keys).Distinct(StringComparer.Ordinal)
+            .OrderByDescending(session => active.GetValueOrDefault(session))
+            .ToList();
         foreach (var session in sessions)
         {
             var usage = rawUsage.GetValueOrDefault(session) ?? [];
             var days = historical.GetValueOrDefault(session) ?? [];
+            var label = labels.GetValueOrDefault(session) ?? new SessionLabel(session, null, null, null, null, null, false);
             var tokens = usage.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens)
                 + days.Sum(value => (long)value.InputTokens + value.OutputTokens + value.CacheReadInputTokens + value.CacheCreationInputTokens);
-            var cost = usage.Sum(value => value.CostUsd) + days.Sum(value => value.ReportedCostUsd);
-            var hasUnpriced = usage.Any(value => _TokenCount(value) > 0 && value.CostUsd == 0)
-                || days.Any(value => _TokenCount(value) > 0 && value.ReportedCostUsd == 0);
-            var model = usage.Select(value => value.Model)
-                .Concat(days.Select(value => value.Model))
-                .LastOrDefault(value => string.IsNullOrWhiteSpace(value) is false)
-                ?? "onbekend";
+            var costs = _Costs(snapshot, usage, days);
             var withoutYou = snapshot.Attention.AgentWithoutYouPerSession.GetValueOrDefault(session)
                 + TimeSpan.FromTicks(days.Sum(value => value.AgentTime.Ticks));
-            body.Children.Add(_TableRow(
+            var profile = string.Join(" · ", new[] { label.Profile, label.Model }.Where(value => string.IsNullOrWhiteSpace(value) is false));
+            var row = _TableRow(
                 [
-                    session,
-                    model,
-                    Ui.Duration(active.GetValueOrDefault(session)),
-                    Ui.Duration(withoutYou),
+                    names.Describe(label, withProject: false),
+                    profile.Length == 0 ? "onbekend" : profile,
+                    label.HasTimeline ? Ui.Duration(active.GetValueOrDefault(session)) : "—",
+                    label.HasTimeline ? Ui.Duration(withoutYou) : "—",
                     _Tokens(tokens),
-                    hasUnpriced ? "geen prijs" : cost.ToString("$0.00", CultureInfo.InvariantCulture),
+                    costs.Any(value => value is null) ? "geen tarief" : costs.Sum(value => value ?? 0).ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
-                "120,104,58,68,58,66"));
+                SessionColumns);
+            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · geen tijdlijn voor deze sessie, dus actieve tijd onbekend"));
+            body.Children.Add(row);
         }
 
         if (sessions.Count == 0)
@@ -518,14 +533,17 @@ internal sealed class OverviewWorkspaceBody : UserControl
         return Ui.Card(body, 14);
     }
 
+    private static ProjectNames _Names(ProductivityOverviewSnapshot snapshot) => new(snapshot.Projects, snapshot.Sessions);
+
+    // Each record's cost: reported, or priced by its profile's rate; null where neither exists.
+    private static List<double?> _Costs(
+        ProductivityOverviewSnapshot snapshot,
+        IEnumerable<Cockpit.Plugins.Abstractions.TimeTracking.CockpitUsageDelta> usage,
+        IEnumerable<Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimelineDay> days) =>
+        [.. usage.Select(value => ProfileRates.Cost(value, snapshot.RatesPerMillionTokens)), .. days.Select(ProfileRates.Cost)];
+
     private static string _Tokens(long tokens) =>
         tokens >= 1000 ? $"{tokens / 1000d:0.#}k" : tokens.ToString(CultureInfo.InvariantCulture);
-
-    private static long _TokenCount(Cockpit.Plugins.Abstractions.TimeTracking.CockpitUsageDelta usage) =>
-        (long)usage.InputTokens + usage.OutputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens;
-
-    private static long _TokenCount(Cockpit.Plugins.Abstractions.TimeTracking.CockpitTimelineDay day) =>
-        (long)day.InputTokens + day.OutputTokens + day.CacheReadInputTokens + day.CacheCreationInputTokens;
 
     private Control _Entries(ProductivityOverviewSnapshot snapshot)
     {
@@ -544,7 +562,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 _TableHead(["Dag", "Omschrijving", "Project", "Duur", "Status"], "80,*,160,70,90"),
             },
         };
-        var projects = snapshot.Projects.ToDictionary(project => project.Id, project => project.Name, StringComparer.Ordinal);
+        var names = _Names(snapshot);
         foreach (var entry in snapshot.Entries.OrderBy(entry => entry.StartedAt))
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("80,*,160,70,90"), ColumnSpacing = 8 };
@@ -565,9 +583,10 @@ internal sealed class OverviewWorkspaceBody : UserControl
                         Fill = MeasuredTimeCard.ProjectBrush(projectId),
                         VerticalAlignment = VerticalAlignment.Center,
                     },
-                    new TextBlock { Text = projectId.Length == 0 ? "geen project" : projects.GetValueOrDefault(projectId, projectId), FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
+                    new TextBlock { Text = names.Resolve(projectId).Label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
                 },
             };
+            ToolTip.SetTip(project, names.Resolve(projectId).Tooltip);
             Grid.SetColumn(project, 2);
             row.Children.Add(project);
             _AddCell(row, 3, _ClockDuration(entry.Duration));
@@ -594,10 +613,11 @@ internal sealed class OverviewWorkspaceBody : UserControl
                 _TableHead(["Ticket", "Project", "Jouw tijd", "Laatste status"], "120,180,90,*"),
             },
         };
+        var names = _Names(snapshot);
         foreach (var ticket in snapshot.Tickets)
         {
             body.Children.Add(_TableRow(
-                [ticket.Ticket, ticket.ProjectId ?? "geen project", Ui.Duration(ticket.Time), ticket.Statusline ?? "geen statusline"],
+                [ticket.Ticket, names.Resolve(ticket.ProjectId).Label, Ui.Duration(ticket.Time), ticket.Statusline ?? "geen statusline"],
                 "120,180,90,*"));
         }
 
@@ -722,5 +742,5 @@ internal sealed class OverviewWorkspaceBody : UserControl
         }
     }
 
-    private sealed record _ProjectRow(string Label, TimeSpan Measured, TimeSpan Own, TimeSpan Agent, Color Color);
+    private sealed record _ProjectRow(string Label, string? Tooltip, TimeSpan Measured, TimeSpan Own, TimeSpan Agent, Color Color);
 }

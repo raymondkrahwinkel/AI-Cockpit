@@ -17,6 +17,7 @@ using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
 using UiParts = schedulesUi::Cockpit.Plugin.Schedules.UI;
 
 namespace Cockpit.App.ViewTests;
@@ -53,7 +54,7 @@ public class SchedulesScreenJourneyTests
         ui.GetProfilesAsync().Returns([new PluginProfileInfo("Zyra", "ClaudeCli", string.Empty)]);
         Action? menu = null;
         Func<Control>? opened = null;
-        ui.AddSideMenuButtonWithBadge("Schedules", Arg.Do<Action>(invoke => menu = invoke)).Returns(new SideMenuButtonBadge());
+        ui.AddSideMenuButtonWithBadge("Schedules", Arg.Do<Action>(invoke => menu = invoke), MaterialIconKind.CalendarClock).Returns(new SideMenuButtonBadge());
         ui.ShowDialogAsync("Schedules", Arg.Do<Func<Control>>(factory => opened = factory), "schedules", Arg.Any<double>(), Arg.Any<double>())
             .Returns(new TaskCompletionSource().Task);
 

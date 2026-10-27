@@ -1,6 +1,7 @@
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
@@ -19,7 +20,7 @@ public sealed class TranscriptSearchUi : ICockpitPluginUi
             width: 820,
             height: 600);
 
-        host.AddSideMenuButton("Search transcripts", OpenSearch);
+        host.AddSideMenuButton("Search transcripts", OpenSearch, MaterialIconKind.Magnify);
         host.AddShortcut(new PluginShortcut("transcript-search.open", "Search transcripts", "Ctrl+F", OpenSearch));
 
         // The New-session dialog can resume a conversation by id, and typing one by hand is a poor way to find
