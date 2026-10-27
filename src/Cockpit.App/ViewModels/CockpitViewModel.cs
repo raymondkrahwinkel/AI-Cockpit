@@ -452,6 +452,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // this one shared view model.
     public ProjectsViewModel Projects { get; }
 
+    // AC-1827: the splash waits on this first read of the projects.
+    public Task ProjectsLoaded { get; private set; } = Task.CompletedTask;
+
     // The workspace tab strip and the active workspace's panes.
     public WorkspacesViewModel Workspaces { get; }
 
@@ -557,7 +560,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its
     // own empty state. AC-1304: and never in the Simple stand, whose column is always covered — by a conversation
     // or by the start screen — and whose "+ New session" opens the dialog this one offers.
-    public bool ShowSessionEmptyState => !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
+    public bool ShowSessionEmptyState => !IsRestoringSessions && !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
+
+    // AC-1829: while the saved sessions are still coming back this area shows skeletons, never "No sessions yet".
+    public bool ShowSessionsSkeleton => IsRestoringSessions && !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
+
+    // AC-1829: App holds these from the moment the window exists until the session restore and first project read land.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
+    private bool _isRestoringSessions;
+
+    [ObservableProperty]
+    private bool _isLoadingProjects;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
     // second workspace has to greet you with the empty state, even while the first one is full of running
@@ -1122,6 +1137,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(HasRailTabs))]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
     private bool _simpleView;
 
     // AC-1527: the Simple stand's navigation — what its main column shows and which rail entry is marked. One state
@@ -3151,6 +3167,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             OnPropertyChanged(nameof(ShowSessionGrid));
             OnPropertyChanged(nameof(ShowSessionEmptyState));
+            OnPropertyChanged(nameof(ShowSessionsSkeleton));
             OnPropertyChanged(nameof(HasSessionsHere));
             OnPropertyChanged(nameof(VisibleSessions));
             OnPropertyChanged(nameof(SessionWorkspaceGroups));
@@ -3557,7 +3574,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
         // startup read here; the section simply stays hidden until it lands.
-        _ = Projects.LoadAsync();
+        ProjectsLoaded = Projects.LoadAsync();
         // The panes are one source of "which sessions are live" (their pane ids, what worktrees are keyed on); the
         // shared registry adds the ones that run without a pane, today the delegated tasks (AC-106) (AC-654).
         IReadOnlySet<string> LivePaneIds() => _AllSessions().Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
@@ -3659,6 +3676,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(StackSessionsInStack));
             OnPropertyChanged(nameof(ShowSessionGrid));
             OnPropertyChanged(nameof(ShowSessionEmptyState));
+            OnPropertyChanged(nameof(ShowSessionsSkeleton));
             RefreshPaneVisibility();
         };
 

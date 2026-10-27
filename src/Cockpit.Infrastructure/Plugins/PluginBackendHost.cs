@@ -329,6 +329,10 @@ public class PluginBackendHost(
     public void RemoveBackupTarget(string id) =>
         services.GetRequiredService<BackupTargets>().Remove(id);
 
+    // A host with no splash (a backend without a frontend) registers no sequence, and the step is simply not run.
+    public void AddStartupStep(string label, Func<CancellationToken, Task> run) =>
+        services.GetService<Cockpit.Core.Startup.StartupSequence>()?.AddPlugin(label, run);
+
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(key) || await _ProjectOfAsync(paneId, cancellationToken) is not { } projectId)

@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
+  real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
+  4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;
+  a failed step shows as a red step with a plain sentence. Plugins add their own step with `AddStartupStep` (plugin SDK
+  3.38.0, Cockpit 0.130.0).
 - added: **managed Claude and Codex CLIs on the headless server.** Install, Remove and auto-update in a server
   profile's settings now work there as on the desktop (no major jumps on their own). A managed version wins over the
   image's own copy; Remove falls back to it. The CLIs sit on a volume of their own (`cli`), and the agent's home is a
@@ -41,7 +46,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: **provider plugins can report what they know about their models.** Prices, peak windows, limits and quota
   state, each with its source and age, read without a session, also from a headless server. Nothing reports them yet;
-  a provider that does not stays "unknown", never 0 (plugin SDK 3.37.0, Cockpit 0.129.0).
+  a provider that does not stays "unknown", never 0 (plugin SDK 3.38.0, Cockpit 0.130.0).
 - added: **server admins can issue connect keys that never expire.** Server policy can disable permanent keys, and
   the Connect keys page and node tool make the choice explicit without changing the existing 30-day default.
 - added: **a plugin can give a sidebar button its own icon** without a counter, through a new

@@ -102,21 +102,10 @@ public sealed class CockpitBackend
         StaleSessionProcessSweep.Run(loggerFactory.CreateLogger(typeof(StaleSessionProcessSweep)));
     }
 
-    // Core and the no-frontend defaults, then Infrastructure and whatever `frontend` adds; the last registration wins,
-    // so a desktop's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
-    // so a plugin's ConfigureServices registers on top of all of it (#14).
-    public static CockpitBackend Build(
-        ILoggerFactory loggerFactory,
-        Action<IServiceCollection>? frontend = null,
-        PluginStartup plugins = PluginStartup.None,
-        System.Net.IPAddress? nodeListenAddress = null)
+    // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
+    // AC-1827: public so the desktop runs it as its own splash step; `Build` still does it unless told it was done.
+    public static void ApplyIncomingSettings(ILoggerFactory loggerFactory)
     {
-        var services = new ServiceCollection();
-        ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
-
-        // AC-1510: settings taken over from another machine land before the container exists, so nothing has read them yet.
-        // A failure is logged and the start goes on: the next run of the sync finds the same difference again. Blocking is
-        // safe: Build runs before any UI thread or synchronisation context exists, and every await inside skips the context.
         var syncLogger = loggerFactory.CreateLogger<SettingsCarrierSync>();
         try
         {
@@ -126,6 +115,26 @@ public sealed class CockpitBackend
         {
             syncLogger.LogWarning(exception, "Applying the settings taken over from another machine failed");
         }
+    }
+
+    // Core and the no-frontend defaults, then Infrastructure and whatever `frontend` adds; the last registration wins,
+    // so a desktop's own seams replace the defaults. AC-1392: then plugin phase 1, before the container is built,
+    // so a plugin's ConfigureServices registers on top of all of it (#14).
+    public static CockpitBackend Build(
+        ILoggerFactory loggerFactory,
+        Action<IServiceCollection>? frontend = null,
+        PluginStartup plugins = PluginStartup.None,
+        System.Net.IPAddress? nodeListenAddress = null,
+        bool applyIncomingSettings = true)
+    {
+        var services = new ServiceCollection();
+        ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
+
+        if (applyIncomingSettings)
+        {
+            ApplyIncomingSettings(loggerFactory);
+        }
+
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();
