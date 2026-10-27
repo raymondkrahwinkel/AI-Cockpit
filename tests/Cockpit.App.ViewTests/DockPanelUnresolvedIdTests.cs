@@ -23,7 +23,9 @@ public sealed class DockPanelUnresolvedIdTests
         await HeadlessAvalonia.RunAsync(async () =>
         {
             var panels = new DockPanelRegistry();
-            panels.Register(_Panel("other"));
+            // AC-951: the first registration of an id wins and a later one is refused.
+            Assert.True(panels.Register(_Panel("other")));
+            Assert.False(panels.Register(_Panel("other")));
             var cockpit = new CockpitViewModel(panels) { OpenDockPanelId = "later", DockRailWidth = 400 };
 
             var main = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };

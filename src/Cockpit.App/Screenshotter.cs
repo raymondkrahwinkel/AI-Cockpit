@@ -412,6 +412,10 @@ internal static partial class Screenshotter
         ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
         ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
+        // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
+        ["simple-dock-rail-collapsed"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null) },
+        ["simple-dock-rail-browser"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser") },
+        ["simple-dock-rail-files"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.files") },
         // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
@@ -3281,7 +3285,8 @@ internal static partial class Screenshotter
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
     private static ViewModels.CockpitViewModel _SimpleStand(
-        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null)
+        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null,
+        Action<Docking.DockPanelRegistry>? morePanels = null)
     {
         if (conversation is null)
         {
@@ -3314,6 +3319,8 @@ internal static partial class Screenshotter
                 chat.IsSimpleViewHost = false;
                 return new AssistantChatView { DataContext = chat };
             }));
+
+        morePanels?.Invoke(panels);
 
         // AC-1302: two the assistant started and one the operator opened themselves, so the scene shows the rail
         // drawing the relation rather than everything that happens to be alive.
@@ -3396,6 +3403,55 @@ internal static partial class Screenshotter
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
         return cockpit;
     }
+
+    // AC-1824: Home with two stand-in plugin panels on the rail — the real plugins are store-distributed and not referenced here.
+    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId)
+    {
+        var cockpit = _SimpleStand(withAssistant: true, morePanels: panels =>
+        {
+            panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                "sample.browser", "Browser", Material.Icons.MaterialIconKind.Web, _BrowserStandIn) { KeepAlive = true, CanFloat = true });
+            panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                "sample.files", "Files", Material.Icons.MaterialIconKind.FolderOutline, _FilesStandIn));
+        });
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        cockpit.SimpleOpenDockPanelId = openPanelId;
+        cockpit.DockRailWidth = 420;
+        return cockpit;
+    }
+
+    private static Control _BrowserStandIn() => new DockPanel
+    {
+        Margin = new Thickness(8),
+        Children =
+        {
+            new TextBlock { [DockPanel.DockProperty] = Dock.Top, Text = "docs.krahwinkel-it.nl  ·  Getting started", FontSize = 11, Margin = new Thickness(0, 0, 0, 8), Foreground = _Brush("CockpitTextSecondaryBrush") },
+            new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "Getting started", FontSize = 17, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                    new TextBlock { Text = "Stand-in page: the real Browser keeps its tabs while the panel is collapsed.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                },
+            },
+        },
+    };
+
+    private static Control _FilesStandIn() => new StackPanel
+    {
+        Margin = new Thickness(12),
+        Spacing = 4,
+        Children =
+        {
+            new TextBlock { Text = "Projects/Cockpit", FontSize = 11, Foreground = _Brush("CockpitTextSecondaryBrush"), Margin = new Thickness(0, 0, 0, 6) },
+            new TextBlock { Text = "▸ src" },
+            new TextBlock { Text = "▸ plugins-dev" },
+            new TextBlock { Text = "▸ docs" },
+            new TextBlock { Text = "CLAUDE.md", Opacity = 0.8 },
+            new TextBlock { Text = "Cockpit.slnx", Opacity = 0.8 },
+        },
+    };
 
     // AC-1316/AC-1321: the assistant's own conversation in the column with nothing said in it, where its notice stands.
     private static ViewModels.CockpitViewModel _SimpleStandAssistant(bool assistantOff = false, bool controlled = false, string? failedToStart = null)
