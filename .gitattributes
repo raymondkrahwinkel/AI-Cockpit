@@ -12,3 +12,5 @@
 # there for a reason that has nothing to do with the change under test.
 *.sh text eol=lf
 hooks/* text eol=lf
+deploy/** text eol=lf
+Dockerfile text eol=lf

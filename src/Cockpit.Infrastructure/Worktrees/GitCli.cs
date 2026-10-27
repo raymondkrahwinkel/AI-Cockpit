@@ -20,9 +20,15 @@ internal static class GitCli
         IReadOnlyDictionary<string, string>? environment = null,
         TimeSpan? timeout = null)
     {
+        // Resolve once while preserving the caller's original relative-path semantics before the process uses its
+        // neutral working directory (AC-1831).
+        var targetDirectory = Path.GetFullPath(workingDirectory);
+
         var startInfo = new ProcessStartInfo("git")
         {
-            WorkingDirectory = workingDirectory,
+            // The server's git command is an app-to-agent wrapper. Start it somewhere `app` can enter; `-C` below
+            // lets the real git chdir after the wrapper has become `agent` (AC-1831).
+            WorkingDirectory = AppContext.BaseDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             // git writes paths as UTF-8 on every platform; left unset, .NET decodes via the console code page,
@@ -49,6 +55,8 @@ internal static class GitCli
         // off Windows. Set per-invocation so it never depends on the operator's global config.
         startInfo.ArgumentList.Add("-c");
         startInfo.ArgumentList.Add("core.longpaths=true");
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(targetDirectory);
 
         foreach (var argument in arguments)
         {
