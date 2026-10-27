@@ -44,10 +44,10 @@ internal static class ClaudeOptionChoices
     // spend still arrives from the CLI as total_cost_usd.
     public static readonly IReadOnlyList<PluginModelCostEstimate> ModelCostEstimatesCheapestFirst =
     [
-        new("haiku") { EstimatedInputUsdPerMillionTokens = 1m, EstimatedOutputUsdPerMillionTokens = 5m },
-        new("sonnet") { EstimatedInputUsdPerMillionTokens = 3m, EstimatedOutputUsdPerMillionTokens = 15m },
-        new("opus") { EstimatedInputUsdPerMillionTokens = 5m, EstimatedOutputUsdPerMillionTokens = 25m },
-        new("fable") { EstimatedInputUsdPerMillionTokens = 10m, EstimatedOutputUsdPerMillionTokens = 50m },
+        new("haiku") { PublicModelRef = "anthropic/claude-haiku-5.5" },
+        new("sonnet") { PublicModelRef = "anthropic/claude-sonnet-5.5" },
+        new("opus") { PublicModelRef = "anthropic/claude-opus-5.5" },
+        new("fable"),
     ];
 
     public static readonly IReadOnlyList<string> EffortLevels = ["low", "medium", "high", "xhigh", "max"];

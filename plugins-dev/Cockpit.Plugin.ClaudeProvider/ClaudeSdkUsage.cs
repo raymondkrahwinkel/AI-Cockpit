@@ -15,6 +15,8 @@ internal sealed class ClaudeSdkUsage
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, PluginRateLimitWindow> _windows = new(StringComparer.Ordinal);
+    private readonly ClaudeModelIntelligence? _intelligence;
+    private readonly Action<PluginModelObservation>? _recordObservation;
 
     private double? _contextUsedPercent;
 
@@ -23,6 +25,14 @@ internal sealed class ClaudeSdkUsage
     // The latest snapshot, or `null` while the CLI has reported neither figure — which is also
     // what a session reports before its first turn settles.
     public PluginSessionStatus? Status => _status;
+
+    public ClaudeSdkUsage(
+        ClaudeModelIntelligence? intelligence = null,
+        Action<PluginModelObservation>? recordObservation = null)
+    {
+        _intelligence = intelligence;
+        _recordObservation = recordObservation;
+    }
 
     // Folds in the account-wide allowances from a `get_usage` reply. Keyed on the same wire names as
     // `rate_limit_event`, so a later event that carries a figure of its own replaces this one rather than
@@ -48,6 +58,8 @@ internal sealed class ClaudeSdkUsage
                 _Publish();
             }
         }
+
+        _intelligence?.ObserveWindows(windows.Values, "Claude get_usage", DateTimeOffset.UtcNow, _recordObservation);
     }
 
     // Folds in a `get_context_usage` reply — the CLI's own `percentage`, the figure `/context` prints. A reply
@@ -82,22 +94,34 @@ internal sealed class ClaudeSdkUsage
             return;
         }
 
+        var asOf = DateTimeOffset.UtcNow;
+        PluginRateLimitWindow? window;
         lock (_gate)
         {
-            _ObserveRateLimit(root);
+            window = _ObserveRateLimit(root);
             _Publish();
+        }
+
+        if (window is not null)
+        {
+            _intelligence?.ObserveWindows([window], "Claude rate_limit_event", asOf, _recordObservation);
+        }
+
+        if (_IsRateLimitRefusal(root))
+        {
+            _recordObservation?.Invoke(new PluginModelObservation(ClaudeProviderIds.Claude, PluginModelObservationKind.RateLimitRefusal, asOf));
         }
     }
 
     // The CLI restates a window whenever its figure changes, so the newest line for a type replaces the previous one
     // and a type never seen simply has no segment.
-    private void _ObserveRateLimit(JsonElement root)
+    private PluginRateLimitWindow? _ObserveRateLimit(JsonElement root)
     {
         if (!root.TryGetProperty("rate_limit_info", out var info) || info.ValueKind != JsonValueKind.Object
             || !info.TryGetProperty("rateLimitType", out var wireType) || wireType.ValueKind != JsonValueKind.String
             || wireType.GetString() is not { Length: > 0 } key)
         {
-            return;
+            return null;
         }
 
         // utilization is absent whenever the account is not near the window it names — the percentage then comes
@@ -105,7 +129,7 @@ internal sealed class ClaudeSdkUsage
         if (!info.TryGetProperty("utilization", out var utilization) || utilization.ValueKind != JsonValueKind.Number
             || !utilization.TryGetDouble(out var fraction))
         {
-            return;
+            return null;
         }
 
         // Past the allowance is real and must show; below zero is not a percentage at all. The finiteness check
@@ -114,7 +138,7 @@ internal sealed class ClaudeSdkUsage
         var usedPercent = fraction * 100;
         if (!double.IsFinite(usedPercent) || usedPercent < 0)
         {
-            return;
+            return null;
         }
 
         // resetsAt is epoch seconds when present; a window without one still counts, it just has no scheduled
@@ -128,12 +152,21 @@ internal sealed class ClaudeSdkUsage
 
         // Left unclamped exactly as the statusline route leaves it: an account past its allowance genuinely reports
         // more than 100%, and rounding that down to a tidy 100 would hide the overage the operator most needs to see.
-        _windows[key] = new PluginRateLimitWindow(
+        var window = new PluginRateLimitWindow(
             ClaudeUsageSignals.WindowLabel(key),
             usedPercent,
             resetsAt,
             WindowMinutes: null);
+        _windows[key] = window;
+        return window;
     }
+
+    private static bool _IsRateLimitRefusal(JsonElement root) =>
+        root.TryGetProperty("rate_limit_info", out var info)
+        && info.ValueKind == JsonValueKind.Object
+        && info.TryGetProperty("status", out var status)
+        && status.ValueKind == JsonValueKind.String
+        && status.GetString() is "rejected" or "denied" or "limited" or "rate_limited";
 
     private void _Publish()
     {

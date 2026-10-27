@@ -234,6 +234,17 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Hands the host something a provider saw happen — a quota reading, a rate-limit refusal, a latency (AC-1808) — so it
+    /// can learn patterns no feed publishes. Safe to call from any thread, and never blocks.
+    /// </summary>
+    /// <remarks>
+    /// Default no-op, which is also what a host before 0.128.0 does with it, so a provider can call it unconditionally.
+    /// </remarks>
+    void RecordModelObservation(PluginModelObservation observation)
+    {
+    }
+
+    /// <summary>
     /// Registers (or updates) an HTTP MCP server in the shared registry (#60), so both session worlds can use
     /// its tools without the operator adding it by hand. Idempotent upsert-by-name.
     /// </summary>

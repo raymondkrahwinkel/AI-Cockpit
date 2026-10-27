@@ -107,6 +107,7 @@ public static class DependencyInjection
         AddNotifications(services);
         AddPtyHost(services);
         AddSessionMemoryLimiter(services);
+        services.AddModelIntelligence(Configuration.CockpitConfigPath.Root);
         return services;
     }
 

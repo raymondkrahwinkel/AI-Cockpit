@@ -21,6 +21,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
@@ -3226,6 +3227,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // read-replies-aloud.
     public AssistantOptionsViewModel AssistantOptions { get; }
 
+    public ModelIntelligenceOptionsViewModel ModelIntelligence { get; internal set; } = new();
+
     // The assistant chip at the bottom of the sidebar (AC-543).
     [ObservableProperty]
     private AssistantIndicatorViewModel? _assistantIndicator;
@@ -3402,7 +3405,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IManagedSettings? managedSettings = null,
         IBackupScheduleStore? backupScheduleStore = null,
         IRegisteredBackupTargets? backupTargets = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
+        IModelIntelligenceOptions? modelIntelligenceOptions = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3458,6 +3463,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // where the page renders its defaults rather than the dialog failing to open.
         AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
         _ = AssistantOptions.RefreshAsync();
+        ModelIntelligence = new ModelIntelligenceOptionsViewModel(modelIntelligenceOptions);
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
         // MCP server, a provider key, a plugin's token — not just when the Security tab is opened. The write seam
@@ -7268,6 +7274,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
+        ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
         _RebuildPluginOptionsRows();
     }
 
@@ -7442,6 +7449,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await AssistantOptions.SaveStagedAsync();
+        await ModelIntelligence.SaveStagedAsync();
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
         if (UsageThresholdSettings is { } thresholds)
@@ -7513,6 +7521,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // SuspendPersistence up across the re-seed, and every other refresh now leaves those values alone.
         await Security.RefreshAsync(reseedStagedValues: true);
         await AssistantOptions.RefreshAsync();
+        await ModelIntelligence.LoadAsync();
 
         UsageThresholdSettings?.Revert();
 
@@ -7646,6 +7655,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PropertyChanged -= _OnStagedPropertyChanged;
         Security.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
+        ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
         _optionsStaged = false;
         Security.SuspendPersistence = false;
         AssistantOptions.SuspendPersistence = false;

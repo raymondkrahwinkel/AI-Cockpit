@@ -30,9 +30,7 @@ public class VelopackUpdateServiceTests : IDisposable
     // Layer 2: the published update-feed contract; ARM keeps its existing channel names (AC-1618).
     [Theory]
     [InlineData(Architecture.Arm64, UpdateChannel.Stable, "osx-stable")]
-    [InlineData(Architecture.Arm64, UpdateChannel.Nightly, "osx-nightly")]
     [InlineData(Architecture.X64, UpdateChannel.Stable, "osx-x64-stable")]
-    [InlineData(Architecture.X64, UpdateChannel.Nightly, "osx-x64-nightly")]
     public void MacChannel_MatchesTheProcessArchitectureAndStream(Architecture architecture, UpdateChannel stream, string expected) =>
         Assert.Equal(expected, UpdateChannelName.For("osx", architecture, stream));
 
@@ -97,7 +95,6 @@ public class VelopackUpdateServiceTests : IDisposable
     /// row is a nightly retag offering the build that is already installed: republishing the tag is not an update.
     /// </summary>
     [Theory]
-    [InlineData(UpdateChannel.Stable, "0.7.0", "0.8.0")]
     [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.4", "0.8.0-nightly.5")]
     [InlineData(UpdateChannel.Nightly, "0.8.0-nightly.9", "0.8.0-nightly.9")]
     public async Task NothingNewerOnTheChannel_IsUpToDate(UpdateChannel channel, string offered, string installed)

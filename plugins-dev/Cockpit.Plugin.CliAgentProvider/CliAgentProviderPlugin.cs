@@ -45,7 +45,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             DisplayName: "Codex (CLI)",
             // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
             // phase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals.
-            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
+            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath, host.RecordModelObservation),
             // ConfinesFileAccessToWorkingDirectory (AC-174) and DeclaredOptions (AC-649, Codex's own sandbox
             // vocabulary) are declared here because the host honours the registration, not the driver instance.
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)
@@ -68,6 +68,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // #1105: the SDK route reports these at each turn boundary (plus a start-of-session prefetch, C) —
             // this only says what they are, the same split ClaudeProviderPlugin uses for its own two routes.
             UsageSignals = CodexUsageSignals.Declarations,
+            ReadModelIntelligenceAsync = (configJson, cancellationToken) => _ReadModelIntelligenceAsync(configJson, host.ResolveManagedCliPath, host.RecordModelObservation, cancellationToken),
             // AC-713: Codex had no login gate at all before this — every profile read as ready regardless of
             // whether `codex login`/`CODEX_API_KEY` was actually set up. `codex login status`'s exit code is the
             // only structured signal the CLI offers (see `CodexLoginStatus`).
@@ -136,6 +137,13 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         // itself would spawn the managed binary fine.
         var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
         return await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<PluginModelIntelligence> _ReadModelIntelligenceAsync(string configJson, Func<string, string?>? managedResolver, Action<PluginModelObservation> recordObservation, CancellationToken cancellationToken)
+    {
+        var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
+        var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
+        return await CodexModelIntelligence.ReadAsync(() => new ProcessCliSubprocess(), config, executablePath, recordObservation, cancellationToken).ConfigureAwait(false);
     }
 
     public void Dispose()

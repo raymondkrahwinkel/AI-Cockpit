@@ -205,27 +205,22 @@ public class WireframeComponentEditorTests
     // ---- Viewport (AC-915) ----
 
     [Fact]
-    public void SetViewport_OnASourceWithoutOne_InsertsItAboveTheFirstScreen()
+    public void SetViewport_InsertsOrReplacesTheDeclaration()
     {
-        var result = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
+        var inserted = WireframeComponentEditor.Apply(WireframeScreens.Settings, WireframeComponentEdit.SetViewport(WireframeViewport.Mobile));
 
-        Assert.Null(result.Refusal);
-        Assert.Equal("viewport mobile", WireframeScreens.LineOf(result.Text!, 1));
-        Assert.Equal("", WireframeScreens.LineOf(result.Text!, 2));
-        Assert.Equal("screen \"Instellingen\" #screen", WireframeScreens.LineOf(result.Text!, 3));
-        Assert.Equal("set the viewport to mobile", result.Summary);
-    }
-
-    [Fact]
-    public void SetViewport_OnASourceThatAlreadyDeclaresOne_ReplacesItInPlace()
-    {
+        Assert.Null(inserted.Refusal);
+        Assert.Equal("viewport mobile", WireframeScreens.LineOf(inserted.Text!, 1));
+        Assert.Equal("", WireframeScreens.LineOf(inserted.Text!, 2));
+        Assert.Equal("screen \"Instellingen\" #screen", WireframeScreens.LineOf(inserted.Text!, 3));
+        Assert.Equal("set the viewport to mobile", inserted.Summary);
         var withDesktop = $"viewport desktop\n\n{WireframeScreens.Settings}";
 
-        var result = WireframeComponentEditor.Apply(withDesktop, WireframeComponentEdit.SetViewport(WireframeViewport.Tablet));
+        var replaced = WireframeComponentEditor.Apply(withDesktop, WireframeComponentEdit.SetViewport(WireframeViewport.Tablet));
 
-        Assert.Null(result.Refusal);
-        Assert.Equal("viewport tablet", WireframeScreens.LineOf(result.Text!, 1));
-        Assert.Equal(WireframeScreens.LinesOf(withDesktop).Length, WireframeScreens.LinesOf(result.Text!).Length);
+        Assert.Null(replaced.Refusal);
+        Assert.Equal("viewport tablet", WireframeScreens.LineOf(replaced.Text!, 1));
+        Assert.Equal(WireframeScreens.LinesOf(withDesktop).Length, WireframeScreens.LinesOf(replaced.Text!).Length);
     }
 
 

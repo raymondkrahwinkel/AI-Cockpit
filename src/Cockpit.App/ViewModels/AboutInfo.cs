@@ -22,6 +22,9 @@ public sealed record AboutInfo(
     // plugin authors build against, and the .NET runtime.
     public string BuildText { get; init; } = "";
 
+    // The public sources behind the model facts, credited where the cockpit shows them.
+    public string ModelDataText => Cockpit.Core.ModelIntelligence.ModelDataAttribution.Line;
+
     public const string DefaultGitHubUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit";
     public const string DefaultIssuesUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues";
     public const string DefaultPluginStoreUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins";
