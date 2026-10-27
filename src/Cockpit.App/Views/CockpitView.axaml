@@ -348,6 +348,10 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <!-- AC-1794: open above the bar. The default placement does not fit below a bottom bar, slides onto the
+                 pointer, and the tip then flickers open and closed. -->
+            <Setter Property="ToolTip.Placement" Value="Top"/>
+            <Setter Property="ToolTip.VerticalOffset" Value="-4"/>
         </Style>
         <Style Selector="Button.statusMeter:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
