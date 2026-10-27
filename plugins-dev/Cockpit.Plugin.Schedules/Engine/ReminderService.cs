@@ -140,7 +140,8 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
 
         var message = new OperatorMessage
         {
-            Text = text,
+            // The channels have no glyph of their own; the cockpit notification shows its warning glyph instead.
+            Text = $"⏰ {text}",
             CorrelationId = _FiringKey(reminder, firedAt),
             Question = new AssistantChannelQuestion
             {
@@ -178,7 +179,7 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
     {
         var zone = TimeZoneInfo.TryFindSystemTimeZoneById(reminder.TimeZone, out var found) ? found : TimeZoneInfo.Utc;
         var was = TimeZoneInfo.ConvertTime(reminder.Due, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
-        return (now - reminder.Due > OnTime ? $"⏰ {reminder.Text} · missed, was {was}" : $"⏰ {reminder.Text} · {was}", was);
+        return (now - reminder.Due > OnTime ? $"{reminder.Text} · missed, was {was}" : $"{reminder.Text} · {was}", was);
     }
 
     // One firing of one reminder: a snooze that brings it back is a new one, and the old one is resolved.

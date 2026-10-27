@@ -29,7 +29,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
             return;
         }
 
-        window.Content = _WithToasts(createContent(), owner);
+        window.Content = createContent();
         CockpitWindowChrome.Apply(window, title, onSettings: onOpenSettings is null ? null : () => _ = onOpenSettings());
         await surfaces.ShowAsync(key, window, owner);
     }
@@ -65,7 +65,7 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
         }
 
         root.Children.Add(body.Content);
-        window.Content = _WithToasts(root, owner);
+        window.Content = root;
 
         CockpitWindowChrome.Apply(window, title);
         await surfaces.ShowAsync(key, window, owner);
@@ -158,16 +158,6 @@ internal sealed class PluginDialogHost(SurfaceWindows surfaces) : IPluginDialogH
     // collide with Options however it names its window.
     private static object _Key(string? singleInstanceKey) =>
         singleInstanceKey is null ? new object() : ("plugin", singleInstanceKey);
-
-    // The cockpit's toasts live on the main window, so a toast raised from inside a plugin's window (a workflow's
-    // Notify step, say) appeared nowhere at all when that window covered it. The same overlay goes on top of this
-    // one, bound to the same view model, so one toast shows in whichever window the operator is looking at.
-    private static Control _WithToasts(Control content, Window owner)
-    {
-        var overlay = new ToastOverlay { DataContext = owner.DataContext };
-
-        return new Panel { Children = { content, overlay } };
-    }
 
     private static bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner, out Size maximum)
     {
