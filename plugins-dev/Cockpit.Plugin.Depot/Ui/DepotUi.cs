@@ -7,6 +7,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Depot.UI;
 
@@ -34,6 +35,10 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
     public void InitializeUi(ICockpitUiHost host)
     {
         var settings = new DepotSettings(host.Storage);
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(ArtifactWorkspace.WorkspaceTypeId, "Depot file", context => new ArtifactWorkspace(host, context, settings.Connections))
+        {
+            IconKind = MaterialIconKind.FileOutline,
+        });
         host.AddSettings(() => new DepotSettingsControl(host, settings));
         // AC-1511: Admin → Plugins → Depot → Settings on a server, whose backend part this channel reaches.
         host.AddServerSettings(channel => new DepotServerSettingsControl(channel));
