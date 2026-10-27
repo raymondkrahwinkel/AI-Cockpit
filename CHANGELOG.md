@@ -501,6 +501,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **Depot files now keeps the tree full-width above a compact file detail.** Documents show only their first
+  heading and paragraph; artifacts keep Download, Open and sharing controls without rendering an image or text preview
+  inside the rail. Shared artifacts carry a link icon in the tree, in both light and dark themes. Depot plugin 0.22.0.
 - changed: **the plugins in the sidebar are cards.** Each plugin that adds buttons and a section gets one foldable
   card named after it, with its settings gear in the header; plugins with a single button share one "Plugins · n" card.
   The cards stand at the bottom of the sidebar just above Plugin store, and in the Simple rail above Settings. The
