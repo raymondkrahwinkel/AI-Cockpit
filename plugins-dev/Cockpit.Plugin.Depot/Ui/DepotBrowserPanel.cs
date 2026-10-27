@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -488,9 +489,17 @@ internal sealed class DepotBrowserPanel : UserControl
     private Control _ShareBlock(DepotBrowserNode node)
     {
         var block = new StackPanel { Spacing = 6 };
-        block.Children.Add(new TextBlock { Text = "Share link", FontWeight = FontWeight.SemiBold });
-        var visibility = new ComboBox { ItemsSource = new[] { "Members only", "Public" }, SelectedIndex = node.IsPublic ? 1 : 0, IsEnabled = _loaded.CanShare };
-        visibility.Classes.Add("Compact");
+        var header = new WrapPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(new TextBlock { Text = "Share link", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 2, 8, 2) });
+        header.Children.Add(_StatusChip(node.ShareId is null ? "Not shared" : node.IsPublic ? "Public link" : "Members link", node.IsPublic));
+        block.Children.Add(header);
+        var (members, publicLink) = _VisibilityChoices(node.IsPublic, _loaded.CanShare);
+        void SelectVisibility(bool isPublic)
+        {
+            members.IsChecked = !isPublic;
+            publicLink.IsChecked = isPublic;
+        }
+
         if (node.ShareId is null)
         {
             block.Children.Add(_Faint("Not shared"));
@@ -501,15 +510,12 @@ internal sealed class DepotBrowserPanel : UserControl
             }
 
             var create = _Button("Create link");
-            create.Click += async (_, _) => await ShareAsync(node, visibility.SelectedIndex == 1, copyLink: true).ConfigureAwait(true);
-            block.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { visibility, create } });
+            create.Click += async (_, _) => await ShareAsync(node, publicLink.IsChecked == true, copyLink: true).ConfigureAwait(true);
+            members.Click += (_, _) => SelectVisibility(isPublic: false);
+            publicLink.Click += (_, _) => SelectVisibility(isPublic: true);
+            block.Children.Add(_Faint("Create a link to hand this file to someone."));
+            block.Children.Add(new WrapPanel { Orientation = Orientation.Horizontal, Children = { members, publicLink, create } });
             return _ShareCard(block);
-        }
-
-        block.Children.Add(new TextBlock { Text = node.IsPublic ? "Public link" : "Members link", Foreground = _Brush(node.IsPublic ? "CockpitStatusWaitingBrush" : "CockpitAccentBrush") });
-        if (node.IsPublic)
-        {
-            block.Children.Add(_Faint("Anyone with this URL can open the file, no account needed."));
         }
 
         if (node.ShareUrl is not { Length: > 0 } shareUrl)
@@ -518,31 +524,84 @@ internal sealed class DepotBrowserPanel : UserControl
             return _ShareCard(block);
         }
 
-        block.Children.Add(new TextBox { Text = shareUrl, IsReadOnly = true });
+        var url = new TextBox { Text = shareUrl, IsReadOnly = true, MinWidth = 180 };
         var copy = _Button("Copy");
         copy.Click += async (_, _) => await _host.SetClipboardTextAsync(shareUrl).ConfigureAwait(true);
         var openLink = _Button("Open link");
         openLink.Click += async (_, _) => await _Launch(new Uri(shareUrl)).ConfigureAwait(true);
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { copy, openLink } };
+        var linkRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
+        linkRow.Children.Add(url);
+        Grid.SetColumn(copy, 1);
+        copy.Margin = new Thickness(6, 0, 0, 0);
+        linkRow.Children.Add(copy);
+        Grid.SetColumn(openLink, 2);
+        openLink.Margin = new Thickness(6, 0, 0, 0);
+        linkRow.Children.Add(openLink);
+        block.Children.Add(linkRow);
         if (_loaded.CanShare)
         {
-            var wasPublic = node.IsPublic;
-            visibility.SelectionChanged += async (_, _) =>
+            members.Click += async (_, _) =>
             {
-                if ((visibility.SelectedIndex == 1) != wasPublic)
+                SelectVisibility(isPublic: false);
+                if (node.IsPublic)
                 {
-                    await ShareAsync(node, visibility.SelectedIndex == 1, copyLink: false).ConfigureAwait(true);
+                    await ShareAsync(node, isPublic: false, copyLink: false).ConfigureAwait(true);
+                }
+            };
+            publicLink.Click += async (_, _) =>
+            {
+                SelectVisibility(isPublic: true);
+                if (!node.IsPublic)
+                {
+                    await ShareAsync(node, isPublic: true, copyLink: false).ConfigureAwait(true);
                 }
             };
             var stop = _Button("Stop sharing");
             stop.Click += async (_, _) => await UnshareAsync(node).ConfigureAwait(true);
-            row.Children.Insert(0, visibility);
-            row.Children.Add(stop);
+            block.Children.Add(new WrapPanel { Orientation = Orientation.Horizontal, Children = { members, publicLink, stop } });
         }
 
-        block.Children.Add(row);
+        if (node.IsPublic)
+        {
+            block.Children.Add(_PublicWarning());
+        }
+
         return _ShareCard(block);
     }
+
+    private static (ToggleButton Members, ToggleButton Public) _VisibilityChoices(bool isPublic, bool isEnabled)
+    {
+        var members = new ToggleButton { Content = "Members only", IsChecked = !isPublic, IsEnabled = isEnabled, Margin = new Thickness(0, 0, 6, 0) };
+        var publicLink = new ToggleButton { Content = "Public", IsChecked = isPublic, IsEnabled = isEnabled, Margin = new Thickness(0, 0, 6, 0) };
+        members.Classes.Add("Compact");
+        publicLink.Classes.Add("Compact");
+        return (members, publicLink);
+    }
+
+    private static Border _StatusChip(string text, bool isPublic) => new()
+    {
+        Padding = new Thickness(6, 1),
+        Background = _Brush(isPublic ? "CockpitStatusWaitingChipTintBrush" : "CockpitAccentRingTintBrush"),
+        BorderBrush = _Brush(isPublic ? "CockpitStatusWaitingBrush" : "CockpitFocusHairlineBrush"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(8),
+        Child = new TextBlock { Text = text, FontSize = 11 },
+    };
+
+    private static Border _PublicWarning() => new()
+    {
+        Padding = new Thickness(8),
+        Background = _Brush("CockpitStatusWaitingChipTintBrush"),
+        BorderBrush = _Brush("CockpitStatusWaitingBrush"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = _Radius("CockpitControlRadius"),
+        Child = new TextBlock
+        {
+            Text = "Anyone with this URL can open this file — no account needed. Switching back to Members only closes it again; the URL stays the same.",
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap,
+        },
+    };
 
     private static Border _ShareCard(Control content) => new()
     {

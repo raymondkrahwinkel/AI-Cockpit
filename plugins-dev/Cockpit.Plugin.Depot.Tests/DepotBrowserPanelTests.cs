@@ -35,7 +35,7 @@ public class DepotBrowserPanelTests
             },
             canShare = true,
         });
-        rig.Answers["browser-read"] = DepotBrowserModelTests._Ok("# Notes\n\nThe first paragraph stays in the compact detail.\n\nA second paragraph does not.");
+        rig.Answers["browser-read"] = DepotBrowserModelTests._Ok("# Notes\n\n```csharp\nConsole.WriteLine(1);\n```\n\nThe first paragraph stays in the compact detail.\n## A following heading\nA second paragraph does not.");
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
         var markdownView = new Border { Child = new TextBlock { Text = "Full markdown view" } };
         rig.Host.CreateMarkdownView(Arg.Any<string>()).Returns(markdownView);
@@ -47,7 +47,7 @@ public class DepotBrowserPanelTests
         _Until(() => panel.GetVisualDescendants().OfType<TreeViewItem>().Any());
         var loading = panel.LoadTreeAsync("docs/Notes.md");
         _Until(() => loading.IsCompleted && panel.GetVisualDescendants().OfType<TextBlock>()
-            .Any(block => block.Inlines?.OfType<Run>().Any(run => run.Text.Contains("The first paragraph stays in the compact detail.", StringComparison.Ordinal)) == true));
+            .Any(block => block.Inlines?.OfType<Run>().Any(run => run.Text?.Contains("The first paragraph stays in the compact detail.", StringComparison.Ordinal) == true) == true));
 
         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
         if (Environment.GetEnvironmentVariable("DEPOT_BROWSER_SCENE_PNG") is { Length: > 0 } path)
@@ -59,7 +59,9 @@ public class DepotBrowserPanelTests
         Assert.True(frame.PixelSize.Width > 0);
         Assert.True(_UploadButton(panel).IsVisible);
         Assert.DoesNotContain(markdownView, panel.GetVisualDescendants());
-        Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text.Contains("A second paragraph does not.", StringComparison.Ordinal));
+        Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("Console.WriteLine", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A following heading", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A second paragraph does not.", StringComparison.Ordinal) == true);
     }
 
     // AC-1573: the backend's reading of the role (`canShare`) decides whether the Upload button is there at all.
@@ -108,6 +110,8 @@ public class DepotBrowserPanelTests
 
         var loading = panel.LoadTreeAsync("img/mockup.txt");
         _Until(() => loading.IsCompleted && _Button(panel, "Create link") is not null);
+        Assert.NotNull(_Button(panel, "Members only"));
+        Assert.NotNull(_Button(panel, "Public"));
 
         // AC-1659: the reload must empty the detail before the rebuilt tree reselects the file. Headless, the reselection
         // only lands on the next layout pass, so the end state cannot tell the order; the moment the tree is replaced can.

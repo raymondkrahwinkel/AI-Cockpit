@@ -40,26 +40,42 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
 
         string? heading = null;
         string? paragraph = null;
+        var inFence = false;
         for (var index = start; index < lines.Length; index++)
         {
             var line = lines[index].Trim();
-            if (heading is null && line.Length is > 2 && line[0] == '#' && line.TakeWhile(character => character == '#').Count() <= 3 && line.Contains(' '))
+            if (_IsFence(line))
+            {
+                inFence = !inFence;
+                continue;
+            }
+
+            if (inFence)
+            {
+                continue;
+            }
+
+            if (heading is null && _IsHeading(line))
             {
                 heading = line[(line.IndexOf(' ') + 1)..].Trim();
                 continue;
             }
 
-            if (line.Length == 0 || line.StartsWith('#') || line.StartsWith("- ", StringComparison.Ordinal)
-                || line.StartsWith("* ", StringComparison.Ordinal) || line.StartsWith(">", StringComparison.Ordinal)
-                || line.StartsWith("|", StringComparison.Ordinal) || line.StartsWith("```", StringComparison.Ordinal))
+            if (line.Length == 0 || _StartsBlock(line))
             {
                 continue;
             }
 
             var parts = new List<string> { line };
-            for (index++; index < lines.Length && !string.IsNullOrWhiteSpace(lines[index]); index++)
+            for (index++; index < lines.Length; index++)
             {
-                parts.Add(lines[index].Trim());
+                var continuation = lines[index].Trim();
+                if (continuation.Length == 0 || _StartsBlock(continuation))
+                {
+                    break;
+                }
+
+                parts.Add(continuation);
             }
 
             paragraph = string.Join(' ', parts);
@@ -67,6 +83,27 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         }
 
         return new(heading, paragraph);
+    }
+
+    private static bool _StartsBlock(string line) =>
+        _IsHeading(line) || _IsFence(line) || line.StartsWith("- ", StringComparison.Ordinal)
+        || line.StartsWith("* ", StringComparison.Ordinal) || line.StartsWith(">", StringComparison.Ordinal)
+        || line.StartsWith("|", StringComparison.Ordinal) || line.StartsWith("<", StringComparison.Ordinal)
+        || _IsOrderedListItem(line);
+
+    private static bool _IsHeading(string line)
+    {
+        var markerLength = line.TakeWhile(character => character == '#').Count();
+        return markerLength is >= 1 and <= 3 && line.Length > markerLength && line[markerLength] == ' ';
+    }
+
+    private static bool _IsFence(string line) =>
+        line.StartsWith("```", StringComparison.Ordinal) || line.StartsWith("~~~", StringComparison.Ordinal);
+
+    private static bool _IsOrderedListItem(string line)
+    {
+        var marker = line.IndexOf(". ", StringComparison.Ordinal);
+        return marker > 0 && line[..marker].All(char.IsDigit);
     }
 
     // A type with no inline view goes to whatever the system opens that URL with; `launch` is the TopLevel launcher.
