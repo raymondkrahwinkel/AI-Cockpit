@@ -16,7 +16,7 @@ namespace Cockpit.Plugins.OpenAiCompat;
 // AC-1344: `networkTimeout` mirrors the factory's `OpenAIClientOptions.NetworkTimeout`, so a timeout that fires can
 // name the configured number (only Gemini/OpenAI passes one). AC-1489: `turnLimits` are the provider config's
 // bounds for the context guard; without them it runs on its defaults.
-internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null, ILogger? logger = null, ChatTurnLimits? turnLimits = null) : IPluginSessionDriver
+internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, string defaultModel, TimeSpan? networkTimeout = null, ILogger? logger = null, ChatTurnLimits? turnLimits = null, TimeSpan? streamIdleTimeout = null, string providerName = "OpenAI-compatible") : IPluginSessionDriver
 {
     private readonly PluginSessionEventPublisher _events = new();
     private readonly List<ChatMessage> _history = [];
@@ -128,13 +128,20 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
                     _events.Publish(new PluginAssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
                 },
                 logger,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                streamIdleTimeout).ConfigureAwait(false);
 
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false });
         }
         catch (OperationCanceledException)
         {
             _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
+        }
+        catch (ChatStreamIdleTimeoutException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger?.LogWarning(ex, "{Provider} model {Model} stream went idle in session {SessionId}.", providerName, _model, _sessionId);
+            _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = ex.Message, Kind = PluginSessionErrorKind.ServiceUnavailable, RetryAfter = null });
+            _events.Publish(new PluginTurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
         // AC-1344: the SDK retries a NetworkTimeout up to 4x, wrapping every attempt in one AggregateException —
         // readable message instead of the raw dump. IsCancellationRequested excludes an interrupt landing right

@@ -251,6 +251,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // leaves the token uncancelled, so it fails this filter and falls through as an error instead (AC-132).
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
         }
+        catch (ChatStreamIdleTimeoutException ex)
+        {
+            _logger.LogWarning(ex, "OpenAI-compatible provider model {Model} stream went idle in pane {PaneId}.", _model, _sessionId);
+            _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = ex.Message, Exception = ex, Kind = SessionErrorKind.ServiceUnavailable });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+        }
         catch (Exception ex)
         {
             var message = _DescribeError(ex);
