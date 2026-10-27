@@ -132,6 +132,8 @@ internal sealed class ServerPluginUiHost(
 
     public Control CreateMarkdownView(string markdown) => local.CreateMarkdownView(markdown);
 
+    public IMarkdownEditor? CreateMarkdownEditor(string markdown) => local.CreateMarkdownEditor(markdown);
+
     public Control CreateHelpHint(string article, string? section = null, string? label = null) => local.CreateHelpHint(article, section, label);
 
     public void OpenHelp(string article, string? section = null) => local.OpenHelp(article, section);
