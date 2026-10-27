@@ -50,10 +50,20 @@ internal sealed class HoursWorkspaceBody : UserControl
     private bool _editingStopwatch;
     private bool _rendering;
 
-    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host)
+    private readonly Action _openOverview;
+    private readonly RefreshBar _bar;
+
+    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host, Action openOverview)
     {
         _controller = controller;
         _host = host;
+        _openOverview = openOverview;
+        _bar = new RefreshBar(
+            this,
+            controller.RefreshAsync,
+            () => _editingId is not null || _editingStopwatch,
+            () => RefreshPolicy.Interval((host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default).RefreshSeconds),
+            () => controller.Now);
         _error.Themed(TextBlock.ForegroundProperty, "CockpitStatusErrorBrush");
         _add.Classes.Add("Accent");
         _add.Click += async (_, _) => await _SaveAsync();
@@ -94,6 +104,7 @@ internal sealed class HoursWorkspaceBody : UserControl
                 Margin = new Thickness(24, 16),
                 Children =
                 {
+                    _Switch(),
                     _Header(previous, next),
                     _EntryCard(),
                     _dayColumns,
@@ -103,12 +114,14 @@ internal sealed class HoursWorkspaceBody : UserControl
         };
 
         _controller.Changed += _Render;
+        _controller.RefreshStateChanged += _RenderRefreshState;
         _timer.Tick += (_, _) => _RenderRunning();
         _timer.Start();
         DetachedFromVisualTree += (_, _) =>
         {
             _timer.Stop();
             _controller.Changed -= _Render;
+            _controller.RefreshStateChanged -= _RenderRefreshState;
         };
         _Render();
         _ = _LoadProjectsAsync();
@@ -177,6 +190,17 @@ internal sealed class HoursWorkspaceBody : UserControl
         await _controller.RefreshAsync();
     }
 
+    private Control _Switch()
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        row.Children.Add(WorkspaceSwitch.Build(false, () => { }, _openOverview));
+        Grid.SetColumn(_bar.View, 1);
+        row.Children.Add(_bar.View);
+        return row;
+    }
+
+    private void _RenderRefreshState() => _bar.Update(_controller.IsRefreshing, _controller.LastRefreshed);
+
     private Control _Header(Button previous, Button next)
     {
         var segments = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _dayMode, _weekMode } };
@@ -189,29 +213,21 @@ internal sealed class HoursWorkspaceBody : UserControl
 
         var header = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"),
             ColumnSpacing = 9,
         };
-        header.Children.Add(new TextBlock
-        {
-            Text = "Uren",
-            FontSize = 19,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        Grid.SetColumn(segments, 1);
         header.Children.Add(segments);
-        Grid.SetColumn(previous, 2);
+        Grid.SetColumn(previous, 1);
         header.Children.Add(previous);
-        Grid.SetColumn(_dayLabel, 3);
+        Grid.SetColumn(_dayLabel, 2);
         header.Children.Add(_dayLabel);
-        Grid.SetColumn(next, 4);
+        Grid.SetColumn(next, 3);
         header.Children.Add(next);
-        Grid.SetColumn(datePicker, 5);
+        Grid.SetColumn(datePicker, 4);
         header.Children.Add(datePicker);
-        Grid.SetColumn(_thisWeek, 6);
+        Grid.SetColumn(_thisWeek, 5);
         header.Children.Add(_thisWeek);
-        Grid.SetColumn(_meaning, 8);
+        Grid.SetColumn(_meaning, 7);
         header.Children.Add(_meaning);
         return Ui.Card(header, 12);
     }
@@ -408,6 +424,7 @@ internal sealed class HoursWorkspaceBody : UserControl
 
     private void _Render()
     {
+        _RenderRefreshState();
         _rendering = true;
         var showWeek = _controller.ShowWeek;
         _date.Text = (showWeek ? _controller.WeekStart : _controller.SelectedDate).ToString("dd-MM-yyyy", Dutch);

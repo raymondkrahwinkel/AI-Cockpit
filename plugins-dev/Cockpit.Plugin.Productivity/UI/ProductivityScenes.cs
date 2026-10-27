@@ -42,14 +42,14 @@ internal static class ProductivityScenes
                 controller.UpdateProjectFallback(Cockpit);
                 // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
                 controller.RefreshAsync().GetAwaiter().GetResult();
-                return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host)) { IconKind = MaterialIconKind.ClockOutline }, null);
+                return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host, () => { })) { IconKind = MaterialIconKind.ClockOutline }, null);
             },
             ["productivity-overview"] = () =>
             {
                 var controller = new OverviewController(new SceneChannel(), new FixedTime());
                 // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
                 controller.RefreshAsync().GetAwaiter().GetResult();
-                return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overzicht", _ => new OverviewWorkspaceBody(controller, () => { })) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
+                return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overzicht", _ => new OverviewWorkspaceBody(controller, () => { }, () => { }, () => RefreshPolicy.Interval(RefreshPolicy.DefaultSeconds))) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
             },
         };
 

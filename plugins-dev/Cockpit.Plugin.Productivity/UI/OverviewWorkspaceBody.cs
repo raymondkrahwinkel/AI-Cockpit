@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugin.Shared.UI;
 
@@ -17,57 +18,71 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private readonly OverviewController _controller;
     private readonly Action _openHours;
-    private readonly StackPanel _body = new() { Spacing = 12, Margin = new Thickness(18, 14) };
+    private readonly StackPanel _body = new() { Spacing = 12 };
+    private readonly RefreshBar _bar;
+    private readonly ScrollViewer _scroll = new();
+    private DatePicker? _customFrom;
+    private DatePicker? _customTo;
 
-    public OverviewWorkspaceBody(OverviewController controller, Action openHours)
+    public OverviewWorkspaceBody(OverviewController controller, Action openHours, Action openOverview, Func<TimeSpan> interval)
     {
         _controller = controller;
         _openHours = openHours;
-        Content = new ScrollViewer { Content = _body };
+        _bar = new RefreshBar(this, controller.RefreshAsync, _CustomRangeUnapplied, interval, () => controller.Now);
+        _scroll.Content = new StackPanel { Spacing = 12, Margin = new Thickness(18, 14), Children = { _Tabs(openOverview), _body } };
+        Content = _scroll;
         _controller.Changed += _Render;
-        DetachedFromVisualTree += (_, _) => _controller.Changed -= _Render;
+        _controller.RefreshStateChanged += _RenderRefreshState;
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _controller.Changed -= _Render;
+            _controller.RefreshStateChanged -= _RenderRefreshState;
+        };
         _Render();
         _ = _controller.RefreshAsync();
     }
 
+    private void _RenderRefreshState() => _bar.Update(_controller.IsRefreshing, _controller.LastRefreshed);
+
+    // Dates picked for "Eigen bereik" but not applied yet would be reset by a rebuild.
+    private bool _CustomRangeUnapplied() =>
+        _controller.SelectedRange == "Eigen bereik"
+        && (_customFrom?.SelectedDate?.Date != _controller.From.ToDateTime(TimeOnly.MinValue) || _customTo?.SelectedDate?.Date != _controller.To.ToDateTime(TimeOnly.MinValue));
+
     private void _Render()
     {
+        _RenderRefreshState();
+        var offset = _scroll.Offset;
         _body.Children.Clear();
-        _body.Children.Add(_Tabs());
         _body.Children.Add(_RangeCard());
         if (_controller.Error is { } error)
         {
             _body.Children.Add(Ui.Card(Ui.Hint(error), 14));
-            return;
         }
-
-        if (_controller.Snapshot is not { } snapshot)
+        else if (_controller.Snapshot is not { } snapshot)
         {
-            _body.Children.Add(Ui.Card(Ui.Hint(_controller.Error ?? "Overzicht laden…"), 14));
-            return;
+            _body.Children.Add(Ui.Card(Ui.Hint("Overzicht laden…"), 14));
+        }
+        else
+        {
+            _body.Children.Add(_Tiles(snapshot, _controller.IncludeAgentWithoutYou, _controller.From, _controller.To));
+            _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
+            _body.Children.Add(_Entries(snapshot));
+            _body.Children.Add(_Tickets(snapshot));
         }
 
-        _body.Children.Add(_Tiles(snapshot, _controller.IncludeAgentWithoutYou, _controller.From, _controller.To));
-        _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
-        _body.Children.Add(_Entries(snapshot));
-        _body.Children.Add(_Tickets(snapshot));
+        // The rebuild shrinks the content for a moment; put the scroll position back once it is laid out again.
+        Dispatcher.UIThread.Post(() => _scroll.Offset = offset, DispatcherPriority.Loaded);
     }
 
-    private Control _Tabs()
+    private Control _Tabs(Action openOverview)
     {
-        var hours = new Button { Name = "OpenHoursTab", Content = "Uren", Classes = { "Compact" } };
-        hours.Click += (_, _) => _openHours();
-        var overview = new Button { Name = "OverviewTab", Content = "Overzicht", Classes = { "Compact", "Accent" } };
-        var tabs = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            Children = { hours, overview },
-        };
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        row.Children.Add(tabs);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 12 };
+        row.Children.Add(WorkspaceSwitch.Build(true, _openHours, openOverview));
+        Grid.SetColumn(_bar.View, 1);
+        row.Children.Add(_bar.View);
         var today = Ui.Pill($"vandaag · {DateTimeOffset.Now.ToString("ddd d MMM", Dutch)}", "CockpitTextSecondaryBrush", "CockpitInsetBgBrush");
-        Grid.SetColumn(today, 1);
+        Grid.SetColumn(today, 2);
         row.Children.Add(today);
         return row;
     }
@@ -157,6 +172,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             SelectedDate = _controller.To.ToDateTime(TimeOnly.MinValue),
             Width = 150,
         };
+        _customFrom = customFrom;
+        _customTo = customTo;
         var apply = new Button { Name = "ApplyCustomRange", Content = "Toepassen", Classes = { "Accent", "Compact" } };
         apply.Click += async (_, _) =>
         {
