@@ -11,9 +11,12 @@ internal static class DepotScenes
 {
     private static readonly DepotBrowserProject _Project = new("krahwinkel-it/cockpit", "krahwinkel-it/cockpit", "Editor");
     private static readonly DateTimeOffset _Modified = new(2026, 10, 24, 16, 12, 0, TimeSpan.Zero);
+    private static readonly byte[] _ImageBytes = Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==");
 
     public static IReadOnlyDictionary<string, Func<Control>> All { get; } = new Dictionary<string, Func<Control>>
     {
+        ["artifact-tab-image"] = () => new ArtifactWorkspace(new DepotBrowserNode("Designs/mockup.gif", DepotBrowserKind.Artifact, 43, _Modified, "image/gif"), _ImageBytes),
+        ["artifact-tab-text"] = () => new ArtifactWorkspace(new DepotBrowserNode("Notes/release.txt", DepotBrowserKind.Artifact, 19, _Modified, "text/plain"), "Cockpit artifact text"u8.ToArray()),
         ["depot-browser"] = () => _Scene(new DepotBrowserSceneModel(
             _Project,
             new DepotBrowserTree(

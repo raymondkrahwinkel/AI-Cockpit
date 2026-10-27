@@ -351,6 +351,10 @@ internal sealed class DepotBrowserPanel : UserControl
     private TreeViewItem _Row(DepotTreeItem item, string? selectPath)
     {
         var row = new TreeViewItem { Tag = item, Header = _Header(item), ItemsSource = item.Children.Select(child => _Row(child, selectPath)).ToList() };
+        if (item.Node is not null)
+        {
+            row.DoubleTapped += async (_, _) => await OpenAsync(item.Node).ConfigureAwait(true);
+        }
         if (selectPath is not null && (selectPath == item.Path || selectPath.StartsWith(item.Path + "/", StringComparison.Ordinal)))
         {
             row.IsExpanded = true;
@@ -425,6 +429,9 @@ internal sealed class DepotBrowserPanel : UserControl
                 _AddExcerpt(shown);
             }
 
+            var documentOpen = _Button("Open");
+            documentOpen.Click += async (_, _) => await OpenAsync(node).ConfigureAwait(true);
+            actions.Children.Add(documentOpen);
             return;
         }
 
@@ -749,6 +756,12 @@ internal sealed class DepotBrowserPanel : UserControl
     {
         if (_model is { } model && _project is { } project)
         {
+            if (ArtifactWorkspace.CanOpenInCockpit(node))
+            {
+                await _host.OpenWorkspaceAsync(ArtifactWorkspace.WorkspaceTypeId, new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceOpenOptions($"depot:{model.Connection.Id}:{project}:{node.Path}", Path.GetFileName(node.Path))).ConfigureAwait(true);
+                return;
+            }
+
             _Accepted(await model.OpenAsync(project, node, _Launch).ConfigureAwait(true));
         }
     }
