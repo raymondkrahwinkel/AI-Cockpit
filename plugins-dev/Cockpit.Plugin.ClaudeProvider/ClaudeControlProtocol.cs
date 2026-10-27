@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Plugin.ClaudeProvider;
 
@@ -163,7 +164,7 @@ internal static class ClaudeControlProtocol
 
         try
         {
-            return JsonNode.Parse(json) as JsonObject;
+            return JsonNode.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(json)) as JsonObject;
         }
         catch (JsonException)
         {

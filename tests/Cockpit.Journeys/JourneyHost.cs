@@ -127,7 +127,7 @@ public sealed class JourneyHost : IAsyncDisposable
             Cockpit.QuickNotes = Services.GetRequiredService<QuickNoteCoordinator>();
             app.InitializePlugins();
             Backend.StartPlanners();
-            await CockpitApp.RestoreCockpitAsync(Cockpit, Task.CompletedTask);
+            await CockpitApp.RestoreCockpitAsync(Cockpit, Task.CompletedTask, Path.Combine(StateRoot, CockpitApp.KeptNotificationsFile));
         });
     }
 

@@ -11,27 +11,20 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public class FilePreviewClassifierTests
 {
-    public static IEnumerable<object[]> Extensions() =>
+    public static IEnumerable<object[]> Cases() =>
     [
-        ["photo.png", FilePreviewKind.Image],
-        ["photo.JPG", FilePreviewKind.Image],
-        ["photo.jpeg", FilePreviewKind.Image],
-        ["photo.gif", FilePreviewKind.Image],
-        ["photo.bmp", FilePreviewKind.Image],
-        ["photo.webp", FilePreviewKind.Image],
-        ["icon.svg", FilePreviewKind.Svg],
-        ["Notes.md", FilePreviewKind.Markdown],
-        ["data.json", FilePreviewKind.Json],
-        ["data.csv", FilePreviewKind.Csv],
-        ["data.tsv", FilePreviewKind.Csv],
+        ["photo.png", Array.Empty<byte>(), FilePreviewKind.Image],
+        ["photo.JPG", Array.Empty<byte>(), FilePreviewKind.Image],
+        ["photo.jpeg", Array.Empty<byte>(), FilePreviewKind.Image],
+        ["photo.gif", Array.Empty<byte>(), FilePreviewKind.Image],
+        ["photo.bmp", Array.Empty<byte>(), FilePreviewKind.Image],
+        ["photo.webp", Array.Empty<byte>(), FilePreviewKind.Image],
+        ["icon.svg", Array.Empty<byte>(), FilePreviewKind.Svg],
+        ["Notes.md", Array.Empty<byte>(), FilePreviewKind.Markdown],
+        ["data.json", Array.Empty<byte>(), FilePreviewKind.Json],
+        ["data.csv", Array.Empty<byte>(), FilePreviewKind.Csv],
+        ["data.tsv", Array.Empty<byte>(), FilePreviewKind.Csv],
     ];
-
-    [Theory]
-    [MemberData(nameof(Extensions))]
-    public void TheExtensionNamesTheKind(string path, object expected)
-    {
-        Assert.Equal(expected, FilePreviewClassifier.Classify(path, []));
-    }
 
     public static IEnumerable<object[]> Heads()
     {
@@ -48,8 +41,9 @@ public class FilePreviewClassifierTests
     }
 
     [Theory]
+    [MemberData(nameof(Cases))]
     [MemberData(nameof(Heads))]
-    public void WithoutAKindOfItsOwn_TheFirstBytesDecide(string path, byte[] head, object expected)
+    public void Classify_UsesTheExtensionBeforeTheFirstBytes(string path, byte[] head, object expected)
     {
         Assert.Equal(expected, FilePreviewClassifier.Classify(path, head));
     }

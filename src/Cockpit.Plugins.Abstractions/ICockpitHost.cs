@@ -724,6 +724,29 @@ public interface ICockpitHost
         ShowToast(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
 
     /// <summary>
+    /// Posts <paramref name="notification"/> as a toast and into the notification center (AC-1804). One with actions
+    /// stays until answered, and is still there after a restart if <see cref="AddNotificationSource"/> confirms it.
+    /// </summary>
+    /// <remarks>
+    /// Default shows it as a sticky toast when it has actions, kept for nothing. A plugin that relies on it being kept
+    /// sets minHostVersion 0.132.0.
+    /// </remarks>
+    void Notify(PluginNotification notification) =>
+        ShowToast(notification.Message, notification.Severity, notification.Actions, sticky: notification.Actions.Count > 0);
+
+    /// <summary>
+    /// Registers how the cockpit re-checks this plugin's kept notifications at startup (AC-1804): it hands
+    /// <paramref name="recheck"/> each kept <see cref="PluginNotification.Key"/>, after every plugin has initialized.
+    /// </summary>
+    /// <remarks>
+    /// Answer the notification as it stands now, with live actions, or null when it was resolved meanwhile; the
+    /// cockpit then shows it as resolved, never with a button that no longer works. Default no-op.
+    /// </remarks>
+    void AddNotificationSource(Func<string, Task<PluginNotification?>> recheck)
+    {
+    }
+
+    /// <summary>
     /// Asks the operator to approve a single action before the plugin performs it (#AC-47) — the shared consent
     /// gate for anything a plugin does with the operator's rights on an agent's say-so.
     /// </summary>

@@ -2377,6 +2377,33 @@
                                Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
                 </StackPanel>
                 <DockPanel IsVisible="{Binding !IsRemoteWindow}">
+                    <!-- AC-1802: the bell, outermost right, below where toasts appear. Amber with the waiting count when
+                         something needs you, the accent count for unread otherwise. -->
+                    <Button x:Name="NotificationsBell" DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="8,0,0,0"
+                            Command="{Binding ToggleNotificationsCommand}"
+                            ToolTip.Tip="Notifications — every toast of this session, with its buttons still live">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="BellOutline" Width="13" Height="13"
+                                       IsVisible="{Binding !Notifications.HasNeedsYou}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <materialIcons:MaterialIcon Kind="BellRingOutline" Width="13" Height="13"
+                                       IsVisible="{Binding Notifications.HasNeedsYou}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            <Border Classes="waitingCount" IsVisible="{Binding Notifications.HasNeedsYou}">
+                                <TextBlock Text="{Binding Notifications.NeedsYouCount}"/>
+                            </Border>
+                            <Border IsVisible="{Binding Notifications.ShowsUnreadOnly}"
+                                    Background="{DynamicResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}"
+                                    Padding="5,0" MinWidth="16" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Notifications.UnreadCount}" FontSize="10" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Foreground="{DynamicResource CockpitTextOnAccentBrush}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
                     <!-- AC-1829: what the window is still waiting for after the splash, so a skeleton is never unexplained. -->
                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="8,0,8,0" VerticalAlignment="Center">
                         <StackPanel.IsVisible>
