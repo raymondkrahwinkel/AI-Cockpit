@@ -348,10 +348,8 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <!-- AC-1794: the tip opens above the bar. Left at the default (under the pointer, 20px down) it does not
-                 fit below a bar at the bottom of the screen, and the positioner slides it up onto the pointer; the
-                 window then loses the pointer to the tip, the tip closes, and the pointer is back — a loop that
-                 flickers both the tip and the button's hover for as long as the pointer rests there. -->
+            <!-- AC-1794: open above the bar. The default placement does not fit below a bottom bar, slides onto the
+                 pointer, and the tip then flickers open and closed. -->
             <Setter Property="ToolTip.Placement" Value="Top"/>
             <Setter Property="ToolTip.VerticalOffset" Value="-4"/>
         </Style>
