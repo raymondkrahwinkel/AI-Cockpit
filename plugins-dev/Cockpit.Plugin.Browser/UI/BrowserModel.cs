@@ -1,4 +1,5 @@
 using Avalonia.Media.Imaging;
+using Avalonia.Input;
 using Cockpit.Plugin.Browser.UI.Engine;
 
 namespace Cockpit.Plugin.Browser.UI;
@@ -75,11 +76,12 @@ internal sealed class BrowserTab
 }
 
 // The one set of tabs of Raymond's profile, shared by every place the browser shows (AC-1711).
-internal sealed class BrowserModel(BrowserEngine engine)
+internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab>? createTab = null)
 {
     public const string StartAddress = "about:blank";
 
     private readonly List<BrowserTab> _tabs = [];
+    private readonly Stack<string> _closedAddresses = [];
 
     public BrowserEngine Engine { get; } = engine;
 
@@ -101,9 +103,8 @@ internal sealed class BrowserModel(BrowserEngine engine)
             return;
         }
 
-        var view = new CefBrowserView(Engine, address, Engine.RaymondProfile);
-        var tab = new BrowserTab(view, address);
-        view.PopupRequested += url => NewTab(url);
+        var tab = createTab?.Invoke(address) ?? new BrowserTab(new CefBrowserView(Engine, address, Engine.RaymondProfile), address);
+        tab.View.PopupRequested += url => NewTab(url);
         _tabs.Add(tab);
         Active = tab;
         Changed?.Invoke();
@@ -122,6 +123,67 @@ internal sealed class BrowserModel(BrowserEngine engine)
         Changed?.Invoke();
     }
 
+    public void ActivateRelative(int offset)
+    {
+        if (Active is not { } active || _tabs.Count < 2)
+        {
+            return;
+        }
+
+        Activate(_tabs[(_tabs.IndexOf(active) + offset + _tabs.Count) % _tabs.Count]);
+    }
+
+    public void CloseActive()
+    {
+        if (Active is { } active)
+        {
+            Close(active);
+        }
+    }
+
+    public void ReopenClosed()
+    {
+        if (_closedAddresses.TryPop(out var address))
+        {
+            NewTab(address);
+        }
+    }
+
+    public bool HandleShortcut(Key key, KeyModifiers modifiers)
+    {
+        if (modifiers == KeyModifiers.Control)
+        {
+            switch (key)
+            {
+                case Key.T:
+                    NewTab();
+                    return true;
+                case Key.W:
+                    CloseActive();
+                    return true;
+                case Key.Tab:
+                    ActivateRelative(1);
+                    return true;
+                case Key.L:
+                    return true;
+            }
+        }
+        else if (modifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            switch (key)
+            {
+                case Key.T:
+                    ReopenClosed();
+                    return true;
+                case Key.Tab:
+                    ActivateRelative(-1);
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     public void Close(BrowserTab tab)
     {
         var index = _tabs.IndexOf(tab);
@@ -131,6 +193,7 @@ internal sealed class BrowserModel(BrowserEngine engine)
         }
 
         _tabs.RemoveAt(index);
+        _closedAddresses.Push(tab.Address);
         TabClosed?.Invoke(tab);
         _ = tab.View.CloseAsync();
         if (ReferenceEquals(Active, tab))
@@ -139,5 +202,9 @@ internal sealed class BrowserModel(BrowserEngine engine)
         }
 
         Changed?.Invoke();
+        if (_tabs.Count == 0)
+        {
+            NewTab();
+        }
     }
 }

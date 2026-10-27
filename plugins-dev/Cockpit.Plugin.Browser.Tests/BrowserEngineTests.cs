@@ -1,4 +1,5 @@
 using Avalonia.Input;
+using Cockpit.Plugin.Browser.UI;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
 
@@ -33,6 +34,39 @@ public class BrowserEngineTests
                 Handled(Key.Left, null), Handled(Key.V, "\u0016", KeyModifiers.Control), Handled(Key.R, "\u0012", KeyModifiers.Control)));
     }
 
+    // L1 (UI): browser shortcuts stay in the shell's routed input path, never Cockpit's global shortcut dispatch.
+    private static void _BrowserShortcutsStayLocal()
+    {
+        var engine = BrowserEngine.ForScene(BrowserEngineState.Ready);
+        var model = new BrowserModel(engine, address => new BrowserTab(CefBrowserView.ForScene(engine), address));
+        model.NewTab("https://one.test");
+
+        void Press(Key key, KeyModifiers modifiers)
+        {
+            Assert.True(model.HandleShortcut(key, modifiers));
+        }
+
+        Press(Key.T, KeyModifiers.Control);
+        Assert.Equal(2, model.Tabs.Count);
+        Assert.Equal(BrowserModel.StartAddress, model.Active?.Address);
+
+        Press(Key.W, KeyModifiers.Control);
+        Assert.Single(model.Tabs);
+        Assert.Equal("https://one.test", model.Active?.Address);
+
+        Press(Key.T, KeyModifiers.Control | KeyModifiers.Shift);
+        Assert.Equal(2, model.Tabs.Count);
+        Press(Key.Tab, KeyModifiers.Control | KeyModifiers.Shift);
+        Assert.Equal("https://one.test", model.Active?.Address);
+        Press(Key.Tab, KeyModifiers.Control);
+        Assert.Equal(BrowserModel.StartAddress, model.Active?.Address);
+        Press(Key.L, KeyModifiers.Control);
+
+        Press(Key.W, KeyModifiers.Control);
+        Press(Key.W, KeyModifiers.Control);
+        Assert.Equal((1, BrowserModel.StartAddress), (model.Tabs.Count, model.Active?.Address));
+    }
+
     // L2d (platform/fallback): an engine that cannot load is a reason on the panel, never an exception in Cockpit. A
     // failed fetch is tried again in the same process (AC-1760); once CEF itself failed to load, only a restart helps.
     [Fact]
@@ -58,6 +92,7 @@ public class BrowserEngineTests
             Assert.Equal(BrowserEngineState.Unavailable, engine.State);
             Assert.False(string.IsNullOrWhiteSpace(engine.Reason));
             Assert.False(engine.CanRetry);
+            _BrowserShortcutsStayLocal();
         }
         finally
         {

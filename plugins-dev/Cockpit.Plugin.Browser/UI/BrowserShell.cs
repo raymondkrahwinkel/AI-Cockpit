@@ -79,6 +79,7 @@ internal sealed class BrowserShell : UserControl
         _lock.Themed(MaterialIcon.ForegroundProperty, "CockpitTextSecondaryBrush");
         _address.GotFocus += (_, _) => _Refresh();
         _address.LostFocus += (_, _) => _Refresh();
+        AddHandler(KeyDownEvent, _OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         var addressField = new Border
         {
@@ -182,6 +183,20 @@ internal sealed class BrowserShell : UserControl
     public BrowserModel Model => _model;
 
     public event Action? PlacementRequested;
+
+    private void _OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_model.HandleShortcut(e.Key, e.KeyModifiers))
+        {
+            if (e.Key == Key.L || (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control))
+            {
+                _address.Focus();
+                _address.SelectAll();
+            }
+
+            e.Handled = true;
+        }
+    }
 
     // Mockup screen 2: in the rail (and its own window) the way back sits at the end of the address bar.
     public void ShowBackToTab(bool visible) => _placement.IsVisible = visible;
