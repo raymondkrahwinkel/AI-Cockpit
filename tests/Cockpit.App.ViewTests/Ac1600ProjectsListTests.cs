@@ -33,10 +33,14 @@ public sealed class Ac1600ProjectsListTests
                     window.UpdateLayout();
                     var list = window.GetVisualDescendants().OfType<DockPanel>().Single(panel => panel.Name == "ProjectList");
                     Assert.Equal(wide, list.Bounds.Width >= ProjectListGrid.WideListWidth);
+                    var detail = window.GetVisualDescendants().OfType<ScrollViewer>().Single(pane => pane.Name == "ProjectDetail");
+                    Assert.True(detail.Bounds.X >= list.Bounds.Right, $"at {width} px the detail pane sits beside the list, not over it");
 
                     var row = window.GetVisualDescendants().OfType<ProjectListRow>().First(row => row.IsEffectivelyVisible);
                     var column = row.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Name == "DescriptionColumn");
                     var underName = row.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Name == "DescriptionUnderName");
+                    var compactStatus = row.GetVisualDescendants().OfType<Border>().Single(border => border.Name == "CompactStatus");
+                    Assert.False(compactStatus.IsEffectivelyVisible, $"at {width} px the compact status must not draw over the status tags");
 
                     Assert.True(wide == column.IsEffectivelyVisible, $"at {width} px the description column shows: {column.IsEffectivelyVisible}");
                     Assert.True(wide != underName.IsEffectivelyVisible, $"at {width} px the description under the name shows: {underName.IsEffectivelyVisible}");
@@ -45,6 +49,7 @@ public sealed class Ac1600ProjectsListTests
                     window.UpdateLayout();
                     var descriptionHeader = window.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == "Description");
                     Assert.True(row.IsCompact);
+                    Assert.True(compactStatus.IsEffectivelyVisible, "compact density shows its one status");
                     Assert.False(column.IsEffectivelyVisible);
                     Assert.False(underName.IsEffectivelyVisible);
                     Assert.False(descriptionHeader.IsEffectivelyVisible);

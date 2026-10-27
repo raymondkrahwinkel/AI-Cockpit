@@ -108,7 +108,7 @@
                     <TextBlock Text="{Binding QuietStatus}" IsVisible="{Binding ShowsQuietStatus}" FontSize="11"
                                VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </WrapPanel>
-                <Border controls:ProjectListGrid.Cell="stat" Classes="statusTag" VerticalAlignment="Center"
+                <Border x:Name="CompactStatus" controls:ProjectListGrid.Cell="cstat" Classes="statusTag" VerticalAlignment="Center"
                         IsVisible="{Binding $self.(controls:ProjectListGrid.IsCompact)}">
                     <TextBlock Text="{Binding CompactStatus}"/>
                 </Border>

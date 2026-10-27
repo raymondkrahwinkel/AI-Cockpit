@@ -83,9 +83,8 @@ public partial class ProjectsWorkspace : UserControl
         }
 
         IsNarrow = Bounds.Width < 720;
-        projectsSplit.ColumnDefinitions = IsNarrow
-            ? new ColumnDefinitions("*")
-            : new ColumnDefinitions("*,400");
+        // The columns stay the same objects: replacing them mid-layout left the grid arranged with the old ones.
+        Grid.SetColumn(projectDetail, IsNarrow ? 0 : 1);
         projectList.IsVisible = !IsNarrow || !_showingDetail;
         projectDetail.IsVisible = !IsNarrow || _showingDetail;
         if (!IsNarrow)
@@ -93,10 +92,7 @@ public partial class ProjectsWorkspace : UserControl
             _showingDetail = false;
         }
 
-        if (!IsNarrow && projectsSplit.ColumnDefinitions.Count > 1)
-        {
-            projectsSplit.ColumnDefinitions[1].Width = new GridLength(Math.Clamp(Bounds.Width * 0.28, 360, 500));
-        }
+        projectsSplit.ColumnDefinitions[1].Width = new GridLength(IsNarrow ? 0 : Math.Clamp(Bounds.Width * 0.28, 360, 500));
     }
 
     private void _OnKeyDown(object? sender, KeyEventArgs args)

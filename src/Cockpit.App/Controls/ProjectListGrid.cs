@@ -32,7 +32,7 @@ public sealed class ProjectListGrid : Grid
     private static readonly string[] _wideCells = ["logo", "main", "desc", "prof", "last", "stat", "act"];
     private static readonly string[] _narrowCells = ["logo", "main", "pl", "stat", "act"];
     private static readonly string[] _smallCells = ["logo", "main", "act"];
-    private static readonly string[] _compactCells = ["logo", "main", "prof", "last", "stat", "act"];
+    private static readonly string[] _compactCells = ["logo", "main", "prof", "last", "cstat", "act"];
 
     static ProjectListGrid()
     {
