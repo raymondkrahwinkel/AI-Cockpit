@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Backup;
@@ -328,6 +329,10 @@ public class PluginBackendHost(
     public void RemoveBackupTarget(string id) =>
         services.GetRequiredService<BackupTargets>().Remove(id);
 
+    // A host with no splash (a backend without a frontend) registers no sequence, and the step is simply not run.
+    public void AddStartupStep(string label, Func<CancellationToken, Task> run) =>
+        services.GetService<Cockpit.Core.Startup.StartupSequence>()?.AddPlugin(label, run);
+
     public async Task<string?> GetProjectFieldValueAsync(string key, string? paneId, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(key) || await _ProjectOfAsync(paneId, cancellationToken) is not { } projectId)
@@ -476,6 +481,20 @@ public class PluginBackendHost(
 
     public void AddTtyProvider(TtyProviderRegistration registration) =>
         services.GetRequiredService<IPluginTtyProviderRegistry>().Register(registration, pluginId);
+
+    public void RecordModelObservation(PluginModelObservation observation)
+    {
+        var value = observation.Kind switch
+        {
+            PluginModelObservationKind.QuotaReading => observation.Quota?.UsedPercent,
+            PluginModelObservationKind.Latency => observation.Latency?.TotalSeconds,
+            _ => 1d,
+        };
+        if (value is { } measured)
+        {
+            services.GetService<IModelObservationStore>()?.Record(new ModelObservation(observation.ProviderId, observation.Model, Enum.Parse<ModelObservationKind>(observation.Kind.ToString()), observation.At, measured, observation.Quota?.Label));
+        }
+    }
 
     public async Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()
     {

@@ -68,6 +68,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _host = host;
         _initializedHost = host;
 
+        foreach (var connection in settings.Connections)
+        {
+            host.AddStartupStep($"Connecting to {connection.Name}…", cancellationToken =>
+                DepotProjectListingSource.For(host, connection).ListAsync(cancellationToken));
+        }
+
         // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
         host.McpServerAccountChanged += (_, serverName) =>
         {
@@ -172,11 +178,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host.AddBackupTarget(new Backup.DepotBackupTarget(host, () => settings.Connections, connection.Id));
         }
 
-        // AC-1510: the first connection's account space carries the cockpit's portable settings; the host keeps one
-        // carrier, so a connection added later carries them from the next start.
-        if (settings.Connections.FirstOrDefault() is { } first)
+        // AC-1832: one selected Depot carries settings. The generic host owns one carrier, so a newly selected
+        // connection becomes the carrier on the next start; the carrier itself stops immediately when turned off.
+        if (settings.Connections.FirstOrDefault(connection => connection.SynchroniseSettings) is { } selected)
         {
-            host.AddSettingsCarrier(new Backup.DepotSettingsCarrier(host, () => settings.Connections, first.Id).Registration(first));
+            host.AddSettingsCarrier(new Backup.DepotSettingsCarrier(host, () => settings.Connections, selected.Id).Registration(selected));
         }
 
         // AC-504: session delivery now asks via GetMcpServers instead of the shared registry, so reclaim what
@@ -257,7 +263,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         await WriteConnectionsAsync(
             host,
             settings,
-            [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url))],
+            [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url, connection.SynchroniseSettings))],
             cancellationToken, _events).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
@@ -289,7 +295,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         var id = existing?.Id ?? (string.IsNullOrWhiteSpace(request.Connection.Id) ? Guid.NewGuid().ToString("n") : request.Connection.Id);
-        var connection = new DepotConnectionRegistration(id, name, url);
+        var connection = new DepotConnectionRegistration(id, name, url, request.Connection.SynchroniseSettings);
         await WriteConnectionsAsync(
             host,
             settings,

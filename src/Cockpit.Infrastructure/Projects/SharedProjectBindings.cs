@@ -16,6 +16,7 @@ public static class SharedProjectBindings
             binding.Name,
             binding.Description,
             binding.GitUrl,
+            binding.SharedSourceKey,
             binding.BehaviorPrompt,
             binding.IsolateInWorktreeByDefault,
             binding.EnabledMcpServerNames,

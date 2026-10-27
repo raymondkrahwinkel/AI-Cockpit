@@ -383,7 +383,7 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains("Tijd per project", _Texts(overviewScreen));
         Assert.Contains("Eigen regels deze week", _Texts(overviewScreen));
         Assert.StartsWith("zonder tarief:", _Control<TextBlock>(overviewScreen, "CostTileDetail").Text);
-        _Control<Button>(overviewScreen, "OpenHoursTab");
+        _Control<Button>(overviewScreen, "HoursTab");
         _Control<Button>(overviewScreen, "OverviewTab");
         _Control<Button>(overviewScreen, "PreviousOverviewRange");
         _Control<Button>(overviewScreen, "NextOverviewRange");
@@ -397,6 +397,16 @@ public sealed class ProductivityHoursJourneyTests
         Assert.Contains("personal · opus", _Texts(overviewScreen));
         Assert.Contains("work · sonnet", _Texts(overviewScreen));
         _Render(overviewScene.Window, "08-overzicht.png");
+
+        // AC-1816: both screens carry the Uren | Overzicht switch and a refresh button, and one click leads to the other.
+        _Click(screen, "OverviewTab");
+        await ui.Received(2).OpenWorkspaceAsync("workspace.productivity.overview");
+        _Click(overviewScreen, "HoursTab");
+        await ui.Received(2).OpenWorkspaceAsync(UiParts.ProductivityUi.WorkspaceTypeId);
+        timeEntries.Seed(new CockpitTimeEntry(Guid.NewGuid(), "Na het openen geregistreerd", _Local(2026, 10, 19).AddHours(9), TimeSpan.FromMinutes(10), null, CockpitTimeEntrySource.Duration, CockpitTimeEntryStatus.Open));
+        _Click(overviewScreen, "RefreshButton");
+        await _Until(() => _NamedText(overviewScreen, "OwnEntriesTile") == "6", "the entry registered after opening, via ↻");
+        Assert.Equal("zojuist bijgewerkt", _NamedText(overviewScreen, "RefreshedAt"));
 
         _Click(overviewScreen, "IncludeAgent");
         await _Until(

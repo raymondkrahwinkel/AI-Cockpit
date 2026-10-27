@@ -102,7 +102,10 @@ public sealed class RemoteSessionJourney
 
                 await view.OpenServerStartCommand.ExecuteAsync(group);
                 group.Start.SelectedProfile = group.Start.Profiles.First(profile => profile.Label == "EchoTty");
-                Assert.Null(group.Start.SelectedProject);
+                Assert.Collection(
+                    group.Start.Projects,
+                    project => Assert.Equal((null, "No project"), (project.Id, project.Name)));
+                Assert.Equal("No project", group.Start.SelectedProject?.Name);
                 group.Start.Prompt = "working-directory";
                 await view.StartOnServerCommand.ExecuteAsync(group);
                 var row = group.Sessions.Single();

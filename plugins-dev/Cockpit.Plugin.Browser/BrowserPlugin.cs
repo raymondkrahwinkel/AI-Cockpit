@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Browser;
@@ -30,7 +31,8 @@ public sealed class BrowserPlugin : ICockpitPlugin
             ? root
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit");
         var runtime = new AgentBrowserRuntime(Path.Combine(stateRoot, "browser-runtimes"), new HttpClient { Timeout = TimeSpan.FromMinutes(5) });
-        var browsers = new AgentBrowserHost(() => runtime.Resolve(), Path.Combine(stateRoot, "browser-profiles"));
+        var logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Browser");
+        var browsers = new AgentBrowserHost(() => runtime.Resolve(), Path.Combine(stateRoot, "browser-profiles"), logger);
         browsers.SweepStale();
         _browsers = browsers;
 

@@ -28,7 +28,13 @@ internal static class AutopilotModelTier
         }
 
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
-        if (profile?.ModelCostEstimatesCheapestFirst is not { Count: > 0 } ranked)
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var ranked = _PricedRanking(profile);
+        if (ranked is null)
         {
             return null;
         }
@@ -58,14 +64,22 @@ internal static class AutopilotModelTier
     // dearest still-allowed model rather than the cheapest, to keep as much capability as the ceiling permits.
     internal static AutopilotStep HoldToCeiling(AutopilotStep step, IReadOnlyList<PluginProfileInfo> profiles, AutopilotCostStrategy strategy)
     {
-        if (Validate(step, profiles, strategy) is null)
+        if (strategy is AutopilotCostStrategy.QualityFirst || step.IsReviewGate || string.IsNullOrWhiteSpace(step.Model))
         {
             return step;
         }
 
-        // Validate only returns a refusal once it has found the profile and a non-empty ranking, so both hold here.
-        var profile = profiles.First(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
-        var ranked = profile.ModelCostEstimatesCheapestFirst;
+        var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, step.ProfileLabel, StringComparison.Ordinal));
+        if (profile is null)
+        {
+            return step;
+        }
+
+        var ranked = _PricedRanking(profile);
+        if (ranked is null || Validate(step, profiles, strategy) is null)
+        {
+            return step;
+        }
 
         // The dearest the ceiling allows, but only one the profile actually offers — a provider can price a model
         // it doesn't list, and moving onto that would swap a cost problem for a launch-time failure. Nothing
@@ -104,4 +118,14 @@ internal static class AutopilotModelTier
 
         return -1;
     }
+
+    private static IReadOnlyList<PluginModelCostEstimate>? _PricedRanking(PluginProfileInfo? profile) =>
+        profile?.ModelCostEstimatesCheapestFirst is { Count: > 0 } ranked
+        && ranked.All(estimate => estimate is
+        {
+            EstimatedInputUsdPerMillionTokens: not null,
+            EstimatedOutputUsdPerMillionTokens: not null,
+        })
+            ? ranked
+            : null;
 }

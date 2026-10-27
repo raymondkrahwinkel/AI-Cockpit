@@ -6,7 +6,10 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // JSON into a `ClaudeProviderConfig`, resolves its executable (a pinned path, else bare `claude` off
 // PATH — the bundled-executable locator is a later minor increment), and builds a `ClaudeSdkSessionDriver`
 // backed by the real `ProcessClaudeSdkSubprocess`.
-internal sealed class ClaudeSdkSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
+internal sealed class ClaudeSdkSessionDriverFactory(
+    Func<string, string?>? managedResolver = null,
+    ClaudeModelIntelligence? intelligence = null,
+    Action<PluginModelObservation>? recordObservation = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
     {
@@ -15,6 +18,6 @@ internal sealed class ClaudeSdkSessionDriverFactory(Func<string, string?>? manag
         // preferred next, then a bare "claude" is looked up on PATH (and, on Windows, matched against the .cmd npm
         // shim, which Process does not do itself).
         var executablePath = ClaudeExecutableLocator.Resolve(config.ExecutablePath is { Length: > 0 } pinned ? pinned : "claude", managedResolver);
-        return new ClaudeSdkSessionDriver(() => new ProcessClaudeSdkSubprocess(), config, executablePath);
+        return new ClaudeSdkSessionDriver(() => new ProcessClaudeSdkSubprocess(), config, executablePath, intelligence, recordObservation);
     }
 }

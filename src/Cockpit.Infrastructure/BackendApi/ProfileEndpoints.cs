@@ -115,6 +115,12 @@ internal static class ProfileEndpoints
                 [.. registration.Options.Select(option => new RemoteProviderOption(option.Key, option.Label, option.Choices, option.ChoiceLabels))])), ConnectKeyEndpoints.Json);
         }).RequireAdmin().Audited("list_profile_providers", services);
 
+        // AC-1808: read here, where the profile's plugins run; `null` is "unknown", as it is on the desktop.
+        api.MapGet("/profiles/{label}/model-intelligence", async (string label, CancellationToken cancellationToken) =>
+            Results.Json(services.GetService<IProviderModelIntelligence>() is { } reader
+                ? await reader.ReadAsync(label, cancellationToken).ConfigureAwait(false)
+                : null, ConnectKeyEndpoints.Json)).RequireAdmin().Audited("read_profile_model_intelligence", services);
+
         api.MapGet("/profiles/mcp-servers", async (CancellationToken cancellationToken) =>
             Results.Json(services.GetService<IMcpServerCatalog>() is { } catalog
                 ? McpServerRegistryFilter.OfferedToOperator(await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false)).Select(server => server.Name)

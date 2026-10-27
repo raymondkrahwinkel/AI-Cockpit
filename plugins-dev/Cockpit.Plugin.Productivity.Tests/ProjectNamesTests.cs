@@ -8,7 +8,7 @@ public sealed class ProjectNamesTests
 {
     [Theory]
     [InlineData(@"C:\Users\raymo\AppData\Roaming\Cockpit\worktrees\308c2a9b28e1\cockpit-personal-accde346-accde346", "Cockpit", null)]
-    [InlineData("3650ac1d0f2b4c6e9a7d1e5f8b2c4a60", "Onbekend project (3650ac1d…)", "'3650ac1d0f2b4c6e9a7d1e5f8b2c4a60' hoort bij geen project in de cockpit: het project is weg, of de map is van vóór de projecten.")]
+    [InlineData("3650ac1d0f2b4c6e9a7d1e5f8b2c4a60", "Onbekend project", "'3650ac1d0f2b4c6e9a7d1e5f8b2c4a60' hoort bij geen project in de cockpit: het project is weg, of de map is van vóór de projecten.")]
     public void Resolve_FindsAWorktreeFoldersProjectThroughItsSession_AndNamesAnUnknownIdAsUnknown(string stored, string expectedLabel, string? expectedTooltip)
     {
         const string cockpit = "b9f48b5c01694695b1e7f0714ca06ef1";

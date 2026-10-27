@@ -24,6 +24,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     private BrowserHome? _home;
     private AgentTabsModel? _agents;
     private BrowserModel? _model;
+    private BrowserTabSession? _tabSession;
     private TabShareService? _share;
 
     // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not part of the plugin contract.
@@ -36,8 +37,10 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         _agents = new AgentTabsModel(host.Channel);
         // AC-1714: up front, so an agent asking before the browser was ever opened gets a refusal at once, not a timeout.
         _model = new BrowserModel(BrowserEngine.Shared);
+        _tabSession = new BrowserTabSession(host.Storage);
+        _tabSession.Attach(_model);
         _share = new TabShareService(host, _model, new TabGrantRegistry());
-        host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), host.Storage));
+        host.AddSettings(() => new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), host.Storage, _tabSession));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(WorkspaceTypeId, "Browser", _ => _Home(host).CreateSlot(BrowserPlace.Tab))
         {
             IconKind = MaterialIconKind.Web,
@@ -68,30 +71,30 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
     public void Dispose()
     {
         _share?.Dispose();
+        _tabSession?.Dispose();
         _agents?.Dispose();
         BrowserEngine.Shared.Shutdown();
     }
 
-    // Mockup screens 1 and 2: what the status bar says about the browser; nothing while it has no open tab.
+    // The agent side is the only thing the status bar still says about the browser; where it sits and how many
+    // tabs it has are noise Raymond reads off the window itself.
     internal static string? StatusText(BrowserPlace place, BrowserEngineState state, int tabs, bool agentSide = false, int agentTabs = 0) =>
-        agentSide ? $"Agent profile · {agentTabs} {(agentTabs == 1 ? "tab" : "tabs")} by agents"
-        : state != BrowserEngineState.Ready || tabs == 0 ? null
-        : place == BrowserPlace.Rail ? "Browser docked in the rail"
-        : $"Browser · profile Raymond · {tabs} {(tabs == 1 ? "tab" : "tabs")}";
+        agentSide ? $"Agent profile · {agentTabs} {(agentTabs == 1 ? "tab" : "tabs")} by agents" : null;
 
-    // AC-1714, mockup screen 7: what is shared, after the browser's own text.
+    // AC-1714, mockup screen 7: what is shared, on its own base text since StatusText no longer says anything.
     internal static string? WithShared(string? text, IReadOnlyList<TabGrant> grants)
     {
-        if (text is null || grants.Count == 0)
+        if (grants.Count == 0)
         {
             return text;
         }
 
         var tabs = grants.Select(grant => grant.TabId).Distinct().Count();
         var controllers = grants.Where(grant => grant.Controls).ToList();
+        var baseText = text ?? "Browser";
         return controllers.Count > 0
-            ? $"{text} · {controllers.Count} {(controllers.Count == 1 ? "tab" : "tabs")} controlled by {string.Join(", ", controllers.Select(grant => grant.SessionName).Distinct())}"
-            : $"{text} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
+            ? $"{baseText} · {controllers.Count} {(controllers.Count == 1 ? "tab" : "tabs")} controlled by {string.Join(", ", controllers.Select(grant => grant.SessionName).Distinct())}"
+            : $"{baseText} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
     }
 
     private BrowserHome _Home(ICockpitUiHost host)
@@ -109,7 +112,7 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             {
                 _ = top.Launcher.LaunchUriAsync(new Uri(url));
             }
-        }, share.Grants, tab => _ = share.ShareAsync(tab));
+        }, share.Grants, tab => _ = share.ShareAsync(tab), _tabSession);
         var home = new BrowserHome(shell);
         home.Moved += place => _ = place == BrowserPlace.Rail ? host.OpenDockPanelAsync(DockPanelId) : host.OpenWorkspaceAsync(WorkspaceTypeId);
         void ShowStatus() => host.SetStatusText(WithShared(

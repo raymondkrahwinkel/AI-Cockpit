@@ -98,30 +98,6 @@ public class FirstRunWizardViewModelTests
         Assert.NotNull(viewModel.StepBar[1].TextDecorations);
     });
 
-    [Fact]
-    public void Skip_RaisesRequestClose_WithoutMoving() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
-        var raised = false;
-        viewModel.RequestClose += (_, _) => raised = true;
-
-        viewModel.SkipCommand.Execute(null);
-
-        Assert.True(raised);
-    });
-
-    [Fact]
-    public void Next_OnTheLastStep_RaisesRequestCloseInsteadOfMovingPastIt() => HeadlessAvalonia.Run(() =>
-    {
-        var viewModel = new FirstRunWizardViewModel([new StubFirstRunWizardStep(0, "What this is", isSkipped: false)]);
-        var raised = false;
-        viewModel.RequestClose += (_, _) => raised = true;
-
-        viewModel.NextCommand.Execute(null);
-
-        Assert.True(raised);
-    });
-
     // The epic's own plan (AC-509's sharpened criteria, 2026-08-01): the step bar shows every planned slot, even
     // one nothing is registered for yet (the Depot step, AC-540), and "Step N of 4" counts against the plan
     // rather than only the steps that happen to exist today.

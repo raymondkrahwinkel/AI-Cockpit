@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
@@ -175,7 +176,7 @@ internal sealed class KimiAcpConnection : IAsyncDisposable
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(line);
+            document = JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(line));
         }
         catch (JsonException)
         {

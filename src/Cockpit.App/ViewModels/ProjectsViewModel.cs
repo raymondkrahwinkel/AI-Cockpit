@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
@@ -16,6 +17,10 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private readonly IProjectCatalog _catalog;
     private readonly IProjectEditor _editor;
     private ProjectCatalogSnapshot _snapshot = ProjectCatalogSnapshot.Empty;
+    private ProjectsDisplaySettings _projectsDisplaySettings = new();
+    private readonly HashSet<string> _collapsedSectionKeys = new(StringComparer.Ordinal);
+    private Func<string, int> _sessionsRunning = _ => 0;
+    private INotifyCollectionChanged? _sessionChanges;
 
     // AC-490: the job-run trail the cards read "started 9 September" from, and what was read from it last. Null
     // in a graph without one, where every job's line stays the calendar's alone.
@@ -25,7 +30,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.
     private readonly ISessionDialogService? _dialogs;
 
-    // Which layout the Projects page draws (AC-772). Null under the previewer, which keeps the default and persists nothing.
+    // The Projects page's density and folded sections (AC-1599). Null under the previewer, which keeps the default and persists nothing.
     private readonly IProjectsDisplaySettingsStore? _displaySettings;
 
 
@@ -96,6 +101,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         var sharedGroupsChanged = !ReferenceEquals(_catalog.Current.SharedProjectGroups, _snapshot.SharedProjectGroups);
         _snapshot = _catalog.Current;
         _Republish();
+        _RepublishProjectSections();
         if (sharedGroupsChanged)
         {
             _RepublishSharedProjectGroups();
@@ -125,6 +131,21 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // waiting on it, so opening the workspace never blocks on a slow or unreachable connection — see that method's own
     // remarks (AC-245).
     public ObservableCollection<SharedProjectGroupViewModel> SharedProjectGroups { get; } = [];
+
+    // AC-1599: B2's source/organization rows. The existing card/category collections remain for the old view until it
+    // is replaced by the B2 XAML in its own ticket.
+    public ObservableCollection<ProjectSectionViewModel> ProjectSections { get; } = [];
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private string _selectedCategory = "All";
+
+    [ObservableProperty]
+    private ProjectsDensity _density = ProjectsDensity.Comfortable;
+
+    public IReadOnlyList<string> Categories => ["All", .. _snapshot.Settings.Normalized().CategoryOrder, _UncategorizedLabel];
 
     // Whether there is anything to show under a "Shared" heading right now — lets the workspace leave the whole section out rather than draw an empty one.
     public bool HasSharedProjects => SharedProjectGroups.Count > 0;
@@ -195,19 +216,29 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _snapshot = _snapshot with
         {
             Settings = ProjectSettings.Empty.WithProject(Project.Create("Cockpit") with
-        {
-            Description = "The cockpit itself — the desktop app these sessions run in.",
-            SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
-            DefaultProfileLabel = "personal",
-            LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
-            AdditionalInfo =
+            {
+                Description = "The cockpit itself — the desktop app these sessions run in.",
+                SourceDirectories = [new("/home/raymond/RiderProjects/AI-Cockpit")],
+                DefaultProfileLabel = "personal",
+                LastOpenedAt = new DateTimeOffset(2026, 7, 26, 9, 30, 0, TimeSpan.FromHours(2)),
+                AdditionalInfo =
             [
                 new ProjectInfoField("Repository", "https://github.com/example/ai-cockpit"),
                 new ProjectInfoField("Customer", "Acme BV — ask for their project lead"),
             ],
-        }),
+            }),
         };
         _Republish();
+    }
+
+    // AC-1600: the Projects-workspace scenes stage a whole catalog snapshot — sources, organisations, claims — so the
+    // B2 list draws exactly what the catalog would hand it.
+    internal void StageSnapshot(ProjectCatalogSnapshot snapshot)
+    {
+        _snapshot = snapshot;
+        _Republish();
+        _RepublishSharedProjectGroups();
+        _RepublishProjectSections();
     }
 
     // `DesignSample` plus shared-project groups (AC-245), staged directly rather than through
@@ -285,6 +316,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
         await _catalog.LoadAsync(cancellationToken).ConfigureAwait(true);
         _snapshot = _catalog.Current;
+        _Republish();
+        _RepublishSharedProjectGroups();
+        _RepublishProjectSections();
 
         await RefreshJobRunsAsync(cancellationToken).ConfigureAwait(true);
 
@@ -292,75 +326,53 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         {
             // Deliberately unguarded: it reads the same cockpit.json the project store read a line above, so an
             // unreadable file has already thrown and a catch here would cover a case it cannot reach.
-            LayoutMode = (await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true)).LayoutMode;
+            _projectsDisplaySettings = await _displaySettings.LoadAsync(cancellationToken).ConfigureAwait(true);
+            Density = _projectsDisplaySettings.Density;
+            _collapsedSectionKeys.Clear();
+            _collapsedSectionKeys.UnionWith(_projectsDisplaySettings.CollapsedSectionKeys);
+            _RepublishProjectSections();
         }
 
         _BeginSharedProjectsLoad();
     }
 
-    // Which layout the page draws (AC-772). Persisted per operator by `SetLayoutModeAsync`; the segmented control on
-    // the page itself is the only place it is set, deliberately — a preference you can see the effect of while you
-    // change it does not need a settings screen to hide in.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsCardsLayout))]
-    [NotifyPropertyChangedFor(nameof(IsListLayout))]
-    [NotifyPropertyChangedFor(nameof(IsContinueLayout))]
-    private ProjectsLayoutMode _layoutMode = ProjectsLayoutMode.Cards;
-
-    public bool IsCardsLayout => LayoutMode == ProjectsLayoutMode.Cards;
-
-    public bool IsListLayout => LayoutMode == ProjectsLayoutMode.List;
-
-    public bool IsContinueLayout => LayoutMode == ProjectsLayoutMode.Continue;
-
-    // Whether the third segment is offered at all — see `ProjectsDisplaySettings.ContinueLayoutAvailable`.
-    public static bool ShowContinueLayoutOption => ProjectsDisplaySettings.ContinueLayoutAvailable;
-
-    // Switches the page's layout and remembers it. Takes the mode by name so the three segments can be one command
-    // with a parameter rather than three commands that differ in one word.
     [RelayCommand]
-    private async Task SetLayoutModeAsync(string? mode)
+    private async Task SetDensityAsync(string? density)
     {
-        if (!Enum.TryParse<ProjectsLayoutMode>(mode, ignoreCase: true, out var parsed))
+        if (!Enum.TryParse<ProjectsDensity>(density, ignoreCase: true, out var parsed) || parsed == Density)
         {
             return;
         }
 
-        var normalized = new ProjectsDisplaySettings { LayoutMode = parsed }.Normalized();
-        if (normalized.LayoutMode == LayoutMode)
-        {
-            // Clicking the segment you are already on: a ToggleButton has flipped its own IsChecked to false by the
-            // time this runs, so returning without a word would leave the control with nothing selected. Re-raising
-            // is what pushes the one-way binding back over that local flip.
-            _NotifyLayoutSegments();
-
-            return;
-        }
-
-        LayoutMode = normalized.LayoutMode;
-
+        Density = parsed;
+        _projectsDisplaySettings = _projectsDisplaySettings with { Density = parsed };
         if (_displaySettings is not null)
         {
-            try
-            {
-                await _displaySettings.SaveAsync(normalized).ConfigureAwait(true);
-            }
-            catch (Exception)
-            {
-                // The write, unlike the read in `LoadAsync`, can fail on its own — a read-only disk, a permission
-                // change, a config write gate — and it does so from a command, where an exception has no caller to
-                // land on. The page has already switched by then; the choice simply does not survive a restart.
-            }
+            await _displaySettings.SaveAsync(_projectsDisplaySettings).ConfigureAwait(true);
         }
     }
 
-    // The three segments read off `LayoutMode` through separate computed properties, so a re-assert has to name all
-    // three — the one turning on and the two turning off.
-    private void _NotifyLayoutSegments()
+    // AC-1600: a click on a section heading folds it or opens it again.
+    [RelayCommand]
+    private Task ToggleSectionAsync(ProjectSectionViewModel section) => SetSectionCollapsedAsync(section, !section.IsCollapsed);
+
+    public async Task SetSectionCollapsedAsync(ProjectSectionViewModel section, bool collapsed)
     {
-        OnPropertyChanged(nameof(IsCardsLayout));
-        OnPropertyChanged(nameof(IsListLayout));
-        OnPropertyChanged(nameof(IsContinueLayout));
+        section.IsCollapsed = collapsed;
+        if (collapsed)
+        {
+            _collapsedSectionKeys.Add(section.Key);
+        }
+        else
+        {
+            _collapsedSectionKeys.Remove(section.Key);
+        }
+
+        _projectsDisplaySettings = _projectsDisplaySettings with { CollapsedSectionKeys = [.. _collapsedSectionKeys] };
+        if (_displaySettings is not null)
+        {
+            await _displaySettings.SaveAsync(_projectsDisplaySettings).ConfigureAwait(true);
+        }
     }
 
     // Public (rather than folded into `LoadAsync`) so a test can await it directly instead of racing the
@@ -388,15 +400,271 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     private void _RepublishSharedProjectGroups()
     {
         SharedProjectGroups.Clear();
-        foreach (var group in _snapshot.SharedProjectGroups)
+        // AC-1758: the catalog hands over every connection. One whose projects are all added keeps a compact section so
+        // the server stays visible; one that listed nothing and has no error or notice has nothing to say.
+        foreach (var group in _snapshot.SharedProjectGroups.Where(group => group.Projects.Count > 0 || group.AllAdded || group.Error is { Length: > 0 } || group.Notice is { Length: > 0 }))
         {
-            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error, group.SourceLogo));
+            SharedProjectGroups.Add(new SharedProjectGroupViewModel(group.SourceName, group.Projects, group.Error, group.SourceLogo, group.Notice, group.AllAdded));
         }
 
         OnPropertyChanged(nameof(HasSharedProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
         OnPropertyChanged(nameof(HasNoSharedProjectSources));
     }
+
+    partial void OnSearchTextChanged(string value) => _RepublishProjectSections();
+
+    partial void OnSelectedCategoryChanged(string value) => _RepublishProjectSections();
+
+    // AC-1600: the toolbar's category chips, the selected one marked.
+    public IReadOnlyList<ProjectsCategoryChip> CategoryChips =>
+        [.. Categories.Select(category => new ProjectsCategoryChip(category, category == SelectedCategory))];
+
+    [RelayCommand]
+    private void SelectCategory(string category) => SelectedCategory = category;
+
+    // AC-1600: "19 here · 9 more from your organisations" beside the toolbar's title.
+    public string CountSummary
+    {
+        get
+        {
+            var toAdd = _snapshot.SharedProjectGroups.Sum(group => group.Projects.Count);
+            return toAdd > 0
+                ? $"{_snapshot.Settings.Projects.Count} here · {toAdd} more from your organisations"
+                : $"{_snapshot.Settings.Projects.Count} here";
+        }
+    }
+
+    public bool IsComfortable => Density == ProjectsDensity.Comfortable;
+
+    public bool IsCompact => Density == ProjectsDensity.Compact;
+
+    partial void OnDensityChanged(ProjectsDensity value)
+    {
+        OnPropertyChanged(nameof(IsComfortable));
+        OnPropertyChanged(nameof(IsCompact));
+    }
+
+    // AC-1601: the sessions a project has running, for the detail pane's list; the count above stays the row's own.
+    internal Func<string, IEnumerable<SessionPanelViewModel>> RunningSessionsOf { get; set; } = _ => [];
+
+    public void SetSessionCounter(Func<string, int> counter, INotifyCollectionChanged? changes = null)
+    {
+        if (_sessionChanges is not null)
+        {
+            _sessionChanges.CollectionChanged -= _OnSessionsChanged;
+        }
+
+        _sessionsRunning = counter;
+        _sessionChanges = changes;
+        if (_sessionChanges is not null)
+        {
+            _sessionChanges.CollectionChanged += _OnSessionsChanged;
+        }
+
+        _RepublishProjectSections();
+    }
+
+    private void _OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs args) => _RepublishProjectSections();
+
+    [RelayCommand]
+    public async Task HideSharedProjectAsync(string sharedProjectId)
+    {
+        var rows = ProjectSections.SelectMany(section => section.Items).ToList();
+        var selectedIndex = SelectedListItem?.Id == sharedProjectId
+            ? rows.FindIndex(item => item.Id == sharedProjectId)
+            : -1;
+        await _catalog.HideSharedProjectAsync(sharedProjectId).ConfigureAwait(true);
+        await LoadSharedProjectsAsync().ConfigureAwait(true);
+        if (selectedIndex >= 0)
+        {
+            var remainingRows = ProjectSections.SelectMany(section => section.Items).ToList();
+            SelectedListItem = remainingRows.ElementAtOrDefault(selectedIndex) ?? remainingRows.LastOrDefault();
+        }
+    }
+
+    [RelayCommand]
+    public async Task UnhideSharedProjectsAsync((string SourceKey, string OrganizationSlug) section)
+    {
+        await _catalog.UnhideSharedProjectsAsync(section.SourceKey, section.OrganizationSlug).ConfigureAwait(true);
+        await LoadSharedProjectsAsync().ConfigureAwait(true);
+    }
+
+    // AC-1600: the B2 list's selection — a row, so a team project still to add can be selected too. Kept by id across
+    // every rebuild below, so a refresh or an event never moves it; the first row stands in when it is gone.
+    [ObservableProperty]
+    private ProjectListItemViewModel? _selectedListItem;
+
+    [RelayCommand]
+    private void SelectListItem(ProjectListItemViewModel item) => SelectedListItem = item;
+
+    // With nothing selected, the detail pane offers the starting points on an empty cockpit and a pointer otherwise.
+    public bool ShowsStartingPoints => SelectedListItem is null && !HasProjects;
+
+    public bool ShowsPickHint => SelectedListItem is null && HasProjects;
+
+    partial void OnSelectedListItemChanged(ProjectListItemViewModel? oldValue, ProjectListItemViewModel? newValue)
+    {
+        OnPropertyChanged(nameof(ShowsStartingPoints));
+        OnPropertyChanged(nameof(ShowsPickHint));
+        if (oldValue is not null)
+        {
+            oldValue.IsSelected = false;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.IsSelected = true;
+        }
+    }
+
+    private void _RepublishProjectSections()
+    {
+        var selectedId = SelectedListItem?.Id;
+        var sections = new Dictionary<string, ProjectSectionViewModel>(StringComparer.Ordinal);
+
+        ProjectSectionViewModel GetSection(SharedProjectLocation? location)
+        {
+            var isMachine = location is null;
+            var sourceKey = location?.SourceKey ?? string.Empty;
+            var organizationSlug = location?.Organization?.Slug ?? string.Empty;
+            var key = isMachine ? "machine" : sourceKey + ":" + (organizationSlug.Length == 0 ? "source" : organizationSlug);
+            if (sections.TryGetValue(key, out var existing))
+            {
+                return existing;
+            }
+
+            var sourceName = location?.SourceName ?? string.Empty;
+            var created = new ProjectSectionViewModel(
+                key, sourceKey, organizationSlug,
+                location is null ? "This machine" : location.Organization?.Name ?? sourceName,
+                location?.SourceHost ?? string.Empty,
+                isMachine)
+            {
+                IsCollapsed = _collapsedSectionKeys.Contains(key),
+                OrganizationRole = location?.Organization?.Role,
+            };
+            sections.Add(key, created);
+            return created;
+        }
+
+        bool Matches(string name, string? description, string? organization, string? category)
+        {
+            var text = SearchText.Trim();
+            return (SelectedCategory == "All" || string.Equals(category ?? _UncategorizedLabel, SelectedCategory, StringComparison.OrdinalIgnoreCase))
+                && (text.Length == 0 || name.Contains(text, StringComparison.OrdinalIgnoreCase)
+                    || (description?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (organization?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        foreach (var group in _snapshot.SharedProjectGroups)
+        {
+            foreach (var offer in group.Projects)
+            {
+                var location = new SharedProjectLocation(group.SourceKey, group.SourceName, offer.Organization, group.SourceHost);
+                var section = GetSection(location);
+                section.ToAddCount++;
+                if (Matches(offer.Name, offer.Description, offer.Organization?.Name, null))
+                {
+                    section.Items.Add(new ProjectListItemViewModel(offer)
+                    {
+                        Add = FinishSettingUpCommand,
+                        Hide = HideSharedProjectCommand,
+                        TryAgain = RefreshSharedProjectsCommand,
+                        Origin = _Origin(location),
+                        WhereItLives = _WhereItLives(location),
+                    });
+                }
+            }
+        }
+
+        foreach (var project in _snapshot.Settings.Projects)
+        {
+            _snapshot.BoundProjectLocations.TryGetValue(project.Id, out var location);
+            var section = GetSection(location);
+            section.HereCount++;
+            if (Matches(project.Name, project.Description, location?.Organization?.Name, project.Category))
+            {
+                section.Items.Add(new ProjectListItemViewModel(
+                    project, _sessionsRunning(project.Id), location?.Organization?.Role, location is not null,
+                    _snapshot.RemoteChangedProjectIds.Contains(project.Id), CardActions)
+                {
+                    Origin = _Origin(location),
+                    WhereItLives = _WhereItLives(location),
+                    RunningSessions = [.. RunningSessionsOf(project.Id).Select(session => ProjectRunningSession.From(session, DateTimeOffset.Now))],
+                    Jobs = [.. project.Jobs.Select(job => new ProjectJobChoice(project, job)
+                    {
+                        LastRun = _jobRuns.FirstOrDefault(run => run.ProjectId == project.Id && run.JobId == job.Id),
+                    })],
+                    Remove = RemoveListedProjectCommand,
+                });
+            }
+        }
+
+        foreach (var location in _snapshot.HiddenSharedProjectLocations.Values)
+        {
+            GetSection(location).HiddenCount++;
+        }
+
+        foreach (var group in _snapshot.SharedProjectGroups)
+        {
+            var sourceSections = sections.Values.Where(section => !section.IsThisMachine && section.SourceKey == group.SourceKey).ToList();
+            if (sourceSections.Count == 0 && (group.Error is { Length: > 0 } || group.Notice is { Length: > 0 }))
+            {
+                sourceSections.Add(GetSection(new SharedProjectLocation(group.SourceKey, group.SourceName, null, group.SourceHost)));
+            }
+
+            foreach (var section in sourceSections)
+            {
+                section.Error = group.Error;
+                section.Notice = group.Notice;
+                section.ReadAt = group.ReadAt;
+            }
+        }
+
+        var isFiltered = !string.IsNullOrWhiteSpace(SearchText) || SelectedCategory != "All";
+        ProjectSections.Clear();
+        foreach (var section in sections.Values
+            .Where(section => section.Items.Count > 0 || (!isFiltered
+                && (section.HiddenCount > 0 || section.Error is { Length: > 0 } || section.Notice is { Length: > 0 })))
+            .OrderBy(section => section.IsThisMachine ? 0 : 1)
+            .ThenBy(section => section.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(section => section.Host, StringComparer.CurrentCultureIgnoreCase))
+        {
+            var ordered = section.Items
+                .OrderBy(item => item.IsOnThisMachine ? 0 : 1)
+                .ThenByDescending(item => item.Project?.LastOpenedAt ?? DateTimeOffset.MinValue)
+                .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            section.Items.Clear();
+            foreach (var item in ordered)
+            {
+                section.Items.Add(item);
+            }
+
+            section.ShownCount = section.Items.Count;
+            ProjectSections.Add(section);
+        }
+
+        var rows = ProjectSections.SelectMany(section => section.Items).ToList();
+        SelectedListItem = rows.FirstOrDefault(row => row.Id == selectedId) ?? rows.FirstOrDefault();
+
+        OnPropertyChanged(nameof(Categories));
+        OnPropertyChanged(nameof(CategoryChips));
+        OnPropertyChanged(nameof(CountSummary));
+    }
+
+    private static string _Origin(SharedProjectLocation? location) => location is null
+        ? "● This machine"
+        : $"◆ {location.Organization?.Name ?? location.SourceName}";
+
+    private static string _WhereItLives(SharedProjectLocation? location) => location switch
+    {
+        null => "● This machine only",
+        { SourceHost: { Length: > 0 } host, Organization: { } organization } => $"◆ {host} / {organization.Slug}",
+        { SourceHost: { Length: > 0 } host } => $"◆ {host}",
+        _ => $"◆ {location.SourceName}",
+    };
 
     // Finds the source it came from by its own `SharedProjectOffer.Id` prefix (the same `"{scheme}:{slug}"` shape
     // `ISharedProjectSource.Key`'s own doc comment describes) rather than carrying the source alongside the row
@@ -524,9 +792,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // Removes a project after confirming. Sessions already running under it keep running — a project is what a
     // session started with, not something it holds open, so removing one is not a reason to stop work in flight.
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task RemoveProjectAsync()
+    private Task RemoveProjectAsync() => SelectedProject is { } project ? _ConfirmAndRemoveAsync(project) : Task.CompletedTask;
+
+    // AC-1601: the detail pane's Remove — a list row's project is not always `SelectedProject`.
+    [RelayCommand]
+    private Task RemoveListedProjectAsync(Project project) => _ConfirmAndRemoveAsync(project);
+
+    private async Task _ConfirmAndRemoveAsync(Project project)
     {
-        if (_dialogs is null || SelectedProject is not { } project)
+        if (_dialogs is null)
         {
             return;
         }
@@ -577,6 +851,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         SelectedProject = Projects.FirstOrDefault(project => project.Id == selectedId);
         OnPropertyChanged(nameof(HasProjects));
         OnPropertyChanged(nameof(HasNothingToShow));
+        OnPropertyChanged(nameof(ShowsStartingPoints));
+        OnPropertyChanged(nameof(ShowsPickHint));
         OnPropertyChanged(nameof(MostRecentProject));
         OnPropertyChanged(nameof(HasMoreThanSidebarShows));
 
@@ -764,3 +1040,5 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         await LoadSharedProjectsAsync();
     }
 }
+
+public sealed record ProjectsCategoryChip(string Name, bool IsOn);

@@ -21,6 +21,7 @@ using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Consent;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
@@ -451,6 +452,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // this one shared view model.
     public ProjectsViewModel Projects { get; }
 
+    // AC-1827: the splash waits on this first read of the projects.
+    public Task ProjectsLoaded { get; private set; } = Task.CompletedTask;
+
     // The workspace tab strip and the active workspace's panes.
     public WorkspacesViewModel Workspaces { get; }
 
@@ -556,7 +560,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its
     // own empty state. AC-1304: and never in the Simple stand, whose column is always covered — by a conversation
     // or by the start screen — and whose "+ New session" opens the dialog this one offers.
-    public bool ShowSessionEmptyState => !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
+    public bool ShowSessionEmptyState => !IsRestoringSessions && !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
+
+    // AC-1829: while the saved sessions are still coming back this area shows skeletons, never "No sessions yet".
+    public bool ShowSessionsSkeleton => IsRestoringSessions && !HasSessionsHere && !OpenServerGroups.Any() && Workspaces.IsSessionsActive && !SimpleView && !IsRemoteWindow;
+
+    // AC-1829: App holds these from the moment the window exists until the session restore and first project read land.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
+    private bool _isRestoringSessions;
+
+    [ObservableProperty]
+    private bool _isLoadingProjects;
 
     // Whether the workspace now showing holds any session. Deliberately not `HasSessions`: a fresh
     // second workspace has to greet you with the empty state, even while the first one is full of running
@@ -1018,6 +1034,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     private string? _openDockPanelId;
 
+    // AC-1824: the Simple stand's own open plugin panel (never the assistant, which that stand docks by role) —
+    // kept apart from `OpenDockPanelId` so each stand remembers its own rail.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
+    private string? _simpleOpenDockPanelId;
+
     partial void OnSidebarWidthChanged(double value)
     {
         OnPropertyChanged(nameof(MaxDockRailWidth));
@@ -1085,6 +1107,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         OnPropertyChanged(nameof(AssistantDocked));
         OnPropertyChanged(nameof(DockPanels));
+        OnPropertyChanged(nameof(RailTabs));
+        OnPropertyChanged(nameof(HasRailTabs));
         OnPropertyChanged(nameof(HasDockPanels));
         OnPropertyChanged(nameof(ShowDockRail));
         OnPropertyChanged(nameof(EffectiveOpenDockPanelId));
@@ -1112,8 +1136,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [NotifyPropertyChangedFor(nameof(EffectiveOpenDockPanelId))]
     [NotifyPropertyChangedFor(nameof(ShowPanelsSidebar))]
     [NotifyPropertyChangedFor(nameof(ShowDockRail))]
+    [NotifyPropertyChangedFor(nameof(RailTabs))]
+    [NotifyPropertyChangedFor(nameof(HasRailTabs))]
     [NotifyPropertyChangedFor(nameof(SimpleStandShowsTheStartScreen))]
     [NotifyPropertyChangedFor(nameof(ShowSessionEmptyState))]
+    [NotifyPropertyChangedFor(nameof(ShowSessionsSkeleton))]
     private bool _simpleView;
 
     // AC-1527: the Simple stand's navigation — what its main column shows and which rail entry is marked. One state
@@ -1210,7 +1237,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // not written back: `OpenDockPanelId` is the panels stand's own stored choice, and docking here by picking a
     // session would leave the assistant tab open there too, on a rail the operator had closed.
     public string? EffectiveOpenDockPanelId => SimpleView
-        ? SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
+        ? SimpleOpenDockPanelId is { } simpleId && RailTabs.Any(panel => panel.Id == simpleId) ? simpleId
+            : SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
         : OpenDockPanelId is { } id && !IsDockPanelFloating(id) ? id : null; // AC-1710: floating is not open here
 
     partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
@@ -1289,6 +1317,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // The conversation went (closed, AC-1304's third door): nothing picked is Home.
             SimplePage = SimplePage.Home;
+        }
+
+        // AC-1824: the assistant docks by role on an agent pick, so it takes the rail from an open plugin panel.
+        if (SimpleStandDocksTheAssistant)
+        {
+            SimpleOpenDockPanelId = null;
         }
 
         // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
@@ -1406,10 +1440,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // (AC-953: the Assistant's tab is withdrawn while it is undocked, which is exactly when that happens).
     public bool HasDockPanels => DockPanels.Count > 0;
 
-    // AC-1303: whether the rail stands at all. The Simple stand answers it differently: it draws no tab strip, so
-    // a rail with nothing open there would be exactly the 40px strip of chrome the line above rejects — and one
-    // you could not even click your way out of.
-    public bool ShowDockRail => SimpleView ? SimpleStandDocksTheAssistant : HasDockPanels;
+    // AC-1303: whether the rail stands at all. The Simple stand has it when it docks the assistant, or (AC-1824)
+    // when plugin panels give it tabs to click; otherwise it would be an empty 40px strip.
+    public bool ShowDockRail => SimpleView ? SimpleStandDocksTheAssistant || HasRailTabs : HasDockPanels;
+
+    // AC-1824: the tabs on the rail. The Simple stand docks the assistant by role, so it has no tab there.
+    public IReadOnlyList<DockPanelRegistration> RailTabs =>
+        SimpleView ? DockPanels.Where(panel => panel.Id != AssistantIndicatorCoordinator.DockPanelId).ToList() : DockPanels;
+
+    public bool HasRailTabs => RailTabs.Count > 0;
+
+    // Opens a panel on the stand that is on screen; null closes it.
+    internal void SetOpenDockPanel(string? panelId)
+    {
+        if (SimpleView)
+        {
+            SimpleOpenDockPanelId = panelId;
+        }
+        else
+        {
+            OpenDockPanelId = panelId;
+        }
+    }
 
     // AC-951: the rail reads the registry directly, so it needs telling when that changes — a panel can arrive
     // (or, since AC-953, be withdrawn) long after this view model is built.
@@ -1423,6 +1475,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         registry.Changed += (_, _) =>
         {
             OnPropertyChanged(nameof(DockPanels));
+            OnPropertyChanged(nameof(RailTabs));
+            OnPropertyChanged(nameof(HasRailTabs));
             OnPropertyChanged(nameof(HasDockPanels));
             OnPropertyChanged(nameof(ShowDockRail));
         };
@@ -3116,6 +3170,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
             OnPropertyChanged(nameof(ShowSessionGrid));
             OnPropertyChanged(nameof(ShowSessionEmptyState));
+            OnPropertyChanged(nameof(ShowSessionsSkeleton));
             OnPropertyChanged(nameof(HasSessionsHere));
             OnPropertyChanged(nameof(VisibleSessions));
             OnPropertyChanged(nameof(SessionWorkspaceGroups));
@@ -3191,6 +3246,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.
     public AssistantOptionsViewModel AssistantOptions { get; }
+
+    public ModelIntelligenceOptionsViewModel ModelIntelligence { get; internal set; } = new();
 
     // The assistant chip at the bottom of the sidebar (AC-543).
     [ObservableProperty]
@@ -3368,7 +3425,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IManagedSettings? managedSettings = null,
         IBackupScheduleStore? backupScheduleStore = null,
         IRegisteredBackupTargets? backupTargets = null,
-        IOrgPolicy? orgPolicy = null)
+        IOrgPolicy? orgPolicy = null,
+        // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
+        IModelIntelligenceOptions? modelIntelligenceOptions = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3425,6 +3484,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // where the page renders its defaults rather than the dialog failing to open.
         AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
         _ = AssistantOptions.RefreshAsync();
+        ModelIntelligence = new ModelIntelligenceOptionsViewModel(modelIntelligenceOptions);
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
         // MCP server, a provider key, a plugin's token — not just when the Security tab is opened. The write seam
@@ -3493,6 +3553,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
+        Projects.SetSessionCounter(projectId => Sessions.Count(session => session.ProjectId == projectId), Sessions);
+        Projects.RunningSessionsOf = projectId => Sessions.Where(session => session.ProjectId == projectId);
         _projectQuickStart = projectQuickStart;
         _projectJobHistory = projectJobHistory;
 
@@ -3510,12 +3572,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             EditProjectCommand,
             OpenProjectFolderCommand,
             ShareProjectCommand,
-            SyncProjectNowCommand);
+            SyncProjectNowCommand,
+            SelectSessionCommand);
 
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
         // startup read here; the section simply stays hidden until it lands.
-        _ = Projects.LoadAsync();
+        ProjectsLoaded = Projects.LoadAsync();
         // The panes are one source of "which sessions are live" (their pane ids, what worktrees are keyed on); the
         // shared registry adds the ones that run without a pane, today the delegated tasks (AC-106) (AC-654).
         IReadOnlySet<string> LivePaneIds() => _AllSessions().Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
@@ -3617,6 +3680,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(StackSessionsInStack));
             OnPropertyChanged(nameof(ShowSessionGrid));
             OnPropertyChanged(nameof(ShowSessionEmptyState));
+            OnPropertyChanged(nameof(ShowSessionsSkeleton));
             RefreshPaneVisibility();
         };
 
@@ -5444,6 +5508,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
+        SimpleOpenDockPanelId = settings.SimpleOpenDockPanelId;
 
         // AC-1710: a file from before the floating stand carries only the assistant's own flag.
         _floatingDockPanelIds.Clear();
@@ -5477,6 +5542,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         FocusRailWeight = GlobalFocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
+        SimpleOpenDockPanelId = SimpleOpenDockPanelId,
         AssistantDocked = AssistantDocked,
         FloatingDockPanelIds = [.. _floatingDockPanelIds.Order(StringComparer.Ordinal)],
         OpenInSimpleView = OpenInSimpleView,
@@ -5681,7 +5747,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private async Task ToggleDockPanel(string panelId)
     {
-        OpenDockPanelId = OpenDockPanelId == panelId ? null : panelId;
+        SetOpenDockPanel((SimpleView ? SimpleOpenDockPanelId : OpenDockPanelId) == panelId ? null : panelId);
 
         if (_layoutSettingsStore is null)
         {
@@ -6913,15 +6979,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private Task OptionsAsync() => _ShowOptionsAsync();
 
     // Opens the projects manager (AC-161) — its own window, not a corner of Options.
-    [RelayCommand]
-    private async Task ManageProjectsAsync()
-    {
-        if (_dialogService is not null)
-        {
-            await _dialogService.ShowProjectsDialogAsync(Projects);
-        }
-    }
-
     // Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
     // so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
     [RelayCommand]
@@ -7269,6 +7326,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
+        ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
         _RebuildPluginOptionsRows();
     }
 
@@ -7443,6 +7501,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await AssistantOptions.SaveStagedAsync();
+        await ModelIntelligence.SaveStagedAsync();
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
         if (UsageThresholdSettings is { } thresholds)
@@ -7514,6 +7573,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // SuspendPersistence up across the re-seed, and every other refresh now leaves those values alone.
         await Security.RefreshAsync(reseedStagedValues: true);
         await AssistantOptions.RefreshAsync();
+        await ModelIntelligence.LoadAsync();
 
         UsageThresholdSettings?.Revert();
 
@@ -7647,6 +7707,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PropertyChanged -= _OnStagedPropertyChanged;
         Security.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
+        ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
         _optionsStaged = false;
         Security.SuspendPersistence = false;
         AssistantOptions.SuspendPersistence = false;

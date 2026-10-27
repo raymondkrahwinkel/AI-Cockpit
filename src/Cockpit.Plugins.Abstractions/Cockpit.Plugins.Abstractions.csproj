@@ -612,7 +612,15 @@
     <!-- 3.31.0 (AC-1726): the UI SDK adds FocusSessionAsync, host 0.122.0. -->
     <!-- 3.33.0 (AC-1497): combines the Depot SaaS SDK additions with main's 3.32.0 Productivity contracts. -->
     <!-- 3.34.0 (AC-1766): CockpitUsageDelta.ProfileLabel. A plugin that reads it sets minHostVersion 0.125.0. Additive; still v3. -->
-    <Version>3.34.0</Version>
+    <!-- 3.37.0 (AC-1808): SessionProviderRegistration.ReadModelIntelligenceAsync, PluginModelIntelligence and its facts, the
+         PublicModelRef/Source/PriceModifiers on PluginModelCostEstimate, and ICockpitHost.RecordModelObservation. Additive;
+         still v3. A plugin that sets the read sets minHostVersion 0.129.0. -->
+    <!-- 3.36.0 (AC-1837): SharedProjectBinding.SharedSourceKey preserves a source-defined project identity. -->
+    <!-- 3.35.0 (AC-1600): added ISharedProjectSource.SourceHost (default null), the connection's host for the Projects
+         workspace's section headings; host 0.127.0. A host older than this simply does not read it, so a plugin that
+         implements it needs no newer minHostVersion. Additive; still v3. -->
+    <!-- 3.38.0 (AC-1827): ICockpitHost.AddStartupStep, a plugin's own step on the splash. A plugin that calls it sets minHostVersion 0.130.0. Additive; still v3. -->
+    <Version>3.38.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
@@ -643,7 +651,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
     <!-- The MaterialIconKind enum only (no Avalonia control), so a contribution point can name a bundled vector
          icon (AC-33). The host ships the runtime copy via Material.Icons.Avalonia; plugins get the enum through
          this reference compile-only. -->

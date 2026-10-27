@@ -1,3 +1,4 @@
+using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
@@ -34,7 +35,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             WorkspaceTypeId,
             "Uren",
-            _ => new HoursWorkspaceBody(_controller, host))
+            _ => new HoursWorkspaceBody(_controller, host, () => _OpenOverview(host)))
         {
             IconKind = MaterialIconKind.ClockOutline,
             Description = "Leg je eigen uren vast met een duur of stopwatch en bekijk ze per dag.",
@@ -43,7 +44,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             OverviewWorkspaceTypeId,
             "Overzicht",
-            _ => new OverviewWorkspaceBody(_overviewController, () => _Open(host)))
+            _ => new OverviewWorkspaceBody(_overviewController, () => _Open(host), () => _OpenOverview(host), () => _RefreshInterval(host)))
         {
             IconKind = MaterialIconKind.ViewDashboardOutline,
             Description = "Bekijk jouw tijd, agents, tokens en kosten per project, ticket en sessie.",
@@ -71,6 +72,9 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
             controller.UpdateProjectFallback(host.ActiveProjectId);
         }
     }
+
+    private static TimeSpan _RefreshInterval(ICockpitUiHost host) =>
+        RefreshPolicy.Interval((host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default).RefreshSeconds);
 
     private static async void _Open(ICockpitUiHost host)
     {

@@ -120,26 +120,22 @@ public class DialogChromeTests
     [Fact]
     public void ADialog_StatesItsNameOnce() => HeadlessAvalonia.Run(() =>
     {
-        var window = _ShownProjectsDialog();
+        var window = _ShownDialog();
 
-        Assert.Single(_VisibleTextBlocks(window), block => block.Text == "Projects");
+        Assert.Single(_VisibleTextBlocks(window), block => block.Text == "Set status");
     });
 
     [Fact]
     public void ADialogsName_IsAtHeadingScaleWithItsLineUnderneath() => HeadlessAvalonia.Run(() =>
     {
-        var window = _ShownProjectsDialog();
+        var window = _ShownDialog();
 
         Assert.Equal(15d, _Name(window).FontSize);
 
         var subtitle = Assert.Single(_VisibleTextBlocks(window),
-            block => block.Text?.StartsWith("What your sessions work on", StringComparison.Ordinal) == true);
+            block => block.Text?.StartsWith("What is this session working on", StringComparison.Ordinal) == true);
         Assert.Equal(11.5d, subtitle.FontSize);
         Assert.True(subtitle.Bounds.Height > 0, "a heading's second line has to be on screen to be a subtitle");
-
-        // The line under the name explains it, so it may not read as loudly as the name. Size alone does not say
-        // that: weight and colour are what make text loud, and a smaller line set in bold at full strength reads
-        // louder than the name above it. All three, or the sentence is a wish.
         Assert.True(subtitle.FontSize < _Name(window).FontSize, "the explanation is set larger than the name");
         Assert.True(subtitle.FontWeight <= _Name(window).FontWeight, "the explanation is set heavier than the name");
         Application.Current!.TryFindResource("CockpitTextFaintBrush", out var faint);
@@ -203,7 +199,7 @@ public class DialogChromeTests
         // The measurement above is taken on a window that is nothing but the chrome. A technique that only works
         // there would be measuring its own test rig, so the same figures are asked of a dialog with a full body —
         // including a footer standing on the very same band colour.
-        var band = _Band(_ShownProjectsDialog());
+        var band = _Band(_ShownDialog());
         var heading = _Heading(band);
 
         // The bar's own height first: it is what this whole guard is built around, and proving it only on the rig
@@ -337,7 +333,7 @@ public class DialogChromeTests
     [Fact]
     public void TheTitleBar_SitsOnTheChromeBand() => HeadlessAvalonia.Run(() =>
     {
-        var window = _ShownProjectsDialog();
+        var window = _ShownDialog();
         var band = Assert.Single(_Name(window).GetVisualAncestors().OfType<Border>(), border => border.Background is not null);
 
         var fill = Assert.IsAssignableFrom<ISolidColorBrush>(band.Background);
@@ -347,16 +343,16 @@ public class DialogChromeTests
         Assert.Equal(_Colour("CockpitHairlineSoftColor"), seam.Color);
     });
 
-    private static ProjectsDialog _ShownProjectsDialog()
+    private static SetStatusDialog _ShownDialog()
     {
-        var window = new ProjectsDialog { DataContext = ProjectsViewModel.DesignSample() };
+        var window = new SetStatusDialog { Width = 800, DataContext = new SetStatusDialogViewModel("AC-1604") };
         window.Show();
         window.UpdateLayout();
         return window;
     }
 
-    private static TextBlock _Name(ProjectsDialog window) =>
-        Assert.Single(_VisibleTextBlocks(window), block => block.Text == "Projects");
+    private static TextBlock _Name(SetStatusDialog window) =>
+        Assert.Single(_VisibleTextBlocks(window), block => block.Text == "Set status");
 
     private static Color _Colour(string key) => ThemeTokens.Colour(key);
 
@@ -367,7 +363,7 @@ public class DialogChromeTests
     // name ends in Dialog. A dialog added without the shared chrome fails EveryDialog_WearsTheCockpitTitleBar
     // rather than being noticed the next time someone opens it.
     private static IEnumerable<Type> _DialogWindowTypes() =>
-        typeof(ProjectsDialog).Assembly
+        typeof(NewSessionDialog).Assembly
             .GetTypes()
             .Where(type => type is { IsAbstract: false, Namespace: "Cockpit.App.Views" }
                 && type.Name.EndsWith("Dialog", StringComparison.Ordinal)

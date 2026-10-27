@@ -10,6 +10,7 @@ using Cockpit.App.Views;
 using Cockpit.Core;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Startup;
 using Cockpit.Core.Updates;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.BackendApi;
@@ -27,6 +28,9 @@ sealed class Program
     // AC-883: internal rather than private so a view test can populate the container and then prove a pane did
     // *not* reach into it. With it null, "resolved nothing" and "was never allowed to resolve" look identical.
     public static IServiceProvider Services { get; internal set; } = null!;
+
+    // AC-1827: null for a start with no splash (a remote window, the tests).
+    internal static StartupSequence? Startup { get; private set; }
 
     // AC-1505: what `--provision` brought in and AC-1506 applied; a failure opens the wizard with its reason.
     internal static ProvisioningOutcome? Provisioning { get; set; }
@@ -103,36 +107,49 @@ sealed class Program
         Cockpit.App.Logging.LifecycleLog.Write(
             $"Cockpit {Cockpit.Core.Plugins.HostVersionInfo.Current} starting: pid {Environment.ProcessId}, args [{string.Join(' ', ProvisioningEntry.RedactArguments(args))}].");
 
-        // Up front, before anything resolves a tool or spawns a session: the PATH repair and the stale-process sweep.
-        CockpitBackend.RepairProcess(loggerFactory);
-
-        // AC-1505: route D, before any plugin loads. A restart is the same run going on, so it does not fetch again.
-        if (!restartHandoff && ProvisioningEntry.UrlFromArguments(args) is { } provisionUrl)
+        // AC-1827: the heavy half of the start is the splash's first two steps; the single-instance claim above stays first.
+        Startup = new StartupSequence();
+        Startup.AddCore("Loading settings…", _ => _OnStaThread(() =>
         {
-            // The synchronous wait preserves both the pre-plugin ordering and this entry thread's STA apartment.
-            Provisioning = ProvisioningEntry.ProvisionAsync(
-                provisionUrl,
-                args.Contains(ProvisioningEntry.ReapplyArgument),
-                CockpitBuild.StateRoot,
-                loggerFactory.CreateLogger("Cockpit.Provisioning")).GetAwaiter().GetResult();
-        }
+            // Up front, before anything resolves a tool or spawns a session: the PATH repair and the stale-process sweep.
+            CockpitBackend.RepairProcess(loggerFactory);
 
-        // Plugins are discovered before the container is built so they can register services (#14). Safe mode is a
-        // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).
-        var backend = CockpitBackend.Build(
-            loggerFactory,
-            services => AddDesktop(services, loggerFactory),
-            args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load);
-        Services = backend.Services;
+            // AC-1505: route D, before any plugin loads. A restart is the same run going on, so it does not fetch again.
+            if (!restartHandoff && ProvisioningEntry.UrlFromArguments(args) is { } provisionUrl)
+            {
+                Provisioning = ProvisioningEntry.ProvisionAsync(
+                    provisionUrl,
+                    args.Contains(ProvisioningEntry.ReapplyArgument),
+                    CockpitBuild.StateRoot,
+                    loggerFactory.CreateLogger("Cockpit.Provisioning")).GetAwaiter().GetResult();
+            }
+
+            CockpitBackend.ApplyIncomingSettings(loggerFactory);
+        }), essential: true);
+        Startup.AddCore("Loading plugins…", _ => _OnStaThread(() =>
+        {
+            // Plugins are discovered before the container is built so they can register services (#14). Safe mode is a
+            // UI-independent command-line escape hatch that still discovers them but loads none (AC-478).
+            var backend = CockpitBackend.Build(
+                loggerFactory,
+                services => AddDesktop(services, loggerFactory),
+                args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load,
+                applyIncomingSettings: false);
+            Services = backend.Services;
+
+            // The hosted services, then the worktree reconcile; the planners follow once the main window is up (App).
+            if (!args.Contains("--audio-spike"))
+            {
+                backend.Start();
+            }
+        }), essential: true);
 
         if (args.Contains("--audio-spike"))
         {
+            Startup.RunPendingAsync().GetAwaiter().GetResult();
             AudioSpike.RunAsync(Services).GetAwaiter().GetResult();
             return;
         }
-
-        // The hosted services, then the worktree reconcile; the planners follow once the main window is up (App).
-        backend.Start();
 
         // Log and handle recoverable dispatcher/render exceptions so one plugin surface cannot take down every
         // session and workspace. Fatal conditions still exit through their own paths.
@@ -191,6 +208,11 @@ sealed class Program
     internal static void AddDesktop(IServiceCollection services, ILoggerFactory loggerFactory)
     {
         services.AddDesktopInfrastructure();
+        if (Startup is not null)
+        {
+            services.AddSingleton(Startup);
+        }
+
         services.AddServices(typeof(Program).Assembly);
 
         // AC-1379: the scan registers the assistant's host over the plain presence; the desktop's hears a controller come
@@ -210,6 +232,36 @@ sealed class Program
 
         services.AddSessionPanes();
         services.AddBackendSeams();
+    }
+
+    // STA, as Main always was: this is the work it did before the splash.
+    private static Task _OnStaThread(Action work)
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                work();
+                done.SetResult();
+            }
+            catch (Exception exception)
+            {
+                done.SetException(exception);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "cockpit-startup",
+        };
+        if (OperatingSystem.IsWindows())
+        {
+            thread.SetApartmentState(ApartmentState.STA);
+        }
+
+        thread.Start();
+
+        return done.Task;
     }
 
     private static IReadOnlyList<Avalonia.Controls.Window> _OpenWindows() =>
@@ -367,7 +419,7 @@ sealed class Program
 
         try
         {
-            if (Services.GetService<CockpitViewModel>() is { } cockpit)
+            if (Services?.GetService<CockpitViewModel>() is { } cockpit)
             {
                 await AwaitTeardownAsync(cockpit.DisposeAsync().AsTask(), TeardownBudget, () => cockpit.PendingTeardownCount);
             }

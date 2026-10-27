@@ -173,6 +173,32 @@ public sealed class ConnectKeyDoorTests
         Assert.Equal(baseline, answer);
     }
 
+    // L2 (authorization and expiry), AC-1798: Never remains usable past the normal ceiling, unless policy refuses it.
+    [Theory]
+    [InlineData(true, null, HttpStatusCode.OK, true)]
+    [InlineData(false, "This server's policy does not allow connect keys that never expire.", HttpStatusCode.Unauthorized, false)]
+    public async Task NeverExpiringKey_RemainsAuthorizedUnlessPolicyForbidsIt(bool allowNeverExpiring, string? expectedError, HttpStatusCode expectedStatus, bool auditSaysNever)
+    {
+        await using var door = new _Door();
+        var state = Path.GetDirectoryName(door.ConfigPath) ?? throw new InvalidOperationException("The test config has no directory.");
+        Directory.CreateDirectory(state);
+        var config = new JsonObject { ["NodeConnectKeys"] = new JsonObject { ["Policy"] = new JsonObject { ["AllowNeverExpiring"] = allowNeverExpiring } } };
+        await File.WriteAllTextAsync(door.ConfigPath, config.ToJsonString());
+        var verifier = door.Verifier(_Environment());
+        (ConnectKey Key, string Secret)? issued = null;
+
+        var error = await Record.ExceptionAsync(async () => issued = await verifier.IssueAsync(
+            "permanent", ConnectKeyCapability.Operate, null, Operator, neverExpires: true));
+        door.Clock.Advance(TimeSpan.FromDays(ConnectKeyPolicy.Default.MaxExpiryDays + 1));
+        await door.StartAsync(_Environment());
+        var answer = await door.AnswerAsync(issued?.Secret ?? UnknownKey);
+        var audit = await File.ReadAllTextAsync(door.AuditPath);
+
+        Assert.Equal(expectedError, error?.Message);
+        Assert.Equal(expectedStatus, answer.Status);
+        Assert.Equal(auditSaysNever, audit.Contains("never expires", StringComparison.Ordinal));
+    }
+
     // Criterion 3: revocation reaches a controller that is already connected. The node's MCP transport is stateless
     // (SDK 2.0), so what is open at that moment is a call in flight: it is cut off within a second, and the open
     // client's next call is refused. A test that reconnected after revoking would pass on any door.
@@ -273,8 +299,7 @@ public sealed class ConnectKeyDoorTests
             (listed["keys"]?.AsArray() ?? new JsonArray()).Single(key => key?["label"]?.GetValue<string>() == "legacy")?["scope"]?.ToJsonString());
     }
 
-    // Criterion 4: managing keys is admin's alone. An operate key and the pairing secret get the admin refusal on
-    // each of the three key tools; an admin key gets no error on any of them.
+    // Criterion 4: managing keys is admin's alone. Admin issue/revoke success is covered by their behavior tests.
     [Theory]
     [InlineData("operate key", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
@@ -282,8 +307,6 @@ public sealed class ConnectKeyDoorTests
     [InlineData("pairing secret", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("pairing secret", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("pairing secret", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("admin key", "issue_connect_key", null)]
-    [InlineData("admin key", "revoke_connect_key", null)]
     [InlineData("admin key", "list_connect_keys", null)]
     [InlineData("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("pairing secret", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]

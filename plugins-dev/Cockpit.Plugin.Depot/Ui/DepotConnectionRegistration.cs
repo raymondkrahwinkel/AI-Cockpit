@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.Depot.UI;
 //
 // The UI part's own copy of the backend part's identically-named record under Model/ (AC-1394) — see
 // Contracts/DepotChannel.cs's own remarks for why this is a separate copy rather than a linked one.
-internal sealed record DepotConnectionRegistration(string Id, string Name, string Url)
+internal sealed record DepotConnectionRegistration(string Id, string Name, string Url, bool SynchroniseSettings = false)
 {
     // The name this connection is contributed under (AC-243) — a fixed `"Depot: "` prefix so it can never
     // silently collide with a hand-configured server of the same name.

@@ -36,6 +36,13 @@ public interface ISharedProjectSource
     byte[]? SourceLogo => null;
 
     /// <summary>
+    /// The host this source reads from, taken from its connection address ("depot.example.com"), for the Projects
+    /// workspace's section headings. Null when the source has no address to name; the default keeps existing plugins
+    /// source-compatible.
+    /// </summary>
+    string? SourceHost => null;
+
+    /// <summary>
     /// This source's current projects. Called each time the Projects workspace loads — there is no
     /// live-listing push path. <see cref="Changed"/> rechecks existing bindings; it does not replace a later listing
     /// refresh.

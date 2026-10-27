@@ -179,7 +179,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
         // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
         // them (HTTP is stateless — the client owns the history, so a system message once at the front is enough).
-        var systemPrompt = ChatTurnLoop.WithCompletionConvention(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), toolsOffered: _turnTools.Count > 0);
+        var systemPrompt = ChatTurnLoop.WithCompletionConvention(
+            ChatTurnLoop.WithWorkingDirectoryContext(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), workingDirectory),
+            toolsOffered: _turnTools.Count > 0);
         if (!string.IsNullOrWhiteSpace(systemPrompt))
         {
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
@@ -248,6 +250,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             // turn with no error row. An OperationCanceledException the SDK throws while aborting on a non-2xx response
             // leaves the token uncancelled, so it fails this filter and falls through as an error instead (AC-132).
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
+        }
+        catch (ChatStreamIdleTimeoutException ex)
+        {
+            _logger.LogWarning(ex, "OpenAI-compatible provider model {Model} stream went idle in pane {PaneId}.", _model, _sessionId);
+            _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = ex.Message, Exception = ex, Kind = SessionErrorKind.ServiceUnavailable });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
         catch (Exception ex)
         {

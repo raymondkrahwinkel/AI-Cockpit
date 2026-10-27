@@ -42,10 +42,11 @@ internal sealed class BrowserShell : UserControl
     private readonly DispatcherTimer _lastReadTicker = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly TabGrantRegistry _grants;
     private readonly Action<BrowserTab>? _shareRequested;
+    private readonly BrowserTabSession? _tabSession;
     private BrowserTab? _watched;
     private bool _compact;
 
-    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally, TabGrantRegistry? grants = null, Action<BrowserTab>? shareRequested = null)
+    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally, TabGrantRegistry? grants = null, Action<BrowserTab>? shareRequested = null, BrowserTabSession? tabSession = null)
     {
         _model = model;
         _agents = agents;
@@ -53,6 +54,7 @@ internal sealed class BrowserShell : UserControl
         OpenExternally = openExternally;
         _grants = grants ?? new TabGrantRegistry();
         _shareRequested = shareRequested;
+        _tabSession = tabSession;
         _grants.Changed += () => Dispatcher.UIThread.Post(_Refresh);
         _lastReadTicker.Tick += (_, _) => _RefreshShareBar();
 
@@ -79,6 +81,7 @@ internal sealed class BrowserShell : UserControl
         _lock.Themed(MaterialIcon.ForegroundProperty, "CockpitTextSecondaryBrush");
         _address.GotFocus += (_, _) => _Refresh();
         _address.LostFocus += (_, _) => _Refresh();
+        AddHandler(KeyDownEvent, _OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         var addressField = new Border
         {
@@ -183,6 +186,20 @@ internal sealed class BrowserShell : UserControl
 
     public event Action? PlacementRequested;
 
+    private void _OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_model.HandleShortcut(e.Key, e.KeyModifiers))
+        {
+            if (e.Key == Key.L || (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control))
+            {
+                _address.Focus();
+                _address.SelectAll();
+            }
+
+            e.Handled = true;
+        }
+    }
+
     // Mockup screen 2: in the rail (and its own window) the way back sits at the end of the address bar.
     public void ShowBackToTab(bool visible) => _placement.IsVisible = visible;
 
@@ -217,6 +234,11 @@ internal sealed class BrowserShell : UserControl
     {
         if (_model.Engine.State == BrowserEngineState.Ready && _model.Tabs.Count == 0)
         {
+            _tabSession?.Restore(_model);
+            if (_model.Tabs.Count > 0)
+            {
+                return;
+            }
             _model.NewTab();
             return;
         }

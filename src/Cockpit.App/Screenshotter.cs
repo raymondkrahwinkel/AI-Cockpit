@@ -167,8 +167,16 @@ internal static partial class Screenshotter
     // The window each scene name asks for. A table rather than a switch so the set of names can be read off it:
     // anything that has to cover every screen — the theme baseline (AC-338) above all — would otherwise be
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
-    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
+        // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
+        // AC-1829: the real window while projects and sessions are still loading.
+        ["main-loading"] = (_, _) => _MainWhileLoading(),
+        ["splash-fast"] = (_, _) => SplashScene.Fast(),
+        ["splash-loading"] = (_, _) => SplashScene.Loading(),
+        ["splash-slow"] = (_, _) => SplashScene.Slow(),
+        ["splash-skipped"] = (_, _) => SplashScene.Skipped(),
+        ["splash-failed"] = (_, _) => SplashScene.Failed(),
         ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
         // AC-512: the in-app glossary — the guide's own depth stays on the website, this is what a fresh install
         // can still read without a browser.
@@ -194,6 +202,9 @@ internal static partial class Screenshotter
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
+        // AC-1814: Options › Model intelligence with data, and with too little data for any pattern.
+        ["options-model-intelligence"] = ModelIntelligenceScene.Filled,
+        ["options-model-intelligence-unknown"] = ModelIntelligenceScene.Unknown,
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
         ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
@@ -244,6 +255,7 @@ internal static partial class Screenshotter
         ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
+        ["server-start-refused"] = ServerGroupScene.StartRefused,
         ["remote-window"] = ServerGroupScene.Remote,
         ["server-pane-permission"] = ServerGroupScene.Permission,
         // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
@@ -336,10 +348,8 @@ internal static partial class Screenshotter
         // project-editor-resources or project-editor-resource-scopes above, the same "no room left under the fold"
         // reasoning both of those scenes' own remarks already give, and see _ProjectEditorWithSecretPath's own remarks
         ["project-editor-secret-path"] = (_, _) => _ProjectEditorWithSecretPath(),
-        ["projects"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSample() },
         // AC-245: the "Shared via Depot — …" groups beside the local projects — one healthy group with two rows
         // (name/description/role pill, "Not set up yet" badge), one group carrying a source error instead.
-        ["projects-shared"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithSharedProjects() },
         // AC-246: the "Finish setting up…" bind step — bare, Profile required and Folder optional, matching the AC-242
         // mockup section 4.
         ["shared-project-binding"] = (_, _) => new SharedProjectBindingDialog { DataContext = new ViewModels.SharedProjectBindingDialogViewModel() },
@@ -363,19 +373,6 @@ internal static partial class Screenshotter
         // AC-618: categories as the list's main grouping, in a non-alphabetical order ("Werk" before "Privé"), with
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
-        ["projects-categories"] = (_, _) => new ProjectsDialog { DataContext = ViewModels.ProjectsViewModel.DesignSampleWithCategories() },
-        // AC-772 criterion 15: the Projects workspace, not the Manage-projects window, once per layout.
-        ["projects-workspace-cards"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards),
-        ["projects-workspace-list"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.List),
-        // Rendered although the segment is not offered yet (ProjectsDisplaySettings.ContinueLayoutAvailable) — the
-        // layout is built, and this is what will show whether it is worth offering.
-        ["projects-workspace-continue"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Continue),
-        // AC-488: the same workspace with nothing staged, which is the only state the starting-point gallery is
-        // drawn in. Its own scene rather than a fourth layout: what differs is what there is, not how it is laid out.
-        ["projects-workspace-empty"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, withProjects: false),
-        ["projects-workspace-team-partial"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StagePartialTeamProjects),
-        ["projects-workspace-unreachable"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageUnreachableTeamProjects),
-        ["projects-workspace-long-text"] = (_, _) => _ProjectsWorkspace(Cockpit.Core.Projects.ProjectsLayoutMode.Cards, _StageLongProjectText),
         ["plugin-store"] = (_, _) => _PluginStore(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
@@ -413,6 +410,10 @@ internal static partial class Screenshotter
         ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
         ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
+        // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
+        ["simple-dock-rail-collapsed"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null) },
+        ["simple-dock-rail-browser"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser") },
+        ["simple-dock-rail-files"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.files") },
         // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
@@ -795,7 +796,7 @@ internal static partial class Screenshotter
         // AC-1316: the fold open on one row — the grant, the origin and the checksum are folded, never hidden, and
         // this is the half of that sentence the two scenes above cannot show.
         ["first-run-work-kind-unfolded"] = (_, _) => _WorkKindWizard(pluginCount: 3),
-    };
+    });
 
     private static Window _StartChoiceWizard(bool pickRestore, bool withPluginRoute)
     {
@@ -1160,6 +1161,16 @@ internal static partial class Screenshotter
         "Drafts invoices from a project's logged hours — drafts only, nothing is sent.",
     ];
 
+    // AC-1829: the cockpit as it stands right after the splash — no session or project has come back yet.
+    private static MainWindow _MainWhileLoading()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.Sessions.Clear();
+        cockpit.IsRestoringSessions = true;
+        cockpit.IsLoadingProjects = true;
+        return new MainWindow { DataContext = cockpit };
+    }
+
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not
     // windows that open in them, so the name means nothing until then.
@@ -1198,6 +1209,16 @@ internal static partial class Screenshotter
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
+        ["projects-workspace-split-open"] = window =>
+        {
+            var start = window.GetVisualDescendants().OfType<SplitButton>().First(button => button.IsEffectivelyVisible);
+            start.Flyout?.ShowAt(start);
+        },
+        ["projects-workspace-more-open"] = window =>
+        {
+            var more = window.GetVisualDescendants().OfType<Button>().First(button => ToolTip.GetTip(button) is "More for this project");
+            more.Flyout?.ShowAt(more);
+        },
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["first-run-work-kind"] = _ChooseWorkKind,
         ["first-run-work-kind-long"] = _ChooseWorkKind,
@@ -1740,13 +1761,7 @@ internal static partial class Screenshotter
     private static ManageProfilesDialog _ManageProfilesSdkOnlyDefaultKind() =>
         _ManageProfilesEditing(new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model"));
 
-    // A Codex-shaped plugin profile that stores one of its four declared start options and leaves three unset — the
-    // state the profile editor produces since AC-1102, when it stopped persisting a default nobody chose. Both
-    // control shapes are here: Sandbox and Approval draw combo boxes (one set, one not), Model and Effort declare no
-    // choices and draw text boxes, so the unset placeholder is visible in each of the two places it can appear.
-    // Rendered in the Options dialog rather than the standalone editor: that is where the operator meets this block,
-    // and its detail column is the narrower of the two — the width at which an unset row would truncate if it were
-    // going to. Taller than the page rests at, so SESSION DEFAULTS is above the fold.
+    // Renders set and unset plugin start options in the narrower Options-dialog detail column (AC-1102).
     private static OptionsDialog _ManageProfilesPluginOptionDefaults()
     {
         var profile = new SessionProfile(
@@ -2269,119 +2284,6 @@ internal static partial class Screenshotter
             "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
 
         return new MainWindow { DataContext = cockpit };
-    }
-
-    // AC-772 criteria 15 and 20: the Projects workspace in one layout, since only a render per layout shows whether
-    // each holds together and that all three carry the "From your team" section.
-    private static MainWindow _ProjectsWorkspace(
-        Cockpit.Core.Projects.ProjectsLayoutMode layout,
-        Action<ViewModels.CockpitViewModel>? stage = null,
-        bool withProjects = true)
-    {
-        var cockpit = new ViewModels.CockpitViewModel();
-
-        // Staged onto the cockpit's own view model, which is the one the view binds to; a headless render has no
-        // `ISharedProjectSource` to list from.
-        cockpit.Projects.CardActions = new ViewModels.ProjectCardActions(
-            cockpit.StartProjectSessionCommand,
-            cockpit.NewSessionForProjectCommand,
-            cockpit.StartProjectJobCommand,
-            cockpit.EditProjectCommand,
-            cockpit.OpenProjectFolderCommand,
-            cockpit.ShareProjectCommand,
-            cockpit.SyncProjectNowCommand);
-        // AC-488: a workspace staged with nothing is not a variation of this scene, it is the other half of it —
-        // the state this screen spends its first minute in, and the only one the starting-point gallery draws in.
-        if (withProjects)
-        {
-            cockpit.Projects.StageDesignSample();
-            cockpit.Projects.StageDesignSharedProjects();
-            stage?.Invoke(cockpit);
-        }
-
-        cockpit.Projects.LayoutMode = layout;
-
-        cockpit.Workspaces.OpenWorkspaceAsync(Cockpit.Core.Workspaces.WorkspaceType.Projects.Id).GetAwaiter().GetResult();
-
-        return new MainWindow { DataContext = cockpit };
-    }
-
-    private static void _StagePartialTeamProjects(ViewModels.CockpitViewModel cockpit)
-    {
-        cockpit.Projects.SharedProjectGroups.Clear();
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Work",
-            [
-                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
-                new SharedProjectOffer("depot:workspace-move", "Workspace migration (pending)", "Waiting for its project definition.", "Pending"),
-                new SharedProjectOffer("depot:reports", "Quarterly reports (timed out)", "Its project definition did not answer in time.", "Timeout"),
-            ],
-            "1 project is still loading; 1 project timed out."));
-    }
-
-    private static void _StageUnreachableTeamProjects(ViewModels.CockpitViewModel cockpit)
-    {
-        cockpit.Projects.SharedProjectGroups.Clear();
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Work",
-            [
-                new SharedProjectOffer("depot:release-guide", "Release guide", "The current release checklist.", "Editor"),
-                new SharedProjectOffer("depot:runbook", "Operations runbook", "Last known team project.", "Viewer"),
-            ],
-            "Depot is unreachable — showing the last known list."));
-    }
-
-    private static void _StageLongProjectText(ViewModels.CockpitViewModel cockpit)
-    {
-        var noProfile = Project.Create("Research and discovery notes for the next workspace migration") with
-        {
-            Description = "A deliberately long project name and description that must wrap instead of hiding the next action on a narrow workspace.",
-        };
-        var job = new ProjectJob("Check every migration dependency before release", "Reads configuration and writes a release report.")
-        {
-            Id = "scene-migration-check",
-        };
-        var running = Project.Create("Release train") with
-        {
-            DefaultProfileLabel = "personal",
-            Description = "A project with an active session and a scheduled job.",
-            Jobs = [job],
-        };
-        var actions = cockpit.Projects.CardActions;
-        var runAt = new DateTimeOffset(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
-        var run = new ProjectJobRun("scene-release", running.Id, job.Id, runAt, runAt, "Checking the release notes.");
-
-        if (cockpit.Workspaces.Active is not { } activeWorkspace)
-        {
-            throw new InvalidOperationException("The Projects workspace scene has no active workspace.");
-        }
-
-        cockpit.Projects.Projects.Clear();
-        cockpit.Projects.Projects.Add(noProfile);
-        cockpit.Projects.Projects.Add(running);
-        cockpit.Projects.ProjectCategoryGroups.Clear();
-        cockpit.Projects.ProjectCategoryGroups.Add(new ViewModels.ProjectCategoryGroupViewModel(
-            null,
-            [
-                new ViewModels.ProjectCardViewModel(noProfile, "● This machine", actions),
-                new ViewModels.ProjectCardViewModel(running, "● This machine", actions, jobRuns: [run]),
-            ]));
-        cockpit.Sessions.Add(new ViewModels.SessionViewModel
-        {
-            Title = "Release validation",
-            ProjectId = running.Id,
-            WorkspaceId = activeWorkspace.Id,
-            SessionStatus = SessionStatus.Busy,
-        });
-        cockpit.Projects.SharedProjectGroups.Clear();
-        cockpit.Projects.SharedProjectGroups.Add(new ViewModels.SharedProjectGroupViewModel(
-            "Depot — Research",
-            [new SharedProjectOffer(
-                "depot:research",
-                "A very long shared-project name that needs to stay legible on a narrow workspace",
-                "A deliberately long description checks that a shared project card wraps the text without pushing its action out of view.",
-                "Viewer")],
-            Error: null));
     }
 
     // The preview reads its file off-thread, so the scene pumps the dispatcher until the navigation has landed.
@@ -3295,7 +3197,8 @@ internal static partial class Screenshotter
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
     private static ViewModels.CockpitViewModel _SimpleStand(
-        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null)
+        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null,
+        Action<Docking.DockPanelRegistry>? morePanels = null)
     {
         if (conversation is null)
         {
@@ -3328,6 +3231,8 @@ internal static partial class Screenshotter
                 chat.IsSimpleViewHost = false;
                 return new AssistantChatView { DataContext = chat };
             }));
+
+        morePanels?.Invoke(panels);
 
         // AC-1302: two the assistant started and one the operator opened themselves, so the scene shows the rail
         // drawing the relation rather than everything that happens to be alive.
@@ -3410,6 +3315,55 @@ internal static partial class Screenshotter
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
         return cockpit;
     }
+
+    // AC-1824: Home with two stand-in plugin panels on the rail — the real plugins are store-distributed and not referenced here.
+    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId)
+    {
+        var cockpit = _SimpleStand(withAssistant: true, morePanels: panels =>
+        {
+            panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                "sample.browser", "Browser", Material.Icons.MaterialIconKind.Web, _BrowserStandIn) { KeepAlive = true, CanFloat = true });
+            panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                "sample.files", "Files", Material.Icons.MaterialIconKind.FolderOutline, _FilesStandIn));
+        });
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        cockpit.SimpleOpenDockPanelId = openPanelId;
+        cockpit.DockRailWidth = 420;
+        return cockpit;
+    }
+
+    private static Control _BrowserStandIn() => new DockPanel
+    {
+        Margin = new Thickness(8),
+        Children =
+        {
+            new TextBlock { [DockPanel.DockProperty] = Dock.Top, Text = "docs.krahwinkel-it.nl  ·  Getting started", FontSize = 11, Margin = new Thickness(0, 0, 0, 8), Foreground = _Brush("CockpitTextSecondaryBrush") },
+            new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "Getting started", FontSize = 17, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                    new TextBlock { Text = "Stand-in page: the real Browser keeps its tabs while the panel is collapsed.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                },
+            },
+        },
+    };
+
+    private static Control _FilesStandIn() => new StackPanel
+    {
+        Margin = new Thickness(12),
+        Spacing = 4,
+        Children =
+        {
+            new TextBlock { Text = "Projects/Cockpit", FontSize = 11, Foreground = _Brush("CockpitTextSecondaryBrush"), Margin = new Thickness(0, 0, 0, 6) },
+            new TextBlock { Text = "▸ src" },
+            new TextBlock { Text = "▸ plugins-dev" },
+            new TextBlock { Text = "▸ docs" },
+            new TextBlock { Text = "CLAUDE.md", Opacity = 0.8 },
+            new TextBlock { Text = "Cockpit.slnx", Opacity = 0.8 },
+        },
+    };
 
     // AC-1316/AC-1321: the assistant's own conversation in the column with nothing said in it, where its notice stands.
     private static ViewModels.CockpitViewModel _SimpleStandAssistant(bool assistantOff = false, bool controlled = false, string? failedToStart = null)

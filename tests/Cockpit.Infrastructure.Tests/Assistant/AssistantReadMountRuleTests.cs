@@ -35,7 +35,7 @@ public sealed class AssistantReadMountRuleTests : IDisposable
     private readonly IDelegationService _delegation = Substitute.For<IDelegationService>();
 
     private AssistantReadMcpTools _Tools() =>
-        new(_gateway, _delegation, Substitute.For<INodeSessionsClient>(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")));
+        new(_gateway, _delegation, Substitute.For<INodeSessionsClient>(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), ModelOptionsTests.PictureReader());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 

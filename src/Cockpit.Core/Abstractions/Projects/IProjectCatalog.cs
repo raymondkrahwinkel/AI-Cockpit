@@ -31,4 +31,10 @@ public interface IProjectCatalog
     /// Checks one Depot-bound project for a change made elsewhere now, outside the watcher's own interval.
     /// </summary>
     Task SyncNowAsync(string projectId);
+
+    /// <summary>Hides one shared offer on this machine through the catalog's serialized settings writer.</summary>
+    Task HideSharedProjectAsync(string sharedProjectId);
+
+    /// <summary>Restores every hidden offer in one source/organization section.</summary>
+    Task UnhideSharedProjectsAsync(string sourceKey, string organizationSlug);
 }

@@ -31,7 +31,7 @@ COPY --from=build /out /app
 RUN groupadd --gid 1700 agent \
     && useradd --uid 1700 --gid agent --home-dir /home/agent --create-home --shell /usr/sbin/nologin agent \
     && usermod --append --groups agent app \
-    && mkdir -p /state /home/app/.ssh /home/agent/.ssh /work/clones /work/worktrees \
+    && mkdir -p /state /home/app/.ssh /home/agent/.ssh /work/clones /work/worktrees /cli/claude /cli/codex /cli/.staging \
         /home/agent/.claude /home/agent/.codex /home/app/.claude /home/app/.codex /home/agent/Nextcloud /home/agent/scratch \
     && chown -R app:app /state /home/app \
     && chown -R agent:agent /home/agent /home/app/.claude /home/app/.codex \
@@ -41,11 +41,14 @@ RUN groupadd --gid 1700 agent \
     && chmod 750 /home/app /home/agent \
     && chown -R app:agent /work \
     && chmod 2770 /work /work/clones /work/worktrees \
+    && chown root:agent /cli && chown agent:agent /cli/claude /cli/codex && chown app:agent /cli/.staging \
+    && chmod 0750 /cli /cli/claude /cli/codex && chmod 2750 /cli/.staging \
     && git config --system --add safe.directory '*'
 # AC-1480: everything above that must outlive a container is a volume, declared after the owners and modes are set (a
 # VOLUME takes them from this layer; changes to these paths later in the Dockerfile are lost). Without -v, Docker makes
 # anonymous volumes of them; see deploy/README.md, "Persistent data". No secret is ever baked into this image.
-VOLUME ["/state", "/work", "/home/agent/.claude", "/home/agent/.codex", "/home/app/.claude", "/home/app/.codex", \
+# AC-1649: /cli holds the managed CLIs, and /home/agent the agent's own files beside its logins (Claude's .claude.json).
+VOLUME ["/state", "/work", "/cli", "/home/agent", "/home/agent/.claude", "/home/agent/.codex", "/home/app/.claude", "/home/app/.codex", \
         "/home/app/.ssh", "/home/agent/.ssh", "/home/agent/Nextcloud", "/home/agent/scratch"]
 # Only `agent` may run the real claude, codex and git, so a profile pin or a direct call from the server cannot skip
 # the wrapper. Their own group, since `app` is in `agent`'s; node stays open (the health check and the server use it).
@@ -54,10 +57,15 @@ RUN groupadd --gid 1701 agent-run \
     && chgrp -R agent-run /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
         /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
     && chmod -R o-rwx /usr/local/lib/node_modules/@anthropic-ai/claude-code /usr/local/lib/node_modules/@openai/codex \
-        /usr/lib/git-core /usr/bin/git /usr/bin/git-*
+        /usr/lib/git-core /usr/bin/git /usr/bin/git-* \
+    && install -d -m 0755 /usr/local/libexec
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/claude
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/codex
 COPY --chmod=0755 deploy/agent-wrapper.sh /opt/cockpit/bin/git
+# AC-1649: the wrappers' one way into a CLI, agent-run's alone like the binaries; and the server's way to place one.
+# Their directory is made above, open to all: a COPY would make it with the first file's owner and mode.
+COPY --chown=root:agent-run --chmod=0750 deploy/cockpit-cli-exec.sh /usr/local/libexec/cockpit-cli-exec
+COPY --chmod=0755 deploy/cockpit-cli-promote.sh /usr/local/libexec/cockpit-cli-promote
 COPY --chmod=0440 deploy/sudoers-agent /etc/sudoers.d/cockpit-agent
 COPY --chmod=0755 deploy/entrypoint.sh /opt/cockpit/entrypoint.sh
 COPY --chmod=0755 deploy/start-server.sh /opt/cockpit/start-server.sh
@@ -65,6 +73,10 @@ RUN visudo --check --file=/etc/sudoers.d/cockpit-agent
 ENV HOME=/home/app
 ENV PATH=/opt/cockpit/bin:$PATH
 ENV COCKPIT_DEFAULT_WORKING_DIRECTORY=/home/agent/scratch
+# AC-1649: the server installs managed CLIs under /cli through the promote helper and resolves them to the wrappers.
+ENV COCKPIT_MANAGED_CLI_ROOT=/cli \
+    COCKPIT_MANAGED_CLI_PROMOTE=/usr/local/libexec/cockpit-cli-promote \
+    COCKPIT_MANAGED_CLI_WRAPPERS=/opt/cockpit/bin
 WORKDIR /work
 EXPOSE 20383
 # Starts as root, hands the server its secrets and drops to `app` (deploy/entrypoint.sh).

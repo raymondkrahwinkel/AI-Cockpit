@@ -9,7 +9,7 @@ public sealed class Ac488StartingPointsTests
 {
     // Both directions in one test — the claim is a swap, and an always-on gallery would pass the first half on its own.
     [Theory]
-    [InlineData("projects-workspace-empty", "projects-workspace-cards")]
+    [InlineData("projects-workspace-empty", "projects-workspace")]
     [InlineData("simple-view-home-empty", "simple-view-home")]
     public void TheGallery_StandsWhereThereAreNoProjects_AndStandsDownWhereThereAre(string empty, string filled)
     {

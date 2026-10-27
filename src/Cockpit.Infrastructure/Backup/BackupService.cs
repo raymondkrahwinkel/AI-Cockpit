@@ -423,6 +423,8 @@ internal sealed class BackupService(
         }
 
         var currentFile = Path.Combine(root, "cockpit.json");
+        // Every other cockpit.json writer takes this gate; the restore did not, so it raced them (RestoreJourney flaked).
+        using var gate = await CockpitConfigWriteGate.AcquireAsync(currentFile, cancellationToken);
         var current = File.Exists(currentFile)
             ? JsonNode.Parse(await File.ReadAllTextAsync(currentFile, cancellationToken)) as JsonObject ?? []
             : [];
@@ -479,7 +481,8 @@ internal sealed class BackupService(
             result[nameof(CockpitConfigFile.Provisioning)] = provisioning.DeepClone();
         }
 
-        await File.WriteAllTextAsync(currentFile, result.ToJsonString(Json), cancellationToken);
+        // Swapped in atomically like every other cockpit.json write, so a crash mid-restore never leaves a half file.
+        CockpitConfigPath.ReplaceAtomicallyPrivate(currentFile, result.ToJsonString(Json));
     }
 
     private static async Task<JsonObject?> _ArchivedSettingsAsync(string archived, CancellationToken cancellationToken)

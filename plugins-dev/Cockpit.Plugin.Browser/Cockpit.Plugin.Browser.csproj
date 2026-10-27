@@ -26,7 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The cockpit log for an agent browser that did not come up; host-provided, so compile-only, as in Depot. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The [McpServerTool] attributes for cockpit-browser (AC-1714). Host-provided, so compile-only, as in Diagram. -->

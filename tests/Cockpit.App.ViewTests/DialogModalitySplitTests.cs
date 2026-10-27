@@ -19,7 +19,6 @@ public sealed partial class DialogModalitySplitTests
     private static readonly string[] SessionSurfaces =
     [
         "ShowNewSessionDialogAsync",
-        "ShowProjectsDialogAsync",
         "ShowProjectDialogAsync",
         "ShowVerifyRunnersDialogAsync",
         "ShowPluginStoreDialogAsync",
