@@ -107,7 +107,7 @@ public class AssistantBindSharedProjectTests : IDisposable
 
         Assert.True((await gateway.BindSharedProjectAsync("depot:handbook", _folder, ProfileLabel)).Ok);
 
-        Assert.Empty(projects.Drawn().SharedProjectGroups);
+        Assert.Empty(Assert.Single(projects.Drawn().SharedProjectGroups).Projects);
     }
 
     // ── Criterion 2: the three machine-specific answers are asked for, never defaulted ─────────────────────────

@@ -71,6 +71,7 @@ public partial class CockpitView : UserControl
         {
             WorkspacesHelp.Children.Add(new HelpHint(help, new HelpAddress("workspaces", "kinds"), origin: "a “?” on the workspace strip"));
         }
+
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

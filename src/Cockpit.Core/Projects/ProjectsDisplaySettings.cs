@@ -14,6 +14,12 @@ public enum ProjectsLayoutMode
     Continue,
 }
 
+public enum ProjectsDensity
+{
+    Comfortable,
+    Compact,
+}
+
 // AC-772: persisted under the `projects` section of `cockpit.json`, same store pattern as `LayoutSettings`. No
 // Options page — the choice is made on the page it changes.
 public sealed record ProjectsDisplaySettings
@@ -23,6 +29,10 @@ public sealed record ProjectsDisplaySettings
     public const bool ContinueLayoutAvailable = false;
 
     public ProjectsLayoutMode LayoutMode { get; init; } = ProjectsLayoutMode.Cards;
+
+    public ProjectsDensity Density { get; init; } = ProjectsDensity.Comfortable;
+
+    public IReadOnlyList<string> CollapsedSectionKeys { get; init; } = [];
 
     // Applied on load as well as save, so a hand-edited config or a later build's preference cannot leave the page
     // on a layout this one will not draw.

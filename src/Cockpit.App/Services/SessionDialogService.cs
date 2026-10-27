@@ -244,21 +244,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         });
     }
 
-    public async Task ShowProjectsDialogAsync(ProjectsViewModel projects)
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
-        {
-            return;
-        }
-
-        // The one shared manager, so what this window shows is what the sidebar and the overview show.
-        await _ShowSurfaceAsync(typeof(ProjectsDialog), owner, async () =>
-        {
-            await projects.LoadAsync();
-            return new ProjectsDialog { DataContext = projects };
-        });
-    }
-
     public async Task<Project?> ShowProjectDialogAsync(Project? project, string? sharedSourceKey = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
