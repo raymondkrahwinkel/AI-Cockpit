@@ -208,7 +208,13 @@ internal sealed class CockpitUiHost(
     // The programmatic "+" for a plugin's own workspace type: a plugin that received an intent surfaces its
     // workspace so the operator lands on it. Marshalled to the UI thread since a plugin may dispatch from any
     // thread; a design-time/headless host (no view model resolved) simply does nothing.
-    public async Task OpenWorkspaceAsync(string workspaceTypeId)
+    public Task OpenWorkspaceAsync(string workspaceTypeId) =>
+        _OpenWorkspaceAsync(workspaceTypeId, workspaces => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+
+    public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) =>
+        _OpenWorkspaceAsync(workspaceTypeId, workspaces => workspaces.OpenWorkspaceAsync(workspaceTypeId, options));
+
+    private async Task _OpenWorkspaceAsync(string workspaceTypeId, Func<WorkspacesViewModel, Task> open)
     {
         // The plugin's workspaces live on the on-screen view model — the same instance the UI binds to — not a
         // separately DI-resolved WorkspacesViewModel, which would open the workspace on a surface no one is looking at.
@@ -221,7 +227,7 @@ internal sealed class CockpitUiHost(
         // without proving anything about marshalling; a test for this belongs in Cockpit.App.ViewTests.
         try
         {
-            await UiThreadCall.DispatchAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+            await UiThreadCall.DispatchAsync(() => open(workspaces));
         }
         catch (UiUnavailableException exception)
         {

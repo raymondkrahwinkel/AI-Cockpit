@@ -38,7 +38,8 @@
     <!-- 3.9.0 (AC-1726): FocusSessionAsync selects an existing pane without changing its input, host 0.122.0. -->
     <!-- 3.11.0 (AC-1497): combines the Depot SaaS UI contracts with main's 3.10.0 Productivity contracts. -->
     <!-- 3.12.0 (AC-1790): ICockpitUiHost adds the icon-bearing side-menu button overload. A plugin that uses it sets minHostVersion 0.126.0. -->
-    <Version>3.12.0</Version>
+    <!-- 3.13.0 (AC-1750): ICockpitUiHost.OpenWorkspaceAsync with WorkspaceOpenOptions (instance key, title, preview). A plugin that relies on it sets minHostVersion 0.131.0. -->
+    <Version>3.13.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

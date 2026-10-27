@@ -12,6 +12,9 @@
          3.37.0); a plugin that sets ReadModelIntelligenceAsync sets minHostVersion 0.129.0. -->
     <!-- 0.130.0: ICockpitHost.AddStartupStep, a plugin's own step on the splash, watched by the host (AC-1827,
          Cockpit.Plugins.Abstractions 3.38.0); a plugin that calls it sets minHostVersion 0.130.0. -->
+    <!-- 0.131.0: workspace instances per key, with a body-set title, a tab marker and a preview tab that is replaced in place
+         (AC-1750, Cockpit.Plugins.Abstractions 3.39.0, Cockpit.Plugins.Abstractions.UI 3.13.0); a plugin that opens
+         one with WorkspaceOpenOptions sets minHostVersion 0.131.0. -->
     <!-- 0.128.0: Project.SharedSourceKey lets a shared source preserve identity across machine-local project ids (AC-1837). -->
     <!-- 0.127.0: ISharedProjectSource.SourceHost, the connection host behind the Projects section headings (AC-1600,
          Cockpit.Plugins.Abstractions 3.35.0). -->
@@ -404,7 +407,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.130.0</VersionPrefix>
+    <VersionPrefix>0.131.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

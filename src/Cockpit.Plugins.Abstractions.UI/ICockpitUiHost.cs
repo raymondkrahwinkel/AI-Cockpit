@@ -177,6 +177,12 @@ public interface ICockpitUiHost
     Task OpenWorkspaceAsync(string workspaceTypeId);
 
     /// <summary>
+    /// Opens (or focuses) one instance of this plugin's workspace type <paramref name="workspaceTypeId"/>, by its key or as
+    /// the preview tab (see <see cref="WorkspaceOpenOptions"/>). An older host opens the type as <see cref="OpenWorkspaceAsync(string)"/> does.
+    /// </summary>
+    Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => OpenWorkspaceAsync(workspaceTypeId);
+
+    /// <summary>
     /// The live view of the embedded session <paramref name="paneId"/> (see <see cref="IEmbeddedSession"/>), the
     /// same control on every call, and a control has one parent, so place it in one spot. Null when no such
     /// embedded session is open; a session in the grid is not embedded.

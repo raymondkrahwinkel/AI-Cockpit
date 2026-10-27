@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Composition;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -26,6 +27,7 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App;
 
@@ -187,6 +189,8 @@ internal static partial class Screenshotter
         // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
+        // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
+        ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
         // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
         ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
@@ -4140,4 +4144,24 @@ internal static partial class Screenshotter
         return window;
     }
 
+    private static Window _WorkspacePreviewTabScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", context =>
+            {
+                if (context.InstanceKey == "Notes.md")
+                {
+                    context.SetMarker(Cockpit.Plugins.Abstractions.Workspaces.WorkspaceMarker.Unsaved);
+                }
+
+                return new TextBlock { Text = context.InstanceKey, Margin = new Thickness(24) };
+            }) { IconKind = Material.Icons.MaterialIconKind.LanguageMarkdownOutline },
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Notes.md", "Notes.md")).GetAwaiter().GetResult();
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
+        return new MainWindow { DataContext = cockpit };
+    }
 }
