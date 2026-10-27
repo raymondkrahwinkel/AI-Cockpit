@@ -184,7 +184,7 @@ internal static partial class Screenshotter
                     Offer($"{SynvolutionSource}:klantportaal", "Klantportaal", null, "Editor", _synvolution),
                     Offer($"{SynvolutionSource}:rooster-planner", "Rooster-planner", "Shift planning for care teams, with availability and leave.", "Editor", _synvolution),
                     Offer($"{SynvolutionSource}:docs", "Synvolution Docs", "Developer documentation site.", "Viewer", _synvolution),
-                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl"),
+                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl", ReadAt: DateTimeOffset.UtcNow),
                 new("Depot — Krahwinkel IT",
                 [
                     Offer($"{KrahwinkelSource}:de-vries", "Klant – De Vries Installatietechniek",
@@ -249,7 +249,7 @@ internal static partial class Screenshotter
                     new($"{SynvolutionSource}:release-guide", "Release guide", "The current release checklist.", "Editor", _synvolution),
                     new($"{SynvolutionSource}:startpage", "startpage", Role: "Owner", Organization: _synvolution,
                         Unavailable: "No Cockpit project definition yet."),
-                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl"),
+                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl", ReadAt: DateTimeOffset.UtcNow),
             ],
         });
 
@@ -264,7 +264,7 @@ internal static partial class Screenshotter
                 new("Depot — Synvolution",
                 [
                     new($"{SynvolutionSource}:api-gateway", "API Gateway", "Routing, rate limits and API keys in front of every public service.", "Editor", _synvolution),
-                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl"),
+                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl", ReadAt: DateTimeOffset.UtcNow),
                 new("Depot — Krahwinkel IT", [], "Couldn't reach depot.krahwinkel-it.nl — check your connection, then try again.",
                     SourceKey: KrahwinkelSource, SourceHost: "depot.krahwinkel-it.nl"),
             ],
@@ -310,7 +310,7 @@ internal static partial class Screenshotter
                     new($"{SynvolutionSource}:research", "A very long shared-project name that needs to stay legible on a narrow workspace",
                         "A deliberately long description checks that a shared project row trims the text without pushing its action out of view.",
                         "Viewer", _synvolution),
-                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl"),
+                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl", ReadAt: DateTimeOffset.UtcNow),
             ],
         });
         _StageRunning(cockpit, running, 1);

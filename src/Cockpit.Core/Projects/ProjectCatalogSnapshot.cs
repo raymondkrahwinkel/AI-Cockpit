@@ -28,7 +28,7 @@ public sealed record SharedProjectSourceInfo(string Key, string Name, bool CanPu
 // means every listed project is already bound or hidden here.
 public sealed record SharedProjectGroup(
     string SourceName, IReadOnlyList<SharedProjectOffer> Projects, string? Error, byte[]? SourceLogo = null,
-    string SourceKey = "", string? Notice = null, bool AllAdded = false, string? SourceHost = null);
+    string SourceKey = "", string? Notice = null, bool AllAdded = false, string? SourceHost = null, DateTimeOffset? ReadAt = null);
 
 // AC-1758: Unavailable says why a listed project cannot be added yet (no Cockpit definition, say); null means it can.
 public sealed record SharedProjectOffer(

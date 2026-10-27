@@ -38,6 +38,20 @@ public sealed class ProjectSectionViewModel : ViewModelBase
 
     public string? Error { get; set; }
 
+    public DateTimeOffset? ReadAt { get; set; }
+
+    // "Updated just now" once the source answered cleanly; blank while it has an error or a stale-list notice.
+    public string UpdatedText => ReadAt is { } at && !HasError && !HasNotice
+        ? (DateTimeOffset.UtcNow - at) switch
+        {
+            { TotalMinutes: < 1 } => "✓ Updated just now",
+            { TotalHours: < 1 } age => $"✓ Updated {(int)age.TotalMinutes} min ago",
+            var age => $"✓ Updated {(int)age.TotalHours} h ago",
+        }
+        : string.Empty;
+
+    public bool HasUpdatedText => UpdatedText.Length > 0;
+
     public int HereCount { get; set; }
 
     public int ToAddCount { get; set; }

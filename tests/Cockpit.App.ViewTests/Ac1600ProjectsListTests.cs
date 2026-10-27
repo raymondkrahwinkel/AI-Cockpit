@@ -33,6 +33,7 @@ public sealed class Ac1600ProjectsListTests
                     window.UpdateLayout();
                     var list = window.GetVisualDescendants().OfType<DockPanel>().Single(panel => panel.Name == "ProjectList");
                     Assert.Equal(wide, list.Bounds.Width >= ProjectListGrid.WideListWidth);
+                    Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "✓ Updated just now" && text.IsEffectivelyVisible);
                     var detail = window.GetVisualDescendants().OfType<ScrollViewer>().Single(pane => pane.Name == "ProjectDetail");
                     Assert.True(detail.Bounds.X >= list.Bounds.Right, $"at {width} px the detail pane sits beside the list, not over it");
 

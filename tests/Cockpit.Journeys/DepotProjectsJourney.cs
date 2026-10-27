@@ -168,6 +168,7 @@ public sealed class DepotProjectsJourney
         var sectionNames = HeadlessAvalonia.Run(() => projectsScreen.ProjectSections.Select(section => section.Name).ToList());
         Assert.Contains("Acme", sectionNames);
         Assert.Contains("Globex", sectionNames);
+        Assert.All(HeadlessAvalonia.Run(() => projectsScreen.ProjectSections.Where(section => !section.IsThisMachine).Select(section => section.UpdatedText).ToList()), text => Assert.Equal("✓ Updated just now", text));
         var chosen = HeadlessAvalonia.Run(() =>
         {
             var row = projectsScreen.ProjectSections.SelectMany(section => section.Items).Single(item => item.Id == localProjectId);

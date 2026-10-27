@@ -618,6 +618,7 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             {
                 section.Error = group.Error;
                 section.Notice = group.Notice;
+                section.ReadAt = group.ReadAt;
             }
         }
 

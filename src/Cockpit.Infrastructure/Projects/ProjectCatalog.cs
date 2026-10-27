@@ -361,7 +361,9 @@ internal sealed class ProjectCatalog : IProjectCatalog, IProjectEditor, ISinglet
                 source.SourceName, visible, result.Succeeded ? null : result.Error, source.SourceLogo,
                 source.Key, result.Succeeded ? result.Error : null,
                 AllAdded: result.Succeeded && result.Projects.Count > 0 && visible.Count == 0,
-                SourceHost: source.SourceHost));
+                SourceHost: source.SourceHost,
+                // The last clean read of this connection; a failed or stale one keeps the time of the one before it.
+                ReadAt: result.Succeeded && result.Error is null ? DateTimeOffset.UtcNow : _sharedProjectGroups.FirstOrDefault(old => old.SourceKey == source.Key)?.ReadAt));
         }
 
         _sharedProjectGroups = groups;

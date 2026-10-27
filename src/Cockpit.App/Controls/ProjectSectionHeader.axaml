@@ -48,6 +48,8 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel IsVisible="{Binding !#Root.IsRefreshing}">
+                    <TextBlock Text="{Binding UpdatedText}" IsVisible="{Binding HasUpdatedText}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <Button Classes="Compact" VerticalAlignment="Center"
                             IsVisible="{Binding ShowsTryAgain}" Command="{Binding #Root.TryAgainCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
