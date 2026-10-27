@@ -696,7 +696,7 @@ public partial class App : Application
 
         // AC-1343: started here, not at MainWindow.Show() above — a pane restored before UsageThresholds is set
         // reads null and is never revisited (CockpitViewModel.cs sets it only once, from the load above).
-        restoreStarted.SetResult(RestoreCockpitAsync(cockpitViewModel, thresholdsLoaded));
+        restoreStarted.SetResult(RestoreCockpitAsync(cockpitViewModel, thresholdsLoaded, Path.Combine(CockpitBuild.StateRoot, KeptNotificationsFile)));
 
         // AC-1001: Options → Profiles, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.
@@ -1066,9 +1066,11 @@ public partial class App : Application
         sync.OnConflicts = conflicts => Dispatcher.UIThread.Post(() => toasts.Show(
             $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
             ToastSeverity.Warning,
-            "Choose",
             // Toast actions cannot return a task; the handler logs and surfaces failures itself.
-            () => _ = _ChooseSettingsAsync(sync)));
+            [new ToastAction("Choose…", () => _ = _ChooseSettingsAsync(sync))],
+            sticky: false,
+            source: "Settings sync",
+            key: "settings-sync.conflicts"));
     }
 
     private static async Task _ChooseSettingsAsync(SettingsCarrierSync sync)
@@ -1286,11 +1288,22 @@ public partial class App : Application
         TrayIcon.SetIcons(this, [tray]);
     }
 
+    // AC-1804: what still needs you from a plugin, in the state root; only the caller of RestoreCockpitAsync picks it.
+    internal const string KeptNotificationsFile = "notifications.json";
+
+    private static readonly TimeSpan StartupNotificationWindow = TimeSpan.FromSeconds(10);
+
     // Load workspaces before restoring their AI-session panes (AC-410). InitializeAsync never throws, so a failed
     // load continues safely with the in-memory default and nothing to restore. AC-1343: waits for thresholdsLoaded
     // first — a restored pane reads CockpitViewModel.UsageThresholds once, at creation, null until then.
-    internal static async Task RestoreCockpitAsync(CockpitViewModel cockpit, Task thresholdsLoaded)
+    internal static async Task RestoreCockpitAsync(CockpitViewModel cockpit, Task thresholdsLoaded, string? keptNotificationsPath = null)
     {
+        cockpit.ToastHost.BeginStartupNotificationBundle(StartupNotificationWindow, () => _ = cockpit.ShowNotificationsAsync());
+        if (keptNotificationsPath is not null)
+        {
+            await cockpit.ToastHost.RestoreNotificationsAsync(keptNotificationsPath);
+        }
+
         await thresholdsLoaded;
         await cockpit.Workspaces.InitializeAsync();
         await cockpit.RestoreSessionPanesAsync();

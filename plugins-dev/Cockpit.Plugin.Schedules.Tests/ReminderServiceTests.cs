@@ -32,6 +32,7 @@ public class ReminderServiceTests
         clock.Now = new DateTimeOffset(2026, 10, 19, 7, 10, 10, TimeSpan.Zero);
         await reminders.TickAsync(clock.Now);
         await new ReminderService(host, storage, new TaskDelivery(host), clock).TickAsync(clock.Now.AddSeconds(10));
+        var keptBeforeDone = (Snoozed: reminders.Recheck(toasts[0].Key), Due: reminders.Recheck(toasts[^1].Key)?.Actions.Count);
         toasts[^1].Actions[0].OnInvoke();
         var after = reminders.Load().Single();
 
@@ -39,8 +40,11 @@ public class ReminderServiceTests
         Assert.All(toasts, toast =>
         {
             Assert.Equal([ReminderService.DoneLabel, ReminderService.SnoozeShortLabel, ReminderService.SnoozeLongLabel], toast.Actions.Select(action => action.Label));
-            Assert.True(toast.Sticky);
         });
+        // AC-1804: the cockpit's re-check: the snoozed firing is resolved, the due one has its buttons, Done resolves it.
+        Assert.Null(keptBeforeDone.Snoozed);
+        Assert.Equal(3, keptBeforeDone.Due);
+        Assert.Null(reminders.Recheck(toasts[^1].Key));
         Assert.Equal([ReminderService.DoneLabel, ReminderService.SnoozeShortLabel, ReminderService.SnoozeLongLabel], messages[0].Message.Question?.Options.Select(option => option.Label));
         Assert.Equal(new DateTimeOffset(2026, 10, 19, 7, 10, 10, TimeSpan.Zero), snoozedTo);
         Assert.Equal((ReminderState.Open, new DateTimeOffset(2026, 10, 26, 8, 0, 0, TimeSpan.Zero)), (after.State, after.Slot));
@@ -76,7 +80,7 @@ public class ReminderServiceTests
         Assert.Equal((ReminderState.Done, slack.Slot), (after[slack.Id].State, after[slack.Id].Slot));
     }
 
-    private sealed record Toast(string Message, IReadOnlyList<PluginToastAction> Actions, bool Sticky);
+    private sealed record Toast(string Key, string Message, IReadOnlyList<PluginToastAction> Actions);
 
     private static (ICockpitHost Host, InMemoryPluginStorage Storage, TestClock Clock, List<Toast> Toasts, List<(OperatorMessage Message, Func<OperatorMessageAnswer, Task> Answer)> Messages) _Host(DateTimeOffset start)
     {
@@ -84,8 +88,8 @@ public class ReminderServiceTests
         var toasts = new List<Toast>();
         var messages = new List<(OperatorMessage, Func<OperatorMessageAnswer, Task>)>();
         host.OperatorMessageChannels.Returns([new OperatorMessageChannelInfo("discord", "Discord", [new OperatorMessageTarget("dm", "Direct message to you")])]);
-        host.When(cockpit => cockpit.ShowToast(Arg.Any<string>(), Arg.Any<PluginToastSeverity>(), Arg.Any<IReadOnlyList<PluginToastAction>>(), Arg.Any<bool>()))
-            .Do(call => toasts.Add(new Toast(call.ArgAt<string>(0), call.ArgAt<IReadOnlyList<PluginToastAction>>(2), call.ArgAt<bool>(3))));
+        host.When(cockpit => cockpit.Notify(Arg.Any<PluginNotification>()))
+            .Do(call => toasts.Add(new Toast(call.Arg<PluginNotification>().Key, call.Arg<PluginNotification>().Message, call.Arg<PluginNotification>().Actions)));
         host.SendOperatorMessageAsync("discord", "dm", Arg.Any<OperatorMessage>(), Arg.Any<Func<OperatorMessageAnswer, Task>?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {

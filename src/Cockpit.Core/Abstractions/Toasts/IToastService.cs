@@ -25,4 +25,14 @@ public interface IToastService
     /// </remarks>
     void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky) =>
         Show(message, severity, actions.FirstOrDefault()?.Label, actions.FirstOrDefault()?.OnInvoke);
+
+    /// <summary>
+    /// The same, kept in the notification center (AC-1802) under <paramref name="source"/> (null: the app itself). A
+    /// later toast with the same <paramref name="key"/> replaces the earlier item, so a repeated check stays one item.
+    /// </summary>
+    /// <remarks>
+    /// Default drops the source and key, the toast a service without a notification center can give.
+    /// </remarks>
+    void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source, string? key) =>
+        Show(message, severity, actions, sticky);
 }
