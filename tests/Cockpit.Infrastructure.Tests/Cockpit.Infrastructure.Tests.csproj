@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="ModelIntelligence\Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The logo store rasterises an SVG through Skia. In the app those natives arrive with Avalonia; a test
          assembly has no UI framework, so it brings them itself — otherwise the SVG tests fail on a missing
          libSkiaSharp rather than on anything about the code. -->

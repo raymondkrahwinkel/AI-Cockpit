@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "id": "fixture/windowed",
+      "alias_target": "fixture/windowed",
+      "name": "Windowed fixture",
+      "context_length": 32768,
+      "supported_parameters": ["tools"],
+      "pricing": {
+        "prompt": "0.000001",
+        "completion": "0.000002",
+        "overrides": [
+          { "min_prompt_tokens": 16000, "prompt": "0.000003", "completion": "0.000004" },
+          { "utc_days": ["friday"], "utc_start": 1600, "utc_end": 0, "prompt": "0.0000005", "completion": "0.000001" }
+        ]
+      },
+      "benchmarks": { "artificial_analysis": { "intelligence_index": "57.6", "coding_index": null, "agentic_index": null } }
+    },
+    {
+      "id": "fixture/windowed:batch",
+      "alias_target": "fixture/windowed",
+      "name": "Windowed fixture:batch",
+      "pricing": { "prompt": "0.0000001", "completion": "0.0000001" }
+    }
+  ]
+}
