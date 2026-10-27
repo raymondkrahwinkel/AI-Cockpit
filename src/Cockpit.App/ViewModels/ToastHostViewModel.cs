@@ -9,8 +9,6 @@ namespace Cockpit.App.ViewModels;
 public sealed class ToastHostViewModel
 {
     private static readonly TimeSpan DefaultAutoDismissDelay = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan ErrorAutoDismissDelay = TimeSpan.FromSeconds(8);
-
     private readonly Action<ToastViewModel, TimeSpan> _scheduleAutoDismiss;
 
     public ToastHostViewModel()
@@ -25,7 +23,6 @@ public sealed class ToastHostViewModel
 
     public ObservableCollection<ToastViewModel> Toasts { get; } = [];
 
-    // Builds and shows one toast, auto-dismissing after a severity-dependent delay (longer for `ToastSeverity.Error`).
     public ToastViewModel Add(string message, ToastSeverity severity, string? actionLabel, Action? onAction) =>
         Add(message, severity, !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [], sticky: false);
 
@@ -36,9 +33,9 @@ public sealed class ToastHostViewModel
         toast.Dismissed += (_, _) => Toasts.Remove(toast);
         Toasts.Add(toast);
 
-        if (!sticky)
+        if (!sticky && actions.Count == 0 && severity is ToastSeverity.Information or ToastSeverity.Success)
         {
-            _scheduleAutoDismiss(toast, severity == ToastSeverity.Error ? ErrorAutoDismissDelay : DefaultAutoDismissDelay);
+            _scheduleAutoDismiss(toast, DefaultAutoDismissDelay);
         }
 
         return toast;
