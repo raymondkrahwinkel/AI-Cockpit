@@ -6,15 +6,18 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 public class ClaudeOptionChoicesTests
 {
     [Fact]
-    public void ModelCostEstimates_AreOrderedCheapestFirst()
+    public void ModelFacts_DoNotInventPricesAndJoinKnownPublicModels()
     {
         // The list order is the claim consumers route on (AC-256), so it has to agree with the prices beside it —
         // reorder one entry without moving its price and this fails, which is the whole point of the field.
-        var input = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.EstimatedInputUsdPerMillionTokens).ToList();
-        var output = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.EstimatedOutputUsdPerMillionTokens).ToList();
-
-        Assert.Equal(input.OrderBy(price => price), input);
-        Assert.Equal(output.OrderBy(price => price), output);
+        Assert.All(ClaudeOptionChoices.ModelCostEstimatesCheapestFirst, estimate =>
+        {
+            Assert.Null(estimate.EstimatedInputUsdPerMillionTokens);
+            Assert.Null(estimate.EstimatedOutputUsdPerMillionTokens);
+        });
+        Assert.Equal("anthropic/claude-haiku-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "haiku").PublicModelRef);
+        Assert.Equal("anthropic/claude-sonnet-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "sonnet").PublicModelRef);
+        Assert.Equal("anthropic/claude-opus-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "opus").PublicModelRef);
     }
 
     [Fact]
@@ -27,15 +30,4 @@ public class ClaudeOptionChoicesTests
             ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.Model).OrderBy(alias => alias, StringComparer.Ordinal));
     }
 
-    [Fact]
-    public void ModelCostEstimates_QuoteBothDirections()
-    {
-        // Half a price reads as a fact while hiding the larger number: output tokens are the dearer side on every
-        // model here, so an input-only figure would understate the very thing the ceiling exists to control.
-        foreach (var estimate in ClaudeOptionChoices.ModelCostEstimatesCheapestFirst)
-        {
-            Assert.True(estimate.EstimatedInputUsdPerMillionTokens > 0, $"'{estimate.Model}' has no input price estimate");
-            Assert.True(estimate.EstimatedOutputUsdPerMillionTokens > 0, $"'{estimate.Model}' has no output price estimate");
-        }
-    }
 }
