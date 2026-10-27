@@ -2,13 +2,14 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Browser;
 
 // AC-1712: One headless Chromium per session, with a throwaway profile and its own debug port on loopback. Playwright
 // MCP's `--cdp-endpoint` takes the default context of the browser it connects to, so a process per session is what
 // keeps two sessions' tabs apart. Owns the processes: they stop with the session and with the host, never later.
-internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string profilesRoot) : IDisposable
+internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string profilesRoot, ILogger? logger = null) : IDisposable
 {
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
 
@@ -29,6 +30,12 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             return null;
         }
 
+        // A container runs as root, where Chromium refuses to start its sandbox.
+        return await StartAsync(paneId, executable, Environment.IsPrivilegedProcess, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string?> StartAsync(string paneId, string executable, bool noSandbox, CancellationToken cancellationToken)
+    {
         var profile = Path.Combine(profilesRoot, Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
         {
@@ -40,7 +47,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
 
         var errors = new ConcurrentQueue<string>();
-        var process = Launch(executable, profile, errors);
+        var process = Launch(executable, profile, errors, noSandbox);
         if (process is null)
         {
             DeleteProfile(profile);
@@ -66,13 +73,25 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         {
             // Said out loud: a browser that dies before it listens ("No usable sandbox!" on Ubuntu 23.10+) is otherwise
             // only a session without an endpoint.
-            if (running.Process.HasExited)
+            var exited = running.Process.HasExited;
+            if (exited)
             {
-                running.Process.WaitForExit(1000);
+                // The async overload also waits for the redirected stderr to drain, so the reason is in `errors`.
+                using var drain = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await running.Process.WaitForExitAsync(drain.Token).ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false);
             }
 
-            Console.Error.WriteLine($"browser: the agent browser '{executable}' did not come up: {string.Join(" | ", errors)}");
             Stop(paneId);
+            var reason = string.Join(" | ", errors);
+
+            // A kernel or seccomp profile that refuses the sandbox its namespaces kills Chromium at start; Playwright's own Linux default is no sandbox.
+            if (exited && !noSandbox && OperatingSystem.IsLinux() && IsSandboxFailure(reason))
+            {
+                Report(LogLevel.Warning, $"the agent browser '{executable}' has no usable sandbox here, so it runs without one: {reason}");
+                return await StartAsync(paneId, executable, noSandbox: true, cancellationToken).ConfigureAwait(false);
+            }
+
+            Report(LogLevel.Error, $"the agent browser '{executable}' did not come up ({(exited ? $"exit {running.Process.ExitCode}" : $"no port within {StartTimeout.TotalSeconds:0}s")}): {reason}");
             return null;
         }
 
@@ -240,7 +259,24 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
     }
 
-    private static Process? Launch(string executable, string profile, ConcurrentQueue<string> errors)
+    // Chromium's own words when it cannot set up its sandbox: user namespaces refused, or no setuid helper to fall back on.
+    internal static bool IsSandboxFailure(string stderr) =>
+        stderr.Contains("No usable sandbox", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("Failed to move to new namespace", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("setuid sandbox", StringComparison.OrdinalIgnoreCase);
+
+    private void Report(LogLevel level, string message)
+    {
+        if (logger is null)
+        {
+            Console.Error.WriteLine($"browser: {message}");
+            return;
+        }
+
+        logger.Log(level, "{Message}", message);
+    }
+
+    private static Process? Launch(string executable, string profile, ConcurrentQueue<string> errors, bool noSandbox)
     {
         var start = new ProcessStartInfo(executable)
         {
@@ -263,8 +299,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             start.ArgumentList.Add(argument);
         }
 
-        // A container runs as root, where Chromium refuses to start its sandbox.
-        if (Environment.IsPrivilegedProcess)
+        if (noSandbox)
         {
             start.ArgumentList.Add("--no-sandbox");
         }
