@@ -49,14 +49,34 @@ internal sealed class DesktopBackendHost(
 
         // AC-1802: through the overload with a source, so the notification center names the plugin.
         Services.GetRequiredService<IToastService>().Show(
-            message, _ToToastSeverity(severity), !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [],
+            message, ToToastSeverity(severity), !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [],
             sticky: false, source: PluginName, key: null);
     }
 
     // AC-1549: a reminder's toast, with all its buttons, also while the plugin's own screen is closed.
     public override void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
         Services.GetRequiredService<IToastService>().Show(
-            message, _ToToastSeverity(severity), [.. actions.Select(action => new ToastAction(action.Label, action.OnInvoke))], sticky, PluginName, key: null);
+            message, ToToastSeverity(severity), [.. actions.Select(action => new ToastAction(action.Label, action.OnInvoke))], sticky, PluginName, key: null);
+
+    // AC-1804: kept under this plugin's id, so the restart after it asks this plugin again.
+    public void Notify(PluginNotification notification)
+    {
+        if (Services.GetService<CockpitViewModel>()?.ToastHost is not { } toasts)
+        {
+            ShowToast(notification.Message, notification.Severity, notification.Actions, sticky: notification.Actions.Count > 0);
+        }
+        else if (Dispatcher.UIThread.CheckAccess())
+        {
+            toasts.Notify(PluginId, PluginName, notification);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => toasts.Notify(PluginId, PluginName, notification));
+        }
+    }
+
+    public void AddNotificationSource(Func<string, Task<PluginNotification?>> recheck) =>
+        Services.GetService<CockpitViewModel>()?.ToastHost.AddNotificationSource(PluginId, recheck);
 
     // AC-1398: the route WorkspaceContext.EmbedSession takes, reachable by workspace id so a backend part can embed
     // what its UI part's workspace shows. AC-1418: marshals itself, since a backend part has no UI thread to be on.
@@ -73,7 +93,7 @@ internal sealed class DesktopBackendHost(
     }
 
     // Maps by name, not ordinal.
-    private static ToastSeverity _ToToastSeverity(PluginToastSeverity severity) => severity switch
+    internal static ToastSeverity ToToastSeverity(PluginToastSeverity severity) => severity switch
     {
         PluginToastSeverity.Success => ToastSeverity.Success,
         PluginToastSeverity.Warning => ToastSeverity.Warning,

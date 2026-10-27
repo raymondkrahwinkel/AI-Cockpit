@@ -32,6 +32,7 @@ public sealed class SchedulesPlugin : ICockpitPlugin
         var runs = new RunStore(host.Cache, TimeProvider.System, run => SchedulesChannelHandlers.Publish(host, run));
         var reminders = new ReminderService(host, host.Storage, delivery, TimeProvider.System,
             due => host.Channel.Publish(SchedulesChannel.RemindersDue, System.Text.Json.JsonSerializer.SerializeToElement(due, SchedulesChannel.Json)));
+        host.AddNotificationSource(key => Task.FromResult(reminders.Recheck(key)));
         _engine = new ScheduleEngine(
             tasks,
             new MarkStore(host.Cache),

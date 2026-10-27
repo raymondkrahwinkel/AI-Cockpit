@@ -366,6 +366,10 @@ internal sealed class CockpitUiHost(
     public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
         host.ShowToast(message, severity, actionLabel, onAction);
 
+    public void Notify(PluginNotification notification) => host.Notify(notification);
+
+    public void AddNotificationSource(Func<string, Task<PluginNotification?>> recheck) => host.AddNotificationSource(recheck);
+
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) => host.RequestConsentAsync(request);
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken) =>

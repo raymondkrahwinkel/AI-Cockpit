@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Toasts;
@@ -23,6 +24,8 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
     private const int MaxItems = 200;
 
     private readonly List<NotificationItemViewModel> _items = [];
+    private string? _keptPath;
+    private string? _keptJson;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsNeedsYouFilter), nameof(IsUnreadFilter), nameof(IsAllFilter))]
@@ -64,15 +67,15 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
     public DockPanelBadge Badge { get; } = new();
 
     // With a key, the item it replaces goes: a source that says the same thing again (an update check) stays one item.
-    internal NotificationItemViewModel Post(ToastViewModel toast, string? source, string? key)
+    internal NotificationItemViewModel Post(ToastViewModel toast, string? source, string? key, string? sourceId = null)
     {
-        if (key is not null && _items.FindIndex(item => item.Key == key) is var index and >= 0)
+        if (key is not null && _items.FindIndex(item => item.Key == key && item.SourceId == sourceId) is var index and >= 0)
         {
             _items[index].PropertyChanged -= _OnItemChanged;
             _items.RemoveAt(index);
         }
 
-        var item = new NotificationItemViewModel(toast, string.IsNullOrWhiteSpace(source) ? AppSource : source, key, DateTimeOffset.Now, _Dismiss);
+        var item = new NotificationItemViewModel(toast, string.IsNullOrWhiteSpace(source) ? AppSource : source, key, sourceId, DateTimeOffset.Now, _Dismiss);
         item.PropertyChanged += _OnItemChanged;
         _items.Insert(0, item);
 
@@ -84,6 +87,25 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
 
         _Refresh();
         return item;
+    }
+
+    // AC-1804: from here on, what still needs you from a plugin source is written to `path`; the caller picks it.
+    internal void KeepAt(string path)
+    {
+        _keptPath = path;
+        _Keep();
+    }
+
+    internal static IReadOnlyList<KeptNotification> ReadKept(string path)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<KeptNotification>>(File.ReadAllText(path)) ?? [];
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return [];
+        }
     }
 
     [RelayCommand]
@@ -148,8 +170,38 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowsUnreadOnly));
         OnPropertyChanged(nameof(VisibleItems));
         OnPropertyChanged(nameof(HasVisibleItems));
+        _Keep();
+    }
+
+    private void _Keep()
+    {
+        if (_keptPath is null)
+        {
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(_items
+            .Where(item => item is { NeedsYou: true, SourceId: not null, Key: not null })
+            .Select(item => new KeptNotification(item.SourceId!, item.Source, item.Key!, item.Message, item.Severity)));
+        if (json == _keptJson)
+        {
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(_keptPath, json);
+            _keptJson = json;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // ponytail: a failed write only loses what a restart would bring back; the next change tries again.
+        }
     }
 }
+
+// What a restart brings back for its source to re-check (AC-1804).
+internal sealed record KeptNotification(string SourceId, string Source, string Key, string Message, ToastSeverity Severity);
 
 // One toast kept: its buttons are the toast's own, so a click here runs the same action and closes the toast too.
 public sealed partial class NotificationItemViewModel : ObservableObject
@@ -160,10 +212,10 @@ public sealed partial class NotificationItemViewModel : ObservableObject
     private bool _isRead;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NeedsYou), nameof(IsHandled), nameof(HandledReceipt))]
-    private string? _handledBy;
+    [NotifyPropertyChangedFor(nameof(NeedsYou), nameof(IsHandled))]
+    private string? _handledReceipt;
 
-    internal NotificationItemViewModel(ToastViewModel toast, string source, string? key, DateTimeOffset time, Action<NotificationItemViewModel> dismiss)
+    internal NotificationItemViewModel(ToastViewModel toast, string source, string? key, string? sourceId, DateTimeOffset time, Action<NotificationItemViewModel> dismiss)
     {
         Message = toast.Message;
         Severity = toast.Severity;
@@ -173,6 +225,7 @@ public sealed partial class NotificationItemViewModel : ObservableObject
         Actions = toast.Actions;
         Source = source;
         Key = key;
+        SourceId = sourceId;
         Time = time;
         _dismiss = dismiss;
     }
@@ -189,23 +242,27 @@ public sealed partial class NotificationItemViewModel : ObservableObject
 
     public string? Key { get; }
 
+    // The plugin that can re-check it after a restart (AC-1804); null for the app's own.
+    public string? SourceId { get; }
+
     public DateTimeOffset Time { get; }
 
     public string TimeLabel => Time.ToString("HH:mm");
 
-    public bool IsHandled => HandledBy is not null;
+    public bool IsHandled => HandledReceipt is not null;
 
     public bool NeedsYou => Actions.Count > 0 && !IsHandled;
-
-    public string? HandledReceipt => HandledBy is { } label ? $"You chose: {label}" : null;
 
     public MaterialIconKind Glyph { get; }
 
     internal void MarkHandled(string actionLabel)
     {
-        HandledBy = actionLabel;
+        HandledReceipt = $"You chose: {actionLabel}";
         IsRead = true;
     }
+
+    // AC-1804: kept over a restart, and its source said it no longer stands.
+    internal void MarkResolved() => HandledReceipt = "Resolved meanwhile";
 
     [RelayCommand]
     private void MarkRead() => IsRead = true;
