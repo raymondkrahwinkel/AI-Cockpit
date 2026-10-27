@@ -41,7 +41,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: **provider plugins can report what they know about their models.** Prices, peak windows, limits and quota
   state, each with its source and age, read without a session, also from a headless server. Nothing reports them yet;
-  a provider that does not stays "unknown", never 0 (plugin SDK 3.36.0, Cockpit 0.128.0).
+  a provider that does not stays "unknown", never 0 (plugin SDK 3.37.0, Cockpit 0.129.0).
+- added: **server admins can issue connect keys that never expire.** Server policy can disable permanent keys, and
+  the Connect keys page and node tool make the choice explicit without changing the existing 30-day default.
 - added: **a plugin can give a sidebar button its own icon** without a counter, through a new
   `AddSideMenuButton(title, onInvoke, iconKind)` overload (plugin SDK UI 3.12.0, Cockpit 0.126.0).
 - added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
@@ -356,6 +358,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the Projects page shows every connected Depot again.** A Depot whose team projects were all added or
+  hidden already, or whose list could not be refreshed, used to vanish from "From your team". Each connection now keeps
+  its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"
+  line, and a failing one shows why. A team project that has no Cockpit project definition yet now shows in its
+  server's section too, saying so, instead of being left out without a word.
+- fixed: **the status bar no longer flickers while you hover Managed worktrees, Delegated tasks or CPU/RAM.** Their
+  tooltip opened over the pointer at the bottom of the screen, closed, and opened again; it now opens above the bar.
+
 - fixed: **Schedules can no longer take the cockpit down when its reminder count arrives.** A count that came in
   while the Plugins button had no counter attached crashed the app; it is now skipped.
 
@@ -510,6 +520,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Cockpit 0.79.0.
 
 ### Changed
+
+- changed: **the Projects page is a list with a detail pane.** A toolbar across the top holds the search field,
+  Refresh, the category chips, the Comfortable/Compact switch and + New project. Projects sit in one section per
+  organisation and server — the heading always names the Depot server, so two servers with an organisation of the
+  same name stay apart — with this machine's own projects in theirs; a server that cannot be reached gets its own
+  section with the reason and Try again. Each row says where the project runs, when it was last opened and how it
+  stands, and its columns follow the width of the list rather than the window. The selected project's details stand
+  on the right, and the selection stays put when the list refreshes. The Cards, List and Continue layouts are gone.
 
 - changed: **Depot files now keeps the tree full-width above a compact file detail.** Documents show only their first
   heading and paragraph; artifacts keep Download, Open and sharing controls without rendering an image or text preview

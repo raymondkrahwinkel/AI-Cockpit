@@ -5,6 +5,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -52,6 +53,14 @@ public partial class CockpitView : UserControl
     private DispatcherTimer? _resourceTimer;
     private DispatcherTimer? _claimCollisionTimer;
 
+    private void _OnCopyServerStartReason(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: string reason } && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            _ = clipboard.SetTextAsync(reason);
+        }
+    }
+
     public CockpitView()
     {
         InitializeComponent();
@@ -62,6 +71,7 @@ public partial class CockpitView : UserControl
         {
             WorkspacesHelp.Children.Add(new HelpHint(help, new HelpAddress("workspaces", "kinds"), origin: "a “?” on the workspace strip"));
         }
+
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

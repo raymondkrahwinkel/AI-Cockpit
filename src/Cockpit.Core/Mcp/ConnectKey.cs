@@ -9,8 +9,8 @@ public enum ConnectKeyCapability
 }
 
 // AC-1351: a key that opens the node endpoint without a pairing, after DEP-208 — only its SHA-256 and a short
-// prefix are stored, never the key itself. `ExpiresAt` is null only for the bootstrap key, which lives exactly as
-// long as the secret that supplies it; a revoked bootstrap key is persisted so the same secret cannot revive it.
+// prefix are stored, never the key itself. `ExpiresAt` is null for the bootstrap key and explicitly permanent keys;
+// a revoked bootstrap key is persisted so the same secret cannot revive it.
 public sealed record ConnectKey(
     string Prefix,
     string Hash,
@@ -63,6 +63,7 @@ public sealed record ConnectKeyPolicy
     public TimeSpan MaxLockout { get; init; } = TimeSpan.FromMinutes(60);
     public int DefaultExpiryDays { get; init; } = 30;
     public int MaxExpiryDays { get; init; } = 365;
+    public bool AllowNeverExpiring { get; init; } = true;
 
     // How many addresses (an IPv6 /64 counts as one) the lockout tracks at once; past it the least recent is evicted.
     public int MaxTrackedAddresses { get; init; } = 4096;

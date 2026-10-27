@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -28,7 +29,7 @@ namespace Cockpit.App.ViewTests;
 /// (<c>ProjectsViewModel.RecentProjects</c>) instead of grouped by category the way the Manage-projects dialog
 /// (AC-618) already does. Measured against the real markup, not the view model alone: the fix's own nesting —
 /// a category ItemsControl wrapping a per-category cards ItemsControl — hit the exact <c>$parent[ItemsControl]</c>
-/// trap <c>ProjectsDialog.axaml</c> already had to work around (see that file's own comment), so a Start click has
+/// trap the former projects dialog had to work around, so a Start click has
 /// to actually reach <see cref="CockpitViewModel.StartProjectSessionCommand"/> rather than silently binding to
 /// nothing.
 /// </summary>
@@ -61,14 +62,17 @@ public class ProjectsWorkspaceCategoryGroupingTests
             window.UpdateLayout();
 
             var headings = view.GetVisualDescendants().OfType<TextBlock>()
-                .Where(text => text.Text is "Werk" or "Privé")
+                .Where(text => text.Text is "Werk" or "Privé"
+                    && text.GetVisualAncestors().OfType<ProjectsToolbar>().Any())
                 .Select(text => text.Text)
                 .ToList();
             Assert.Equal(["Werk", "Privé"], headings);
 
             var startButton = view.GetVisualDescendants().OfType<Button>()
                 .First(button => button.Content is StackPanel panel
-                    && panel.Children.OfType<TextBlock>().Any(text => text.Text == "Start"));
+                    && panel.Children.OfType<TextBlock>().Any(text => text.Text == "Start")
+                    && button.GetVisualAncestors().OfType<ProjectListRow>()
+                        .Any(row => row.DataContext is ProjectListItemViewModel item && item.Id == onboarding.Id));
 
             // Proves the nested-ItemsControl $parent binding actually resolved to the real CockpitViewModel command
             // instance rather than silently landing on null (Avalonia logs, but does not throw, a bad binding path).

@@ -20,6 +20,7 @@ public sealed class SharedProjectComposition
         string name,
         string? description,
         string? gitUrl,
+        string? sharedSourceKey,
         string? behaviorPrompt,
         bool isolateInWorktreeByDefault,
         IReadOnlyList<string>? enabledMcpServerNames,
@@ -32,6 +33,7 @@ public sealed class SharedProjectComposition
         Name = name;
         Description = description;
         GitUrl = gitUrl;
+        SharedSourceKey = sharedSourceKey;
         BehaviorPrompt = behaviorPrompt;
         _isolateInWorktreeByDefault = isolateInWorktreeByDefault;
         _enabledMcpServerNames = enabledMcpServerNames;
@@ -74,6 +76,8 @@ public sealed class SharedProjectComposition
     // Where the project can be cloned from; null when the definition names no repository.
     public string? GitUrl { get; }
 
+    public string? SharedSourceKey { get; }
+
     public string? BehaviorPrompt { get; }
 
     // Machine-specific rows the definition names but carries no value for, in the definition's order.
@@ -93,6 +97,7 @@ public sealed class SharedProjectComposition
             // Single-repository only (AC-938 non-goal): a shared definition never carries more than one folder.
             SourceDirectories = string.IsNullOrWhiteSpace(sourceDirectory) ? [] : [new(sourceDirectory.Trim())],
             GitUrl = gitUrl,
+            SharedSourceKey = SharedSourceKey,
             DefaultProfileLabel = profileLabel,
             BehaviorPrompt = string.IsNullOrWhiteSpace(behaviorPrompt) ? null : behaviorPrompt.Trim(),
             // AC-1071: deliberately not taken from the shared definition — the assistant is this operator's own

@@ -5,7 +5,7 @@ namespace Cockpit.Infrastructure.Clones;
 // Parses a git remote URL into the pieces the clone manager needs (AC-90): the URL git is handed, the
 // managed slug/folder the clone lives under, and a normalized identity used for de-duplication.
 // Security: `user:password@` credentials are stripped from `RemoteUrl` for HTTP(S); an SSH `git@` login user is kept, only its password stripped.
-internal sealed class GitCloneUrl
+public sealed class GitCloneUrl
 {
     private GitCloneUrl(string remoteUrl, string host, IReadOnlyList<string> segments)
     {

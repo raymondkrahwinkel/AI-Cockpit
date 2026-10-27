@@ -20,6 +20,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
     private readonly WeekSettings _settings;
     private readonly TextBox[] _hours;
     private readonly ComboBox _rounding = new() { ItemsSource = new[] { "5 minuten", "15 minuten", "30 minuten" }, Width = 140 };
+    private readonly TextBox _refreshSeconds;
     private readonly TextBox _instructions;
     private readonly StackPanel _projects = new() { Spacing = 4 };
     private readonly List<(string Id, CheckBox Box)> _private = [];
@@ -33,6 +34,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
         _controller = controller;
         _settings = host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default;
         _storedRates = host.Storage.Get<Dictionary<string, double>>(ProfileRates.StorageKey) ?? [];
+        _refreshSeconds = new TextBox { Name = "RefreshSeconds", Text = _settings.RefreshSeconds.ToString(Dutch), Width = 70 };
         _instructions = new TextBox
         {
             Name = "AgentInstructions",
@@ -58,6 +60,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
                 new TextBlock { Text = "Werkschema in uren per dag · harde grens", FontWeight = Avalonia.Media.FontWeight.SemiBold },
                 schedule,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Afronden op", VerticalAlignment = VerticalAlignment.Center }, _rounding } },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { new TextBlock { Text = "Uren en Overzicht verversen elke (seconden)", VerticalAlignment = VerticalAlignment.Center }, _refreshSeconds } },
                 new TextBlock { Text = "Projecten in het voorstel", FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new Thickness(0, 6, 0, 0) },
                 new TextBlock { Text = "Een privé-project telt wel als jouw tijd, maar komt niet in het voorstel.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 _projects,
@@ -88,6 +91,13 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             minutes[day] = (int)Math.Round(hours * 60);
         }
 
+        if (int.TryParse(_refreshSeconds.Text, NumberStyles.None, Dutch, out var refreshSeconds) == false || refreshSeconds is < 15 or > 3600)
+        {
+            commit = null;
+            error = "Vul voor het verversen een aantal seconden in tussen 15 en 3600.";
+            return false;
+        }
+
         var rates = new Dictionary<string, double>(_storedRates, StringComparer.Ordinal);
         foreach (var (profile, box) in _rates)
         {
@@ -113,6 +123,7 @@ internal sealed class ProductivitySettingsControl : UserControl, IPluginSettings
             [.. _settings.PrivateProjects.Where(id => _private.All(project => project.Id != id)), .. _private.Where(project => project.Box.IsChecked == true).Select(project => project.Id)])
         {
             AgentInstructions = _instructions.Text ?? string.Empty,
+            RefreshSeconds = refreshSeconds,
         };
         commit = () =>
         {

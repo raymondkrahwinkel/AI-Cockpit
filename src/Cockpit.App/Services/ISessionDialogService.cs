@@ -35,13 +35,6 @@ public interface ISessionDialogService
     Task ShowAssistantProfileDialogAsync(IAssistantSessionHost? assistant, AssistantProfileSetup? setup = null);
 
     /// <summary>
-    /// Shows the projects manager (AC-161): saved projects, with add, edit and remove. Its own dialog rather than a
-    /// tab in Options (Raymond, 2026-07-24). Takes <paramref name="projects"/> as a parameter for the same reason
-    /// <see cref="ShowWorktreesDialogAsync"/> does: injecting it would be a circle.
-    /// </summary>
-    Task ShowProjectsDialogAsync(ProjectsViewModel projects);
-
-    /// <summary>
     /// Shows the project editor (AC-160) for <paramref name="project"/>, or a new one when null; returns what was
     /// saved, or null if cancelled (persisting is the caller's). The source under <paramref name="sharedSourceKey"/> (AC-247),
     /// when set, reads a fresh <see cref="SharedProjectBinding"/> first so Save writes a claimed field back correctly.

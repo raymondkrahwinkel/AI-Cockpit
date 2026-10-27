@@ -19,15 +19,21 @@ internal sealed class DepotSettings(IPluginStorage storage)
     // looking at the string alone. This flag is what makes the migration below run exactly once, ever, per
     // installation, instead of once per read or once per app start.
     private const string UrlsNormalizedKey = "connectionsUrlsNormalizedAc499";
+    private const string SettingsSyncMigratedKey = "settingsSyncMigratedAc1832";
 
     public IReadOnlyList<DepotConnectionRegistration> Connections
     {
         get
         {
             _MigrateStoredUrlsOnce();
+            _MigrateSettingsSyncOnce();
             return storage.Get<List<DepotConnectionRegistration>>("connections") ?? [];
         }
-        set => storage.Set("connections", value.ToList());
+        set
+        {
+            storage.Set("connections", value.ToList());
+            storage.Set(SettingsSyncMigratedKey, true);
+        }
     }
 
     // AC-1574: the folder-to-Depot links. A setting, so it goes with a backup; the manifest of what each one published is cache.
@@ -48,5 +54,18 @@ internal sealed class DepotSettings(IPluginStorage storage)
         var migrated = stored.Select(connection => connection with { Url = DepotUrlNormalizer.Normalize(connection.Url) }).ToList();
         storage.Set("connections", migrated);
         storage.Set(UrlsNormalizedKey, true);
+    }
+
+    // AC-1832: old connection lists had no setting-sync choice and always used their first server.
+    private void _MigrateSettingsSyncOnce()
+    {
+        if (storage.Get<bool?>(SettingsSyncMigratedKey) ?? false)
+        {
+            return;
+        }
+
+        var stored = storage.Get<List<DepotConnectionRegistration>>("connections") ?? [];
+        storage.Set("connections", stored.Select((connection, index) => connection with { SynchroniseSettings = index == 0 }).ToList());
+        storage.Set(SettingsSyncMigratedKey, true);
     }
 }

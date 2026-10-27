@@ -14,6 +14,12 @@ internal static class ChatTurnLoop
     // Explicit rather than the library default, so a model that keeps calling tools cannot loop without end.
     internal const int MaxToolIterations = 40;
 
+    // Stop before a confused model can spend an entire turn repeating one failed tool call.
+    internal const int MaxConsecutiveIdenticalToolFailures = 3;
+
+    internal static readonly string RepeatedToolFailureNotice =
+        "(cockpit) Stopped this turn because the same tool call returned the same error " + MaxConsecutiveIdenticalToolFailures + " times.";
+
     internal const int MaxTransportRetries = 2;
 
     internal const string CompletionMarker = "[turn complete]";
@@ -38,7 +44,27 @@ internal static class ChatTurnLoop
 
     private static readonly TimeSpan RetryBaseDelay = TimeSpan.FromSeconds(1);
 
-    internal static void ConfigureToolLoop(FunctionInvokingChatClient client) => client.MaximumIterationsPerRequest = MaxToolIterations;
+    internal static void ConfigureToolLoop(FunctionInvokingChatClient client)
+    {
+        client.MaximumIterationsPerRequest = MaxToolIterations;
+        var repeatFailures = new RepeatToolFailureGuard();
+        client.FunctionInvoker = async (context, cancellationToken) =>
+        {
+            if (context.Iteration == 0 && context.FunctionCallIndex == 0)
+            {
+                repeatFailures.Reset();
+            }
+
+            var result = await context.Function.InvokeAsync(context.Arguments, cancellationToken).ConfigureAwait(false);
+            if (repeatFailures.Record(context.CallContent, result))
+            {
+                context.Terminate = true;
+                return RepeatedToolFailureNotice;
+            }
+
+            return result;
+        };
+    }
 
     internal static string? WithCompletionConvention(string? systemPrompt, bool toolsOffered)
     {
@@ -48,6 +74,20 @@ internal static class ChatTurnLoop
         }
 
         return string.IsNullOrWhiteSpace(systemPrompt) ? CompletionConvention : $"{systemPrompt}\n\n{CompletionConvention}";
+    }
+
+    internal static string WithWorkingDirectoryContext(string? systemPrompt, string? workingDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            return systemPrompt ?? string.Empty;
+        }
+
+        var (operatingSystem, pathStyle) = OperatingSystem.IsWindows()
+            ? ("Windows", "Windows-style paths with drive letters and backslashes")
+            : (OperatingSystem.IsMacOS() ? "macOS" : "Linux", "POSIX-style paths with forward slashes");
+        var context = $"You are running on {operatingSystem}. Your working directory is `{workingDirectory}`. Use {pathStyle}; relative paths resolve against this working directory.";
+        return string.IsNullOrWhiteSpace(systemPrompt) ? context : $"{systemPrompt}\n\n{context}";
     }
 
     // Runs the turn, appends every message it produced — tool calls and their results included — to `history`,
@@ -64,8 +104,18 @@ internal static class ChatTurnLoop
 
         for (var continuation = 0; ; continuation++)
         {
+            var historyStart = history.Count;
             var round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken).ConfigureAwait(false);
             toolRounds += round.ToolRounds;
+            if (_HasRepeatedToolFailureStop(history.Skip(historyStart)))
+            {
+                var prefix = turnText.Length > 0 ? "\n\n" : string.Empty;
+                turnText.Append(prefix).Append(RepeatedToolFailureNotice);
+                onText(prefix + RepeatedToolFailureNotice);
+                history.Add(new ChatMessage(ChatRole.Assistant, RepeatedToolFailureNotice));
+                guard?.LogTurn(logger);
+                return new ChatTurnOutcome(turnText.ToString(), round.FinishReason, toolRounds, continuation);
+            }
 
             logger.LogDebug("Chat turn round {Round}: finish_reason {FinishReason}, {ToolRounds} tool round(s) so far.", continuation + 1, round.FinishReason?.Value ?? "(none)", toolRounds);
             if (round.FinishReason == ChatFinishReason.Length)
@@ -177,6 +227,37 @@ internal static class ChatTurnLoop
         return messages.Count(message => message.Role == ChatRole.Tool);
     }
 
+    private static bool _HasRepeatedToolFailureStop(IEnumerable<ChatMessage> messages) =>
+        messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+            .Any(result => string.Equals(ResultText(result.Result), RepeatedToolFailureNotice, StringComparison.Ordinal));
+
+    private sealed class RepeatToolFailureGuard
+    {
+        private ToolFailure? _previous;
+        private int _consecutive;
+
+        public void Reset()
+        {
+            _previous = null;
+            _consecutive = 0;
+        }
+
+        public bool Record(FunctionCallContent call, object? result)
+        {
+            var error = ResultText(result);
+            if (error?.StartsWith("Tool call failed:", StringComparison.Ordinal) != true)
+            {
+                Reset();
+                return false;
+            }
+
+            var failure = new ToolFailure(call.Name, JsonSerializer.Serialize(call.Arguments, AIJsonUtilities.DefaultOptions), error);
+            _consecutive = failure == _previous ? _consecutive + 1 : 1;
+            _previous = failure;
+            return _consecutive == MaxConsecutiveIdenticalToolFailures;
+        }
+    }
+
     // Shortens the tool results of every turn before the previous one; the call and its result both stay, only the
     // result's text gets shorter. A turn starts at a user message that is not a continuation nudge.
     private static void _TrimOldToolResults(List<ChatMessage> history)
@@ -204,6 +285,8 @@ internal static class ChatTurnLoop
             }
         }
     }
+
+    private sealed record ToolFailure(string Name, string Arguments, string Error);
 
     // A connection that dropped mid-stream ("Unable to read data from the transport connection") surfaces as an
     // IOException, or an HttpRequestException without a status; an HTTP error answer is not a transport failure.

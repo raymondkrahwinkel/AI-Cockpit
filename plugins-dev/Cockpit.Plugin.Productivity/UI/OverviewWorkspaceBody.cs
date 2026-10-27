@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugin.Shared.UI;
 
@@ -17,84 +18,90 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private readonly OverviewController _controller;
     private readonly Action _openHours;
-    private readonly StackPanel _body = new() { Spacing = 12, Margin = new Thickness(18, 14) };
+    private readonly StackPanel _body = new() { Spacing = 12 };
+    private readonly RefreshBar _bar;
+    private readonly ScrollViewer _scroll = new();
+    private DatePicker? _customFrom;
+    private DatePicker? _customTo;
 
-    public OverviewWorkspaceBody(OverviewController controller, Action openHours)
+    public OverviewWorkspaceBody(OverviewController controller, Action openHours, Action openOverview, Func<TimeSpan> interval)
     {
         _controller = controller;
         _openHours = openHours;
-        Content = new ScrollViewer { Content = _body };
+        _bar = new RefreshBar(this, controller.RefreshAsync, _CustomRangeUnapplied, interval, () => controller.Now);
+        _scroll.Content = new StackPanel { Spacing = 12, Margin = new Thickness(18, 14), Children = { _Tabs(openOverview), _body } };
+        Content = _scroll;
         _controller.Changed += _Render;
-        DetachedFromVisualTree += (_, _) => _controller.Changed -= _Render;
+        _controller.RefreshStateChanged += _RenderRefreshState;
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _controller.Changed -= _Render;
+            _controller.RefreshStateChanged -= _RenderRefreshState;
+        };
         _Render();
         _ = _controller.RefreshAsync();
     }
 
+    private void _RenderRefreshState() => _bar.Update(_controller.IsRefreshing, _controller.LastRefreshed);
+
+    // Dates picked for "Eigen bereik" but not applied yet would be reset by a rebuild.
+    private bool _CustomRangeUnapplied() =>
+        _controller.SelectedRange == "Eigen bereik"
+        && (_customFrom?.SelectedDate?.Date != _controller.From.ToDateTime(TimeOnly.MinValue) || _customTo?.SelectedDate?.Date != _controller.To.ToDateTime(TimeOnly.MinValue));
+
     private void _Render()
     {
+        _RenderRefreshState();
+        var offset = _scroll.Offset;
         _body.Children.Clear();
-        _body.Children.Add(_Tabs());
         _body.Children.Add(_RangeCard());
         if (_controller.Error is { } error)
         {
             _body.Children.Add(Ui.Card(Ui.Hint(error), 14));
-            return;
         }
-
-        if (_controller.Snapshot is not { } snapshot)
+        else if (_controller.Snapshot is not { } snapshot)
         {
-            _body.Children.Add(Ui.Card(Ui.Hint(_controller.Error ?? "Overzicht laden…"), 14));
-            return;
+            _body.Children.Add(Ui.Card(Ui.Hint("Overzicht laden…"), 14));
+        }
+        else
+        {
+            _body.Children.Add(_Tiles(snapshot, _controller.IncludeAgentWithoutYou, _controller.From, _controller.To));
+            _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
+            _body.Children.Add(_Entries(snapshot));
+            _body.Children.Add(_Tickets(snapshot));
         }
 
-        _body.Children.Add(_Tiles(snapshot, _controller.IncludeAgentWithoutYou, _controller.From, _controller.To));
-        _body.Children.Add(_Charts(snapshot, _controller.IncludeAgentWithoutYou));
-        _body.Children.Add(_Entries(snapshot));
-        _body.Children.Add(_Tickets(snapshot));
+        // The rebuild shrinks the content for a moment; put the scroll position back once it is laid out again.
+        Dispatcher.UIThread.Post(() => _scroll.Offset = offset, DispatcherPriority.Loaded);
     }
 
-    private Control _Tabs()
+    private Control _Tabs(Action openOverview)
     {
-        var hours = new Button { Name = "OpenHoursTab", Content = "Uren", Classes = { "Compact" } };
-        hours.Click += (_, _) => _openHours();
-        var overview = new Button { Name = "OverviewTab", Content = "Overzicht", Classes = { "Compact", "Accent" } };
-        var tabs = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            Children = { hours, overview },
-        };
-        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-        row.Children.Add(tabs);
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 12 };
+        row.Children.Add(WorkspaceSwitch.Build(true, _openHours, openOverview));
+        Grid.SetColumn(_bar.View, 1);
+        row.Children.Add(_bar.View);
         var today = Ui.Pill($"vandaag · {DateTimeOffset.Now.ToString("ddd d MMM", Dutch)}", "CockpitTextSecondaryBrush", "CockpitInsetBgBrush");
-        Grid.SetColumn(today, 1);
+        Grid.SetColumn(today, 2);
         row.Children.Add(today);
         return row;
     }
 
     private Control _RangeCard()
     {
-        var picker = new RangePicker
+        var ranges = new StackPanel { Name = "OverviewRangePicker", Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var range in new[] { "Dag", "Werkweek", "Week", "Maand", "Eigen bereik" })
         {
-            Name = "OverviewRangePicker",
-            Height = 38,
-            Ranges = ["Dag", "Werkweek", "Week", "Maand", "Eigen bereik"],
-            SelectedRange = _controller.SelectedRange,
-            Width = 520,
-        };
-        picker.SelectedRangeChanged += async (_, range) => await _controller.SelectRangeAsync(range);
-        var pickerClip = new Grid
-        {
-            Width = 520,
-            Height = 38,
-        };
-        pickerClip.Children.Add(picker);
-        var leftCover = new Border { Width = 32, HorizontalAlignment = HorizontalAlignment.Left };
-        leftCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
-        pickerClip.Children.Add(leftCover);
-        var rightCover = new Border { Width = 210, HorizontalAlignment = HorizontalAlignment.Right };
-        rightCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
-        pickerClip.Children.Add(rightCover);
+            var button = new Button { Content = range, Classes = { "Compact" } };
+            if (range == _controller.SelectedRange)
+            {
+                button.Classes.Add("Accent");
+            }
+
+            button.Click += async (_, _) => await _controller.SelectRangeAsync(range);
+            ranges.Children.Add(button);
+        }
+
         var dates = new TextBlock
         {
             Text = $"{_controller.From.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} – {_controller.To.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM yyyy", Dutch)}",
@@ -140,7 +147,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             },
         };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
-        row.Children.Add(pickerClip);
+        row.Children.Add(ranges);
         Grid.SetColumn(dateNavigation, 1);
         row.Children.Add(dateNavigation);
         Grid.SetColumn(basis, 2);
@@ -157,6 +164,8 @@ internal sealed class OverviewWorkspaceBody : UserControl
             SelectedDate = _controller.To.ToDateTime(TimeOnly.MinValue),
             Width = 150,
         };
+        _customFrom = customFrom;
+        _customTo = customTo;
         var apply = new Button { Name = "ApplyCustomRange", Content = "Toepassen", Classes = { "Accent", "Compact" } };
         apply.Click += async (_, _) =>
         {
@@ -387,16 +396,17 @@ internal sealed class OverviewWorkspaceBody : UserControl
         foreach (var project in projects)
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*,52"), ColumnSpacing = 8 };
-            row.Children.Add(new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 6,
-                Children =
-                {
-                    new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(project.Color), VerticalAlignment = VerticalAlignment.Center },
-                    new TextBlock { Text = project.Label, TextTrimming = TextTrimming.CharacterEllipsis },
-                },
-            });
+            // A grid, not a horizontal stack, so a long name trims inside its column instead of running into the bar.
+            var label = project.Label == ProjectNames.NoProject
+                ? Ui.Hint("— " + project.Label)
+                : new TextBlock { Text = project.Label };
+            label.TextWrapping = TextWrapping.NoWrap;
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+            Grid.SetColumn(label, 1);
+            var name = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 6 };
+            name.Children.Add(new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(project.Color), VerticalAlignment = VerticalAlignment.Center, IsVisible = project.Label != ProjectNames.NoProject });
+            name.Children.Add(label);
+            row.Children.Add(name);
             ToolTip.SetTip(row, project.Tooltip);
             var segments = new List<ChartSegment>
             {
@@ -470,7 +480,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             .ToList();
     }
 
-    private const string SessionColumns = "*,124,44,60,50,62";
+    private const string SessionColumns = "1.2*,*,40,68,48,52";
 
     private static Control _Sessions(ProductivityOverviewSnapshot snapshot)
     {
@@ -514,14 +524,14 @@ internal sealed class OverviewWorkspaceBody : UserControl
             var row = _TableRow(
                 [
                     names.Describe(label, withProject: false),
-                    profile.Length == 0 ? "onbekend" : profile,
+                    profile.Length == 0 ? "—" : profile,
                     label.HasTimeline ? Ui.Duration(active.GetValueOrDefault(session)) : "—",
                     label.HasTimeline ? Ui.Duration(withoutYou) : "—",
                     _Tokens(tokens),
-                    costs.Any(value => value is null) ? "geen tarief" : costs.Sum(value => value ?? 0).ToString("$0.00", CultureInfo.InvariantCulture),
+                    costs.Any(value => value is null) ? "—" : costs.Sum(value => value ?? 0).ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
                 SessionColumns);
-            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · geen tijdlijn voor deze sessie, dus actieve tijd onbekend"));
+            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · geen tijdlijn voor deze sessie, dus actieve tijd onbekend") + (costs.Any(value => value is null) ? " · geen tarief voor dit profiel, dus kosten onbekend" : string.Empty));
             body.Children.Add(row);
         }
 
@@ -582,8 +592,11 @@ internal sealed class OverviewWorkspaceBody : UserControl
                         Height = 8,
                         Fill = MeasuredTimeCard.ProjectBrush(projectId),
                         VerticalAlignment = VerticalAlignment.Center,
+                        IsVisible = projectId.Length > 0,
                     },
-                    new TextBlock { Text = names.Resolve(projectId).Label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
+                    projectId.Length == 0
+                        ? Ui.Hint("— " + ProjectNames.NoProject)
+                        : new TextBlock { Text = names.Resolve(projectId).Label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
                 },
             };
             ToolTip.SetTip(project, names.Resolve(projectId).Tooltip);
@@ -617,7 +630,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         foreach (var ticket in snapshot.Tickets)
         {
             body.Children.Add(_TableRow(
-                [ticket.Ticket, names.Resolve(ticket.ProjectId).Label, Ui.Duration(ticket.Time), ticket.Statusline ?? "geen statusline"],
+                [ticket.Ticket, names.Resolve(ticket.ProjectId).Label, Ui.Duration(ticket.Time), ticket.Statusline ?? "—"],
                 "120,180,90,*"));
         }
 

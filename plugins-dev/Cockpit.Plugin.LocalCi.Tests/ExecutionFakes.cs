@@ -21,6 +21,11 @@ internal sealed class FakeWorktreeManager : IWorktreeManager
     public Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 
+    public Task<string?> DetectRemoteUrlAsync(string directory, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+
+    public string? NormalizeGitUrl(string url) => throw new NotSupportedException();
+
     public Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, WorktreeSourceHandling handling = WorktreeSourceHandling.BringUpToDate, bool isAgentCreated = false, string? baseRef = null, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
 

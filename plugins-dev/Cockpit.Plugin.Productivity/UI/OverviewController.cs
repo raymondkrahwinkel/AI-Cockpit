@@ -17,6 +17,14 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
 
     public event Action? Changed;
 
+    public event Action? RefreshStateChanged;
+
+    public bool IsRefreshing { get; private set; }
+
+    public DateTimeOffset? LastRefreshed { get; private set; }
+
+    public DateTimeOffset Now => _time.GetUtcNow();
+
     public DateOnly From { get; private set; } = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime));
 
     public DateOnly To { get; private set; } = _Monday(DateOnly.FromDateTime(time.GetLocalNow().DateTime)).AddDays(4);
@@ -112,6 +120,8 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
         var requestedFrom = From;
         var requestedTo = To;
         var requestedRange = SelectedRange;
+        IsRefreshing = true;
+        _PublishRefreshState();
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -128,6 +138,7 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
             }
 
             Snapshot = snapshot;
+            LastRefreshed = _time.GetUtcNow();
             Error = null;
             _lastValidFrom = requestedFrom;
             _lastValidTo = requestedTo;
@@ -150,6 +161,8 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
             _gate.Release();
             if (generation == Volatile.Read(ref _refreshGeneration))
             {
+                IsRefreshing = false;
+                _PublishRefreshState();
                 _PublishChanged();
             }
         }
@@ -177,6 +190,23 @@ internal sealed class OverviewController(IPluginUiChannel channel, TimeProvider 
     {
         var local = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
         return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
+    }
+
+    private void _PublishRefreshState()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            RefreshStateChanged?.Invoke();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => RefreshStateChanged?.Invoke());
+        }
     }
 
     private void _PublishChanged()

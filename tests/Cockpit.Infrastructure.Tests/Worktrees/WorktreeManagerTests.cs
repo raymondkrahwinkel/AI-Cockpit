@@ -47,6 +47,12 @@ public sealed class WorktreeManagerTests : IDisposable
     [Fact]
     public async Task CreateAsync_BranchThatAlreadyExists_FailsLoudly_WithoutResettingIt()
     {
+        // A local project never needs the operator's configured repositories: this real repository is created and
+        // disposed by the test fixture. origin wins even when Git names another remote too.
+        _Git(_repo, "remote", "add", "backup", "https://example.test/backup.git");
+        _Git(_repo, "remote", "add", "origin", "https://example.test/origin.git");
+        Assert.Equal("https://example.test/origin.git", await _manager.DetectRemoteUrlAsync(_repo));
+
         const string branch = "already-here";
         _Git(_repo, "branch", branch);
 

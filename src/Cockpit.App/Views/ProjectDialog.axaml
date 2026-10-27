@@ -416,8 +416,11 @@
                             <Button Grid.Column="1" Content="Choose…" Command="{Binding BrowseCommand}"/>
                             <Button Grid.Column="2" Content="Clone…" Command="{Binding CloneCommand}"/>
                         </Grid>
-                        <TextBlock Classes="FieldHint" Margin="0,4,0,0" IsVisible="{Binding GitUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                   Text="{Binding GitUrl, StringFormat='Cloned from {0}'}"/>
+                        <TextBlock Classes="FieldLabel" Margin="0,8,0,0" Text="Repository (git URL)"/>
+                        <TextBox Text="{Binding GitUrl}" PlaceholderText="https://github.com/owner/repository.git"/>
+                        <TextBlock Classes="FieldHint" Text="Used when this project is shared so another server can clone it. Leave empty to remove it."/>
+                        <TextBlock Classes="FieldHint" Foreground="{DynamicResource CockpitDangerBrush}" IsVisible="{Binding GitUrlError, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Text="{Binding GitUrlError}"/>
                     </StackPanel>
                 </StackPanel>
 

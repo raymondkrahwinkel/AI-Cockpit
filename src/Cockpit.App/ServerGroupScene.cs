@@ -25,6 +25,15 @@ internal static class ServerGroupScene
     // An operate key with a scope: "Admin" locked, the assistant held elsewhere, and the start card with one profile.
     public static MainWindow Operate(int width, int height) => _Render(width, height, admin: false);
 
+    public static MainWindow StartRefused(int width, int height)
+    {
+        var window = _Render(width, height, admin: false);
+        var start = ((CockpitViewModel)window.DataContext!).ServerGroups[0].Start;
+        start.Error = "huis-cockpit did not start the session.";
+        start.Reason = "worktree isolation failed for '/home/agent/scratch': Could not run 'git' … Permission denied";
+        return window;
+    }
+
     // AC-1457 (mockup v2 tab 3): the Health tab of an admin key, with the expired login, the alarm and a device code.
     public static MainWindow Health(int width, int height) => _Render(width, height, admin: true, health: true);
 

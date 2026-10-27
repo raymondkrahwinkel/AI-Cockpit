@@ -520,11 +520,12 @@ internal sealed class NodeSessionMcpTools(
     }
 
     [McpServerTool(Name = "issue_connect_key", ReadOnly = false, Destructive = false)]
-    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). Every issued key expires; expiresInDays defaults to the node's policy. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. After first setup, issue your own key with an expiry; the bootstrap key stays as the emergency key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
+    [Description("Issues a new connect key for this node and returns it ONCE — it is stored only as a hash, so a key that is lost cannot be shown again, only replaced. Needs a connect key with the admin capability. capability is \"operate\" (the node tools) or \"admin\" (those plus managing keys). expiresInDays defaults to the node's policy; set neverExpires instead to issue a key without an expiry when policy allows it. holdsAssistant turns off this node's assistant while you call. The scope defaults to every profile and project, with answering permission prompts allowed and starting profiles that skip their approvals not; profiles and projects narrow it, and set_connect_key_scope changes it later. A key limited to some projects sees and reaches only the sessions in those projects. A scope limits an operate key; an admin key can always issue itself a wider one. To rotate, issue the new key, move the controller to it, then revoke the old one. The bootstrap key stays as the emergency key. The key lands in the transcript of whoever calls this, so hand it to the operator's connect dialog rather than calling this from an assistant.")]
     public async Task<string> IssueConnectKeyAsync(
         [Description("A name for the operator: which controller or machine this key is for.")] string label,
         [Description("\"operate\" or \"admin\".")] string capability,
         [Description("Days until the key expires. Leave out for the node's default.")] int? expiresInDays = null,
+        [Description("Issues a key without an expiry. Cannot be combined with expiresInDays and must be allowed by server policy.")] bool neverExpires = false,
         [Description("Turns off this node's assistant while you call. Defaults to false.")] bool holdsAssistant = false,
         [Description(ProfilesParameter)] string[]? profiles = null,
         [Description(ProjectsParameter)] string[]? projects = null,
@@ -554,7 +555,7 @@ internal sealed class NodeSessionMcpTools(
             }
 
             var scope = _ScopeOf(profiles, projects, mayStartBypassProfiles, mayAnswerPermissions);
-            var (key, secret) = await connectKeys.IssueAsync(new ConnectKeyRequest(label, parsed, expiresInDays, holdsAssistant, scope)).ConfigureAwait(false);
+            var (key, secret) = await connectKeys.IssueAsync(new ConnectKeyRequest(label, parsed, expiresInDays, holdsAssistant, scope, neverExpires)).ConfigureAwait(false);
             return _Serialize(new
             {
                 ok = true,

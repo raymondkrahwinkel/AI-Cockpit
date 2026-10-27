@@ -27,7 +27,7 @@ public class DepotPluginTests
     }
 
     [Fact]
-    public void GetMcpServers_AfterTwoConnectionsSwapNames_EachKeepsItsOwnId()
+    public void GetMcpServers_AfterTwoConnectionsSwapNames_EachKeepsItsOwnId_AndTheSelectedServerCarriesSettings()
     {
         // Acceptance criterion 3, the Depot half. Two connections on the same host swap names. If identity
         // followed the name, each would inherit the other's token — McpOAuthToken.IsForResource only bounds
@@ -51,6 +51,17 @@ public class DepotPluginTests
         Assert.Equal("c1", Assert.Single(after, server => server.Name == "Depot: beta").Id);
         Assert.Equal("c2", Assert.Single(before, server => server.Name == "Depot: beta").Id);
         Assert.Equal("c2", Assert.Single(after, server => server.Name == "Depot: alpha").Id);
+
+        var selectedHost = _HostWithConnections(
+            new DepotConnectionRegistration("a", "A", "https://a.example", SynchroniseSettings: false),
+            new DepotConnectionRegistration("b", "B", "https://b.example", SynchroniseSettings: true));
+        Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration? carrier = null;
+        selectedHost.When(candidate => candidate.AddSettingsCarrier(Arg.Any<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>()))
+            .Do(call => carrier = call.Arg<Cockpit.Plugins.Abstractions.Settings.SettingsCarrierRegistration>());
+        using var selectedPlugin = new DepotPlugin();
+        selectedPlugin.Initialize(selectedHost);
+
+        Assert.Equal("depot:b", carrier?.Id);
     }
 
     // AC-1647, layer 2: only Depot's built-in Cockpit sign-in receives the host scope used by profile and backups;
@@ -111,4 +122,5 @@ public class DepotPluginTests
         Assert.Equal(connections, new Settings.DepotSettings(host.Storage).Connections.Count(connection => connection.Url == "https://depot.example.com"));
         Assert.False(answer.GetRawText().Contains(token, StringComparison.Ordinal), "The answer repeats the installation token.");
     }
+
 }
