@@ -59,6 +59,11 @@ public sealed class DockPanelHost
                 _cockpit.OpenDockPanelId = null;
             }
 
+            if (_cockpit.SimpleOpenDockPanelId == panelId)
+            {
+                _cockpit.SimpleOpenDockPanelId = null;
+            }
+
             _cockpit.SetDockPanelFloating(panelId, true);
             await _cockpit.PersistDockStandAsync().ConfigureAwait(true);
             _ShowWindow(panelId);
@@ -69,6 +74,11 @@ public sealed class DockPanelHost
         _cockpit.SetDockPanelFloating(panelId, false);
         _CloseWindow(panelId);
         _cockpit.OpenDockPanelId = panelId;
+        if (_cockpit.SimpleView)
+        {
+            _cockpit.SimpleOpenDockPanelId = panelId;
+        }
+
         await _cockpit.PersistDockStandAsync().ConfigureAwait(true);
 
         if (_MainWindow() is { } main)

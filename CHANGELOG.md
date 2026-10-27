@@ -36,7 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
   4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;
   a failed step shows as a red step with a plain sentence. Plugins add their own step with `AddStartupStep` (plugin SDK
-  3.35.0, Cockpit 0.127.0).
+  3.37.0, Cockpit 0.129.0).
 - added: **managed Claude and Codex CLIs on the headless server.** Install, Remove and auto-update in a server
   profile's settings now work there as on the desktop (no major jumps on their own). A managed version wins over the
   image's own copy; Remove falls back to it. The CLIs sit on a volume of their own (`cli`), and the agent's home is a
@@ -360,6 +360,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the Projects page shows every connected Depot again.** A Depot whose team projects were all added or
+  hidden already, or whose list could not be refreshed, used to vanish from "From your team". Each connection now keeps
+  its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"
+  line, and a failing one shows why. A team project that has no Cockpit project definition yet now shows in its
+  server's section too, saying so, instead of being left out without a word.
 - fixed: **the status bar no longer flickers while you hover Managed worktrees, Delegated tasks or CPU/RAM.** Their
   tooltip opened over the pointer at the bottom of the screen, closed, and opened again; it now opens above the bar.
 
@@ -517,6 +522,14 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   Cockpit 0.79.0.
 
 ### Changed
+
+- changed: **the Projects page is a list with a detail pane.** A toolbar across the top holds the search field,
+  Refresh, the category chips, the Comfortable/Compact switch and + New project. Projects sit in one section per
+  organisation and server — the heading always names the Depot server, so two servers with an organisation of the
+  same name stay apart — with this machine's own projects in theirs; a server that cannot be reached gets its own
+  section with the reason and Try again. Each row says where the project runs, when it was last opened and how it
+  stands, and its columns follow the width of the list rather than the window. The selected project's details stand
+  on the right, and the selection stays put when the list refreshes. The Cards, List and Continue layouts are gone.
 
 - changed: **Depot files now keeps the tree full-width above a compact file detail.** Documents show only their first
   heading and paragraph; artifacts keep Download, Open and sharing controls without rendering an image or text preview

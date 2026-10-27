@@ -37,6 +37,7 @@ internal static class DepotScenes
             "Designs/AC-1350/remote-connect-v2/desk-dark.png",
             null)),
         ["depot-browser-empty"] = () => _Scene(new DepotBrowserSceneModel(_Project, new DepotBrowserTree([], true), null, null)),
+        ["depot-settings-sync"] = _SettingsSyncScene,
     };
 
     private static Control _Scene(DepotBrowserSceneModel model)
@@ -59,6 +60,40 @@ internal static class DepotScenes
         grid.Children.Add(panel);
         return grid;
     }
+
+    private static Control _SettingsSyncScene() => new ScrollViewer
+    {
+        Content = new StackPanel
+        {
+            Margin = new Thickness(24),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "Depot connections", FontSize = 20, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = "Each connection is offered to a session using Depot's own OAuth sign-in — the plugin never holds a token.", TextWrapping = TextWrapping.Wrap },
+                _SettingsConnection("Work", "https://depot.example.com", true),
+                _SettingsConnection("Personal", "https://depot.example.net", false),
+            },
+        },
+    };
+
+    private static Control _SettingsConnection(string name, string url, bool synchronise) => new Border
+    {
+        BorderBrush = _Brush("CockpitHairlineSoftBrush"),
+        BorderThickness = new Thickness(1),
+        Padding = new Thickness(12),
+        Child = new StackPanel
+        {
+            Spacing = 6,
+            Children =
+            {
+                new TextBlock { Text = name, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = url },
+                new ToggleSwitch { Content = "Synchronise settings via this server", IsChecked = synchronise },
+                new TextBlock { Text = "Settings use the AC-540 whitelist; keys and tokens never go along. Selecting this server turns sync off for the others. Active after restart.", Opacity = 0.75, TextWrapping = TextWrapping.Wrap },
+            },
+        },
+    };
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

@@ -1039,7 +1039,7 @@ public interface ICockpitHost
     /// The host runs every step beside the others and watches each: after 4 seconds the splash says it is slower than
     /// usual, after 12 the token is cancelled and the cockpit opens without the step and offers a Retry, and an
     /// exception shows as a failed step. A step can therefore never hold the start up. Default no-op so existing
-    /// implementations keep compiling untouched; a plugin that calls it sets minHostVersion 0.127.0.
+    /// implementations keep compiling untouched; a plugin that calls it sets minHostVersion 0.129.0.
     /// </remarks>
     void AddStartupStep(string label, Func<CancellationToken, Task> run)
     {

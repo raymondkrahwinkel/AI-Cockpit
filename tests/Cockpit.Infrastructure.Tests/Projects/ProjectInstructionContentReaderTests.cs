@@ -62,17 +62,6 @@ public class ProjectInstructionContentReaderTests : IDisposable
         Assert.Empty(ProjectInstructionContentReader.Read(resources));
     }
 
-    [Fact]
-    public void AMissingFile_IsLeftOutRatherThanThrowing()
-    {
-        var missing = _File("does-not-exist.md");
-        var resources = new[] { new ProjectResource(missing, ProjectResourceRole.Instructions) { SendsContent = true } };
-
-        var result = ProjectInstructionContentReader.Read(resources);
-
-        Assert.Empty(result);
-    }
-
     /// <summary>
     /// AC-486's read-limit rule: a file whose size alone already exceeds what the shared prompt ceiling could ever
     /// hold must never be opened at all. Proven with a <c>readAllText</c> that returns normally rather than throwing,

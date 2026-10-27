@@ -271,7 +271,7 @@ internal sealed class HoursWorkspaceBody : UserControl
 
     private Control _DayColumns()
     {
-        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,440"), ColumnSpacing = 12 };
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,380"), ColumnSpacing = 12 };
         var rules = _RulesCard();
         rules.VerticalAlignment = VerticalAlignment.Top;
         columns.Children.Add(rules);
@@ -303,7 +303,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     {
         var header = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("48,*,105,45,78,125,55"),
+            ColumnDefinitions = new ColumnDefinitions("44,*,96,44,70,110,52"),
             ColumnSpacing = 10,
             Margin = new Thickness(6, 0),
         };
@@ -566,7 +566,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     {
         var row = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("48,*,105,45,78,125,55"),
+            ColumnDefinitions = new ColumnDefinitions("44,*,96,44,70,110,52"),
             ColumnSpacing = 10,
             Margin = new Thickness(6, 8),
         };

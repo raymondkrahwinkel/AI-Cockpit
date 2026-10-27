@@ -38,7 +38,7 @@ internal static class DepotChannel
 // (or a linked copy of it): that record is constructed directly by name across most of this plugin's own test
 // suite, on both what will become the backend and the UI side, and a copy of it under the same name in both
 // assemblies would be ambiguous to Cockpit.Plugin.Depot.Tests, which sees both assemblies' internals.
-internal sealed record DepotConnectionPayload(string Id, string Name, string Url);
+internal sealed record DepotConnectionPayload(string Id, string Name, string Url, bool SynchroniseSettings = false);
 
 internal sealed record DepotSaveConnectionsRequest(IReadOnlyList<DepotConnectionPayload> Connections);
 

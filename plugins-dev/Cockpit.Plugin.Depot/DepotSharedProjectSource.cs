@@ -20,6 +20,8 @@ internal sealed class DepotSharedProjectSource(
     private readonly DepotProjectListingSource _projects = httpClient is null
         ? DepotProjectListingSource.For(host, connection)
         : new DepotProjectListingSource(host, connection, httpClient);
+    private readonly Lock _projectListRefreshLock = new();
+    private CancellationTokenSource? _projectListRefreshCancellation;
 
     internal DepotSharedProjectSource(
         DepotConnectionRegistration connection,
@@ -63,15 +65,69 @@ internal sealed class DepotSharedProjectSource(
         {
             Changed?.Invoke($"{scheme}:{address}");
         }
+
+        if (string.Equals(cockpitEvent.Kind, "created", StringComparison.Ordinal)
+            || string.Equals(cockpitEvent.Kind, "changed", StringComparison.Ordinal)
+            || string.Equals(cockpitEvent.Kind, "deleted", StringComparison.Ordinal)
+            || string.Equals(cockpitEvent.Kind, "definitionChanged", StringComparison.Ordinal))
+        {
+            _RefreshProjectListAfterEventBurst();
+        }
         else if (string.Equals(cockpitEvent.Kind, "accessChanged", StringComparison.Ordinal))
         {
             Changed?.Invoke(null);
         }
     }
 
+    // One incoming change is enough to revalidate the connection's ETag-backed list; more within this short window
+    // only reset the quiet period, so a project import does not make the catalog fetch once per event.
+    private void _RefreshProjectListAfterEventBurst()
+    {
+        var cancellation = new CancellationTokenSource();
+        lock (_projectListRefreshLock)
+        {
+            _projectListRefreshCancellation?.Cancel();
+            _projectListRefreshCancellation = cancellation;
+        }
+
+        _ = _RefreshProjectListAfterQuietPeriodAsync(cancellation);
+    }
+
+    private async Task _RefreshProjectListAfterQuietPeriodAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token).ConfigureAwait(false);
+            Changed?.Invoke(null);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot")
+                .LogWarning(exception, "Refreshing the project list after changes for {Connection} failed.", connection.Name);
+        }
+        finally
+        {
+            lock (_projectListRefreshLock)
+            {
+                if (ReferenceEquals(_projectListRefreshCancellation, cancellation))
+                {
+                    _projectListRefreshCancellation = null;
+                }
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
     public string SourceName => $"{_brand.Name} — {connection.Name}";
 
     public byte[]? SourceLogo => _brand.Logo;
+
+    // AC-1600: the section heading names the server from the connection's own address, never from its display name.
+    public string? SourceHost => Uri.TryCreate(connection.Url, UriKind.Absolute, out var uri) ? uri.Host : null;
 
     public async Task<SharedProjectListResult> ListAsync(CancellationToken cancellationToken)
     {
@@ -468,6 +524,7 @@ internal sealed class DepotSharedProjectSource(
         {
             Description = definition.Description,
             GitUrl = definition.GitUrl,
+            SharedSourceKey = $"depot:{new Uri(connection.Url).Authority}/{slug}",
             BehaviorPrompt = definition.BehaviorPrompt,
             IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
             EnabledMcpServerNames = definition.McpOverlay?.Enabled,

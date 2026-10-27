@@ -19,7 +19,7 @@ internal static class SettingsCarrierWhitelist
         "Profiles[].Delegation.AllowedAsTarget", "Profiles[].Delegation.MaxConcurrent", "Profiles[].Delegation.PermissionCeiling",
         "Profiles[].Delegation.MayDelegateFurther", "Profiles[].Delegation.TimeoutMinutes", "Profiles[].Delegation.AllowedTaskTypes",
         "Profiles[].Delegation.Purpose", "Profiles[].Delegation.Tags", "Profiles[].Delegation.AllowedTools",
-        "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl",
+        "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",
         "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].Assistant", "Projects[].IsolateInWorktreeByDefault",
         "CategoryOrder",
         "Plugins.*.Enabled", "Plugins.*.MenuOrder", "Plugins.*.HiddenInMenu", "Plugins.*.PinnedToSidebar",

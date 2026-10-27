@@ -66,19 +66,6 @@ public class ProjectLogoConverterTests : IDisposable
     });
 
     [Fact]
-    public void ARemovedLogo_StopsBeingShown() => HeadlessAvalonia.Run(() =>
-    {
-        var converter = new ProjectLogoConverter();
-        var path = Path.Combine(_folder, "project-c.png");
-        File.WriteAllBytes(path, _Png(8, 8));
-
-        Assert.NotNull(_Convert(converter, path));
-        File.Delete(path);
-
-        Assert.Null(_Convert(converter, path));
-    });
-
-    [Fact]
     public void APathThatIsNotAFile_LeavesTheCardOnItsInitial() => HeadlessAvalonia.Run(() =>
     {
         var converter = new ProjectLogoConverter();

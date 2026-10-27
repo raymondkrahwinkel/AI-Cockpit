@@ -20,6 +20,11 @@ internal static class BrowserScenes
 {
     public static IReadOnlyDictionary<string, Func<Control>> All { get; } = new Dictionary<string, Func<Control>>
     {
+        ["browser-settings"] = () =>
+        {
+            var storage = new SceneStorage();
+            return new BrowserEngineInfoControl(CefRuntimeCatalog.Load(), storage, new BrowserTabSession(storage));
+        },
         ["browser-tab"] = () => _Shell(BrowserPlace.Tab),
         ["browser-rail"] = () => _Shell(BrowserPlace.Rail),
         // Cockpit hangs a name ending in -floating in its own dock-panel window, titled by the automation name.
@@ -43,6 +48,15 @@ internal static class BrowserScenes
             BrowserEngineState.Unavailable,
             "The downloaded CEF runtime does not match its pinned checksum (expected c81c34d048d8…, got 5e0f1a92c7b3…) and was discarded.")),
     };
+
+    private sealed class SceneStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, object?> _values = [];
+
+        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) && value is T typed ? typed : default;
+
+        public void Set<T>(string key, T value) => _values[key] = value;
+    }
 
     // The browser as a workspace in Cockpit's main window, with its header button and status text (mockup screen 1).
     public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> Workspaces { get; } =

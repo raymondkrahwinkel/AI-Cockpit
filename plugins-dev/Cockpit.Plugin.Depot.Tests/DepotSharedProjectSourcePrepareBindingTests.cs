@@ -44,6 +44,7 @@ public class DepotSharedProjectSourcePrepareBindingTests
         Assert.Equal("Handbook", binding.Name);
         Assert.Equal("Loonverwerking", binding.Description);
         Assert.Equal("git@github.com:example/handbook.git", binding.GitUrl);
+        Assert.Equal("depot:depot.example.com/acme/handbook", binding.SharedSourceKey);
         Assert.Equal("Always ask before touching prod.", binding.BehaviorPrompt);
         Assert.True(binding.IsolateInWorktreeByDefault);
         Assert.Equal(["github", "youtrack"], binding.EnabledMcpServerNames);

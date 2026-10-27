@@ -10,9 +10,15 @@ internal sealed class ProjectsDisplaySettingsEntry
     // different layout.
     public string? LayoutMode { get; set; }
 
+    public string? Density { get; set; }
+
+    public List<string>? CollapsedSectionKeys { get; set; }
+
     public static ProjectsDisplaySettingsEntry FromDomain(ProjectsDisplaySettings settings) => new()
     {
         LayoutMode = settings.LayoutMode.ToString(),
+        Density = settings.Density.ToString(),
+        CollapsedSectionKeys = [.. settings.CollapsedSectionKeys],
     };
 
     public ProjectsDisplaySettings ToDomain() => new()
@@ -20,5 +26,9 @@ internal sealed class ProjectsDisplaySettingsEntry
         LayoutMode = Enum.TryParse<ProjectsLayoutMode>(LayoutMode, ignoreCase: true, out var mode)
             ? mode
             : ProjectsLayoutMode.Cards,
+        Density = Enum.TryParse<ProjectsDensity>(Density, ignoreCase: true, out var density)
+            ? density
+            : ProjectsDensity.Comfortable,
+        CollapsedSectionKeys = CollapsedSectionKeys ?? [],
     };
 }

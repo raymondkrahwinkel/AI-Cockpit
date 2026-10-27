@@ -185,7 +185,7 @@ public static class CapabilityCatalog
             "Showing a step while the cockpit starts",
             "Adds its own step to the start-up screen. The cockpit stops waiting for it after 12 seconds and opens without it.",
             CapabilityRisk.Ambient,
-            "0.127.0",
+            "0.129.0",
             ["ICockpitHost.AddStartupStep"],
             []),
 
