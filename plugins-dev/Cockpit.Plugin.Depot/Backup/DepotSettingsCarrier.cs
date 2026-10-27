@@ -30,6 +30,10 @@ internal sealed class DepotSettingsCarrier(
     public async Task<byte[]?> ReadAsync(CancellationToken cancellationToken)
     {
         var connection = _Required();
+        if (!connection.SynchroniseSettings)
+        {
+            return null;
+        }
         using var http = _Client(connection);
         using var response = await http.GetAsync(_Profile(connection), cancellationToken).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NoContent)
@@ -44,6 +48,10 @@ internal sealed class DepotSettingsCarrier(
     public async Task<bool> WriteIfUnchangedAsync(byte[] blob, string? baseVersion, CancellationToken cancellationToken)
     {
         var connection = _Required();
+        if (!connection.SynchroniseSettings)
+        {
+            return true;
+        }
         using var http = _Client(connection);
         using var request = new HttpRequestMessage(HttpMethod.Put, _Profile(connection)) { Content = new ByteArrayContent(blob) };
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
@@ -71,6 +79,10 @@ internal sealed class DepotSettingsCarrier(
     // The plain write still names what it replaces, as Depot requires: whatever is there right now.
     public async Task WriteAsync(byte[] blob, CancellationToken cancellationToken)
     {
+        if (!_Required().SynchroniseSettings)
+        {
+            return;
+        }
         var current = await ReadAsync(cancellationToken).ConfigureAwait(false);
         var version = current is null ? null : Convert.ToHexStringLower(SHA256.HashData(current));
         if (!await WriteIfUnchangedAsync(blob, version, cancellationToken).ConfigureAwait(false))

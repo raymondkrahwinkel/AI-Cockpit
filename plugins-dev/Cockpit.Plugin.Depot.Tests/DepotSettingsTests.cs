@@ -1,5 +1,8 @@
+using Cockpit.Plugin.Depot.Backup;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
+using Cockpit.Plugins.Abstractions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -9,7 +12,7 @@ namespace Cockpit.Plugin.Depot.Tests;
 public class DepotSettingsTests
 {
     [Fact]
-    public void Connections_LegacyUrlWithTrailingMcp_IsNormalizedOnRead_AndTheMigratedValueIsPersisted()
+    public async Task Connections_LegacyUrlWithTrailingMcp_IsNormalizedOnRead_AndTheMigratedValueIsPersisted()
     {
         // Read and write in one exercise on purpose: a migration that only fixed the value on the way out would
         // keep re-running, and re-running is exactly what the third test below shows to be unsafe.
@@ -21,6 +24,11 @@ public class DepotSettingsTests
 
         Assert.Equal("https://depot.example.com", url);
         Assert.Equal("https://depot.example.com", storage.Get<List<DepotConnectionRegistration>>("connections")!.Single().Url);
+
+        var host = Substitute.For<ICockpitHost>();
+        settings.Connections = [new DepotConnectionRegistration("id-1", "Work", url, SynchroniseSettings: false)];
+        await new DepotSettingsCarrier(host, () => settings.Connections, "id-1").WriteAsync([1], CancellationToken.None);
+        host.DidNotReceive().CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>());
     }
 
     // The case that would break if migration ran on every read instead of exactly once: a base whose own
