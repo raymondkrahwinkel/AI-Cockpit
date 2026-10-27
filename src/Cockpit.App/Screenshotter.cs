@@ -169,6 +169,8 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
     {
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
+        // AC-1829: the real window while projects and sessions are still loading.
+        ["main-loading"] = (_, _) => _MainWhileLoading(),
         ["splash-fast"] = (_, _) => SplashScene.Fast(),
         ["splash-loading"] = (_, _) => SplashScene.Loading(),
         ["splash-slow"] = (_, _) => SplashScene.Slow(),
@@ -1151,6 +1153,16 @@ internal static partial class Screenshotter
         "Tracks the hours a session spends per project and totals them per week.",
         "Drafts invoices from a project's logged hours — drafts only, nothing is sent.",
     ];
+
+    // AC-1829: the cockpit as it stands right after the splash — no session or project has come back yet.
+    private static MainWindow _MainWhileLoading()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.Sessions.Clear();
+        cockpit.IsRestoringSessions = true;
+        cockpit.IsLoadingProjects = true;
+        return new MainWindow { DataContext = cockpit };
+    }
 
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not

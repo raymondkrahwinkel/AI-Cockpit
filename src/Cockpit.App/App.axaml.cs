@@ -462,17 +462,70 @@ public partial class App : Application
         }
     }
 
+    private static void _HoldSkeletonsUntilLoaded(CockpitViewModel cockpit, Task<Task> restoreStarted)
+    {
+        cockpit.IsRestoringSessions = true;
+        cockpit.IsLoadingProjects = !cockpit.ProjectsLoaded.IsCompleted;
+        _ = _ClearWhenAsync(cockpit.ProjectsLoaded, () => cockpit.IsLoadingProjects = false);
+        _ = _ClearWhenAsync(restoreStarted.Unwrap(), () => cockpit.IsRestoringSessions = false);
+    }
+
+    // A failed load clears too: a skeleton that never goes away would be the very "stuck" feeling this avoids.
+    private static async Task _ClearWhenAsync(Task loading, Action clear)
+    {
+        try
+        {
+            await loading;
+        }
+        catch (Exception)
+        {
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(clear);
+    }
+
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var started = _StartCockpitAsync(desktop);
+        if (started.IsCompleted)
+        {
+            started.GetAwaiter().GetResult();
+            return;
+        }
+
+        _ = _LogIfFaultedAsync(started);
+    }
+
+    private static async Task _LogIfFaultedAsync(Task started)
+    {
+        try
+        {
+            await started;
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogError(exception, "Starting the cockpit failed after the splash was up.");
+
+            // A skeleton that never clears would read as a hang; show what there is instead.
+            if (Current is App { _mainWindow.DataContext: CockpitViewModel cockpit })
+            {
+                cockpit.IsRestoringSessions = false;
+                cockpit.IsLoadingProjects = false;
+            }
+        }
+    }
+
+    // AC-1829: behind the splash the start is cut into pieces with a paint between each, so the splash keeps moving
+    // instead of waiting out one long block of UI-thread work. Without a splash it all runs in one go, as before.
+    private Task _YieldToPaintAsync() =>
+        _splash is null ? Task.CompletedTask : Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded).GetTask();
+
+    private async Task _StartCockpitAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
 
-        // AC-1827: listed now for its place, but the restore it awaits only exists further down.
+        // AC-1829: the restore only starts further down; the skeletons wait on it, not the splash.
         var restoreStarted = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (_splash is not null && Program.Startup is { } startup)
-        {
-            startup.AddCore("Loading projects…", _ => cockpitViewModel.ProjectsLoaded);
-            startup.AddCore("Restoring sessions…", async _ => await await restoreStarted.Task);
-        }
 
         // AC-1094: core (non-plugin) sources of supervised background activity, e.g. RunTracker for a tracked test
         // run — resolved by the public interface only, so this needs no reference to any concrete Infrastructure
@@ -486,6 +539,11 @@ public partial class App : Application
         // show plugin provider names instead of "(Plugin)".
         Converters.ProfileDisplayConverter.PluginProviderRegistry =
             Program.Services.GetRequiredService<Cockpit.Infrastructure.Sessions.IPluginProviderRegistry>();
+
+        await _YieldToPaintAsync();
+
+        // AC-1829: the window opens before these have landed, so the areas they fill show skeletons until then.
+        _HoldSkeletonsUntilLoaded(cockpitViewModel, restoreStarted.Task);
 
         _mainWindow = new MainWindow
         {
@@ -504,6 +562,7 @@ public partial class App : Application
             _mainWindow.Show();
         }
 
+        await _YieldToPaintAsync();
         FollowTheme(cockpitViewModel);
         _SetUpTrayIcon();
 
@@ -583,7 +642,9 @@ public partial class App : Application
 
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
+        await _YieldToPaintAsync();
         InitializePlugins();
+        await _YieldToPaintAsync();
 
         // AC-237: reopen the companion window if it was left open, now that plugins have had their chance to
         // register a tool — the first paint this way already shows them instead of an empty card. AC-1343:

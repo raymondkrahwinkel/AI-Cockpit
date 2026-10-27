@@ -20,7 +20,7 @@ internal static class SplashScene
 
     public static Window Slow() => _Build(scene =>
     {
-        scene.Finish("Loading settings…", "Loading plugins…", "Loading projects…", "Restoring sessions…");
+        scene.Finish("Loading settings…", "Loading plugins…");
         scene.Clock.Advance(TimeSpan.FromSeconds(4.5));
         scene.WaitFor(PluginLabel, StartupStepState.Slow);
         scene.WaitForTimer();
@@ -29,7 +29,7 @@ internal static class SplashScene
 
     public static Window Skipped() => _Build(scene =>
     {
-        scene.Finish("Loading settings…", "Loading plugins…", "Loading projects…", "Restoring sessions…");
+        scene.Finish("Loading settings…", "Loading plugins…");
         scene.Clock.Advance(TimeSpan.FromSeconds(4.5));
         scene.WaitFor(PluginLabel, StartupStepState.Slow);
         scene.WaitForTimer();
@@ -39,7 +39,7 @@ internal static class SplashScene
 
     public static Window Failed() => _Build(scene =>
     {
-        scene.Finish("Loading settings…", "Loading plugins…", "Loading projects…", "Restoring sessions…");
+        scene.Finish("Loading settings…", "Loading plugins…");
         scene.Clock.Advance(TimeSpan.FromSeconds(1));
         scene.Fail(PluginLabel);
         scene.WaitFor(PluginLabel, StartupStepState.Failed);
@@ -62,7 +62,7 @@ internal static class SplashScene
         public Scene()
         {
             Sequence = new StartupSequence(Clock);
-            foreach (var label in new[] { "Loading settings…", "Loading plugins…", "Loading projects…", "Restoring sessions…" })
+            foreach (var label in new[] { "Loading settings…", "Loading plugins…" })
             {
                 Sequence.AddCore(label, _ => _Gate(label).Task);
             }

@@ -245,6 +245,7 @@ public partial class CockpitViewModel
         OnPropertyChanged(nameof(OpenServerGroups));
         OnPropertyChanged(nameof(ShowSessionGrid));
         OnPropertyChanged(nameof(ShowSessionEmptyState));
+        OnPropertyChanged(nameof(ShowSessionsSkeleton));
     }
 
     private void _ReconcileServerGroup(ServerGroupViewModel group)
@@ -358,6 +359,7 @@ public partial class CockpitViewModel
         OnPropertyChanged(nameof(ShowZoomButton));
         OnPropertyChanged(nameof(ShowSessionGrid));
         OnPropertyChanged(nameof(ShowSessionEmptyState));
+        OnPropertyChanged(nameof(ShowSessionsSkeleton));
         OnPropertyChanged(nameof(HasSessionsHere));
         RefreshPaneVisibility();
     }
