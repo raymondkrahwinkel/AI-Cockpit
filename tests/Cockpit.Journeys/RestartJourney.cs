@@ -3,6 +3,7 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Journeys;
 
@@ -54,12 +55,25 @@ public sealed class RestartJourney
                         await schedule.Saving;
                     });
 
+                    HeadlessAvalonia.Run(() =>
+                    {
+                        PluginToastAction[] done = [new("Done", static () => { })];
+                        first.Cockpit.ToastHost.Notify(JourneySource, "Journey", new PluginNotification("still-due", "Still due", PluginToastSeverity.Warning, done));
+                        first.Cockpit.ToastHost.Notify(JourneySource, "Journey", new PluginNotification("handled-elsewhere", "Handled elsewhere", PluginToastSeverity.Warning, done));
+                        first.Cockpit.ToastHost.Notify(JourneySource, "Journey", new PluginNotification("just-info", "Just so you know", PluginToastSeverity.Information, []));
+                    });
+
                     // The desks are written in order through one store, so one more write of them lands after the pane's.
                     await first.Services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(HeadlessAvalonia.Run(() => first.Cockpit.Workspaces.Settings));
                 }
             });
 
             await using var after = JourneyHost.Desktop(stateRoot: stateRoot);
+            // AC-1804: a plugin notification nobody answered is asked again at the restart: live if it stands, else resolved.
+            var doneAfterRestart = false;
+            HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.AddNotificationSource(JourneySource, key => Task.FromResult(key == "still-due"
+                ? new PluginNotification(key, "Still due", PluginToastSeverity.Warning, [new PluginToastAction("Done", () => doneAfterRestart = true)])
+                : null)));
             await after.StartDesktopAsync();
             await Step.Run("the open session and the active desk are back", () =>
             {
@@ -88,12 +102,32 @@ public sealed class RestartJourney
                 await HeadlessAvalonia.RunAsync(() => restoredSchedule.LoadAsync());
                 Assert.Equal((true, BackupScheduleViewModel.Weekly, 3), HeadlessAvalonia.Run(() => (restoredSchedule.Enabled, restoredSchedule.Interval, restoredSchedule.Keep)));
             });
+
+            await Step.Run("the notification still due is back in the panel and its Done works", () =>
+            {
+                var item = HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.Notifications.Items.Single(kept => kept.Key == "still-due"));
+                Assert.True(HeadlessAvalonia.Run(() => item.NeedsYou));
+                HeadlessAvalonia.Run(() => item.Actions.Single().InvokeCommand.Execute(null));
+                Assert.True(doneAfterRestart);
+                Assert.Equal("You chose: Done", HeadlessAvalonia.Run(() => item.HandledReceipt));
+                return Task.CompletedTask;
+            });
+
+            await Step.Run("the one handled elsewhere reads as resolved, and plain info is not back", () =>
+            {
+                var items = HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.Notifications.Items.Select(kept => (kept.Key, kept.NeedsYou, kept.HandledReceipt)).ToList());
+                Assert.Contains(("handled-elsewhere", false, "Resolved meanwhile"), items);
+                Assert.DoesNotContain(items, kept => kept.Key == "just-info");
+                return Task.CompletedTask;
+            });
         }
         finally
         {
             JourneyHost.RemoveStateRoot(stateRoot);
         }
     }
+
+    private const string JourneySource = "journey";
 
     private static string[] _Blocks(SessionViewModel session) =>
         [.. session.Transcript.Select(row => row.TurnResult?.Title).OfType<string>()];
