@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Settings;
 
 namespace Cockpit.Plugin.Depot.Backup;
@@ -30,7 +31,7 @@ internal sealed class DepotSettingsCarrier(
     public async Task<byte[]?> ReadAsync(CancellationToken cancellationToken)
     {
         var connection = _Required();
-        if (!connection.SynchroniseSettings)
+        if (!await _IsAuthorizedAsync(connection, cancellationToken).ConfigureAwait(false))
         {
             return null;
         }
@@ -48,7 +49,7 @@ internal sealed class DepotSettingsCarrier(
     public async Task<bool> WriteIfUnchangedAsync(byte[] blob, string? baseVersion, CancellationToken cancellationToken)
     {
         var connection = _Required();
-        if (!connection.SynchroniseSettings)
+        if (!await _IsAuthorizedAsync(connection, cancellationToken).ConfigureAwait(false))
         {
             return true;
         }
@@ -79,7 +80,7 @@ internal sealed class DepotSettingsCarrier(
     // The plain write still names what it replaces, as Depot requires: whatever is there right now.
     public async Task WriteAsync(byte[] blob, CancellationToken cancellationToken)
     {
-        if (!_Required().SynchroniseSettings)
+        if (!await _IsAuthorizedAsync(_Required(), cancellationToken).ConfigureAwait(false))
         {
             return;
         }
@@ -90,6 +91,10 @@ internal sealed class DepotSettingsCarrier(
             throw new InvalidOperationException("The settings in Depot changed while they were being written. Try again.");
         }
     }
+
+    private async Task<bool> _IsAuthorizedAsync(DepotConnectionRegistration connection, CancellationToken cancellationToken) =>
+        connection.SynchroniseSettings
+        && await host.GetMcpServerAuthStateAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) != PluginMcpAuthState.AuthorizationRequired;
 
     private DepotConnectionRegistration _Required() =>
         connections().FirstOrDefault(connection => connection.Id == connectionId)
