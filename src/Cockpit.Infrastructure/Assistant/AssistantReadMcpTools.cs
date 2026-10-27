@@ -298,7 +298,8 @@ internal sealed class AssistantReadMcpTools(
     }
 
     [McpServerTool(Name = "model_options", ReadOnly = true)]
-    [Description("States what is known right now about the model behind each configured profile, so you can pick profile, model and effort with facts: call it BEFORE every start_agent and before giving a subagent a model, for the task type at hand. Per profile: price now (USD per million tokens, input and output) and which window or modifier is applied, the quality index for the task type (taskType coding uses the coding index, agentic the agentic one, anything else or none the intelligence index), context tokens, limits, peak windows (provider-reported or public, each with whether it is active now) and quota state (how far each usage window stands and when it resets). EVERY FACT CARRIES ITS SOURCE AND AGE (ageSeconds; stale true once it is past what its source vouches for) and attribution lists the sources used. \"unknown\" means no source knows it: it is never 0 and never free (a model that is genuinely free says price 0 with a source). Say so when you meet it, and when data is stale, and never fill a gap with a figure of your own. Rows are ranked by the quality index for the task type, best first, unknown last. maxPricePerMTokens keeps only rows whose known input and output price now are both at or under it; a row with an unknown price is kept and marked, never dropped. This tool states facts and does not choose: the choice stays yours, within the operator's rules, and you state it in one line with the reason.")]
+    [McpMeta(AssistantAgentMcpTools.AlwaysLoadMeta, true)]
+    [Description("States what is known right now about the model behind each configured profile, so you can pick profile, model and effort with facts: call it BEFORE every start_agent and before giving a subagent a model, for the task type at hand. Per profile: price now (USD per million tokens, input and output) and which window or modifier is applied, the quality index for the task type (taskType coding uses the coding index, agentic the agentic one, anything else or none the intelligence index), context tokens, limits, peak windows (provider-reported or public, each with whether it is active now) and quota state (how far each usage window stands and when it resets). EVERY FACT CARRIES ITS SOURCE AND AGE (ageSeconds; stale true once it is past what its source vouches for) and attribution lists the sources used. \"unknown\" means no source knows it, and the text after it says why: it is never 0 and never free (a model that is genuinely free says price 0 with a source). Say so when you meet it, and when data is stale, and never fill a gap with a figure of your own. Rows are ranked by the quality index for the task type, best first, unknown last. maxPricePerMTokens keeps only rows whose known input and output price now are both at or under it; a row with an unknown price is kept and marked, never dropped. This tool states facts and does not choose: the choice stays yours, within the operator's rules, and you state it in one line with the reason.")]
     public async Task<string> ModelOptionsAsync(
         [Description("What the work is: coding, agentic, or anything else (e.g. review, research, chat) for the general intelligence index. Optional.")] string? taskType = null,
         [Description("Keep only rows whose known price now (input and output, USD per million tokens) is at or under this. Optional.")] decimal? maxPricePerMTokens = null)
@@ -344,6 +345,8 @@ internal sealed class AssistantReadMcpTools(
                 };
             }
 
+            static object Unknown(string why) => $"unknown: {why}";
+
             var models = rows.Select(row =>
             {
                 var index = Index(row);
@@ -353,11 +356,11 @@ internal sealed class AssistantReadMcpTools(
                     provider = row.Provider,
                     model = row.Model,
                     publicModelRef = row.PublicModelRef,
-                    price = row.Price is null ? (object)"unknown" : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
+                    price = row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
                     priceNow = row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },
                     modifiers = row.Modifiers.Select(modifier => new { modifier.Condition, modifier.Factor, modifier.ActiveNow }),
-                    quality = index is null ? (object)"unknown" : new { kind, index, fact = Fact(row.PublicSource) },
-                    contextTokens = row.Context is null ? (object)"unknown" : new { tokens = row.Context.Tokens, fact = Fact(row.Context.Source) },
+                    quality = index is null ? Unknown(row.Unmatched ?? $"OpenRouter carries no Artificial Analysis {kind} index for {row.PublicModelRef}") : new { kind, index, fact = Fact(row.PublicSource) },
+                    contextTokens = row.Context is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no context length for {row.PublicModelRef}") : new { tokens = row.Context.Tokens, fact = Fact(row.Context.Source) },
                     limits = row.Limits.Count == 0
                         ? (object)"unknown"
                         : row.Limits.Select(limit => new { limit.Label, limit.Value, limit.Unit, limit.Model, fact = Fact(Sourced.From(limit.Source)) }).ToArray(),

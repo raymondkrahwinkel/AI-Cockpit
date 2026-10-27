@@ -9,7 +9,8 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
 {
     private const string ModelsUrl = "https://openrouter.ai/api/v1/models";
     private const string Source = "OpenRouter /api/v1/models";
-    private const string CacheFileName = "openrouter-models.json";
+    // AC-1855: v2 drops caches keyed by canonical_slug, which no publicModelRef ever matched.
+    private const string CacheFileName = "openrouter-models.v2.json";
     private const int MaxResponseBytes = 4 * 1024 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromHours(24);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
@@ -89,14 +90,25 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
 
         using var document = JsonDocument.Parse(payload);
         var fetchedAt = _clock.GetUtcNow();
-        var models = document.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array
-            ? data.EnumerateArray().Where(model => !(_String(model, "id")?.EndsWith(":batch", StringComparison.Ordinal) ?? false)).Select(model => _ParseSnapshot(model, fetchedAt)).Where(snapshot => snapshot is not null).Cast<ModelSnapshot>()
+        var entries = document.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array
+            ? data.EnumerateArray().Where(model => !(_String(model, "id")?.EndsWith(":batch", StringComparison.Ordinal) ?? false)).ToArray()
             : [];
-        var folded = models
+        var byId = entries
+            .Select(model => _ParseSnapshot(model, fetchedAt))
+            .OfType<ModelSnapshot>()
             .GroupBy(model => model.Id, StringComparer.Ordinal)
-            .Select(group => group.First())
-            .ToArray();
-        return new _Cache(fetchedAt, folded);
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+
+        // An alias such as ~anthropic/claude-opus-latest answers with the facts of the model it points at today.
+        foreach (var entry in entries)
+        {
+            if (_String(entry, "id") is { } alias && entry.TryGetProperty("alias_target", out var target) && _String(target, "slug") is { } slug && byId.TryGetValue(slug, out var targetSnapshot))
+            {
+                byId[alias] = targetSnapshot with { Id = alias };
+            }
+        }
+
+        return new _Cache(fetchedAt, [.. byId.Values]);
     }
 
     private static ModelSnapshot? _ParseSnapshot(JsonElement model, DateTimeOffset fetchedAt)
@@ -107,7 +119,6 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
             return null;
         }
 
-        var id = _String(model, "alias_target") ?? _String(model, "canonical_slug") ?? sourceId;
         var pricing = model.TryGetProperty("pricing", out var pricingElement) && pricingElement.ValueKind == JsonValueKind.Object
             ? pricingElement
             : default;
@@ -130,7 +141,7 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
             ? new ModelIndices(_Decimal(artificialAnalysis, "intelligence_index"), _Decimal(artificialAnalysis, "coding_index"), _Decimal(artificialAnalysis, "agentic_index"))
             : new ModelIndices(null, null, null);
         return new ModelSnapshot(
-            id,
+            sourceId,
             _String(model, "name") ?? sourceId,
             price,
             _Long(model, "context_length"),
@@ -180,8 +191,10 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
     private static string? _String(JsonElement value, string property) =>
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var child) && child.ValueKind == JsonValueKind.String ? child.GetString() : null;
 
+    // Prices arrive as strings, the Artificial Analysis indices as numbers.
     private static decimal? _Decimal(JsonElement value, string property) =>
-        _String(value, property) is { } text && decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var result) ? result : null;
+        value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var child) && child.ValueKind == JsonValueKind.Number && child.TryGetDecimal(out var number) ? number
+        : _String(value, property) is { } text && decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var result) ? result : null;
 
     private static decimal? _PriceDecimal(JsonElement value, string property) => _Decimal(value, property) * 1_000_000;
 

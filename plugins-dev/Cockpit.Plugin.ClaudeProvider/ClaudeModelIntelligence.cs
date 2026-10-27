@@ -7,6 +7,8 @@ namespace Cockpit.Plugin.ClaudeProvider;
 internal sealed class ClaudeModelIntelligence
 {
     private const string ProviderId = ClaudeProviderIds.Claude;
+    // Default TTL (AC-1855): zero made every reading stale the moment it was read; the age stays visible regardless.
+    private static readonly TimeSpan QuotaValidFor = TimeSpan.FromMinutes(5);
     private readonly Lock _gate = new();
     private readonly Dictionary<string, PluginQuotaState> _quota = new(StringComparer.Ordinal);
 
@@ -16,7 +18,7 @@ internal sealed class ClaudeModelIntelligence
         DateTimeOffset asOf,
         Action<PluginModelObservation>? recordObservation)
     {
-        var source = new PluginFactSource(sourceName, asOf, TimeSpan.Zero);
+        var source = new PluginFactSource(sourceName, asOf, QuotaValidFor);
         foreach (var window in windows)
         {
             lock (_gate)
@@ -58,14 +60,13 @@ internal sealed class ClaudeModelIntelligence
 
         return new PluginModelIntelligence
         {
-            // Claude aliases are deliberately mapped to the public ids; price itself remains null until the public
-            // model picture supplies it. Fable has no public counterpart the plugin can name.
+            // OpenRouter's version-free aliases; the public feed says which release each points at today (AC-1855).
             Models =
             [
-                new PluginModelCostEstimate("haiku") { PublicModelRef = "anthropic/claude-haiku-5.5" },
-                new PluginModelCostEstimate("sonnet") { PublicModelRef = "anthropic/claude-sonnet-5.5" },
-                new PluginModelCostEstimate("opus") { PublicModelRef = "anthropic/claude-opus-5.5" },
-                new PluginModelCostEstimate("fable"),
+                new PluginModelCostEstimate("haiku") { PublicModelRef = "~anthropic/claude-haiku-latest" },
+                new PluginModelCostEstimate("sonnet") { PublicModelRef = "~anthropic/claude-sonnet-latest" },
+                new PluginModelCostEstimate("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
+                new PluginModelCostEstimate("fable") { PublicModelRef = "~anthropic/claude-fable-latest" },
             ],
             Quota = quota,
         };

@@ -44,9 +44,9 @@ internal static class ClaudeOptionChoices
     // spend still arrives from the CLI as total_cost_usd.
     public static readonly IReadOnlyList<PluginModelCostEstimate> ModelCostEstimatesCheapestFirst =
     [
-        new("haiku") { PublicModelRef = "anthropic/claude-haiku-5.5" },
-        new("sonnet") { PublicModelRef = "anthropic/claude-sonnet-5.5" },
-        new("opus") { PublicModelRef = "anthropic/claude-opus-5.5" },
+        new("haiku") { PublicModelRef = "~anthropic/claude-haiku-latest" },
+        new("sonnet") { PublicModelRef = "~anthropic/claude-sonnet-latest" },
+        new("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
         new("fable"),
     ];
 

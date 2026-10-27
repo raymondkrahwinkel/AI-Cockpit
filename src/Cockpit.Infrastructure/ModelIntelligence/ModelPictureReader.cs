@@ -75,8 +75,13 @@ internal sealed class ModelPictureReader(
         DateTimeOffset now)
     {
         var estimate = model is null ? null : reading?.Models.FirstOrDefault(candidate => string.Equals(candidate.Model, model, StringComparison.Ordinal));
-        var publicRef = estimate?.PublicModelRef ?? model;
-        var snapshot = publicRef is not null && snapshots.TryGetValue(publicRef, out var found) ? found : null;
+        var reference = estimate?.PublicModelRef ?? model;
+        var snapshot = _Match(reference, snapshots);
+        var publicRef = snapshot?.Id ?? reference;
+        var unmatched = reference is null ? "the provider names no public model id for it"
+            : snapshots.Count == 0 ? "no public model data: OpenRouter /api/v1/models was not reachable and nothing is cached"
+            : snapshot is null ? $"'{reference}' matches no single model id in OpenRouter /api/v1/models"
+            : null;
         var providerName = profile.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : profile.Provider.ToString();
 
         var publicSource = snapshot is null ? null : new Sourced(snapshot.Source, snapshot.FetchedAt, snapshot.TimeToLive);
@@ -138,7 +143,25 @@ internal sealed class ModelPictureReader(
             windows,
             [.. (reading?.Quota ?? [])],
             publicSource,
-            own);
+            own,
+            unmatched);
+    }
+
+    // Exact public id first; a bare provider id joins the one public id ending in "/<id>", never a pick between several.
+    private static ModelSnapshot? _Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
+    {
+        if (reference is null)
+        {
+            return null;
+        }
+
+        if (snapshots.TryGetValue(reference, out var exact))
+        {
+            return exact;
+        }
+
+        var candidates = snapshots.Values.Where(snapshot => snapshot.Id.EndsWith("/" + reference, StringComparison.Ordinal)).Take(2).ToArray();
+        return candidates.Length == 1 ? candidates[0] : null;
     }
 
     // Wall-clock window in its own IANA zone; one running past midnight belongs to the day it opened.
@@ -197,6 +220,7 @@ internal sealed record ModelPictureRow(
     IReadOnlyList<ModelPeakWindow> PeakWindows,
     IReadOnlyList<PluginQuotaState> Quota,
     Sourced? PublicSource,
-    IReadOnlyList<ModelDerivedFact> Derived);
+    IReadOnlyList<ModelDerivedFact> Derived,
+    string? Unmatched = null);
 
 internal sealed record ModelDerivedFact(DerivedPattern Pattern, Sourced Source);
