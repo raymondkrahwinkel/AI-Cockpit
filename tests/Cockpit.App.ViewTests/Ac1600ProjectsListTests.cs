@@ -44,6 +44,47 @@ public sealed class Ac1600ProjectsListTests
                 }
             });
         }
+
+        _AssertRefreshStates();
+    }
+
+    private static void _AssertRefreshStates() => HeadlessAvalonia.Run(() =>
+    {
+        AssertScene("projects-workspace-loading", "Refreshing…", "Loading from Depot…", expectsTryAgain: false);
+        AssertScene("projects-workspace", "Refresh", sectionText: null, expectsTryAgain: false);
+        AssertScene("projects-workspace-stale", "Refresh", "Couldn't reach Depot — showing the last known list · just now", expectsTryAgain: true);
+    });
+
+    private static void AssertScene(string scene, string toolbarText, string? sectionText, bool expectsTryAgain)
+    {
+        var window = Screenshotter.ShowScene(scene, 1100, 760);
+        try
+        {
+            window.UpdateLayout();
+            var text = window.GetVisualDescendants().OfType<TextBlock>()
+                .Where(candidate => candidate.IsEffectivelyVisible)
+                .Select(candidate => candidate.Text)
+                .ToList();
+
+            Assert.Contains(toolbarText, text);
+            if (sectionText is not null)
+            {
+                Assert.Contains(sectionText, text);
+            }
+            Assert.Equal(expectsTryAgain, text.Contains("Try again"));
+            if (scene == "projects-workspace-loading")
+            {
+                Assert.Equal(3, text.Count(candidate => candidate == "Loading from Depot…"));
+            }
+            else
+            {
+                Assert.DoesNotContain("Loading from Depot…", text);
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     // Layer 2 (view). Entering selects the first row; a pick then stays on its project when the catalog hands over a

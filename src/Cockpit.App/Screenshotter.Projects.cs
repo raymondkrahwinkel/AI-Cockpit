@@ -23,6 +23,8 @@ internal static partial class Screenshotter
         // Raymond, 26-10: a server that fails with no known list gets one section on its connection, with the reason
         // and Try again; the other server's sections are unaffected.
         new("projects-workspace-unreachable", (_, _) => _ProjectsWorkspace(_StageUnreachableServer)),
+        new("projects-workspace-loading", (_, _) => _ProjectsWorkspace(_StageLoading)),
+        new("projects-workspace-stale", (_, _) => _ProjectsWorkspace(_StageStaleServer)),
         new("projects-workspace-long-text", (_, _) => _ProjectsWorkspace(_StageLongProjectText)),
     ];
 
@@ -213,6 +215,26 @@ internal static partial class Screenshotter
                 ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl"),
                 new("Depot — Krahwinkel IT", [], "Couldn't reach depot.krahwinkel-it.nl — check your connection, then try again.",
                     SourceKey: KrahwinkelSource, SourceHost: "depot.krahwinkel-it.nl"),
+            ],
+        });
+
+    private static void _StageLoading(CockpitViewModel cockpit)
+    {
+        _StageTwoConnections(cockpit);
+        cockpit.Projects.IsRefreshingSharedProjects = true;
+    }
+
+    private static void _StageStaleServer(CockpitViewModel cockpit) =>
+        cockpit.Projects.StageSnapshot(ProjectCatalogSnapshot.Empty with
+        {
+            Sources = _sources,
+            SharedProjectGroups =
+            [
+                new("Depot — Synvolution",
+                [
+                    new($"{SynvolutionSource}:api-gateway", "API Gateway", "Routing, rate limits and API keys in front of every public service.", "Editor", _synvolution),
+                ], Error: null, SourceKey: SynvolutionSource, SourceHost: "depot.synvolution-software.nl",
+                    Notice: "Couldn't reach Depot — showing the last known list · just now"),
             ],
         });
 

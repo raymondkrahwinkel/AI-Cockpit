@@ -8,6 +8,9 @@ namespace Cockpit.App.Controls;
 // AC-1600: the heading of one Projects section. The commands come from the host, which owns the `ProjectsViewModel`.
 public partial class ProjectSectionHeader : UserControl
 {
+    public static readonly StyledProperty<bool> IsRefreshingProperty =
+        AvaloniaProperty.Register<ProjectSectionHeader, bool>(nameof(IsRefreshing));
+
     public static readonly StyledProperty<ICommand?> ToggleCommandProperty =
         AvaloniaProperty.Register<ProjectSectionHeader, ICommand?>(nameof(ToggleCommand));
 
@@ -23,6 +26,12 @@ public partial class ProjectSectionHeader : UserControl
     {
         get => GetValue(ToggleCommandProperty);
         set => SetValue(ToggleCommandProperty, value);
+    }
+
+    public bool IsRefreshing
+    {
+        get => GetValue(IsRefreshingProperty);
+        set => SetValue(IsRefreshingProperty, value);
     }
 
     public ICommand? TryAgainCommand
