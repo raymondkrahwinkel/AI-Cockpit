@@ -370,7 +370,7 @@ internal static class ServerAdminScene
             Task.FromResult<RemoteAssistantSettings?>(null);
     }
 
-    // The mockup's four keys, one lockout and seven audit lines, dated from now so the times read as today's.
+    // The mockup's keys, one lockout and seven audit lines, dated from now so the times read as today's.
     private sealed class SceneKeys : IConnectKeyAdministration
     {
         private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
@@ -378,6 +378,7 @@ internal static class ServerAdminScene
         [
             new("b7Q2Lm9p", "bootstrap", ConnectKeyCapability.Admin, true, false, ConnectKeyScope.Everything, Now.AddDays(-9), null, null, Now.AddDays(-8).AddHours(-4), "100.101.7.31"),
             new("M4kzT1wq", "laptop-raymond", ConnectKeyCapability.Admin, false, true, ConnectKeyScope.Everything, Now.AddDays(-6), Now.AddDays(25), null, Now, "100.101.7.31"),
+            new("P3rm4n3t", "build-runner", ConnectKeyCapability.Operate, false, false, ConnectKeyScope.Default, Now.AddDays(-12), null, null, Now.AddMinutes(-18), "100.101.7.52"),
             new("9TpeR2va", "telefoon-raymond", ConnectKeyCapability.Operate, false, false,
                 new ConnectKeyScope { AllowAllProfiles = false, AllowAllProjects = false, AllowedProfileLabels = ["server (Claude)"], AllowedProjectIds = ["personal", "depot"] },
                 Now.AddDays(-19), Now.AddDays(11), null, Now.AddHours(-2.7), "100.101.7.44"),
@@ -390,7 +391,8 @@ internal static class ServerAdminScene
         public Task<IssuedConnectKey> IssueAsync(ConnectKeyRequest request, CancellationToken cancellationToken = default)
         {
             var secret = "ck_" + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
-            var key = new ConnectKeyInfo(secret[3..11], request.Label, request.Capability, false, request.HoldsAssistant, request.Scope, Now, Now.AddDays(30), null, null, null);
+            DateTimeOffset? expiresAt = request.NeverExpires ? null : Now.AddDays(request.ExpiresInDays ?? 30);
+            var key = new ConnectKeyInfo(secret[3..11], request.Label, request.Capability, false, request.HoldsAssistant, request.Scope, Now, expiresAt, null, null, null);
             _keys.Add(key);
             return Task.FromResult(new IssuedConnectKey(key, secret));
         }

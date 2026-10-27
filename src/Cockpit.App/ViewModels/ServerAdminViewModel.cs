@@ -31,6 +31,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private readonly Func<int>? _runningSessions;
     private readonly ILogger? _logger;
     private ConnectKeyRowViewModel? _editing;
+    private ConnectKeyPolicy _keyPolicy = ConnectKeyPolicy.Default;
 
     public ServerAdminViewModel(string server, string keyLabel, IConnectKeyAdministration admin, IReadOnlyList<string> profiles, IReadOnlyList<NodeProjectChoice> projects, IPluginAdministration? plugins = null, IServerProjects? serverProjects = null, TimeProvider? time = null, ISessionDialogService? dialogService = null, Func<int>? runningSessions = null, ILogger? logger = null, string? serverVersion = null, string? desktopVersion = null)
     {
@@ -142,6 +143,15 @@ public sealed partial class ServerAdminViewModel : ObservableObject
     private bool _editorHoldsAssistant;
 
     [ObservableProperty]
+    private decimal _editorExpiresInDays = ConnectKeyPolicy.Default.DefaultExpiryDays;
+
+    [ObservableProperty]
+    private decimal _editorMaximumExpiryDays = ConnectKeyPolicy.Default.MaxExpiryDays;
+
+    [ObservableProperty]
+    private bool _editorNeverExpires;
+
+    [ObservableProperty]
     private bool _editorAllProfiles = true;
 
     [ObservableProperty]
@@ -183,6 +193,8 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         await _RunAsync(async () =>
         {
             var overview = await _admin.ListAsync();
+            _keyPolicy = overview.Policy;
+            EditorMaximumExpiryDays = overview.Policy.MaxExpiryDays;
             _ShowKeys(overview.Keys);
             Lockouts.Clear();
             foreach (var lockout in overview.Lockouts)
@@ -214,6 +226,8 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         EditorLabel = "";
         EditorIsAdmin = false;
         EditorHoldsAssistant = false;
+        EditorExpiresInDays = _keyPolicy.DefaultExpiryDays;
+        EditorNeverExpires = false;
         _FillEditor(ConnectKeyScope.Default);
         IsEditorOpen = true;
     }
@@ -240,7 +254,8 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         if (IsIssuing)
         {
             var capability = EditorIsAdmin ? ConnectKeyCapability.Admin : ConnectKeyCapability.Operate;
-            var issued = await _admin.IssueAsync(new ConnectKeyRequest(EditorLabel.Trim(), capability, null, EditorHoldsAssistant, scope));
+            int? expiresInDays = EditorNeverExpires ? null : decimal.ToInt32(EditorExpiresInDays);
+            var issued = await _admin.IssueAsync(new ConnectKeyRequest(EditorLabel.Trim(), capability, expiresInDays, EditorHoldsAssistant, scope, EditorNeverExpires));
             _ShowIssued(issued, null);
         }
         else if (_editing is { } row)
@@ -479,7 +494,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
         Keys.Add(new ConnectKeyRowViewModel(issued.Key, _time));
         _KeysChanged();
         var capability = CapabilityName(issued.Key.Capability);
-        var expires = issued.Key.ExpiresAt is { } at ? $" · expires {at.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)}" : "";
+        var expires = issued.Key.ExpiresAt is { } at ? $" · expires {at.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)}" : " · never expires";
         IssuedSummary = rotatedFrom is null
             ? $"{issued.Key.Label} · {capability}{expires}."
             : $"{issued.Key.Label} · {capability}{expires} · same scope as {rotatedFrom}. Revoke the old key once {rotatedFrom} uses the new one.";
@@ -778,7 +793,7 @@ public sealed class ConnectKeyRowViewModel(ConnectKeyInfo info, TimeProvider tim
         { RevokedAt: { } revoked } => $"Revoked {revoked.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)}",
         { IsBootstrap: true } => "— (rotate the secret)",
         { ExpiresAt: { } expires } => expires.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture),
-        _ => "—",
+        _ => "Never",
     };
 
     public string LastUsedText
