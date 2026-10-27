@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.OpenAiCompat;
 using NSubstitute;
+using System.Runtime.CompilerServices;
 
 namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 
@@ -11,31 +12,43 @@ namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 // by OpenAiCompatPluginSessionDriverToolLoopTests in the Gemini provider's tests (AC-964, one shared driver).
 public class OpenAiCompatPluginSessionDriverTests
 {
-    [Fact]
-    public async Task SendUserMessage_StreamsAssistantDeltas_ThenCompletesTheTurn()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SendUserMessage_ReportsAnIdleStreamOrCompletesASteadyOne(bool stalls)
     {
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_Stream("Hello ", "world."));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5");
+            .Returns(stalls ? _StalledStream() : _SlowSteadyStream());
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: TimeSpan.FromMilliseconds(50));
 
         await driver.StartAsync();
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
-        Assert.Equal("Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
-        Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        Assert.Equal(stalls ? "Hello" : "Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Equal(stalls, Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        if (stalls)
+        {
+            Assert.Contains("did not send an update", Assert.Single(events.OfType<PluginSessionError>()).Message);
+        }
+
         Assert.Single(events, evt => evt is PluginSessionInitialized);
     }
 
-    private static async IAsyncEnumerable<ChatResponseUpdate> _Stream(params string[] chunks)
+    private static async IAsyncEnumerable<ChatResponseUpdate> _StalledStream([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        foreach (var chunk in chunks)
+        yield return new ChatResponseUpdate(ChatRole.Assistant, "Hello ");
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _SlowSteadyStream([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        foreach (var chunk in new[] { "Hello ", "world." })
         {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
             yield return new ChatResponseUpdate(ChatRole.Assistant, chunk);
         }
-
-        await Task.CompletedTask;
     }
 
     private static Task<List<PluginSessionEvent>> _CollectUntilTurnCompletedAsync(IPluginSessionDriver driver) =>

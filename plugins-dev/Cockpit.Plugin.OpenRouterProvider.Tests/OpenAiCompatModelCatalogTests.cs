@@ -9,24 +9,20 @@ namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 public class OpenAiCompatModelCatalogTests
 {
     [Fact]
-    public async Task ListAsync_AppendsModelsToTheBaseUrlAndSendsTheKeyAsABearerToken()
+    public async Task ListAsync_BuildsAnAuthenticatedModelsRequestAndReturnsSortedIds()
     {
-        var handler = new StubHandler("""{"object":"list","data":[{"id":"anthropic/claude-sonnet-4.5"}]}""");
-        using var httpClient = new HttpClient(handler);
+        var requestHandler = new StubHandler("""{"object":"list","data":[{"id":"anthropic/claude-sonnet-4.5"}]}""");
+        using var requestClient = new HttpClient(requestHandler);
 
-        await OpenAiCompatModelCatalog.ListAsync(httpClient, "https://openrouter.ai/api/v1/", "super-secret-key", CancellationToken.None);
+        await OpenAiCompatModelCatalog.ListAsync(requestClient, "https://openrouter.ai/api/v1/", "super-secret-key", CancellationToken.None);
 
-        Assert.Equal("https://openrouter.ai/api/v1/models", handler.RequestUri?.ToString());
-        Assert.Equal(new AuthenticationHeaderValue("Bearer", "super-secret-key"), handler.Authorization);
-    }
+        Assert.Equal("https://openrouter.ai/api/v1/models", requestHandler.RequestUri?.ToString());
+        Assert.Equal(new AuthenticationHeaderValue("Bearer", "super-secret-key"), requestHandler.Authorization);
 
-    [Fact]
-    public async Task ListAsync_ReturnsTheIdsSortedAndWithoutBlanks()
-    {
-        var handler = new StubHandler("""{"data":[{"id":"openai/gpt-5.1"},{"id":""},{"id":"anthropic/claude-sonnet-4.5"}]}""");
-        using var httpClient = new HttpClient(handler);
+        var modelsHandler = new StubHandler("""{"data":[{"id":"openai/gpt-5.1"},{"id":""},{"id":"anthropic/claude-sonnet-4.5"}]}""");
+        using var modelsClient = new HttpClient(modelsHandler);
 
-        var models = await OpenAiCompatModelCatalog.ListAsync(httpClient, "https://openrouter.ai/api/v1", "key", CancellationToken.None);
+        var models = await OpenAiCompatModelCatalog.ListAsync(modelsClient, "https://openrouter.ai/api/v1", "key", CancellationToken.None);
 
         Assert.Equal(["anthropic/claude-sonnet-4.5", "openai/gpt-5.1"], models);
     }
