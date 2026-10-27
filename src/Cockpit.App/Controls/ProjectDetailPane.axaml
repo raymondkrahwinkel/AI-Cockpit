@@ -22,11 +22,58 @@
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
+        <Style Selector="Border.paneRow">
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{DynamicResource CockpitHairlineThickness}"/>
+            <Setter Property="CornerRadius" Value="{DynamicResource CockpitControlRadius}"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+        <Style Selector="Button.paneAction">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <!-- The first SplitButton in Cockpit: its two halves are Fluent buttons, so each is given the Accent fill by hand. -->
+        <Style Selector="SplitButton.start">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextOnAccentBrush}"/>
+        </Style>
+        <Style Selector="SplitButton.start /template/ Button">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextOnAccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="SplitButton.start /template/ Button:pointerover">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentHoverBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextOnAccentBrush}"/>
+        </Style>
+        <Style Selector="SplitButton.start:flyout-open /template/ Button#PART_PrimaryButton, SplitButton.start:flyout-open /template/ Button#PART_SecondaryButton">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextOnAccentBrush}"/>
+        </Style>
+        <Style Selector="SplitButton.start:flyout-open /template/ Button /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextOnAccentBrush}"/>
+        </Style>
+        <Style Selector="SplitButton.start /template/ Button:pressed">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentPressedBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentPressedBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextOnAccentBrush}"/>
+        </Style>
     </UserControl.Styles>
 
-    <!-- AC-1600: the basic detail pane beside the Projects list — hero, the one primary action, About and Details, for
-         the selected row (mockup `.detail`). The laid-out pane (running sessions, jobs, project actions, remove) is
-         AC-1601's. -->
+    <!-- AC-1601: the detail pane beside the Projects list (mockup `.detail`) — hero, the one primary action, then About,
+         Running now, Jobs, Project, Details and the one destructive action, each under the same kind of heading. -->
     <StackPanel>
         <Grid ColumnDefinitions="Auto,*">
             <controls:ProjectLogoBadge Grid.Column="0" Size="48" Margin="0,0,14,0" VerticalAlignment="Top"
@@ -45,17 +92,26 @@
         </Grid>
 
         <Panel Margin="0,16,0,0">
-            <Button Classes="Accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                    IsVisible="{Binding CanStart}"
-                    Command="{Binding Actions.Start, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+            <SplitButton Classes="start" IsVisible="{Binding CanStart}"
+                         Command="{Binding Actions.Start, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <materialIcons:MaterialIcon Kind="Play" Width="15" Height="15"/>
                     <TextBlock Text="Start" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding Project.DefaultProfileLabel, FallbackValue={x:Null}}" FontWeight="Normal"
                                FontSize="11.5" Opacity="0.8" VerticalAlignment="Center"/>
                 </StackPanel>
-            </Button>
-            <Button Classes="Accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                <SplitButton.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                        <MenuItem Header="Start, but change something first…"
+                                  Command="{Binding Actions.StartWithOptions, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                            <MenuItem.Icon>
+                                <materialIcons:MaterialIcon Kind="PencilOutline" Width="15" Height="15"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                    </MenuFlyout>
+                </SplitButton.Flyout>
+            </SplitButton>
+            <Button Classes="Accent paneAction" HorizontalContentAlignment="Center"
                     IsVisible="{Binding NeedsProfile}"
                     Command="{Binding Actions.Edit, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -63,12 +119,19 @@
                     <TextBlock Text="Pick how it runs" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
-            <Button Classes="Accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+            <Button Classes="Accent paneAction" HorizontalContentAlignment="Center"
                     IsVisible="{Binding CanAdd}"
                     Command="{Binding Add}" CommandParameter="{Binding SharedProject}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <materialIcons:MaterialIcon Kind="Plus" Width="15" Height="15"/>
                     <TextBlock Text="Add to my projects…" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Classes="paneAction" HorizontalContentAlignment="Center"
+                    IsVisible="{Binding IsUnavailable}" Command="{Binding TryAgain}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="Refresh" Width="15" Height="15"/>
+                    <TextBlock Text="Try again" VerticalAlignment="Center"/>
                 </StackPanel>
             </Button>
         </Panel>
@@ -89,6 +152,95 @@
         <TextBlock Text="{Binding DescriptionText}" TextWrapping="Wrap" FontSize="13"
                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
 
+        <StackPanel IsVisible="{Binding HasRunningSessions}">
+            <TextBlock Classes="paneHeading" Text="{Binding RunningHeading}"/>
+            <ItemsControl ItemsSource="{Binding RunningSessions}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ProjectRunningSession">
+                        <Border Classes="paneRow">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="Compact" Height="28" Margin="12,0,0,0" VerticalAlignment="Center"
+                                        Command="{Binding $parent[UserControl].((vm:ProjectListItemViewModel)DataContext).Actions.OpenSession}"
+                                        CommandParameter="{Binding Session}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <materialIcons:MaterialIcon Kind="OpenInNew" Width="15" Height="15"/>
+                                        <TextBlock Text="Open" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <StackPanel IsVisible="{Binding HasJobs}">
+            <TextBlock Classes="paneHeading" Text="JOBS"/>
+            <ItemsControl ItemsSource="{Binding Jobs}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ProjectJobChoice">
+                        <Border Classes="paneRow">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Job.Prompt}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Job.BlastRadius}" FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    <TextBlock Text="{Binding RecurrenceLine}" FontSize="11" TextWrapping="Wrap"
+                                               IsVisible="{Binding RecurrenceLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Classes="Compact" Height="28" Margin="12,0,0,0" VerticalAlignment="Center"
+                                        Command="{Binding $parent[UserControl].((vm:ProjectListItemViewModel)DataContext).Actions.StartJob}"
+                                        CommandParameter="{Binding}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <materialIcons:MaterialIcon Kind="Play" Width="15" Height="15"/>
+                                        <TextBlock Text="Run" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <StackPanel IsVisible="{Binding IsOnThisMachine}">
+            <TextBlock Classes="paneHeading" Text="PROJECT"/>
+            <UniformGrid Columns="2" Margin="-3,-3">
+                <Button Classes="paneAction" Margin="3" Command="{Binding Actions.OpenFolder, FallbackValue={x:Null}}" CommandParameter="{Binding Project}"
+                        IsEnabled="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <materialIcons:MaterialIcon Kind="FolderOutline" Width="15" Height="15"/>
+                        <TextBlock Text="Open folder" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Classes="paneAction" Margin="3" Command="{Binding Actions.Edit, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <materialIcons:MaterialIcon Kind="PencilOutline" Width="15" Height="15"/>
+                        <TextBlock Text="Edit project…" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Classes="paneAction" Margin="3" IsVisible="{Binding IsSyncable}"
+                        Command="{Binding Actions.SyncNow, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <materialIcons:MaterialIcon Kind="Sync" Width="15" Height="15"/>
+                        <TextBlock Text="Sync now" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Classes="paneAction" Margin="3" Command="{Binding Actions.ToggleSharing, FallbackValue={x:Null}}" CommandParameter="{Binding Project}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <materialIcons:MaterialIcon Kind="{Binding ShareIcon}" Width="15" Height="15"/>
+                        <TextBlock Text="{Binding ShareLabel}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </UniformGrid>
+        </StackPanel>
+
         <TextBlock Classes="paneHeading" Text="DETAILS"/>
         <Grid ColumnDefinitions="112,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="6">
             <TextBlock Grid.Row="0" Grid.Column="0" Classes="factLabel" Text="Where it lives"/>
@@ -107,5 +259,29 @@
                        FontFamily="{StaticResource CockpitMonoFont}"
                        IsVisible="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         </Grid>
+        <controls:ProjectInfoList Margin="0,10,0,0" Fields="{Binding Project.AdditionalInfo, FallbackValue={x:Null}}"
+                                  IsVisible="{Binding HasAdditionalInfo}"/>
+
+        <Border Height="1" Margin="0,22,0,0" Background="{DynamicResource CockpitHairlineBrush}"/>
+        <StackPanel IsVisible="{Binding IsOnThisMachine}">
+            <TextBlock Classes="paneHeading" Margin="0,18,0,8" Text="REMOVE"/>
+            <Button Classes="Ghost paneAction" HorizontalAlignment="Left"
+                    Command="{Binding Remove}" CommandParameter="{Binding Project}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="DeleteOutline" Width="15" Height="15" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                    <TextBlock Text="Remove from this machine…" VerticalAlignment="Center" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+        <StackPanel IsVisible="{Binding !IsOnThisMachine}">
+            <TextBlock Classes="paneHeading" Margin="0,18,0,8" Text="HIDE"/>
+            <Button Classes="Ghost paneAction" HorizontalAlignment="Left"
+                    Command="{Binding Hide}" CommandParameter="{Binding Id}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <materialIcons:MaterialIcon Kind="EyeOffOutline" Width="15" Height="15" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                    <TextBlock Text="Hide on this machine" VerticalAlignment="Center" Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
     </StackPanel>
 </UserControl>

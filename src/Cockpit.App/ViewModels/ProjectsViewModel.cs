@@ -445,6 +445,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         OnPropertyChanged(nameof(IsCompact));
     }
 
+    // AC-1601: the sessions a project has running, for the detail pane's list; the count above stays the row's own.
+    internal Func<string, IEnumerable<SessionPanelViewModel>> RunningSessionsOf { get; set; } = _ => [];
+
     public void SetSessionCounter(Func<string, int> counter, INotifyCollectionChanged? changes = null)
     {
         if (_sessionChanges is not null)
@@ -557,6 +560,8 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                     section.Items.Add(new ProjectListItemViewModel(offer)
                     {
                         Add = FinishSettingUpCommand,
+                        Hide = HideSharedProjectCommand,
+                        TryAgain = RefreshSharedProjectsCommand,
                         Origin = _Origin(location),
                         WhereItLives = _WhereItLives(location),
                     });
@@ -577,6 +582,12 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
                 {
                     Origin = _Origin(location),
                     WhereItLives = _WhereItLives(location),
+                    RunningSessions = [.. RunningSessionsOf(project.Id).Select(session => ProjectRunningSession.From(session, DateTimeOffset.Now))],
+                    Jobs = [.. project.Jobs.Select(job => new ProjectJobChoice(project, job)
+                    {
+                        LastRun = _jobRuns.FirstOrDefault(run => run.ProjectId == project.Id && run.JobId == job.Id),
+                    })],
+                    Remove = RemoveListedProjectCommand,
                 });
             }
         }
@@ -771,9 +782,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     // Removes a project after confirming. Sessions already running under it keep running — a project is what a
     // session started with, not something it holds open, so removing one is not a reason to stop work in flight.
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task RemoveProjectAsync()
+    private Task RemoveProjectAsync() => SelectedProject is { } project ? _ConfirmAndRemoveAsync(project) : Task.CompletedTask;
+
+    // AC-1601: the detail pane's Remove — a list row's project is not always `SelectedProject`.
+    [RelayCommand]
+    private Task RemoveListedProjectAsync(Project project) => _ConfirmAndRemoveAsync(project);
+
+    private async Task _ConfirmAndRemoveAsync(Project project)
     {
-        if (_dialogs is null || SelectedProject is not { } project)
+        if (_dialogs is null)
         {
             return;
         }

@@ -3483,6 +3483,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
         Projects.SetSessionCounter(projectId => Sessions.Count(session => session.ProjectId == projectId), Sessions);
+        Projects.RunningSessionsOf = projectId => Sessions.Where(session => session.ProjectId == projectId);
         _projectQuickStart = projectQuickStart;
         _projectJobHistory = projectJobHistory;
 
@@ -3500,7 +3501,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             EditProjectCommand,
             OpenProjectFolderCommand,
             ShareProjectCommand,
-            SyncProjectNowCommand);
+            SyncProjectNowCommand,
+            SelectSessionCommand);
 
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other

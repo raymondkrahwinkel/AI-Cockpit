@@ -13,4 +13,6 @@ public sealed record ProjectCardActions(
     ICommand Edit,
     ICommand OpenFolder,
     ICommand ToggleSharing,
-    ICommand SyncNow);
+    ICommand SyncNow,
+    // AC-1601: takes a `SessionPanelViewModel`; the detail pane's "Open" on a running session.
+    ICommand? OpenSession = null);

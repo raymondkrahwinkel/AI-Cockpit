@@ -1137,6 +1137,11 @@ internal static partial class Screenshotter
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
+        ["projects-workspace-split-open"] = window =>
+        {
+            var start = window.GetVisualDescendants().OfType<SplitButton>().First(button => button.IsEffectivelyVisible);
+            start.Flyout?.ShowAt(start);
+        },
         ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["first-run-work-kind"] = _ChooseWorkKind,

@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Cockpit.App.Converters;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Projects;
+using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
@@ -71,6 +72,32 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
     public ICommand? Add { get; init; }
 
     public bool IsSyncable => IsOnThisMachine && IsInOrganization;
+
+    // AC-1601: the detail pane's own lists and commands, set by `ProjectsViewModel` when it builds the row.
+    public IReadOnlyList<ProjectRunningSession> RunningSessions { get; init; } = [];
+
+    public bool HasRunningSessions => RunningSessions.Count > 0;
+
+    public string RunningHeading => $"RUNNING NOW · {RunningSessions.Count}";
+
+    public IReadOnlyList<ProjectJobChoice> Jobs { get; init; } = [];
+
+    // Takes this row's project; asks for confirmation itself.
+    public ICommand? Remove { get; init; }
+
+    // Takes the team project's id.
+    public ICommand? Hide { get; init; }
+
+    // Reads the team list again — the way out of a project the source did not answer for in time.
+    public ICommand? TryAgain { get; init; }
+
+    public bool HasAdditionalInfo => Project?.HasAdditionalInfo == true;
+
+    public bool IsUnavailable => SharedProject is { CanAdd: false };
+
+    public string ShareLabel => IsInOrganization ? "Stop sharing…" : "Share with your team…";
+
+    public MaterialIconKind ShareIcon => IsInOrganization ? MaterialIconKind.LinkOff : MaterialIconKind.ShareVariantOutline;
 
     // The detail pane's origin: "◆ Synvolution" on the pill, "◆ depot.example.com / synvolution" under Details. Set by
     // `ProjectsViewModel` from the row's section; host-generic, so no source's brand is named here (AC-244).

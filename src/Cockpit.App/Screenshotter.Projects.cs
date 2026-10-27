@@ -35,6 +35,11 @@ internal static partial class Screenshotter
         new("projects-workspace-loading", (_, _) => _ProjectsWorkspace(_StageLoading)),
         new("projects-workspace-stale", (_, _) => _ProjectsWorkspace(_StageStaleServer)),
         new("projects-workspace-long-text", (_, _) => _ProjectsWorkspace(_StageLongProjectText)),
+        // AC-1601: the detail pane laid out, next to b2-23 (a local project with sessions and jobs), b2-12 (a team project to add) and
+        // b2-20 (the Start split open).
+        new("projects-workspace-detail", (_, _) => _ProjectsWorkspace(cockpit => _StageTwoConnectionsSelecting(cockpit, "Cockpit"))),
+        new("projects-workspace-detail-team", (_, _) => _ProjectsWorkspace(cockpit => _StageTwoConnectionsSelecting(cockpit, "API Gateway"))),
+        new("projects-workspace-split-open", (_, _) => _ProjectsWorkspace(_StageTwoConnections)),
     ];
 
     private static Dictionary<string, Func<int, int, Window>> _WithProjectScenes(Dictionary<string, Func<int, int, Window>> scenes)
@@ -60,9 +65,11 @@ internal static partial class Screenshotter
             cockpit.EditProjectCommand,
             cockpit.OpenProjectFolderCommand,
             cockpit.ShareProjectCommand,
-            cockpit.SyncProjectNowCommand);
+            cockpit.SyncProjectNowCommand,
+            cockpit.SelectSessionCommand);
         // The design-time cockpit does not wire the running-session count the real one does.
         cockpit.Projects.SetSessionCounter(id => cockpit.Sessions.Count(session => session.ProjectId == id), cockpit.Sessions);
+        cockpit.Projects.RunningSessionsOf = id => cockpit.Sessions.Where(session => session.ProjectId == id);
         // A scene builder returns a window synchronously; opening the workspace needs no I/O here, so blocking is safe.
         cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id).GetAwaiter().GetResult();
         stage?.Invoke(cockpit);
@@ -129,7 +136,14 @@ internal static partial class Screenshotter
             "Servers, backups, Beszel and the alerting rules.");
         var website = _Project("krahwinkel-it.nl", "Claude · Sonnet", TimeSpan.FromDays(14), "Company website and the contact form.");
         var cockpitProject = _Project("Cockpit", "Claude · Opus", TimeSpan.FromMinutes(0.5),
-            "The desktop cockpit for running AI sessions side by side — profiles, projects, plugins and the server.", "Prive");
+            "The desktop cockpit for running AI sessions side by side — profiles, projects, plugins and the server.", "Prive") with
+        {
+            Jobs =
+            [
+                new ProjectJob("Review the open pull requests", "Reads only — changes nothing", new JobRecurrence(1, DayOfWeek.Friday)),
+                new ProjectJob("Triage new tickets", "Adds comments in YouTrack", new JobRecurrence(1, DayOfWeek.Monday)),
+            ],
+        };
         var eve = _Project("EVE Workbench", "Claude · Sonnet", TimeSpan.FromDays(4),
             "Industry and market calculator for manufacturing chains.", "Prive");
         var aiHub = _Project("AI-Hub", "Ollama · qwen3", TimeSpan.FromDays(21), "Experiments with local models.", "Prive");
@@ -187,6 +201,14 @@ internal static partial class Screenshotter
             .First(row => row.Id == flow.Id);
     }
 
+    private static void _StageTwoConnectionsSelecting(CockpitViewModel cockpit, string name)
+    {
+        _StageTwoConnections(cockpit);
+        cockpit.Projects.SelectedListItem = cockpit.Projects.ProjectSections
+            .SelectMany(section => section.Items)
+            .First(row => row.Name == name);
+    }
+
     private static void _StageRunning(CockpitViewModel cockpit, Project project, int count)
     {
         if (cockpit.Workspaces.Active is not { } workspace)
@@ -202,6 +224,7 @@ internal static partial class Screenshotter
                 ProjectId = project.Id,
                 WorkspaceId = workspace.Id,
                 SessionStatus = SessionStatus.Busy,
+                ActiveProfileLabel = project.DefaultProfileLabel,
             });
         }
     }
