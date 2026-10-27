@@ -1779,7 +1779,7 @@
                                         HorizontalAlignment="Left" CornerRadius="{StaticResource CockpitControlRadius}">
                                     <StackPanel Spacing="10">
                                         <TextBlock Text="{Binding Start.Heading}" FontSize="14" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Runs on the server. Only SDK sessions; profiles and projects are the server's own."
+                                        <TextBlock Text="Runs on the server. Only SDK sessions; profiles and projects are the server's own. No project uses the server's scratch directory."
                                                    FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
                                             <StackPanel Spacing="4">

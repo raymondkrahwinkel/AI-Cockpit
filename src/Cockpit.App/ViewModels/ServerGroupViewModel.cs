@@ -272,6 +272,8 @@ public sealed partial class ServerStartViewModel(string server) : ObservableObje
         }
 
         Projects.Clear();
+        // Null selects the server's scratch directory without changing profile or caller-scope authorization.
+        Projects.Add(new NodeProjectChoice(null, "No project"));
         foreach (var project in projects)
         {
             Projects.Add(project);
