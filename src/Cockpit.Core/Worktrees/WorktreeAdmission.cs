@@ -60,7 +60,7 @@ public static class WorktreeAdmission
 
             if (await worktrees.DetectRepositoryAsync(workingDirectory, cancellationToken).ConfigureAwait(false) is null)
             {
-                throw new InvalidOperationException("the working directory is not a git repository, so no isolated worktree can be created.");
+                throw new InvalidOperationException("this project has no repository on this server; link a Git URL before using worktree isolation.");
             }
 
             var worktree = await worktrees.CreateForSessionAsync(paneId, sessionLabel, workingDirectory, cancellationToken: cancellationToken).ConfigureAwait(false);

@@ -78,6 +78,12 @@ public interface ICockpitUiHost
     void AddSideMenuButton(string title, Action onInvoke);
 
     /// <summary>
+    /// Adds a launcher button to the left menu with a host-rendered material icon. An older host shows it without.
+    /// </summary>
+    void AddSideMenuButton(string title, Action onInvoke, MaterialIconKind iconKind) =>
+        AddSideMenuButton(title, onInvoke);
+
+    /// <summary>
     /// Adds a launcher button to the left menu with a live counter the plugin updates through the returned badge.
     /// </summary>
     SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke);

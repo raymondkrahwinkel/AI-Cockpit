@@ -28,6 +28,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
 
     public const string BootstrapRevokeRefusal = "The bootstrap key is the emergency key and cannot be revoked. Rotate it by replacing its secret (" + BootstrapFileVariable + ") and restarting the server.";
 
+    public const string NeverExpiringRefusal = "This server's policy does not allow connect keys that never expire.";
+
     // Characters after `ck_` kept as the key's public handle: enough to tell keys apart in a list, far too few to
     // matter for guessing the rest (48 of 256 bits).
     private const int PrefixLength = 8;
@@ -263,12 +265,22 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
     }
 
     // The raw key is in the return value and nowhere else — not in the log, the audit or cockpit.json.
-    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, ConnectKeyScope? scope = null, CancellationToken cancellationToken = default)
+    public async Task<(ConnectKey Key, string Secret)> IssueAsync(string label, ConnectKeyCapability capability, int? expiresInDays, NodeCaller issuedBy, bool holdsAssistant = false, ConnectKeyScope? scope = null, bool neverExpires = false, CancellationToken cancellationToken = default)
     {
         await EnsureLoadedAsync(cancellationToken).ConfigureAwait(false);
 
+        if (neverExpires && !_policy.AllowNeverExpiring)
+        {
+            throw new ArgumentException(NeverExpiringRefusal);
+        }
+
+        if (neverExpires && expiresInDays is not null)
+        {
+            throw new ArgumentException("expiresInDays must be omitted when neverExpires is true.");
+        }
+
         var days = expiresInDays ?? _policy.DefaultExpiryDays;
-        if (days < 1 || days > _policy.MaxExpiryDays)
+        if (!neverExpires && (days < 1 || days > _policy.MaxExpiryDays))
         {
             throw new ArgumentOutOfRangeException(nameof(expiresInDays), $"expiresInDays must be between 1 and {_policy.MaxExpiryDays}.");
         }
@@ -288,7 +300,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
                 }
                 while (_AllKeys().Any(existing => string.Equals(existing.Prefix, _PrefixOf(secret), StringComparison.Ordinal)));
 
-                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, now.AddDays(days), HoldsAssistant: holdsAssistant, Scope: scope ?? ConnectKeyScope.Default);
+                DateTimeOffset? expiresAt = neverExpires ? null : now.AddDays(days);
+                key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, expiresAt, HoldsAssistant: holdsAssistant, Scope: scope ?? ConnectKeyScope.Default);
                 next = [.. _persisted, key];
             }
 
@@ -300,7 +313,8 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             }
 
             _logger.LogInformation("Issued connect key {Prefix} ({Capability}), expiring {ExpiresAt}.", key.Prefix, key.Capability, key.ExpiresAt);
-            await _audit.RecordAsync(NodeAccessAuditEntry.By(issuedBy, now, "issue_connect_key", "issued", key.Prefix), cancellationToken).ConfigureAwait(false);
+            var outcome = neverExpires ? "issued: never expires" : "issued";
+            await _audit.RecordAsync(NodeAccessAuditEntry.By(issuedBy, now, "issue_connect_key", outcome, key.Prefix), cancellationToken).ConfigureAwait(false);
             return (key, secret);
         }
         finally
@@ -440,7 +454,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
             throw new ArgumentException("capability must be \"operate\" or \"admin\".", nameof(request));
         }
 
-        var (key, secret) = await IssueAsync(request.Label, request.Capability, request.ExpiresInDays, _Admin(), request.HoldsAssistant, request.Scope, cancellationToken).ConfigureAwait(false);
+        var (key, secret) = await IssueAsync(request.Label, request.Capability, request.ExpiresInDays, _Admin(), request.HoldsAssistant, request.Scope, request.NeverExpires, cancellationToken).ConfigureAwait(false);
         return new IssuedConnectKey(_Info(key, null), secret);
     }
 

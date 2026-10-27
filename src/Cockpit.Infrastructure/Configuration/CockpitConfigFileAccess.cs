@@ -172,7 +172,8 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
         async Task<T> OpenAndReadAsync()
         {
-            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            // FileShare.Read made a reader block the restore's writer; readers must let writers (and replacers) through.
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
             return await read(stream).ConfigureAwait(false);
         }

@@ -25,6 +25,15 @@ internal static class ServerGroupScene
     // An operate key with a scope: "Admin" locked, the assistant held elsewhere, and the start card with one profile.
     public static MainWindow Operate(int width, int height) => _Render(width, height, admin: false);
 
+    public static MainWindow StartRefused(int width, int height)
+    {
+        var window = _Render(width, height, admin: false);
+        var start = ((CockpitViewModel)window.DataContext!).ServerGroups[0].Start;
+        start.Error = "huis-cockpit did not start the session.";
+        start.Reason = "worktree isolation failed for '/home/agent/scratch': Could not run 'git' … Permission denied";
+        return window;
+    }
+
     // AC-1457 (mockup v2 tab 3): the Health tab of an admin key, with the expired login, the alarm and a device code.
     public static MainWindow Health(int width, int height) => _Render(width, height, admin: true, health: true);
 
@@ -37,6 +46,30 @@ internal static class ServerGroupScene
         var cockpit = CockpitViewModel.ForRemoteWindow("huis-cockpit", new SceneServers(_Server(admin: true)), null, new SceneSignIns(), _ => Task.CompletedTask);
         cockpit.OpenServerSessionCommand.Execute(cockpit.ServerGroups[0].Sessions[0]);
         return new MainWindow(windowBoundsStore: null, "huis-cockpit") { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    // AC-1762 (mockups Company v8 #22 and Productivity v3 #09): the panels sidebar with two projects, this laptop with two
+    // workspaces and one server — the server open or folded shut.
+    public static MainWindow Sidebar(int width, int height, bool collapsed)
+    {
+        var cockpit = new CockpitViewModel { SidebarWidth = 240 };
+        cockpit.Projects.StageDesignSample();
+        var second = new Cockpit.Core.Projects.Project("proj-depot", "Depot");
+        cockpit.Projects.Projects.Add(second);
+        cockpit.Projects.SidebarProjects.Add(second);
+
+        var infra = Cockpit.Core.Workspaces.Workspace.Create("Infra", Cockpit.Core.Workspaces.WorkspaceType.Sessions);
+        cockpit.Workspaces.Settings = cockpit.Workspaces.Settings.WithWorkspace(infra)
+            .WithActive(cockpit.Workspaces.Settings.Workspaces[0].Id);
+        cockpit.Sessions[2].WorkspaceId = infra.Id;
+
+        cockpit.ShowServers(new SceneServers(_Server(admin: true)), SessionViewModel.OverRemoteAsync, new SceneSignIns());
+        if (collapsed)
+        {
+            cockpit.ServerGroups[0].IsExpanded = false;
+        }
+
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.

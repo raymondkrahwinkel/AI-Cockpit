@@ -50,10 +50,20 @@ internal sealed class HoursWorkspaceBody : UserControl
     private bool _editingStopwatch;
     private bool _rendering;
 
-    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host)
+    private readonly Action _openOverview;
+    private readonly RefreshBar _bar;
+
+    public HoursWorkspaceBody(ProductivityController controller, ICockpitUiHost host, Action openOverview)
     {
         _controller = controller;
         _host = host;
+        _openOverview = openOverview;
+        _bar = new RefreshBar(
+            this,
+            controller.RefreshAsync,
+            () => _editingId is not null || _editingStopwatch,
+            () => RefreshPolicy.Interval((host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default).RefreshSeconds),
+            () => controller.Now);
         _error.Themed(TextBlock.ForegroundProperty, "CockpitStatusErrorBrush");
         _add.Classes.Add("Accent");
         _add.Click += async (_, _) => await _SaveAsync();
@@ -94,6 +104,7 @@ internal sealed class HoursWorkspaceBody : UserControl
                 Margin = new Thickness(24, 16),
                 Children =
                 {
+                    _Switch(),
                     _Header(previous, next),
                     _EntryCard(),
                     _dayColumns,
@@ -103,12 +114,14 @@ internal sealed class HoursWorkspaceBody : UserControl
         };
 
         _controller.Changed += _Render;
+        _controller.RefreshStateChanged += _RenderRefreshState;
         _timer.Tick += (_, _) => _RenderRunning();
         _timer.Start();
         DetachedFromVisualTree += (_, _) =>
         {
             _timer.Stop();
             _controller.Changed -= _Render;
+            _controller.RefreshStateChanged -= _RenderRefreshState;
         };
         _Render();
         _ = _LoadProjectsAsync();
@@ -177,6 +190,17 @@ internal sealed class HoursWorkspaceBody : UserControl
         await _controller.RefreshAsync();
     }
 
+    private Control _Switch()
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        row.Children.Add(WorkspaceSwitch.Build(false, () => { }, _openOverview));
+        Grid.SetColumn(_bar.View, 1);
+        row.Children.Add(_bar.View);
+        return row;
+    }
+
+    private void _RenderRefreshState() => _bar.Update(_controller.IsRefreshing, _controller.LastRefreshed);
+
     private Control _Header(Button previous, Button next)
     {
         var segments = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _dayMode, _weekMode } };
@@ -189,29 +213,21 @@ internal sealed class HoursWorkspaceBody : UserControl
 
         var header = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,*,Auto"),
             ColumnSpacing = 9,
         };
-        header.Children.Add(new TextBlock
-        {
-            Text = "Uren",
-            FontSize = 19,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        });
-        Grid.SetColumn(segments, 1);
         header.Children.Add(segments);
-        Grid.SetColumn(previous, 2);
+        Grid.SetColumn(previous, 1);
         header.Children.Add(previous);
-        Grid.SetColumn(_dayLabel, 3);
+        Grid.SetColumn(_dayLabel, 2);
         header.Children.Add(_dayLabel);
-        Grid.SetColumn(next, 4);
+        Grid.SetColumn(next, 3);
         header.Children.Add(next);
-        Grid.SetColumn(datePicker, 5);
+        Grid.SetColumn(datePicker, 4);
         header.Children.Add(datePicker);
-        Grid.SetColumn(_thisWeek, 6);
+        Grid.SetColumn(_thisWeek, 5);
         header.Children.Add(_thisWeek);
-        Grid.SetColumn(_meaning, 8);
+        Grid.SetColumn(_meaning, 7);
         header.Children.Add(_meaning);
         return Ui.Card(header, 12);
     }
@@ -255,7 +271,7 @@ internal sealed class HoursWorkspaceBody : UserControl
 
     private Control _DayColumns()
     {
-        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,440"), ColumnSpacing = 12 };
+        var columns = new Grid { ColumnDefinitions = new ColumnDefinitions("*,380"), ColumnSpacing = 12 };
         var rules = _RulesCard();
         rules.VerticalAlignment = VerticalAlignment.Top;
         columns.Children.Add(rules);
@@ -287,7 +303,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     {
         var header = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("48,*,105,45,78,125,55"),
+            ColumnDefinitions = new ColumnDefinitions("44,*,96,44,70,110,52"),
             ColumnSpacing = 10,
             Margin = new Thickness(6, 0),
         };
@@ -408,6 +424,7 @@ internal sealed class HoursWorkspaceBody : UserControl
 
     private void _Render()
     {
+        _RenderRefreshState();
         _rendering = true;
         var showWeek = _controller.ShowWeek;
         _date.Text = (showWeek ? _controller.WeekStart : _controller.SelectedDate).ToString("dd-MM-yyyy", Dutch);
@@ -465,7 +482,9 @@ internal sealed class HoursWorkspaceBody : UserControl
         _error.IsVisible = _controller.Error is not null;
         _measured.Content = MeasuredTimeCard.Build(
             _controller.Day,
-            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}");
+            _controller.IsToday ? "Gemeten tijd vandaag" : $"Gemeten tijd {date.ToString("ddd d MMM", Dutch)}",
+            _controller.Names,
+            _controller.Sessions);
         _RenderRunning();
         _RenderRows();
     }
@@ -515,7 +534,7 @@ internal sealed class HoursWorkspaceBody : UserControl
         row.Children.Add(identity);
         Grid.SetColumn(actions, 1);
         row.Children.Add(actions);
-        var details = Ui.Hint($"{stopwatch.ProjectId ?? "geen project"} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm} · ook zichtbaar in de zijbalk");
+        var details = Ui.Hint($"{_controller.Names.Resolve(stopwatch.ProjectId).Label} · gestart {stopwatch.StartedAt.ToLocalTime():HH:mm} · ook zichtbaar in de zijbalk");
         Grid.SetRow(details, 1);
         row.Children.Add(details);
         _running.Children.Add(new Border
@@ -547,7 +566,7 @@ internal sealed class HoursWorkspaceBody : UserControl
     {
         var row = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("48,*,105,45,78,125,55"),
+            ColumnDefinitions = new ColumnDefinitions("44,*,96,44,70,110,52"),
             ColumnSpacing = 10,
             Margin = new Thickness(6, 8),
         };
@@ -561,12 +580,22 @@ internal sealed class HoursWorkspaceBody : UserControl
         Grid.SetColumn(description, 1);
         row.Children.Add(description);
 
-        var project = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        // A grid, not a horizontal stack, so a long name wraps inside its column instead of running over Duur.
+        var project = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 6 };
         if (!string.IsNullOrWhiteSpace(entry.ProjectId))
         {
-            project.Children.Add(Ui.Dot("CockpitStatusDoneBrush", 7));
+            var dot = Ui.Dot("CockpitStatusDoneBrush", 7);
+            dot.VerticalAlignment = VerticalAlignment.Top;
+            dot.Margin = new Thickness(0, 5, 0, 0);
+            project.Children.Add(dot);
         }
-        project.Children.Add(Ui.Hint(entry.ProjectId ?? "— geen"));
+
+        var name = _controller.Names.Resolve(entry.ProjectId);
+        var label = Ui.Hint(entry.ProjectId is null ? "— geen" : name.Label);
+        label.TextWrapping = TextWrapping.Wrap;
+        ToolTip.SetTip(label, name.Tooltip);
+        Grid.SetColumn(label, 1);
+        project.Children.Add(label);
         Grid.SetColumn(project, 2);
         row.Children.Add(project);
 
@@ -604,30 +633,31 @@ internal sealed class HoursWorkspaceBody : UserControl
             .Themed(Border.BorderBrushProperty, "CockpitHairlineSoftBrush");
     }
 
-    private string? _Project()
-    {
-        if (_project.SelectedItem is not string selected || selected == "Geen project")
-        {
-            return null;
-        }
+    private string? _Project() => (_project.SelectedItem as _ProjectChoice)?.Id;
 
-        const string prefix = "Project: ";
-        const string suffix = " (actieve workspace)";
-        return selected.StartsWith(prefix, StringComparison.Ordinal)
-            ? selected[prefix.Length..].Replace(suffix, string.Empty, StringComparison.Ordinal)
-            : selected;
-    }
-
+    // Every project by name, the selected session's marked; a stored value that is no project (a folder from before
+    // AC-1737) is offered as the project it resolves to, so saving the line repairs it.
     private void _SetProject(string? projectId)
     {
-        var options = new List<string> { "Geen project" };
-        if (!string.IsNullOrWhiteSpace(projectId))
+        var names = _controller.Names;
+        var resolved = names.Resolve(projectId);
+        var selected = resolved.ProjectId ?? projectId;
+        var options = new List<_ProjectChoice> { new(null, "Geen project") };
+        options.AddRange(_controller.Projects.Select(project => new _ProjectChoice(
+            project.Id,
+            $"Project: {project.Name}" + (project.Id == _controller.ProjectFallback ? " (actieve workspace)" : string.Empty))));
+        if (!string.IsNullOrWhiteSpace(selected) && options.All(option => option.Id != selected))
         {
-            options.Insert(0, $"Project: {projectId}" + (projectId == _controller.ProjectFallback ? " (actieve workspace)" : string.Empty));
+            options.Add(new _ProjectChoice(selected, $"Project: {resolved.Label}"));
         }
 
         _project.ItemsSource = options;
-        _project.SelectedIndex = 0;
+        _project.SelectedItem = options.FirstOrDefault(option => option.Id == selected) ?? options[0];
+    }
+
+    private sealed record _ProjectChoice(string? Id, string Label)
+    {
+        public override string ToString() => Label;
     }
 
     private Control _WeekLabel()

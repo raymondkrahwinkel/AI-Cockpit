@@ -114,4 +114,4 @@ public sealed record SessionLaunchRequest(
 
 // PromptDelivered: null when no prompt was given, false when it is held until the session is ready.
 // WorktreeDecision set (AC-1448): nothing started, and only a person may choose to run without isolation.
-public sealed record LaunchedSession(string PaneId, string Name, bool? PromptDelivered, NeedsWorktreeDecision? WorktreeDecision = null);
+public sealed record LaunchedSession(string PaneId, string Name, bool? PromptDelivered, NeedsWorktreeDecision? WorktreeDecision = null, string? FailureReason = null);

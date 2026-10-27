@@ -24,7 +24,8 @@ public sealed class GitHubIssuesUi : ICockpitPluginUi
         host.AddSideMenuButton(
             "GitHub Issues",
             // One dialog per plugin: reopening while it's up should refocus it, not stack a second one.
-            () => _OpenDialog(host, settings));
+            () => _OpenDialog(host, settings),
+            MaterialIconKind.AlertCircleOutline);
 
         // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
         host.AddSessionHeaderItem(session => new GitHubSessionHeaderControl(host, session, settings));

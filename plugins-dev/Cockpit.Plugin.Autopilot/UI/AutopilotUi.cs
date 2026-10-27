@@ -24,7 +24,7 @@ public sealed class AutopilotUi : ICockpitPluginUi
         // Open the Autopilot workspace from the side menu — it does not force a planning round. The operator
         // starts a run with New run (where the CEO-profile guard now lives), so history stays reachable without
         // a profile set. A triggered run still opens straight into planning via the backend's "plan" intent.
-        host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync(PlanWorkspaceId));
+        host.AddSideMenuButton("Autopilot", () => _ = host.OpenWorkspaceAsync(PlanWorkspaceId), MaterialIconKind.RobotOutline);
 
         // The backend has no selected session; the directory of the one this window has selected is what its epic
         // merge check runs git in, so it is told on every change.

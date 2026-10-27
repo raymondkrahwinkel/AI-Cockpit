@@ -68,6 +68,9 @@ internal sealed class CockpitUiHost(
     public void AddSideMenuButton(string title, Action onInvoke) =>
         contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
 
+    public void AddSideMenuButton(string title, Action onInvoke, MaterialIconKind iconKind) =>
+        contributionSink.AddPluginSideButton(pluginId, title, onInvoke, badge: null, iconKind);
+
     public SideMenuButtonBadge AddSideMenuButtonWithBadge(string title, Action onInvoke)
         => AddSideMenuButtonWithBadge(title, onInvoke, iconKind: null);
 

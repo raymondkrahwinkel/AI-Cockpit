@@ -7,12 +7,12 @@ namespace Cockpit.Infrastructure.ManagedCli;
 
 // Periodically checks each installed managed CLI (AC-20) against its provider's latest version. Auto-update
 // (AC-767, default on) installs and toasts; off, it toasts once and leaves installing to the config button.
-// Never nags: an "available" toast fires once per (cli, version), and offline/edge failures are swallowed.
+// Never nags: one notice per (cli, version), offline failures swallowed. The server (AC-1649) logs instead of toasting.
 public sealed class ManagedCliUpdateChecker(
     IManagedCliService managedCli,
     IManagedCliAutoUpdateStore autoUpdateStore,
-    IToastService toastService,
-    ILogger<ManagedCliUpdateChecker> logger) : ISingletonService
+    ILogger<ManagedCliUpdateChecker> logger,
+    IToastService? toastService = null) : ISingletonService
 {
     // (CliName, LatestVersion) pairs already toasted "available" this run — a later tick only announces a version
     // beyond what is already here, never the same one twice. Not used for the auto-update success toast: once
@@ -93,7 +93,7 @@ public sealed class ManagedCliUpdateChecker(
         var result = await managedCli.EnsureInstalledAsync(cliName, cancellationToken).ConfigureAwait(false);
         if (result.Success)
         {
-            toastService.Show($"{cliName}: {installedVersion} → {result.Version}. Updated automatically.", ToastSeverity.Information);
+            _Notify($"{cliName}: {installedVersion} → {result.Version}. Updated automatically.");
         }
         else
         {
@@ -114,6 +114,18 @@ public sealed class ManagedCliUpdateChecker(
         var message = isMajorJump
             ? $"{cliName} {latestVersion} is available — this is a major version change. Update it in a {cliName} profile's settings."
             : $"A newer {cliName} is available: {installedVersion} → {latestVersion}. Update it in a {cliName} profile's settings.";
-        toastService.Show(message, ToastSeverity.Information);
+        _Notify(message);
+    }
+
+    private void _Notify(string message)
+    {
+        if (toastService is null)
+        {
+            logger.LogInformation("{Notice}", message);
+        }
+        else
+        {
+            toastService.Show(message, ToastSeverity.Information);
+        }
     }
 }

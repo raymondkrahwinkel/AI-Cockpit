@@ -46,6 +46,10 @@ internal sealed class CefBrowserView : Control
     private int _blitQueued;
     private Size _viewSize = new(800, 600);
     private double _scale = 1;
+
+    // A touchpad sends fractions of a notch; what does not make a whole wheel unit, or a whole zoom step, is kept.
+    private Vector _wheelRest;
+    private double _zoomRest;
     private volatile CefBrowser? _browser;
     private string? _pendingUrl;
     private volatile bool _closeRequested;
@@ -135,6 +139,9 @@ internal sealed class CefBrowserView : Control
     public void GoForward() => _browser?.GoForward();
 
     public void Reload() => _browser?.Reload();
+
+    // AC-1761: Chromium's own zoom steps, kept per site in the profile, the way Chrome keeps them.
+    public void Zoom(CefZoomCommand command) => _OnHost(host => host.Zoom(command));
 
     // AC-1728: an agent's input, sent the way the operator's own mouse and keys are, through CEF's offscreen host. The
     // gate runs on CEF's UI thread right before the input, with the main and focused frames' addresses, and the task
@@ -331,9 +338,11 @@ internal sealed class CefBrowserView : Control
         }
 
         context.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+        // AC-1761: the source rect in pixels. The two-argument overload passes the bitmap's size in DIPs as the source,
+        // which Skia reads as pixels, so above 100% only the top-left part was drawn, stretched (measured at 125%).
         if (_bitmap is not null)
         {
-            context.DrawImage(_bitmap, new Rect(_bitmap.Size));
+            context.DrawImage(_bitmap, new Rect(_bitmap.PixelSize.ToSize(1)), new Rect(_bitmap.Size));
         }
     }
 
@@ -359,6 +368,8 @@ internal sealed class CefBrowserView : Control
         var mouse = _Mouse(e);
         var button = _Button(e.GetCurrentPoint(this).Properties.PointerUpdateKind);
         var clicks = e.ClickCount;
+        // Captured, so dragging a scrollbar or a selection past the edge of the view keeps going.
+        e.Pointer.Capture(this);
         _OnHost(host => host.SendMouseClickEvent(mouse, button, false, clicks));
         e.Handled = true;
     }
@@ -368,6 +379,7 @@ internal sealed class CefBrowserView : Control
         base.OnPointerReleased(e);
         var mouse = _Mouse(e);
         var button = _Button(e.GetCurrentPoint(this).Properties.PointerUpdateKind);
+        e.Pointer.Capture(null);
         _OnHost(host => host.SendMouseClickEvent(mouse, button, true, 1));
         e.Handled = true;
     }
@@ -375,10 +387,43 @@ internal sealed class CefBrowserView : Control
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        var mouse = _Mouse(e);
-        var (x, y) = ((int)(e.Delta.X * 120), (int)(e.Delta.Y * 120));
-        _OnHost(host => host.SendMouseWheelEvent(mouse, x, y));
         e.Handled = true;
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            _zoomRest += e.Delta.Y;
+            if (Math.Abs(_zoomRest) >= 1)
+            {
+                Zoom(_zoomRest > 0 ? CefZoomCommand.In : CefZoomCommand.Out);
+                _zoomRest = 0;
+            }
+
+            return;
+        }
+
+        var mouse = _Mouse(e);
+        var delta = e.Delta * 120 + _wheelRest;
+        var (x, y) = ((int)delta.X, (int)delta.Y);
+        _wheelRest = new Vector(delta.X - x, delta.Y - y);
+        _OnHost(host => host.SendMouseWheelEvent(mouse, x, y));
+    }
+
+    // AC-1761: the browser's own keys, which in offscreen rendering no window handles for us.
+    private bool _BrowserKey(KeyEventArgs e)
+    {
+        var ctrl = e.KeyModifiers == KeyModifiers.Control;
+        Action? action = e.Key switch
+        {
+            Key.OemPlus or Key.Add when ctrl => () => Zoom(CefZoomCommand.In),
+            Key.OemMinus or Key.Subtract when ctrl => () => Zoom(CefZoomCommand.Out),
+            Key.D0 or Key.NumPad0 when ctrl => () => Zoom(CefZoomCommand.Reset),
+            Key.R when ctrl => Reload,
+            Key.F5 when e.KeyModifiers == KeyModifiers.None => Reload,
+            Key.Left when e.KeyModifiers == KeyModifiers.Alt => GoBack,
+            Key.Right when e.KeyModifiers == KeyModifiers.Alt => GoForward,
+            _ => null,
+        };
+        action?.Invoke();
+        return action is not null;
     }
 
     protected override void OnGotFocus(FocusChangedEventArgs e)
@@ -397,8 +442,22 @@ internal sealed class CefBrowserView : Control
     {
         base.OnKeyDown(e);
         OperatorInput?.Invoke();
+        if (_BrowserKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         _SendKey(e, CefKeyEventType.RawKeyDown);
-        e.Handled = true;
+        // AC-1784: a key that makes text stays unhandled, because Avalonia drops the WM_CHAR of a handled key down,
+        // so no TextInput (and no character in the page) came at all (measured). Tab, Enter and the rest stay here.
+        e.Handled = e.KeySymbol is not { Length: > 0 } symbol || char.IsControl(symbol[0]);
+        if (e.Key == Key.Enter)
+        {
+            // Below 32 Avalonia raises no TextInput, and Enter's character is what submits a form or breaks a line.
+            var enter = new CefKeyEvent { EventType = CefKeyEventType.Char, Character = '\r', UnmodifiedCharacter = '\r', WindowsKeyCode = 0x0D, Modifiers = _Modifiers(e.KeyModifiers) };
+            _OnHost(host => host.SendKeyEvent(enter));
+        }
     }
 
     protected override void OnKeyUp(KeyEventArgs e)
@@ -761,8 +820,17 @@ internal sealed class CefBrowserView : Control
 
     private sealed class LoadHandler(CefBrowserView owner) : CefLoadHandler
     {
-        protected override void OnLoadingStateChange(CefBrowser browser, bool isLoading, bool canGoBack, bool canGoForward) =>
+        protected override void OnLoadingStateChange(CefBrowser browser, bool isLoading, bool canGoBack, bool canGoForward)
+        {
+            // AC-1761: a login is on disk once its page has loaded. Chromium itself writes cookies about every 30 s
+            // and at CefShutdown, so a crash or a frozen Cockpit lost the last ones (measured with a hard exit).
+            if (isLoading == false)
+            {
+                browser.GetHost().GetRequestContext().GetCookieManager(null)?.FlushStore(null);
+            }
+
             _OnUi(() => owner.LoadingChanged?.Invoke(isLoading, canGoBack, canGoForward));
+        }
 
         // Before the page's own scripts, so a media error or a DRM request that comes early is still seen.
         protected override void OnLoadStart(CefBrowser browser, CefFrame frame, CefTransitionType transitionType)

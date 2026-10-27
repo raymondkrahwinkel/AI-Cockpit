@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using Material.Icons;
 using Cockpit.Plugin.Depot.Contracts;
@@ -14,6 +15,9 @@ namespace Cockpit.Plugin.Depot.UI;
 // whenever this part reports a connection-list save over the plugin's channel.
 public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
 {
+    // Read by Cockpit's `--screenshot --scene plugin:<name>` on a dev checkout only; not a plugin contract.
+    public static IReadOnlyDictionary<string, Func<Control>> Scenes => DepotScenes.All;
+
     // AC-1509: route C, there from the very first start; the wizard runs before InitializeUi.
     public IReadOnlyList<FirstStartRoute> CreateFirstStartRoutes(IFirstStartHost host) =>
     [
@@ -47,7 +51,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         {
             // Side-menu callbacks are synchronous, so the wrapper observes and logs the detached dialog task.
             _ = _ShowInboxAsync(host, settings, inbox);
-        });
+        }, MaterialIconKind.InboxOutline);
         inbox.Changed += _ => badge.Primary = inbox.Total;
         // Startup continues while counts load; LoadCountsAsync logs failures and a later push can refresh the badge.
         _ = inbox.LoadCountsAsync();

@@ -57,7 +57,7 @@ public sealed record ConnectKeyInfo(
 
 public sealed record ConnectKeyLockout(string Address, DateTimeOffset LockedUntil, int RefusedWhileLockedOut);
 
-public sealed record ConnectKeyRequest(string Label, ConnectKeyCapability Capability, int? ExpiresInDays, bool HoldsAssistant, ConnectKeyScope Scope);
+public sealed record ConnectKeyRequest(string Label, ConnectKeyCapability Capability, int? ExpiresInDays, bool HoldsAssistant, ConnectKeyScope Scope, bool NeverExpires = false);
 
 public sealed record IssuedConnectKey(ConnectKeyInfo Key, string Secret);
 

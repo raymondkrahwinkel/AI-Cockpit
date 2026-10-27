@@ -175,10 +175,10 @@ internal static partial class Screenshotter
         // AC-512: the sidebar's Help flyout, opened the way session-settings-flyout already proves headless
         // rendering can — after the window is up, via the Hovers table below.
         ["help-menu"] = (_, _) => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
-        // AC-937: the sidebar's "Plugins ›" flyout, opened the way help-menu already proves headless rendering can.
-        // Autopilot and Open PRs pinned (the shipped default), YouTrack and Workflows collapsed — one of the
-        // collapsed entries carries a badge, so the flyout also shows what a live counter looks like behind it.
-        ["plugins-menu"] = (_, _) => _PluginsMenuScene(),
+        // AC-1763 (mockups Productivity v3 #09, Company v8 #22 and v7 #21): the sidebar's plugin cards — Productivity's two
+        // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
+        ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
+        ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
         ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
@@ -238,8 +238,12 @@ internal static partial class Screenshotter
         ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
         ["options-nodes-status"] = (width, height) => _NodesConnectionStatus(width, height),
         // AC-1456: a connect server as a group in the session list, by an admin key and by a scoped operate key.
+        // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
+        ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
+        ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
+        ["server-start-refused"] = ServerGroupScene.StartRefused,
         ["remote-window"] = ServerGroupScene.Remote,
         ["server-pane-permission"] = ServerGroupScene.Permission,
         // AC-1446: Options opened on the server, its Connect keys (a rotated key just issued, a scope open, a lockout)
@@ -394,6 +398,10 @@ internal static partial class Screenshotter
         ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
         ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
+        // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
+        ["simple-dock-rail-collapsed"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null) },
+        ["simple-dock-rail-browser"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser") },
+        ["simple-dock-rail-files"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.files") },
         // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
         // AC-1527: the stand's Projects page, reached through the rail's own entry.
@@ -646,6 +654,8 @@ internal static partial class Screenshotter
         ["assistant-threads-closed"] = (_, _) => _AssistantThreads(960, closed: true),
         ["assistant-threads-closed-narrow"] = (_, _) => _AssistantThreads(520, closed: true),
         ["assistant-threads-suggestion"] = (_, _) => _AssistantThreads(960, suggestion: true),
+        // AC-1748: "Icons only" chosen, which the file now keeps.
+        ["assistant-threads-icons-only"] = (_, _) => _AssistantThreads(960, iconsOnly: true),
         ["assistant-threads-logos"] = (_, _) => _AssistantThreads(960, thread: "depot", logos: true),
         ["assistant-threads-logos-icons"] = (_, _) => _AssistantThreads(520, thread: "depot", logos: true),
         ["assistant-threads-icons"] = (_, _) => _AssistantThreads(520),
@@ -1060,27 +1070,57 @@ internal static partial class Screenshotter
             : new MainWindow { DataContext = cockpit };
     }
 
-    // AC-937: a CockpitViewModel with a few side-buttons registered through the sink, the same route a real plugin
-    // uses — Autopilot and Open PRs pinned (the shipped default for those two), YouTrack and Workflows collapsed,
-    // one of them (Open PRs) carrying a badge so the flyout also shows a live counter.
-    private static Window _PluginsMenuScene()
+    // AC-1763: a CockpitViewModel with plugins registered through the sink, the same route a real plugin uses —
+    // Productivity (two buttons, one with a text badge, and the Tijd section) and three plugins with a single button,
+    // two of them with a counter.
+    private static MainWindow _PluginSidebarScene(int width, int height, bool folded)
     {
-        var cockpit = new ViewModels.CockpitViewModel();
+        var cockpit = new ViewModels.CockpitViewModel { SidebarWidth = 240 };
         var sink = (Plugins.IPluginContributionSink)cockpit;
 
+        sink.AddPluginSettings("productivity", "Productiviteit", () => new TextBlock());
+        var hours = new SideMenuButtonBadge { Text = "4u30 vandaag", Tone = SideMenuButtonBadgeTone.Success };
+        sink.AddPluginSideButton("productivity", "Uren", () => { }, hours, Material.Icons.MaterialIconKind.ClockOutline);
+        sink.AddPluginSideButton("productivity", "Overzicht", () => { }, new SideMenuButtonBadge(), Material.Icons.MaterialIconKind.ViewDashboardOutline);
+        // A running stopwatch as in v3 #01/#09: red dot, the time, Stop, and what it is on.
+        sink.AddPluginSideSection("productivity", "Tijd", () => new Border
+        {
+            Margin = new Thickness(6, 0),
+            Padding = new Thickness(10, 8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = Theming.ThemeBrush.Resolve("CockpitHairlineBrush", "#2a2f39"),
+            Child = new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Avalonia.Layout.Orientation.Horizontal,
+                        Spacing = 8,
+                        Children =
+                        {
+                            new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = Avalonia.Media.Brushes.IndianRed, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center },
+                            new TextBlock { Text = "0:23:41", FontFamily = new Avalonia.Media.FontFamily("Consolas, monospace"), FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                            new Button { Content = "Stop", Classes = { "Subtle" }, Padding = new Thickness(8, 1), FontSize = 11 },
+                        },
+                    },
+                    new TextBlock { Text = "Review offerte Acme", FontSize = 12 },
+                },
+            },
+        });
+
         sink.AddPluginSideButton("autopilot", "Autopilot", () => { });
-        var openPrsBadge = new SideMenuButtonBadge { Primary = 19, Secondary = 0 };
-        sink.AddPluginSideButton("github-pull-requests", "Open PRs", () => { }, openPrsBadge);
-        sink.AddPluginSideButton("youtrack", "YouTrack", () => { });
-        var issuesBadge = new SideMenuButtonBadge { Primary = 3 };
-        sink.AddPluginSideButton("github-issues", "GitHub Issues", () => { }, issuesBadge);
+        sink.AddPluginSideButton("github-pull-requests", "Open PRs", () => { }, new SideMenuButtonBadge { Primary = 19, Secondary = 0 });
+        sink.AddPluginSideButton("github-issues", "GitHub Issues", () => { }, new SideMenuButtonBadge { Primary = 3 });
 
-        cockpit.ApplyPluginMenuPreference("autopilot", menuOrder: 0, hiddenInMenu: false, pinnedToSidebar: true);
-        cockpit.ApplyPluginMenuPreference("github-pull-requests", menuOrder: 1, hiddenInMenu: false, pinnedToSidebar: true);
-        cockpit.ApplyPluginMenuPreference("youtrack", menuOrder: 2, hiddenInMenu: false, pinnedToSidebar: false);
-        cockpit.ApplyPluginMenuPreference("github-issues", menuOrder: 3, hiddenInMenu: false, pinnedToSidebar: false);
+        if (folded)
+        {
+            cockpit.SetSidebarSectionExpanded("plugin:productivity", false);
+            cockpit.SetSidebarSectionExpanded(Plugins.PluginMenuGroup.CollectedKey, false);
+        }
 
-        return new MainWindow { DataContext = cockpit };
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
     private static readonly string[] WorkKindPluginNames =
@@ -1144,7 +1184,6 @@ internal static partial class Screenshotter
             var more = window.GetVisualDescendants().OfType<Button>().First(button => ToolTip.GetTip(button) is "More for this project");
             more.Flyout?.ShowAt(more);
         },
-        ["plugins-menu"] = window => _OpenFlyout(window, "PluginsMenuButton"),
         ["session-kind-chip-hover"] = window => _OpenTooltip(window, "KindChip"),
         ["first-run-work-kind"] = _ChooseWorkKind,
         ["first-run-work-kind-long"] = _ChooseWorkKind,
@@ -3123,7 +3162,8 @@ internal static partial class Screenshotter
     // AC-1301: the Simple stand with a conversation actually standing in its column — the chat view comes from
     // the same factory the running app hands over, so this shows the column filled rather than merely reserved.
     private static ViewModels.CockpitViewModel _SimpleStand(
-        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null)
+        bool withAssistant, bool assistantOff = false, string? failedToStart = null, ViewModels.SessionViewModel? conversation = null,
+        Action<Docking.DockPanelRegistry>? morePanels = null)
     {
         if (conversation is null)
         {
@@ -3156,6 +3196,8 @@ internal static partial class Screenshotter
                 chat.IsSimpleViewHost = false;
                 return new AssistantChatView { DataContext = chat };
             }));
+
+        morePanels?.Invoke(panels);
 
         // AC-1302: two the assistant started and one the operator opened themselves, so the scene shows the rail
         // drawing the relation rather than everything that happens to be alive.
@@ -3238,6 +3280,55 @@ internal static partial class Screenshotter
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
         return cockpit;
     }
+
+    // AC-1824: Home with two stand-in plugin panels on the rail — the real plugins are store-distributed and not referenced here.
+    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId)
+    {
+        var cockpit = _SimpleStand(withAssistant: true, morePanels: panels =>
+        {
+            panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                "sample.browser", "Browser", Material.Icons.MaterialIconKind.Web, _BrowserStandIn) { KeepAlive = true, CanFloat = true });
+            panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                "sample.files", "Files", Material.Icons.MaterialIconKind.FolderOutline, _FilesStandIn));
+        });
+        cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        cockpit.SimpleOpenDockPanelId = openPanelId;
+        cockpit.DockRailWidth = 420;
+        return cockpit;
+    }
+
+    private static Control _BrowserStandIn() => new DockPanel
+    {
+        Margin = new Thickness(8),
+        Children =
+        {
+            new TextBlock { [DockPanel.DockProperty] = Dock.Top, Text = "docs.krahwinkel-it.nl  ·  Getting started", FontSize = 11, Margin = new Thickness(0, 0, 0, 8), Foreground = _Brush("CockpitTextSecondaryBrush") },
+            new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "Getting started", FontSize = 17, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                    new TextBlock { Text = "Stand-in page: the real Browser keeps its tabs while the panel is collapsed.", Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                },
+            },
+        },
+    };
+
+    private static Control _FilesStandIn() => new StackPanel
+    {
+        Margin = new Thickness(12),
+        Spacing = 4,
+        Children =
+        {
+            new TextBlock { Text = "Projects/Cockpit", FontSize = 11, Foreground = _Brush("CockpitTextSecondaryBrush"), Margin = new Thickness(0, 0, 0, 6) },
+            new TextBlock { Text = "▸ src" },
+            new TextBlock { Text = "▸ plugins-dev" },
+            new TextBlock { Text = "▸ docs" },
+            new TextBlock { Text = "CLAUDE.md", Opacity = 0.8 },
+            new TextBlock { Text = "Cockpit.slnx", Opacity = 0.8 },
+        },
+    };
 
     // AC-1316/AC-1321: the assistant's own conversation in the column with nothing said in it, where its notice stands.
     private static ViewModels.CockpitViewModel _SimpleStandAssistant(bool assistantOff = false, bool controlled = false, string? failedToStart = null)

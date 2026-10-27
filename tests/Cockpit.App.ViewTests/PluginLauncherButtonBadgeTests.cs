@@ -101,7 +101,7 @@ public class PluginLauncherButtonBadgeTests(ITestOutputHelper output)
     {
         var launcherWithoutBadge = new PluginLauncherButton("Workflows", () => { });
         using var shownWithoutBadge = _Show(launcherWithoutBadge);
-        Assert.Empty(launcherWithoutBadge.GetVisualDescendants().OfType<Border>());
+        Assert.DoesNotContain(launcherWithoutBadge.GetVisualDescendants().OfType<Border>(), border => border.Child is TextBlock);
 
         double Measure(SideMenuButtonBadge? badge)
         {

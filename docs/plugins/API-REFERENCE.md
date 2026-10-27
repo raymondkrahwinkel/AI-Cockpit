@@ -506,6 +506,10 @@ Adds a **launcher button** to the left sidebar.
 host.AddSideMenuButton("GitHub Issues", () => _ = host.ShowDialogAsync("Issues", () => BuildIssuesView()));
 ```
 
+A third overload, `AddSideMenuButton(title, onInvoke, MaterialIconKind iconKind)`, gives the row its own icon
+in the sidebar instead of the host's puzzle piece. It requires UI SDK 3.12.0 and `minHostVersion` 0.126.0; an
+older host shows the button without the icon.
+
 ### `SideMenuButtonBadge AddSideMenuButtonWithBadge(...)` {#sidemenu-badge}
 Adds a launcher with a live badge handle. The two-argument overload keeps the host's accent styling. The
 three-argument overload also accepts a `MaterialIconKind`; set `badge.Tone` to `Accent` (default), `Success`,

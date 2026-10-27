@@ -76,6 +76,14 @@
                     <StackPanel Spacing="4" IsVisible="{Binding IsIssuing}">
                         <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding EditorLabel}" PlaceholderText="which machine or controller this key is for"/>
+                        <TextBlock Text="Expires" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <RadioButton GroupName="expiry" Content="After" IsChecked="{Binding !EditorNeverExpires}"/>
+                            <NumericUpDown Value="{Binding EditorExpiresInDays}" Minimum="1" Maximum="{Binding EditorMaximumExpiryDays}"
+                                           Increment="1" FormatString="0" Width="104" IsEnabled="{Binding !EditorNeverExpires}"/>
+                            <TextBlock Text="days" VerticalAlignment="Center"/>
+                            <RadioButton GroupName="expiry" Content="Never" IsChecked="{Binding EditorNeverExpires}"/>
+                        </StackPanel>
                     </StackPanel>
                     <TextBlock Text="Capability" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                     <RadioButton GroupName="capability" IsEnabled="{Binding IsIssuing}" IsChecked="{Binding !EditorIsAdmin}">

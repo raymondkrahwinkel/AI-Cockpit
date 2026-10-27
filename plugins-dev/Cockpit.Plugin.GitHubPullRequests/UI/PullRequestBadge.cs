@@ -5,6 +5,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
+using Material.Icons;
 
 namespace Cockpit.Plugin.GitHubPullRequests.UI;
 
@@ -30,7 +31,7 @@ internal sealed class PullRequestBadge : IDisposable
     {
         _host = host;
         _settings = settings;
-        _badge = host.AddSideMenuButtonWithBadge("Open PRs", _OpenDialog);
+        _badge = host.AddSideMenuButtonWithBadge("Open PRs", _OpenDialog, MaterialIconKind.SourcePull);
         _badgeChanged = host.Channel.Subscribe(GitHubPullRequestsChannel.BadgeChanged, _OnBadgeChanged);
         _ShowCurrent();
     }

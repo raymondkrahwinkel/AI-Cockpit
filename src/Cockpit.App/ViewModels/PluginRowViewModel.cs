@@ -22,16 +22,6 @@ public sealed class PluginRowViewModel(InstalledPlugin installed, bool hasSettin
         ? "Show this plugin's buttons and sections in the left menu again."
         : "Keep this plugin's buttons and sections out of the left menu. The plugin keeps running: its shortcut and command-palette entry still work — that is the difference with disabling it.";
 
-    // Whether this plugin's contributions show top-level in the sidebar rather than collapsed under "Plugins ›" (AC-937).
-    public bool PinnedToSidebar => installed.Registration?.PinnedToSidebar ?? false;
-
-    // The pin toggle's label names the action, the same way MenuVisibilityLabel above does.
-    public string PinToggleLabel => PinnedToSidebar ? "Unpin from sidebar" : "Pin to sidebar";
-
-    public string PinToggleTip => PinnedToSidebar
-        ? "Move this plugin's buttons and sections into the collapsed \"Plugins ›\" menu."
-        : "Show this plugin's buttons and sections directly in the sidebar instead of collapsed under \"Plugins ›\".";
-
     // True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.
     public bool HasSettings => hasSettings;
 

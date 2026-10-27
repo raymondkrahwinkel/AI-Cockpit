@@ -1,3 +1,4 @@
+using Cockpit.Plugin.Productivity.Contracts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.UI;
@@ -11,6 +12,9 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     public const string WorkspaceTypeId = "workspace.productivity.hours";
     public const string OverviewWorkspaceTypeId = "workspace.productivity.overview";
 
+    // Uren · Dag and Overzicht with fixed data, for `--screenshot --scene plugin:<name>` (AC-1766).
+    public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> WorkspaceScenes => ProductivityScenes.Workspaces;
+
     private ICockpitUiHost? _host;
     private ProductivityController? _controller;
     private OverviewController? _overviewController;
@@ -22,16 +26,16 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         _controller = new ProductivityController(host.Channel, TimeProvider.System);
         _overviewController = new OverviewController(host.Channel, TimeProvider.System);
         _reports = host.Channel.Subscribe("productivity.hours-reported", message => { _ = _RefreshAsync(host, _controller); });
-        _controller.UpdateProjectFallback(host.ActiveSessionWorkingDirectory);
+        _controller.UpdateProjectFallback(host.ActiveProjectId);
         var badge = host.AddSideMenuButtonWithBadge("Uren", () => _Open(host), MaterialIconKind.ClockOutline);
         badge.Tone = SideMenuButtonBadgeTone.Success;
         _controller.AttachBadge(badge);
-        host.AddSideMenuButton("Overzicht", () => _OpenOverview(host));
+        host.AddSideMenuButton("Overzicht", () => _OpenOverview(host), MaterialIconKind.ViewDashboardOutline);
         host.AddSideMenuSection("Tijd", () => new TimeSidebar(_controller, () => _Open(host)));
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             WorkspaceTypeId,
             "Uren",
-            _ => new HoursWorkspaceBody(_controller, host))
+            _ => new HoursWorkspaceBody(_controller, host, () => _OpenOverview(host)))
         {
             IconKind = MaterialIconKind.ClockOutline,
             Description = "Leg je eigen uren vast met een duur of stopwatch en bekijk ze per dag.",
@@ -40,7 +44,7 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
         host.AddWorkspaceType(new WorkspaceTypeRegistration(
             OverviewWorkspaceTypeId,
             "Overzicht",
-            _ => new OverviewWorkspaceBody(_overviewController, () => _Open(host)))
+            _ => new OverviewWorkspaceBody(_overviewController, () => _Open(host), () => _OpenOverview(host), () => _RefreshInterval(host)))
         {
             IconKind = MaterialIconKind.ViewDashboardOutline,
             Description = "Bekijk jouw tijd, agents, tokens en kosten per project, ticket en sessie.",
@@ -65,9 +69,12 @@ public sealed class ProductivityUi : ICockpitPluginUi, IDisposable
     {
         if (_host is { } host && _controller is { } controller)
         {
-            controller.UpdateProjectFallback(host.ActiveSessionWorkingDirectory);
+            controller.UpdateProjectFallback(host.ActiveProjectId);
         }
     }
+
+    private static TimeSpan _RefreshInterval(ICockpitUiHost host) =>
+        RefreshPolicy.Interval((host.Storage.Get<WeekSettings>(WeekSettings.StorageKey) ?? WeekSettings.Default).RefreshSeconds);
 
     private static async void _Open(ICockpitUiHost host)
     {

@@ -32,6 +32,23 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **managed Claude and Codex CLIs on the headless server.** Install, Remove and auto-update in a server
+  profile's settings now work there as on the desktop (no major jumps on their own). A managed version wins over the
+  image's own copy; Remove falls back to it. The CLIs sit on a volume of their own (`cli`), and the agent's home is a
+  volume too (`agent-home`), so a managed CLI and Claude's `.claude.json` outlive a new image. Sessions still run every
+  CLI as `agent`; the server only downloads, checks the checksum and hands the copy over. Run
+  `docker compose up -d` once with the new `compose.yaml`, or the two new volumes stay anonymous.
+
+- added: **server admins can issue connect keys that never expire.** Server policy can disable permanent keys, and
+  the Connect keys page and node tool make the choice explicit without changing the existing 30-day default.
+- added: **a plugin can give a sidebar button its own icon** without a counter, through a new
+  `AddSideMenuButton(title, onInvoke, iconKind)` overload (plugin SDK UI 3.12.0, Cockpit 0.126.0).
+- added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
+  get a dollar rate per million tokens in Productivity's settings; Overzicht names the profiles without one and
+  where to set it. Plugins read the profile of a usage record as `CockpitUsageDelta.ProfileLabel` (host 0.125.0, SDK 3.34.0).
+
+- added: **zoom and browser keys in the Browser tab.** Ctrl+plus, Ctrl+minus, Ctrl+0 and Ctrl+wheel zoom the page,
+  and the zoom is kept per site, also after a restart. Alt+Left, Alt+Right, F5 and Ctrl+R go back, forward and reload.
 - added: **plugins hear about an account change.** A plugin that contributes an OAuth MCP server can now subscribe to
   `McpServerAccountChanged` and drop what it cached about the previous account when someone signs in as another user
   or signs out. Only the plugin's own servers raise it, and it carries the server name, never a token.
@@ -343,6 +360,37 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"
   line, and a failing one shows why. A team project that has no Cockpit project definition yet now shows in its
   server's section too, saying so, instead of being left out without a word.
+- fixed: **the status bar no longer flickers while you hover Managed worktrees, Delegated tasks or CPU/RAM.** Their
+  tooltip opened over the pointer at the bottom of the screen, closed, and opened again; it now opens above the bar.
+
+- fixed: **Schedules can no longer take the cockpit down when its reminder count arrives.** A count that came in
+  while the Plugins button had no counter attached crashed the app; it is now skipped.
+
+- fixed: **a Panels tab no longer shows through the Simple view.** With Uren, Overzicht, Projects, Autopilot, a
+  dashboard or any other tab that is not a Sessions tab open, switching to Simple left that tab's content standing
+  under Simple's own pages. It now steps aside, and switching back to Panels shows the same tab as you left it.
+- fixed: **typing on a website in the Browser tab.** No character reached a page, so a search box such as YouTube's
+  or a form stayed empty, and Enter sent no form. Letters, digits, accents (also through a dead key), Enter, Tab, the
+  arrows and Ctrl+A, Ctrl+C and Ctrl+V all reach the page now, and only the browser's own keys stay in Cockpit.
+- fixed: **Productivity shows project names, tickets and sessions instead of ids.** Uren › Dag named a project by its
+  bare id and Snel vastleggen by the session's worktree folder; both now show the project's name, and a line saved
+  with a worktree folder counts with its project. Each project and Agents actief fold open per session as project ·
+  ticket · session name, and Overzicht's Agents table shows the ticket, the session name and the profile. An id that
+  belongs to no project reads "Onbekend project (…)" with a tooltip (Productivity 0.7.0).
+
+- fixed: **the Browser tab fits the page on a display scaled above 100%.** At 125% or 150% the page was drawn too
+  large, so its right side, its scrollbars and the buttons at the bottom of a dialog fell outside the tab. Dragging a
+  scrollbar past the edge of the tab and slow touchpad scrolling work too now.
+- fixed: **a login in the Browser tab survives a crash.** Cookies reach disk as soon as a page has loaded, instead of
+  only every half minute or when Cockpit closes normally.
+- fixed: **the first download of the browser engine says what happens.** It shows how many MB are done, says the
+  browser opens by itself afterwards without a restart, and a failed download has a "Try again" button.
+- fixed: **Cockpit no longer freezes when a session ends while the browser is open.** With a browser tab open, the
+  end of any session set off an endless chain of updates in the browser plugin (0.7.2) that kept the window from
+  drawing or answering a click, until the status bar was hidden to save it. The status bar also no longer redraws a
+  plugin's line when the text has not changed.
+- fixed: **"Icons only" in the Assistant window is remembered.** The thread rail's choice was dropped every time the
+  layout was saved, so it came back as icons plus labels after reopening the window or restarting the cockpit.
 - fixed: **agents get their own browser on Ubuntu 24.04 again.** On Linux the agent browser now starts the
   installed Chrome before the downloaded headless shell, which Ubuntu's AppArmor stops from sandboxing, and a
   browser that fails to start says why in the log instead of leaving the session silently without one.
@@ -478,6 +526,16 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   stands, and its columns follow the width of the list rather than the window. The selected project's details stand
   on the right, and the selection stays put when the list refreshes. The Cards, List and Continue layouts are gone.
 
+- changed: **Depot files now keeps the tree full-width above a compact file detail.** Documents show only their first
+  heading and paragraph; artifacts keep Download, Open and sharing controls without rendering an image or text preview
+  inside the rail. Shared artifacts carry a link icon in the tree, in both light and dark themes. Depot plugin 0.22.0.
+- changed: **the plugins in the sidebar are cards.** Each plugin that adds buttons and a section gets one foldable
+  card named after it, with its settings gear in the header; plugins with a single button share one "Plugins · n" card.
+  The cards stand at the bottom of the sidebar just above Plugin store, and in the Simple rail above Settings. The
+  fold is remembered across restarts, and a folded card shows the sum of its counters. A row shows the plugin's own
+  icon in the quieter secondary text colour, and a counter is a small amber pill. Depot, Schedules, GitHub Pull
+  Requests, GitHub Issues, YouTrack, Autopilot, Workflows, Prompt Library, Transcript Search and Productivity bring
+  their own icon, and Productivity's stopwatch sits straight under Overzicht.
 - changed: **the nightly ships only the Velopack files.** The nightly release no longer carries the Linux tarball, the
   macOS `.app.zip` and `.dmg` or the AppImage; the in-app updater and the plugin SDK are unchanged, and a nightly now
   comes in through the update channel. Stable releases still ship those packages.
@@ -502,6 +560,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Removed
 
+- removed: **pin to sidebar for plugins.** Plugins no longer float in a "Plugins ›" list, so there is nothing to pin
+  to; the order you chose in the plugin store still decides which card comes first.
 - removed: the Depot plugin no longer falls back to a Depot's MCP tools when that Depot is too old to list its
   projects over REST; such a Depot now says it is too old. The plugin itself talks to Depot over REST and the event
   channel only, and a session still gets the Depot MCP server as before. Depot 0.21.0.

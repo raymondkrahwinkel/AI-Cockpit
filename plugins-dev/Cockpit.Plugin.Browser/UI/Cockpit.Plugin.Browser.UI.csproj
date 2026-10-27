@@ -37,7 +37,7 @@
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="SharpCompress" Version="0.49.1" />
+    <PackageReference Include="SharpCompress" Version="0.50.7" />
     <!-- The bare binding only (AC-1709 route c); its version is the CEF version of Runtime/cef-catalog.json. -->
     <PackageReference Include="CefGlue.Next.Core" Version="154.8037.98" />
   </ItemGroup>

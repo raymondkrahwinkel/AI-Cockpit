@@ -36,6 +36,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // does not wire one (existing test call sites, design-time/previewer) — the same "no manager, no gate" the
     // New-session dialog already tolerates.
     private readonly IWorktreeManager? _worktreeManager;
+    private CancellationTokenSource? _gitUrlDetectCts;
 
     // Raised when the dialog is done: the saved project, or null when the operator cancelled.
     public event Action<Project?>? CloseRequested;
@@ -89,7 +90,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Category = project.Category ?? string.Empty;
         Description = project.Description ?? string.Empty;
         SourceDirectory = project.SourceDirectory ?? string.Empty;
-        GitUrl = project.GitUrl;
+        GitUrl = project.GitUrl ?? string.Empty;
 
         // Item 0 is the Folder row above (SourceDirectory); everything after it is an extra repository row.
         foreach (var repository in project.SourceDirectories.Skip(1))
@@ -318,6 +319,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
             viewModel._ApplyValues(baseline.Name, baseline.Description, baseline.BehaviorPrompt, baseline.IsolateInWorktreeByDefault);
         }
 
+        if (string.IsNullOrWhiteSpace(viewModel.GitUrl) && !string.IsNullOrWhiteSpace(viewModel.SourceDirectory))
+        {
+            await viewModel._DetectGitUrlAsync(viewModel.SourceDirectory).ConfigureAwait(true);
+        }
+
         return viewModel;
     }
 
@@ -414,8 +420,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string? _selectedProfileLabel;
 
-    // Where `SourceDirectory` was cloned from, kept so an edit does not lose it. Set by the clone flow, never typed.
-    public string? GitUrl { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string _gitUrl = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private string? _gitUrlError;
 
     // Always at least "Folder" — the picker no longer disappears (`ProjectResourceRowViewModel.ShowsMemorySourcePicker`
     // is true for every Memory row) just because no plugin registered a source (AC-165, AC-499).
@@ -500,7 +511,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         Task.WhenAll(PluginFields.Select(field => field.LoadOptionsAsync(cancellationToken)));
 
     // A project needs a name — it is what every other surface shows it by.
-    public bool CanSave => !string.IsNullOrWhiteSpace(Name) && (_writeBack is null || !NameOrigin.IsLockedHere);
+    public bool CanSave => !string.IsNullOrWhiteSpace(Name) && GitUrlError is null && (_writeBack is null || !NameOrigin.IsLockedHere);
 
     // AC-247: set while SaveAsync's own write-back call (and any conflict re-read/retry) is in flight — the view
     // disables Save and shows a spinner rather than letting a second click start a second, overlapping write.
@@ -513,11 +524,47 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string? _saveError;
 
-    // Assigns a folder chosen by the picker, dropping a stale clone URL when the operator points the project somewhere else.
+    // Assigns a folder chosen by the picker. An existing repository URL is the operator's answer and is never replaced.
     public void ApplyPickedDirectory(string directory, string? gitUrl = null)
     {
         SourceDirectory = directory;
-        GitUrl = gitUrl;
+        if (!string.IsNullOrWhiteSpace(gitUrl))
+        {
+            GitUrl = gitUrl;
+        }
+        else if (string.IsNullOrWhiteSpace(GitUrl))
+        {
+            _ = _DetectGitUrlAsync(directory);
+        }
+    }
+
+    partial void OnGitUrlChanged(string value)
+    {
+        GitUrlError = _TryNormalizeGitUrl(value, out _) ? null : "Enter a valid credential-free Git repository URL.";
+        SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool _TryNormalizeGitUrl(string? value, out string? normalized)
+    {
+        normalized = null;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        normalized = _worktreeManager?.NormalizeGitUrl(value);
+        return normalized is not null;
+    }
+
+    private async Task _DetectGitUrlAsync(string directory)
+    {
+        if (_worktreeManager is null || string.IsNullOrWhiteSpace(directory)) return;
+        _gitUrlDetectCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _gitUrlDetectCts = cts;
+        try
+        {
+            var remote = await Task.Run(() => _worktreeManager.DetectRemoteUrlAsync(directory, cts.Token), cts.Token).ConfigureAwait(true);
+            if (ReferenceEquals(_gitUrlDetectCts, cts) && string.IsNullOrWhiteSpace(GitUrl) && _TryNormalizeGitUrl(remote, out var normalized)) GitUrl = normalized ?? string.Empty;
+        }
+        catch (Exception) { }
+        finally { if (ReferenceEquals(_gitUrlDetectCts, cts)) _gitUrlDetectCts = null; cts.Dispose(); }
     }
 
     // The edited values as a project, reusing the id when editing so the sessions and settings that reference it keep pointing at the same one.
@@ -548,7 +595,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             SourceDirectories = _NullIfBlank(SourceDirectory) is { } folder
                 ? [new(folder), .. RepositoryRows.Select(row => row.ToDomain())]
                 : [],
-            GitUrl = GitUrl,
+            GitUrl = _TryNormalizeGitUrl(GitUrl, out var normalizedGitUrl) ? normalizedGitUrl : null,
             DefaultProfileLabel = SelectedProfileLabel,
             BehaviorPrompt = _Carry(BehaviorOrigin, _NullIfBlank(BehaviorPrompt), p => p.BehaviorPrompt),
             // What the operator pointed at — a file, a URL, or the stored copy's path when they left it alone. The
@@ -863,7 +910,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
             _NullIfBlank(BehaviorPrompt),
             IsolateInWorktreeByDefault,
             _SameNames(enabledMcpServerNames, _openedEnabledMcpServerNames) ? baseline.EnabledMcpServerNames : enabledMcpServerNames,
-            await _BuildLogoEditAsync().ConfigureAwait(true));
+            await _BuildLogoEditAsync().ConfigureAwait(true),
+            _TryNormalizeGitUrl(GitUrl, out var normalizedGitUrl) ? normalizedGitUrl : null);
     }
 
     // Null (untouched) unless LogoSource moved from what this dialog opened with (AC-763) — LogoSource is always a
@@ -958,6 +1006,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         && _FieldEquals(edit.Name, baseline.Name)
         && _FieldEquals(edit.Description, baseline.Description)
         && _FieldEquals(edit.BehaviorPrompt, baseline.BehaviorPrompt)
+        && _FieldEquals(edit.GitUrl, baseline.GitUrl)
         && edit.IsolateInWorktreeByDefault == baseline.IsolateInWorktreeByDefault
         && _SameNames(edit.EnabledMcpServerNames, baseline.EnabledMcpServerNames);
 
@@ -972,7 +1021,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
         // AC-763: no "latest" logo to fall back to (SharedProjectBinding carries no re-applicable edit) —
         // mine.LogoEdit carries through unconditionally. A retried null (untouched) still resolves correctly:
         // WriteBackAsync re-reads its current state on every call and carries an untouched logo from that.
-        mine.LogoEdit);
+        mine.LogoEdit,
+        !_FieldEquals(mine.GitUrl, baseline.GitUrl) ? mine.GitUrl : latest.GitUrl);
 
     private static bool _FieldEquals(string? left, string? right) =>
         string.Equals(_NullIfBlank(left ?? string.Empty), _NullIfBlank(right ?? string.Empty), StringComparison.Ordinal);

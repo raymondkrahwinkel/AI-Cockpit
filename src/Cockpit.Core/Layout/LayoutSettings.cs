@@ -40,6 +40,9 @@ public sealed record LayoutSettings
     // 40px strip. Only one panel can be open at a time.
     public string? OpenDockPanelId { get; init; }
 
+    // AC-1824: the same for the Simple stand, which keeps its own rail state apart from the panels stand's.
+    public string? SimpleOpenDockPanelId { get; init; }
+
     // Whether the Assistant is docked into the rail instead of its own floating window (AC-950 [c]). A
     // separate field from `OpenDockPanelId`: the assistant can be docked while the rail itself is collapsed.
     public bool AssistantDocked { get; init; }
@@ -66,6 +69,11 @@ public sealed record LayoutSettings
     public AssistantThreadRail AssistantThreadRailWindow { get; init; }
 
     public AssistantThreadRail AssistantThreadRailDock { get; init; }
+
+    // AC-1762: the left sidebar's foldable sections that are folded shut, by key (`plugin:{id}` and `plugins` since
+    // AC-1790). A section not listed is open, so an empty list — and a file from before this field — is
+    // everything open.
+    public IReadOnlyList<string> CollapsedSidebarSections { get; init; } = [];
 
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
