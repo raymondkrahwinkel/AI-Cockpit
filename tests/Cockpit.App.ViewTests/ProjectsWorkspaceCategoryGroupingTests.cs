@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -61,14 +62,17 @@ public class ProjectsWorkspaceCategoryGroupingTests
             window.UpdateLayout();
 
             var headings = view.GetVisualDescendants().OfType<TextBlock>()
-                .Where(text => text.Text is "Werk" or "Privé")
+                .Where(text => text.Text is "Werk" or "Privé"
+                    && text.GetVisualAncestors().OfType<ProjectsToolbar>().Any())
                 .Select(text => text.Text)
                 .ToList();
             Assert.Equal(["Werk", "Privé"], headings);
 
             var startButton = view.GetVisualDescendants().OfType<Button>()
                 .First(button => button.Content is StackPanel panel
-                    && panel.Children.OfType<TextBlock>().Any(text => text.Text == "Start"));
+                    && panel.Children.OfType<TextBlock>().Any(text => text.Text == "Start")
+                    && button.GetVisualAncestors().OfType<ProjectListRow>()
+                        .Any(row => row.DataContext is ProjectListItemViewModel item && item.Id == onboarding.Id));
 
             // Proves the nested-ItemsControl $parent binding actually resolved to the real CockpitViewModel command
             // instance rather than silently landing on null (Avalonia logs, but does not throw, a bad binding path).

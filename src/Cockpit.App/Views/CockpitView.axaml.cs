@@ -64,9 +64,6 @@ public partial class CockpitView : UserControl
             WorkspacesHelp.Children.Add(new HelpHint(help, new HelpAddress("workspaces", "kinds"), origin: "a “?” on the workspace strip"));
         }
 
-        // AC-1600: B2's detail pane is clamp(360, 28% of the width, 500); the list takes the rest.
-        ProjectsSplit.SizeChanged += (_, args) =>
-            ProjectsSplit.ColumnDefinitions[1].Width = new GridLength(Math.Clamp(args.NewSize.Width * 0.28, 360, 500));
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

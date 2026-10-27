@@ -141,4 +141,10 @@ public sealed partial class ProjectListItemViewModel : ObservableObject
     public bool ShowsQuietStatus => IsOnThisMachine && !HasRemoteChanges && !IsRunning && !HasJobs;
 
     public string QuietStatus => IsInOrganization ? "✓ Up to date" : "Only on this machine";
+
+    public string CompactStatus => CanAdd ? "Ready to add"
+        : HasRemoteChanges ? "Changed on Depot"
+        : IsRunning ? RunningLabel
+        : HasJobs ? JobsLabel
+        : QuietStatus;
 }

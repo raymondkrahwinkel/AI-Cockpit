@@ -1,11 +1,14 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.Services;
+using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
+using CommunityToolkit.Mvvm.Input;
 using NSubstitute;
 
 namespace Cockpit.App.ViewTests;
@@ -37,6 +40,14 @@ public sealed class Ac1600ProjectsListTests
 
                     Assert.True(wide == column.IsEffectivelyVisible, $"at {width} px the description column shows: {column.IsEffectivelyVisible}");
                     Assert.True(wide != underName.IsEffectivelyVisible, $"at {width} px the description under the name shows: {underName.IsEffectivelyVisible}");
+
+                    ((CockpitViewModel)window.DataContext!).Projects.Density = ProjectsDensity.Compact;
+                    window.UpdateLayout();
+                    var descriptionHeader = window.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == "Description");
+                    Assert.True(row.IsCompact);
+                    Assert.False(column.IsEffectivelyVisible);
+                    Assert.False(underName.IsEffectivelyVisible);
+                    Assert.False(descriptionHeader.IsEffectivelyVisible);
                 }
                 finally
                 {
@@ -119,5 +130,48 @@ public sealed class Ac1600ProjectsListTests
         Assert.NotSame(beta, projects.SelectedListItem);
         Assert.Equal("depot:beta", projects.SelectedListItem?.Id);
         Assert.Equal(["depot:beta"], rows.Where(row => row.IsSelected).Select(row => row.Id));
+
+        var starts = 0;
+        var keyboardStore = Substitute.For<IProjectStore>();
+        keyboardStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(ProjectSettings.Empty
+            .WithProject(Project.Create("Alpha") with { DefaultProfileLabel = "personal" })
+            .WithProject(Project.Create("Beta") with { DefaultProfileLabel = "personal" }));
+        var keyboardProjects = TestProjects.ViewModel(keyboardStore, Substitute.For<ISessionDialogService>());
+        keyboardProjects.CardActions = new ProjectCardActions(
+            new RelayCommand<Project>(_ => starts++),
+            new RelayCommand<Project>(_ => { }),
+            new RelayCommand<ProjectJobChoice>(_ => { }),
+            new RelayCommand<Project>(_ => { }),
+            new RelayCommand<Project>(_ => { }),
+            new RelayCommand<Project>(_ => { }),
+            new RelayCommand<Project>(_ => { }));
+        await keyboardProjects.LoadAsync();
+
+        HeadlessAvalonia.Run(() =>
+        {
+            var workspace = new ProjectsWorkspace { DataContext = keyboardProjects };
+            var window = new Window { Content = workspace, Width = 800, Height = 600 };
+            window.Show();
+            try
+            {
+                window.UpdateLayout();
+                var list = workspace.GetVisualDescendants().OfType<DockPanel>().Single(panel => panel.Name == "ProjectList");
+                list.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Down });
+                var selected = keyboardProjects.SelectedListItem;
+                Assert.Equal("Beta", selected?.Name);
+                list.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+                Assert.Equal(1, starts);
+
+                var moreButton = list.GetVisualDescendants().OfType<Button>()
+                    .First(button => ToolTip.GetTip(button) is "More for this project");
+                moreButton.Focus();
+                moreButton.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+                Assert.Equal(1, starts);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
     }
 }

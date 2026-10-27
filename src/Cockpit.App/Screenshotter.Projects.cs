@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.VisualTree;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Projects;
@@ -16,6 +18,13 @@ internal static partial class Screenshotter
     [
         // B2 next to mockup b2-01 (1100) and b2-02 (1920): two Depot connections, three organisations and this machine.
         new("projects-workspace", (_, _) => _ProjectsWorkspace(_StageTwoConnections)),
+        new("projects-workspace-compact", (_, _) => _ProjectsWorkspace(cockpit =>
+        {
+            _StageTwoConnections(cockpit);
+            cockpit.Projects.Density = ProjectsDensity.Compact;
+        })),
+        new("projects-workspace-narrow", (_, _) => _ProjectsWorkspace(_StageTwoConnections)),
+        new("projects-workspace-narrow-detail", (_, _) => _ProjectsWorkspaceNarrowDetail()),
         // AC-488: nothing staged, the only state the starting-point gallery is drawn in.
         new("projects-workspace-empty", (_, _) => _ProjectsWorkspace(stage: null)),
         // A team project the source listed but cannot offer yet sits beside one it can (AC-1758).
@@ -58,7 +67,18 @@ internal static partial class Screenshotter
         cockpit.Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id).GetAwaiter().GetResult();
         stage?.Invoke(cockpit);
 
-        return new MainWindow { DataContext = cockpit };
+        return new MainWindow { DataContext = cockpit, MinWidth = 0 };
+    }
+
+    private static MainWindow _ProjectsWorkspaceNarrowDetail()
+    {
+        var window = _ProjectsWorkspace(_StageTwoConnections);
+        window.Opened += (_, _) =>
+        {
+            window.GetVisualDescendants().OfType<ProjectsWorkspace>().Single().ShowDetail();
+            window.UpdateLayout();
+        };
+        return window;
     }
 
     private const string SynvolutionSource = "depot-synvolution";

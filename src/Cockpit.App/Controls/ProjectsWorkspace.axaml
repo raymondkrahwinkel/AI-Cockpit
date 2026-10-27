@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:views="using:Cockpit.App.Views"
+             x:Class="Cockpit.App.Controls.ProjectsWorkspace"
+             x:DataType="vm:ProjectsViewModel"
+             Focusable="True">
+    <Grid x:Name="ProjectsSplit" ColumnDefinitions="*,400">
+        <DockPanel x:Name="ProjectList" Grid.Column="0" controls:ProjectListGrid.SizesColumns="True"
+                   controls:ProjectListGrid.IsCompact="{Binding IsCompact}" Grid.IsSharedSizeScope="True">
+            <Border DockPanel.Dock="Right" Width="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+            <Border DockPanel.Dock="Top" Padding="16,6"
+                    IsVisible="{Binding !$self.(controls:ProjectListGrid.IsSmall)}"
+                    Background="{DynamicResource CockpitWindowBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <controls:ProjectListGrid>
+                    <TextBlock controls:ProjectListGrid.Cell="main" Classes="columnHead" Text="Project"/>
+                    <TextBlock controls:ProjectListGrid.Cell="desc" Classes="columnHead" Text="Description"/>
+                    <TextBlock controls:ProjectListGrid.Cell="prof" Classes="columnHead" Text="Runs on"/>
+                    <TextBlock controls:ProjectListGrid.Cell="last" Classes="columnHead" Text="Last opened"/>
+                    <TextBlock controls:ProjectListGrid.Cell="pl" Classes="columnHead" Text="Runs on · last opened"/>
+                    <TextBlock controls:ProjectListGrid.Cell="stat" Classes="columnHead" Text="Status"/>
+                    <Panel controls:ProjectListGrid.Cell="act"/>
+                </controls:ProjectListGrid>
+            </Border>
+            <ScrollViewer>
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding ProjectSections}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectSectionViewModel">
+                                <StackPanel>
+                                    <controls:ProjectSectionHeader
+                                        ToggleCommand="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).ToggleSectionCommand}"
+                                        TryAgainCommand="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).RefreshSharedProjectsCommand}"/>
+                                    <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding !IsCollapsed}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:ProjectListItemViewModel">
+                                                <controls:ProjectListRow SelectCommand="{Binding $parent[controls:ProjectsWorkspace].SelectProjectCommand}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock IsVisible="{Binding HasNoSharedProjectSources}" FontSize="11" Margin="16,10" TextWrapping="Wrap"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}">
+                        Projects can also come from a plugin, shared with your team.
+                        <LineBreak/>
+                        <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
+                    </TextBlock>
+                    <Button Content="Manage projects" Classes="Subtle" Margin="16,6,16,16" HorizontalAlignment="Left"
+                            Command="{Binding $parent[views:CockpitView].((vm:CockpitViewModel)DataContext).ManageProjectsCommand}"/>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+
+        <ScrollViewer x:Name="ProjectDetail" Grid.Column="1" Background="{DynamicResource CockpitChromeBgBrush}">
+            <StackPanel Margin="24,22">
+                <Button Classes="Subtle" Content="← Projects" HorizontalAlignment="Left" Margin="0,0,0,16"
+                        IsVisible="{Binding $parent[controls:ProjectsWorkspace].IsNarrow}"
+                        Command="{Binding $parent[controls:ProjectsWorkspace].BackCommand}"/>
+                <controls:ProjectDetailPane DataContext="{Binding SelectedListItem}"
+                                            IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                <StackPanel IsVisible="{Binding ShowsStartingPoints}" Margin="0,40,0,0">
+                    <TextBlock Text="What do you want to work on?" FontSize="21" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                    <controls:StartingPointsView DataContext="{Binding}"/>
+                    <Button Classes="Accent" Content="+ New project" HorizontalAlignment="Center" Margin="0,16,0,0"
+                            Command="{Binding AddProjectCommand}"/>
+                </StackPanel>
+                <TextBlock Text="Pick a project on the left." IsVisible="{Binding ShowsPickHint}"
+                           HorizontalAlignment="Center" Margin="0,200,0,0" FontSize="11"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

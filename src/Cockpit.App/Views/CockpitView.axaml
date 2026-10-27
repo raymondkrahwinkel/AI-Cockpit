@@ -1403,88 +1403,10 @@
                 </Panel>
             </DockPanel>
 
-            <!-- The projects overview (AC-162), as B2 since AC-1600: a toolbar over the full width, the list in its
-                 source/organisation sections on the left and the selected project's detail on the right. The detail
-                 pane is clamp(360, 28% of the width, 500) wide (set in code-behind) and the list takes the rest; the
-                 rows' columns follow the list's own width (`ProjectListGrid.SizesColumns`), not the window's. -->
+            <!-- The B2 Projects host owns the responsive list/detail navigation. -->
             <DockPanel Grid.Row="1" IsVisible="{Binding Workspaces.IsProjectsActive}">
                 <controls:ProjectsToolbar DockPanel.Dock="Top" DataContext="{Binding Projects}"/>
-                <Grid x:Name="ProjectsSplit" ColumnDefinitions="*,400">
-                    <DockPanel x:Name="ProjectList" Grid.Column="0" controls:ProjectListGrid.SizesColumns="True"
-                               Grid.IsSharedSizeScope="True">
-                        <Border DockPanel.Dock="Right" Width="1" Background="{DynamicResource CockpitHairlineBrush}"/>
-                        <Border DockPanel.Dock="Top" Padding="16,6"
-                                IsVisible="{Binding !$self.(controls:ProjectListGrid.IsSmall)}"
-                                Background="{DynamicResource CockpitWindowBgBrush}"
-                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
-                            <controls:ProjectListGrid>
-                                <TextBlock controls:ProjectListGrid.Cell="main" Classes="columnHead" Text="Project"/>
-                                <TextBlock controls:ProjectListGrid.Cell="desc" Classes="columnHead" Text="Description"/>
-                                <TextBlock controls:ProjectListGrid.Cell="prof" Classes="columnHead" Text="Runs on"/>
-                                <TextBlock controls:ProjectListGrid.Cell="last" Classes="columnHead" Text="Last opened"/>
-                                <TextBlock controls:ProjectListGrid.Cell="pl" Classes="columnHead" Text="Runs on · last opened"/>
-                                <TextBlock controls:ProjectListGrid.Cell="stat" Classes="columnHead" Text="Status"/>
-                                <Panel controls:ProjectListGrid.Cell="act"/>
-                            </controls:ProjectListGrid>
-                        </Border>
-                        <ScrollViewer>
-                            <StackPanel>
-                                <ItemsControl ItemsSource="{Binding Projects.ProjectSections}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:ProjectSectionViewModel">
-                                            <StackPanel>
-                                                <controls:ProjectSectionHeader
-                                                    ToggleCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.ToggleSectionCommand}"
-                                                    TryAgainCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.RefreshSharedProjectsCommand}"/>
-                                                <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding !IsCollapsed}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate x:DataType="vm:ProjectListItemViewModel">
-                                                            <controls:ProjectListRow
-                                                                SelectCommand="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.SelectListItemCommand}"/>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <!-- AC-248: only shown when no source is registered at all — a signed-out connection
-                                     already speaks for itself in its own section. Host-generic wording (AC-244). -->
-                                <TextBlock IsVisible="{Binding Projects.HasNoSharedProjectSources}" FontSize="11"
-                                           Margin="16,10" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}">
-                                    Projects can also come from a plugin, shared with your team.
-                                    <LineBreak/>
-                                    <Run Text="Set one up in "/><Run Text="Options" FontWeight="SemiBold"/><Run Text=", under Plugins."/>
-                                </TextBlock>
-
-                                <!-- Kept until the Manage-projects window itself goes (AC-1604); the old overview's
-                                     footer was its only door from this page. -->
-                                <Button Content="Manage projects" Classes="Subtle" Margin="16,6,16,16" HorizontalAlignment="Left"
-                                        Command="{Binding ManageProjectsCommand}"/>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </DockPanel>
-
-                    <ScrollViewer Grid.Column="1" Background="{DynamicResource CockpitChromeBgBrush}">
-                        <Panel Margin="24,22">
-                            <controls:ProjectDetailPane DataContext="{Binding Projects.SelectedListItem}"
-                                                        IsVisible="{Binding $self.DataContext, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                            <!-- AC-488: with nothing to show, the starting points stand where the detail would. -->
-                            <StackPanel IsVisible="{Binding Projects.ShowsStartingPoints}" Margin="0,40,0,0">
-                                <TextBlock Text="What do you want to work on?" FontSize="21" FontWeight="SemiBold"
-                                           HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                                <controls:StartingPointsView DataContext="{Binding Projects}"/>
-                                <Button Classes="Accent" Content="+ New project" HorizontalAlignment="Center" Margin="0,16,0,0"
-                                        Command="{Binding Projects.AddProjectCommand}"/>
-                            </StackPanel>
-                            <TextBlock Text="Pick a project on the left." IsVisible="{Binding Projects.ShowsPickHint}"
-                                       HorizontalAlignment="Center" Margin="0,200,0,0" FontSize="11"
-                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                        </Panel>
-                    </ScrollViewer>
-                </Grid>
+                <controls:ProjectsWorkspace DataContext="{Binding Projects}"/>
             </DockPanel>
 
             <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on

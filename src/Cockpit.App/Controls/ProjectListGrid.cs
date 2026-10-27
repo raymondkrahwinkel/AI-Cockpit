@@ -18,6 +18,9 @@ public sealed class ProjectListGrid : Grid
     public static readonly AttachedProperty<bool> IsSmallProperty =
         AvaloniaProperty.RegisterAttached<ProjectListGrid, Control, bool>("IsSmall", inherits: true);
 
+    public static readonly AttachedProperty<bool> IsCompactProperty =
+        AvaloniaProperty.RegisterAttached<ProjectListGrid, Control, bool>("IsCompact", inherits: true);
+
     // Set on the control whose width is the list's width; it then sets `IsWide` on itself as it is resized.
     public static readonly AttachedProperty<bool> SizesColumnsProperty =
         AvaloniaProperty.RegisterAttached<ProjectListGrid, Control, bool>("SizesColumns");
@@ -29,6 +32,7 @@ public sealed class ProjectListGrid : Grid
     private static readonly string[] _wideCells = ["logo", "main", "desc", "prof", "last", "stat", "act"];
     private static readonly string[] _narrowCells = ["logo", "main", "pl", "stat", "act"];
     private static readonly string[] _smallCells = ["logo", "main", "act"];
+    private static readonly string[] _compactCells = ["logo", "main", "prof", "last", "stat", "act"];
 
     static ProjectListGrid()
     {
@@ -59,6 +63,10 @@ public sealed class ProjectListGrid : Grid
 
     public static void SetIsSmall(Control control, bool value) => control.SetValue(IsSmallProperty, value);
 
+    public static bool GetIsCompact(Control control) => control.GetValue(IsCompactProperty);
+
+    public static void SetIsCompact(Control control, bool value) => control.SetValue(IsCompactProperty, value);
+
     public static bool GetSizesColumns(Control control) => control.GetValue(SizesColumnsProperty);
 
     public static void SetSizesColumns(Control control, bool value) => control.SetValue(SizesColumnsProperty, value);
@@ -70,7 +78,7 @@ public sealed class ProjectListGrid : Grid
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == IsWideProperty || change.Property == IsSmallProperty)
+        if (change.Property == IsWideProperty || change.Property == IsSmallProperty || change.Property == IsCompactProperty)
         {
             _Apply();
         }
@@ -84,9 +92,13 @@ public sealed class ProjectListGrid : Grid
 
     private void _Apply()
     {
+        var compact = GetIsCompact(this);
         var wide = GetIsWide(this);
         var small = !wide && GetIsSmall(this);
-        ColumnDefinitions = wide
+        ColumnDefinitions = compact
+            ? [new(28, GridUnitType.Pixel), new(1, GridUnitType.Star) { MinWidth = 180 }, new(130, GridUnitType.Pixel),
+               new(100, GridUnitType.Pixel), new(200, GridUnitType.Pixel), _Actions()]
+            : wide
             ? [new(28, GridUnitType.Pixel), new(1, GridUnitType.Star) { MinWidth = 180 }, new(1.5, GridUnitType.Star),
                new(130, GridUnitType.Pixel), new(100, GridUnitType.Pixel), new(200, GridUnitType.Pixel), _Actions()]
             : small
@@ -94,7 +106,7 @@ public sealed class ProjectListGrid : Grid
                 : [new(28, GridUnitType.Pixel), new(1, GridUnitType.Star), new(140, GridUnitType.Pixel),
                    new(170, GridUnitType.Pixel), _Actions()];
 
-        var cells = wide ? _wideCells : small ? _smallCells : _narrowCells;
+        var cells = compact ? _compactCells : wide ? _wideCells : small ? _smallCells : _narrowCells;
         foreach (var child in Children)
         {
             var column = Array.IndexOf(cells, GetCell(child));

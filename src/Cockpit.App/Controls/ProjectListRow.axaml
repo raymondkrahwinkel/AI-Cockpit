@@ -4,7 +4,8 @@
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:materialIcons="using:Material.Icons.Avalonia"
              x:Class="Cockpit.App.Controls.ProjectListRow"
-             x:DataType="vm:ProjectListItemViewModel">
+             x:DataType="vm:ProjectListItemViewModel"
+             IsCompact="{Binding $parent[controls:ProjectsWorkspace].((vm:ProjectsViewModel)DataContext).IsCompact}">
 
     <UserControl.Styles>
         <Style Selector="Border#RowSurface">
@@ -25,6 +26,16 @@
         <Style Selector="TextBlock.waiting">
             <Setter Property="Foreground" Value="{DynamicResource CockpitStatusWaitingBrush}"/>
         </Style>
+        <Style Selector="controls|ProjectListRow:compact Border#RowSurface">
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="Padding" Value="16,4"/>
+        </Style>
+        <Style Selector="controls|ProjectListRow:compact StackPanel#ProjectMain">
+            <Setter Property="Spacing" Value="0"/>
+        </Style>
+        <Style Selector="controls|ProjectListRow:compact TextBlock#DescriptionUnderName">
+            <Setter Property="IsVisible" Value="False"/>
+        </Style>
     </UserControl.Styles>
 
     <!-- AC-1600: one project in the B2 list (mockup `.row`). Click selects, double-click starts; the columns follow the
@@ -39,7 +50,7 @@
                 <controls:ProjectLogoBadge controls:ProjectListGrid.Cell="logo" Size="22" VerticalAlignment="Center"
                                            LogoPath="{Binding Project.LogoPath, FallbackValue={x:Null}}" ProjectName="{Binding Name}"/>
 
-                <StackPanel controls:ProjectListGrid.Cell="main" VerticalAlignment="Center" Spacing="1">
+                <StackPanel x:Name="ProjectMain" controls:ProjectListGrid.Cell="main" VerticalAlignment="Center" Spacing="1">
                     <!-- Left-aligned, so the role sits right after the name and the name trims only when both do not fit. -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" HorizontalAlignment="Left">
                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
@@ -49,7 +60,7 @@
                         </Border>
                     </Grid>
                     <TextBlock x:Name="DescriptionUnderName" FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis"
-                               IsVisible="{Binding !$self.(controls:ProjectListGrid.IsWide)}"
+                               IsVisible="{Binding $parent[controls:ProjectListRow].ShowDescriptionUnderName}"
                                Text="{Binding DescriptionText}" Classes.faint="{Binding !HasDescription}"
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                     <TextBlock FontSize="11.5" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
@@ -78,7 +89,8 @@
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </StackPanel>
 
-                <WrapPanel controls:ProjectListGrid.Cell="stat" VerticalAlignment="Center" MaxHeight="44"
+                <WrapPanel x:Name="StatusTags" controls:ProjectListGrid.Cell="stat" VerticalAlignment="Center" MaxHeight="44"
+                           IsVisible="{Binding !$self.(controls:ProjectListGrid.IsCompact)}"
                            ItemSpacing="6" LineSpacing="4">
                     <Border Classes="statusTag ready" IsVisible="{Binding CanAdd}">
                         <TextBlock Text="Ready to add"/>
@@ -96,6 +108,10 @@
                     <TextBlock Text="{Binding QuietStatus}" IsVisible="{Binding ShowsQuietStatus}" FontSize="11"
                                VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                 </WrapPanel>
+                <Border controls:ProjectListGrid.Cell="stat" Classes="statusTag" VerticalAlignment="Center"
+                        IsVisible="{Binding $self.(controls:ProjectListGrid.IsCompact)}">
+                    <TextBlock Text="{Binding CompactStatus}"/>
+                </Border>
 
                 <StackPanel controls:ProjectListGrid.Cell="act" Orientation="Horizontal" Spacing="4"
                             HorizontalAlignment="Right" VerticalAlignment="Center">

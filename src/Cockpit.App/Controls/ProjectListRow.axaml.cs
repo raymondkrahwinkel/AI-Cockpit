@@ -15,11 +15,25 @@ public partial class ProjectListRow : UserControl
     public static readonly StyledProperty<ICommand?> SelectCommandProperty =
         AvaloniaProperty.Register<ProjectListRow, ICommand?>(nameof(SelectCommand));
 
+    public static readonly StyledProperty<bool> IsCompactProperty =
+        AvaloniaProperty.Register<ProjectListRow, bool>(nameof(IsCompact));
+
+    public static readonly DirectProperty<ProjectListRow, bool> ShowDescriptionUnderNameProperty =
+        AvaloniaProperty.RegisterDirect<ProjectListRow, bool>(nameof(ShowDescriptionUnderName), row => row.ShowDescriptionUnderName);
+
     private ProjectListItemViewModel? _item;
+    private bool _showDescriptionUnderName = true;
+
+    static ProjectListRow()
+    {
+        IsCompactProperty.Changed.AddClassHandler<ProjectListRow>((row, _) => row._UpdateLayout());
+        ProjectListGrid.IsWideProperty.Changed.AddClassHandler<ProjectListRow>((row, _) => row._UpdateLayout());
+    }
 
     public ProjectListRow()
     {
         InitializeComponent();
+        _UpdateLayout();
         Tapped += (_, _) => SelectCommand?.Execute(DataContext);
         // A double click on the row's own buttons is theirs: Start already ran on the click.
         DoubleTapped += (_, args) =>
@@ -40,6 +54,20 @@ public partial class ProjectListRow : UserControl
     {
         get => GetValue(SelectCommandProperty);
         set => SetValue(SelectCommandProperty, value);
+    }
+
+    public bool IsCompact
+    {
+        get => GetValue(IsCompactProperty);
+        set => SetValue(IsCompactProperty, value);
+    }
+
+    public bool ShowDescriptionUnderName => _showDescriptionUnderName;
+
+    private void _UpdateLayout()
+    {
+        PseudoClasses.Set(":compact", IsCompact);
+        SetAndRaise(ShowDescriptionUnderNameProperty, ref _showDescriptionUnderName, !IsCompact && !ProjectListGrid.GetIsWide(this));
     }
 
     protected override void OnDataContextChanged(EventArgs e)
