@@ -36,6 +36,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private readonly CodexAppServerConnection _connection;
     private readonly CliAgentConfig _config;
     private readonly string _executablePath;
+    private readonly Action<PluginModelObservation>? _recordObservation;
     private readonly PluginSessionEventPublisher _events = new();
 
     // itemId -> the server request's JSON-RPC id, so an operator's allow/deny can be routed back to the exact
@@ -88,11 +89,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // Read/reset only from the single-threaded notification pump, so it needs no lock of its own.
     private readonly StringBuilder _turnText = new();
 
-    public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath)
+    public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath, Action<PluginModelObservation>? recordObservation = null)
     {
         _connection = new CodexAppServerConnection(subprocessFactory());
         _config = config;
         _executablePath = executablePath;
+        _recordObservation = recordObservation;
         _model = config.Model;
     }
 
@@ -401,6 +403,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "error":
+                if (_IsRateLimitRefusal(notification.Params))
+                {
+                    _RecordObservation(PluginModelObservationKind.RateLimitRefusal);
+                }
+
                 _events.Publish(new PluginSessionError { SessionId = _threadId, Message = _ExtractErrorMessage(notification.Params) });
                 break;
         }
@@ -443,6 +450,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var status = _TryGetNestedString(parameters, "turn", "status", out var turnStatus) ? turnStatus : "completed";
         var isInterrupted = string.Equals(status, "interrupted", StringComparison.OrdinalIgnoreCase);
         var isError = !isInterrupted && !string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
+        if (isError && _IsRateLimitRefusal(parameters))
+        {
+            _RecordObservation(PluginModelObservationKind.RateLimitRefusal);
+        }
         // AC-126: the text this turn's agentMessage deltas accumulated (or null for a turn that produced none —
         // pure tool-use, or a failed turn with no answer), not the hardcoded null this used to carry.
         _events.Publish(new PluginTurnCompleted
@@ -508,26 +519,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // than merged: a window the snapshot no longer reports is a window that no longer applies.
     private void _HandleRateLimits(JsonElement parameters)
     {
-        if (parameters.ValueKind != JsonValueKind.Object
-            || !parameters.TryGetProperty("rateLimits", out var snapshot) || snapshot.ValueKind != JsonValueKind.Object)
+        _rateLimits = CodexRateLimits.Parse(parameters);
+        foreach (var window in _rateLimits)
         {
-            return;
+            _RecordObservation(PluginModelObservationKind.QuotaReading, window);
         }
-
-        // The whole snapshot is replaced (not merged): a window it no longer reports is a window that no longer
-        // applies. Order preserved as the provider gave it — the host renders the windows in that order.
-        var windows = new List<PluginRateLimitWindow>(2);
-        if (_ParseWindow(snapshot, "primary") is { } primary)
-        {
-            windows.Add(primary);
-        }
-
-        if (_ParseWindow(snapshot, "secondary") is { } secondary)
-        {
-            windows.Add(secondary);
-        }
-
-        _rateLimits = windows;
         _PublishStatus();
     }
 
@@ -557,21 +553,17 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _status = status.HasAny ? status : null;
     }
 
-    private static PluginRateLimitWindow? _ParseWindow(JsonElement snapshot, string property)
-    {
-        if (!snapshot.TryGetProperty(property, out var window) || window.ValueKind != JsonValueKind.Object
-            || _TryGetDouble(window, "usedPercent") is not { } usedPercent)
+    private void _RecordObservation(PluginModelObservationKind kind, PluginRateLimitWindow? quota = null) =>
+        _recordObservation?.Invoke(new PluginModelObservation("cli-agent-provider.codex", kind, DateTimeOffset.UtcNow)
         {
-            return null;
-        }
+            Model = _model,
+            Quota = quota,
+        });
 
-        var windowMinutes = _TryGetInt(window, "windowDurationMins");
-        var resetsAt = _TryGetLong(window, "resetsAt") is { } epochSeconds
-            ? DateTimeOffset.FromUnixTimeSeconds(epochSeconds)
-            : (DateTimeOffset?)null;
-
-        return new PluginRateLimitWindow(CodexUsageSignals.WindowLabel(windowMinutes), usedPercent, resetsAt, windowMinutes);
-    }
+    private static bool _IsRateLimitRefusal(JsonElement parameters) =>
+        parameters.ValueKind == JsonValueKind.Object
+        && (parameters.GetRawText().Contains("rate_limit", StringComparison.OrdinalIgnoreCase)
+            || parameters.GetRawText().Contains("rate limit", StringComparison.OrdinalIgnoreCase));
 
     private static int? _TryGetInt(JsonElement parent, string property) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
@@ -583,12 +575,6 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
         && element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var value)
             ? value
-            : null;
-
-    private static double? _TryGetDouble(JsonElement parent, string property) =>
-        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
-        && element.ValueKind == JsonValueKind.Number
-            ? element.GetDouble()
             : null;
 
     private static JsonElement _ObjectOrDefault(JsonElement parent, string property) =>

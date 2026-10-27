@@ -702,6 +702,33 @@ public sealed class BackendApiDoorTests
         Assert.DoesNotContain("sk-", answer.Body, StringComparison.Ordinal);
     }
 
+    // AC-1808: a fixture provider's reading crosses /api/v1 to the desktop's reader as it left the server, with its IANA
+    // zone and each AsOf at its own offset.
+    [Fact]
+    public async Task ModelIntelligence_OverTheWire_KeepsTheTimeZoneAndEveryAsOf()
+    {
+        await using var door = new _Door();
+        var verifier = await door.StartAsync();
+        var admin = await verifier.IssueAsync("desktop", ConnectKeyCapability.Admin, 30, Operator);
+        var source = new PluginFactSource("fixture feed", new DateTimeOffset(2026, 10, 27, 9, 30, 0, TimeSpan.FromHours(1)), TimeSpan.FromHours(24));
+        var reading = new PluginModelIntelligence
+        {
+            Models = [new PluginModelCostEstimate("m") { EstimatedInputUsdPerMillionTokens = 0, PublicModelRef = "vendor/m", Source = source, PriceModifiers = [new PluginPriceModifier("off-peak", 0.5m) { Window = new PluginTimeWindow(PluginTimeWindowKind.OffPeakPrice, new TimeOnly(16, 0), TimeOnly.MinValue, "Etc/UTC", source) }] }],
+            Windows = [new PluginTimeWindow(PluginTimeWindowKind.PeakLimits, new TimeOnly(5, 0), new TimeOnly(11, 0), "America/Los_Angeles", source) { Days = [DayOfWeek.Monday, DayOfWeek.Friday] }],
+            Limits = [new PluginLimit("requests per minute", 50, "requests/minute", source) { Model = "m" }],
+            Quota = [new PluginQuotaState(new PluginRateLimitWindow("wk", 42.5, null, 10080), source with { AsOf = new DateTimeOffset(2026, 10, 27, 1, 0, 0, TimeSpan.FromHours(-7)) })],
+        };
+        door.Providers.Register(new SessionProviderRegistration("door-openai", "Door", _ => Substitute.For<IPluginSessionDriverFactory>(), new PluginSessionCapabilities(false, false, false))
+        {
+            ReadModelIntelligenceAsync = (_, _) => Task.FromResult(reading),
+        });
+        using var client = new BackendApiClient(new Uri(door.NodeBase + "/"), admin.Secret, door.Fingerprint, TimeProvider.System);
+
+        var read = await new RemoteProviderModelIntelligence(client).ReadAsync("Plugged");
+
+        Assert.Equal(JsonSerializer.Serialize(reading), JsonSerializer.Serialize(read));
+    }
+
     internal sealed record _Answer(HttpStatusCode Status, string Body);
 
     private sealed record _SaveRequest(IReadOnlyList<string> Items);
@@ -900,6 +927,8 @@ public sealed class BackendApiDoorTests
 
         public string LoopbackBase { get; private set; } = "";
 
+        public string Fingerprint => _certificate.Fingerprint;
+
         public async Task<ConnectKeyVerifier> StartAsync()
         {
             System.IO.Directory.CreateDirectory(ProjectDirectory);
@@ -996,6 +1025,7 @@ public sealed class BackendApiDoorTests
                 new SessionProfile("Preloaded", new LmStudioConfig("http://127.0.0.1:1234", "qwen", "")) { EnvironmentVariables = [new("LD_PRELOAD", "/tmp/preload.so")] },
             ]);
             services.AddSingleton<ISessionProfileStore>(Profiles);
+            services.AddSingleton<IProviderModelIntelligence>(new PluginModelIntelligenceReader(Providers, Profiles));
             // AC-1475: the assistant's slot already holds the keyed profile, secrets and all, as a copy-in leaves it.
             await Slot.RepointAsync((await Profiles.LoadAsync()).Single(profile => profile.Label == KeyedProfile), false);
             SettingsSeen.LoadAsync(Arg.Any<CancellationToken>()).Returns(call => Settings.LoadAsync(call.Arg<CancellationToken>()));

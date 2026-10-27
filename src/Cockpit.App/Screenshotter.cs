@@ -201,6 +201,9 @@ internal static partial class Screenshotter
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
+        // AC-1814: Options › Model intelligence with data, and with too little data for any pattern.
+        ["options-model-intelligence"] = ModelIntelligenceScene.Filled,
+        ["options-model-intelligence-unknown"] = ModelIntelligenceScene.Unknown,
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
         ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions

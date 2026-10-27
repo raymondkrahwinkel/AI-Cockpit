@@ -234,6 +234,17 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Hands the host something a provider saw happen — a quota reading, a rate-limit refusal, a latency (AC-1808) — so it
+    /// can learn patterns no feed publishes. Safe to call from any thread, and never blocks.
+    /// </summary>
+    /// <remarks>
+    /// Default no-op, which is also what a host before 0.128.0 does with it, so a provider can call it unconditionally.
+    /// </remarks>
+    void RecordModelObservation(PluginModelObservation observation)
+    {
+    }
+
+    /// <summary>
     /// Registers (or updates) an HTTP MCP server in the shared registry (#60), so both session worlds can use
     /// its tools without the operator adding it by hand. Idempotent upsert-by-name.
     /// </summary>
@@ -1039,7 +1050,7 @@ public interface ICockpitHost
     /// The host runs every step beside the others and watches each: after 4 seconds the splash says it is slower than
     /// usual, after 12 the token is cancelled and the cockpit opens without the step and offers a Retry, and an
     /// exception shows as a failed step. A step can therefore never hold the start up. Default no-op so existing
-    /// implementations keep compiling untouched; a plugin that calls it sets minHostVersion 0.129.0.
+    /// implementations keep compiling untouched; a plugin that calls it sets minHostVersion 0.130.0.
     /// </remarks>
     void AddStartupStep(string label, Func<CancellationToken, Task> run)
     {

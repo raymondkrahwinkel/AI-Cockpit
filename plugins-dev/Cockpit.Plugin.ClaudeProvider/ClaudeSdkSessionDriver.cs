@@ -47,7 +47,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     // The limits feed (#45 D7, AC-530). Fed from the stdout pump and from the usage poll, and read by the host's
     // poll at each turn boundary; it publishes its own immutable snapshot and locks its own fields.
-    private readonly ClaudeSdkUsage _usage = new();
+    private readonly ClaudeSdkUsage _usage;
 
     // request_id -> the awaiter for that reply. The fire-and-forget requests register none.
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement?>> _pendingControlResponses = new();
@@ -81,11 +81,17 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // and it is deleted on dispose because a prompt for a session that has ended is nobody's business either.
     private string? _systemPromptPath;
 
-    public ClaudeSdkSessionDriver(Func<IClaudeSdkSubprocess> subprocessFactory, ClaudeProviderConfig config, string executablePath)
+    public ClaudeSdkSessionDriver(
+        Func<IClaudeSdkSubprocess> subprocessFactory,
+        ClaudeProviderConfig config,
+        string executablePath,
+        ClaudeModelIntelligence? intelligence = null,
+        Action<PluginModelObservation>? recordObservation = null)
     {
         _subprocessFactory = subprocessFactory;
         _config = config;
         _executablePath = executablePath;
+        _usage = new ClaudeSdkUsage(intelligence, recordObservation);
     }
 
     public PluginSessionCapabilities Capabilities { get; } = new(

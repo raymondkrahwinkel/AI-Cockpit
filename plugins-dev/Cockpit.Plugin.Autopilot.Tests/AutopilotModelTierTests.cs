@@ -15,10 +15,10 @@ public class AutopilotModelTierTests
             ModelSuggestions = ["fable", "opus", "sonnet", "haiku"],
             ModelCostEstimatesCheapestFirst =
             [
-                new PluginModelCostEstimate("haiku"),
-                new PluginModelCostEstimate("sonnet"),
-                new PluginModelCostEstimate("opus"),
-                new PluginModelCostEstimate("fable"),
+                new PluginModelCostEstimate("haiku") { EstimatedInputUsdPerMillionTokens = 1m, EstimatedOutputUsdPerMillionTokens = 5m },
+                new PluginModelCostEstimate("sonnet") { EstimatedInputUsdPerMillionTokens = 3m, EstimatedOutputUsdPerMillionTokens = 15m },
+                new PluginModelCostEstimate("opus") { EstimatedInputUsdPerMillionTokens = 5m, EstimatedOutputUsdPerMillionTokens = 25m },
+                new PluginModelCostEstimate("fable") { EstimatedInputUsdPerMillionTokens = 10m, EstimatedOutputUsdPerMillionTokens = 50m },
             ],
         },
     ];
@@ -84,7 +84,11 @@ public class AutopilotModelTierTests
             new PluginProfileInfo("Claude", "Plugin", string.Empty)
             {
                 ModelSuggestions = ["opus"],
-                ModelCostEstimatesCheapestFirst = [new PluginModelCostEstimate("haiku"), new PluginModelCostEstimate("opus")],
+                ModelCostEstimatesCheapestFirst =
+                [
+                    new PluginModelCostEstimate("haiku") { EstimatedInputUsdPerMillionTokens = 1m, EstimatedOutputUsdPerMillionTokens = 5m },
+                    new PluginModelCostEstimate("opus") { EstimatedInputUsdPerMillionTokens = 5m, EstimatedOutputUsdPerMillionTokens = 25m },
+                ],
             },
         ];
 

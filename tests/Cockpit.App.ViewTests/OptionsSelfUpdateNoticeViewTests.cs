@@ -31,7 +31,7 @@ namespace Cockpit.App.ViewTests;
 public class OptionsSelfUpdateNoticeViewTests
 {
     [Fact]
-    public void WhenThisCopyCannotUpdateItself_TheNoticeShows_AndTheReleasePageIsStillOffered() => HeadlessAvalonia.Run(() =>
+    public void TheNoticeShowsOnlyWhenThisCopyCannotUpdateItself_AndTheReleasePageIsStillOffered() => HeadlessAvalonia.Run(() =>
     {
         // The parameterless view model has no probe, which is the same answer a tarball, a checkout and this test
         // host all get: not packaged.
@@ -44,19 +44,16 @@ public class OptionsSelfUpdateNoticeViewTests
             button => button.Content as string == "Open the release");
 
         dialog.Close();
-    });
 
-    [Fact]
-    public void WhenThisCopyCanUpdateItself_TheNoticeIsGone() => HeadlessAvalonia.Run(() =>
-    {
         var probe = Substitute.For<IUpdateSupportProbe>();
         probe.Detect().Returns(UpdateSupport.Supported);
 
-        var dialog = _OpenUpdatesTab(_ViewModelWith(probe));
+        // And the other way round: a copy that can update itself carries no notice.
+        var capable = _OpenUpdatesTab(_ViewModelWith(probe));
 
-        Assert.False(_Notice(dialog).IsVisible);
+        Assert.False(_Notice(capable).IsVisible);
 
-        dialog.Close();
+        capable.Close();
     });
 
     private static TextBlock _Notice(OptionsDialog dialog) =>

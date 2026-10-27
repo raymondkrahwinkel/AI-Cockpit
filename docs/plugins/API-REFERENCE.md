@@ -125,7 +125,7 @@ discovery list: if a contribution point is not in this table, it does not exist.
 | `health.actions` | Actions a remote key can run | Sensitive | 0.69.0 | — | `IPluginHealthActions.RunAsync` |
 | `settings.carrier` | Keeping the cockpit's settings for the operator | Sensitive | 0.94.0 | — | `ICockpitHost.AddSettingsCarrier` |
 | `backup.target` | Keeping the cockpit's backups | Sensitive | 0.101.0 | — | `ICockpitHost.AddBackupTarget`, `ICockpitHost.RemoveBackupTarget` |
-| `startup.step` | Showing a step while the cockpit starts | Ambient | 0.129.0 | — | `ICockpitHost.AddStartupStep` |
+| `startup.step` | Showing a step while the cockpit starts | Ambient | 0.130.0 | — | `ICockpitHost.AddStartupStep` |
 | `first-start.routes` | A way to begin on the first start | Ambient | 0.94.0 | — | `ICockpitUiHost.AddFirstStartRoute`, `IFirstStartPluginUi.CreateFirstStartRoutes`, `IFirstStartPlugin.InitializeFirstStart` |
 | `first-start.setup` | Setting up the cockpit on the first start | Sensitive | 0.102.0 | — | `IFirstStartHost.RestoreBackupAsync`, `IFirstStartHost.ApplyManifestAsync` |
 | `storage.secrets` | Storing credentials | Sensitive | 0.3.0 | `key` | `IPluginStorage.SetSecret`, `IPluginStorage.GetSecret` |
@@ -349,13 +349,13 @@ public interface ICockpitHost
 }
 ```
 
-`AddStartupStep(label, run)` (AC-1827, host 0.129.0, SDK 3.37.0) puts a step of the plugin's own on the splash shown while the
+`AddStartupStep(label, run)` (AC-1827, host 0.130.0, SDK 3.38.0) puts a step of the plugin's own on the splash shown while the
 cockpit starts, such as "Connecting to Depot…". Call it from `Initialize`. The host runs every registered step beside the
 others and watches each one separately: after 4 seconds the splash says the step is slower than usual and counts down, after
 12 seconds the token is cancelled, the cockpit opens without the step and a toast offers Retry, and an exception shows as a
 failed step with a plain sentence and no dialog. A step can therefore never hold the start up, and it must stop when the token
 is cancelled. `run` is called on a thread-pool thread, never the UI thread. A host without a splash (a backend without a
-frontend) ignores the call. A plugin that calls it sets `minHostVersion` 0.129.0.
+frontend) ignores the call. A plugin that calls it sets `minHostVersion` 0.130.0.
 
 `AddHealthSection` (AC-1466, host 0.65.0) registers a section the host reads on every health request: an
 `IPluginHealthSection` names itself and answers `Read()` with a `PluginHealthReport` — `Healthy` plus rows of a
@@ -1921,6 +1921,16 @@ public void Initialize(ICockpitHost host)
         DefaultBaseUrl: GeminiDefaultBaseUrl));
 }
 ```
+
+**Model intelligence (SDK 3.36.0, host 0.128.0).** Set the optional `ReadModelIntelligenceAsync` to tell the host,
+without a session, what your provider knows about its models right now. It gets the profile's config JSON and returns a
+`PluginModelIntelligence`: prices (`PluginModelCostEstimate` with `PublicModelRef`, `Source` and `PriceModifiers`),
+peak windows (`PluginTimeWindow`, wall-clock times in an IANA zone), limits (`PluginLimit`) and quota state
+(`PluginQuotaState`, a `PluginRateLimitWindow` plus its source). Every fact carries a `PluginFactSource` (name, `AsOf`,
+`ValidFor`). Report only what you read live or from a public source: leave the property `null` or a list empty and the
+host reads "unknown", never 0. What you see during a session (a quota reading, a rate-limit refusal, a latency) goes to
+`host.RecordModelObservation(...)`, which a host before 0.128.0 ignores. A plugin that sets the read sets
+`minHostVersion` 0.128.0.
 
 ### `IPluginSessionDriverFactory` {#ipluginsessiondriverfactory}
 

@@ -59,6 +59,18 @@ public sealed record SessionProviderRegistration(
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>>? ResolveOptionsAsync { get; init; }
 
     /// <summary>
+    /// An optional, session-less read of what this provider knows about its models right now: prices, windows, limits
+    /// and quota state (AC-1808).
+    /// </summary>
+    /// <remarks>
+    /// The argument is the profile's opaque config JSON, since a quota belongs to the account the profile signs in with.
+    /// <see langword="null"/> (the default) when the provider reports nothing; the host then reads "unknown" and falls
+    /// back to public sources. A failure or an empty reading reads as "unknown" too, so report only what you read live
+    /// or from a public source, and honour the token: the host may cancel a read that takes too long.
+    /// </remarks>
+    public Func<string, CancellationToken, Task<PluginModelIntelligence>>? ReadModelIntelligenceAsync { get; init; }
+
+    /// <summary>
     /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c> — the SDK
     /// mirror of <see cref="TtyProviderRegistration.IsLoggedIn"/>. Existence-only by contract (Iron Law #8).
     /// </summary>

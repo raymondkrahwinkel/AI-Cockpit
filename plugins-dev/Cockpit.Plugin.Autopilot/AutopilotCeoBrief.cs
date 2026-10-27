@@ -230,7 +230,12 @@ internal static class AutopilotCeoBrief
     // backwards against the list it described (AC-256) — a sentence the CEO obeyed straight into the priciest tier.
     private static string _Models(PluginProfileInfo profile)
     {
-        if (profile.ModelCostEstimatesCheapestFirst is { Count: > 0 } ranked)
+        if (profile.ModelCostEstimatesCheapestFirst is { Count: > 0 } ranked
+            && ranked.All(estimate => estimate is
+            {
+                EstimatedInputUsdPerMillionTokens: not null,
+                EstimatedOutputUsdPerMillionTokens: not null,
+            }))
         {
             return $"; models cheapest first: {string.Join(", ", ranked.Select(_Priced))} — a step on this profile must use exactly one of these";
         }
