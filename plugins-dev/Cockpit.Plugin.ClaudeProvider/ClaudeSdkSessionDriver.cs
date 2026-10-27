@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -437,20 +438,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     private void _HandleLine(string line)
     {
-        JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(line);
-        }
-        catch (JsonException)
-        {
-            // A malformed stream-json line is dropped rather than killing the whole pump — the session stays alive for
-            // the well-formed lines around it.
-            return;
-        }
+            line = JsonLineText.ReplaceLoneSurrogateEscapes(line);
+            using var document = JsonDocument.Parse(line);
 
-        using (document)
-        {
             var root = document.RootElement;
             if (root.ValueKind == JsonValueKind.Object
                 && root.TryGetProperty("session_id", out var sid) && sid.ValueKind == JsonValueKind.String)
@@ -530,6 +522,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
                 _events.Publish(evt);
             }
+        }
+        catch (Exception)
+        {
+            // A malformed stream-json line is dropped rather than killing the whole pump.
         }
     }
 
