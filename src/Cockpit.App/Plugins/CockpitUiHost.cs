@@ -310,6 +310,8 @@ internal sealed class CockpitUiHost(
     // Delegates to the cockpit's own `MarkdownView` — no second parser, one markdown idiom for both the transcript and every plugin dialog.
     public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };
 
+    public void AddLinkHandler(LinkHandlerRegistration registration) => MarkdownView.RegisterLinkHandler(registration);
+
     // AC-303: caps a plugin-supplied markdown body (e.g. a 65 KB GitHub issue) before synchronous rendering,
     // which otherwise stalls the UI in an all-Auto grid; capped here, not in MarkdownView, since the transcript
     // also renders through that control and must not be truncated.

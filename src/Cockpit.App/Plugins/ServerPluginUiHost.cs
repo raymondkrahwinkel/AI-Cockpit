@@ -168,6 +168,10 @@ internal sealed class ServerPluginUiHost(
 
     public Task SetClipboardTextAsync(string text) => local.SetClipboardTextAsync(text);
 
+    public void AddLinkHandler(LinkHandlerRegistration registration)
+    {
+    }
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") => local.ConfirmAsync(title, message, confirmLabel);
 
     public void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null) =>
