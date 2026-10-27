@@ -18,8 +18,7 @@ public sealed class WorktreeManagerTests : IDisposable
 {
     public const string Alone = "worktree-manager-state-root";
 
-    // Kept at this checkout's root (not an operator repository or system temp), short enough for Git's object paths on Windows.
-    private readonly string _tempRoot = Path.Combine(_CheckoutRoot(), $".wt-{Guid.NewGuid():n}");
+    private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-worktree-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly string _worktreesRoot;
     private readonly string _configPath;
@@ -43,16 +42,6 @@ public sealed class WorktreeManagerTests : IDisposable
 
         _registry = new WorktreeRegistryStore(_configPath);
         _manager = new WorktreeManager(_registry, _worktreesRoot);
-    }
-
-    private static string _CheckoutRoot()
-    {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "Cockpit.slnx"))) return directory.FullName;
-        }
-
-        throw new InvalidOperationException("Could not find the checkout root for the disposable Git fixture.");
     }
 
     [Fact]
