@@ -2288,11 +2288,16 @@
                      the rail. Stays on screen in both the collapsed and the expanded state, so switching panels
                      or closing the open one is always a single click away. -->
                 <!-- AC-1824: the Simple stand lists the plugin panels only; its assistant follows the picked session. -->
-                <ItemsControl DockPanel.Dock="Right" Width="40" VerticalAlignment="Top"
-                              IsVisible="{Binding HasRailTabs}" ItemsSource="{Binding RailTabs}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="docking:DockPanelRegistration">
-                            <!-- AC-1762: square corners — a tab meets the window edge and its neighbours, so a
+                <Panel DockPanel.Dock="Right" Width="40" VerticalAlignment="Stretch"
+                       IsVisible="{Binding HasRailTabs}">
+                    <!-- The host edge divides collapsed rail/content; this divider separates an open panel from its tabs. -->
+                    <Border Width="1" HorizontalAlignment="Left"
+                            Background="{DynamicResource CockpitHairlineBrush}"
+                            IsVisible="{Binding EffectiveOpenDockPanelId, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                    <ItemsControl Width="40" VerticalAlignment="Top" ItemsSource="{Binding RailTabs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="docking:DockPanelRegistration">
+                                <!-- AC-1762: square corners — a tab meets the window edge and its neighbours, so a
                                  rounded one read as a loose button floating in the strip. -->
                             <Button Classes="Subtle" Width="40" Padding="0" HorizontalContentAlignment="Stretch"
                                     CornerRadius="0"
@@ -2337,9 +2342,10 @@
                                     </Button>
                                 </Grid>
                             </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Panel>
 
                 <!-- AC-1710 (mockup AC-1708 screen 2): the open panel's name and its undock button, only for a panel that
                      can float and has no window of its own to bring — filled in by the code-behind with the content. -->
