@@ -1,23 +1,17 @@
 using System.Text;
 using System.Text.Json;
-using Avalonia.Controls;
-using Avalonia.Media.Imaging;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Depot.UI;
 
-// What an artifact shows inline: a picture or text. Both null is a type that is not previewed.
-internal sealed record DepotPreview(Bitmap? Image, string? Text);
+internal sealed record DepotDocumentExcerpt(string? Heading, string? Paragraph);
 
 // AC-1568: the file browser's behaviour for one Depot connection, apart from the controls that show it. Every Depot
 // call goes to the backend part over the channel; the only network this part does itself is the pre-signed URL.
 internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegistration connection, HttpClient http)
 {
-    private const long MaxImageBytes = 8 * 1024 * 1024;
-    private const long MaxTextBytes = 1024 * 1024;
-
     public DepotConnectionRegistration Connection => connection;
 
     public Task<DepotBrowserAnswer<IReadOnlyList<DepotBrowserProject>>> ProjectsAsync(CancellationToken cancellationToken = default) =>
@@ -26,39 +20,53 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
     public Task<DepotBrowserAnswer<DepotBrowserTree>> TreeAsync(string project, CancellationToken cancellationToken = default) =>
         _InvokeAsync<DepotBrowserTree>(DepotBrowserChannel.Tree, new(connection.Id, project), cancellationToken);
 
-    public async Task<DepotBrowserAnswer<Control>> RenderDocumentAsync(string project, DepotBrowserNode node, CancellationToken cancellationToken = default)
+    public async Task<DepotBrowserAnswer<DepotDocumentExcerpt>> ReadDocumentExcerptAsync(string project, DepotBrowserNode node, CancellationToken cancellationToken = default)
     {
         var read = await _InvokeAsync<string>(DepotBrowserChannel.Read, new(connection.Id, project, node.Path), cancellationToken).ConfigureAwait(true);
         return read.Status == DepotBrowserStatus.Ok
-            ? DepotBrowserAnswer<Control>.Success(host.CreateMarkdownView(read.Data ?? string.Empty))
-            : DepotBrowserAnswer<Control>.Failure(read.Status, read.Message);
+            ? DepotBrowserAnswer<DepotDocumentExcerpt>.Success(_Excerpt(read.Data ?? string.Empty))
+            : DepotBrowserAnswer<DepotDocumentExcerpt>.Failure(read.Status, read.Message);
     }
 
-    public static bool CanPreview(DepotBrowserNode node) =>
-        node.ContentType is { } type
-        && ((type.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && node.Size <= MaxImageBytes && !type.Contains("svg", StringComparison.OrdinalIgnoreCase))
-            || ((type.StartsWith("text/", StringComparison.OrdinalIgnoreCase) || type.Contains("json", StringComparison.OrdinalIgnoreCase)) && node.Size <= MaxTextBytes));
-
-    public async Task<DepotBrowserAnswer<DepotPreview>> PreviewAsync(string project, DepotBrowserNode node, CancellationToken cancellationToken = default)
+    private static DepotDocumentExcerpt _Excerpt(string markdown)
     {
-        var fetched = await _FetchAsync(project, node.Path, cancellationToken).ConfigureAwait(true);
-        if (fetched.Data is not { } response)
+        var lines = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var start = 0;
+        if (lines.FirstOrDefault()?.Trim() == "---")
         {
-            return DepotBrowserAnswer<DepotPreview>.Failure(fetched.Status, fetched.Message);
+            var end = Array.FindIndex(lines, 1, line => line.Trim() == "---");
+            start = end < 0 ? 0 : end + 1;
         }
 
-        using (response)
+        string? heading = null;
+        string? paragraph = null;
+        for (var index = start; index < lines.Length; index++)
         {
-            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(true);
-            var contentType = node.ContentType ?? throw new InvalidOperationException("A preview needs a content type.");
-            if (contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            var line = lines[index].Trim();
+            if (heading is null && line.Length is > 2 && line[0] == '#' && line.TakeWhile(character => character == '#').Count() <= 3 && line.Contains(' '))
             {
-                using var stream = new MemoryStream(bytes);
-                return DepotBrowserAnswer<DepotPreview>.Success(new DepotPreview(new Bitmap(stream), null));
+                heading = line[(line.IndexOf(' ') + 1)..].Trim();
+                continue;
             }
 
-            return DepotBrowserAnswer<DepotPreview>.Success(new DepotPreview(null, Encoding.UTF8.GetString(bytes)));
+            if (line.Length == 0 || line.StartsWith('#') || line.StartsWith("- ", StringComparison.Ordinal)
+                || line.StartsWith("* ", StringComparison.Ordinal) || line.StartsWith(">", StringComparison.Ordinal)
+                || line.StartsWith("|", StringComparison.Ordinal) || line.StartsWith("```", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var parts = new List<string> { line };
+            for (index++; index < lines.Length && !string.IsNullOrWhiteSpace(lines[index]); index++)
+            {
+                parts.Add(lines[index].Trim());
+            }
+
+            paragraph = string.Join(' ', parts);
+            break;
         }
+
+        return new(heading, paragraph);
     }
 
     // A type with no inline view goes to whatever the system opens that URL with; `launch` is the TopLevel launcher.

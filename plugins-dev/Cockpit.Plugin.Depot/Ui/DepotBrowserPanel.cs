@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -25,7 +26,11 @@ internal sealed class DepotBrowserPanel : UserControl
     private readonly Button _publishFolder = new() { Content = "Publish folder here…", IsVisible = false };
     private readonly StackPanel _publications = new() { Spacing = 6, Margin = new Thickness(12, 6) };
     private readonly TreeView _tree = new();
-    private readonly StackPanel _detail = new() { Spacing = 8, Margin = new Thickness(12) };
+    private readonly StackPanel _detail = new() { Spacing = 6, Margin = new Thickness(12, 10) };
+    private readonly Border _detailContainer = new() { IsVisible = false };
+    private readonly StackPanel _state = new() { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 300 };
+    private readonly MaterialIcon _stateIcon = new() { Width = 28, Height = 28, HorizontalAlignment = HorizontalAlignment.Center };
+    private readonly TextBlock _stateTitle = new() { FontSize = 14, FontWeight = FontWeight.SemiBold, TextAlignment = TextAlignment.Center };
     private DepotBrowserModel? _model;
     private DepotBrowserTree _loaded = new([], false);
     private string? _project;
@@ -37,7 +42,7 @@ internal sealed class DepotBrowserPanel : UserControl
     {
         _host = host;
         _connections = connections;
-        var refresh = new Button { Content = "Refresh" };
+        var refresh = _Button("Refresh");
         refresh.Click += async (_, _) => await LoadTreeAsync().ConfigureAwait(true);
         _signIn.Click += async (_, _) => await SignInAsync().ConfigureAwait(true);
         _connectionBox.ItemsSource = connections.Select(connection => connection.Name).ToList();
@@ -61,21 +66,7 @@ internal sealed class DepotBrowserPanel : UserControl
 
         _upload.Click += async (_, _) => await UploadAsync().ConfigureAwait(true);
         _publishFolder.Click += async (_, _) => await PublishFolderAsync().ConfigureAwait(true);
-        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 8), Children = { _connectionBox, _projectBox, refresh, _upload, _publishFolder } };
-        var banner = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(12, 0, 12, 6), Children = { _message, _signIn } };
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("360,*") };
-        body.Children.Add(new Border { BorderBrush = _Brush("CockpitHairlineBrush"), BorderThickness = new Thickness(0, 1, 1, 0), Child = _tree });
-        var detail = new ScrollViewer { Content = _detail };
-        Grid.SetColumn(detail, 1);
-        body.Children.Add(detail);
-        var layout = new DockPanel();
-        DockPanel.SetDock(top, Dock.Top);
-        DockPanel.SetDock(banner, Dock.Top);
-        DockPanel.SetDock(_publications, Dock.Bottom);
-        layout.Children.Add(top);
-        layout.Children.Add(banner);
-        layout.Children.Add(_publications);
-        layout.Children.Add(body);
+        var layout = _FilesLayout(refresh);
         var ownsInbox = inbox is null;
         var inboxModel = inbox ?? new DepotInboxModel(host);
         if (ownsInbox)
@@ -83,20 +74,107 @@ internal sealed class DepotBrowserPanel : UserControl
             DetachedFromVisualTree += (_, _) => inboxModel.Dispose();
         }
 
-        var inboxTab = new TabItem { Header = "Inbox", Content = new DepotInboxPanel(inboxModel, connections) };
-        Content = new TabControl
-        {
-            Items = { new TabItem { Header = "Files", Content = layout }, inboxTab },
-            SelectedItem = openInbox ? inboxTab : null,
-        };
+        Content = _Tabs(layout, new DepotInboxPanel(inboxModel, connections), openInbox);
 
         if (connections.Count == 0)
         {
-            _message.Text = "Add a Depot server in the Depot settings first.";
+            _SetState("No Depot server connected", "Add a Depot server in the Depot settings first.", MaterialIconKind.DatabaseOffOutline);
             return;
         }
 
         _connectionBox.SelectedIndex = 0;
+    }
+
+    // The real panel over fixed data for plugin screenshot scenes. Controls are deliberately inert: scenes never
+    // call the host or Depot, but they exercise this panel's actual layout and detail composition.
+    internal DepotBrowserPanel(DepotBrowserSceneModel scene)
+    {
+        _host = null!;
+        _connections = [];
+        var refresh = _Button("Refresh");
+        _connectionBox.IsVisible = false;
+        _projectBox.ItemsSource = new[] { scene.Project };
+        _projectBox.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DepotBrowserProject>((project, _) => new TextBlock { Text = project?.Name });
+        _projectBox.SelectedItem = scene.Project;
+        _project = scene.Project.Project;
+        _loaded = scene.Tree;
+        _upload.IsVisible = scene.Tree.CanShare;
+        _publishFolder.IsVisible = scene.Tree.CanShare;
+        Content = _Tabs(_FilesLayout(refresh), new TextBlock { Text = "Inbox", Margin = new Thickness(12) }, false);
+
+        var items = DepotTreeBuilder.Build(scene.Tree.Nodes);
+        _tree.ItemsSource = items.Select(item => _Row(item, scene.SelectedPath)).ToList();
+        if (scene.Tree.Nodes.Count == 0)
+        {
+            _SetState("No Depot files yet", "This project has no documents or artifacts yet.", MaterialIconKind.FolderOpenOutline);
+        }
+        else
+        {
+            _SetState(null, null, MaterialIconKind.FolderOpenOutline);
+            if (_Find(items, scene.SelectedPath) is { } selected)
+            {
+                _ShowScene(selected, scene.Excerpt);
+            }
+        }
+    }
+
+    private Control _FilesLayout(Button refresh)
+    {
+        foreach (var button in new[] { _signIn, _upload, _publishFolder })
+        {
+            button.Classes.Add("Compact");
+        }
+
+        var top = new WrapPanel { Margin = new Thickness(12, 8, 6, 2) };
+        foreach (var control in new Control[] { _connectionBox, _projectBox, refresh, _upload, _publishFolder })
+        {
+            control.Margin = new Thickness(0, 0, 6, 6);
+            top.Children.Add(control);
+        }
+
+        _message.TextWrapping = TextWrapping.Wrap;
+        _message.TextAlignment = TextAlignment.Center;
+        _message.Foreground = _Brush("CockpitTextSecondaryBrush");
+        _state.Children.Add(_stateIcon);
+        _state.Children.Add(_stateTitle);
+        _state.Children.Add(_message);
+        _state.Children.Add(_signIn);
+
+        var treeLayer = new Grid();
+        treeLayer.Children.Add(_tree);
+        treeLayer.Children.Add(_state);
+        var body = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        body.Children.Add(new Border
+        {
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Child = treeLayer,
+        });
+        _detailContainer.Background = _Brush("CockpitPanelBgBrush");
+        _detailContainer.BorderBrush = _Brush("CockpitHairlineBrush");
+        _detailContainer.BorderThickness = new Thickness(0, 1, 0, 0);
+        _detailContainer.MaxHeight = 260;
+        _detailContainer.Child = new ScrollViewer { Content = _detail };
+        Grid.SetRow(_detailContainer, 1);
+        body.Children.Add(_detailContainer);
+
+        var layout = new DockPanel();
+        DockPanel.SetDock(top, Dock.Top);
+        DockPanel.SetDock(_publications, Dock.Bottom);
+        layout.Children.Add(top);
+        layout.Children.Add(_publications);
+        layout.Children.Add(body);
+        return layout;
+    }
+
+    private static TabControl _Tabs(Control files, Control inbox, bool openInbox)
+    {
+        var inboxTab = new TabItem { Header = "Inbox", Content = inbox };
+        return new TabControl
+        {
+            Items = { new TabItem { Header = "Files", Content = files }, inboxTab },
+            SelectedItem = openInbox ? inboxTab : null,
+        };
     }
 
     private async Task SelectConnectionAsync(int index)
@@ -109,7 +187,7 @@ internal sealed class DepotBrowserPanel : UserControl
         _model = new DepotBrowserModel(_host, _connections[index], _http);
         _tree.ItemsSource = null;
         _detail.Children.Clear();
-        _message.Text = "Loading projects…";
+        _SetState("Loading projects", "Loading available Depot projects…", MaterialIconKind.DatabaseOutline);
         var answer = await _model.ProjectsAsync().ConfigureAwait(true);
         if (!_Accepted(answer))
         {
@@ -144,7 +222,7 @@ internal sealed class DepotBrowserPanel : UserControl
             return;
         }
 
-        _message.Text = "Loading…";
+        _SetState("Loading Depot files", "Reading this project's documents and artifacts…", MaterialIconKind.FolderSearchOutline);
         var answer = await _model.TreeAsync(_project).ConfigureAwait(true);
         if (!_Accepted(answer))
         {
@@ -154,8 +232,16 @@ internal sealed class DepotBrowserPanel : UserControl
         _loaded = answer.Data ?? new([], false);
         _upload.IsVisible = _loaded.CanShare;
         _publishFolder.IsVisible = _loaded.CanShare;
-        _message.Text = _loaded.Nodes.Count == 0 ? "This project has no documents or artifacts yet." : string.Empty;
+        if (_loaded.Nodes.Count == 0)
+        {
+            _SetState("No Depot files yet", "This project has no documents or artifacts yet.", MaterialIconKind.FolderOpenOutline);
+        }
+        else
+        {
+            _SetState(null, null, MaterialIconKind.FolderOpenOutline);
+        }
         _detail.Children.Clear();
+        _detailContainer.IsVisible = false;
         _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
         await RefreshPublicationsAsync().ConfigureAwait(true);
     }
@@ -251,6 +337,24 @@ internal sealed class DepotBrowserPanel : UserControl
         return row;
     }
 
+    private static DepotTreeItem? _Find(IEnumerable<DepotTreeItem> items, string? path)
+    {
+        foreach (var item in items)
+        {
+            if (item.Path == path)
+            {
+                return item;
+            }
+
+            if (_Find(item.Children, path) is { } child)
+            {
+                return child;
+            }
+        }
+
+        return null;
+    }
+
     private static Control _Header(DepotTreeItem item)
     {
         var kind = item.Kind switch
@@ -278,47 +382,107 @@ internal sealed class DepotBrowserPanel : UserControl
 
     private async Task ShowAsync(DepotTreeItem item)
     {
-        _detail.Children.Clear();
-        if (item.Node is not { } node || _model is null || _project is null)
+        var actions = _ShowDetails(item, interactive: true);
+        if (item.Node is not { } node || actions is null || _model is null || _project is null)
         {
             return;
         }
 
-        _detail.Children.Add(new TextBlock { Text = item.Name, FontSize = 16, FontWeight = FontWeight.SemiBold });
-        _detail.Children.Add(_Faint($"{node.Path} · {_Size(node.Size)} · {node.Modified?.ToLocalTime():yyyy-MM-dd HH:mm}"));
-        var download = new Button { Content = "Download" };
-        download.Click += async (_, _) => await DownloadAsync(node).ConfigureAwait(true);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { download } };
-        _detail.Children.Add(actions);
-
         if (node.Kind == DepotBrowserKind.Document)
         {
-            var view = await _model.RenderDocumentAsync(_project, node).ConfigureAwait(true);
-            if (_Accepted(view) && view.Data is { } markdown)
+            var excerpt = await _model.ReadDocumentExcerptAsync(_project, node).ConfigureAwait(true);
+            if (_Accepted(excerpt) && excerpt.Data is { } shown)
             {
-                _detail.Children.Add(markdown);
+                _AddExcerpt(shown);
             }
 
             return;
         }
 
         _detail.Children.Add(_ShareBlock(node));
-        if (DepotBrowserModel.CanPreview(node))
+        var open = _Button("Open");
+        open.Click += async (_, _) => await OpenAsync(node).ConfigureAwait(true);
+        actions.Children.Add(open);
+    }
+
+    private StackPanel? _ShowDetails(DepotTreeItem item, bool interactive)
+    {
+        _detail.Children.Clear();
+        _detailContainer.IsVisible = false;
+        if (item.Node is not { } node)
         {
-            var preview = await _model.PreviewAsync(_project, node).ConfigureAwait(true);
-            if (_Accepted(preview) && preview.Data is { } shown)
+            return null;
+        }
+
+        _detailContainer.IsVisible = true;
+        _detail.Children.Add(new TextBlock { Text = item.Name, FontSize = 13.5, FontWeight = FontWeight.SemiBold });
+        _detail.Children.Add(_Faint($"{node.Path} · {_Size(node.Size)} · {node.Modified?.ToLocalTime():yyyy-MM-dd HH:mm}"));
+        var download = _Button("Download");
+        if (interactive)
+        {
+            download.Click += async (_, _) => await DownloadAsync(node).ConfigureAwait(true);
+        }
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { download } };
+        _detail.Children.Add(actions);
+        return actions;
+    }
+
+    private void _ShowScene(DepotTreeItem item, DepotDocumentExcerpt? excerpt)
+    {
+        var actions = _ShowDetails(item, interactive: false);
+        if (item.Node is not { } node || actions is null)
+        {
+            return;
+        }
+
+        if (node.Kind == DepotBrowserKind.Document)
+        {
+            if (excerpt is not null)
             {
-                _detail.Children.Add(shown.Image is { } image
-                    ? new Image { Source = image, MaxHeight = 480, Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left }
-                    : new SelectableTextBlock { Text = shown.Text, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas, Menlo, monospace") });
+                _AddExcerpt(excerpt);
             }
 
             return;
         }
 
-        var open = new Button { Content = "Open" };
-        open.Click += async (_, _) => await OpenAsync(node).ConfigureAwait(true);
-        actions.Children.Add(open);
+        _detail.Children.Add(_ShareBlock(node));
+        actions.Children.Add(_Button("Open"));
+    }
+
+    private void _AddExcerpt(DepotDocumentExcerpt excerpt)
+    {
+        if (excerpt.Heading is null && excerpt.Paragraph is null)
+        {
+            return;
+        }
+
+        var text = new TextBlock
+        {
+            FontSize = 12.5,
+            MaxLines = 3,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+            Inlines = [],
+        };
+        if (excerpt.Heading is { Length: > 0 } heading)
+        {
+            text.Inlines.Add(new Run(heading) { FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitTextPrimaryBrush") });
+        }
+
+        if (excerpt.Paragraph is { Length: > 0 } paragraph)
+        {
+            text.Inlines.Add(new Run(excerpt.Heading is null ? paragraph : $" — {paragraph}"));
+        }
+
+        _detail.Children.Add(new Border
+        {
+            BorderBrush = _Brush("CockpitHairlineSoftBrush"),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(0, 8, 0, 0),
+            Child = text,
+        });
     }
 
     private Control _ShareBlock(DepotBrowserNode node)
@@ -326,19 +490,20 @@ internal sealed class DepotBrowserPanel : UserControl
         var block = new StackPanel { Spacing = 6 };
         block.Children.Add(new TextBlock { Text = "Share link", FontWeight = FontWeight.SemiBold });
         var visibility = new ComboBox { ItemsSource = new[] { "Members only", "Public" }, SelectedIndex = node.IsPublic ? 1 : 0, IsEnabled = _loaded.CanShare };
+        visibility.Classes.Add("Compact");
         if (node.ShareId is null)
         {
             block.Children.Add(_Faint("Not shared"));
             if (!_loaded.CanShare)
             {
                 block.Children.Add(_Faint("Sharing needs the Editor role in this project."));
-                return block;
+                return _ShareCard(block);
             }
 
-            var create = new Button { Content = "Create link" };
+            var create = _Button("Create link");
             create.Click += async (_, _) => await ShareAsync(node, visibility.SelectedIndex == 1, copyLink: true).ConfigureAwait(true);
             block.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { visibility, create } });
-            return block;
+            return _ShareCard(block);
         }
 
         block.Children.Add(new TextBlock { Text = node.IsPublic ? "Public link" : "Members link", Foreground = _Brush(node.IsPublic ? "CockpitStatusWaitingBrush" : "CockpitAccentBrush") });
@@ -350,13 +515,13 @@ internal sealed class DepotBrowserPanel : UserControl
         if (node.ShareUrl is not { Length: > 0 } shareUrl)
         {
             block.Children.Add(_Faint("Depot did not return the share link."));
-            return block;
+            return _ShareCard(block);
         }
 
         block.Children.Add(new TextBox { Text = shareUrl, IsReadOnly = true });
-        var copy = new Button { Content = "Copy" };
+        var copy = _Button("Copy");
         copy.Click += async (_, _) => await _host.SetClipboardTextAsync(shareUrl).ConfigureAwait(true);
-        var openLink = new Button { Content = "Open link" };
+        var openLink = _Button("Open link");
         openLink.Click += async (_, _) => await _Launch(new Uri(shareUrl)).ConfigureAwait(true);
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { copy, openLink } };
         if (_loaded.CanShare)
@@ -369,15 +534,24 @@ internal sealed class DepotBrowserPanel : UserControl
                     await ShareAsync(node, visibility.SelectedIndex == 1, copyLink: false).ConfigureAwait(true);
                 }
             };
-            var stop = new Button { Content = "Stop sharing" };
+            var stop = _Button("Stop sharing");
             stop.Click += async (_, _) => await UnshareAsync(node).ConfigureAwait(true);
             row.Children.Insert(0, visibility);
             row.Children.Add(stop);
         }
 
         block.Children.Add(row);
-        return block;
+        return _ShareCard(block);
     }
+
+    private static Border _ShareCard(Control content) => new()
+    {
+        Padding = new Thickness(8),
+        BorderBrush = _Brush("CockpitHairlineSoftBrush"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = _Radius("CockpitControlRadius"),
+        Child = content,
+    };
 
     private async Task ShareAsync(DepotBrowserNode node, bool isPublic, bool copyLink)
     {
@@ -511,18 +685,39 @@ internal sealed class DepotBrowserPanel : UserControl
 
         if (answer.Status == DepotBrowserStatus.Ok)
         {
-            _message.Text = string.Empty;
+            _SetState(null, null, MaterialIconKind.FolderOpenOutline);
             return true;
         }
 
-        _message.Text = answer.Status == DepotBrowserStatus.SignIn ? "Not signed in." : answer.Message;
+        _SetState(
+            answer.Status == DepotBrowserStatus.SignIn ? "Sign in to Depot" : "Depot files unavailable",
+            answer.Status == DepotBrowserStatus.SignIn ? "Sign in to load this project's files." : answer.Message ?? "Depot did not return a reason.",
+            answer.Status == DepotBrowserStatus.SignIn ? MaterialIconKind.Login : MaterialIconKind.AlertCircleOutline);
         return false;
+    }
+
+    private void _SetState(string? title, string? message, MaterialIconKind icon)
+    {
+        _state.IsVisible = title is not null || message is not null || _signIn.IsVisible;
+        _stateIcon.Kind = icon;
+        _stateTitle.Text = title;
+        _message.Text = message;
+    }
+
+    private static Button _Button(string content)
+    {
+        var button = new Button { Content = content };
+        button.Classes.Add("Compact");
+        return button;
     }
 
     private static TextBlock _Faint(string text) => new() { Text = text, FontSize = 11, TextWrapping = TextWrapping.Wrap, Foreground = _Brush("CockpitTextSecondaryBrush") };
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+
+    private static CornerRadius _Radius(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is CornerRadius radius ? radius : default;
 
     private static string _Size(long bytes) => bytes switch
     {

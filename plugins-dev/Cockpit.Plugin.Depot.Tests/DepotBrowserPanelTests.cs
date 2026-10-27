@@ -3,6 +3,7 @@ extern alias UiAsm;
 using System.Net;
 using System.Net.Sockets;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
@@ -18,8 +19,8 @@ namespace Cockpit.Plugin.Depot.Tests;
 [Collection("avalonia")]
 public class DepotBrowserPanelTests
 {
-    // The panel on fixture data, rendered headless: the tree beside an opened document. With DEPOT_BROWSER_SCENE_PNG
-    // set to a path the frame is written there (AC-1235 style); the assertion is that something was drawn.
+    // The panel on fixture data, rendered headless: the full-width tree above a compact document detail. With
+    // DEPOT_BROWSER_SCENE_PNG set to a path the frame is written there (AC-1235 style).
     [Fact]
     public void Panel_RendersTheTreeAndAnOpenedDocument()
     {
@@ -34,9 +35,10 @@ public class DepotBrowserPanelTests
             },
             canShare = true,
         });
-        rig.Answers["browser-read"] = DepotBrowserModelTests._Ok("# Notes");
+        rig.Answers["browser-read"] = DepotBrowserModelTests._Ok("# Notes\n\nThe first paragraph stays in the compact detail.\n\nA second paragraph does not.");
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
-        rig.Host.CreateMarkdownView(Arg.Any<string>()).Returns(new TextBlock { Text = "Notes body" });
+        var markdownView = new Border { Child = new TextBlock { Text = "Full markdown view" } };
+        rig.Host.CreateMarkdownView(Arg.Any<string>()).Returns(markdownView);
         Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
         var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
         var window = new Window { Width = 1000, Height = 640, Content = panel };
@@ -44,7 +46,8 @@ public class DepotBrowserPanelTests
 
         _Until(() => panel.GetVisualDescendants().OfType<TreeViewItem>().Any());
         var loading = panel.LoadTreeAsync("docs/Notes.md");
-        _Until(() => loading.IsCompleted && panel.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "Notes body"));
+        _Until(() => loading.IsCompleted && panel.GetVisualDescendants().OfType<TextBlock>()
+            .Any(block => block.Inlines?.OfType<Run>().Any(run => run.Text.Contains("The first paragraph stays in the compact detail.", StringComparison.Ordinal)) == true));
 
         using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
         if (Environment.GetEnvironmentVariable("DEPOT_BROWSER_SCENE_PNG") is { Length: > 0 } path)
@@ -55,6 +58,8 @@ public class DepotBrowserPanelTests
 
         Assert.True(frame.PixelSize.Width > 0);
         Assert.True(_UploadButton(panel).IsVisible);
+        Assert.DoesNotContain(markdownView, panel.GetVisualDescendants());
+        Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text.Contains("A second paragraph does not.", StringComparison.Ordinal));
     }
 
     // AC-1573: the backend's reading of the role (`canShare`) decides whether the Upload button is there at all.
