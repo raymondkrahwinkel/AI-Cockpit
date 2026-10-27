@@ -372,6 +372,28 @@ internal sealed class AssistantReadMcpTools(
                         activeNow = window.ActiveNow,
                         fact = Fact(window.Source),
                     }).ToArray(),
+                    ownMeasurements = row.Derived.Count == 0
+                        ? (object)"unknown"
+                        : row.Derived.Select(derived => new
+                        {
+                            metric = derived.Pattern.Metric.ToString(),
+                            timeZone = derived.Pattern.TimeZoneId,
+                            n = derived.Pattern.N,
+                            confidence = Math.Round(derived.Pattern.Confidence, 2),
+                            period = new { from = derived.Pattern.From, to = derived.Pattern.To },
+                            peaks = derived.Pattern.Peaks.Count == 0
+                                ? (object)"none stands out"
+                                : derived.Pattern.Peaks.Select(peak => new
+                                {
+                                    days = peak.Days.Select(day => day.ToString()),
+                                    start = peak.Start.ToString("HH:mm"),
+                                    end = peak.End.ToString("HH:mm"),
+                                    value = Math.Round(peak.Value, 3),
+                                    baseline = Math.Round(peak.Baseline, 3),
+                                    n = peak.N,
+                                }).ToArray(),
+                            fact = Fact(derived.Source),
+                        }).ToArray(),
                     quota = row.Quota.Count == 0
                         ? (object)"unknown"
                         : row.Quota.Select(state => new

@@ -14,7 +14,9 @@ internal sealed class ModelPictureReader(
     IModelIntelligence publicData,
     IProviderModelIntelligence providers,
     ISessionProfileStore profiles,
-    TimeProvider? clock = null) : ISingletonService
+    TimeProvider? clock = null,
+    IModelObservationStore? observations = null,
+    TimeZoneInfo? zone = null) : ISingletonService
 {
     // Quota moves minute by minute, and the assistant asks before every spawn: one provider read per minute is enough.
     internal static readonly TimeSpan ProviderCacheFor = TimeSpan.FromSeconds(60);
@@ -34,7 +36,8 @@ internal sealed class ModelPictureReader(
         var snapshots = (await snapshotsTask.ConfigureAwait(false)).ToDictionary(snapshot => snapshot.Id, StringComparer.Ordinal);
 
         // A profile that pins a model is one row; a plugin profile (model chosen per option) is one row per model its provider reports.
-        var rows = known.SelectMany((profile, index) => _ModelsOf(profile, readings[index]).Select(model => _Row(profile, model, readings[index], snapshots, now))).ToArray();
+        var derived = observations is null ? [] : ModelPatterns.Derive(observations.Read(), zone ?? TimeZoneInfo.Local);
+        var rows = known.SelectMany((profile, index) => _ModelsOf(profile, readings[index]).Select(model => _Row(profile, model, readings[index], snapshots, derived, now))).ToArray();
         return new ModelPicture(now, rows);
     }
 
@@ -68,6 +71,7 @@ internal sealed class ModelPictureReader(
         string? model,
         PluginModelIntelligence? reading,
         IReadOnlyDictionary<string, ModelSnapshot> snapshots,
+        IReadOnlyList<DerivedPattern> derived,
         DateTimeOffset now)
     {
         var estimate = model is null ? null : reading?.Models.FirstOrDefault(candidate => string.Equals(candidate.Model, model, StringComparison.Ordinal));
@@ -114,6 +118,12 @@ internal sealed class ModelPictureReader(
         // A provider that names a model reports its ceilings for that model; account-wide ones (Model null) hold for all.
         var limits = (reading?.Limits ?? []).Where(limit => limit.Model is null || limit.Model == model).ToArray();
 
+        // Our own measurements of this model; a pattern without a model speaks for the whole provider.
+        var own = derived
+            .Where(pattern => string.Equals(pattern.Provider, providerName, StringComparison.OrdinalIgnoreCase) && (pattern.Model is null || pattern.Model == model))
+            .Select(pattern => new ModelDerivedFact(pattern, new Sourced("own measurement", pattern.To, ModelObservationDefaults.Retention)))
+            .ToArray();
+
         return new ModelPictureRow(
             profile.Label,
             providerName,
@@ -127,7 +137,8 @@ internal sealed class ModelPictureReader(
             [.. limits],
             windows,
             [.. (reading?.Quota ?? [])],
-            publicSource);
+            publicSource,
+            own);
     }
 
     // Wall-clock window in its own IANA zone; one running past midnight belongs to the day it opened.
@@ -185,4 +196,7 @@ internal sealed record ModelPictureRow(
     IReadOnlyList<PluginLimit> Limits,
     IReadOnlyList<ModelPeakWindow> PeakWindows,
     IReadOnlyList<PluginQuotaState> Quota,
-    Sourced? PublicSource);
+    Sourced? PublicSource,
+    IReadOnlyList<ModelDerivedFact> Derived);
+
+internal sealed record ModelDerivedFact(DerivedPattern Pattern, Sourced Source);

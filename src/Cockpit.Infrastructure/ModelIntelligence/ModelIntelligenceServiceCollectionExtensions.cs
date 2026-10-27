@@ -9,6 +9,7 @@ public static class ModelIntelligenceServiceCollectionExtensions
     public static IServiceCollection AddModelIntelligence(this IServiceCollection services, string cacheRoot)
     {
         services.AddSingleton<IModelIntelligence>(new OpenRouterModelIntelligence(cacheRoot));
+        services.AddSingleton<IModelObservationStore>(new ModelObservationStore(cacheRoot));
         services.AddSingleton<LocalModelIntelligenceReader>();
         return services;
     }
