@@ -168,6 +168,12 @@ internal static partial class Screenshotter
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = new(StringComparer.Ordinal)
     {
+        // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
+        ["splash-fast"] = (_, _) => SplashScene.Fast(),
+        ["splash-loading"] = (_, _) => SplashScene.Loading(),
+        ["splash-slow"] = (_, _) => SplashScene.Slow(),
+        ["splash-skipped"] = (_, _) => SplashScene.Skipped(),
+        ["splash-failed"] = (_, _) => SplashScene.Failed(),
         ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
         // AC-512: the in-app glossary — the guide's own depth stays on the website, this is what a fresh install
         // can still read without a browser.

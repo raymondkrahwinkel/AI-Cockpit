@@ -181,6 +181,15 @@ public static class CapabilityCatalog
             []),
 
         new(
+            "startup.step",
+            "Showing a step while the cockpit starts",
+            "Adds its own step to the start-up screen. The cockpit stops waiting for it after 12 seconds and opens without it.",
+            CapabilityRisk.Ambient,
+            "0.127.0",
+            ["ICockpitHost.AddStartupStep"],
+            []),
+
+        new(
             "first-start.routes",
             "A way to begin on the first start",
             "Offers a choice on the first-run wizard, such as signing in somewhere, and can mark the wizard's work-kind question as answered.",

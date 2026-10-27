@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
+  real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
+  4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;
+  a failed step shows as a red step with a plain sentence. Plugins add their own step with `AddStartupStep` (plugin SDK
+  3.35.0, Cockpit 0.127.0).
 - added: **managed Claude and Codex CLIs on the headless server.** Install, Remove and auto-update in a server
   profile's settings now work there as on the desktop (no major jumps on their own). A managed version wins over the
   image's own copy; Remove falls back to it. The CLIs sit on a volume of their own (`cli`), and the agent's home is a

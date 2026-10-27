@@ -451,6 +451,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // this one shared view model.
     public ProjectsViewModel Projects { get; }
 
+    // AC-1827: the splash waits on this first read of the projects.
+    public Task ProjectsLoaded { get; private set; } = Task.CompletedTask;
+
     // The workspace tab strip and the active workspace's panes.
     public WorkspacesViewModel Workspaces { get; }
 
@@ -3511,7 +3514,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
         // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
         // startup read here; the section simply stays hidden until it lands.
-        _ = Projects.LoadAsync();
+        ProjectsLoaded = Projects.LoadAsync();
         // The panes are one source of "which sessions are live" (their pane ids, what worktrees are keyed on); the
         // shared registry adds the ones that run without a pane, today the delegated tasks (AC-106) (AC-654).
         IReadOnlySet<string> LivePaneIds() => _AllSessions().Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);

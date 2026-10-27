@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.SplashWindow"
+        x:DataType="vm:SplashViewModel"
+        Title="Wispslate Cockpit"
+        Width="560" Height="400" CanResize="False" ShowInTaskbar="True"
+        WindowDecorations="None" Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        WindowStartupLocation="Manual">
+
+    <Window.Styles>
+        <Style Selector="Border.segment">
+            <Setter Property="Height" Value="4"/>
+            <Setter Property="CornerRadius" Value="2"/>
+            <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+            <Setter Property="Margin" Value="2,0"/>
+        </Style>
+        <Style Selector="Border.segment.done">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentBrush}"/>
+        </Style>
+        <Style Selector="Border.segment.skipped">
+            <Setter Property="Background" Value="{DynamicResource CockpitHairlineHoverBrush}"/>
+        </Style>
+        <Style Selector="Border.segment.failed">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+        <Style Selector="Border.segment.active">
+            <Setter Property="Background" Value="{DynamicResource CockpitAccentBrush}"/>
+            <Style.Animations>
+                <Animation Duration="0:0:1.2" IterationCount="Infinite" Easing="SineEaseInOut">
+                    <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.3"/></KeyFrame>
+                    <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1"/></KeyFrame>
+                    <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.3"/></KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+        <Style Selector="TextBlock.headline.failed">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitStatusErrorBrush}"/>
+        </Style>
+        <Style Selector="Image.mark">
+            <Style.Animations>
+                <Animation Duration="0:0:0.45" Easing="CubicEaseOut" FillMode="Both">
+                    <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0"/><Setter Property="TranslateTransform.Y" Value="8"/></KeyFrame>
+                    <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1"/><Setter Property="TranslateTransform.Y" Value="0"/></KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </Window.Styles>
+
+    <Border x:Name="Card" Background="{DynamicResource CockpitPanelBgBrush}"
+            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+            CornerRadius="{DynamicResource CockpitPanelRadius}">
+        <Border.Transitions>
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+            </Transitions>
+        </Border.Transitions>
+
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="446" Spacing="0">
+            <Image Classes="mark" Source="/Assets/BrandMark.png" Height="64" Stretch="Uniform" Margin="0,0,0,18">
+                <Image.RenderTransform><TranslateTransform/></Image.RenderTransform>
+            </Image>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+                <TextBlock Text="Wispslate" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="Cockpit" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+            <TextBlock Text="{Binding Version, StringFormat='Version {0}'}" FontSize="11" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource CockpitTextFaintBrush}" Margin="0,4,0,28"/>
+
+            <StackPanel IsVisible="{Binding StepsVisible}" Spacing="0">
+                <TextBlock Text="{Binding Headline}" FontSize="13" TextWrapping="Wrap" MinHeight="18" Classes="headline" Classes.failed="{Binding HasFailure}"
+                           Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="{Binding Detail}" FontSize="11" MinHeight="16" Margin="0,4,0,10"
+                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                <ItemsControl ItemsSource="{Binding Segments}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SplashSegment">
+                            <Border Classes="segment" Classes.done="{Binding IsDone}" Classes.active="{Binding IsActive}"
+                                    Classes.failed="{Binding IsFailed}" Classes.skipped="{Binding IsSkipped}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding Position}" FontSize="11" Margin="0,8,0,0"
+                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
