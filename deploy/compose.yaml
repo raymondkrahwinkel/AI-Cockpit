@@ -43,6 +43,10 @@ services:
       - /run/cockpit:mode=0700
     volumes:
       - state:/state
+      # AC-1649: the managed CLIs (Install in a profile's settings), and the agent's home around its logins, where
+      # Claude keeps .claude.json: both outlive a new image.
+      - cli:/cli
+      - agent-home:/home/agent
       - scratch:/home/agent/scratch
       # The CLIs run as `agent` and write their logins and transcripts here; the server reads the same volume on
       # its own home. Two mounts of one volume, so neither user needs a path into the other's home.
@@ -121,6 +125,8 @@ secrets:
 
 volumes:
   state:
+  cli:
+  agent-home:
   claude:
   codex:
   ssh:

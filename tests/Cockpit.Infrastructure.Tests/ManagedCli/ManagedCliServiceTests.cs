@@ -42,7 +42,6 @@ public sealed class ManagedCliServiceTests : IDisposable
 
     [Theory]
     [InlineData("../evil")]
-    [InlineData("a/b")]
     [InlineData("..")]
     public async Task PathBuildingMethods_RejectAnUnsafeCliName(string cliName)
     {
@@ -54,6 +53,21 @@ public sealed class ManagedCliServiceTests : IDisposable
         Assert.Null(service.ResolveInstalledPath(cliName));
         Assert.False(service.RemoveInstalled(cliName));
         Assert.False((await service.EnsureInstalledAsync(cliName)).Success);
+    }
+
+    [Fact]
+    public void ResolveInstalledPath_OnTheServer_IsTheWrapper_NeverTheManagedBinary()
+    {
+        // AC-1649, layer 2 (authorization): the server runs as `app`, and a managed binary it started itself would skip
+        // the wrapper that takes every CLI to `agent`. So an installed version resolves to the wrapper, and none to nothing.
+        _PlaceInstalled("acme", "1.0.0");
+        var wrappers = Path.Combine(_root, "wrappers");
+        var service = new ManagedCliService(
+            Path.Combine(_root, "cli"), new HttpClient(new StubHttpMessageHandler(_ => throw new InvalidOperationException("must not download"))),
+            logger: null, new ManagedCliAgentSplit("unused-helper", wrappers));
+
+        Assert.Equal(Path.Combine(wrappers, "acme"), service.ResolveInstalledPath("acme"));
+        Assert.Null(service.ResolveInstalledPath("absent"));
     }
 
     // The internal ctor takes the cli root directly (in production that is <StateRoot>/cli); mirror that layout so

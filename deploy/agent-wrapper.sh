@@ -5,7 +5,8 @@
 name=${0##*/}
 case $name in
   git) real=/usr/bin/git ;;
-  *) real=/usr/local/bin/$name ;;
+  # AC-1649: claude and codex go through cockpit-cli-exec, which picks a managed version under /cli or the image's own.
+  *) set -- "$name" "$@"; real=/usr/local/libexec/cockpit-cli-exec ;;
 esac
 # A CLI already running as agent that calls git or claude itself goes straight through.
 if [ "$(/usr/bin/id -un)" = agent ]; then exec "$real" "$@"; fi

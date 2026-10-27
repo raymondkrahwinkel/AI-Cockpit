@@ -5,7 +5,8 @@
 # agent session runs as `agent` with the session's env and cannot read the state, the secrets or the server (AC-1464);
 # brain-sync brings only its include list, writes back as agent, keeps both sides of a conflict and keeps the app
 # password to itself (AC-1364); a plain `docker run` keeps its state over --volumes-from, and a bind-mount with the
-# documented owners works while a wrong one stops the start (AC-1480); no secret is in a layer or a log. Each check that could pass vacuously has a control.
+# documented owners works while a wrong one stops the start (AC-1480); a managed CLI is the agent's to run, never the
+# server's, and it and the agent's home outlive the container (AC-1649); no secret is in a layer or a log. Each check that could pass vacuously has a control.
 set -euo pipefail
 
 image=${1:?usage: deploy/smoke.sh <image:tag>}
@@ -178,9 +179,23 @@ for binary in /usr/local/bin/claude /usr/local/bin/codex /usr/bin/git /usr/lib/g
 done
 refused agent '/usr/bin/sudo -n -u app /usr/bin/id' || fail "agent can use sudo: $refusal"
 echo "agent sudo: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
-# A managed CLI would install under /state/cli and run as app: the directory is root's.
-refused app 'mkdir /state/cli/claude' || fail "the server's user can install a managed CLI under /state/cli"
-echo "app installs under /state/cli: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
+# AC-1649: a managed CLI as the server installs one: staged by app, promoted by the helper as agent. The server can
+# list it but never run it; agent runs it, and the wrapper prefers it to the image's copy until it is removed.
+managed=/cli/claude/9.9.9/claude
+dc exec -T -u app cockpit sh -c "umask 007 && mkdir -p /cli/.staging/claude/9.9.9 \
+  && printf '#!/bin/sh\necho managed-as-\$(id -un)\n' > /cli/.staging/claude/9.9.9/claude && chmod 0755 /cli/.staging/claude/9.9.9/claude \
+  && /usr/local/libexec/cockpit-cli-promote promote claude 9.9.9 && rm -rf /cli/.staging/claude" || fail "the server cannot promote a staged CLI"
+[ "$(dc exec -T -u app cockpit ls /cli/claude)" = 9.9.9 ] || fail "the server cannot list the managed versions"
+refused app "$managed" || fail "the server's user can run a managed CLI itself: $refusal"
+echo "app runs $managed: $(tail -n 2 <<< "$refusal" | paste -sd ' ')"
+[ "$(dc exec -T -u agent cockpit "$managed")" = managed-as-agent ] || fail "control: agent cannot run the managed CLI"
+refused app '/usr/local/libexec/cockpit-cli-exec claude --version' || fail "the server's user can run cockpit-cli-exec itself: $refusal"
+[ "$(dc exec -T -u app cockpit claude)" = managed-as-agent ] || fail "the wrapper does not prefer the managed claude"
+# Neither user can swap the other's directory for a link: /cli is root's.
+refused app 'mv /cli/claude /cli/moved' || fail "the server's user can replace agent's managed directory: $refusal"
+refused agent 'mv /cli/.staging /cli/moved' || fail "agent can replace the server's staging directory: $refusal"
+refused agent 'touch /cli/.staging/planted' || fail "agent can write in the server's staging directory: $refusal"
+refused app '/usr/local/libexec/cockpit-cli-promote promote claude ../../state' || fail "the promote helper took a path as a version"
 dc exec -T -u app cockpit sh -c 'mkdir /state/smoke-control && rmdir /state/smoke-control' || fail "control: the server's user cannot write /state at all"
 
 echo "== controls: without the wrapper the probe reads it all, and a bare sudo loses the session env"
@@ -307,6 +322,8 @@ log_of brain-sync >> "$work/logs.txt"
 docker rm -f "$project-webdav" >/dev/null
 
 echo "== down and up on the same volume"
+# AC-1649: what an agent keeps beside its logins (Claude's .claude.json) is on a volume too, not in the container.
+dc exec -T -u agent cockpit sh -c 'echo kept > /home/agent/.claude.json'
 dc down >/dev/null
 # A claude volume from before AC-1464 is app's: the entrypoint hands it to agent past the read-only CLAUDE.md (AC-1364).
 docker run --rm --user 0 -v "${project}_claude:/v" --entrypoint chown "$image" -R app:app /v
@@ -316,6 +333,12 @@ wait_running
 # A failed hand-over still heals on the restart that follows, so only a first start that held counts.
 [ "$(docker inspect -f '{{.RestartCount}}' "$(dc ps -q cockpit)")" = 0 ] || fail "the cockpit restarted while taking over an app-owned claude volume"
 [ "$(fingerprint_of_log)" = "$first" ] || fail "the fingerprint changed over a down and up with the same volume"
+[ "$(dc exec -T -u agent cockpit cat /home/agent/.claude.json)" = kept ] || fail "the agent's .claude.json did not outlive the container"
+[ "$(dc exec -T -u app cockpit claude)" = managed-as-agent ] || fail "the managed claude did not outlive the container"
+# Remove, as the server does it: the wrapper falls back to the image's claude.
+dc exec -T -u app cockpit /usr/local/libexec/cockpit-cli-promote remove claude || fail "the server cannot remove a managed CLI"
+[ -z "$(dc exec -T -u app cockpit ls /cli/claude)" ] || fail "remove left a managed version behind"
+[[ "$(dc exec -T -u app cockpit claude --version)" == *'Claude Code'* ]] || fail "after remove the wrapper does not run the image's claude"
 collect_logs
 
 echo "== a new volume"
@@ -359,7 +382,7 @@ agent_ids=$(docker run --rm --entrypoint sh "$image" -c 'echo $(id -u agent):$(i
 [ "$agent_ids" = 1700:1700 ] || fail "the README documents agent as 1700:1700, the image has $agent_ids"
 # A fresh volume takes the image's owners and modes, before the entrypoint runs (overridden here): /state is the
 # server's alone, and nothing is open to other users.
-want='/state app 700|/work app 2770|/home/agent/.claude agent 2770|/home/agent/.codex agent 2770|/home/app/.claude agent 2770|/home/app/.codex agent 2770|/home/app/.ssh app 700|/home/agent/.ssh agent 700|/home/agent/Nextcloud agent 700'
+want='/state app 700|/cli root 750|/cli/claude agent 750|/cli/.staging app 2750|/home/agent agent 750|/work app 2770|/home/agent/.claude agent 2770|/home/agent/.codex agent 2770|/home/app/.claude agent 2770|/home/app/.codex agent 2770|/home/app/.ssh app 700|/home/agent/.ssh agent 700|/home/agent/Nextcloud agent 700'
 IFS='|' read -ra rows <<< "$want"
 for row in "${rows[@]}"; do
   read -r path owner mode <<< "$row"

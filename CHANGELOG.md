@@ -32,6 +32,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **managed Claude and Codex CLIs on the headless server.** Install, Remove and auto-update in a server
+  profile's settings now work there as on the desktop (no major jumps on their own). A managed version wins over the
+  image's own copy; Remove falls back to it. The CLIs sit on a volume of their own (`cli`), and the agent's home is a
+  volume too (`agent-home`), so a managed CLI and Claude's `.claude.json` outlive a new image. Sessions still run every
+  CLI as `agent`; the server only downloads, checks the checksum and hands the copy over. Run
+  `docker compose up -d` once with the new `compose.yaml`, or the two new volumes stay anonymous.
+
 - added: **a plugin can give a sidebar button its own icon** without a counter, through a new
   `AddSideMenuButton(title, onInvoke, iconKind)` overload (plugin SDK UI 3.12.0, Cockpit 0.126.0).
 - added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can

@@ -25,13 +25,19 @@ if [ -f /run/secrets/cockpit_session_env ]; then
 fi
 if [ -d /run/secrets ]; then chmod 0700 /run/secrets; fi
 
-# A managed CLI install runs as app, past the wrapper. /state/cli is root's and never empty, so the server can neither
-# install one nor find one there and falls back to PATH; an install from before AC-1464 is moved aside.
-if [ -e /state/cli ] && [ "$(stat -c %U /state/cli)" != root ]; then mv /state/cli "/state/cli.disabled-$(date +%s)"; fi
-mkdir -p /state/cli
-chown root:root /state/cli
-chmod 0755 /state/cli
-touch /state/cli/.root-owned
+# AC-1649: the managed CLIs live on /cli, not under /state (a /state/cli from before is left alone and never read). /cli
+# is root's, so neither user can swap the other's directory for a link: a version is agent's (cockpit-cli-promote),
+# the staging directory the server's. Set on every start, since a bind-mount or an older volume may lack them.
+chown root:agent /cli
+chmod 0750 /cli
+for name in claude codex; do
+  mkdir -p "/cli/$name"
+  chown agent:agent "/cli/$name"
+  chmod 0750 "/cli/$name"
+done
+mkdir -p /cli/.staging
+chown app:agent /cli/.staging
+chmod 2750 /cli/.staging
 
 # Volumes from before AC-1464 belong to `app`; the CLIs that write them now run as `agent`. The brain instructions
 # mounted read-only inside them (AC-1364) are skipped: a chown there fails and would stop this script.
@@ -68,6 +74,7 @@ for path in /home/app/.claude /home/app/.codex; do check_dir app agent 2770 "$pa
 check_dir agent agent 700 /home/agent/.ssh
 check_dir agent agent 700 /home/agent/Nextcloud
 check_dir agent agent 700 /home/agent/scratch
+check_dir agent agent 750 /home/agent
 [ "$bad" = 0 ] || exit 1
 
 # The group the Claude provider opens its mcp-config and prompt file to (AC-1468); `app` is in it, `agent` owns it.
