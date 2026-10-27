@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Configuration;
@@ -27,21 +28,28 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     // socket exhaustion. Overridable through the internal constructor so a test can supply a stubbed handler.
     private static readonly HttpClient SharedHttp = new();
 
+    // AC-1649: where the server downloads and verifies before the promote helper takes a version into place.
+    private const string StagingDirectoryName = ".staging";
+
+    private static readonly TimeSpan PromoteHelperTimeout = TimeSpan.FromMinutes(5);
+
     private readonly ConcurrentDictionary<string, ManagedCliDescriptor> _descriptors = new(StringComparer.Ordinal);
     private readonly string _cliRoot;
     private readonly HttpClient _http;
     private readonly ILogger<ManagedCliService>? _logger;
+    private readonly ManagedCliAgentSplit? _agentSplit;
 
     public ManagedCliService(ILogger<ManagedCliService> logger)
-        : this(null, null, logger)
+        : this(ManagedCliAgentSplit.RootFromEnvironment(), null, logger, ManagedCliAgentSplit.FromEnvironment())
     {
     }
 
-    internal ManagedCliService(string? cliRoot, HttpClient? http, ILogger<ManagedCliService>? logger)
+    internal ManagedCliService(string? cliRoot, HttpClient? http, ILogger<ManagedCliService>? logger, ManagedCliAgentSplit? agentSplit = null)
     {
         _cliRoot = cliRoot ?? Path.Combine(CockpitConfigPath.Root, "cli");
         _http = http ?? SharedHttp;
         _logger = logger;
+        _agentSplit = agentSplit;
     }
 
     public IReadOnlyCollection<string> RegisteredCliNames => [.. _descriptors.Keys];
@@ -57,6 +65,12 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         if (!_IsSafeCliName(cliName))
         {
             return null;
+        }
+
+        // AC-1649: on the server the wrapper, never the binary, so whatever starts the CLI starts it as `agent`.
+        if (_agentSplit is not null)
+        {
+            return _InstalledVersion(cliName) is null ? null : _agentSplit.WrapperFor(cliName);
         }
 
         var cliDirectory = Path.Combine(_cliRoot, cliName);
@@ -135,6 +149,22 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             return false;
         }
 
+        if (_agentSplit is not null)
+        {
+            if (_InstalledVersion(cliName) is null)
+            {
+                return false;
+            }
+
+            if (_RunPromoteHelper(_agentSplit, "remove", cliName) is not { } failure)
+            {
+                return true;
+            }
+
+            _logger?.LogWarning("Could not remove managed CLI '{CliName}': {Failure}", cliName, failure);
+            return false;
+        }
+
         try
         {
             Directory.Delete(cliDirectory, recursive: true);
@@ -174,6 +204,11 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             if (!Version.TryParse(version, out _))
             {
                 return ManagedCliInstallResult.Fail($"'{cliName}' reported an unexpected version format ('{version}') and was not installed.");
+            }
+
+            if (_agentSplit is not null)
+            {
+                return await _InstallThroughAgentAsync(cliName, descriptor, platform, version, _agentSplit, cancellationToken).ConfigureAwait(false);
             }
 
             var versionDirectory = Path.Combine(_cliRoot, cliName, version);
@@ -218,6 +253,68 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             _logger?.LogWarning(exception, "Managed CLI '{CliName}' install failed", cliName);
             return ManagedCliInstallResult.Fail($"Could not install '{cliName}': {exception.Message}");
         }
+    }
+
+    // AC-1649: the server cannot enter a promoted version (it is agent-run's), so "already there" is the directory's
+    // name, and the helper's all-or-nothing copy stands in for topping up a partial install.
+    private async Task<ManagedCliInstallResult> _InstallThroughAgentAsync(
+        string cliName, ManagedCliDescriptor descriptor, ManagedCliPlatform platform, string version, ManagedCliAgentSplit agentSplit, CancellationToken cancellationToken)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return ManagedCliInstallResult.Fail("The server's managed CLIs need Linux.");
+        }
+
+        var wrapper = agentSplit.WrapperFor(cliName);
+        if (_InstalledVersion(cliName) == version)
+        {
+            return ManagedCliInstallResult.Ok(version, wrapper);
+        }
+
+        var plan = await descriptor.BuildDownloadPlanAsync(_http, platform, version, cancellationToken).ConfigureAwait(false);
+        var staging = Path.Combine(_cliRoot, StagingDirectoryName, cliName);
+        try
+        {
+            _DeleteDirectoryIfExists(staging);
+            // Owner-only while the server writes in it, so a session cannot plant a link in its way; then readable for
+            // agent's group, which the helper copies it as.
+            Directory.CreateDirectory(staging, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            await _DownloadVerifyPlaceAsync(plan, Path.Combine(staging, version), cancellationToken).ConfigureAwait(false);
+            File.SetUnixFileMode(staging, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
+            return _RunPromoteHelper(agentSplit, "promote", cliName, version) is { } failure
+                ? ManagedCliInstallResult.Fail($"Could not install '{cliName}': {failure}")
+                : ManagedCliInstallResult.Ok(version, wrapper);
+        }
+        finally
+        {
+            _DeleteDirectoryIfExists(staging);
+        }
+    }
+
+    // The image's promote helper takes itself to `agent` (deploy/cockpit-cli-promote.sh). Null when it succeeded, else
+    // what it said; it prints only paths and versions.
+    private static string? _RunPromoteHelper(ManagedCliAgentSplit agentSplit, params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo(agentSplit.PromoteHelper) { UseShellExecute = false, RedirectStandardError = true };
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo);
+        if (process is null)
+        {
+            return "the promote helper did not start";
+        }
+
+        var error = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(PromoteHelperTimeout))
+        {
+            process.Kill(entireProcessTree: true);
+            return $"the promote helper did not finish within {PromoteHelperTimeout.TotalMinutes} minutes";
+        }
+
+        return process.ExitCode == 0 ? null : $"the promote helper exited with {process.ExitCode}: {error.GetAwaiter().GetResult().Trim()}";
     }
 
     private async Task _DownloadVerifyPlaceAsync(ManagedCliDownloadPlan plan, string versionDirectory, CancellationToken cancellationToken)
