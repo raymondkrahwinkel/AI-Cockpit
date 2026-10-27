@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Avalonia.Controls;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.UI;
@@ -26,6 +27,14 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
         return read.Status == DepotBrowserStatus.Ok
             ? DepotBrowserAnswer<DepotDocumentExcerpt>.Success(_Excerpt(read.Data ?? string.Empty))
             : DepotBrowserAnswer<DepotDocumentExcerpt>.Failure(read.Status, read.Message);
+    }
+
+    public async Task<DepotBrowserAnswer<Control>> RenderDocumentAsync(string project, DepotBrowserNode node, CancellationToken cancellationToken = default)
+    {
+        var read = await _InvokeAsync<string>(DepotBrowserChannel.Read, new(connection.Id, project, node.Path), cancellationToken).ConfigureAwait(true);
+        return read.Status == DepotBrowserStatus.Ok
+            ? DepotBrowserAnswer<Control>.Success(host.CreateMarkdownView(read.Data ?? string.Empty))
+            : DepotBrowserAnswer<Control>.Failure(read.Status, read.Message);
     }
 
     private static DepotDocumentExcerpt _Excerpt(string markdown)
