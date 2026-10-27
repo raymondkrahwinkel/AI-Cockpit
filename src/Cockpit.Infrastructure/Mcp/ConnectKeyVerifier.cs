@@ -300,7 +300,7 @@ internal sealed class ConnectKeyVerifier : ISingletonService, IConnectKeyAdminis
                 }
                 while (_AllKeys().Any(existing => string.Equals(existing.Prefix, _PrefixOf(secret), StringComparison.Ordinal)));
 
-                DateTimeOffset? expiresAt = now.AddDays(days);
+                DateTimeOffset? expiresAt = neverExpires ? null : now.AddDays(days);
                 key = new ConnectKey(_PrefixOf(secret), _Hash(secret), capability, label.Trim(), now, expiresAt, HoldsAssistant: holdsAssistant, Scope: scope ?? ConnectKeyScope.Default);
                 next = [.. _persisted, key];
             }
