@@ -2,6 +2,7 @@ using Cockpit.Plugin.Depot.Backup;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Settings;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
@@ -27,6 +28,12 @@ public class DepotSettingsTests
 
         var host = Substitute.For<ICockpitHost>();
         settings.Connections = [new DepotConnectionRegistration("id-1", "Work", url, SynchroniseSettings: false)];
+        host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpAuthState.Authorized);
+        await new DepotSettingsCarrier(host, () => settings.Connections, "id-1").WriteAsync([1], CancellationToken.None);
+        host.DidNotReceive().CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>());
+
+        settings.Connections = [new DepotConnectionRegistration("id-1", "Work", url, SynchroniseSettings: true)];
+        host.GetMcpServerAuthStateAsync("Depot: Work", Arg.Any<CancellationToken>()).Returns(PluginMcpAuthState.AuthorizationRequired);
         await new DepotSettingsCarrier(host, () => settings.Connections, "id-1").WriteAsync([1], CancellationToken.None);
         host.DidNotReceive().CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>());
     }
