@@ -78,6 +78,13 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // duplicate-name detail Save()'s plain bool cannot carry, to tell the operator which name collided instead
         // of just that the save failed.
         var row = new DepotConnectionRowControl(_host, existing, _settings, _SaveDetailed);
+        row.SynchroniseSettingsSelected += selected =>
+        {
+            foreach (var other in _rows.Where(candidate => candidate != selected))
+            {
+                other.SetSynchroniseSettings(false);
+            }
+        };
         row.RemoveRequested += () =>
         {
             _rows.Remove(row);
@@ -180,7 +187,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
         // needs to read the pre-save state itself before anything overwrites it (DepotPlugin's own comment on
         // _SaveConnectionsAsync explains why).
         var payload = JsonSerializer.SerializeToElement(
-            new DepotSaveConnectionsRequest([.. candidates.Select(candidate => new DepotConnectionPayload(candidate.Id, candidate.Name, candidate.Url))]),
+            new DepotSaveConnectionsRequest([.. candidates.Select(candidate => new DepotConnectionPayload(candidate.Id, candidate.Name, candidate.Url, candidate.SynchroniseSettings))]),
             DepotChannel.Json);
 
         // ponytail: TryStage's commit is a synchronous Action (IPluginSettingsView predates the plugin split), so

@@ -19,7 +19,7 @@ public sealed class DepotHostAuthorizationContractTests
         var host = Substitute.For<ICockpitHost>();
         host.CreateAuthorizedHandler(Arg.Any<string>(), "depot.host").Returns(_ => new _DepotAccountHandler());
         host.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new _DepotAccountHandler());
-        var connection = new DepotConnectionRegistration("c1", "Home", "https://depot.test");
+        var connection = new DepotConnectionRegistration("c1", "Home", "https://depot.test", SynchroniseSettings: true);
         var settings = new DepotSettings(new FakePluginStorage()) { Connections = [connection] };
 
         var target = new DepotBackupTarget(host, () => settings.Connections, connection.Id);

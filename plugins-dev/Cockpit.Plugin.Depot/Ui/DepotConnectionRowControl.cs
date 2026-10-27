@@ -50,6 +50,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     private string? _storedUrl;
     private readonly TextBox _name;
     private readonly TextBox _url;
+    private readonly CheckBox _synchroniseSettings;
     private readonly TextBlock _brandName;
     private readonly Image _brandLogo;
     private readonly MaterialIcon _defaultBrandIcon;
@@ -61,6 +62,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     private bool _isBusy;
 
     public event Action? RemoveRequested;
+    public event Action<DepotConnectionRowControl>? SynchroniseSettingsSelected;
 
     public DepotConnectionRowControl(ICockpitUiHost host, DepotConnectionRegistration? existing, DepotSettings settings, Func<DepotSaveResult> saveAll)
     {
@@ -73,6 +75,14 @@ internal sealed class DepotConnectionRowControl : UserControl
 
         _name = new TextBox { Text = existing?.Name ?? string.Empty, PlaceholderText = "Name (e.g. Work, Personal)" };
         _url = new TextBox { Text = existing?.Url ?? string.Empty, PlaceholderText = "https://depot.example.com" };
+        _synchroniseSettings = new CheckBox { Content = "Synchronise settings via this server", IsChecked = existing?.SynchroniseSettings ?? settings.Connections.Count == 0 };
+        _synchroniseSettings.IsCheckedChanged += (_, _) =>
+        {
+            if (_synchroniseSettings.IsChecked == true)
+            {
+                SynchroniseSettingsSelected?.Invoke(this);
+            }
+        };
         _brandName = new TextBlock { Text = "Depot", FontSize = 13, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
         _brandLogo = new Image { Width = 24, Height = 24, Stretch = Stretch.Uniform, IsVisible = false };
         _defaultBrandIcon = new MaterialIcon { Kind = MaterialIconKind.Database, Width = 24, Height = 24 };
@@ -140,6 +150,8 @@ internal sealed class DepotConnectionRowControl : UserControl
         panel.Children.Add(_name);
         panel.Children.Add(_Hint("Instance URL — with or without a trailing /mcp, both work"));
         panel.Children.Add(_url);
+        panel.Children.Add(_synchroniseSettings);
+        panel.Children.Add(_Hint("Settings use the AC-540 whitelist; keys and tokens never go along. Selecting this server turns sync off for the others. Active after restart."));
         panel.Children.Add(signInRow);
         panel.Children.Add(tokenRow);
         panel.Children.Add(remove);
@@ -168,7 +180,10 @@ internal sealed class DepotConnectionRowControl : UserControl
         // AC-499: DepotUrlNormalizer, not a local Trim/TrimEnd — Depot's own docs tell the operator to paste the
         // full endpoint (…/mcp), which the backend part then appends /mcp to again when it builds the MCP
         // contribution. Stripping it here means storage always holds the bare base URL DepotConnectionRegistration.Url promises.
-        Url: DepotUrlNormalizer.Normalize(_url.Text));
+        Url: DepotUrlNormalizer.Normalize(_url.Text),
+        SynchroniseSettings: _synchroniseSettings.IsChecked == true);
+
+    public void SetSynchroniseSettings(bool value) => _synchroniseSettings.IsChecked = value;
 
     // Reads the stored auth state for this row (AC-243/AC-355) — no network, no browser, cheap enough to run for
     // every row when the dialog opens. A no-op for a row with nothing stored yet, or once the row's name has
@@ -324,7 +339,7 @@ internal sealed class DepotConnectionRowControl : UserControl
             var answer = await _host.Channel.InvokeAsync(
                 DepotChannel.ConnectWithInstallToken,
                 JsonSerializer.SerializeToElement(
-                    new DepotInstallTokenRequest(new DepotConnectionPayload(registration.Id, registration.Name, registration.Url), token),
+                    new DepotInstallTokenRequest(new DepotConnectionPayload(registration.Id, registration.Name, registration.Url, registration.SynchroniseSettings), token),
                     DepotChannel.Json)).ConfigureAwait(true);
             var result = answer.Deserialize<DepotInstallTokenAnswer>(DepotChannel.Json);
             if (result?.Success == true)
