@@ -149,7 +149,7 @@ jobs:
       # library reads, so they are a matched pair, not two independent dependencies.
       - name: Install vpk
         shell: bash
-        run: dotnet tool install -g vpk --version 1.2.0
+        run: dotnet tool install -g vpk --version 1.2.161
 
       # macOS wants an .icns and the repository has none — only the .ico Windows uses and the .png everything else
       # does. Built here from the PNG rather than committed, so there is one source of truth for the icon.

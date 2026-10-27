@@ -87,7 +87,10 @@
          transitive reference would make a direct API call depend on another project's dependency list.
          Pinned rather than floating: the version here is the one the release pipeline installs `vpk` at, and
          the two are a matched pair — the tool writes the feed this library reads. -->
-    <PackageReference Include="Velopack" Version="1.2.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+    <!-- AC-1747: Porta.Pty 2.x pulls the ConPTY package into the win-x64 publish; Windows uses kernel32 ConPTY
+         itself (ConPtyProcess). Assets off; keep the version Porta.Pty asks for (NU1605). -->
+    <PackageReference Include="Microsoft.Windows.Console.ConPTY" Version="1.24.260710001" ExcludeAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
