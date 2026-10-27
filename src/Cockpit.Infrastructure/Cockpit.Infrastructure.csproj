@@ -7,37 +7,37 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <!-- SessionSwitch (lock/unlock) presence events for the Windows presence detector. The package is
          Windows-only at runtime but restores/builds on any host, keeping Infrastructure a plain net10.0
          assembly (no Windows target framework needed). -->
-    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.14" />
     <!-- Windows has no /proc and .NET exposes no parent-process id, so the resource meter (#78) reads
          Win32_Process through WMI to see which processes a session spawned. The package restores everywhere;
          only the Windows-gated reader touches it. -->
-    <PackageReference Include="System.Management" Version="10.0.9" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
     <!-- Multi-provider (#26): the local-LLM session driver (Ollama/LM Studio) talks to their
          OpenAI-compatible /v1 endpoints through Microsoft.Extensions.AI's IChatClient. The .OpenAI
          package brings the OpenAI SDK plus the AsIChatClient() adapter; a custom Endpoint points it at
          localhost. Later (#26 tool-loop) the same IChatClient hosts MCP tools via ModelContextProtocol. -->
-    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.11.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
     <!-- 2.0.0 (AC-505): the client's ClientOAuthProvider now requests `offline_access` itself whenever the
          authorization server advertises it (SEP-2207) — the reason McpOAuthAuthorizer no longer has to derive
          a scope list by hand. -->
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <!-- #26 tools/MCP: the MCP client (namespace ModelContextProtocol.Client) that connects the local-LLM
          tool-loop to the user's MCP servers. Kept on the same line as the AspNetCore server package. -->
-    <PackageReference Include="ModelContextProtocol" Version="2.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.3.0" />
     <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running the multilingual SupertonicTTS model in-proc —
          no Python, no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the model's own
          sample rate; playback plays at that rate (SoundFlowAudioPlaybackService opens the device on
          whatever AudioFormat.SampleRate is handed in), so no resampling step is needed. -->
-    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.8" />
     <!-- Extracts the .tar.bz2 SupertonicTTS model archive sherpa-onnx's model releases ship as (the ONNX graphs +
          tts.json + unicode_indexer.bin) — .NET's built-in System.Formats.Tar has no bzip2 decompressor. -->
-    <PackageReference Include="SharpCompress" Version="0.49.1" />
+    <PackageReference Include="SharpCompress" Version="0.50.7" />
     <!-- Rasterises an SVG project logo to a PNG when it is stored (AC-162). The core Svg.Skia, not its Avalonia
          binding: that one still tracks Avalonia 11 while this app is on 12, whereas this needs only SkiaSharp —
          the same 3.119 Avalonia already brings — so the logo path carries no UI-framework version coupling. -->
@@ -48,10 +48,10 @@
     <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
          (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via
          PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->
-    <PackageReference Include="Porta.Pty" Version="1.0.7" />
-    <PackageReference Include="SharpHook" Version="7.1.1" />
-    <PackageReference Include="SoundFlow" Version="1.4.1" />
-    <PackageReference Include="Tmds.DBus" Version="0.92.0" />
+    <PackageReference Include="Porta.Pty" Version="2.2.3" />
+    <PackageReference Include="SharpHook" Version="7.1.3" />
+    <PackageReference Include="SoundFlow" Version="1.4.2" />
+    <PackageReference Include="Tmds.DBus" Version="0.95.1" />
     <!-- Voice input (STT+VAD): Whisper.net core plus the CPU runtimes only. WhisperBackendPlanner
          (Cockpit.Core) decides the try-order per VoiceBackendPreference + OS; Whisper.net's own
          NativeLibraryLoader walks that order at model-load time and picks the first one that loads here.
@@ -70,7 +70,7 @@
     <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
     <!-- In-app updates (AC-108): the updater implementations live beside GitHubUpdateService in this project.
          Kept on the same pinned version as Cockpit.App — see the note there for why both declare it. -->
-    <PackageReference Include="Velopack" Version="1.2.0" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <ItemGroup>
