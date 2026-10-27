@@ -148,7 +148,7 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
         }
         catch (BackendApiException exception) when (exception.Status == HttpStatusCode.Conflict)
         {
-            return null;
+            return new LaunchedSession(string.Empty, string.Empty, null, FailureReason: exception.Description);
         }
 
         var paneId = started.GetProperty("paneId").GetString() ?? throw new JsonException("The backend started a session without a pane id.");

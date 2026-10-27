@@ -5,6 +5,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -51,6 +52,14 @@ public partial class CockpitView : UserControl
     private DispatcherTimer? _idleSweepTimer;
     private DispatcherTimer? _resourceTimer;
     private DispatcherTimer? _claimCollisionTimer;
+
+    private void _OnCopyServerStartReason(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { Tag: string reason } && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            _ = clipboard.SetTextAsync(reason);
+        }
+    }
 
     public CockpitView()
     {

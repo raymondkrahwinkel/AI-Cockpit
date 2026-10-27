@@ -242,6 +242,9 @@ public sealed partial class ServerStartViewModel(string server) : ObservableObje
     private string _error = "";
 
     [ObservableProperty]
+    private string _reason = "";
+
+    [ObservableProperty]
     private string _prompt = "";
 
     public ObservableCollection<NodeProfileChoice> Profiles { get; } = [];
