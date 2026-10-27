@@ -1912,6 +1912,16 @@ public void Initialize(ICockpitHost host)
 }
 ```
 
+**Model intelligence (SDK 3.36.0, host 0.128.0).** Set the optional `ReadModelIntelligenceAsync` to tell the host,
+without a session, what your provider knows about its models right now. It gets the profile's config JSON and returns a
+`PluginModelIntelligence`: prices (`PluginModelCostEstimate` with `PublicModelRef`, `Source` and `PriceModifiers`),
+peak windows (`PluginTimeWindow`, wall-clock times in an IANA zone), limits (`PluginLimit`) and quota state
+(`PluginQuotaState`, a `PluginRateLimitWindow` plus its source). Every fact carries a `PluginFactSource` (name, `AsOf`,
+`ValidFor`). Report only what you read live or from a public source: leave the property `null` or a list empty and the
+host reads "unknown", never 0. What you see during a session (a quota reading, a rate-limit refusal, a latency) goes to
+`host.RecordModelObservation(...)`, which a host before 0.128.0 ignores. A plugin that sets the read sets
+`minHostVersion` 0.128.0.
+
 ### `IPluginSessionDriverFactory` {#ipluginsessiondriverfactory}
 
 ```csharp

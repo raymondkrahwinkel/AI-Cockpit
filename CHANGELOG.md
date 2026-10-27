@@ -39,6 +39,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   CLI as `agent`; the server only downloads, checks the checksum and hands the copy over. Run
   `docker compose up -d` once with the new `compose.yaml`, or the two new volumes stay anonymous.
 
+- added: **provider plugins can report what they know about their models.** Prices, peak windows, limits and quota
+  state, each with its source and age, read without a session, also from a headless server. Nothing reports them yet;
+  a provider that does not stays "unknown", never 0 (plugin SDK 3.36.0, Cockpit 0.128.0).
 - added: **a plugin can give a sidebar button its own icon** without a counter, through a new
   `AddSideMenuButton(title, onInvoke, iconKind)` overload (plugin SDK UI 3.12.0, Cockpit 0.126.0).
 - added: **a price per profile in Productivity.** Usage a provider reports no cost for (Codex, a subscription) can
