@@ -25,10 +25,16 @@ internal sealed class DockPanelWindow : Window
     public event EventHandler? DockBackRequested;
 
     internal DockPanelWindow(DockPanelRegistration panel, Control view, IWindowBoundsStore? boundsStore)
+        : this(panel.Id, panel.Title, view, boundsStore, "Put this panel back in the dock rail")
+    {
+    }
+
+    // AC-1751: also the window a floating workspace stands in, its bounds under the workspace id.
+    internal DockPanelWindow(string boundsKey, string title, Control view, IWindowBoundsStore? boundsStore, string dockBackTip)
     {
         _boundsStore = boundsStore;
-        _boundsKey = panel.Id;
-        Title = $"Cockpit — {panel.Title}";
+        _boundsKey = boundsKey;
+        Title = $"Cockpit — {title}";
         Width = 960;
         Height = 640;
         MinWidth = 340;
@@ -39,11 +45,20 @@ internal sealed class DockPanelWindow : Window
 
         var dockBack = new Button { Content = "⇤ Dock back", Padding = new Thickness(10, 3), FontSize = 12 };
         dockBack.Classes.Add("Subtle");
-        ToolTip.SetTip(dockBack, "Put this panel back in the dock rail");
+        ToolTip.SetTip(dockBack, dockBackTip);
         dockBack.Click += (_, _) => DockBackRequested?.Invoke(this, EventArgs.Empty);
 
         CockpitWindowChrome.Apply(this, Title, includeMinimize: true, includeMaximize: true, closeOnEscape: false, captionAction: dockBack);
         _RestoreBounds();
+
+        // A move without a resize; read here rather than in OnClosed, where the closed window reports (0,0).
+        PositionChanged += (_, e) =>
+        {
+            if (WindowState == WindowState.Normal)
+            {
+                _normalPosition = e.Point;
+            }
+        };
     }
 
     // Before Show(), like the assistant's window: Manual placement, since there is no owner to centre on.
@@ -86,11 +101,6 @@ internal sealed class DockPanelWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        if (WindowState == WindowState.Normal)
-        {
-            _normalPosition = Position;
-        }
-
         _ = _SaveBoundsAsync();
         base.OnClosed(e);
     }

@@ -27,6 +27,8 @@ internal sealed class WorkspaceEntry
 
     public bool? IsPreview { get; set; }
 
+    public bool? IsFloating { get; set; }
+
     public List<WorkspacePaneEntry> Panes { get; set; } = [];
 
     public static WorkspaceEntry FromDomain(Workspace workspace) => new()
@@ -44,6 +46,7 @@ internal sealed class WorkspaceEntry
         Panes = [.. workspace.Panes.Select(WorkspacePaneEntry.FromDomain)],
         InstanceKey = workspace.InstanceKey,
         IsPreview = workspace.IsPreview ? true : null,
+        IsFloating = workspace.IsFloating ? true : null,
     };
 
     // This entry as a domain record. A blank type falls back to `Sessions`; an uninstalled plugin type
@@ -64,6 +67,7 @@ internal sealed class WorkspaceEntry
             Panes = [.. Panes.Select(pane => pane.ToDomain()).Where(pane => WorkspaceTypeRules.Accepts(type, pane.Kind))],
             InstanceKey = InstanceKey,
             IsPreview = IsPreview == true,
+            IsFloating = IsFloating == true,
         };
     }
 }

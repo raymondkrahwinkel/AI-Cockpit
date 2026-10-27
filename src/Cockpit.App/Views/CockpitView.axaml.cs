@@ -104,6 +104,7 @@ public partial class CockpitView : UserControl
         {
             // AC-1710: a panel left floating at the last close stands in its own window again.
             cockpit.DockHost.RestoreFloatingWindows();
+            cockpit.WorkspaceWindows.Start();
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
             cockpit.SpatialNavigationRequested += OnSpatialNavigationRequested;
 

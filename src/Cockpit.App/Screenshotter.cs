@@ -192,6 +192,8 @@ internal static partial class Screenshotter
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
         ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
+        // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
+        ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
         ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
         ["markdown-editor-table"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
@@ -4248,6 +4250,27 @@ internal static partial class Screenshotter
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Notes.md", "Notes.md")).GetAwaiter().GetResult();
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Window _WorkspaceFloatingScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", _ => new Views.Editor.MarkdownEditor
+            {
+                Text = "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**.\n\n## Wishes\n- A tab or a separate window\n- Saving writes back to Depot\n",
+            }) { CanFloat = true },
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var workspaces = new CockpitViewModel(workspaceTypeRegistry: registry).Workspaces;
+        workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/md-editor.md", "md-editor.md")).GetAwaiter().GetResult();
+        var workspace = workspaces.Active!;
+        workspaces.PopOutAsync(workspace.Id).GetAwaiter().GetResult();
+        return new Docking.DockPanelWindow(workspace.Id, workspace.Name, workspaces.BodyFor(workspace)!, boundsStore: null, "Put this workspace back in the tab strip")
+        {
+            Width = 900,
+            Height = 560,
+        };
     }
 
     private static Window _MarkdownEditorScene(int width, int height, Action<Views.Editor.MarkdownEditor> arrange)

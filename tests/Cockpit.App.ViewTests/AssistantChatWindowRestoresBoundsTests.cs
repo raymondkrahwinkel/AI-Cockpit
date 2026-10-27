@@ -14,11 +14,13 @@ namespace Cockpit.App.ViewTests;
 public class AssistantChatWindowRestoresBoundsTests
 {
     [Fact]
-    public void ASavedNormalState_RestoresPositionAndSizeBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
+    public void ASavedState_RestoresPositionSizeAndMaximizedBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
     {
         var store = Substitute.For<IWindowBoundsStore>();
         store.LoadAsync("assistant", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: false)));
+            .Returns(
+                Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: false)),
+                Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: true)));
 
         var window = new AssistantChatWindow(store);
 
@@ -26,37 +28,17 @@ public class AssistantChatWindowRestoresBoundsTests
         Assert.Equal(new Avalonia.PixelPoint(50, 50), window.Position);
         Assert.Equal(800, window.Width);
         Assert.Equal(600, window.Height);
+        Assert.Equal(WindowState.Maximized, new AssistantChatWindow(store).WindowState);
     });
 
     [Fact]
-    public void ASavedMaximizedState_IsAppliedBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
-    {
-        var store = Substitute.For<IWindowBoundsStore>();
-        store.LoadAsync("assistant", Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: true)));
-
-        var window = new AssistantChatWindow(store);
-
-        Assert.Equal(WindowState.Maximized, window.WindowState);
-    });
-
-    [Fact]
-    public void NoSavedBounds_KeepsTheXamlDefaultCenterOwnerLocation() => HeadlessAvalonia.Run(() =>
-    {
-        var store = Substitute.For<IWindowBoundsStore>();
-        store.LoadAsync("assistant", Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
-
-        var window = new AssistantChatWindow(store);
-
-        Assert.Equal(WindowStartupLocation.CenterOwner, window.WindowStartupLocation);
-    });
-
-    [Fact]
-    public void Closing_SavesTheCurrentBoundsUnderTheAssistantKey() => HeadlessAvalonia.Run(() =>
+    public void NoSavedBounds_KeepsTheXamlDefaultCenterOwnerLocation_AndClosingSavesUnderTheAssistantKey() => HeadlessAvalonia.Run(() =>
     {
         var store = Substitute.For<IWindowBoundsStore>();
         store.LoadAsync("assistant", Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
         store.SaveAsync("assistant", Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+
+        Assert.Equal(WindowStartupLocation.CenterOwner, new AssistantChatWindow(store).WindowStartupLocation);
 
         var window = new AssistantChatWindow(store) { Position = new Avalonia.PixelPoint(10, 20), Width = 500, Height = 700 };
         window.Show();
