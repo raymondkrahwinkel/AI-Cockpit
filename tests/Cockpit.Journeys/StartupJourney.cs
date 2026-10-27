@@ -1,6 +1,7 @@
 using Avalonia.Headless;
 using Avalonia.Threading;
 using System.Runtime.Loader;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App;
 using Cockpit.App.ViewModels;
@@ -12,6 +13,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Screenshots;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Backup;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
@@ -34,8 +36,13 @@ public sealed class StartupJourney
     [Fact]
     public async Task TheCockpitStarts_WithEveryBundledPlugin_RefusingOneBuiltForAnotherContract()
     {
-        await using var cockpit = JourneyHost.Desktop(_InstallAPluginForContractTwo);
+        await using var cockpit = JourneyHost.Desktop(stateRoot =>
+        {
+            _InstallAPluginForContractTwo(stateRoot);
+            File.WriteAllText(Path.Combine(stateRoot, "restored-signins.json"), """[{"Label":"Depot","PluginId":"depot"},{"Label":"YouTrack MCP","PluginId":null}]""");
+        });
         var services = cockpit.Services;
+        await services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync("schedules", new Dictionary<string, string> { ["reminders"] = _MissedReminder() });
 
         await cockpit.StartDesktopAsync();
         var rendered = HeadlessAvalonia.Run(() =>
@@ -95,34 +102,27 @@ public sealed class StartupJourney
         });
         await setup.WaitAsync(Until.Ceiling);
 
-        // AC-1803: startup notices collect in the store but show once, so the operator can open the panel and use
-        // the original live actions instead of losing them in a burst of overlays.
-        var chosen = 0;
+        // AC-1803: what posts while the plugins start (two restored sign-ins, a missed reminder) shows as one toast,
+        // and its Show opens the panel where each notification keeps its own live buttons.
+        var center = cockpitViewModel.Notifications;
+        await HeadlessAvalonia.RunAsync(() => Until.Holds(center, () => center.Items.Count == 3));
         await HeadlessAvalonia.RunAsync(() =>
         {
-            var toasts = cockpitViewModel.ToastHost;
-            toasts.Add("Slack needs a scope", ToastSeverity.Warning, [new ToastAction("Fix Slack", () => chosen++)], sticky: true, source: "Startup journey");
-            toasts.Add("Depot needs attention", ToastSeverity.Error, [new ToastAction("Open Depot", () => chosen++)], sticky: true, source: "Startup journey");
-            toasts.Add("Settings conflict", ToastSeverity.Warning, [new ToastAction("Choose", () => chosen++)], sticky: true, source: "Startup journey");
-
-            var startupToast = Assert.Single(toasts.Toasts);
+            var startupToast = Assert.Single(cockpitViewModel.Toasts);
             Assert.Equal("3 notifications at startup", startupToast.Message);
             startupToast.Actions[0].InvokeCommand.Execute(null);
+            Assert.Equal(
+                [EmptiedSignIn.Ask("Depot"), EmptiedSignIn.Ask("YouTrack MCP")],
+                center.Items.Where(item => item.Source != "Schedules").Select(item => item.Message).Order());
+            Assert.Equal(["Done", "Snooze 10 min", "1 hour"], center.Items.Single(item => item.Source == "Schedules").Actions.Select(action => action.Label));
+            center.Items.Single(item => item.Source == "Schedules").Actions[0].InvokeCommand.Execute(null);
             return Task.CompletedTask;
         });
         Assert.Equal(NotificationCenterViewModel.DockPanelId, cockpitViewModel.OpenDockPanelId);
-        var startupItems = cockpitViewModel.Notifications.Items.Where(item => item.Source == "Startup journey").ToList();
-        Assert.Equal(3, startupItems.Count);
-        await HeadlessAvalonia.RunAsync(() =>
-        {
-            foreach (var item in startupItems)
-            {
-                item.Actions[0].InvokeCommand.Execute(null);
-            }
-
-            return Task.CompletedTask;
-        });
-        Assert.Equal(3, chosen);
+        var reminders = "";
+        await Until.ReloadHolds(
+            async () => reminders = JsonSerializer.Deserialize<string>((await services.GetRequiredService<IPluginRegistrationStore>().LoadDataAsync("schedules"))["reminders"]) ?? "",
+            () => reminders.Contains("\"State\":\"Done\"", StringComparison.Ordinal));
 
         await HeadlessAvalonia.RunAsync(() =>
         {
@@ -134,6 +134,12 @@ public sealed class StartupJourney
     }
 
     // Installed as the store would leave it; its contract is refused before its assembly is ever read.
+    // A one-off reminder five minutes overdue, in the Schedules storage shape: the engine's first tick says it.
+    private static string _MissedReminder() => JsonSerializer.Serialize(JsonSerializer.Serialize(new[]
+    {
+        new { Id = "missed", Text = "Stand-up", Schedule = "once 2026-01-01 08:00", TimeZone = "UTC", State = "Open", Slot = DateTimeOffset.UtcNow.AddMinutes(-5), Delivery = new[] { new { Channel = "cockpit" } } },
+    }));
+
     private static void _InstallAPluginForContractTwo(string stateRoot)
     {
         var folder = Directory.CreateDirectory(Path.Combine(stateRoot, "plugins", RefusedPlugin)).FullName;
