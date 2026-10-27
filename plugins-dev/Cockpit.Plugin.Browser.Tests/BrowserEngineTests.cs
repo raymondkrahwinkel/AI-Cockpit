@@ -1,7 +1,9 @@
 using Avalonia.Input;
+using System.Text.Json;
 using Cockpit.Plugin.Browser.UI;
 using Cockpit.Plugin.Browser.UI.Engine;
 using Cockpit.Plugin.Browser.UI.Runtime;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Browser.Tests;
 
@@ -65,6 +67,19 @@ public class BrowserEngineTests
         Press(Key.W, KeyModifiers.Control);
         Press(Key.W, KeyModifiers.Control);
         Assert.Equal((1, BrowserModel.StartAddress), (model.Tabs.Count, model.Active?.Address));
+
+        var storage = new MemoryStorage();
+        storage.Set(BrowserTabSession.TabsKey, new BrowserSavedSession(
+            [new("https://one.test", "One", false), new("https://two.test", "Two", true), new("https://three.test", "Three", false)], 1));
+        using var session = new BrowserTabSession(storage);
+        var restored = new BrowserModel(engine, address => new BrowserTab(CefBrowserView.ForScene(engine), address));
+        session.Restore(restored);
+        Assert.Equal(new[] { "https://one.test", "https://two.test", "https://three.test" }, restored.Tabs.Select(tab => tab.PersistenceAddress));
+        Assert.Equal("https://two.test", restored.Active?.PersistenceAddress);
+        Assert.True(restored.Tabs[0].IsDeferred);
+        Assert.False(restored.Active!.IsDeferred);
+        session.Configure(BrowserStartupMode.EmptyNewTab, BrowserModel.StartAddress);
+        Assert.Null(storage.Get<BrowserSavedSession>(BrowserTabSession.TabsKey));
     }
 
     // L2d (platform/fallback): an engine that cannot load is a reason on the panel, never an exception in Cockpit. A
@@ -98,5 +113,16 @@ public class BrowserEngineTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private sealed class MemoryStorage : IPluginStorage
+    {
+        private readonly Dictionary<string, string> _values = [];
+
+        public T? Get<T>(string key) => _values.TryGetValue(key, out var value) ? JsonSerializer.Deserialize<T>(value) : default;
+
+        public void Set<T>(string key, T value) => _values[key] = JsonSerializer.Serialize(value);
+
+        public void Remove(string key) => _values.Remove(key);
     }
 }

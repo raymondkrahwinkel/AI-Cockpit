@@ -42,10 +42,11 @@ internal sealed class BrowserShell : UserControl
     private readonly DispatcherTimer _lastReadTicker = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly TabGrantRegistry _grants;
     private readonly Action<BrowserTab>? _shareRequested;
+    private readonly BrowserTabSession? _tabSession;
     private BrowserTab? _watched;
     private bool _compact;
 
-    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally, TabGrantRegistry? grants = null, Action<BrowserTab>? shareRequested = null)
+    public BrowserShell(BrowserModel model, AgentTabsModel agents, Action<string> openExternally, TabGrantRegistry? grants = null, Action<BrowserTab>? shareRequested = null, BrowserTabSession? tabSession = null)
     {
         _model = model;
         _agents = agents;
@@ -53,6 +54,7 @@ internal sealed class BrowserShell : UserControl
         OpenExternally = openExternally;
         _grants = grants ?? new TabGrantRegistry();
         _shareRequested = shareRequested;
+        _tabSession = tabSession;
         _grants.Changed += () => Dispatcher.UIThread.Post(_Refresh);
         _lastReadTicker.Tick += (_, _) => _RefreshShareBar();
 
@@ -232,6 +234,11 @@ internal sealed class BrowserShell : UserControl
     {
         if (_model.Engine.State == BrowserEngineState.Ready && _model.Tabs.Count == 0)
         {
+            _tabSession?.Restore(_model);
+            if (_model.Tabs.Count > 0)
+            {
+                return;
+            }
             _model.NewTab();
             return;
         }
