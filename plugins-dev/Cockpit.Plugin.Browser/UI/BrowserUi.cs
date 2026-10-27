@@ -72,26 +72,25 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         BrowserEngine.Shared.Shutdown();
     }
 
-    // Mockup screens 1 and 2: what the status bar says about the browser; nothing while it has no open tab.
+    // Only the agent side says anything in the status bar; where the browser sits and its tab count are noise.
     internal static string? StatusText(BrowserPlace place, BrowserEngineState state, int tabs, bool agentSide = false, int agentTabs = 0) =>
         agentSide ? $"Agent profile · {agentTabs} {(agentTabs == 1 ? "tab" : "tabs")} by agents"
-        : state != BrowserEngineState.Ready || tabs == 0 ? null
-        : place == BrowserPlace.Rail ? "Browser docked in the rail"
-        : $"Browser · profile Raymond · {tabs} {(tabs == 1 ? "tab" : "tabs")}";
+            : null;
 
-    // AC-1714, mockup screen 7: what is shared, after the browser's own text.
+    // AC-1714, mockup screen 7: what is shared, on its own base text, since StatusText says nothing without a grant.
     internal static string? WithShared(string? text, IReadOnlyList<TabGrant> grants)
     {
-        if (text is null || grants.Count == 0)
+        if (grants.Count == 0)
         {
             return text;
         }
 
         var tabs = grants.Select(grant => grant.TabId).Distinct().Count();
         var controllers = grants.Where(grant => grant.Controls).ToList();
+        var prefix = text ?? "Browser";
         return controllers.Count > 0
-            ? $"{text} · {controllers.Count} {(controllers.Count == 1 ? "tab" : "tabs")} controlled by {string.Join(", ", controllers.Select(grant => grant.SessionName).Distinct())}"
-            : $"{text} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
+            ? $"{prefix} · {controllers.Count} {(controllers.Count == 1 ? "tab" : "tabs")} controlled by {string.Join(", ", controllers.Select(grant => grant.SessionName).Distinct())}"
+            : $"{prefix} · {tabs} {(tabs == 1 ? "tab" : "tabs")} shared with {string.Join(", ", grants.Select(grant => grant.SessionName).Distinct())}";
     }
 
     private BrowserHome _Home(ICockpitUiHost host)
