@@ -89,27 +89,19 @@ internal sealed class OverviewWorkspaceBody : UserControl
 
     private Control _RangeCard()
     {
-        var picker = new RangePicker
+        var ranges = new StackPanel { Name = "OverviewRangePicker", Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        foreach (var range in new[] { "Dag", "Werkweek", "Week", "Maand", "Eigen bereik" })
         {
-            Name = "OverviewRangePicker",
-            Height = 38,
-            Ranges = ["Dag", "Werkweek", "Week", "Maand", "Eigen bereik"],
-            SelectedRange = _controller.SelectedRange,
-            Width = 520,
-        };
-        picker.SelectedRangeChanged += async (_, range) => await _controller.SelectRangeAsync(range);
-        var pickerClip = new Grid
-        {
-            Width = 520,
-            Height = 38,
-        };
-        pickerClip.Children.Add(picker);
-        var leftCover = new Border { Width = 32, HorizontalAlignment = HorizontalAlignment.Left };
-        leftCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
-        pickerClip.Children.Add(leftCover);
-        var rightCover = new Border { Width = 210, HorizontalAlignment = HorizontalAlignment.Right };
-        rightCover.Themed(BackgroundProperty, "CockpitPanelBgBrush");
-        pickerClip.Children.Add(rightCover);
+            var button = new Button { Content = range, Classes = { "Compact" } };
+            if (range == _controller.SelectedRange)
+            {
+                button.Classes.Add("Accent");
+            }
+
+            button.Click += async (_, _) => await _controller.SelectRangeAsync(range);
+            ranges.Children.Add(button);
+        }
+
         var dates = new TextBlock
         {
             Text = $"{_controller.From.ToDateTime(TimeOnly.MinValue).ToString("ddd d", Dutch)} – {_controller.To.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM yyyy", Dutch)}",
@@ -155,7 +147,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             },
         };
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 12 };
-        row.Children.Add(pickerClip);
+        row.Children.Add(ranges);
         Grid.SetColumn(dateNavigation, 1);
         row.Children.Add(dateNavigation);
         Grid.SetColumn(basis, 2);
@@ -404,16 +396,17 @@ internal sealed class OverviewWorkspaceBody : UserControl
         foreach (var project in projects)
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("120,*,52"), ColumnSpacing = 8 };
-            row.Children.Add(new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 6,
-                Children =
-                {
-                    new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(project.Color), VerticalAlignment = VerticalAlignment.Center },
-                    new TextBlock { Text = project.Label, TextTrimming = TextTrimming.CharacterEllipsis },
-                },
-            });
+            // A grid, not a horizontal stack, so a long name trims inside its column instead of running into the bar.
+            var label = project.Label == ProjectNames.NoProject
+                ? Ui.Hint("— " + project.Label)
+                : new TextBlock { Text = project.Label };
+            label.TextWrapping = TextWrapping.NoWrap;
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+            Grid.SetColumn(label, 1);
+            var name = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 6 };
+            name.Children.Add(new Avalonia.Controls.Shapes.Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(project.Color), VerticalAlignment = VerticalAlignment.Center, IsVisible = project.Label != ProjectNames.NoProject });
+            name.Children.Add(label);
+            row.Children.Add(name);
             ToolTip.SetTip(row, project.Tooltip);
             var segments = new List<ChartSegment>
             {
@@ -487,7 +480,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
             .ToList();
     }
 
-    private const string SessionColumns = "*,124,44,60,50,62";
+    private const string SessionColumns = "1.2*,*,40,68,48,52";
 
     private static Control _Sessions(ProductivityOverviewSnapshot snapshot)
     {
@@ -531,14 +524,14 @@ internal sealed class OverviewWorkspaceBody : UserControl
             var row = _TableRow(
                 [
                     names.Describe(label, withProject: false),
-                    profile.Length == 0 ? "onbekend" : profile,
+                    profile.Length == 0 ? "—" : profile,
                     label.HasTimeline ? Ui.Duration(active.GetValueOrDefault(session)) : "—",
                     label.HasTimeline ? Ui.Duration(withoutYou) : "—",
                     _Tokens(tokens),
-                    costs.Any(value => value is null) ? "geen tarief" : costs.Sum(value => value ?? 0).ToString("$0.00", CultureInfo.InvariantCulture),
+                    costs.Any(value => value is null) ? "—" : costs.Sum(value => value ?? 0).ToString("$0.00", CultureInfo.InvariantCulture),
                 ],
                 SessionColumns);
-            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · geen tijdlijn voor deze sessie, dus actieve tijd onbekend"));
+            ToolTip.SetTip(row, names.Describe(label) + (label.HasTimeline ? string.Empty : " · geen tijdlijn voor deze sessie, dus actieve tijd onbekend") + (costs.Any(value => value is null) ? " · geen tarief voor dit profiel, dus kosten onbekend" : string.Empty));
             body.Children.Add(row);
         }
 
@@ -599,8 +592,11 @@ internal sealed class OverviewWorkspaceBody : UserControl
                         Height = 8,
                         Fill = MeasuredTimeCard.ProjectBrush(projectId),
                         VerticalAlignment = VerticalAlignment.Center,
+                        IsVisible = projectId.Length > 0,
                     },
-                    new TextBlock { Text = names.Resolve(projectId).Label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
+                    projectId.Length == 0
+                        ? Ui.Hint("— " + ProjectNames.NoProject)
+                        : new TextBlock { Text = names.Resolve(projectId).Label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis },
                 },
             };
             ToolTip.SetTip(project, names.Resolve(projectId).Tooltip);
@@ -634,7 +630,7 @@ internal sealed class OverviewWorkspaceBody : UserControl
         foreach (var ticket in snapshot.Tickets)
         {
             body.Children.Add(_TableRow(
-                [ticket.Ticket, names.Resolve(ticket.ProjectId).Label, Ui.Duration(ticket.Time), ticket.Statusline ?? "geen statusline"],
+                [ticket.Ticket, names.Resolve(ticket.ProjectId).Label, Ui.Duration(ticket.Time), ticket.Statusline ?? "—"],
                 "120,180,90,*"));
         }
 

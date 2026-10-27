@@ -50,7 +50,7 @@ internal sealed record ProjectName(string Label, string? Tooltip, string? Projec
 
 // Turns a stored project value into the name the operator knows (AC-1766): a project id, or — from before AC-1737 —
 // the folder a session ran in. A worktree folder ends in its session's short id, and that session's timeline knows
-// the project. A value that leads nowhere stays visible as unknown rather than as a bare hash.
+// the project. A value that leads nowhere reads as unknown, its raw value only in the tooltip.
 internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IReadOnlyList<SessionLabel> sessions)
 {
     public const string NoProject = "geen project";
@@ -69,8 +69,7 @@ internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IR
             return new ProjectName(project.Name, null, project.Id);
         }
 
-        var shown = value.Length > 8 ? value[..8] + "…" : value;
-        return new ProjectName($"Onbekend project ({shown})", $"'{value}' hoort bij geen project in de cockpit: het project is weg, of de map is van vóór de projecten.", null);
+        return new ProjectName("Onbekend project", $"'{value}' hoort bij geen project in de cockpit: het project is weg, of de map is van vóór de projecten.", null);
     }
 
     // A session's line: project · ticket · name, leaving out what is not known.
@@ -93,7 +92,7 @@ internal sealed class ProjectNames(IReadOnlyList<PluginProjectInfo> projects, IR
 
         if (parts.Count == (withProject ? 1 : 0))
         {
-            parts.Add($"sessie {session.PaneId[..Math.Min(8, session.PaneId.Length)]}");
+            parts.Add("Onbekende sessie");
         }
 
         return string.Join(" · ", parts);

@@ -1,7 +1,7 @@
 {
   "id": "productivity",
   "name": "Productivity",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "entryAssembly": "Cockpit.Plugin.Productivity.dll",
   "entryType": "Cockpit.Plugin.Productivity.ProductivityPlugin",
   "uiAssembly": "Cockpit.Plugin.Productivity.UI.dll",
