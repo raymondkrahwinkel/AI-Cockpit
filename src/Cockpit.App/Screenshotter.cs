@@ -20,6 +20,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -626,6 +627,18 @@ internal static partial class Screenshotter
         // the rail header's undock button, and the same panel standing in its own window with "Dock back".
         ["dock-panel-keepalive"] = (_, _) => _DockRailWithKeptPanel(),
         ["dock-panel-floating"] = (_, _) => new Docking.DockPanelWindow(_KeptDockPanel(), _KeptDockPanelView(), boundsStore: null),
+        // AC-1802 (mockup 2026-10-27 screen 03): the Notifications panel docked on Needs you, and the window the
+        // bell opens it in from the Simple stand.
+        ["notifications-panel"] = (_, _) => _NotificationsPanel(),
+        ["notifications-window"] = (_, _) =>
+        {
+            var notifications = _SampleNotifications();
+            return new Docking.DockPanelWindow(
+                new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                    ViewModels.NotificationCenterViewModel.DockPanelId, "Notifications", Material.Icons.MaterialIconKind.BellOutline, () => new TextBlock()),
+                new NotificationsPanelView { DataContext = notifications.Notifications },
+                boundsStore: null);
+        },
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -3606,6 +3619,48 @@ internal static partial class Screenshotter
         };
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Window _NotificationsPanel()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            AssistantDocked = true,
+            OpenDockPanelId = ViewModels.NotificationCenterViewModel.DockPanelId,
+            DockRailWidth = 380,
+        };
+        cockpit.RegisterNotificationsPanel();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        panels.Register(_PullRequestsDockPanel());
+        _SeedNotifications(cockpit.ToastHost);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static ViewModels.ToastHostViewModel _SampleNotifications()
+    {
+        var host = new ViewModels.ToastHostViewModel();
+        _SeedNotifications(host);
+        return host;
+    }
+
+    // The startup burst of the mockup, as toasts that already went: only the bell still holds them.
+    private static void _SeedNotifications(ViewModels.ToastHostViewModel host)
+    {
+        host.Add("Cockpit 0.127.0 is out. You are on 0.126.0.", ToastSeverity.Information, [new ToastAction("Open it", () => { })], sticky: false, key: "cockpit.update")
+            .Actions[0].Invoke();
+        host.Add("Saved the layout.", ToastSeverity.Success, [], sticky: false);
+        host.Add("YouTrack MCP needs you to sign in again. Sessions that use YouTrack tools will fail until you sign in.",
+            ToastSeverity.Warning, [new ToastAction("Sign in", () => { })], sticky: true, source: "MCP sign-in");
+        host.Add("Depot couldn't move a project: 409 Conflict, a project with that slug already exists.",
+            ToastSeverity.Error, [new ToastAction("Retry", () => { }), new ToastAction("Open in Depot", () => { })], sticky: false, source: "Depot");
+        host.Add("Slack can't read channels: missing_scope. Reinstall the Slack app with channels:history, then reconnect.",
+            ToastSeverity.Error, [new ToastAction("Open Slack settings", () => { }), new ToastAction("Copy error", () => { })], sticky: false, source: "Slack");
+        host.Add("14 settings changed both here and on your other machine. Nothing was overwritten.",
+            ToastSeverity.Warning, [new ToastAction("Choose…", () => { })], sticky: false, source: "Settings sync", key: "settings-sync.conflicts");
+        host.Toasts.Clear();
     }
 
     private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _KeptDockPanel() =>

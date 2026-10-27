@@ -884,9 +884,11 @@ public partial class App : Application
         sync.OnConflicts = conflicts => Dispatcher.UIThread.Post(() => toasts.Show(
             $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
             ToastSeverity.Warning,
-            "Choose",
             // Toast actions cannot return a task; the handler logs and surfaces failures itself.
-            () => _ = _ChooseSettingsAsync(sync)));
+            [new ToastAction("Choose…", () => _ = _ChooseSettingsAsync(sync))],
+            sticky: false,
+            source: "Settings sync",
+            key: "settings-sync.conflicts"));
     }
 
     private static async Task _ChooseSettingsAsync(SettingsCarrierSync sync)

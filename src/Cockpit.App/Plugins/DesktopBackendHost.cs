@@ -47,13 +47,16 @@ internal sealed class DesktopBackendHost(
             Services.GetService<ILogger<DesktopBackendHost>>()?.LogError("Plugin {PluginId}: {Message}", PluginId, message);
         }
 
-        Services.GetRequiredService<IToastService>().Show(message, _ToToastSeverity(severity), actionLabel, onAction);
+        // AC-1802: through the overload with a source, so the notification center names the plugin.
+        Services.GetRequiredService<IToastService>().Show(
+            message, _ToToastSeverity(severity), !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [],
+            sticky: false, source: PluginName, key: null);
     }
 
     // AC-1549: a reminder's toast, with all its buttons, also while the plugin's own screen is closed.
     public override void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
         Services.GetRequiredService<IToastService>().Show(
-            message, _ToToastSeverity(severity), [.. actions.Select(action => new ToastAction(action.Label, action.OnInvoke))], sticky);
+            message, _ToToastSeverity(severity), [.. actions.Select(action => new ToastAction(action.Label, action.OnInvoke))], sticky, PluginName, key: null);
 
     // AC-1398: the route WorkspaceContext.EmbedSession takes, reachable by workspace id so a backend part can embed
     // what its UI part's workspace shows. AC-1418: marshals itself, since a backend part has no UI thread to be on.

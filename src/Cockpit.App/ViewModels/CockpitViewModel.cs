@@ -569,6 +569,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Toasts currently shown by the overlay (#61), fed by `Services.ToastService` via `ToastHost`.
     public ObservableCollection<ToastViewModel> Toasts => ToastHost.Toasts;
 
+    // AC-1802: every toast of this session, behind the status bar's bell.
+    public NotificationCenterViewModel Notifications => ToastHost.Notifications;
+
     // A dismissible banner shown when one or more plugins failed to load (#14) — the app keeps running; details are in
     // Options → Plugins.
     [ObservableProperty]
@@ -3381,6 +3384,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // wait for (AC-950).
         _dockPanelRegistry = dockPanelRegistry;
         _WireDockPanelChanges();
+        RegisterNotificationsPanel();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -4643,7 +4647,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The "a newer build is out" toast, shared by the startup check and the hourly re-check (AC-188) so the two never
     // drift. Raised on ToastHost for the same circular-dependency reason as the startup toast above.
     private void _ToastUpdate(AppRelease release) =>
-        ToastHost.Add($"{release.Version} is out. You are on {CurrentBuild}.", ToastSeverity.Information, "Open it", OpenUpdate);
+        ToastHost.Add($"{release.Version} is out. You are on {CurrentBuild}.", ToastSeverity.Information, [new ToastAction("Open it", OpenUpdate)], sticky: false, key: "cockpit.update");
 
     // One background re-check for a newer build (AC-188), on the hourly cadence set by `StartPeriodicUpdateChecks`.
     // Gated by the same `CheckForUpdatesOnStartup` setting as the startup look, and toasts a given release
@@ -5640,6 +5644,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _PersistLayoutSettingsAsync();
     }
+
+    // AC-1802: registered before the plugins and the assistant, so its tab heads the rail (mockup screen 03).
+    internal void RegisterNotificationsPanel()
+    {
+        _dockPanelRegistry?.Register(new DockPanelRegistration(
+            NotificationCenterViewModel.DockPanelId,
+            "Notifications",
+            MaterialIconKind.BellOutline,
+            () => new Views.NotificationsPanelView { DataContext = Notifications })
+        {
+            Badge = Notifications.Badge,
+            CanFloat = true,
+        });
+        Notifications.Badge.Activated += (_, _) => OpenDockPanelId = NotificationCenterViewModel.DockPanelId;
+    }
+
+    // The bell. The Simple stand's rail holds the conversation, so there the panel stands in its own window.
+    [RelayCommand]
+    private Task ToggleNotifications() =>
+        SimpleView || IsDockPanelFloating(NotificationCenterViewModel.DockPanelId)
+            ? DockHost.ShowInAsync(NotificationCenterViewModel.DockPanelId, floating: true)
+            : ToggleDockPanel(NotificationCenterViewModel.DockPanelId);
 
     // Opens the tapped rail panel, or closes the rail if that panel is already the open one — the toggle the
     // acceptance criteria ask for ("klik klapt uit, tweede klik weer in"). Switching straight from one open
