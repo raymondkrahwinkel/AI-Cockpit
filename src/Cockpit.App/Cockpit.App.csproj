@@ -88,11 +88,8 @@
          Pinned rather than floating: the version here is the one the release pipeline installs `vpk` at, and
          the two are a matched pair — the tool writes the feed this library reads. -->
     <PackageReference Include="Velopack" Version="1.2.161" />
-    <!-- AC-1747: Porta.Pty 2.x (Linux/macOS pty, via Cockpit.Infrastructure) depends on the out-of-band ConPTY,
-         which put conpty.dll plus x64\ and arm64\OpenConsole.exe into the win-x64 publish, and so into the
-         Velopack package. Windows never uses Porta.Pty: ConPtyProcess calls CreatePseudoConsole from kernel32.dll
-         itself. This direct reference only switches the package's assets off; keep its version at the one
-         Porta.Pty asks for (NU1605 says so when it moves). -->
+    <!-- AC-1747: Porta.Pty 2.x pulls the ConPTY package into the win-x64 publish; Windows uses kernel32 ConPTY
+         itself (ConPtyProcess). Assets off; keep the version Porta.Pty asks for (NU1605). -->
     <PackageReference Include="Microsoft.Windows.Console.ConPTY" Version="1.24.260710001" ExcludeAssets="all" />
   </ItemGroup>
 
