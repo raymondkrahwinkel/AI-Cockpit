@@ -1299,6 +1299,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SimplePage = SimplePage.Home;
         }
 
+        // AC-1824: the assistant docks by role on an agent pick, so it takes the rail from an open plugin panel.
+        if (SimpleStandDocksTheAssistant)
+        {
+            SimpleOpenDockPanelId = null;
+        }
+
         // AC-1303: and it is what the main column shows in this stand, so the panes follow it.
         RefreshPaneVisibility();
         _RefreshSimpleConsentAlerts();
