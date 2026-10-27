@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Cockpit.Plugin.Productivity.Contracts;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -34,16 +35,8 @@ internal static class ProductivityScenes
     public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> Workspaces { get; } =
         new Dictionary<string, Func<(WorkspaceTypeRegistration, string?)>>
         {
-            ["productivity-day"] = () =>
-            {
-                MeasuredTimeCard.OpenFolds = true;
-                var host = SceneHost.Create(new SceneChannel());
-                var controller = new ProductivityController(host.Channel, new FixedTime());
-                controller.UpdateProjectFallback(Cockpit);
-                // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
-                controller.RefreshAsync().GetAwaiter().GetResult();
-                return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host, () => { })) { IconKind = MaterialIconKind.ClockOutline }, null);
-            },
+            ["productivity-day"] = () => _Hours(false),
+            ["productivity-week"] = () => _Hours(true),
             ["productivity-overview"] = () =>
             {
                 var controller = new OverviewController(new SceneChannel(), new FixedTime());
@@ -52,6 +45,17 @@ internal static class ProductivityScenes
                 return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overzicht", _ => new OverviewWorkspaceBody(controller, () => { }, () => { }, () => RefreshPolicy.Interval(RefreshPolicy.DefaultSeconds))) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
             },
         };
+
+    private static (WorkspaceTypeRegistration, string?) _Hours(bool week)
+    {
+        MeasuredTimeCard.OpenFolds = true;
+        var host = SceneHost.Create(new SceneChannel());
+        var controller = new ProductivityController(host.Channel, new FixedTime());
+        controller.UpdateProjectFallback(Cockpit);
+        // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
+        controller.ShowWeekAsync(week).GetAwaiter().GetResult();
+        return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host, () => { })) { IconKind = MaterialIconKind.ClockOutline }, null);
+    }
 
     private static IReadOnlyList<OpenCockpitSession> _Open() =>
         [.. Sessions.Where(session => session.Open).Select(session => new OpenCockpitSession(session.Pane, session.Name, session.Profile, "idle"))];
@@ -129,6 +133,7 @@ internal static class ProductivityScenes
             object answer = action switch
             {
                 ProductivityChannel.Snapshot => _Snapshot(_Read<ProductivitySnapshotRequest>(payload, action)),
+                ProductivityChannel.Week => _Week(_Read<ProductivityWeekRequest>(payload, action)),
                 ProductivityChannel.Overview => _Overview(_Read<ProductivityOverviewRequest>(payload, action)),
                 _ => throw new NotSupportedException($"The scene does not answer '{action}'."),
             };
@@ -146,6 +151,26 @@ internal static class ProductivityScenes
             var entries = _Entries(request.From, request.To);
             var day = AttentionTime.Compute(timeline, entries, AttentionSettings.Default, Now < request.To ? Now : request.To);
             return new ProductivitySnapshot(entries, day.YourTime, null, day, Projects, SessionLabel.From(timeline, _Open()));
+        }
+
+        private static WeekProposal _Week(ProductivityWeekRequest request)
+        {
+            var days = new List<WeekDayInput>();
+            for (var index = 0; index + 1 < request.DayStarts.Count; index++)
+            {
+                var (from, to) = (request.DayStarts[index], request.DayStarts[index + 1]);
+                var attention = AttentionTime.Compute(_Timeline(from, to), _Entries(from, to), AttentionSettings.Default, Now < to ? Now : to);
+                days.Add(new WeekDayInput(DateOnly.FromDateTime(from.LocalDateTime), _Entries(from, to).ToList(), attention.MeasuredPerProject, new Dictionary<string, string[]>()));
+            }
+
+            // The way the real handler names every stored value, a worktree folder or unknown project included.
+            var resolver = new ProjectNames(Projects, SessionLabel.From(_Timeline(request.DayStarts[0], request.DayStarts[^1]), _Open()));
+            var names = days.SelectMany(day => day.Entries.Select(entry => entry.ProjectId).Concat(day.Measured.Select(project => project.ProjectId)))
+                .OfType<string>()
+                .Concat(Projects.Select(project => project.Id))
+                .Distinct(StringComparer.Ordinal)
+                .ToDictionary(value => value, value => resolver.Resolve(value).Label, StringComparer.Ordinal);
+            return WeekProposal.Build(days, WeekSettings.Default, [], names, []);
         }
 
         private static ProductivityOverviewSnapshot _Overview(ProductivityOverviewRequest request) =>
@@ -188,6 +213,7 @@ internal static class ProductivityScenes
         {
             "get_Channel" => _channel,
             "get_ActiveProjectId" => Cockpit,
+            "get_Storage" => DispatchProxy.Create<IPluginStorage, SceneHost>(),
             "GetProjectsAsync" => Task.FromResult<IReadOnlyList<PluginProjectInfo>>(Projects),
             _ => _Default(targetMethod?.ReturnType),
         };
