@@ -27,6 +27,8 @@
         <materialIcons:MaterialIconStyles />
         <!-- DataGrid theme, app-wide, so plugin dialogs (#14) can host a DataGrid without shipping/theming their own. -->
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+        <!-- The Markdown editor's text surface (AC-1753). -->
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
         <StyleInclude Source="avares://Cockpit.App/Styles/Theme.axaml"/>
     </Application.Styles>
 </Application>

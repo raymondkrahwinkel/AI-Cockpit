@@ -312,6 +312,9 @@ internal sealed class CockpitUiHost(
 
     public void AddLinkHandler(LinkHandlerRegistration registration) => MarkdownView.RegisterLinkHandler(registration);
 
+    // AC-1753: not capped like the view above, an editor that drops the tail of a file would save it truncated.
+    public IMarkdownEditor CreateMarkdownEditor(string markdown) => new Views.Editor.MarkdownEditor { Text = markdown };
+
     // AC-303: caps a plugin-supplied markdown body (e.g. a 65 KB GitHub issue) before synchronous rendering,
     // which otherwise stalls the UI in an all-Auto grid; capped here, not in MarkdownView, since the transcript
     // also renders through that control and must not be truncated.

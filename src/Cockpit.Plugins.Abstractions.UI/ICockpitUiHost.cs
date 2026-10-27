@@ -209,6 +209,9 @@ public interface ICockpitUiHost
     /// </summary>
     Control CreateMarkdownView(string markdown);
 
+    /// <summary>A live-preview Markdown editor over <paramref name="markdown"/>; null on a host without one.</summary>
+    IMarkdownEditor? CreateMarkdownEditor(string markdown) => null;
+
     /// <summary>
     /// Registers first-refusal handling for transcript links recognized by this plugin.
     /// </summary>

@@ -192,6 +192,15 @@ internal static partial class Screenshotter
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
         // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
         ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
+        // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
+        ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
+        ["markdown-editor-table"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
+        ["markdown-editor-source"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.ShowSource = true),
+        ["markdown-editor-readonly"] = (width, height) => _MarkdownEditorScene(width, height, editor =>
+        {
+            editor.IsReadOnly = true;
+            editor.MarkLine(7);
+        }),
         // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
         ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
@@ -4239,5 +4248,57 @@ internal static partial class Screenshotter
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Notes.md", "Notes.md")).GetAwaiter().GetResult();
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Window _MarkdownEditorScene(int width, int height, Action<Views.Editor.MarkdownEditor> arrange)
+    {
+        var editor = new Views.Editor.MarkdownEditor
+        {
+            Text = """
+                ---
+                title: Edge cases
+                tags: [md, test]
+                ---
+                # md-editor-in-cockpit
+
+                Capture an idea straight from the **Depot file browser**, and see *right away* how it looks.
+
+                ## Wishes
+                - A new file in a chosen place
+                - A tab or a separate window
+                - Saving writes back to Depot with `baseChecksum`
+
+                ## Tasks
+                - [x] Mockup v001
+                - [ ] Pick a route: native or webview
+
+                Plain text with a footnote[^1] and a [reference link][depot].
+
+                <details>
+                <summary>HTML block</summary>
+                This is raw HTML.
+                </details>
+
+                | Column | Meaning |
+                |---|---|
+                | A | Tables are drawn |
+                | B | Click in one to see its source |
+
+                ```csharp
+                var x = 42;
+                ```
+
+                > A quote stays a quote.
+
+                ---
+
+                See [AC-1749](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-1749).
+
+                [^1]: This is the footnote.
+                [depot]: https://depot.krahwinkel-it.nl
+                """,
+        };
+        arrange(editor);
+        return new Window { Width = width, Height = height, Content = editor };
     }
 }

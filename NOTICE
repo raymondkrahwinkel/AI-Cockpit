@@ -85,6 +85,8 @@ Whisper.net / Whisper.net.Runtime(.NoAvx) 1.9.1     — MIT
 Avalonia (incl. Desktop, Themes.Fluent, Fonts.Inter,
   Controls.DataGrid, Headless) 12.0.x               — MIT
 Material.Icons(.Avalonia) 3.0.2                      — MIT
+Avalonia.AvaloniaEdit 12.0.0                         — MIT
+  The text surface of the Markdown editor.
 SharpCompress 0.49.1                                 — MIT
   Used to extract the downloaded model archives.
 Microsoft.Extensions.AI(.OpenAI) 10.7.0             — MIT

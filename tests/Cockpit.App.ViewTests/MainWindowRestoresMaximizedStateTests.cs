@@ -14,31 +14,26 @@ namespace Cockpit.App.ViewTests;
 public class MainWindowRestoresMaximizedStateTests
 {
     [Fact]
-    public void ASavedMaximizedState_IsAppliedBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
+    public void ASavedState_MaximizedOrNormal_IsAppliedBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
     {
-        var store = Substitute.For<IWindowBoundsStore>();
-        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: true)));
-
         // No Show() call: the point of the fix is that the WM never sees this window mapped in any state but
         // Maximized, so the property must already read Maximized the moment the constructor returns.
-        var window = new MainWindow(store);
+        var maximized = new MainWindow(_Store(new WindowBounds(50, 50, 800, 600, IsMaximized: true)));
 
-        Assert.Equal(WindowState.Maximized, window.WindowState);
+        Assert.Equal(WindowState.Maximized, maximized.WindowState);
+
+        var normal = new MainWindow(_Store(new WindowBounds(50, 50, 800, 600, IsMaximized: false)));
+
+        Assert.Equal(WindowState.Normal, normal.WindowState);
+        Assert.Equal(new Avalonia.PixelPoint(50, 50), normal.Position);
+        Assert.Equal(800, normal.Width);
+        Assert.Equal(600, normal.Height);
     });
 
-    [Fact]
-    public void ASavedNormalState_RestoresPositionAndSizeBeforeTheWindowIsShown() => HeadlessAvalonia.Run(() =>
+    private static IWindowBoundsStore _Store(WindowBounds bounds)
     {
         var store = Substitute.For<IWindowBoundsStore>();
-        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<WindowBounds?>(new WindowBounds(50, 50, 800, 600, IsMaximized: false)));
-
-        var window = new MainWindow(store);
-
-        Assert.Equal(WindowState.Normal, window.WindowState);
-        Assert.Equal(new Avalonia.PixelPoint(50, 50), window.Position);
-        Assert.Equal(800, window.Width);
-        Assert.Equal(600, window.Height);
-    });
+        store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(bounds));
+        return store;
+    }
 }
