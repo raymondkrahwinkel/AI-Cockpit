@@ -21,20 +21,25 @@ public class OpenAiCompatSessionDriverTests
         new("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
     [Fact]
-    public async Task SendUserMessage_StreamsAssistantDeltas_ThenCompletesTheTurn()
+    public async Task SendUserMessage_StreamsAssistantDeltas_WithTheWorkingDirectoryInTheSystemPrompt()
     {
+        List<ChatMessage>? sent = null;
         var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent = [.. messages]), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(_Stream("Hello ", "world."));
         var driver = _CreateDriver(chatClient);
 
-        await driver.StartAsync(LocalProfile);
+        await driver.StartAsync(LocalProfile, workingDirectory: @"C:\\work\\AC-1838");
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         Assert.Equal("Hello world.", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
         Assert.Single(events, evt => evt is SessionInitialized);
+        var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
+        Assert.Contains(@"C:\\work\\AC-1838", systemPrompt);
+        Assert.Contains("Windows", systemPrompt);
+        Assert.Contains("relative paths resolve against this working directory", systemPrompt);
     }
 
     [Fact]

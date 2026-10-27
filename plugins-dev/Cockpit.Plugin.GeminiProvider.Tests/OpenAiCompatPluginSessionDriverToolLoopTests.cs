@@ -10,23 +10,24 @@ namespace Cockpit.Plugin.GeminiProvider.Tests;
 public class OpenAiCompatPluginSessionDriverToolLoopTests
 {
     [Fact]
-    public async Task SendUserMessage_WhenTheModelCallsATool_RunsItThroughTheHostAndCarriesOn()
+    public async Task SendUserMessage_WhenTheSameToolFailsThreeTimes_StopsTheTurnWithTheReason()
     {
-        var toolset = new FakeToolset(["set_status"], reachable: ["set_status"]);
+        var toolset = new FakeToolset(["run_command"], reachable: ["run_command"], result: "Tool call failed: path does not exist.");
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("set_status", ("status", "AC-964")), _Stream("status set."));
+            .Returns(
+                _ToolCall("run_command", ("command", "ls /home/user/project")),
+                _ToolCall("run_command", ("command", "ls /home/user/project")),
+                _ToolCall("run_command", ("command", "ls /home/user/project")),
+                _Stream("unreachable"));
         var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
         await _StartWithToolsetAsync(driver, toolset);
 
-        await driver.SendUserMessageAsync("set my status");
+        await driver.SendUserMessageAsync("find the project");
         var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
 
-        // The whole point of the ticket: the model's tool call reaches the host, and the turn continues with the
-        // result rather than ending on a description of a call that never happened.
-        Assert.Equal("set_status", Assert.Single(toolset.Calls).Name);
-        Assert.Contains("AC-964", toolset.Calls[0].ArgumentsJson);
-        Assert.Contains("status set.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Equal(3, toolset.Calls.Count);
+        Assert.Contains("same tool call returned the same error 3 times", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
 

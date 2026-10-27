@@ -179,7 +179,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
         // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
         // them (HTTP is stateless — the client owns the history, so a system message once at the front is enough).
-        var systemPrompt = ChatTurnLoop.WithCompletionConvention(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), toolsOffered: _turnTools.Count > 0);
+        var systemPrompt = ChatTurnLoop.WithCompletionConvention(
+            ChatTurnLoop.WithWorkingDirectoryContext(_CombineSystemPrompt(_SystemPromptFrom(config), launchOptions), workingDirectory),
+            toolsOffered: _turnTools.Count > 0);
         if (!string.IsNullOrWhiteSpace(systemPrompt))
         {
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));

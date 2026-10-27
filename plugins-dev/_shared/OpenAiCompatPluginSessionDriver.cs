@@ -71,7 +71,9 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
             && !string.IsNullOrWhiteSpace(value)
                 ? value.Trim()
                 : null;
-        var systemPrompt = ChatTurnLoop.WithCompletionConvention(appendSystemPrompt, toolsOffered: _tools.Count > 0);
+        var systemPrompt = ChatTurnLoop.WithCompletionConvention(
+            ChatTurnLoop.WithWorkingDirectoryContext(appendSystemPrompt, workingDirectory),
+            toolsOffered: _tools.Count > 0);
         if (systemPrompt is not null)
         {
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
