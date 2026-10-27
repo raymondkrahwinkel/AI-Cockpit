@@ -156,7 +156,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
                 return false;
             }
 
-            if (_RunPromoteHelper("remove", cliName) is not { } failure)
+            if (_RunPromoteHelper(_agentSplit, "remove", cliName) is not { } failure)
             {
                 return true;
             }
@@ -281,7 +281,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
             Directory.CreateDirectory(staging, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             await _DownloadVerifyPlaceAsync(plan, Path.Combine(staging, version), cancellationToken).ConfigureAwait(false);
             File.SetUnixFileMode(staging, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute);
-            return _RunPromoteHelper("promote", cliName, version) is { } failure
+            return _RunPromoteHelper(agentSplit, "promote", cliName, version) is { } failure
                 ? ManagedCliInstallResult.Fail($"Could not install '{cliName}': {failure}")
                 : ManagedCliInstallResult.Ok(version, wrapper);
         }
@@ -293,9 +293,9 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
     // The image's promote helper takes itself to `agent` (deploy/cockpit-cli-promote.sh). Null when it succeeded, else
     // what it said; it prints only paths and versions.
-    private string? _RunPromoteHelper(params string[] arguments)
+    private static string? _RunPromoteHelper(ManagedCliAgentSplit agentSplit, params string[] arguments)
     {
-        var startInfo = new ProcessStartInfo(_agentSplit!.PromoteHelper) { UseShellExecute = false, RedirectStandardError = true };
+        var startInfo = new ProcessStartInfo(agentSplit.PromoteHelper) { UseShellExecute = false, RedirectStandardError = true };
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);

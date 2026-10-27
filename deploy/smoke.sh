@@ -196,6 +196,12 @@ refused app 'mv /cli/claude /cli/moved' || fail "the server's user can replace a
 refused agent 'mv /cli/.staging /cli/moved' || fail "agent can replace the server's staging directory: $refusal"
 refused agent 'touch /cli/.staging/planted' || fail "agent can write in the server's staging directory: $refusal"
 refused app '/usr/local/libexec/cockpit-cli-promote promote claude ../../state' || fail "the promote helper took a path as a version"
+# A staging directory the server swapped for a link to somewhere agent can read: the helper copies nothing from there.
+dc exec -T -u app cockpit sh -c 'mkdir -p /tmp/smoke-elsewhere/9.9.8 && echo x > /tmp/smoke-elsewhere/9.9.8/claude \
+  && chmod -R 0755 /tmp/smoke-elsewhere && ln -s /tmp/smoke-elsewhere /cli/.staging/claude'
+refused app '/usr/local/libexec/cockpit-cli-promote promote claude 9.9.8' || fail "the promote helper copied from outside the staging directory"
+grep -qF 'is not in the staging directory' <<< "$refusal" || fail "the promote helper refused a linked staging directory for another reason: $refusal"
+dc exec -T -u app cockpit sh -c 'rm /cli/.staging/claude && rm -rf /tmp/smoke-elsewhere'
 dc exec -T -u app cockpit sh -c 'mkdir /state/smoke-control && rmdir /state/smoke-control' || fail "control: the server's user cannot write /state at all"
 
 echo "== controls: without the wrapper the probe reads it all, and a bare sudo loses the session env"

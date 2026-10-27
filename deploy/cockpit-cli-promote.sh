@@ -21,11 +21,15 @@ case $action in
     # Digits and single dots only, as the server's Version.TryParse takes them: no path can climb out of /cli.
     case $version in '' | .* | *. | *..* | *[!0-9.]*) fail "not a version: '$version'" ;; esac
     staged=/cli/.staging/$name/$version
-    [ -d "$staged" ] && [ ! -L "$staged" ] || fail "nothing staged for $name $version"
+    [ -d "$staged" ] || fail "nothing staged for $name $version"
+    # The server owns the staging directory, so a link anywhere on the way could point this copy (run as agent) at
+    # agent's own files: the resolved path must be the staged one itself.
+    [ "$(/usr/bin/realpath -e "$staged")" = "$staged" ] || fail "$name $version is not in the staging directory"
     copy=/cli/$name/.promote-$version
     /usr/bin/rm -rf "$copy"
-    # A copy, not a move: the staging directory is the server's, and what lands here must be agent's.
-    /usr/bin/cp -R "$staged" "$copy"
+    # A copy, not a move: the staging directory is the server's, and what lands here must be agent's. -P copies a link
+    # inside it as a link, never what it points at.
+    /usr/bin/cp -R -P "$staged" "$copy"
     /usr/bin/chgrp -R agent-run "$copy"
     /usr/bin/chmod -R u+rwX,g=rX,o= "$copy"
     /usr/bin/rm -rf "/cli/$name/$version"
