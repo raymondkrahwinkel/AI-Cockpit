@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -21,7 +22,7 @@ internal static class CodexJsonlEventMapper
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(line);
+            document = JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(line));
         }
         catch (JsonException)
         {

@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 public class ClaudeOptionChoicesTests
 {
     [Fact]
-    public void ModelFacts_DoNotInventPricesAndJoinKnownPublicModels()
+    public void ModelFacts_DoNotInventPricesJoinKnownPublicModelsAndCoverOfferedAliases()
     {
         // The list order is the claim consumers route on (AC-256), so it has to agree with the prices beside it —
         // reorder one entry without moving its price and this fails, which is the whole point of the field.
@@ -18,13 +18,6 @@ public class ClaudeOptionChoicesTests
         Assert.Equal("anthropic/claude-haiku-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "haiku").PublicModelRef);
         Assert.Equal("anthropic/claude-sonnet-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "sonnet").PublicModelRef);
         Assert.Equal("anthropic/claude-opus-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "opus").PublicModelRef);
-    }
-
-    [Fact]
-    public void ModelCostEstimates_CoverExactlyTheOfferedAliases()
-    {
-        // A model offered but unpriced silently drops out of the ceiling that keeps a run cheap; a priced model that
-        // is not offered is a claim about something the operator can never pick.
         Assert.Equal(
             ClaudeOptionChoices.ModelSuggestions.OrderBy(alias => alias, StringComparer.Ordinal),
             ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.Model).OrderBy(alias => alias, StringComparer.Ordinal));

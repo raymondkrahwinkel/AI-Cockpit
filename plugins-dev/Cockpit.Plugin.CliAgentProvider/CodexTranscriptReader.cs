@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -102,7 +103,7 @@ internal sealed class CodexTranscriptReader : IPluginTranscriptReader
 
         try
         {
-            using var document = JsonDocument.Parse(jsonLine);
+            using var document = JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(jsonLine));
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || !root.TryGetProperty("type", out var typeElement)

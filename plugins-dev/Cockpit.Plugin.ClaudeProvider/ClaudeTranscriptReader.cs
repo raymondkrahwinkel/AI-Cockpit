@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -294,7 +295,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     {
         try
         {
-            using var document = JsonDocument.Parse(line);
+            using var document = JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(line));
             if (!document.RootElement.TryGetProperty("message", out var message)
                 || message.ValueKind != JsonValueKind.Object
                 || !message.TryGetProperty("content", out var content)
@@ -342,7 +343,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(line);
+            document = JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(line));
         }
         catch (JsonException)
         {
@@ -490,7 +491,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
 
         try
         {
-            using var document = System.Text.Json.JsonDocument.Parse(jsonLine);
+            using var document = System.Text.Json.JsonDocument.Parse(JsonLineText.ReplaceLoneSurrogateEscapes(jsonLine));
             var root = document.RootElement;
             if (root.ValueKind != System.Text.Json.JsonValueKind.Object
                 || !root.TryGetProperty("type", out var typeElement)

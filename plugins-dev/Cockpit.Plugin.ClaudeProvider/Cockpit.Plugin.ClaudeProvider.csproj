@@ -40,6 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\_shared\JsonLineText.cs" Link="JsonLineText.cs" />
     <None Include="plugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

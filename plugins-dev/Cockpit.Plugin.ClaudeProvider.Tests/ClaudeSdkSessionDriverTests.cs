@@ -94,6 +94,28 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     }
 
     [Fact]
+    public async Task LoneSurrogateEscapes_AreReplacedWithoutStoppingTheStream()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await fake.PushStdoutAsync("""
+        {"type":"user","session_id":"s-1","message":{"content":[{"type":"tool_result","tool_use_id":"toolu-1","content":"low \udf3f pair \ud83c\udf3f high \ud83c text literal \\udf3f"}]}}
+        """);
+        await fake.PushStdoutAsync("""
+        {"type":"stream_event","session_id":"s-1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"still here"}}}
+        """);
+        await fake.PushStdoutAsync("""{"type":"result","subtype":"success","session_id":"s-1","is_error":false}""");
+
+        var toolResult = (PluginToolResult)await _ReadEventAsync(driver, e => e is PluginToolResult);
+        Assert.Equal("low \uFFFD pair 🌿 high \uFFFD text literal \\udf3f", toolResult.Content);
+        var delta = (PluginAssistantTextDelta)await _ReadEventAsync(driver, e => e is PluginAssistantTextDelta);
+        Assert.Equal("still here", delta.Text);
+        await _ReadEventAsync(driver, e => e is PluginTurnCompleted);
+    }
+
+    [Fact]
     public async Task SendUserMessage_WritesTheStreamJsonUserPayload()
     {
         var fake = new FakeClaudeSdkSubprocess();
