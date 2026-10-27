@@ -355,6 +355,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the status bar no longer flickers while you hover Managed worktrees, Delegated tasks or CPU/RAM.** Their
+  tooltip opened over the pointer at the bottom of the screen, closed, and opened again; it now opens above the bar.
+
 - fixed: **Schedules can no longer take the cockpit down when its reminder count arrives.** A count that came in
   while the Plugins button had no counter attached crashed the app; it is now skipped.
 
