@@ -70,8 +70,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         // AC-1649: on the server the wrapper, never the binary, so whatever starts the CLI starts it as `agent`.
         if (_agentSplit is not null)
         {
-            var managed = _InstalledVersion(cliName) is { } installed ? Path.Combine(_cliRoot, cliName, installed, cliName) : null;
-            return managed;
+            return _InstalledVersion(cliName) is null ? null : _agentSplit.WrapperFor(cliName);
         }
 
         var cliDirectory = Path.Combine(_cliRoot, cliName);
