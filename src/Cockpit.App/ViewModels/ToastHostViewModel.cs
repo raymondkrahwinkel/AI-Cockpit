@@ -10,6 +10,9 @@ public sealed class ToastHostViewModel
 {
     private static readonly TimeSpan DefaultAutoDismissDelay = TimeSpan.FromSeconds(5);
     private readonly Action<ToastViewModel, TimeSpan> _scheduleAutoDismiss;
+    private List<StartupToast>? _startupToasts;
+    private ToastViewModel? _startupBundleToast;
+    private Action? _showStartupNotifications;
 
     public ToastHostViewModel()
         : this(_ScheduleWithDispatcherTimer)
@@ -39,16 +42,80 @@ public sealed class ToastHostViewModel
             action.OnInvoke();
         }))]);
         toast.Dismissed += (_, _) => Toasts.Remove(toast);
-        Toasts.Add(toast);
         item = Notifications.Post(toast, source, key);
 
-        if (!sticky && actions.Count == 0 && severity is ToastSeverity.Information or ToastSeverity.Success)
+        if (_startupToasts is not null)
         {
-            _scheduleAutoDismiss(toast, DefaultAutoDismissDelay);
+            _startupToasts.Add(new StartupToast(toast, sticky));
+            if (_startupToasts.Count >= 2)
+            {
+                _ShowStartupBundle();
+            }
+
+            return toast;
         }
+
+        _Show(toast, sticky);
 
         return toast;
     }
+
+    // AC-1803: RestoreCockpitAsync starts this short hold before any restore work, so source notices are still
+    // immediately live in the center but do not cover the operator in overlays during launch.
+    internal void BeginStartupNotificationBundle(TimeSpan duration, Action showNotifications)
+    {
+        _startupToasts = [];
+        _startupBundleToast = null;
+        _showStartupNotifications = showNotifications;
+        _ = _EndStartupNotificationBundleAsync(duration);
+    }
+
+    private async Task _EndStartupNotificationBundleAsync(TimeSpan duration)
+    {
+        await Task.Delay(duration);
+        Dispatcher.UIThread.Post(EndStartupNotificationWindow);
+    }
+
+    // The journey ends the window here without waiting on a wall clock; production reaches the same seam from its timer.
+    internal void EndStartupNotificationWindow()
+    {
+        var startupToasts = _startupToasts;
+        _startupToasts = null;
+        _showStartupNotifications = null;
+
+        if (startupToasts is { Count: < 2 })
+        {
+            foreach (var startupToast in startupToasts)
+            {
+                _Show(startupToast.Toast, startupToast.Sticky);
+            }
+        }
+    }
+
+    private void _ShowStartupBundle()
+    {
+        _startupBundleToast?.CloseCommand.Execute(null);
+        var count = _startupToasts!.Count;
+        var startupToast = new ToastViewModel(
+            $"{count} notifications at startup",
+            ToastSeverity.Warning,
+            [new ToastAction("Show", () => _showStartupNotifications?.Invoke()), new ToastAction("Later", static () => { })]);
+        startupToast.Dismissed += (_, _) => Toasts.Remove(startupToast);
+        Toasts.Add(startupToast);
+        _startupBundleToast = startupToast;
+    }
+
+    private void _Show(ToastViewModel toast, bool sticky)
+    {
+        Toasts.Add(toast);
+
+        if (!sticky && toast.Actions.Count == 0 && toast.Severity is ToastSeverity.Information or ToastSeverity.Success)
+        {
+            _scheduleAutoDismiss(toast, DefaultAutoDismissDelay);
+        }
+    }
+
+    private sealed record StartupToast(ToastViewModel Toast, bool Sticky);
 
     private static void _ScheduleWithDispatcherTimer(ToastViewModel toast, TimeSpan delay)
     {

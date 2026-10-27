@@ -630,6 +630,7 @@ internal static partial class Screenshotter
         // AC-1802 (mockup 2026-10-27 screen 03): the Notifications panel docked on Needs you, and the window the
         // bell opens it in from the Simple stand.
         ["notifications-panel"] = (_, _) => _NotificationsPanel(),
+        ["notifications-startup-bundle"] = (_, _) => _NotificationsStartupBundle(),
         ["notifications-window"] = (_, _) =>
         {
             var notifications = _SampleNotifications();
@@ -3635,6 +3636,26 @@ internal static partial class Screenshotter
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         panels.Register(_PullRequestsDockPanel());
         _SeedNotifications(cockpit.ToastHost);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // AC-1803 (mockup 2026-10-27 screen 02): one startup summary stays visible while the bell owns the three rows.
+    private static Window _NotificationsStartupBundle()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            AssistantDocked = true,
+            DockRailWidth = 380,
+        };
+        cockpit.RegisterNotificationsPanel();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        cockpit.ToastHost.BeginStartupNotificationBundle(TimeSpan.FromMinutes(1), () => _ = cockpit.ShowNotificationsAsync());
+        cockpit.ToastHost.Add("Settings conflict", ToastSeverity.Warning, [new ToastAction("Choose", static () => { })], sticky: true, source: "Settings sync");
+        cockpit.ToastHost.Add("Slack missing_scope", ToastSeverity.Error, [new ToastAction("Open Slack settings", static () => { })], sticky: true, source: "Slack");
+        cockpit.ToastHost.Add("Depot needs attention", ToastSeverity.Error, [new ToastAction("Open in Depot", static () => { })], sticky: true, source: "Depot");
 
         return new MainWindow { DataContext = cockpit };
     }

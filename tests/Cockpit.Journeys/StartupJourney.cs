@@ -3,9 +3,11 @@ using Avalonia.Threading;
 using System.Runtime.Loader;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App;
+using Cockpit.App.ViewModels;
 using Cockpit.App.ViewModels.Onboarding;
 using Cockpit.App.ViewTests;
 using Cockpit.App.Views.Onboarding;
+using Cockpit.Core.Toasts;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Screenshots;
@@ -92,6 +94,43 @@ public sealed class StartupJourney
             return Task.CompletedTask;
         });
         await setup.WaitAsync(Until.Ceiling);
+
+        // AC-1803: startup notices collect in the store but show once, so the operator can open the panel and use
+        // the original live actions instead of losing them in a burst of overlays.
+        var chosen = 0;
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            var toasts = cockpitViewModel.ToastHost;
+            toasts.Add("Slack needs a scope", ToastSeverity.Warning, [new ToastAction("Fix Slack", () => chosen++)], sticky: true, source: "Startup journey");
+            toasts.Add("Depot needs attention", ToastSeverity.Error, [new ToastAction("Open Depot", () => chosen++)], sticky: true, source: "Startup journey");
+            toasts.Add("Settings conflict", ToastSeverity.Warning, [new ToastAction("Choose", () => chosen++)], sticky: true, source: "Startup journey");
+
+            var startupToast = Assert.Single(toasts.Toasts);
+            Assert.Equal("3 notifications at startup", startupToast.Message);
+            startupToast.Actions[0].InvokeCommand.Execute(null);
+            return Task.CompletedTask;
+        });
+        Assert.Equal(NotificationCenterViewModel.DockPanelId, cockpitViewModel.OpenDockPanelId);
+        var startupItems = cockpitViewModel.Notifications.Items.Where(item => item.Source == "Startup journey").ToList();
+        Assert.Equal(3, startupItems.Count);
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            foreach (var item in startupItems)
+            {
+                item.Actions[0].InvokeCommand.Execute(null);
+            }
+
+            return Task.CompletedTask;
+        });
+        Assert.Equal(3, chosen);
+
+        await HeadlessAvalonia.RunAsync(() =>
+        {
+            cockpitViewModel.ToastHost.EndStartupNotificationWindow();
+            cockpitViewModel.ToastHost.Add("A mid-session notification", ToastSeverity.Warning, [new ToastAction("Acknowledge", static () => { })], sticky: true);
+            Assert.Equal("A mid-session notification", Assert.Single(cockpitViewModel.Toasts).Message);
+            return Task.CompletedTask;
+        });
     }
 
     // Installed as the store would leave it; its contract is refused before its assembly is ever read.

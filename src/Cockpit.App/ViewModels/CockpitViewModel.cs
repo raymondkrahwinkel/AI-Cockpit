@@ -5667,6 +5667,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? DockHost.ShowInAsync(NotificationCenterViewModel.DockPanelId, floating: true)
             : ToggleDockPanel(NotificationCenterViewModel.DockPanelId);
 
+    // The startup summary must reveal the panel, not toggle a panel the operator already has open.
+    internal Task ShowNotificationsAsync() =>
+        SimpleView || IsDockPanelFloating(NotificationCenterViewModel.DockPanelId)
+            ? DockHost.ShowInAsync(NotificationCenterViewModel.DockPanelId, floating: true)
+            : OpenDockPanelId == NotificationCenterViewModel.DockPanelId
+                ? Task.CompletedTask
+                : ToggleDockPanel(NotificationCenterViewModel.DockPanelId);
+
     // Opens the tapped rail panel, or closes the rail if that panel is already the open one — the toggle the
     // acceptance criteria ask for ("klik klapt uit, tweede klik weer in"). Switching straight from one open
     // panel to another (without a close in between) is the same one click, since only one can be open at a time.
