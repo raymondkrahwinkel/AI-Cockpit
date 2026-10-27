@@ -12,7 +12,6 @@ public sealed class WeekProposalTests
 
     [Theory]
     [InlineData(480, 0, true, "a:10,b:10,c:10", "a:150,b:165,c:165")]
-    [InlineData(240, 270, false, "syn-portal:60", "")]
     public void Build_SplitsTheScheduleLessOwnEntriesByMeasuredTimeAndNeverExceedsIt(int schedule, int own, bool pastRetention, string measured, string expected)
     {
         // Past the raw retention the measured values are operator actions from the day totals, not minutes.

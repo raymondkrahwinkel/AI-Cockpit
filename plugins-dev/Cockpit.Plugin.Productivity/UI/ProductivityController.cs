@@ -16,6 +16,14 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
 
     public event Action? Changed;
 
+    public event Action? RefreshStateChanged;
+
+    public bool IsRefreshing { get; private set; }
+
+    public DateTimeOffset? LastRefreshed { get; private set; }
+
+    public DateTimeOffset Now => time.GetUtcNow();
+
     public DateOnly SelectedDate { get; private set; } = DateOnly.FromDateTime(time.GetLocalNow().DateTime);
 
     public IReadOnlyList<CockpitTimeEntry> Entries { get; private set; } = [];
@@ -67,6 +75,8 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
 
     public async Task RefreshAsync()
     {
+        IsRefreshing = true;
+        _PublishRefreshState();
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -80,6 +90,8 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
         finally
         {
             _gate.Release();
+            IsRefreshing = false;
+            _PublishRefreshState();
         }
     }
 
@@ -216,6 +228,7 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
                 new ProductivityWeekRequest([.. Enumerable.Range(0, 8).Select(offset => _AtLocalTime(WeekStart.AddDays(offset), TimeOnly.MinValue))])).ConfigureAwait(false)
             : null;
         Error = null;
+        LastRefreshed = time.GetUtcNow();
         _PublishChanged();
     }
 
@@ -252,6 +265,18 @@ internal sealed class ProductivityController(IPluginUiChannel channel, TimeProvi
         Error = message;
         _PublishChanged();
         return false;
+    }
+
+    private void _PublishRefreshState()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            RefreshStateChanged?.Invoke();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => RefreshStateChanged?.Invoke());
+        }
     }
 
     private void _PublishChanged()

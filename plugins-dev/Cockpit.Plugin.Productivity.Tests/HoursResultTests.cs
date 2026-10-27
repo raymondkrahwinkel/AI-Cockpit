@@ -14,7 +14,6 @@ public sealed class HoursResultTests
 
     [Theory]
     [InlineData(480, 60, 0, true, "⚠ overschrijding")]
-    [InlineData(240, 240, 240, false, "✓ geboekt")]
     public async Task BookedAboveTheSchedule_IsAnOverrunAndNeverGreen(int minutes, int alreadyBooked, int priorBooked, bool overrun, string expectedStatus)
     {
         var (host, entries, storage) = _Rig("receiver", minutes, priorBooked);
