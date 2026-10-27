@@ -42,6 +42,12 @@ internal sealed class BrowserTab
 
     public bool IsMuted => View.IsMuted;
 
+    internal string PersistenceAddress => _deferredAddress ?? Address;
+
+    internal bool IsDeferred => _deferredAddress is not null;
+
+    private string? _deferredAddress;
+
     public Bitmap? Favicon { get; private set; }
 
     // Set by the page's media or DRM request, cleared by the next navigation or by dismissing the bar.
@@ -64,8 +70,29 @@ internal sealed class BrowserTab
 
     public void Navigate(string address)
     {
-        CodecUnsupported = false;
+        _deferredAddress = null;
+        _Update(() =>
+        {
+            Address = address;
+            CodecUnsupported = false;
+        });
         View.Navigate(address);
+    }
+
+    internal BrowserTab Defer(string address, string title, bool muted)
+    {
+        _deferredAddress = address;
+        Title = title;
+        View.SetMuted(muted);
+        return this;
+    }
+
+    internal void LoadDeferred()
+    {
+        if (_deferredAddress is { } address)
+        {
+            Navigate(address);
+        }
     }
 
     private void _Update(Action change)
@@ -103,8 +130,7 @@ internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab
             return;
         }
 
-        var tab = createTab?.Invoke(address) ?? new BrowserTab(new CefBrowserView(Engine, address, Engine.RaymondProfile), address);
-        tab.View.PopupRequested += url => NewTab(url);
+        var tab = _CreateTab(address);
         _tabs.Add(tab);
         Active = tab;
         Changed?.Invoke();
@@ -112,7 +138,7 @@ internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab
 
     internal void AddStaged(BrowserTab tab)
     {
-        _tabs.Add(tab);
+        _tabs.Add(_Wire(tab));
         Active ??= tab;
         Changed?.Invoke();
     }
@@ -120,7 +146,21 @@ internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab
     public void Activate(BrowserTab tab)
     {
         Active = tab;
+        tab.LoadDeferred();
         Changed?.Invoke();
+    }
+
+    internal void Restore(BrowserSavedSession saved)
+    {
+        foreach (var item in saved.Tabs.Where(item => Uri.TryCreate(item.Url, UriKind.Absolute, out _)))
+        {
+            _tabs.Add(_CreateTab(StartAddress).Defer(item.Url, item.Title, item.Muted));
+        }
+
+        if (_tabs.Count > 0)
+        {
+            Activate(_tabs[Math.Clamp(saved.ActiveTab, 0, _tabs.Count - 1)]);
+        }
     }
 
     public void ActivateRelative(int offset)
@@ -206,5 +246,14 @@ internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab
         {
             NewTab();
         }
+    }
+
+    private BrowserTab _CreateTab(string address) => _Wire(createTab?.Invoke(address) ?? new BrowserTab(new CefBrowserView(Engine, address, Engine.RaymondProfile), address));
+
+    private BrowserTab _Wire(BrowserTab tab)
+    {
+        tab.View.PopupRequested += url => NewTab(url);
+        tab.Changed += () => Changed?.Invoke();
+        return tab;
     }
 }
