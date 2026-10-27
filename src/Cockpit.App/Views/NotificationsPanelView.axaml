@@ -14,6 +14,16 @@
             <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
             <Setter Property="Padding" Value="12,10"/>
         </Style>
+        <Style Selector="Border.notificationRow TextBlock.message">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <!-- Read rows go flat: no fill, regular weight (mockup screen 04). -->
+        <Style Selector="Border.notificationRow.read">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.notificationRow.read TextBlock.message">
+            <Setter Property="FontWeight" Value="Normal"/>
+        </Style>
         <!-- A row that needs you carries the waiting row tint, as a session that needs you does. -->
         <Style Selector="Border.notificationRow.attention">
             <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingRowTintBrush}"/>
@@ -78,13 +88,13 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:NotificationItemViewModel">
-                            <Border Classes="notificationRow" Classes.attention="{Binding NeedsYou}">
+                            <Border Classes="notificationRow" Classes.read="{Binding IsRead}" Classes.attention="{Binding NeedsYou}">
                                 <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
                                     <materialIcons:MaterialIcon Kind="{Binding Glyph}" Width="14" Height="14"
                                                Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                                Margin="0,1,8,0" VerticalAlignment="Top"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"
-                                               FontWeight="SemiBold" MaxLines="4" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Classes="message" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"
+                                               MaxLines="4" TextTrimming="CharacterEllipsis"/>
                                     <Panel Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Top">
                                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding TimeLabel}" FontSize="11"
@@ -108,9 +118,13 @@
                                         <Border Classes="tag" DockPanel.Dock="Left" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Source}"/>
                                         </Border>
-                                        <TextBlock DockPanel.Dock="Right" Text="{Binding HandledReceipt}" IsVisible="{Binding IsHandled}"
-                                                   FontSize="11.5" VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsHandled}"
+                                                    VerticalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="CheckCircleOutline" Width="12" Height="12"
+                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                            <TextBlock Text="{Binding HandledReceipt}" FontSize="11.5"
+                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                        </StackPanel>
                                         <!-- The toast's own buttons: a click here runs its action and closes the toast too. -->
                                         <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding NeedsYou}" HorizontalAlignment="Right">
                                             <ItemsControl.ItemsPanel>

@@ -143,10 +143,12 @@ public sealed class ToastHostViewModel
     {
         _startupBundleToast?.CloseCommand.Execute(null);
         var count = _startupToasts!.Count;
+        // Captured: the bundle stays after the window ends, and its Show must still open the panel then.
+        var show = _showStartupNotifications;
         var startupToast = new ToastViewModel(
             $"{count} notifications at startup",
             ToastSeverity.Warning,
-            [new ToastAction("Show", () => _showStartupNotifications?.Invoke()), new ToastAction("Later", static () => { })]);
+            [new ToastAction("Show notifications", () => show?.Invoke()), new ToastAction("Later", static () => { })]);
         startupToast.Dismissed += (_, _) => Toasts.Remove(startupToast);
         Toasts.Add(startupToast);
         _startupBundleToast = startupToast;
