@@ -35,8 +35,11 @@ public sealed record WorkspaceSettings
 
     // The active workspace: the one `ActiveWorkspaceId` names, else the first. Null only when
     // there are no workspaces at all — which `Normalized` prevents for anything loaded from disk.
+    // AC-1751: a floating workspace is never the active one; the projects overview always stays docked.
     public Workspace? Active =>
-        Workspaces.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? Workspaces.FirstOrDefault();
+        Workspaces.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId && !workspace.IsFloating)
+        ?? Workspaces.FirstOrDefault(workspace => !workspace.IsFloating)
+        ?? Workspaces.FirstOrDefault();
 
     // These settings made safe to bind to: one workspace, one projects overview, a resolving `ActiveWorkspaceId`.
     // AC-1013: trimmed — overview is a fixture (Raymond, 2026-07-24), always exactly one, un-closable, enforced
@@ -93,7 +96,7 @@ public sealed record WorkspaceSettings
 
         var remaining = Workspaces.Where(workspace => workspace.Id != workspaceId).ToList();
         var active = ActiveWorkspaceId == workspaceId
-            ? remaining[Math.Min(index, remaining.Count - 1)].Id
+            ? _DockedNeighbour(index).Id
             : ActiveWorkspaceId;
 
         return (this with
@@ -118,6 +121,35 @@ public sealed record WorkspaceSettings
                 Workspaces = [.. Workspaces.Select(existing => existing.Id == workspaceId ? workspace : existing)],
                 CollapsedSidebarWorkspaceIds = [.. CollapsedSidebarWorkspaceIds.Where(id => id != workspaceId)],
             }).WithActive(workspace.Id);
+
+    // AC-1751: `workspaceId` into its own window (pinned; its docked neighbour takes over if it was active), or back to its tab, active.
+    public WorkspaceSettings WithFloating(string workspaceId, bool floating)
+    {
+        var index = _IndexOf(workspaceId);
+        if (index < 0)
+        {
+            return this;
+        }
+
+        var updated = this with
+        {
+            Workspaces = [.. Workspaces.Select(workspace => workspace.Id == workspaceId
+                ? workspace with { IsFloating = floating, IsPreview = workspace.IsPreview && !floating }
+                : workspace)],
+        };
+
+        if (!floating)
+        {
+            return updated.WithActive(workspaceId);
+        }
+
+        return Active?.Id == workspaceId ? updated.WithActive(_DockedNeighbour(index).Id) : updated;
+    }
+
+    // The docked workspace after `index`, else the one before it: the projects overview is always docked, so there is one.
+    private Workspace _DockedNeighbour(int index) =>
+        Workspaces.Skip(index + 1).FirstOrDefault(workspace => !workspace.IsFloating)
+        ?? Workspaces.Take(index).Last(workspace => !workspace.IsFloating);
 
     // These settings with `workspace` swapped in by id (a no-op when it holds no such workspace).
     public WorkspaceSettings WithUpdated(Workspace workspace) =>
@@ -177,14 +209,15 @@ public sealed record WorkspaceSettings
     // session switch's wrap-around so the two behave the same way on their own axis.
     public WorkspaceSettings WithSteppedActive(int direction)
     {
-        if (Workspaces.Count <= 1 || direction == 0)
+        var docked = Workspaces.Where(workspace => !workspace.IsFloating).ToList();
+        if (docked.Count <= 1 || direction == 0)
         {
             return this;
         }
 
-        var current = Math.Max(0, _IndexOf(Active?.Id ?? string.Empty));
-        var next = ((current + direction) % Workspaces.Count + Workspaces.Count) % Workspaces.Count;
-        return WithActive(Workspaces[next].Id);
+        var current = Math.Max(0, docked.FindIndex(workspace => workspace.Id == Active?.Id));
+        var next = ((current + direction) % docked.Count + docked.Count) % docked.Count;
+        return WithActive(docked[next].Id);
     }
 
     private int _IndexOf(string workspaceId)

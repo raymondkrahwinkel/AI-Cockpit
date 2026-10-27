@@ -85,7 +85,10 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [ObservableProperty]
     private WorkspaceSettings _settings;
 
-    // The tab strip's items, rebuilt whenever the workspace set or the selection changes.
+    // AC-1751: raised when something walks to a floating workspace (its key, the sidebar); its window comes to the front instead.
+    public event EventHandler<string>? FloatingWorkspaceShown;
+
+    // The tab strip's items, rebuilt whenever the workspace set or the selection changes. A floating workspace has none.
     public ObservableCollection<WorkspaceTabViewModel> Tabs { get; } = [];
 
     // The active dashboard's widget panes — what the dashboard grid renders. Empty for a Sessions workspace,
@@ -210,6 +213,30 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         IsPluginWorkspaceActive && Active is { } active
             ? AvailablePluginWorkspaceTypes.FirstOrDefault(type => type.Id == active.Type.Id)?.HeaderActions ?? []
             : [];
+
+    // AC-1751: whether the tab strip offers "⧉ Pop out" for the active workspace.
+    public bool CanPopOutActive => Active is { } active && CanFloat(active);
+
+    internal bool CanFloat(Workspace workspace) =>
+        !workspace.Type.IsBuiltIn && AvailablePluginWorkspaceTypes.FirstOrDefault(type => type.Id == workspace.Type.Id)?.CanFloat == true;
+
+    // AC-1751: the workspace into its own window. A preview is pinned first: a window never holds a preview.
+    public async Task PopOutAsync(string workspaceId)
+    {
+        if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { IsFloating: false } workspace || !CanFloat(workspace))
+        {
+            return;
+        }
+
+        await _ApplyAsync(Settings.WithFloating(workspaceId, true));
+        (_pluginContexts.GetValueOrDefault(workspaceId) as WorkspaceContext)?.SetPreview(false);
+    }
+
+    // AC-1751: the floating workspace back to its place in the strip, active.
+    public Task DockBackAsync(string workspaceId) => _ApplyAsync(Settings.WithFloating(workspaceId, false));
+
+    // AC-1751: the body a floating workspace's window shows, the same instance its tab showed; null while its plugin is not registered.
+    internal Control? BodyFor(Workspace workspace) => _EnsureBody(workspace) ? _pluginBodies[workspace.Id] : null;
 
     // AC-1013: Loads the saved workspaces. Called once at startup; a no-op without a store (design time).
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -389,7 +416,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // the order you arranged is the order you come back to; the selection stays where it was, since
     // rearranging the desks is not the same as walking to another one.
     public Task MoveWorkspaceAsync(string workspaceId, int targetIndex) =>
-        _ApplyAsync(Settings.WithMoved(workspaceId, targetIndex));
+        _ApplyAsync(Settings.WithMoved(workspaceId, _WorkspaceIndexOfTab(targetIndex)));
+
+    // AC-1751: a strip position as a position among all workspaces, since a floating one has no tab.
+    private int _WorkspaceIndexOfTab(int tabIndex) =>
+        Tabs.Count == 0
+            ? tabIndex
+            : Settings.Workspaces.ToList().FindIndex(workspace => workspace.Id == Tabs[Math.Clamp(tabIndex, 0, Tabs.Count - 1)].Id);
 
     // Ctrl+Shift+Left — the previous workspace, wrapping past the first (Raymond, 2026-07-15).
     [RelayCommand]
@@ -674,6 +707,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             return;
         }
 
+        // AC-1751: walking to a floating workspace raises its window; the strip keeps its active tab.
+        if (settings.ActiveWorkspaceId != Settings.ActiveWorkspaceId
+            && settings.Workspaces.FirstOrDefault(workspace => workspace.Id == settings.ActiveWorkspaceId) is { IsFloating: true } floating)
+        {
+            FloatingWorkspaceShown?.Invoke(this, floating.Id);
+            settings = settings with { ActiveWorkspaceId = Settings.ActiveWorkspaceId };
+        }
+
         Settings = settings;
         if (_store is null || _loadFailed)
         {
@@ -780,30 +821,44 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             _markers.Remove(staleId);
         }
 
-        if (Active is { } active
-            && !active.Type.IsBuiltIn
-            && !_pluginBodies.ContainsKey(active.Id)
-            && _workspaceTypes?.CreateBody(active.Type.Id, active.Id) is { } built)
+        if (Active is { } active && !active.Type.IsBuiltIn)
         {
-            if (built.Context is WorkspaceContext context)
-            {
-                var workspaceId = active.Id;
-                context.InstanceKey = active.InstanceKey;
-                context.SetPreview(active.IsPreview);
-                context.TitleSet = title => _ = _SetTitleAsync(workspaceId, title);
-                context.MarkerSet = marker => _SetMarker(workspaceId, marker);
-                context.PinRequested = () => _ = PinWorkspaceAsync(workspaceId);
-            }
-
-            _pluginContexts[active.Id] = built.Context;
-            _pluginBodies[active.Id] = built.Registration.CreateBody(built.Context);
+            _EnsureBody(active);
         }
+    }
+
+    // Builds a plugin workspace's body once; false while the plugin of its type is not registered.
+    private bool _EnsureBody(Workspace workspace)
+    {
+        if (_pluginBodies.ContainsKey(workspace.Id))
+        {
+            return true;
+        }
+
+        if (_workspaceTypes?.CreateBody(workspace.Type.Id, workspace.Id) is not { } built)
+        {
+            return false;
+        }
+
+        if (built.Context is WorkspaceContext context)
+        {
+            var workspaceId = workspace.Id;
+            context.InstanceKey = workspace.InstanceKey;
+            context.SetPreview(workspace.IsPreview);
+            context.TitleSet = title => _ = _SetTitleAsync(workspaceId, title);
+            context.MarkerSet = marker => _SetMarker(workspaceId, marker);
+            context.PinRequested = () => _ = PinWorkspaceAsync(workspaceId);
+        }
+
+        _pluginContexts[workspace.Id] = built.Context;
+        _pluginBodies[workspace.Id] = built.Registration.CreateBody(built.Context);
+        return true;
     }
 
     private void _RefreshTabs()
     {
         Tabs.Clear();
-        foreach (var workspace in Settings.Workspaces)
+        foreach (var workspace in Settings.Workspaces.Where(workspace => !workspace.IsFloating))
         {
             Tabs.Add(new WorkspaceTabViewModel(workspace, isActive: workspace.Id == Active?.Id, icon: _IconFor(workspace))
             {

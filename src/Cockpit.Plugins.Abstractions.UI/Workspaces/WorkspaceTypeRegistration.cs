@@ -51,4 +51,7 @@ public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWo
     /// Host 0.115.0 and later; an older host ignores them.
     /// </summary>
     public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];
+
+    /// <summary>Whether a workspace of this type can Pop out into its own window and Dock back, as the same body instance; false by default, host 0.135.0+.</summary>
+    public bool CanFloat { get; init; }
 }

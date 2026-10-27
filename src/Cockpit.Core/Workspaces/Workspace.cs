@@ -33,6 +33,9 @@ public sealed record Workspace(string Id, string Name, WorkspaceType Type)
     // AC-1750: the preview tab, which the next preview replaces in place until it is pinned.
     public bool IsPreview { get; init; }
 
+    // AC-1751: standing in its own window rather than in the tab strip; never the active workspace.
+    public bool IsFloating { get; init; }
+
     // A new, empty workspace of `type` with a generated id.
     public static Workspace Create(string name, WorkspaceType type) =>
         new(Guid.NewGuid().ToString("n"), name, type);

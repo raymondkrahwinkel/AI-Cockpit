@@ -1085,6 +1085,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private DockPanelHost? _dockHost;
 
+    // AC-1751: where a floating workspace stands; its ✕ takes the tab's own close route.
+    internal WorkspaceWindowHost WorkspaceWindows => _workspaceWindows ??= new WorkspaceWindowHost(
+        Workspaces,
+        CloseWorkspaceWithConfirmationAsync,
+        () => Program.Services?.GetService(typeof(Cockpit.Core.Abstractions.Layout.IWindowBoundsStore)) as Cockpit.Core.Abstractions.Layout.IWindowBoundsStore);
+
+    private WorkspaceWindowHost? _workspaceWindows;
+
     internal Task PersistDockStandAsync() => _layoutSettingsStore is null ? Task.CompletedTask : _PersistLayoutSettingsAsync();
 
     // The rail header's ⧉ (AC-1710): the open panel into its own window.
