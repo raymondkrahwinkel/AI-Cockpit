@@ -18,7 +18,8 @@ public sealed class WorktreeManagerTests : IDisposable
 {
     public const string Alone = "worktree-manager-state-root";
 
-    private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-worktree-{Guid.NewGuid():n}");
+    // Kept at this checkout's root (not an operator repository or system temp), short enough for Git's object paths on Windows.
+    private readonly string _tempRoot = Path.Combine(_CheckoutRoot(), $".wt-{Guid.NewGuid():n}");
     private readonly string _repo;
     private readonly string _worktreesRoot;
     private readonly string _configPath;
@@ -44,9 +45,25 @@ public sealed class WorktreeManagerTests : IDisposable
         _manager = new WorktreeManager(_registry, _worktreesRoot);
     }
 
+    private static string _CheckoutRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Cockpit.slnx"))) return directory.FullName;
+        }
+
+        throw new InvalidOperationException("Could not find the checkout root for the disposable Git fixture.");
+    }
+
     [Fact]
     public async Task CreateAsync_BranchThatAlreadyExists_FailsLoudly_WithoutResettingIt()
     {
+        // A local project never needs the operator's configured repositories: this real repository is created and
+        // disposed by the test fixture. origin wins even when Git names another remote too.
+        _Git(_repo, "remote", "add", "backup", "https://example.test/backup.git");
+        _Git(_repo, "remote", "add", "origin", "https://example.test/origin.git");
+        Assert.Equal("https://example.test/origin.git", await _manager.DetectRemoteUrlAsync(_repo));
+
         const string branch = "already-here";
         _Git(_repo, "branch", branch);
 

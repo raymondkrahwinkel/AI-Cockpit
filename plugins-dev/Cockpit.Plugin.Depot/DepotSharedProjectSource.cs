@@ -294,7 +294,7 @@ internal sealed class DepotSharedProjectSource(
         {
             Name = edit.Name,
             Description = edit.Description,
-            GitUrl = current.GitUrl,
+            GitUrl = edit.GitUrl,
             BehaviorPrompt = edit.BehaviorPrompt,
             IsolateInWorktreeByDefault = edit.IsolateInWorktreeByDefault,
             // Used to fall back to `current.McpOverlay` on null, misreading "no opinion, every server ticked"

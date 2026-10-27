@@ -480,7 +480,7 @@
                                Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                                Text="{Binding CurrentBuild, StringFormat='· you’re on {0}'}"/>
                     <!-- Download progress (AC-388): only costs space while a download is actually in flight. -->
-                    <ProgressBar VerticalAlignment="Center" Width="120" Height="6" Margin="8,0,0,0"
+                    <ProgressBar VerticalAlignment="Center" Width="120" MinWidth="0" Height="6" MinHeight="0" Margin="8,0,0,0"
                                  Minimum="0" Maximum="100"
                                  Value="{Binding UpdateDownloadProgress}"
                                  IsVisible="{Binding IsUpdateDownloading}"/>
@@ -1577,7 +1577,7 @@
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                             <Button Content="↻ Refresh" Classes="Subtle"
                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.RefreshSharedProjectsCommand}"/>
-                                            <ProgressBar Width="32" Height="4" IsIndeterminate="True"
+                                            <ProgressBar Width="32" MinWidth="0" Height="4" MinHeight="0" IsIndeterminate="True"
                                                          IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).Projects.IsRefreshingSharedProjects}"/>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Error}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"

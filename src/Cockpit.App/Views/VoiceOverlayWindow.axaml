@@ -80,7 +80,7 @@
                     <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium"
                                Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
                     <ProgressBar IsVisible="{Binding HasProgress}" Value="{Binding ProgressValue}"
-                                 Minimum="0" Maximum="1" Height="3" CornerRadius="2"
+                                 Minimum="0" Maximum="1" Height="3" MinHeight="0" CornerRadius="2"
                                  Foreground="{DynamicResource CockpitAccentBrush}"/>
                 </StackPanel>
             </StackPanel>

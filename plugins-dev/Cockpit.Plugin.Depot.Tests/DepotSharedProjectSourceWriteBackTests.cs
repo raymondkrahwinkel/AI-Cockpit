@@ -20,9 +20,10 @@ public class DepotSharedProjectSourceWriteBackTests
         DepotMemorySource.BuildRegistrationPairs([Connection()], host).Single().Registration.Scheme;
 
     private static SharedProjectDefinitionEdit Edit(
-        string name = "Edited name", string? description = "Edited description", SharedProjectLogoEdit? logoEdit = null) =>
+        string name = "Edited name", string? description = "Edited description", SharedProjectLogoEdit? logoEdit = null,
+        string? gitUrl = "https://example.com/edited.git") =>
         new(name, description, BehaviorPrompt: "Edited behaviour", IsolateInWorktreeByDefault: true,
-            EnabledMcpServerNames: ["github"], LogoEdit: logoEdit);
+            EnabledMcpServerNames: ["github"], LogoEdit: logoEdit, GitUrl: gitUrl);
 
     [Fact]
     public async Task WriteBackAsync_Success_ReturnsTheChecksumTheWriteConfirmed()
@@ -37,6 +38,8 @@ public class DepotSharedProjectSourceWriteBackTests
 
         Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
         Assert.Equal("chk-after", result.Checksum);
+        Assert.True(CockpitProjectDefinitionJson.TryDeserialize(handler.WrittenContent, out var sent, out var error), error);
+        Assert.Equal("https://example.com/edited.git", sent!.GitUrl);
     }
 
     [Fact]
