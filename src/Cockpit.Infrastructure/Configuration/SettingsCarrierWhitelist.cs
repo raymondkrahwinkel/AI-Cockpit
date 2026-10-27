@@ -125,6 +125,8 @@ internal sealed class SettingsCarrierFilter
 
     public static SettingsCarrierFilter All { get; } = new(null, null);
 
+    internal static IEnumerable<string> Categories => CategoryRoots.Keys;
+
     public static SettingsCarrierFilter FromConfig(JsonObject config, string carrierId)
     {
         if (config["SettingsSync"]?["Categories"] is not JsonObject categories)

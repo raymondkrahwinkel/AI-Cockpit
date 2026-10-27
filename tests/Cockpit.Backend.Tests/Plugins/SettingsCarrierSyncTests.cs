@@ -74,7 +74,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
     }
 
     [Fact]
-    public async Task EligibleCarriers_PropagateChanges_AndKeepDivergentValuesForAChoice()
+    public async Task EligibleCarriers_PropagateChanges_AndLegacyStateMigratesIdempotently()
     {
         var one = new _Space("one");
         var two = new _Space("two");
@@ -131,6 +131,47 @@ public sealed class SettingsCarrierSyncTests : IDisposable
 
         Assert.Equal(13, _Remote(untickedOne)["Terminal"]?["FontSize"]?.GetValue<int>());
         Assert.Equal(12, _Remote(untickedTwo)["Terminal"]?["FontSize"]?.GetValue<int>());
+
+        await _AssertLegacySingleCarrierStateMigratesWithoutWritingOrConflictsAsync();
+    }
+
+    private async Task _AssertLegacySingleCarrierStateMigratesWithoutWritingOrConflictsAsync()
+    {
+        var machine = _Machine("legacy", """
+            { "Profiles": [{ "Label": "work", "Purpose": "work" }], "Terminal": { "FontSize": 19, "FontFamily": "Cascadia Mono, Consolas, monospace" }, "CategoryOrder": [] }
+            """);
+        _space.Blob = Encoding.UTF8.GetBytes(_Local(machine).ToJsonString());
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(machine.ConfigPath)!, "settings-sync.json"), """
+            { "Base": { "Profiles.work": "{\"Label\":\"work\",\"Purpose\":\"work\"}", "Terminal.FontSize": "19", "Terminal.FontFamily": "\"Cascadia Mono, Consolas, monospace\"", "CategoryOrder": "[]" } }
+            """);
+
+        await machine.Sync.RunOnceAsync();
+
+        var migrated = _Local(machine);
+        var statePath = Path.Combine(Path.GetDirectoryName(machine.ConfigPath)!, "settings-sync.json");
+        var settingsSync = Assert.IsType<JsonObject>(migrated["SettingsSync"]);
+        var categories = Assert.IsType<JsonObject>(settingsSync["Categories"]);
+        Assert.Equal(8, categories.Count);
+        Assert.All(categories, category => Assert.Equal("fake", Assert.IsAssignableFrom<JsonValue>(Assert.Single(Assert.IsType<JsonArray>(category.Value))).GetValue<string>()));
+        Assert.Null(settingsSync["Profiles"]);
+        Assert.Equal(0, _space.WriteCount);
+        Assert.Empty(machine.Sync.Conflicts);
+
+        var configAfterFirstStart = File.ReadAllText(machine.ConfigPath);
+        var stateAfterFirstStart = File.ReadAllText(statePath);
+
+        await machine.Sync.RunOnceAsync();
+
+        Assert.Equal(configAfterFirstStart, File.ReadAllText(machine.ConfigPath));
+        Assert.Equal(stateAfterFirstStart, File.ReadAllText(statePath));
+        Assert.Equal(0, _space.WriteCount);
+        Assert.Empty(machine.Sync.Conflicts);
+
+        migrated["Profiles"]!.AsArray().Add(new JsonObject { ["Label"] = "later", ["Purpose"] = "later" });
+        _Write(machine, migrated.ToJsonString());
+        await machine.Sync.RunOnceAsync();
+
+        Assert.Equal("later", Assert.IsType<JsonObject>(Assert.Single(_Remote()["Profiles"]!.AsArray(), profile => profile?["Label"]?.GetValue<string>() == "later"))["Purpose"]?.GetValue<string>());
     }
 
     // AC-1834: repository identity joins machine-local project ids without adding a no-folder duplicate.
@@ -187,6 +228,8 @@ public sealed class SettingsCarrierSyncTests : IDisposable
 
         public byte[]? Blob { get; set; }
 
+        public int WriteCount { get; private set; }
+
         // Another machine's write, landing once just before this one's.
         public Action? BeforeWrite { get; set; }
 
@@ -198,6 +241,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
             _ => Task.FromResult(Blob),
             (blob, _) =>
             {
+                WriteCount++;
                 Blob = blob;
                 return Task.CompletedTask;
             })
@@ -212,6 +256,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
                     return Task.FromResult(false);
                 }
 
+                WriteCount++;
                 Blob = blob;
                 return Task.FromResult(true);
             },
