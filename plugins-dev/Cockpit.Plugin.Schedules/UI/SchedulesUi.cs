@@ -23,7 +23,14 @@ public sealed class SchedulesUi : ICockpitPluginUi
         _dueSubscription = host.Channel.Subscribe(Contracts.SchedulesChannel.RemindersDue, due =>
         {
             var count = due.Payload.ValueKind == System.Text.Json.JsonValueKind.Number ? due.Payload.GetInt32() : 0;
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => badge.Primary = count > 0 ? count : null);
+            // A host (or a test double) that hands out no badge must not take the dispatcher down with this post.
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (badge is not null)
+                {
+                    badge.Primary = count > 0 ? count : null;
+                }
+            });
         });
         host.AddShortcut(new PluginShortcut(ShortcutId, "Schedules", DefaultGesture, () => _Open(host)));
     }

@@ -346,6 +346,9 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **Schedules can no longer take the cockpit down when its reminder count arrives.** A count that came in
+  while the Plugins button had no counter attached crashed the app; it is now skipped.
+
 - fixed: **a Panels tab no longer shows through the Simple view.** With Uren, Overzicht, Projects, Autopilot, a
   dashboard or any other tab that is not a Sessions tab open, switching to Simple left that tab's content standing
   under Simple's own pages. It now steps aside, and switching back to Panels shows the same tab as you left it.

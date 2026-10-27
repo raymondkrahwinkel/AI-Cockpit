@@ -530,10 +530,12 @@ public sealed class FirstStartJourney
             {
                 var stateRoot = Directory.CreateDirectory(Path.Combine(work, "sidebar")).FullName;
                 // AC-1763: a plugin with one button lands in the shared "Plugins" card, whose fold is remembered the same way.
+                // AC-1790: the Simple rail holds a twin of that card, so the Panels sidebar's host is the one looked in.
                 SidebarSection PluginsCard(JourneyHost host)
                 {
                     ((Cockpit.App.Plugins.IPluginContributionSink)host.Cockpit).AddPluginSideButton("journey-plugin", "Journey", () => { });
-                    return HeadlessAvalonia.Run(() => host.Window.GetVisualDescendants().OfType<SidebarSection>().Single(section => section.Title == "Plugins"));
+                    return HeadlessAvalonia.Run(() => host.Window.GetVisualDescendants().OfType<StackPanel>().Single(panel => panel.Name == "PluginSectionsHost")
+                        .GetVisualDescendants().OfType<SidebarSection>().Single(section => section.Title == "Plugins"));
                 }
 
                 async Task LayoutHolds(Func<JsonNode?, bool> condition) => await Until.ReloadHolds(
