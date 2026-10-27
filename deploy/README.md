@@ -7,8 +7,11 @@ Docker host and carries no environment-specific settings.
 ## Tags and deploying
 
 - `:sha-<commit>` is immutable: **deploy on this**. `COCKPIT_TAG` has no default and `latest` is never published.
-- `:main` is a rolling tag for reading, not for pulling on a timer. No Watchtower and no auto-pull: a restart ends
-  the live agent sessions, and the stop budget is only 8 seconds.
+- `:main` is a rolling tag. A host may follow it with Watchtower: a merge to `main` then reaches that host within
+  minutes, and the restart ends the live agent sessions (the stop budget is only 8 seconds). Watchtower recreates the
+  container with its old settings, so a change to `compose.yaml` itself (a new volume, say) needs one
+  `docker compose -f deploy/compose.yaml up -d` by hand; until then a new volume of the image is an anonymous one,
+  which the next update replaces.
 - `:sha-<commit>-dev` adds the .NET SDK so agents can build and test. Same tags with a `-dev` suffix.
 
 The package is **public**: no login is needed to pull. That is why **no secret is ever baked into the image**: not in a
@@ -51,6 +54,8 @@ or bind-mounts (below). All of it is unencrypted on disk, logins and keys includ
 | --- | --- | --- | --- | --- |
 | `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs | a new certificate, so a new fingerprint every client must pin again, and the server's settings | yes: the certificate's private key |
 | `work` | `/work` | clones and worktrees, writable for the server and the agent sessions | the clones and any unpushed work in them | no, but unpushed work |
+| `cli` | `/cli` | the managed `claude` and `codex` (Install in a server profile's settings), one version each | the image's own copies, until the next Install | no |
+| `agent-home` | `/home/agent` | the agent's own files beside the volumes below, such as Claude's `.claude.json` (settings, account, onboarding) | Claude's onboarding again; the login itself is on `claude` | no, but account details |
 | `scratch` | `/home/agent/scratch` | the default working directory for a projectless session; writable only by `agent` | a fresh empty default working directory | no, but unpushed work |
 | `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts | a new sign-in | yes: the login |
 | `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts | a new sign-in | yes: the login |
@@ -72,7 +77,7 @@ with a throwaway container; the tar keeps owners and modes (`-p`), which the spl
 
     docker run --rm -v cockpit_state:/v:ro -v "$PWD":/backup alpine tar -czpf /backup/state.tgz -C /v .
 
-Compose prefixes volume names with the project (`cockpit_`). Repeat for `work`, `scratch`, `claude`, `codex`, `ssh`, `agent-ssh`,
+Compose prefixes volume names with the project (`cockpit_`). Repeat for `work`, `cli`, `agent-home`, `scratch`, `claude`, `codex`, `ssh`, `agent-ssh`,
 `brain` and, if you use brain-sync, `brain-state`. Restore into a new, empty volume, as root so the owners come back:
 
     docker volume create cockpit_state
@@ -91,6 +96,8 @@ on its first use; **a bind-mount keeps the host's**, so create the directories w
 | `/state`, `/home/app/.ssh` | `app` (uid 1654, gid 1654) | `0700` |
 | `/work` | `1654:1700` (`app:agent`) | `2770` |
 | `/home/agent/scratch` | `agent` (1700:1700) | `0700` |
+| `/home/agent` | `agent` (1700:1700) | `0750` |
+| `/cli` | any: the entrypoint makes it `root:agent` `0750`, with `claude` and `codex` (agent's) and `.staging` (app's) in it | |
 | `/home/agent/.claude`, `/home/agent/.codex` | `agent` (uid 1700, gid 1700) | `2770` |
 | `/home/agent/.ssh`, `/home/agent/Nextcloud` | `agent` (1700:1700) | `0700` (brain: `brain-sync` keeps it owner-only too) |
 | `/home/app/.claude`, `/home/app/.codex` | `agent` (1700:1700) | `2770`, the same host path as the agent's |
@@ -150,9 +157,15 @@ the MCP settings, `GH_TOKEN`) and has its own `HOME`.
   transcripts. The line drawn here is between the sessions and the server, not between sessions.
 - The health check drops to `app` with an empty environment before it runs node, since Docker runs it as root.
 - Only `agent` may run the real `claude`, `codex` and `git` (group `agent-run`), so a profile that pins one of them
-  fails instead of running it as `app`. `/state/cli` belongs to root, so the server can neither install a managed CLI
-  nor find one; an older install there is moved aside on start. A pin to any other program still runs as `app`: leave
-  `ExecutablePath` empty on the server.
+  fails instead of running it as `app`. A pin to any other program still runs as `app`: leave `ExecutablePath` empty
+  on the server.
+- **Managed CLIs.** Install in a server profile's settings downloads the CLI as `app` into `/cli/.staging` and checks
+  its SHA-256. `cockpit-cli-promote`, the one other program `app` may run as `agent`, copies it to
+  `/cli/<name>/<version>`, open to `agent-run` alone: the server lists the versions but cannot run them, and hands
+  the profile the wrapper as its path. The wrapper runs `cockpit-cli-exec`, which starts the newest managed version
+  and otherwise the image's own; Remove empties `/cli/<name>`, so the image's copy runs again. Auto-update is on by
+  default and never takes a major version by itself, as on the desktop; a session already running keeps its version.
+  `/cli` is root's, so neither user can swap the other's directory for a link. A `/state/cli` from before is ignored.
 
 ## The brain
 

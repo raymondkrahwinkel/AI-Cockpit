@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Hosting;
+using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Provisioning;
@@ -109,6 +110,8 @@ internal static class Program
         }
 
         backend.StartPlanners();
+        using var stopping = new CancellationTokenSource();
+        var managedCliUpdates = _CheckManagedClisAsync(backend.Services.GetRequiredService<ManagedCliUpdateChecker>(), stopping.Token);
 
         var uiAssemblies = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetName().Name ?? string.Empty).Where(_IsUi).ToList();
         logger.LogInformation(
@@ -118,9 +121,28 @@ internal static class Program
         var restart = backend.Services.GetRequiredService<ServerRestartSignal>().Requested;
         await Task.WhenAny(stopRequested.Task, restart);
         logger.LogInformation("{Request} requested; stopping within {Budget}.", restart.IsCompleted ? "Restart" : "Stop", stopBudget);
+        await stopping.CancelAsync();
+        await managedCliUpdates;
         await backend.StopAsync(stopBudget);
         logger.LogInformation("Cockpit.Server stopped.");
         return 0;
+    }
+
+    // AC-1649: the managed CLIs update here as on the desktop (App.axaml.cs): one look now, then every 15 minutes.
+    private static async Task _CheckManagedClisAsync(ManagedCliUpdateChecker checker, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(15));
+            do
+            {
+                await checker.CheckNowAsync(cancellationToken);
+            }
+            while (await timer.WaitForNextTickAsync(cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
     }
 
     // Cancelled, so the runtime does not end the process before the stop has run.
