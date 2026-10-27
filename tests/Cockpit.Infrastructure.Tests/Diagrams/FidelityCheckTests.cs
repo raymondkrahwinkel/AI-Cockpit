@@ -34,21 +34,78 @@ public class FidelityCheckTests
     }
 
     [Fact]
-    public void Render_AlsoCatchesTheCircleAndCrossLinksMermaiderDropsFromAFlowchart()
+    public void Findings_NameWhatWasDropped_FromCircleLinksAndNotesToConnectionsThatCannotBePinnedDown()
     {
-        // Not the failure AC-808 was raised for — found by the detector itself, which is the point of
-        // building a net for the class instead of a patch for the one reported case.
-        const string source = """
-            flowchart LR
-                A[Start] --> B(Round)
-                B --o C((Circle))
-                C --x A
-            """;
+        {
+            // Not the failure AC-808 was raised for — found by the detector itself, which is the point of
+            // building a net for the class instead of a patch for the one reported case.
+            const string source = """
+                flowchart LR
+                    A[Start] --> B(Round)
+                    B --o C((Circle))
+                    C --x A
+                """;
 
-        var fidelity = MermaidRenderPipeline.Render(source, Theme).Fidelity;
+            var fidelity = MermaidRenderPipeline.Render(source, Theme).Fidelity;
 
-        var finding = Assert.Single(fidelity.Findings);
-        Assert.StartsWith("2 of 3 connections in the source were not drawn:", finding, StringComparison.Ordinal);
+            var finding = Assert.Single(fidelity.Findings);
+            Assert.StartsWith("2 of 3 connections in the source were not drawn:", finding, StringComparison.Ordinal);
+        }
+
+        {
+            // A classDiagram note is a one-liner with no terminator. Treating it as a block would swallow the
+            // rest of the file and report a mutilated diagram as whole — the failure mode this check exists for.
+            const string source = """
+                classDiagram
+                    note "drawn from the 2026 model"
+                    Entity <|-- User
+                    Entity *-- Address
+                """;
+            const string svg = """
+                <svg xmlns="http://www.w3.org/2000/svg"><g class="note"/></svg>
+                """;
+
+            var fidelity = FidelityCheck.Check(source, svg);
+
+            Assert.StartsWith("2 of 2 connections", Assert.Single(fidelity.Findings), StringComparison.Ordinal);
+        }
+
+        {
+            const string source = """
+                stateDiagram-v2
+                    Idle --> Busy : go
+                    note right of Idle
+                        waiting to be armed
+                    end note
+                    note left of Busy : working
+                """;
+            const string svg = """
+                <svg xmlns="http://www.w3.org/2000/svg"><path class="edge" data-from="Idle" data-to="Busy"/><g class="note"/></svg>
+                """;
+
+            var fidelity = FidelityCheck.Check(source, svg);
+
+            Assert.Equal("1 of 2 notes in the source were not drawn.", Assert.Single(fidelity.Findings));
+        }
+
+        {
+            // One connection short, but the one that was drawn matches neither source line — the pair matching
+            // and the count disagree, so naming a line would be a guess.
+            const string source = """
+                flowchart TD
+                    A --> B
+                    C --> D
+                """;
+            const string svg = """
+                <svg xmlns="http://www.w3.org/2000/svg"><path class="edge" data-from="X" data-to="Y"/></svg>
+                """;
+
+            var fidelity = FidelityCheck.Check(source, svg);
+
+            Assert.Equal(
+                "1 of 2 connections in the source were not drawn (which ones could not be determined).",
+                Assert.Single(fidelity.Findings));
+        }
     }
 
     [Theory]
@@ -58,67 +115,6 @@ public class FidelityCheckTests
         var fidelity = MermaidRenderPipeline.Render(source, Theme).Fidelity;
 
         Assert.True(fidelity.IsComplete, $"{label}: expected no findings, got {string.Join(" | ", fidelity.Findings)}");
-    }
-
-    [Fact]
-    public void Check_StillSeesTheConnectionsBelowAClassDiagramNoteThatHasNoEndNote()
-    {
-        // A classDiagram note is a one-liner with no terminator. Treating it as a block would swallow the
-        // rest of the file and report a mutilated diagram as whole — the failure mode this check exists for.
-        const string source = """
-            classDiagram
-                note "drawn from the 2026 model"
-                Entity <|-- User
-                Entity *-- Address
-            """;
-        const string svg = """
-            <svg xmlns="http://www.w3.org/2000/svg"><g class="note"/></svg>
-            """;
-
-        var fidelity = FidelityCheck.Check(source, svg);
-
-        Assert.StartsWith("2 of 2 connections", Assert.Single(fidelity.Findings), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Check_ReportsANoteThatNeverReachedTheSvg()
-    {
-        const string source = """
-            stateDiagram-v2
-                Idle --> Busy : go
-                note right of Idle
-                    waiting to be armed
-                end note
-                note left of Busy : working
-            """;
-        const string svg = """
-            <svg xmlns="http://www.w3.org/2000/svg"><path class="edge" data-from="Idle" data-to="Busy"/><g class="note"/></svg>
-            """;
-
-        var fidelity = FidelityCheck.Check(source, svg);
-
-        Assert.Equal("1 of 2 notes in the source were not drawn.", Assert.Single(fidelity.Findings));
-    }
-
-    [Fact]
-    public void Check_FallsBackToTheCountWhenItCannotPinDownWhichConnectionWentMissing()
-    {
-        // One connection short, but the one that was drawn matches neither source line — the pair matching
-        // and the count disagree, so naming a line would be a guess.
-        const string source = """
-            flowchart TD
-                A --> B
-                C --> D
-            """;
-        const string svg = """
-            <svg xmlns="http://www.w3.org/2000/svg"><path class="edge" data-from="X" data-to="Y"/></svg>
-            """;
-
-        var fidelity = FidelityCheck.Check(source, svg);
-
-        Assert.Equal(
-            "1 of 2 connections in the source were not drawn (which ones could not be determined).",
-            Assert.Single(fidelity.Findings));
     }
 
     [Fact]
