@@ -98,6 +98,9 @@ internal sealed class CockpitConfigFile
     // went; owned by the backup-schedule store.
     public BackupScheduleEntry? Backup { get; set; }
 
+    // Operator-maintained facts for locally installed models; empty until the operator adds a row.
+    public ModelIntelligenceEntry? ModelIntelligence { get; set; }
+
     // Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.
     public TerminalSettingsEntry? Terminal { get; set; }
 
