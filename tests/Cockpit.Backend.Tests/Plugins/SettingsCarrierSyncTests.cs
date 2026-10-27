@@ -45,6 +45,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
         Assert.Empty(b.Sync.Conflicts);
         Assert.Equal((18, 18), (_Local(b)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
+        await _AssertProjectsWithDifferentIdsAndTheSameGitUrlMergeAsync();
     }
 
     // Acceptance 4: a key the manifest manages (AC-1507), a leaf or a whole dictionary, is neither pushed nor taken over.
@@ -70,6 +71,21 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Equal(15, _Local(managed)["Terminal"]?["FontSize"]?.GetValue<int>());
         Assert.Null(_Remote()["Shortcuts"]?["Gestures"]);
         Assert.Empty(managed.Sync.Conflicts);
+    }
+
+    // AC-1834: repository identity joins machine-local project ids without adding a no-folder duplicate.
+    private async Task _AssertProjectsWithDifferentIdsAndTheSameGitUrlMergeAsync()
+    {
+        var a = _Machine("merge-desktop", """{"Projects":[{"Id":"desktop","Name":"Cockpit","GitUrl":"https://github.com/krahwinkel-it/cockpit.git","SourceDirectory":"C:/src/Cockpit"}]}""");
+        var b = _Machine("merge-hub", """{"Projects":[{"Id":"hub","Name":"Cockpit","GitUrl":"git@github.com:krahwinkel-it/cockpit.git","SourceDirectory":"/srv/Cockpit"}]}""");
+
+        await a.Sync.RunOnceAsync();
+        await b.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
+
+        var project = Assert.Single(_Local(b)["Projects"]!.AsArray());
+        Assert.Equal("hub", project?["Id"]?.GetValue<string>());
+        Assert.Equal("/srv/Cockpit", project?["SourceDirectory"]?.GetValue<string>());
     }
 
     private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config)
