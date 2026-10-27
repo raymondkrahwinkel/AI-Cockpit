@@ -495,6 +495,7 @@ public partial class CockpitViewModel
     {
         group.IsExpanded = true;
         group.Start.Error = "";
+        group.Start.Reason = "";
         group.Start.IsOpen = true;
         if (_serverChoices is null)
         {
@@ -558,6 +559,13 @@ public partial class CockpitViewModel
             if (started is null)
             {
                 group.Start.Error = $"{group.Name} did not start the session.";
+                return;
+            }
+
+            if (started.FailureReason is { Length: > 0 } reason)
+            {
+                group.Start.Error = $"{group.Name} did not start the session.";
+                group.Start.Reason = reason;
                 return;
             }
 

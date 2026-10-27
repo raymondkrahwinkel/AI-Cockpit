@@ -1816,6 +1816,14 @@
                                         <TextBlock Text="{Binding Start.Error}" FontSize="11.5" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource CockpitStatusErrorBrush}"
                                                    IsVisible="{Binding Start.Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                         <StackPanel Spacing="4" IsVisible="{Binding Start.Reason, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                             <TextBox Text="{Binding Start.Reason}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120"
+                                                      FontSize="11.5"/>
+                                             <Button Classes="Subtle Compact" HorizontalAlignment="Left" Click="_OnCopyServerStartReason"
+                                                     Tag="{Binding Start.Reason}" ToolTip.Tip="Copy the node's reason">
+                                                 <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
+                                             </Button>
+                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                                             <Button Classes="Subtle" Content="Cancel"
                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).CancelServerStartCommand}"
