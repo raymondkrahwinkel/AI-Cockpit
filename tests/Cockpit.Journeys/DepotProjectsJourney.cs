@@ -17,6 +17,7 @@ using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.App.ViewModels;
+using Cockpit.App.ViewTests;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Journeys;
@@ -30,21 +31,31 @@ public sealed class DepotProjectsJourney
     public async Task ProjectDiscoveryDefinitionLogoMemorySinkAndEventNudge_WorkWithoutDepotMcpFileTools()
     {
         await using var depot = await _FakeDepot.StartAsync();
+        await using var second = await _FakeDepot.StartAsync("globex", "Globex", "Globex portal");
         await using var cockpit = JourneyHost.Desktop();
         var url = depot.BaseUrl.TrimEnd('/');
-        var connections = JsonSerializer.Serialize(new[] { new { Id = "journey", Name = "Journey", Url = url } });
+        var secondUrl = second.BaseUrl.TrimEnd('/');
+        var connections = JsonSerializer.Serialize(new[]
+        {
+            new { Id = "journey", Name = "Journey", Url = url },
+            new { Id = "journey-two", Name = "Journey two", Url = secondUrl },
+        });
         await cockpit.Services.GetRequiredService<IPluginRegistrationStore>().SaveDataAsync(
             "depot", new Dictionary<string, string> { ["connections"] = connections });
-        await cockpit.Services.GetRequiredService<IMcpOAuthTokenStore>().SaveAsync(
-            "journey",
-            "Depot: Journey",
-            new McpOAuthToken
-            {
-                AccessToken = Bearer,
-                ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-                Scope = "depot",
-                ResourceUrl = $"{url}/mcp",
-            });
+        foreach (var (id, name, baseUrl) in new[] { ("journey", "Journey", url), ("journey-two", "Journey two", secondUrl) })
+        {
+            await cockpit.Services.GetRequiredService<IMcpOAuthTokenStore>().SaveAsync(
+                id,
+                $"Depot: {name}",
+                new McpOAuthToken
+                {
+                    AccessToken = Bearer,
+                    ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+                    Scope = "depot",
+                    ResourceUrl = $"{baseUrl}/mcp",
+                });
+        }
+
         await cockpit.StartDesktopAsync();
 
         var memory = cockpit.Services.GetRequiredService<IProjectMemorySourceRegistry>().Sources.Single(source => source.Scheme == "depot");
@@ -138,6 +149,36 @@ public sealed class DepotProjectsJourney
         var appended = await appendNote("acme/cockpit", note, CancellationToken.None);
         Assert.Equal(ProjectMemoryAppendOutcome.Success, appended.Outcome);
         Assert.Equal(note, depot.Inbox);
+
+        // AC-1606, the epic's core flow: Projects shows both servers as sections, and Start on a chosen project runs a
+        // session on that project's own default profile.
+        var folder = Directory.CreateDirectory(Path.Combine(cockpit.StateRoot, "project")).FullName;
+        await cockpit.SaveProfileAndProjectAsync(folder);
+        var editor = cockpit.Services.GetRequiredService<IProjectEditor>();
+        var bound = await editor.FindProjectAsync(localProjectId) ?? throw new InvalidOperationException("The bound project vanished.");
+        await editor.UpdateStoredProjectAsync(
+            bound with { DefaultProfileLabel = JourneyHost.EchoProfile, SourceDirectories = [new ProjectRepository(folder)] });
+        var projectsScreen = cockpit.Cockpit.Projects;
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            await projectsScreen.LoadAsync();
+            await projectsScreen.LoadSharedProjectsAsync();
+        });
+
+        var sectionNames = HeadlessAvalonia.Run(() => projectsScreen.ProjectSections.Select(section => section.Name).ToList());
+        Assert.Contains("Acme", sectionNames);
+        Assert.Contains("Globex", sectionNames);
+        var chosen = HeadlessAvalonia.Run(() =>
+        {
+            var row = projectsScreen.ProjectSections.SelectMany(section => section.Items).Single(item => item.Id == localProjectId);
+            projectsScreen.SelectListItemCommand.Execute(row);
+            return row;
+        });
+        Assert.True(chosen.CanStart);
+        var before = HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.ToList());
+        await HeadlessAvalonia.RunAsync(() => ((CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)chosen.Actions!.Start).ExecuteAsync(chosen.Project));
+        var started = HeadlessAvalonia.Run(() => cockpit.Cockpit.Sessions.Except(before).OfType<SessionViewModel>().Single());
+        Assert.Equal(localProjectId, started.ProjectId);
     }
 
     private static Task<ProjectDialogViewModel> _OpenEditorAsync(
@@ -182,7 +223,7 @@ public sealed class DepotProjectsJourney
                 new { topic = "projects", kind = "accessChanged", address = (string?)null, version = 1L });
         }
 
-        public static async Task<_FakeDepot> StartAsync()
+        public static async Task<_FakeDepot> StartAsync(string org = "acme", string orgName = "Acme", string name = "Cockpit from Depot")
         {
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddMcpServer().WithHttpTransport().WithTools<_NoListProjectsTools>();
@@ -190,7 +231,7 @@ public sealed class DepotProjectsJourney
             builder.Services.AddSingleton<_ProjectEvents>();
             builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
             var app = builder.Build();
-            var state = new _DefinitionState();
+            var state = new _DefinitionState(org, orgName, name);
             app.Use(async (context, next) =>
             {
                 if (context.Request.Path.StartsWithSegments("/cockpit")
@@ -242,12 +283,12 @@ public sealed class DepotProjectsJourney
 
     }
 
-    private sealed class _DefinitionState
+    private sealed class _DefinitionState(string org, string orgName, string name)
     {
         private int _version = 1;
         private byte[] _logoBytes = [];
 
-        public string Name { get; private set; } = "Cockpit from Depot";
+        public string Name { get; private set; } = name;
         public string? Logo { get; private set; }
         public string Inbox { get; private set; } = string.Empty;
         public bool CanWrite { get; private set; }
@@ -275,12 +316,12 @@ public sealed class DepotProjectsJourney
                 {
                     new
                     {
-                        address = "acme/cockpit",
+                        address = $"{org}/cockpit",
                         slug = "cockpit",
                         name = "Cockpit",
                         role = "Editor",
                         kind = "Project",
-                        organization = new { slug = "acme", name = "Acme", role = "Member" },
+                        organization = new { slug = org, name = orgName, role = "Member" },
                         cockpit = new
                         {
                             state = "ok",
