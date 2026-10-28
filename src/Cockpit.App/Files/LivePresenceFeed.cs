@@ -34,13 +34,7 @@ internal sealed class LivePresenceFeed : IDisposable
         var area = editor.TextEditor.TextArea;
         area.Caret.PositionChanged += _OnMoved;
         area.SelectionChanged += _OnMoved;
-        editor.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == MarkdownEditor.IsReadOnlyProperty)
-            {
-                _OnMoved(this, EventArgs.Empty);
-            }
-        };
+        editor.PropertyChanged += _OnEditorProperty;
     }
 
     // The snapshot's peers: the source shows presence for this file.
@@ -58,6 +52,7 @@ internal sealed class LivePresenceFeed : IDisposable
         var area = _editor.TextEditor.TextArea;
         area.Caret.PositionChanged -= _OnMoved;
         area.SelectionChanged -= _OnMoved;
+        _editor.PropertyChanged -= _OnEditorProperty;
         _life.Cancel();
         _life.Dispose();
     }
@@ -81,6 +76,14 @@ internal sealed class LivePresenceFeed : IDisposable
         catch (JsonException error)
         {
             _logger.LogWarning(error, "A presence update from the file source could not be read.");
+        }
+    }
+
+    private void _OnEditorProperty(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == MarkdownEditor.IsReadOnlyProperty)
+        {
+            _OnMoved(this, EventArgs.Empty);
         }
     }
 

@@ -31,6 +31,8 @@ internal sealed class DepotNotePresence : IDisposable
     private readonly TimeProvider _time;
     private readonly ILogger? _logger;
     private readonly Lock _gate = new();
+    private readonly Lock _raiseGate = new();
+    private readonly SemaphoreSlim _sending = new(1, 1);
     private readonly Dictionary<ulong, Remote> _remote = [];
     private readonly ITimer _timer;
     private readonly CancellationTokenSource _life = new();
@@ -52,7 +54,8 @@ internal sealed class DepotNotePresence : IDisposable
         _timer = _time.CreateTimer(async _ => await BeatAsync().ConfigureAwait(false), null, Beat, Beat);
     }
 
-    // The clock of this client's last update; each update has a higher one, or the hub ignores it.
+    // The clock of this client's last update; each update has a higher one, or the hub ignores it. The client id must be new for every
+    // instance: a web client still holds the clock of an old one and would ignore a restart from 1.
     public ulong Clock => Volatile.Read(ref _clock);
 
     public IReadOnlyList<LivePeer> Peers
@@ -123,14 +126,24 @@ internal sealed class DepotNotePresence : IDisposable
                 continue;
             }
 
-            var remote = entry.State == "null" ? null : await _ReadAsync(from, entry, cancellationToken).ConfigureAwait(false);
+            // Like y-protocols: a state replaces an older clock, and a null removes a client only at the same or a higher clock.
+            if (entry.State == "null")
+            {
+                lock (_gate)
+                {
+                    if (_remote.TryGetValue(entry.ClientId, out var gone) && gone.Clock <= entry.Clock)
+                    {
+                        _remote.Remove(entry.ClientId);
+                    }
+                }
+
+                continue;
+            }
+
+            var remote = await _ReadAsync(from, entry, cancellationToken).ConfigureAwait(false);
             lock (_gate)
             {
-                if (remote is null)
-                {
-                    _remote.Remove(entry.ClientId);
-                }
-                else if (!_remote.TryGetValue(entry.ClientId, out var known) || known.Clock < entry.Clock)
+                if (remote is not null && (!_remote.TryGetValue(entry.ClientId, out var known) || known.Clock < entry.Clock))
                 {
                     _remote[entry.ClientId] = remote;
                 }
@@ -159,6 +172,7 @@ internal sealed class DepotNotePresence : IDisposable
         _timer.Dispose();
         _life.Cancel();
         _life.Dispose();
+        _sending.Dispose();
     }
 
     // Seen again or not, the beat resends this client's cursor and drops whoever has been silent too long.
@@ -167,6 +181,12 @@ internal sealed class DepotNotePresence : IDisposable
         try
         {
             if (_life.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // Offline the people stay, dimmed, and nothing can be sent; the beat resumes with the connection.
+            if (_away)
             {
                 return;
             }
@@ -194,17 +214,26 @@ internal sealed class DepotNotePresence : IDisposable
         }
     }
 
+    // One send at a time, each reading the newest state, so a slow beat can never put an older cursor under a higher clock.
     private async Task _SendAsync(CancellationToken cancellationToken)
     {
-        LivePresenceState own;
-        lock (_gate)
+        await _sending.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            own = _own;
-        }
+            LivePresenceState own;
+            lock (_gate)
+            {
+                own = _own;
+            }
 
-        var state = new Dictionary<string, object?> { ["activity"] = own.Activity, ["cursor"] = await _CursorAsync(own, cancellationToken).ConfigureAwait(false) };
-        var entry = new DepotAwarenessEntry(_clientId, Interlocked.Increment(ref _clock), JsonSerializer.Serialize(state));
-        await _send(DepotAwarenessCodec.Encode([entry]), cancellationToken).ConfigureAwait(false);
+            var state = new Dictionary<string, object?> { ["activity"] = own.Activity, ["cursor"] = await _CursorAsync(own, cancellationToken).ConfigureAwait(false) };
+            var entry = new DepotAwarenessEntry(_clientId, Interlocked.Increment(ref _clock), JsonSerializer.Serialize(state));
+            await _send(DepotAwarenessCodec.Encode([entry]), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _sending.Release();
+        }
     }
 
     // {anchor, head} as relativePositionToJSON, or null when the caret is not in the text.
@@ -275,15 +304,19 @@ internal sealed class DepotNotePresence : IDisposable
         return peers;
     }
 
+    // Snapshot and delivery under one gate, so lists reach the host in the order they were made.
     private void _Raise()
     {
-        IReadOnlyList<LivePeer> peers;
-        lock (_gate)
+        lock (_raiseGate)
         {
-            peers = _Peers();
-        }
+            IReadOnlyList<LivePeer> peers;
+            lock (_gate)
+            {
+                peers = _Peers();
+            }
 
-        _changed(peers);
+            _changed(peers);
+        }
     }
 
     private sealed record Remote(string From, ulong Clock, DateTimeOffset Seen, LivePeer Peer);
