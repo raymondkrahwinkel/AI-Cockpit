@@ -312,7 +312,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - added: a plugin can show a silent desktop notification, and clicking it brings the cockpit to the front at the
   place it is about. It never appears while the cockpit is the active window, and **Mute notifications** in a
-  plugin's row under Options → Plugins switches it off for that plugin.
+  plugin's row under Options → Plugins switches it off for that plugin (UI SDK 3.20.0, Cockpit 0.141.0).
 - added: a plugin can reach its own MCP server's other routes, such as a REST API or a live connection, with the
   sign-in the cockpit already holds for it. The token stays in the cockpit and only ever goes to that server's own address.
 - added: an organisation can give the assistant a **rule set** through its provisioning manifest. It reaches the

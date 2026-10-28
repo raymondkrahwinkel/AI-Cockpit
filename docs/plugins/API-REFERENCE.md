@@ -1144,7 +1144,7 @@ host.ShowToast(
 
 ### `void ShowSystemNotification(string title, string body, Action? onClick)`
 A silent **operating-system notification**, for news the operator should see while they are not looking at the
-cockpit, such as a new invitation. *(Added in UI SDK 3.5.0, AC-1588; default no-op.)*
+  cockpit, such as a new invitation. *(Added in UI SDK 3.20.0, host 0.141.0; default no-op.)*
 - Nothing is shown while the cockpit window is active, so pair it with `ShowToast` for that case. Nothing is shown
   either when the operator turned local notifications off, or muted your plugin with **Mute notifications** in its
   row under Options → Plugins.
