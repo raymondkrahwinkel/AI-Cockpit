@@ -242,9 +242,7 @@ public sealed class CockpitBackend
 
     // AC-1889: the planners off the caller's thread, so a frontend can show its window first. Never throws: a planner
     // that fails is logged, and the task still completes. Whatever must be up before the first frame stays out of here.
-    public Task StartPlannersInBackgroundAsync()
-    {
-        Action body = () =>
+    public Task StartPlannersInBackgroundAsync() => Task.Run(() =>
     {
         var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -258,10 +256,7 @@ public sealed class CockpitBackend
         {
             logger.LogError(exception, "The planners did not start; a background watcher may be missing until the next start.");
         }
-    };
-        body();
-        return Task.CompletedTask;
-    }
+    });
 
     // AC-1380's planners. Never before `Start`: the worktree planner's crash net assumes the startup sweep has run, and
     // the rest read a registry the reconcile's roster decides. The Depot watcher polls only what its `BoundProjects`
