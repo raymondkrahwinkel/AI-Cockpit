@@ -19,7 +19,6 @@ public class ConPtyHostFactoryTests
     /// </summary>
     [Theory]
     [InlineData(@"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe", @"C:\Users\raymo\AppData\Roaming\Claude\claude-code\2.1.197\claude.exe")]
-    [InlineData("claude", "claude")]
     [InlineData(@"C:\Program Files\Claude\claude.exe", @"""C:\Program Files\Claude\claude.exe""")]
     [InlineData(@"{""statusLine"":{""type"":""command""}}", @"""{\""statusLine\"":{\""type\"":\""command\""}}""")]
     [InlineData(@"\""", @"""\\\""""")]

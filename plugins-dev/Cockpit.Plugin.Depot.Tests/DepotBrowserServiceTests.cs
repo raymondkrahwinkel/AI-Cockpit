@@ -8,6 +8,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Files;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -26,6 +27,9 @@ public class DepotBrowserServiceTests
         public DepotBrowserService Service { get; }
         public Func<HttpRequestMessage, string, string>? RestResponse { get; set; }
         public HttpStatusCode FileStatus { get; set; } = HttpStatusCode.OK;
+        public Action? BeforeProjectsResponse { get; set; }
+        public IReadOnlyList<DepotConnectionRegistration> Connections { get; set; } =
+            [new("c1", "Work", "https://depot.example.com")];
 
         public _Rig(string role = "Editor")
         {
@@ -39,7 +43,7 @@ public class DepotBrowserServiceTests
                     Calls.Add((tool, arguments));
                     return Task.FromResult(Tools.TryGetValue(tool, out var answer) ? answer(arguments) : PluginMcpToolCallResult.Failed($"no {tool}"));
                 });
-            Service = new DepotBrowserService(Host, () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
+            Service = new DepotBrowserService(Host, () => Connections);
         }
 
         public int Count(string tool) => Calls.Count(call => call.Tool == tool);
@@ -54,6 +58,7 @@ public class DepotBrowserServiceTests
             var uri = request.RequestUri ?? throw new InvalidOperationException("The request had no URI.");
             if (uri.AbsolutePath == "/cockpit/projects")
             {
+                rig.BeforeProjectsResponse?.Invoke();
                 return _Json(projects);
             }
 
@@ -183,6 +188,7 @@ public class DepotBrowserServiceTests
     [Fact]
     public async Task Read_RefusesATruncatedAnswer_InsteadOfShowingPartialContent()
     {
+        await _ReadSaveContractAsync();
         var rig = new _Rig
         {
             RestResponse = (_, _) => """{"files":[{"path":"large.md","content":"partial"}],"missing":[],"truncated":true}""",
@@ -192,11 +198,15 @@ public class DepotBrowserServiceTests
 
         Assert.Equal(DepotBrowserStatus.Error, answer.Status);
         Assert.Contains("truncated", answer.Message, StringComparison.OrdinalIgnoreCase);
+        var truncated = await Assert.ThrowsAsync<FileSourceException>(() =>
+            _Source(rig).ReadAsync(DepotFileRefs.Create("c1", "acme/cockpit", "large.md"), default));
+        Assert.Equal(FileSourceErrorKind.TooLarge, truncated.Kind);
     }
 
     [Fact]
     public async Task Upload_NeedsTheEditorRole_AViewerWritesNothing()
     {
+        await _CreateContractAsync();
         var viewer = new _Rig("Viewer");
 
         var binary = await viewer.Service.UploadAsync(_Request("a.png"), default);
@@ -204,6 +214,12 @@ public class DepotBrowserServiceTests
 
         Assert.Equal((DepotBrowserStatus.Error, DepotBrowserStatus.Error), (binary.Status, text.Status));
         Assert.Equal(0, viewer.CountRest("uploads") + viewer.CountRest("write"));
+        var source = _Source(viewer);
+        using var rejectedContent = new MemoryStream(Encoding.UTF8.GetBytes("not allowed"));
+        var forbidden = await Assert.ThrowsAsync<FileSourceException>(() =>
+            source.WriteAsync(DepotFileRefs.Create("c1", "acme/cockpit", "new.md"), rejectedContent, null, true, default));
+        Assert.Equal(FileSourceErrorKind.Forbidden, forbidden.Kind);
+        Assert.Equal(0, viewer.CountRest("write"));
 
         // AC-1574: publishing is a write path too, refused for a Viewer on add, plan and run alike.
         var settings = new Cockpit.Plugin.Depot.Settings.DepotSettings(new FakePluginStorage());
@@ -222,6 +238,102 @@ public class DepotBrowserServiceTests
         };
         Assert.All(refusals, status => Assert.Equal(DepotBrowserStatus.Error, status));
         Assert.Equal(0, viewer.CountRest("files") + viewer.CountRest("artifacts") + viewer.CountRest("delete"));
+    }
+
+    private static IFileSource _Source(_Rig rig) => new Files.DepotFileSourceProvider(rig.Host,
+        () => rig.Connections).Open("c1");
+
+    private static async Task _ReadSaveContractAsync()
+    {
+        var depot = new _ConditionalDepot();
+        depot.Files["a.md"] = "# original";
+        var rig = new _Rig { RestResponse = depot.Respond };
+        var source = _Source(rig);
+        var file = DepotFileRefs.Create("c1", "acme/cockpit", "a.md");
+        var read = await source.ReadAsync(file, default);
+        Assert.True(read.CanWrite);
+        using var reader = new StreamReader(read.Content);
+        Assert.Equal("# original", await reader.ReadToEndAsync());
+        using var text = new MemoryStream(Encoding.UTF8.GetBytes("# saved"));
+        var saved = await source.WriteAsync(file, text, read.Version, false, default);
+        Assert.Equal(FileWriteStatus.Written, saved.Status);
+        Assert.Equal("# saved", depot.Files["a.md"]);
+        using var staleText = new MemoryStream(Encoding.UTF8.GetBytes("# stale"));
+        var stale = await source.WriteAsync(file, staleText, read.Version, false, default);
+        Assert.Equal(new FileWriteResult(FileWriteStatus.Conflict, saved.Version), stale);
+        Assert.Equal("# saved", depot.Files["a.md"]);
+        depot.Files.Remove("a.md");
+        using var deletedText = new MemoryStream(Encoding.UTF8.GetBytes("# deleted"));
+        var deleted = await source.WriteAsync(file, deletedText, saved.Version, false, default);
+        Assert.Equal(FileWriteStatus.Conflict, deleted.Status);
+        Assert.False(depot.Files.ContainsKey("a.md"));
+    }
+
+    private static async Task _CreateContractAsync()
+    {
+        await _ConnectionReplacementAsync();
+        var depot = new _ConditionalDepot();
+        var rig = new _Rig { RestResponse = depot.Respond };
+        var source = _Source(rig);
+        var file = DepotFileRefs.Create("c1", "acme/cockpit", "new.md");
+        using var empty = new MemoryStream();
+        var created = await source.WriteAsync(file, empty, null, true, default);
+        Assert.Equal(FileWriteStatus.Written, created.Status);
+        Assert.False(string.IsNullOrEmpty(created.Version));
+        using var duplicate = new MemoryStream(Encoding.UTF8.GetBytes("duplicate"));
+        var conflict = await source.WriteAsync(file, duplicate, null, true, default);
+        Assert.Equal(new FileWriteResult(FileWriteStatus.Conflict, created.Version), conflict);
+        Assert.Equal("", depot.Files["new.md"]);
+        Assert.All(rig.RestCalls.Where(c => c.Path.EndsWith("/write", StringComparison.Ordinal)),
+            c => Assert.Contains("\"baseChecksum\":\"\"", c.Body, StringComparison.Ordinal));
+        using var unguarded = new MemoryStream();
+        await Assert.ThrowsAsync<FileSourceException>(() => source.WriteAsync(file, unguarded, null, false, default));
+        Assert.Equal(2, rig.CountRest("write"));
+        using var forgedContent = new MemoryStream();
+        var forged = await Assert.ThrowsAsync<FileSourceException>(() => source.WriteAsync(
+            file with { Path = "../escape.md" }, forgedContent, null, true, default));
+        Assert.Equal(FileSourceErrorKind.Unsupported, forged.Kind);
+        Assert.Equal(2, rig.CountRest("write"));
+    }
+
+    private static async Task _ConnectionReplacementAsync()
+    {
+        var depot = new _ConditionalDepot();
+        var rig = new _Rig { RestResponse = depot.Respond };
+        var source = _Source(rig);
+        rig.BeforeProjectsResponse = () => rig.Connections = [new("c1", "Work", "https://different.example.com")];
+        using var content = new MemoryStream(Encoding.UTF8.GetBytes("# original Depot"));
+        var changed = await Assert.ThrowsAsync<FileSourceException>(() => source.WriteAsync(
+            DepotFileRefs.Create("c1", "acme/cockpit", "a.md"), content, null, true, default));
+        Assert.Equal(FileSourceErrorKind.Unavailable, changed.Kind);
+        Assert.Empty(rig.RestCalls);
+        Assert.Empty(depot.Files);
+    }
+
+    private sealed class _ConditionalDepot
+    {
+        public Dictionary<string, string> Files { get; } = new(StringComparer.Ordinal);
+        private static string _Checksum(string value) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+        public string Respond(HttpRequestMessage request, string body)
+        {
+            using var json = JsonDocument.Parse(body);
+            var uri = request.RequestUri ?? throw new InvalidOperationException("The request had no URI.");
+            if (uri.AbsolutePath.EndsWith("/read", StringComparison.Ordinal))
+            {
+                var path = json.RootElement[0].GetString() ?? throw new InvalidOperationException("The read request had no path.");
+                return JsonSerializer.Serialize(new { files = new[] { new { path, content = Files[path], checksum = _Checksum(Files[path]) } }, truncated = false });
+            }
+            var entry = json.RootElement[0];
+            var target = entry.GetProperty("path").GetString() ?? throw new InvalidOperationException("The write request had no path.");
+            var current = Files.TryGetValue(target, out var content) ? _Checksum(content) : "";
+            var expected = entry.GetProperty("baseChecksum").GetString();
+            if (expected is not null && expected != current)
+            {
+                return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "conflict", checksum = current } } });
+            }
+            Files[target] = entry.GetProperty("content").GetString() ?? throw new InvalidOperationException("The write request had no content.");
+            return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "written", checksum = _Checksum(Files[target]) } } });
+        }
     }
 
     [Theory]

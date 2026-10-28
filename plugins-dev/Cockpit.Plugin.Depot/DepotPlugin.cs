@@ -34,6 +34,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private Inbox.DepotInbox? _inbox;
     private Events.DepotEvents? _events;
     private ILogger? _logger;
+    private Files.DepotFileSourceProvider? _fileSources;
 
     // A 100 MiB file on a slow link must not hit the default 100 second timeout.
     private readonly HttpClient _publishHttp = new() { Timeout = TimeSpan.FromMinutes(30) };
@@ -109,6 +110,8 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
         // AC-1568: the file browser's Depot calls, one handler per action.
         var browser = new Browser.DepotBrowserService(host, () => settings.Connections);
+        _fileSources = new Files.DepotFileSourceProvider(host, () => settings.Connections);
+        _handlers.Add(host.AddFileSource(_fileSources));
         _HandleBrowser(host, DepotBrowserChannel.Projects, browser.ProjectsAsync);
         _HandleBrowser(host, DepotBrowserChannel.Tree, browser.TreeAsync);
         _HandleBrowser(host, DepotBrowserChannel.Read, browser.ReadAsync);
@@ -264,7 +267,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url, connection.SynchroniseSettings))],
-            cancellationToken, _events).ConfigureAwait(false);
+            cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
 
@@ -300,7 +303,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             host,
             settings,
             existing is null ? [.. before, connection] : [.. before.Select(candidate => candidate.Id == existing.Id ? connection : candidate)],
-            cancellationToken, _events).ConfigureAwait(false);
+            cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
 
         var outcome = await host.SignInMcpServerWithGrantAsync(
             connection.McpServerName,
@@ -312,7 +315,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return _InstallTokenAnswer(true, "Signed in.");
         }
 
-        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events).ConfigureAwait(false);
+        await WriteConnectionsAsync(host, settings, before, cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
         return _InstallTokenAnswer(false, outcome switch
         {
             PluginMcpSignInOutcome.Declined => InvalidInstallTokenMessage,
@@ -327,7 +330,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     // The write both channel actions share: storage first, then the registries diffed against what was there.
     internal static async Task WriteConnectionsAsync(
         ICockpitHost host, DepotSettings settings, IReadOnlyList<DepotConnectionRegistration> after,
-        CancellationToken cancellationToken, Events.DepotEvents? events = null)
+        CancellationToken cancellationToken, Events.DepotEvents? events = null, Action? filesChanged = null)
     {
         var before = settings.Connections;
 
@@ -335,6 +338,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // (ICockpitUiHost's own remarks) — done here, before the sync below, so a row's Sign-in (which runs right
         // after this call returns) finds its connection already in storage under its registered MCP server name.
         settings.Connections = after;
+        filesChanged?.Invoke();
 
         var keptNames = after.Select(connection => connection.McpServerName).ToHashSet(StringComparer.Ordinal);
         var orphanedNames = before

@@ -40,6 +40,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   "Earlier", and each group has its own **Clear read**, which removes only what you have read. The source tag shows the
   plugin's own icon. Plugins set the title with `PluginNotification.Title` (plugin SDK 3.41.0, Cockpit 0.132.0).
 
+- added: **a save conflict in the Markdown editor no longer loses your text.** When the file changed in Depot since you opened it, nothing is written and a banner offers Compare (one column, red for lines only in Depot, green for lines only in yours, with who changed them), Reload, Merge (their new lines and yours, yours first where both changed the same lines) and Overwrite with mine. Depot files now also report who last changed them when Depot says so (plugin SDK 3.45.0, Depot plugin 0.30.0).
+- added: **preview tabs and one tab per item for plugin workspaces.** A plugin can open a workspace for one item (a file,
+  say): opening the same item again brings its tab forward instead of adding another. A preview tab has an italic title and a
+  "preview" label, and the next preview replaces it in the same place; double-click it to keep it open. A plugin can also set
+  its tab's title and mark it with a dot for unsaved changes. Plugins use `OpenWorkspaceAsync(typeId, WorkspaceOpenOptions)`
+  (plugin SDK 3.45.0, plugin SDK UI 3.19.0, Cockpit 0.140.0).
 - added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
   4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;

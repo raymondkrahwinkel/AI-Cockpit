@@ -620,12 +620,20 @@
          workspace's section headings; host 0.127.0. A host older than this simply does not read it, so a plugin that
          implements it needs no newer minHostVersion. Additive; still v3. -->
     <!-- 3.38.0 (AC-1827): ICockpitHost.AddStartupStep, a plugin's own step on the splash. A plugin that calls it sets minHostVersion 0.130.0. Additive; still v3. -->
+    <!-- 3.39.0 (AC-1750): IWorkspaceContext.InstanceKey, IsPreview, SetTitle, SetMarker, Pin and Pinned, plus WorkspaceMarker.
+         A plugin that relies on them sets minHostVersion 0.131.0. Additive; still v3. -->
     <!-- 3.40.0 (AC-1804): ICockpitHost.Notify, PluginNotification and AddNotificationSource, kept across a restart and re-checked by
          the plugin. A plugin that calls them sets minHostVersion 0.132.0. Additive; still v3. -->
-    <!-- 3.42.0 (AC-1885): PluginModelIntelligence.IsSelfHosted, so a provider can state that public token prices do not apply. Additive; still v3. -->
     <!-- 3.41.0 (AC-1853): PluginNotification.Title, an optional bold line above the message. Host 0.132.0 reads it; an older
          host shows the message alone. Additive; still v3. -->
-    <Version>3.42.0</Version>
+    <!-- 3.42.0 (AC-1885): PluginModelIntelligence.IsSelfHosted, so a provider can state that public token prices do not apply. Additive; still v3. -->
+    <!-- epic/AC-1749 numbered its own steps 3.42.0-3.44.0 before main shipped its 3.42.0; none of those left the epic, so they
+         first ship together in 3.45.0:
+         AC-1783: IFileSource snapshot reads and conditional writes, registered on the plugin's channel.
+         AC-1754: file snapshot write hints and asynchronous workspace close guards.
+         AC-1755: FileReadResult.ModifiedBy, who last changed a file, when the source knows. -->
+    <!-- 3.45.0 (AC-1749): merges the Markdown-editor epic above with main's 3.41.0 and 3.42.0. Additive; still v3. -->
+    <Version>3.45.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

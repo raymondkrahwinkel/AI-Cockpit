@@ -19,9 +19,34 @@ internal sealed class WorkspaceContext(
 
     public ICockpitSessionObserver Sessions => sessions;
 
+    public string? InstanceKey { get; internal set; }
+
+    public bool IsPreview { get; private set; }
+
+    // AC-1750: wired by WorkspacesViewModel, which owns the tab these act on.
+    internal Action<string>? TitleSet { get; set; }
+
+    internal Action<WorkspaceMarker?>? MarkerSet { get; set; }
+
+    internal Action? PinRequested { get; set; }
+
+    public event EventHandler? Pinned;
+
     public event EventHandler? RefreshRequested;
 
     public event EventHandler? Closed;
+    private Func<Task<bool>>? _closeGuard;
+
+    public void SetCloseGuard(Func<Task<bool>>? guard)
+    {
+        _closeGuard = guard;
+        CloseGuardVersion++;
+    }
+    internal long CloseGuardVersion { get; private set; }
+
+    internal bool HasCloseGuard => _closeGuard is not null;
+
+    internal Task<bool> ConfirmCloseAsync() => _closeGuard?.Invoke() ?? Task.FromResult(true);
 
     public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request)
     {
@@ -40,6 +65,33 @@ internal sealed class WorkspaceContext(
     // listens to `RefreshRequested`, it does not fire it.
     public void RequestRefresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
 
+    public void SetTitle(string title) => TitleSet?.Invoke(title);
+
+    public void SetMarker(WorkspaceMarker? marker) => MarkerSet?.Invoke(marker);
+
+    public void Pin()
+    {
+        if (IsPreview)
+        {
+            PinRequested?.Invoke();
+        }
+    }
+
+    // Host-side: seeds the preview state, and raises `Pinned` when a preview is pinned (by `Pin` or a double-click on the tab).
+    internal void SetPreview(bool isPreview)
+    {
+        var wasPreview = IsPreview;
+        IsPreview = isPreview;
+        if (wasPreview && !isPreview)
+        {
+            Pinned?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     // Raised by the shell when this workspace is really closed (its tab dismissed), so a body can tear down a long-running job.
-    public void RaiseClosed() => Closed?.Invoke(this, EventArgs.Empty);
+    public void RaiseClosed()
+    {
+        _closeGuard = null;
+        Closed?.Invoke(this, EventArgs.Empty);
+    }
 }

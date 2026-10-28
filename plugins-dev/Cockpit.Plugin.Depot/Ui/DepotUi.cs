@@ -7,6 +7,7 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Onboarding;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Depot.UI;
 
@@ -34,6 +35,11 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
     public void InitializeUi(ICockpitUiHost host)
     {
         var settings = new DepotSettings(host.Storage);
+        host.AddFileWorkspaceType(DepotMarkdownFiles.WorkspaceTypeId, "Markdown file");
+        host.AddWorkspaceType(new WorkspaceTypeRegistration(ArtifactWorkspace.WorkspaceTypeId, "Depot file", context => new ArtifactWorkspace(host, context, settings.Connections))
+        {
+            IconKind = MaterialIconKind.FileOutline,
+        });
         host.AddSettings(() => new DepotSettingsControl(host, settings));
         // AC-1511: Admin → Plugins → Depot → Settings on a server, whose backend part this channel reaches.
         host.AddServerSettings(channel => new DepotServerSettingsControl(channel));
@@ -58,8 +64,28 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
 
         // AC-1568: the file browser, as a dock panel and from the toolbar.
         host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot files", MaterialIconKind.FolderNetworkOutline, () => new DepotBrowserPanel(host, settings.Connections, inbox)));
+        host.AddLinkHandler(new LinkHandlerRegistration(
+            (string link, out int start, out int length) => DepotTranscriptLinks.TryMatch(link, settings.Connections.Select(connection => connection.Url).ToList(), out start, out length),
+            (_, _) =>
+            {
+                _ = _OpenBrowserAsync(host);
+                return true;
+            }));
         host.AddToolbarAction(new ToolbarAction("Depot files", MaterialIconKind.FolderNetworkOutline,
             () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections, inbox), "depot-browser", 1000, 680)));
+    }
+
+    // Started from a link click, which cannot await it: a host that cannot reach its UI thread is logged, not left unobserved.
+    private static async Task _OpenBrowserAsync(ICockpitUiHost host)
+    {
+        try
+        {
+            await host.OpenDockPanelAsync("depot-browser").ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: opening the file browser from a transcript link failed: {exception}");
+        }
     }
 
     private static async Task _ShowSettingsAsync(ICockpitUiHost host)

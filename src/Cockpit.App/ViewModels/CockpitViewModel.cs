@@ -524,6 +524,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        if (!await Workspaces.ConfirmCloseAsync(workspaceId).ConfigureAwait(true))
+        {
+            return;
+        }
+
         // A plugin workspace's embedded sessions are not in Sessions, so the loop below never sees them — close
         // them here or their pty and child process would outlive the desk they belonged to (AC-122).
         CloseForWorkspace(workspaceId);
@@ -535,7 +540,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await CloseSessionCommand.ExecuteAsync(session);
         }
 
-        await Workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaceId);
+        await Workspaces.CloseConfirmedAsync(workspaceId);
     }
 
     // Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to ask must
@@ -1084,6 +1089,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         () => Program.Services?.GetService(typeof(Cockpit.Core.Abstractions.Layout.IWindowBoundsStore)) as Cockpit.Core.Abstractions.Layout.IWindowBoundsStore);
 
     private DockPanelHost? _dockHost;
+
+    // AC-1751: where a floating workspace stands; its ✕ takes the tab's own close route.
+    internal WorkspaceWindowHost WorkspaceWindows => _workspaceWindows ??= new WorkspaceWindowHost(
+        Workspaces,
+        CloseWorkspaceWithConfirmationAsync,
+        () => Program.Services?.GetService(typeof(Cockpit.Core.Abstractions.Layout.IWindowBoundsStore)) as Cockpit.Core.Abstractions.Layout.IWindowBoundsStore);
+
+    private WorkspaceWindowHost? _workspaceWindows;
 
     internal Task PersistDockStandAsync() => _layoutSettingsStore is null ? Task.CompletedTask : _PersistLayoutSettingsAsync();
 
@@ -4882,7 +4895,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         UpdateStatus = "Restarting…";
-        updates.ApplyDownloadedUpdateAndRestart();
+        try { updates.ApplyDownloadedUpdateAndRestart(); }
+        finally
+        {
+            // A refused/no-op apply returns normally; the operator must still be able to use this process.
+            AppRestartService.CancelWorkspaceClose();
+        }
     }
 
     // Downloads the build on offer and asks for it to be applied the next time the cockpit starts, leaving this
@@ -4940,11 +4958,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Names how many sessions are running before "Update now" restarts (criterion 7) — never a generic "are you
     // sure?". `SessionPanelViewModel.RequiresCloseConfirmation` is the same reading the close-confirm
     // prompt already uses for "is this session doing something a restart would cut off".
-    private Task<bool> _ConfirmRestartAsync()
+    private async Task<bool> _ConfirmRestartAsync()
     {
         if (_dialogService is not { } dialogs)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         // _AllSessions(), not Sessions: an embedded agent (an Autopilot step, a plugin-run) is a full session the
@@ -4959,7 +4977,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _ => $"{running.Count} sessions are still running ({string.Join(", ", running.Select(session => session.Title))}) and will be cut off: the cockpit will close and reopen on {UpdateName}.",
         };
 
-        return dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now");
+        return await dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now").ConfigureAwait(true)
+            && await AppRestartService.ConfirmWorkspaceCloseAsync(Workspaces).ConfigureAwait(true);
     }
 
     // Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying

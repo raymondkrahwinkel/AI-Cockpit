@@ -60,11 +60,17 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
             CanFloat = true,
         });
 
-        // First thing when Cockpit closes, ahead of the session teardown and its exit watchdog; Dispose stays the
-        // fallback for the tray's Quit, which does not raise this event (review AC-1711, finding 3).
+        // A cancelled shutdown can still be waiting for a file discard decision. Keep the engine usable then;
+        // the host disposes the plugin during its approved teardown, before actually exiting.
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.ShutdownRequested += (_, _) => BrowserEngine.Shared.Shutdown();
+            desktop.ShutdownRequested += (_, request) =>
+            {
+                if (!request.Cancel)
+                {
+                    BrowserEngine.Shared.Shutdown();
+                }
+            };
         }
     }
 

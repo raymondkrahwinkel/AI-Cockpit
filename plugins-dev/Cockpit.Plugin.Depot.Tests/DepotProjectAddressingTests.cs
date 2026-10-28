@@ -76,16 +76,17 @@ public class DepotProjectAddressingTests
         Assert.Equal("depot:wispslate/cockpit/notes.md", addressing.UpgradeReference("depot:wispslate/cockpit/notes.md"));
     }
 
-    [Theory]
-    [InlineData("foo")]
-    [InlineData("missing")]
-    public async Task ABareReferenceWithNoSingleMatch_IsLeftAlone_AndTheOperatorIsTold(string stored)
+    [Fact]
+    public async Task BareReferencesWithNoSingleMatch_AreLeftAlone_AndTheOperatorIsTold()
     {
-        var host = HostListing(TwoOrganizations, stored);
-        await _ListLocationsAsync(host);
+        foreach (var stored in new[] { "foo", "missing" })
+        {
+            var host = HostListing(TwoOrganizations, stored);
+            await _ListLocationsAsync(host);
 
-        host.Received(1).ShowToast(Arg.Is<string>(message => message.Contains(stored)), PluginToastSeverity.Warning, Arg.Any<string?>(), Arg.Any<Action?>());
-        var rewrite = Assert.IsType<Func<string, string?>>(host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]);
-        Assert.Null(rewrite(stored));
+            host.Received(1).ShowToast(Arg.Is<string>(message => message.Contains(stored)), PluginToastSeverity.Warning, Arg.Any<string?>(), Arg.Any<Action?>());
+            var rewrite = Assert.IsType<Func<string, string?>>(host.ReceivedCalls().Single(call => call.GetMethodInfo().Name == "RewriteProjectReferencesAsync").GetArguments()[1]);
+            Assert.Null(rewrite(stored));
+        }
     }
 }

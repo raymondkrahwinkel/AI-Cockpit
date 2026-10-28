@@ -322,6 +322,11 @@
         <Style Selector="Border.workspaceTab Button.closeWorkspace">
             <Setter Property="Opacity" Value="0"/>
         </Style>
+        <!-- AC-1750: the preview tab (v003), an italic title the next preview replaces until it is pinned. -->
+        <Style Selector="Border.workspaceTab.preview TextBlock.workspaceTabName">
+            <Setter Property="FontStyle" Value="Italic"/>
+            <Setter Property="Padding" Value="0,0,2,0"/>
+        </Style>
         <Style Selector="Border.workspaceTab:pointerover Button.closeWorkspace">
             <Setter Property="Opacity" Value="1"/>
         </Style>
@@ -1166,8 +1171,8 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="vm:WorkspaceTabViewModel">
                                 <!-- Double-click renames in place — the same inline edit a session row uses,
-                                     rather than a dialog for one short string. -->
-                                <Border Classes="workspaceTab" Classes.active="{Binding IsActive}"
+                                     rather than a dialog for one short string. On a preview tab it pins it (AC-1750). -->
+                                <Border Classes="workspaceTab" Classes.active="{Binding IsActive}" Classes.preview="{Binding IsPreview}"
                                         CornerRadius="6" Padding="10,4" Background="Transparent"
                                         PointerPressed="OnWorkspaceTabPressed"
                                         DoubleTapped="OnWorkspaceTabDoubleTapped">
@@ -1176,7 +1181,7 @@
                                          own (Raymond). Same menu shape as the session rows' own. -->
                                     <Border.ContextMenu>
                                         <ContextMenu>
-                                            <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested"/>
+                                            <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested" IsVisible="{Binding CanRename}"/>
                                             <MenuItem Header="Close" Click="OnCloseWorkspaceRequested"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
@@ -1191,8 +1196,17 @@
                                                 ToolTip.Tip="Close workspace">
                                             <materialIcons:MaterialIcon Kind="Close" Width="10" Height="10"/>
                                         </Button>
+                                        <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                 Fill="{DynamicResource CockpitStatusWaitingBrush}"
+                                                 IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                        <Border DockPanel.Dock="Right" Margin="7,0,0,0" Padding="6,0" CornerRadius="8" VerticalAlignment="Center"
+                                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                                IsVisible="{Binding IsPreview}"
+                                                ToolTip.Tip="Preview: the next preview replaces it. Double-click to keep it open.">
+                                            <TextBlock Text="preview" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        </Border>
                                         <materialIcons:MaterialIcon Kind="{Binding Icon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                        <TextBlock Classes="workspaceTabName" Text="{Binding Name}" VerticalAlignment="Center"
                                                    IsVisible="{Binding !IsRenaming}"/>
                                         <!-- Sized and aligned to sit in the tab rather than on top of it: a
                                              default TextBox brings its own padding and min-height, which made

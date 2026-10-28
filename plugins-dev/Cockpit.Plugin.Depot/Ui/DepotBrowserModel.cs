@@ -28,6 +28,29 @@ internal sealed class DepotBrowserModel(ICockpitUiHost host, DepotConnectionRegi
             : DepotBrowserAnswer<DepotDocumentExcerpt>.Failure(read.Status, read.Message);
     }
 
+    // AC-1789: the artifact workspace stays inside Cockpit, but reads through the same channel/download route as a save.
+    public async Task<DepotBrowserAnswer<byte[]>> ReadBytesAsync(string project, DepotBrowserNode node, CancellationToken cancellationToken = default)
+    {
+        if (node.Kind == DepotBrowserKind.Document)
+        {
+            var read = await _InvokeAsync<string>(DepotBrowserChannel.Read, new(connection.Id, project, node.Path), cancellationToken).ConfigureAwait(true);
+            return read.Status == DepotBrowserStatus.Ok
+                ? DepotBrowserAnswer<byte[]>.Success(Encoding.UTF8.GetBytes(read.Data ?? string.Empty))
+                : DepotBrowserAnswer<byte[]>.Failure(read.Status, read.Message);
+        }
+
+        var fetched = await _FetchAsync(project, node.Path, cancellationToken).ConfigureAwait(true);
+        if (fetched.Data is not { } response)
+        {
+            return DepotBrowserAnswer<byte[]>.Failure(fetched.Status, fetched.Message);
+        }
+
+        using (response)
+        {
+            return DepotBrowserAnswer<byte[]>.Success(await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(true));
+        }
+    }
+
     private static DepotDocumentExcerpt _Excerpt(string markdown)
     {
         var lines = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');

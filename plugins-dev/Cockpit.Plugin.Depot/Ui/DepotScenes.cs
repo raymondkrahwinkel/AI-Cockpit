@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Cockpit.Plugin.Depot.Contracts;
 
@@ -11,9 +12,12 @@ internal static class DepotScenes
 {
     private static readonly DepotBrowserProject _Project = new("krahwinkel-it/cockpit", "krahwinkel-it/cockpit", "Editor");
     private static readonly DateTimeOffset _Modified = new(2026, 10, 24, 16, 12, 0, TimeSpan.Zero);
+    private static readonly byte[] _ImageBytes = Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==");
 
     public static IReadOnlyDictionary<string, Func<Control>> All { get; } = new Dictionary<string, Func<Control>>
     {
+        ["artifact-tab-image"] = () => new ArtifactWorkspace(new DepotBrowserNode("Designs/mockup.gif", DepotBrowserKind.Artifact, 43, _Modified, "image/gif"), _ImageBytes),
+        ["artifact-tab-text"] = () => new ArtifactWorkspace(new DepotBrowserNode("Notes/release.txt", DepotBrowserKind.Artifact, 19, _Modified, "text/plain"), "Cockpit artifact text"u8.ToArray()),
         ["depot-browser"] = () => _Scene(new DepotBrowserSceneModel(
             _Project,
             new DepotBrowserTree(
@@ -25,6 +29,20 @@ internal static class DepotScenes
             true),
             "Ideas/depot-sync.md",
             new DepotDocumentExcerpt("Depot-sync for sessions", "A session can write its transcript to Depot so the project memory remains available outside the conversation."))),
+        ["depot-browser-settings"] = () => _Scene(new DepotBrowserSceneModel(
+            _Project,
+            new DepotBrowserTree(
+            [
+                new("Ideas/depot-sync.md", DepotBrowserKind.Document, 196, _Modified, "text/markdown"),
+                new("Ideas/edge-cases.md", DepotBrowserKind.Document, 407, _Modified, "text/markdown"),
+                new("Plan/AC-1708-dock-panels.md", DepotBrowserKind.Document, 116, _Modified, "text/markdown"),
+                new("Notes.md", DepotBrowserKind.Document, 68, _Modified, "text/markdown"),
+            ],
+            true),
+            "Ideas/depot-sync.md",
+            new DepotDocumentExcerpt("Depot-sync for sessions", "Idea: a session can write its transcript to Depot."),
+            new Dictionary<string, string> { ["Ideas/depot-sync.md"] = "◌ preview", ["Notes.md"] = "● open" },
+            BelowTree: true)),
         ["depot-browser-artifact"] = () => _Scene(new DepotBrowserSceneModel(
             _Project,
             new DepotBrowserTree(
@@ -38,6 +56,14 @@ internal static class DepotScenes
             null)),
         ["depot-browser-empty"] = () => _Scene(new DepotBrowserSceneModel(_Project, new DepotBrowserTree([], true), null, null)),
         ["depot-settings-sync"] = _SettingsSyncScene,
+        ["depot-new-markdown"] = () =>
+        {
+            var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
+                { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top };
+            var name = dialog.GetLogicalDescendants().OfType<TextBox>().Single();
+            name.Text = "md-editor-in-cockpit";
+            return dialog;
+        },
     };
 
     private static Control _Scene(DepotBrowserSceneModel model)
@@ -103,4 +129,6 @@ internal sealed record DepotBrowserSceneModel(
     DepotBrowserProject Project,
     DepotBrowserTree Tree,
     string? SelectedPath,
-    DepotDocumentExcerpt? Excerpt);
+    DepotDocumentExcerpt? Excerpt,
+    IReadOnlyDictionary<string, string>? Badges = null,
+    bool BelowTree = false);

@@ -8,6 +8,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Composition;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -27,6 +28,7 @@ using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Sessions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App;
 
@@ -194,6 +196,32 @@ internal static partial class Screenshotter
         // buttons and its Tijd section in one card, the single-button plugins together in "Plugins" — open, or folded.
         ["sidebar-plugins"] = (width, height) => _PluginSidebarScene(width, height, folded: false),
         ["sidebar-plugins-folded"] = (width, height) => _PluginSidebarScene(width, height, folded: true),
+        // AC-1750 (mockup AC-1749 v003): a kept tab with an unsaved marker beside the preview tab, italic and labelled.
+        ["workspace-preview-tab"] = (_, _) => _WorkspacePreviewTabScene(),
+        // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
+        ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
+        // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
+        ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
+        ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
+        ["markdown-file-create"] = (_, _) => _NewMarkdownFileDialogScene(),
+        ["markdown-file-editing"] = (width, height) => _MarkdownFileScene(width, height, "editing"),
+        ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),
+        ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
+        ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
+        ["preview-tab"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
+        ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
+        ["markdown-file-discard"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ConfirmationDialogViewModel("Discard unsaved changes?",
+                "Close md-editor-in-cockpit.md without saving? Your changes will be lost.", "Discard changes"),
+        },
+        ["markdown-editor-table"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
+        ["markdown-editor-source"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.ShowSource = true),
+        ["markdown-editor-readonly"] = (width, height) => _MarkdownEditorScene(width, height, editor =>
+        {
+            editor.IsReadOnly = true;
+            editor.MarkLine(7);
+        }),
         // AC-1549: a reminder going off with the plugin's screen closed — the cockpit's own toast, its three buttons.
         ["toast-reminder"] = (width, _) => _ReminderToastScene(width),
         // AC-1033: the knowledge base in the five states that decide whether it works. A plugin's own branch
@@ -1224,6 +1252,7 @@ internal static partial class Screenshotter
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
+        ["plugin:depot-browser-settings"] = window => _OpenFlyout(window, "OpenFilesInButton"),
         ["projects-workspace-split-open"] = window =>
         {
             var start = window.GetVisualDescendants().OfType<SplitButton>().First(button => button.IsEffectivelyVisible);
@@ -4281,4 +4310,100 @@ internal static partial class Screenshotter
         return window;
     }
 
+    private static Window _WorkspacePreviewTabScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", context =>
+            {
+                if (context.InstanceKey == "Notes.md")
+                {
+                    context.SetMarker(Cockpit.Plugins.Abstractions.Workspaces.WorkspaceMarker.Unsaved);
+                }
+
+                return new TextBlock { Text = context.InstanceKey, Margin = new Thickness(24) };
+            }) { IconKind = Material.Icons.MaterialIconKind.LanguageMarkdownOutline },
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Notes.md", "Notes.md")).GetAwaiter().GetResult();
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/depot-sync.md", "depot-sync.md", Preview: true)).GetAwaiter().GetResult();
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Window _WorkspaceFloatingScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", _ => new Views.Editor.MarkdownEditor
+            {
+                Text = "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**.\n\n## Wishes\n- A tab or a separate window\n- Saving writes back to Depot\n",
+            }) { CanFloat = true },
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var workspaces = new CockpitViewModel(workspaceTypeRegistry: registry).Workspaces;
+        workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/md-editor.md", "md-editor.md")).GetAwaiter().GetResult();
+        if (workspaces.Active is not { } workspace || workspaces.BodyFor(workspace) is not { } body)
+        {
+            throw new InvalidOperationException("The floating-workspace scene opened no workspace body.");
+        }
+        workspaces.PopOutAsync(workspace.Id).GetAwaiter().GetResult();
+        return new Docking.DockPanelWindow(workspace.Id, workspace.Name, body, boundsStore: null, "Put this workspace back in the tab strip")
+        {
+            Width = 900,
+            Height = 560,
+        };
+    }
+
+    private static Window _MarkdownEditorScene(int width, int height, Action<Views.Editor.MarkdownEditor> arrange)
+    {
+        var editor = new Views.Editor.MarkdownEditor
+        {
+            Text = """
+                ---
+                title: Edge cases
+                tags: [md, test]
+                ---
+                # md-editor-in-cockpit
+
+                Capture an idea straight from the **Depot file browser**, and see *right away* how it looks.
+
+                ## Wishes
+                - A new file in a chosen place
+                - A tab or a separate window
+                - Saving writes back to Depot with `baseChecksum`
+
+                ## Tasks
+                - [x] Mockup v001
+                - [ ] Pick a route: native or webview
+
+                Plain text with a footnote[^1] and a [reference link][depot].
+
+                <details>
+                <summary>HTML block</summary>
+                This is raw HTML.
+                </details>
+
+                | Column | Meaning |
+                |---|---|
+                | A | Tables are drawn |
+                | B | Click in one to see its source |
+
+                ```csharp
+                var x = 42;
+                ```
+
+                > A quote stays a quote.
+
+                ---
+
+                See [AC-1749](https://raymondkrahwinkel.myjetbrains.com/youtrack/issue/AC-1749).
+
+                [^1]: This is the footnote.
+                [depot]: https://depot.krahwinkel-it.nl
+                """,
+        };
+        arrange(editor);
+        return new Window { Width = width, Height = height, Content = editor };
+    }
 }

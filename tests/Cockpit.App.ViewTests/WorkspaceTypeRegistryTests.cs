@@ -43,39 +43,27 @@ public class WorkspaceTypeRegistryTests
         public string? GetSecret(string key) => null;
     }
 
+    // AC-1750 folded the Changed test in here: the first registration is heard, a refused one changes nothing.
     [Fact]
-    public void Register_TheFirstOfATypeId_Wins_AndALaterOneIsRefused()
-    {
-        var registry = _NewRegistry();
-
-        Assert.True(registry.Register(_Type("autopilot.run", "First"), new FakeStorage(), NullCockpitSessionObserver.Instance));
-        Assert.False(registry.Register(_Type("autopilot.run", "Second"), new FakeStorage(), NullCockpitSessionObserver.Instance));
-        Assert.Equal("First", Assert.Single(registry.WorkspaceTypes).Title);
-    }
-
-    [Fact]
-    public void Register_RaisesChanged_SoALateArrivingTypeIsHeard()
+    public void Register_TheFirstOfATypeId_WinsAndRaisesChanged_AndALaterOneIsRefused()
     {
         var registry = _NewRegistry();
         var raised = 0;
         registry.Changed += (_, _) => raised++;
 
-        registry.Register(_Type("a.type"), new FakeStorage(), NullCockpitSessionObserver.Instance);
-
+        Assert.True(registry.Register(_Type("autopilot.run", "First"), new FakeStorage(), NullCockpitSessionObserver.Instance));
+        Assert.False(registry.Register(_Type("autopilot.run", "Second"), new FakeStorage(), NullCockpitSessionObserver.Instance));
+        Assert.Equal("First", Assert.Single(registry.WorkspaceTypes).Title);
         Assert.Equal(1, raised);
     }
 
+    // AC-1750 folded the unregistered-type test in here: that one is null, so the view can show a placeholder.
     [Fact]
-    public void CreateBody_AnUnregisteredType_IsNull_SoTheViewCanShowAPlaceholder()
-    {
-        Assert.Null(_NewRegistry().CreateBody("missing.type", "w1"));
-    }
-
-    [Fact]
-    public void CreateBody_ARegisteredType_BuildsAContextScopedToTheWorkspace() => HeadlessAvalonia.Run(() =>
+    public void CreateBody_ARegisteredType_BuildsAContextScopedToTheWorkspace_AndAnUnregisteredOneIsNull() => HeadlessAvalonia.Run(() =>
     {
         var registry = _NewRegistry();
         registry.Register(_Type("autopilot.run"), new FakeStorage(), NullCockpitSessionObserver.Instance);
+        Assert.Null(registry.CreateBody("missing.type", "w1"));
 
         var built = registry.CreateBody("autopilot.run", "w42");
 

@@ -107,7 +107,7 @@ internal static class PluginScenes
         }
     }
 
-    private sealed class SceneStorage : IPluginStorage
+    internal sealed class SceneStorage : IPluginStorage
     {
         private readonly Dictionary<string, object?> _values = [];
 

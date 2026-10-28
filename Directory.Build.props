@@ -8,6 +8,16 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
+    <!-- 0.140.0: merges epic AC-1749 with main's 0.133.0 (AC-1854). The epic numbered its host steps 0.131.0-0.139.0 while
+         main shipped its own 0.131.0-0.133.0, so a plugin that relies on an AC-1749 member sets minHostVersion 0.140.0
+         (Cockpit.Plugins.Abstractions 3.45.0, Abstractions.UI 3.19.0). -->
+    <!-- 0.139.0: merges epic AC-1749 (Markdown editor, host 0.133.0-0.138.0 below) with main's AC-1853 and AC-1885
+         (Cockpit.Plugins.Abstractions 3.45.0). -->
+    <!-- 0.138.0: file workspaces open as the preview tab; ICockpitUiHost.GetOpenWorkspaces and OpenWorkspacesChanged (AC-1781, UI 3.18.0). -->
+    <!-- 0.137.0: host-owned Markdown file workspaces, snapshot write hints and close guards (AC-1754, SDK 3.45.0 / UI 3.17.0). -->
+    <!-- 0.136.0: ICockpitHost.AddFileSource and conditional file operations over plugin channels (AC-1783, Abstractions 3.45.0). -->
+    <!-- 0.135.0: WorkspaceTypeRegistration.CanFloat, a workspace in its own window (AC-1751, Abstractions.UI 3.16.0); a plugin that sets it sets minHostVersion 0.135.0. -->
+    <!-- 0.134.0: ICockpitUiHost.CreateMarkdownEditor (AC-1753, Abstractions.UI 3.15.0); a plugin that calls it sets minHostVersion 0.134.0. -->
     <!-- 0.133.0 (AC-1854): DockPanelRegistration.HeaderActions supplies active rail-header buttons (Cockpit.Plugins.Abstractions.UI 3.13.0). -->
     <!-- 0.132.0 (AC-1853): PluginNotification.Title is shown above the message (Cockpit.Plugins.Abstractions 3.41.0). -->
     <!-- 0.132.0: ICockpitHost.Notify and AddNotificationSource, needs-you notifications kept across a restart and re-checked
@@ -16,6 +26,9 @@
          3.37.0); a plugin that sets ReadModelIntelligenceAsync sets minHostVersion 0.129.0. -->
     <!-- 0.130.0: ICockpitHost.AddStartupStep, a plugin's own step on the splash, watched by the host (AC-1827,
          Cockpit.Plugins.Abstractions 3.38.0); a plugin that calls it sets minHostVersion 0.130.0. -->
+    <!-- 0.131.0: workspace instances per key, with a body-set title, a tab marker and a preview tab that is replaced in place
+         (AC-1750, Cockpit.Plugins.Abstractions 3.39.0, Cockpit.Plugins.Abstractions.UI 3.13.0); a plugin that opens
+         one with WorkspaceOpenOptions sets minHostVersion 0.131.0. -->
     <!-- 0.128.0: Project.SharedSourceKey lets a shared source preserve identity across machine-local project ids (AC-1837). -->
     <!-- 0.127.0: ISharedProjectSource.SourceHost, the connection host behind the Projects section headings (AC-1600,
          Cockpit.Plugins.Abstractions 3.35.0). -->
@@ -408,7 +421,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.133.0</VersionPrefix>
+    <VersionPrefix>0.140.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

@@ -177,6 +177,30 @@ public interface ICockpitUiHost
     Task OpenWorkspaceAsync(string workspaceTypeId);
 
     /// <summary>
+    /// Opens (or focuses) one instance of this plugin's workspace type <paramref name="workspaceTypeId"/>, by its key or as
+    /// the preview tab (see <see cref="WorkspaceOpenOptions"/>). An older host opens the type as <see cref="OpenWorkspaceAsync(string)"/> does.
+    /// </summary>
+    Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => OpenWorkspaceAsync(workspaceTypeId);
+
+    /// <summary>The open instances of this plugin's workspace type that carry an instance key, in the main window and in their own windows; host 0.138.0+.</summary>
+    IReadOnlyList<OpenWorkspaceInstance> GetOpenWorkspaces(string workspaceTypeId) => [];
+
+    /// <summary>Raised when a workspace is opened, closed, pinned, floated or docked; host 0.138.0+.</summary>
+    event EventHandler OpenWorkspacesChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>Registers a host-owned Markdown file workspace bound to this plugin's channel; host 0.137.0+.</summary>
+    void AddFileWorkspaceType(string workspaceTypeId, string title)
+    {
+    }
+
+    /// <summary>Opens or focuses a file without replacing its document, undo history or unsaved changes.</summary>
+    Task OpenFileWorkspaceAsync(string workspaceTypeId, Files.FileWorkspaceOpenOptions options) => Task.CompletedTask;
+
+    /// <summary>
     /// The live view of the embedded session <paramref name="paneId"/> (see <see cref="IEmbeddedSession"/>), the
     /// same control on every call, and a control has one parent, so place it in one spot. Null when no such
     /// embedded session is open; a session in the grid is not embedded.
@@ -202,6 +226,16 @@ public interface ICockpitUiHost
     /// Renders <paramref name="markdown"/> the way the cockpit renders its own.
     /// </summary>
     Control CreateMarkdownView(string markdown);
+
+    /// <summary>A live-preview Markdown editor over <paramref name="markdown"/>; null on a host without one.</summary>
+    IMarkdownEditor? CreateMarkdownEditor(string markdown) => null;
+
+    /// <summary>
+    /// Registers first-refusal handling for transcript links recognized by this plugin.
+    /// </summary>
+    void AddLinkHandler(LinkHandlerRegistration registration)
+    {
+    }
 
     /// <summary>
     /// A small "?" that opens <paramref name="article"/> in the help window; invisible when there is no such article.

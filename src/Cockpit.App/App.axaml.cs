@@ -934,6 +934,7 @@ public partial class App : Application
                 // handing them to the widget registry lets a dashboard export drop them too, which is the third place
                 // a declared secret has to be honoured.
                 discovered.Manifest.SecretKeys ?? []));
+        cockpit.FollowRemoteFileWorkspaces(uiParts.RegisterRemoteFileWorkspaces);
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.
@@ -1253,6 +1254,12 @@ public partial class App : Application
     {
         // Before the first await, so MainWindow's close sees a real quit rather than a close-to-tray.
         IsQuitting = true;
+
+        if (_mainWindow is Views.MainWindow main && !await main.ConfirmWorkspaceCloseAsync().ConfigureAwait(true))
+        {
+            IsQuitting = false;
+            return;
+        }
 
         await (_teardown ??= Program.TearDownCockpitAsync());
 

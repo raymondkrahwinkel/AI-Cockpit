@@ -32,7 +32,7 @@ namespace Cockpit.App.Plugins;
 // AC-1389: the ICockpitUiHost a plugin's UI part receives. The window members are its own; what a backend can do
 // too (consent, intents, managed CLIs, ...) forwards to the same plugin's ICockpitHost. `services` stays private,
 // so the UI part gets no container to reach around its channel.
-internal sealed class CockpitUiHost(
+internal sealed partial class CockpitUiHost(
     string pluginId,
     string pluginName,
     ICockpitHost host,
@@ -208,7 +208,13 @@ internal sealed class CockpitUiHost(
     // The programmatic "+" for a plugin's own workspace type: a plugin that received an intent surfaces its
     // workspace so the operator lands on it. Marshalled to the UI thread since a plugin may dispatch from any
     // thread; a design-time/headless host (no view model resolved) simply does nothing.
-    public async Task OpenWorkspaceAsync(string workspaceTypeId)
+    public Task OpenWorkspaceAsync(string workspaceTypeId) =>
+        _OpenWorkspaceAsync(workspaceTypeId, workspaces => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+
+    public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) =>
+        _OpenWorkspaceAsync(workspaceTypeId, workspaces => workspaces.OpenWorkspaceAsync(workspaceTypeId, options));
+
+    private async Task _OpenWorkspaceAsync(string workspaceTypeId, Func<WorkspacesViewModel, Task> open)
     {
         // The plugin's workspaces live on the on-screen view model — the same instance the UI binds to — not a
         // separately DI-resolved WorkspacesViewModel, which would open the workspace on a surface no one is looking at.
@@ -221,7 +227,7 @@ internal sealed class CockpitUiHost(
         // without proving anything about marshalling; a test for this belongs in Cockpit.App.ViewTests.
         try
         {
-            await UiThreadCall.DispatchAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
+            await UiThreadCall.DispatchAsync(() => open(workspaces));
         }
         catch (UiUnavailableException exception)
         {
@@ -303,6 +309,11 @@ internal sealed class CockpitUiHost(
 
     // Delegates to the cockpit's own `MarkdownView` — no second parser, one markdown idiom for both the transcript and every plugin dialog.
     public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = _CapForRendering(markdown) };
+
+    public void AddLinkHandler(LinkHandlerRegistration registration) => MarkdownView.RegisterLinkHandler(registration);
+
+    // AC-1753: not capped like the view above, an editor that drops the tail of a file would save it truncated.
+    public IMarkdownEditor CreateMarkdownEditor(string markdown) => new Views.Editor.MarkdownEditor { Text = markdown };
 
     // AC-303: caps a plugin-supplied markdown body (e.g. a 65 KB GitHub issue) before synchronous rendering,
     // which otherwise stalls the UI in an all-Auto grid; capped here, not in MarkdownView, since the transcript

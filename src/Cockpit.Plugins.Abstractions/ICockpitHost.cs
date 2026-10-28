@@ -1079,4 +1079,11 @@ public interface ICockpitHost
     {
     }
 
+    /// <summary>
+    /// Registers one file provider on this plugin's own channel. Dispose the registration when unloading.
+    /// Requires host 0.136.0; older hosts reject the operation without registering partial handlers.
+    /// </summary>
+    IDisposable AddFileSource(Files.IFileSourceProvider provider) =>
+        throw new NotSupportedException("This host does not support file sources.");
+
 }

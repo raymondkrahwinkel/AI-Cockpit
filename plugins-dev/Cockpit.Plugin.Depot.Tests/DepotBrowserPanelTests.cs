@@ -6,12 +6,15 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Material.Icons.Avalonia;
 using NSubstitute;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using DepotBrowserPanel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserPanel;
 using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
+using NewMarkdownFileDialog = UiAsm::Cockpit.Plugin.Depot.UI.NewMarkdownFileDialog;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -40,6 +43,7 @@ public class DepotBrowserPanelTests
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
         var markdownView = new Border { Child = new TextBlock { Text = "Full markdown view" } };
         rig.Host.CreateMarkdownView(Arg.Any<string>()).Returns(markdownView);
+        rig.Host.Storage.Get<string>("openFilesIn").Returns("below");
         Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
         var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
         var window = new Window { Width = 1000, Height = 640, Content = panel };
@@ -77,6 +81,14 @@ public class DepotBrowserPanelTests
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("Console.WriteLine", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A following heading", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A second paragraph does not.", StringComparison.Ordinal) == true);
+        (_Button(panel, "Open") ?? throw new InvalidOperationException("Open is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options =>
+            options.File.Path == "docs/Notes.md" && options.InstanceKey == "depot:c1:cockpit:docs/Notes.md" && !options.Edit && !options.CreateNew));
+        (_Button(panel, "✎ Edit") ?? throw new InvalidOperationException("Edit is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => options.Edit && !options.CreateNew));
+        _ClickByStand(rig, selected);
+        Assert.True((_Button(panel, "New Markdown file") ?? throw new InvalidOperationException("New file is missing.")).IsVisible);
+        _NewFileValidation();
     }
 
     // AC-1573: the backend's reading of the role (`canShare`) decides whether the Upload button is there at all.
@@ -99,6 +111,62 @@ public class DepotBrowserPanelTests
         _Until(() => panel.GetVisualDescendants().OfType<TreeViewItem>().Any());
 
         Assert.False(_UploadButton(panel).IsVisible);
+        Assert.False((_Button(panel, "New Markdown file") ?? throw new InvalidOperationException("New file is missing.")).IsVisible);
+        Assert.Null(_Button(panel, "✎ Edit"));
+    }
+
+    // AC-1781: a single click is the preview tab and a double-click a kept one; "Below the tree" only selects on a single click.
+    private static void _ClickByStand(DepotBrowserModelTests.Rig rig, TreeViewItem row)
+    {
+        rig.Host.ClearReceivedCalls();
+        rig.Host.Storage.Get<string>("openFilesIn").Returns("preview");
+        _Tap(row, InputElement.TappedEvent);
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => options.Preview && !options.Edit));
+        _Tap(row, InputElement.DoubleTappedEvent);
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => !options.Preview && !options.Edit));
+        rig.Host.ClearReceivedCalls();
+        rig.Host.Storage.Get<string>("openFilesIn").Returns("below");
+        _Tap(row, InputElement.TappedEvent);
+        _ = rig.Host.DidNotReceive().OpenFileWorkspaceAsync(Arg.Any<string>(), Arg.Any<FileWorkspaceOpenOptions>());
+        _Tap(row, InputElement.DoubleTappedEvent);
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => !options.Preview));
+    }
+
+    private static void _Tap(TreeViewItem row, RoutedEvent<TappedEventArgs> gesture)
+    {
+        var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true);
+        var released = new PointerEventArgs(InputElement.PointerReleasedEvent, row, pointer, null, default, 0, new PointerPointProperties(), KeyModifiers.None);
+        row.RaiseEvent(new TappedEventArgs(gesture, released));
+    }
+
+    private static void _NewFileValidation()
+    {
+        string? opened = null;
+        var dialog = new NewMarkdownFileDialog("Cockpit", "docs", ["", "docs"], path => path == "docs/taken.md", path =>
+        {
+            opened = path;
+            return Task.CompletedTask;
+        });
+        var window = new Window { Width = 480, Height = 480, Content = dialog };
+        window.Show();
+        var name = dialog.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "MarkdownFileName");
+        var create = _Button(dialog, "Create") ?? throw new InvalidOperationException("Create is missing.");
+        Assert.False(create.IsEnabled);
+        name.Text = "../escape";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(create.IsEnabled);
+        name.Text = ".md";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(create.IsEnabled);
+        name.Text = "taken.md";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.False(create.IsEnabled);
+        name.Text = "new-note";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(create.IsEnabled);
+        create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("docs/new-note.md", opened);
+        Assert.False(window.IsVisible);
     }
 
     [Fact]
@@ -224,7 +292,7 @@ public class DepotBrowserPanelTests
         canShare = true,
     });
 
-    private static Button? _Button(DepotBrowserPanel panel, string content) =>
+    private static Button? _Button(Control panel, string content) =>
         panel.GetVisualDescendants().OfType<Button>().SingleOrDefault(button => Equals(button.Content, content));
 
     private static void _SaveFrame(Window window, string variable)

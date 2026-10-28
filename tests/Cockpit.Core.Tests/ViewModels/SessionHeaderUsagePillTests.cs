@@ -11,9 +11,12 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class SessionHeaderUsagePillTests
 {
     [Fact]
-    public void AddingARateWindow_RaisesHasUsagePill()
+    public void WithRateWindowsButNoContext_ThePillShows_AndAddingAWindowRaisesHasUsagePill()
     {
         var vm = new SessionViewModel { ContextUsedPercent = null };
+
+        Assert.True(vm.HasUsagePill, "the 5h/wk windows are only reachable through the pill's flyout");
+
         vm.RateLimits.Clear();
         Assert.False(vm.HasUsagePill);
 
