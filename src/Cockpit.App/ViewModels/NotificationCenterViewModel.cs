@@ -223,8 +223,10 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
         }
 
         var json = JsonSerializer.Serialize(_items
-            .Where(item => item is { NeedsYou: true, SourceId: not null, Key: not null })
-            .Select(item => new KeptNotification(item.SourceId!, item.Source, item.Key!, item.Message, item.Severity, item.Title, item.Time)));
+            .Select(item => item is { NeedsYou: true, SourceId: { } sourceId, Key: { } key }
+                ? new KeptNotification(sourceId, item.Source, key, item.Message, item.Severity, item.Title, item.Time)
+                : null)
+            .OfType<KeptNotification>());
         if (json == _keptJson)
         {
             return;

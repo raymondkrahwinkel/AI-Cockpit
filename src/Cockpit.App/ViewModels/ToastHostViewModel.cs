@@ -57,7 +57,7 @@ public sealed class ToastHostViewModel
             _startupToasts.Add(new StartupToast(toast, sticky, item));
             if (_startupToasts.Count >= 2)
             {
-                _ShowStartupBundle();
+                _ShowStartupBundle(_startupToasts);
             }
 
             return toast;
@@ -148,10 +148,10 @@ public sealed class ToastHostViewModel
     }
 
     // AC-1853 (mockup screen 02): the bundle names its first three items, then "+N more".
-    private void _ShowStartupBundle()
+    private void _ShowStartupBundle(IReadOnlyList<StartupToast> startupToasts)
     {
         _startupBundleToast?.CloseCommand.Execute(null);
-        var items = _startupToasts!.Select(startupToast => startupToast.Item).ToList();
+        var items = startupToasts.Select(startupToast => startupToast.Item).ToList();
         var needYou = items.Count(item => item.NeedsYou);
         // Captured: the bundle stays after the window ends, and its Show must still open the panel then.
         var show = _showStartupNotifications;
