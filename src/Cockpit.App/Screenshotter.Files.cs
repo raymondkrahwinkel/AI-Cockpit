@@ -32,7 +32,7 @@ internal static partial class Screenshotter
             Edit: state != "readonly", CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly")),
+            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"))),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
@@ -40,6 +40,16 @@ internal static partial class Screenshotter
         var entry = workspaces.Active ?? throw new InvalidOperationException("The file scene did not open.");
         var body = workspaces.BodyFor(entry) as MarkdownFileWorkspace ?? throw new InvalidOperationException("The editor scene is missing.");
         body.Ready.GetAwaiter().GetResult();
+        if (state.StartsWith("conflict"))
+        {
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "- Reply when it is done\n");
+            body.Editor.TextEditor.Document.Replace(body.Editor.Text.IndexOf("- [ ] Write", StringComparison.Ordinal), 5, "- [x]");
+            body.SaveAsync().GetAwaiter().GetResult();
+            if (state == "conflict-compare")
+            {
+                body.ToggleCompare();
+            }
+        }
         if (state is "editing" or "floating")
         {
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "\nA new idea, ready to save.");
@@ -53,15 +63,24 @@ internal static partial class Screenshotter
         return new MainWindow { Width = width, Height = height, DataContext = cockpit };
     }
 
-    private sealed class FileSceneChannel(string text, bool writable) : IPluginUiChannel
+    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false) : IPluginUiChannel
     {
+        private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
+        private bool _read;
+
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch
         {
+            FileSourceChannel.Write => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Conflict, "f00dcafe"), null), FileSourceChannel.Json),
+            FileSourceChannel.Read when conflict && _read => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
+                new(Convert.ToBase64String(Encoding.UTF8.GetBytes(Changed)), "f00dcafe", Encoding.UTF8.GetByteCount(Changed), new DateTimeOffset(2026, 10, 28, 15, 2, 0, TimeSpan.Zero), "text/markdown")
+                    { CanWrite = writable, ModifiedBy = "cockpit-assistant" }, null), FileSourceChannel.Json),
             FileSourceChannel.Connections => JsonSerializer.SerializeToElement(new FileSourceAnswer<IReadOnlyList<FileConnection>>([new("scene", "Work", "memory", !writable)], null), FileSourceChannel.Json),
-            FileSourceChannel.Read => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
+            FileSourceChannel.Read when _MarkRead() => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
                 new(Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), "e7a1b6c9", Encoding.UTF8.GetByteCount(text), null, "text/markdown") { CanWrite = writable }, null), FileSourceChannel.Json),
             _ => throw new InvalidOperationException("This scene only reads its in-memory source."),
         });
+        private bool _MarkRead() => _read = true;
+
         public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new FileSceneSubscription();
         private sealed class FileSceneSubscription : IDisposable { public void Dispose() { } }
     }
