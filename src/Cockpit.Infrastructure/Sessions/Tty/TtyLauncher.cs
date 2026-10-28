@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Provisioning;
 using Cockpit.Core.Sessions;
@@ -14,7 +15,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 // Default `ITtyLauncher`: builds the host environment, asks the provider how its CLI starts, and spawns it in a
 // pseudo console (`IPtyHostFactory`, platform-agnostic). Provider-specific pieces (executable, flags, config
 // directory, status relay) live in `ITtySessionProvider`; what's left here is what every TUI needs identically.
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemoryLimiter memoryLimiter, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger, ISessionProcessAnchor? processAnchor = null, IOrgPolicy? orgPolicy = null, IWorktreeManager? worktreeManager = null) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -31,6 +32,13 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         Action<string>? notice = null)
     {
         options = _ClampToPolicy(provider, profile, options, notice);
+        var scratchPane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+        var scratch = SessionScratch.Create(scratchPane, message => logger.LogWarning("{Message}", message));
+        options = new Dictionary<string, string>(options)
+        {
+            [WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
+                options.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(scratch)).TrimStart('\n'),
+        };
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
         // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: they
@@ -84,6 +92,14 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
             [WellKnownSessionEnvironment.CockpitMcpKey] = mintedToken ?? authKey.Value,
         };
 
+        baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
+        {
+            ["COCKPIT_SCRATCH"] = scratch,
+            ["TEMP"] = scratch,
+            ["TMP"] = scratch,
+            ["TMPDIR"] = scratch,
+        };
+
         var context = new TtyLaunchContext(
             profile,
             options,
@@ -113,16 +129,13 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         }
 
         var environment = TtyEnvironment.Compose(baseEnvironment, spec.EnvironmentOverlay);
-        if (string.IsNullOrEmpty(paneId) == false)
+        environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
         {
-            var temp = SessionTempDirectory.Create(paneId);
-            environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
-            {
-                ["TEMP"] = temp,
-                ["TMP"] = temp,
-                ["TMPDIR"] = temp,
-            };
-        }
+            ["COCKPIT_SCRATCH"] = scratch,
+            ["TEMP"] = scratch,
+            ["TMP"] = scratch,
+            ["TMPDIR"] = scratch,
+        };
 
         var process = ptyHostFactory.Start(spec.ExecutablePath, spec.Arguments, spec.WorkingDirectory, environment, columns, rows);
 
@@ -136,10 +149,9 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         // The files this launch wrote live exactly as long as the session needing them (an MCP config holds bearer
         // headers, no business surviving the session that ends). AC-143: a minted pane token needs the same
         // wrapping so its revoke runs on dispose, even when the provider itself wrote no session-scoped files.
-        return spec.SessionScopedFiles.Count is 0 && spec.StatusFile is null && mintedToken is null && memoryCap is null && anchor is null
-            ? process
-            : new TtyProcessOwningSessionFiles(
-                process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap, anchor);
+        return new TtyProcessOwningSessionFiles(
+            process, spec.SessionScopedFiles, spec.StatusFile, mintedToken is null ? null : keyring, paneId, mintedToken, memoryCap, anchor,
+            processToWait => SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, processToWait).GetAwaiter().GetResult());
     }
 
     // AC-1593: launch-time, so the TTY route meets the same mode ceiling as the SDK start (AC-294). Launch already runs

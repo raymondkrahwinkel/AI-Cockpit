@@ -1,6 +1,11 @@
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions.Tty;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
 
@@ -9,7 +14,7 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 public class SessionBaseInstructionTests
 {
     [Fact]
-    public void EveryLaunch_CarriesTheBaseInstruction_AfterTheProfilesWords_AheadOfTheStatusline()
+    public async Task BothLaunchRoutes_CarryShortScratchEnvironmentAndInstruction_AndRemoveScratchAfterExit()
     {
         var options = SessionStartComposer.WithInstructions(options: null, systemPrompt: "Be terse.", isJobRun: false);
 
@@ -18,5 +23,52 @@ public class SessionBaseInstructionTests
             options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
         Assert.Contains("announced next step", SessionBaseInstruction.Text, StringComparison.Ordinal);
         Assert.Contains("read_inbox", SessionBaseInstruction.Text, StringComparison.Ordinal);
+
+        var pty = Substitute.For<IPtyHostFactory>();
+        var process = Substitute.For<IConPtyProcess>();
+        IReadOnlyDictionary<string, string> ttyEnvironment = new Dictionary<string, string>();
+        pty.Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(),
+            Arg.Do<IReadOnlyDictionary<string, string>>(environment => ttyEnvironment = environment), Arg.Any<short>(), Arg.Any<short>()).Returns(process);
+        var provider = Substitute.For<ITtySessionProvider>();
+        provider.BuildLaunch(Arg.Any<TtyLaunchContext>()).Returns(new TtyLaunchSpec("cli", [], new Dictionary<string, string?>(), ".", []));
+        var launcher = new TtyLauncher(pty, Substitute.For<ISessionMemoryLimiter>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<TtyLauncher>.Instance);
+        var ttyPane = Guid.NewGuid().ToString("N");
+        var tty = launcher.Launch(provider, null, options, 80, 24, paneId: ttyPane);
+        var ttyPath = ttyEnvironment["COCKPIT_SCRATCH"];
+        Assert.InRange(ttyPath.Length, 1, 20);
+        Assert.Equal(ttyPath, ttyEnvironment["TEMP"]);
+        Assert.Equal(ttyPath, ttyEnvironment["TMP"]);
+        Assert.Equal(ttyPath, ttyEnvironment["TMPDIR"]);
+        Assert.Equal(ttyPane, SessionScratch.OwnerOf(ttyPath));
+        provider.Received().BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
+            context.Options[WellKnownPluginSessionOptions.AppendSystemPrompt] == options[WellKnownPluginSessionOptions.AppendSystemPrompt] + "\n\n" + SessionScratch.Instruction(ttyPath)
+            && context.BaseEnvironment["COCKPIT_SCRATCH"] == ttyPath));
+        process.When(inner => inner.Dispose()).Do(_ => Assert.True(Directory.Exists(ttyPath)));
+        tty.Dispose();
+        Assert.False(Directory.Exists(ttyPath));
+
+        var plugin = Substitute.For<IPluginSessionDriver>();
+        IReadOnlyDictionary<string, string> sdkEnvironment = new Dictionary<string, string>();
+        IReadOnlyDictionary<string, string> sdkOptions = new Dictionary<string, string>();
+        plugin.StartAsync(Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+            Arg.Do<IReadOnlyDictionary<string, string>?>(value => sdkOptions = value ?? new Dictionary<string, string>()), Arg.Any<IReadOnlyList<PluginMcpServer>?>(),
+            Arg.Do<IReadOnlyDictionary<string, string>?>(value => sdkEnvironment = value ?? new Dictionary<string, string>()), Arg.Any<IPluginToolset?>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        var adapter = new PluginSessionDriverAdapter(plugin, new PluginSessionCapabilities(false, false), new McpAuthKey());
+        var sdkPane = Guid.NewGuid().ToString("N");
+        await adapter.StartAsync(launchOptions: new Dictionary<string, string>(options) { [WellKnownPluginSessionOptions.PaneId] = sdkPane });
+        var sdkPath = sdkEnvironment["COCKPIT_SCRATCH"];
+        Assert.InRange(sdkPath.Length, 1, 20);
+        Assert.Equal(sdkPath, sdkEnvironment["TEMP"]);
+        Assert.Equal(sdkPath, sdkEnvironment["TMP"]);
+        Assert.Equal(sdkPath, sdkEnvironment["TMPDIR"]);
+        Assert.Equal(sdkPane, SessionScratch.OwnerOf(sdkPath));
+        Assert.EndsWith(SessionScratch.Instruction(sdkPath), sdkOptions[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+        plugin.DisposeAsync().Returns(_ =>
+        {
+            Assert.True(Directory.Exists(sdkPath));
+            return ValueTask.CompletedTask;
+        });
+        await adapter.DisposeAsync();
+        Assert.False(Directory.Exists(sdkPath));
     }
 }
