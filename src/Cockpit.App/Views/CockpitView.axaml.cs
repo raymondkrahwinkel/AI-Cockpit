@@ -444,7 +444,7 @@ public partial class CockpitView : UserControl
         var headerActions = open?.HeaderActions ?? [];
         DockPanelUndock.IsVisible = offersUndock;
         DockPanelBack.IsVisible = cockpit.ShowBackToAssistant;
-        DockPanelHeaderActions.SetActions([], (action, exception) =>
+        DockPanelHeaderActions.SetActions(headerActions, (action, exception) =>
             cockpit.ReportToolbarActionFailure(open?.Id.Split('.')[0] ?? string.Empty, action.Title, exception.Message));
         DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant || headerActions.Count > 0;
         DockPanelHeaderTitle.Text = open?.Title;
