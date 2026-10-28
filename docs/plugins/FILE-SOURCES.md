@@ -114,5 +114,37 @@ the source side (a plugin reload) is not reopened: the text stays in the tab, ma
 The host subscribes to the events before it opens the session, so no patch is lost in between. The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
 `files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
 text travels as base64 under the same 1 MiB cap as `files-read`. Op text is plain JSON and limited to the same
-size per edit. `FileSourceReadAnswer.Live` tells the host to open a session. Presence and cursors are not part
-of this contract yet.
+size per edit. `FileSourceReadAnswer.Live` tells the host to open a session. Presence is the next section.
+
+## Presence in live files (AC-1900)
+
+Requires host 0.144.0 and `Cockpit.Plugins.Abstractions` 3.47.0. A plugin that implements `ILivePresence` sets
+`minHostVersion` 0.144.0. An older host shows nobody.
+
+A live session that also implements `ILivePresence` shows who else is in the file. `Peers` holds everyone, this host included, and
+`PeersChanged` fires with the whole list whenever it changes. The source owns the list, its rhythm and every field.
+
+| `LivePeer` | Meaning |
+|---|---|
+| `Who`, `Name` | A stable person id, and the name to show. The caret flag shows the first word of `Name`. |
+| `Color` | `#rrggbb`, fixed per person. The host draws it as given and never works one out; a peer without a valid colour has no caret. |
+| `Source`, `Role`, `Activity` | `Cockpit`, `web` or `agent`; for example `Editor`; `editing`, `selecting`, `reading` or `watching`. A Viewer is `watching`. |
+| `You` | This host's own entry. It is listed ("(you)") but not drawn as a remote caret. |
+| `Away` | The source lost them (offline). The avatar, caret and selection fade to 35%. |
+| `Caret`, `Selection` | UTF-16 offsets in the current text, or null. `Selection` is `LiveRange(Start, End)` with `Start <= End` and is set only when something is selected. |
+
+`SetPresenceAsync(LivePresenceState(Activity, Caret, Selection))` is the other way: the host tells the source where its own cursor is,
+about 150 ms after the caret or selection settles. A source that cannot send it ignores the call. The host draws what it received on
+the text it has now: offsets follow later edits, so a peer's caret stays on its character until the next list arrives.
+
+The channel adds the action `files-live-presence-set` and the event `files-live-presence`, keyed by the session id like the live
+events. `FileSourceLiveSnapshot.Peers` carries the first list; null means the source has no presence, and the host sends nothing.
+`FileSourceLiveSnapshot.OpenUrl` is an optional `http(s)` address; with it the avatar popover offers "Open in {source} ↗".
+
+In the header, left of the status chip, the avatars (22 px, a ring in the person's colour, an agent as a rounded square) open the
+list "IN THIS NOTE · N": name, `Role · activity`, and the source as a pill. Its foot shows "Saved by {name} · {hh:mm}" when the
+read told who saved last, and the link.
+
+The Depot plugin keeps its awareness codec (y-protocols v1) and presence state in `Notes/Live`: a beat every five seconds with a clock
+that only goes up (the hub ignores an update that does not), someone gone on `left` or after fifteen seconds of silence, and the hub's
+own colour passed on. The mapping between a Markdown offset and a Yjs RelativePosition comes from the live bridge (AC-1899).

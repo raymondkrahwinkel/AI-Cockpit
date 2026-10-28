@@ -24,20 +24,14 @@ public class DepotUrlNormalizerTests
     // or fragment after /mcp stops the literal suffix match, so it is left untouched rather than guessed at. Depot's
     // own documented URL never carries either.
     [Fact]
-    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed()
+    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed_AndNullOrBlankIsEmpty()
     {
         Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Normalize("https://depot.example.com"));
         Assert.Equal("not a url at all", DepotUrlNormalizer.Normalize("  not a url at all  "));
         Assert.Equal("https://depot.example.com/mcp?token=abc", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp?token=abc"));
         Assert.Equal("https://depot.example.com/mcp#section", DepotUrlNormalizer.Normalize("https://depot.example.com/mcp#section"));
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("   ")]
-    public void Normalize_NullOrBlank_ReturnsEmpty(string? url)
-    {
-        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(url));
+        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize(null));
+        Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize("   "));
     }
 
     [Theory]

@@ -31,9 +31,15 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
             read.Version, read.Size, read.Modified, read.ContentType) { CanWrite = read.CanWrite, ModifiedBy = read.ModifiedBy }, read.Live);
     }, cancellationToken);
 
-    public Task<(string SessionId, LiveFileSnapshot Snapshot)> OpenLiveAsync(FileRef file, CancellationToken cancellationToken) =>
-        _RunAsync(async () => _Decode(await _CallAsync<FileSourceLiveSnapshot>(FileSourceChannel.LiveOpen,
-            new FileSourceReadRequest(file), cancellationToken).ConfigureAwait(false)), cancellationToken);
+    // The wire snapshot comes along for its presence: Peers is non-null when the source shows who else is in the file.
+    public Task<(string SessionId, LiveFileSnapshot Snapshot, FileSourceLiveSnapshot Wire)> OpenLiveAsync(FileRef file, CancellationToken cancellationToken) =>
+        _RunAsync(async () =>
+        {
+            var wire = await _CallAsync<FileSourceLiveSnapshot>(FileSourceChannel.LiveOpen,
+                new FileSourceReadRequest(file), cancellationToken).ConfigureAwait(false);
+            var (id, snapshot) = _Decode(wire);
+            return (id, snapshot, wire);
+        }, cancellationToken);
 
     public Task<(string SessionId, LiveFileSnapshot Snapshot)> ReadLiveAsync(string sessionId, CancellationToken cancellationToken) =>
         _RunAsync(async () => _Decode(await _CallAsync<FileSourceLiveSnapshot>(FileSourceChannel.LiveRead,
@@ -46,6 +52,10 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
     public Task UndoLiveAsync(string sessionId, bool redo, CancellationToken cancellationToken) =>
         _RunAsync(() => _CallAsync<FileSourceLiveUndoRequest>(FileSourceChannel.LiveUndo,
             new FileSourceLiveUndoRequest(sessionId, redo), cancellationToken), cancellationToken);
+
+    public Task SetPresenceAsync(string sessionId, LivePresenceState state, CancellationToken cancellationToken) =>
+        _RunAsync(() => _CallAsync<FileSourceLivePresenceSet>(FileSourceChannel.LivePresenceSet,
+            new FileSourceLivePresenceSet(sessionId, state), cancellationToken), cancellationToken);
 
     public Task CloseLiveAsync(string sessionId, CancellationToken cancellationToken) =>
         _RunAsync(() => _CallAsync<FileSourceLiveRequest>(FileSourceChannel.LiveClose,
