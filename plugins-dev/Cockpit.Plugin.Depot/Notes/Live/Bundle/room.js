@@ -305,7 +305,7 @@ function alignment(index) {
   let j = 0;
   for (let k = start; k < end && j < chars.length; k++) {
     if (mirror[k] === chars[j].c && !(mirror[k] === '\\' && chars[j].c !== '\\')) {
-      pairs.push([k, chars[j].pos]);
+      pairs.push([mirror[k] === '\n' && mirror[k - 1] === '\r' ? k - 1 : k, chars[j].pos]);
       j++;
     }
   }
@@ -321,8 +321,11 @@ export function relativeAtOffset(offset) {
     return null;
   }
   const { pairs, last } = alignment(index);
-  const hit = pairs.find(([k]) => k >= offset);
-  return JSON.stringify(Y.relativePositionToJSON(absolutePositionToRelativePosition(hit ? hit[1] : last, fragment(), binding.mapping)));
+  const hit = pairs.find(([k]) => k === offset);
+  const after = pairs.find(([k]) => k === offset - 1);
+  const next = pairs.find(([k]) => k >= offset);
+  const pos = hit ? hit[1] : after ? after[1] + 1 : next ? next[1] : last;
+  return JSON.stringify(Y.relativePositionToJSON(absolutePositionToRelativePosition(pos, fragment(), binding.mapping)));
 }
 /** The Markdown offset of a relativePositionToJSON value, or -1 when it is not in the text any more. */
 export function offsetOfRelative(relativeJson) {
@@ -339,8 +342,10 @@ export function offsetOfRelative(relativeJson) {
     }
     const { pairs, end } = alignment(index);
     if (pairs.length && pos >= pairs[0][1] && pos <= pairs[pairs.length - 1][1] + 1) {
-      const hit = pairs.find(([, p]) => p >= pos);
-      return hit ? hit[0] : Math.min(pairs[pairs.length - 1][0] + 1, end);
+      const hit = pairs.find(([, p]) => p === pos);
+      const after = pairs.find(([, p]) => p === pos - 1);
+      const next = pairs.find(([, p]) => p >= pos);
+      return hit ? hit[0] : after ? after[0] + 1 : next ? next[0] : Math.min(pairs[pairs.length - 1][0] + 1, end);
     }
   }
   return -1;

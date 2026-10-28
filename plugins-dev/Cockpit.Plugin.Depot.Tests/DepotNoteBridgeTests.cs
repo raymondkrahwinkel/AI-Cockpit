@@ -178,6 +178,11 @@ public class DepotNoteBridgeTests
         await _SameCharacterAsync(web, bridge.Room, item);
         await _SameCharacterAsync(web, bridge.Room, cell);
 
+        // The end of a line inside a block (a list item with another after it, a table cell) is the end of that line, not the start of the next.
+        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("one\n", StringComparison.Ordinal) + 3);
+        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("nested first\n", StringComparison.Ordinal) + 12);
+        await _SameCharacterAsync(web, bridge.Room, text.IndexOf("| a    |", StringComparison.Ordinal) + 3);
+
         var anchorAt = await web.RelativeAtAsync(paragraph, CancellationToken.None);
         var headAt = await web.RelativeAtAsync(heading, CancellationToken.None);
         var state = """{"user":{"id":"u-sanne","name":"Sanne de Vries","role":"editor","color":"#3fb8c4","source":"web"},"activity":"selecting","cursor":{"anchor":""" + anchorAt + ""","head":""" + headAt + "}}";

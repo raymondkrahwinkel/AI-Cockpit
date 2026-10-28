@@ -233,7 +233,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
                 }
 
                 await _CloseHubAsync().ConfigureAwait(false);
-                _presence?.SetAway(true);
+                if (_presence is { } away)
+                {
+                    await away.SetAwayAsync(true, CancellationToken.None).ConfigureAwait(false);
+                }
+
                 if (_terminal)
                 {
                     break;
@@ -335,18 +339,32 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         }
     }
 
-    // Presence lives as long as this connection: the hub gives a connection one client id and ignores any other, so a new connection
-    // starts a new presence with a new id. The people of the old one stay in the list, dimmed, until the new one has heard from them.
+    // One presence for the session: the hub gives a connection one client id and ignores any other, so each connection brings a new id,
+    // and the people stay in the list, dimmed, until they are heard again. A first send that fails does not fail the Join.
     private async Task _StartPresenceAsync(IDepotNotesHub hub, DepotNoteJoinResult result, string userId, CancellationToken cancellationToken)
     {
         var documentId = result.DocumentId;
-        var old = Interlocked.Exchange(ref _presence, null);
-        old?.Dispose();
-        var presence = new DepotNotePresence(
-            _NewClientId(), new DepotRoomCursorMap(() => _room), (bytes, ct) => hub.PresenceAsync(documentId, bytes, ct), _OnPeers, logger: _logger);
-        presence.SetSelf(DepotPresenceSelf.For(userId, result.Role));
-        _presence = presence;
-        await presence.SetOwnAsync(_wanted, cancellationToken).ConfigureAwait(false);
+        Task Send(byte[] bytes, CancellationToken ct) => hub.PresenceAsync(documentId, bytes, ct);
+        try
+        {
+            var presence = _presence;
+            if (presence is null)
+            {
+                presence = new DepotNotePresence(_NewClientId(), new DepotRoomCursorMap(() => _room), Send, _OnPeers, logger: _logger);
+                _presence = presence;
+            }
+            else
+            {
+                await presence.ReconnectAsync(_NewClientId(), Send, cancellationToken).ConfigureAwait(false);
+            }
+
+            await presence.SetSelfAsync(DepotPresenceSelf.For(userId, result.Role), cancellationToken).ConfigureAwait(false);
+            await presence.SetOwnAsync(_wanted, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger?.LogWarning(exception, "Starting presence for the live note of {Connection} failed; the next beat tries again.", _connection.Name);
+        }
     }
 
     private void _OnPeers(IReadOnlyList<LivePeer> peers)
@@ -623,7 +641,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 
                 break;
             case { Kind: "left", Args: [_, string from, ..] }:
-                _presence?.Left(from);
+                if (_presence is { } leaving)
+                {
+                    await _GuardAsync(() => leaving.LeftAsync(from, _life.Token), "Removing someone who left").ConfigureAwait(false);
+                }
+
                 break;
             case { Kind: "reset" }:
                 // Edits stop at once (stale until the new fill), so nothing typed goes to the rows that are gone. The loop closes the hub

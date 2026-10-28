@@ -37,24 +37,26 @@ internal sealed record DepotPresenceSelf(string Id, string Name, string Color, s
 
 // Presence of one note (Docs/notes-hub-protocol.md section 5.4): sends this editor's cursor every five seconds with a clock that
 // only goes up, reads what the hub relays, and drops someone who left or stayed silent for fifteen seconds. The hub stamps `user`
-// (id, name, role, colour, source) on what it relays; the colour is the hub's and is passed on as it is.
+// (id, name, role, colour, source) on what it relays; the colour is the hub's and is passed on as it is. One instance serves the
+// session for good: a new hub connection brings a new client id (Reconnect) and the people stay, dimmed, until they are heard again.
 internal sealed class DepotNotePresence : IDisposable
 {
     public static readonly TimeSpan Beat = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan Silence = TimeSpan.FromSeconds(15);
 
-    private readonly ulong _clientId;
     private readonly IDepotCursorMap _map;
-    private readonly Func<byte[], CancellationToken, Task> _send;
     private readonly Action<IReadOnlyList<LivePeer>> _changed;
     private readonly TimeProvider _time;
     private readonly ILogger? _logger;
     private readonly Lock _gate = new();
-    private readonly Lock _raiseGate = new();
+    private readonly SemaphoreSlim _raising = new(1, 1);
     private readonly SemaphoreSlim _sending = new(1, 1);
     private readonly Dictionary<ulong, Remote> _remote = [];
     private readonly ITimer _timer;
     private readonly CancellationTokenSource _life = new();
+    private ulong _clientId;
+    private Func<byte[], CancellationToken, Task> _send;
+    private IReadOnlyList<LivePeer> _published = [];
     private LivePresenceState _own = new("reading");
     private DepotPresenceSelf? _self;
     private ulong _clock;
@@ -73,45 +75,51 @@ internal sealed class DepotNotePresence : IDisposable
         _timer = _time.CreateTimer(async _ => await BeatAsync().ConfigureAwait(false), null, Beat, Beat);
     }
 
-    // The clock of this client's last update; each update has a higher one, or the hub ignores it. The client id must be new for every
-    // instance: a web client still holds the clock of an old one and would ignore a restart from 1.
+    // The clock of this client's last update; each update has a higher one, or the hub ignores it.
     public ulong Clock => Volatile.Read(ref _clock);
 
-    public IReadOnlyList<LivePeer> Peers
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _Peers();
-            }
-        }
-    }
+    // The list as last handed to the host, with the offsets of that moment.
+    public IReadOnlyList<LivePeer> Peers => Volatile.Read(ref _published);
 
-    public void SetSelf(DepotPresenceSelf? self)
+    public Task SetSelfAsync(DepotPresenceSelf? self, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             _self = self;
         }
 
-        _Raise();
+        return _RaiseAsync(cancellationToken);
     }
 
-    // Offline: the people stay in the list, dimmed, until the connection is back and they are heard from again.
-    public void SetAway(bool away)
+    // Offline: the people stay in the list, dimmed, and nothing is sent until the connection is back.
+    public Task SetAwayAsync(bool away, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             if (_away == away)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             _away = away;
         }
 
-        _Raise();
+        return _RaiseAsync(cancellationToken);
+    }
+
+    // A new hub connection: the hub knows a connection by the first client id it uses, so the id is new and the clock starts over.
+    // A web client holds the clock of an old id and would ignore a restart on it.
+    public Task ReconnectAsync(ulong clientId, Func<byte[], CancellationToken, Task> send, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            _clientId = clientId;
+            _send = send;
+            _clock = 0;
+            _away = false;
+        }
+
+        return _RaiseAsync(cancellationToken);
     }
 
     public async Task SetOwnAsync(LivePresenceState state, CancellationToken cancellationToken)
@@ -119,6 +127,10 @@ internal sealed class DepotNotePresence : IDisposable
         lock (_gate)
         {
             _own = state;
+            if (_away)
+            {
+                return;
+            }
         }
 
         await _SendAsync(cancellationToken).ConfigureAwait(false);
@@ -138,13 +150,14 @@ internal sealed class DepotNotePresence : IDisposable
             return;
         }
 
-        foreach (var entry in entries)
+        ulong own;
+        lock (_gate)
         {
-            if (entry.ClientId == _clientId)
-            {
-                continue;
-            }
+            own = _clientId;
+        }
 
+        foreach (var entry in entries.Where(entry => entry.ClientId != own))
+        {
             // Like y-protocols: a state replaces an older clock, and a null removes a client only at the same or a higher clock.
             if (entry.State == "null")
             {
@@ -159,7 +172,7 @@ internal sealed class DepotNotePresence : IDisposable
                 continue;
             }
 
-            var remote = await _ReadAsync(from, entry, cancellationToken).ConfigureAwait(false);
+            var remote = _Read(from, entry);
             lock (_gate)
             {
                 if (remote is not null && (!_remote.TryGetValue(entry.ClientId, out var known) || known.Clock < entry.Clock))
@@ -169,11 +182,11 @@ internal sealed class DepotNotePresence : IDisposable
             }
         }
 
-        _Raise();
+        await _RaiseAsync(cancellationToken).ConfigureAwait(false);
     }
 
     // The hub's `left` event: that connection's clients are gone.
-    public void Left(string from)
+    public Task LeftAsync(string from, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
@@ -183,7 +196,7 @@ internal sealed class DepotNotePresence : IDisposable
             }
         }
 
-        _Raise();
+        return _RaiseAsync(cancellationToken);
     }
 
     public void Dispose()
@@ -191,7 +204,6 @@ internal sealed class DepotNotePresence : IDisposable
         _timer.Dispose();
         _life.Cancel();
         _life.Dispose();
-        _sending.Dispose();
     }
 
     // Seen again or not, the beat resends this client's cursor and drops whoever has been silent too long.
@@ -204,16 +216,16 @@ internal sealed class DepotNotePresence : IDisposable
                 return;
             }
 
-            // Offline the people stay, dimmed, and nothing can be sent; the beat resumes with the connection.
-            if (_away)
-            {
-                return;
-            }
-
             var now = _time.GetUtcNow();
             bool dropped;
             lock (_gate)
             {
+                // Offline the people stay, dimmed, and nothing can be sent; the beat resumes with the connection.
+                if (_away)
+                {
+                    return;
+                }
+
                 var gone = _remote.Where(pair => now - pair.Value.Seen >= Silence).Select(pair => pair.Key).ToList();
                 gone.ForEach(id => _remote.Remove(id));
                 dropped = gone.Count > 0;
@@ -221,7 +233,7 @@ internal sealed class DepotNotePresence : IDisposable
 
             if (dropped)
             {
-                _Raise();
+                await _RaiseAsync(_life.Token).ConfigureAwait(false);
             }
 
             await _SendAsync(_life.Token).ConfigureAwait(false);
@@ -240,14 +252,16 @@ internal sealed class DepotNotePresence : IDisposable
         try
         {
             LivePresenceState own;
+            ulong clientId;
+            Func<byte[], CancellationToken, Task> send;
             lock (_gate)
             {
-                own = _own;
+                (own, clientId, send) = (_own, _clientId, _send);
             }
 
             var state = new Dictionary<string, object?> { ["activity"] = own.Activity, ["cursor"] = await _CursorAsync(own, cancellationToken).ConfigureAwait(false) };
-            var entry = new DepotAwarenessEntry(_clientId, Interlocked.Increment(ref _clock), JsonSerializer.Serialize(state));
-            await _send(DepotAwarenessCodec.Encode([entry]), cancellationToken).ConfigureAwait(false);
+            var entry = new DepotAwarenessEntry(clientId, Interlocked.Increment(ref _clock), JsonSerializer.Serialize(state));
+            await send(DepotAwarenessCodec.Encode([entry]), cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -264,8 +278,8 @@ internal sealed class DepotNotePresence : IDisposable
         }
 
         var anchor = own.Selection is { } range ? (caret == range.End ? range.Start : range.End) : caret;
-        var head = await _map.RelativeAtAsync(caret, cancellationToken).ConfigureAwait(false);
-        var tail = anchor == caret ? head : await _map.RelativeAtAsync(anchor, cancellationToken).ConfigureAwait(false);
+        var head = await _RelativeAsync(caret, cancellationToken).ConfigureAwait(false);
+        var tail = anchor == caret ? head : await _RelativeAsync(anchor, cancellationToken).ConfigureAwait(false);
         return head is null || tail is null
             ? null
             : JsonSerializer.SerializeToElement(new Dictionary<string, JsonElement>
@@ -275,7 +289,35 @@ internal sealed class DepotNotePresence : IDisposable
             });
     }
 
-    private async Task<Remote?> _ReadAsync(string from, DepotAwarenessEntry entry, CancellationToken cancellationToken)
+    // The room can be gone (a reset swaps it) or the text not loaded: no cursor then, not a failed beat.
+    private async Task<string?> _RelativeAsync(int offset, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _map.RelativeAtAsync(offset, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            _logger?.LogDebug(error, "No cursor could be made for offset {Offset}.", offset);
+            return null;
+        }
+    }
+
+    // Another client's position can be one this room cannot read (the hub only checks that a key is there): no caret, but the person stays.
+    private async Task<int?> _OffsetAsync(string relativeJson, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _map.OffsetOfAsync(relativeJson, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            _logger?.LogDebug(error, "A cursor of another client could not be read.");
+            return null;
+        }
+    }
+
+    private Remote? _Read(string from, DepotAwarenessEntry entry)
     {
         try
         {
@@ -286,23 +328,21 @@ internal sealed class DepotNotePresence : IDisposable
                 return null;
             }
 
-            int? caret = null;
-            LiveRange? selection = null;
+            string? anchor = null;
+            string? head = null;
             if (root.TryGetProperty("cursor", out var cursor) && cursor.ValueKind == JsonValueKind.Object
-                && cursor.TryGetProperty("anchor", out var anchor) && cursor.TryGetProperty("head", out var head))
+                && cursor.TryGetProperty("anchor", out var a) && cursor.TryGetProperty("head", out var h))
             {
-                var headAt = await _map.OffsetOfAsync(head.GetRawText(), cancellationToken).ConfigureAwait(false);
-                var anchorAt = await _map.OffsetOfAsync(anchor.GetRawText(), cancellationToken).ConfigureAwait(false);
-                caret = headAt;
-                selection = headAt is { } h && anchorAt is { } a && a != h ? new LiveRange(Math.Min(a, h), Math.Max(a, h)) : null;
+                (anchor, head) = (a.GetRawText(), h.GetRawText());
             }
 
             string Text(string name) => user.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
             var role = Text("role");
-            return new Remote(from, entry.Clock, _time.GetUtcNow(), new LivePeer(
-                Text("id"), Text("name"), Text("color"), Text("source"), role.Length == 0 ? role : char.ToUpperInvariant(role[0]) + role[1..],
-                root.TryGetProperty("activity", out var activity) && activity.ValueKind == JsonValueKind.String ? activity.GetString() ?? "reading" : "reading",
-                Caret: caret, Selection: selection));
+            var source = Text("source");
+            return new Remote(from, entry.Clock, _time.GetUtcNow(), anchor, head, new LivePeer(
+                Text("id"), Text("name"), Text("color"), source == "cockpit" ? "Cockpit" : source,
+                role.Length == 0 ? role : char.ToUpperInvariant(role[0]) + role[1..],
+                root.TryGetProperty("activity", out var activity) && activity.ValueKind == JsonValueKind.String ? activity.GetString() ?? "reading" : "reading"));
         }
         catch (JsonException error)
         {
@@ -311,32 +351,44 @@ internal sealed class DepotNotePresence : IDisposable
         }
     }
 
-    private List<LivePeer> _Peers()
+    // The list as the host should see it now: the offsets are worked out from the stored positions each time, on the text as it is.
+    // Snapshot, mapping and delivery under one gate, so lists reach the host in the order they were made.
+    private async Task _RaiseAsync(CancellationToken cancellationToken)
     {
-        var peers = new List<LivePeer>();
-        if (_self is { } self)
+        await _raising.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            peers.Add(new LivePeer(self.Id, self.Name, self.Color, self.Source, self.Role, _own.Activity, You: true, Away: _away));
-        }
-
-        peers.AddRange(_remote.Values.OrderBy(remote => remote.Peer.Who, StringComparer.Ordinal).Select(remote => remote.Peer with { Away = _away }));
-        return peers;
-    }
-
-    // Snapshot and delivery under one gate, so lists reach the host in the order they were made.
-    private void _Raise()
-    {
-        lock (_raiseGate)
-        {
-            IReadOnlyList<LivePeer> peers;
+            List<Remote> remote;
+            DepotPresenceSelf? self;
+            LivePresenceState own;
+            bool away;
             lock (_gate)
             {
-                peers = _Peers();
+                (remote, self, own, away) = ([.. _remote.Values.OrderBy(item => item.Peer.Who, StringComparer.Ordinal)], _self, _own, _away);
             }
 
+            var peers = new List<LivePeer>();
+            if (self is not null)
+            {
+                peers.Add(new LivePeer(self.Id, self.Name, self.Color, self.Source, self.Role, self.Role == "Viewer" ? "watching" : own.Activity, You: true, Away: away));
+            }
+
+            foreach (var item in remote)
+            {
+                var caret = item.Head is null ? null : await _OffsetAsync(item.Head, cancellationToken).ConfigureAwait(false);
+                var anchor = caret is null || item.Anchor is null ? null : await _OffsetAsync(item.Anchor, cancellationToken).ConfigureAwait(false);
+                var selection = caret is { } c && anchor is { } a && a != c ? new LiveRange(Math.Min(a, c), Math.Max(a, c)) : null;
+                peers.Add(item.Peer with { Away = away, Caret = caret, Selection = selection });
+            }
+
+            Volatile.Write(ref _published, peers);
             _changed(peers);
+        }
+        finally
+        {
+            _raising.Release();
         }
     }
 
-    private sealed record Remote(string From, ulong Clock, DateTimeOffset Seen, LivePeer Peer);
+    private sealed record Remote(string From, ulong Clock, DateTimeOffset Seen, string? Anchor, string? Head, LivePeer Peer);
 }

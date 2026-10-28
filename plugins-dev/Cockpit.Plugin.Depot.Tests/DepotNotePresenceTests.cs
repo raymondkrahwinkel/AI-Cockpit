@@ -46,7 +46,7 @@ public class DepotNotePresenceTests
         Assert.Empty(presence.Peers);
 
         await presence.ReceiveAsync("conn-2", bytes, CancellationToken.None);
-        presence.Left("conn-2");
+        await presence.LeftAsync("conn-2");
         Assert.Empty(presence.Peers);
 
         await presence.ReceiveAsync("conn-3", bytes, CancellationToken.None);
