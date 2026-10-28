@@ -24,6 +24,5 @@ internal static class DepotSignalR
                 throw;
             }
         };
-        options.WebSocketFactory = null;
     }
 }
