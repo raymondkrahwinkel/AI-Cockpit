@@ -261,6 +261,57 @@ export function undo() {
   return JSON.stringify(patchesFor(() => undoManager.undo()));
 }
 
+// G6: a Markdown offset in the mirror <-> a ProseMirror position, per block. The block's text characters are aligned with its Markdown
+// in order; what does not align is markup (#, -, **, `, |, a link's target). An offset on markup goes to the next text character.
+// ponytail: greedy alignment, right for text that does not repeat the markup right next to it; a serializer that reports positions
+// (or a per-node source map) if real notes show misses.
+function alignment(index) {
+  const [start, end] = ranges[index];
+  let base = 0;
+  for (let i = 0; i < index; i++) {
+    base += pmDoc.child(i).nodeSize;
+  }
+  const chars = [];
+  pmDoc.child(index).descendants((node, pos) => {
+    if (node.isText) {
+      for (let k = 0; k < node.text.length; k++) {
+        chars.push({ c: node.text[k], pos: base + 1 + pos + k });
+      }
+    }
+  });
+  const pairs = []; // [markdown offset, pm position]
+  let j = 0;
+  for (let k = start; k < end && j < chars.length; k++) {
+    if (mirror[k] === chars[j].c && !(mirror[k] === '\\' && chars[j].c !== '\\')) {
+      pairs.push([k, chars[j].pos]);
+      j++;
+    }
+  }
+  return { pairs, end, last: chars.length ? chars[chars.length - 1].pos + 1 : base + 1 };
+}
+export function pmPosOfOffset(offset) {
+  const index = ranges.findIndex((r) => r && r[0] <= offset && offset <= r[1]);
+  const { pairs, last } = alignment(index);
+  const hit = pairs.find(([k]) => k >= offset);
+  return hit ? hit[1] : last;
+}
+export function offsetOfPmPos(pos) {
+  for (let index = 0; index < ranges.length; index++) {
+    const { pairs, end } = alignment(index);
+    if (pairs.length && pos >= pairs[0][1] && pos <= pairs[pairs.length - 1][1] + 1) {
+      const hit = pairs.find(([, p]) => p >= pos);
+      return hit ? hit[0] : pairs[pairs.length - 1][0] + 1 > end ? end : pairs[pairs.length - 1][0] + 1;
+    }
+  }
+  return -1;
+}
+export function relativeAtOffset(offset) {
+  return relativeAt(pmPosOfOffset(offset));
+}
+export function offsetOfRelative(relativeJson) {
+  return offsetOfPmPos(absoluteOf(relativeJson));
+}
+
 /** G6: a ProseMirror position as relativePositionToJSON, and back. */
 export function relativeAt(pos) {
   if (!pmDoc) {
