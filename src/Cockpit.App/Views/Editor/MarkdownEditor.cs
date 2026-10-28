@@ -131,6 +131,8 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
 
     internal TextEditor TextEditor => _editor;
 
+    internal void UseWorkspaceSourceToggle() => _sourceToggle.IsVisible = false;
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
