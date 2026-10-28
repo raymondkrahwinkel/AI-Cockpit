@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
+
 - added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without
   a title it shows one line, as before. The startup toast now names up to three of what came in, each with its source,
   and says "+N more" for the rest. The panel groups its rows under "Still open from your last session", "Today" and

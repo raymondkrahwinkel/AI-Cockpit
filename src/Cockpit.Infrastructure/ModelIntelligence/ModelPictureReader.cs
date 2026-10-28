@@ -83,7 +83,7 @@ internal sealed class ModelPictureReader(
             : snapshot?.Id ?? reference;
         var unmatched = reference is null ? "the provider names no public model id for it"
             : snapshots.Count == 0 ? "no public model data: OpenRouter /api/v1/models was not reachable and nothing is cached"
-            : snapshot is null ? $"geen match voor {reference}; dichtstbijzijnde: {match.Closest ?? "geen kandidaat"}"
+            : snapshot is null ? $"no match for {reference}; closest: {match.Closest ?? "no candidate"}"
             : null;
         var providerName = profile.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : profile.Provider.ToString();
 
@@ -93,7 +93,7 @@ internal sealed class ModelPictureReader(
         ModelPriceFact? price = null;
         if (profile.ProviderConfig is LmStudioConfig or OllamaConfig || reading?.IsSelfHosted == true)
         {
-            price = new ModelPriceFact(null, null, new Sourced("zelf gehost / eigen hardware", now, TimeSpan.MaxValue));
+            price = new ModelPriceFact(null, null, new Sourced("self-hosted / own hardware", now, TimeSpan.MaxValue));
         }
         else if (estimate is { Source: { } estimateSource } && (estimate.EstimatedInputUsdPerMillionTokens is not null || estimate.EstimatedOutputUsdPerMillionTokens is not null))
         {

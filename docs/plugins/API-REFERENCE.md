@@ -1927,7 +1927,8 @@ without a session, what your provider knows about its models right now. It gets 
 `PluginModelIntelligence`: prices (`PluginModelCostEstimate` with `PublicModelRef`, `Source` and `PriceModifiers`),
 peak windows (`PluginTimeWindow`, wall-clock times in an IANA zone), limits (`PluginLimit`) and quota state
 (`PluginQuotaState`, a `PluginRateLimitWindow` plus its source). Every fact carries a `PluginFactSource` (name, `AsOf`,
-`ValidFor`). Report only what you read live or from a public source: leave the property `null` or a list empty and the
+`ValidFor`). Set `IsSelfHosted` only when the provider configuration explicitly establishes that the model runs on own
+hardware; the host then shows "self-hosted / own hardware" instead of a token price. Report only what you read live or from a public source: leave the property `null` or a list empty and the
 host reads "unknown", never 0. What you see during a session (a quota reading, a rate-limit refusal, a latency) goes to
 `host.RecordModelObservation(...)`, which a host before 0.128.0 ignores. A plugin that sets the read sets
 `minHostVersion` 0.128.0.

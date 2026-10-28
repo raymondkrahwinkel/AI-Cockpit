@@ -84,7 +84,7 @@ public sealed class ModelOptionsTests
         Assert.Equal(30, (int)price["fact"]!["ageSeconds"]!);
         Assert.Contains("provider live read", result["attribution"]!.AsArray().Select(source => (string)source!));
 
-        Assert.Equal("coding ontbreekt → intelligence", model["quality"]?["basis"]?.GetValue<string>());
+        Assert.Equal("coding missing → intelligence", model["quality"]?["basis"]?.GetValue<string>());
         Assert.Equal("unknown", (string)model["quota"]!);
 
         // AC-1813/AC-1855: the step stands in BEFORE A SPAWN, the tool in WHAT EXISTS, and it is preloaded, not deferred.
@@ -102,15 +102,15 @@ public sealed class ModelOptionsTests
 
     public static TheoryData<string, string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
     {
-        { "claude-opus-5-5", "coding", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5", "coding", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
-        { "~anthropic/claude-opus-latest", "coding", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding ontbreekt → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5:batch", "coding", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
-        { "gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding ontbreekt → intelligence", _Basis },
-        { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding ontbreekt → intelligence", _Basis },
-        { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding ontbreekt → intelligence", _Basis },
-        { "agentic-only", "agentic", "example/agentic-only", "agentic ontbreekt → coding", _Basis },
-        { "onbekend-model", "coding", "onbekend-model", "unknown: geen match voor onbekend-model; dichtstbijzijnde: qwen/qwen3.8-27b", _Quality },
+        { "claude-opus-5-5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
+        { "anthropic/claude-opus-5.5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
+        { "~anthropic/claude-opus-latest", "coding", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding missing → intelligence", _Basis },
+        { "anthropic/claude-opus-5.5:batch", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
+        { "gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
+        { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
+        { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding missing → intelligence", _Basis },
+        { "agentic-only", "agentic", "example/agentic-only", "agentic missing → coding", _Basis },
+        { "onbekend-model", "coding", "onbekend-model", "unknown: no match for onbekend-model; closest: qwen/qwen3.8-27b", _Quality },
     };
 
     [Theory]

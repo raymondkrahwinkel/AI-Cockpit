@@ -316,11 +316,11 @@ internal sealed class AssistantReadMcpTools(
             (decimal? Value, string? Basis) Index(ModelPictureRow row) => row.Indices is null ? (null, null) : kind switch
             {
                 "coding" when row.Indices.Coding is { } value => (value, "coding"),
-                "coding" when row.Indices.Agentic is { } value => (value, "coding ontbreekt → agentic"),
-                "coding" when row.Indices.Intelligence is { } value => (value, "coding ontbreekt → intelligence"),
+                "coding" when row.Indices.Agentic is { } value => (value, "coding missing → agentic"),
+                "coding" when row.Indices.Intelligence is { } value => (value, "coding missing → intelligence"),
                 "agentic" when row.Indices.Agentic is { } value => (value, "agentic"),
-                "agentic" when row.Indices.Coding is { } value => (value, "agentic ontbreekt → coding"),
-                "agentic" when row.Indices.Intelligence is { } value => (value, "agentic ontbreekt → intelligence"),
+                "agentic" when row.Indices.Coding is { } value => (value, "agentic missing → coding"),
+                "agentic" when row.Indices.Intelligence is { } value => (value, "agentic missing → intelligence"),
                 _ when row.Indices.Intelligence is { } value => (value, "intelligence"),
                 _ => (null, null),
             };
@@ -361,8 +361,8 @@ internal sealed class AssistantReadMcpTools(
                     provider = row.Provider,
                     model = row.Model,
                     publicModelRef = row.PublicModelRef,
-                    price = row.SelfHosted ? (object)"zelf gehost / eigen hardware" : row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
-                    priceNow = row.SelfHosted ? "zelf gehost / eigen hardware" : row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },
+                    price = row.SelfHosted ? (object)"self-hosted / own hardware" : row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
+                    priceNow = row.SelfHosted ? "self-hosted / own hardware" : row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },
                     modifiers = row.Modifiers.Select(modifier => new { modifier.Condition, modifier.Factor, modifier.ActiveNow }),
                     quality = index.Value is null ? Unknown(row.Unmatched ?? $"OpenRouter carries no Artificial Analysis {kind} index for {row.PublicModelRef}") : new { kind, index = index.Value, basis = index.Basis, fact = Fact(row.PublicSource) },
                     contextTokens = row.Context is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no context length for {row.PublicModelRef}") : new { tokens = row.Context.Tokens, fact = Fact(row.Context.Source) },
