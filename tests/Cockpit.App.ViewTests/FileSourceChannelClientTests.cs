@@ -4,6 +4,8 @@ using Cockpit.App.Files;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI;
 using NSubstitute;
+using Cockpit.Infrastructure.BackendApi;
+using System.Net;
 
 namespace Cockpit.App.ViewTests;
 
@@ -32,6 +34,11 @@ public class FileSourceChannelClientTests
         var transport = await Assert.ThrowsAsync<FileSourceException>(() => client.ReadAsync(file, default));
         Assert.Equal(FileSourceErrorKind.Unavailable, transport.Kind);
         Assert.DoesNotContain("private-server-path", transport.Message, StringComparison.Ordinal);
+        channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
+            Task.FromException<JsonElement>(new BackendApiException(HttpStatusCode.Unauthorized, "expired", "private-backend-description")));
+        var backend = await Assert.ThrowsAsync<FileSourceException>(() => client.ReadAsync(file, default));
+        Assert.Equal(FileSourceErrorKind.Unavailable, backend.Kind);
+        Assert.DoesNotContain("private-backend-description", backend.Message, StringComparison.Ordinal);
         channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
             Task.FromResult(JsonSerializer.SerializeToElement("unexpected reply")));
         var malformed = await Assert.ThrowsAsync<FileSourceException>(() => client.ReadAsync(file, default));
