@@ -281,7 +281,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         }
 
         _logger?.LogInformation("The live note for {Connection} is {State}.", _connection.Name, state);
-        _Terminal(state, exception.Message);
+        _Terminal(state);
     }
 
     private static string? _StateFor(string? code) => code switch
@@ -293,10 +293,10 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     };
 
     // The state ends the loop: no second attempt until Connect is called again.
-    private void _Terminal(string state, string? detail = null)
+    private void _Terminal(string state)
     {
         _terminal = true;
-        _Status(state, detail);
+        _Status(state);
     }
 
     private Task _OnClosedAsync(Exception? exception)
@@ -331,7 +331,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         }
     }
 
-    private void _Status(string state, string? detail = null)
+    private void _Status(string state)
     {
         if (_state == state)
         {
@@ -339,7 +339,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         }
 
         _state = state;
-        _publish(new DepotNoteLiveStatus(_connection.Id, _note.Organization, _note.Project, _note.Path, state, detail ?? _MessageFor(state)));
+        _publish(new DepotNoteLiveStatus(_connection.Id, _note.Organization, _note.Project, _note.Path, state, _MessageFor(state)));
     }
 
     // Fixed sentences: never text from an exception or a response, which could carry a header.
