@@ -10,9 +10,6 @@ internal static class SettingsCarrierWhitelist
 {
     public static readonly IReadOnlyList<string> Carried =
     [
-        "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",
-        "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].Assistant", "Projects[].IsolateInWorktreeByDefault",
-        "CategoryOrder",
         "Profiles[].Label", "Profiles[].Purpose", "Profiles[].SystemPrompt", "Profiles[].Assistant",
         "Profiles[].DefaultKind", "Profiles[].MemoryCapMegabytes", "Profiles[].EnabledMcpServers",
         "Profiles[].Defaults.PermissionMode", "Profiles[].Defaults.Model", "Profiles[].Defaults.Effort",
