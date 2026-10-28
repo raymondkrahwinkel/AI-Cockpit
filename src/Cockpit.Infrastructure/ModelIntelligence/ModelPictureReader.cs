@@ -75,12 +75,12 @@ internal sealed class ModelPictureReader(
         DateTimeOffset now)
     {
         var estimate = model is null ? null : reading?.Models.FirstOrDefault(candidate => string.Equals(candidate.Model, model, StringComparison.Ordinal));
-        var reference = estimate?.PublicModelRef ?? model;
+        var reference = _NormalizeReference(profile, estimate?.PublicModelRef ?? model);
         var snapshot = _Match(reference, snapshots);
         var publicRef = snapshot?.Id ?? reference;
         var unmatched = reference is null ? "the provider names no public model id for it"
             : snapshots.Count == 0 ? "no public model data: OpenRouter /api/v1/models was not reachable and nothing is cached"
-            : snapshot is null ? $"'{reference}' matches no single model id in OpenRouter /api/v1/models"
+            : snapshot is null ? $"no public match for {reference}"
             : null;
         var providerName = profile.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : profile.Provider.ToString();
 
@@ -145,6 +145,22 @@ internal sealed class ModelPictureReader(
             publicSource,
             own,
             unmatched);
+    }
+
+    private static string? _NormalizeReference(SessionProfile profile, string? reference)
+    {
+        if (reference is null || reference.Contains('/', StringComparison.Ordinal))
+        {
+            return reference;
+        }
+
+        return profile.ProviderConfig switch
+        {
+            PluginProviderConfig { ProviderId: "cli-agent-provider.codex" } => "openai/" + reference,
+            PluginProviderConfig { ProviderId: "claude" } => $"~anthropic/claude-{reference}-latest",
+            _ when profile.Provider == SessionProvider.ClaudeCli => $"~anthropic/claude-{reference}-latest",
+            _ => reference,
+        };
     }
 
     // Exact public id first; a bare provider id joins the one public id ending in "/<id>", never a pick between several.
