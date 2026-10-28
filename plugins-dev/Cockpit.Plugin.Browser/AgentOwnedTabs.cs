@@ -95,7 +95,11 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
             string? text = null;
             string? png = null;
             if (screenshot)
+            {
+                // Chromium needs a rendered surface even when a later target made this tab backgrounded.
+                await page.CallAsync("Page.bringToFront", null, timeout.Token).ConfigureAwait(false);
                 png = (await page.CallAsync("Page.captureScreenshot", new { format = "png" }, timeout.Token).ConfigureAwait(false)).GetProperty("data").GetString();
+            }
             else if (mode == "text")
                 text = (await page.CallAsync("Runtime.evaluate", new { expression = "document.body ? document.body.innerText.slice(0,200000) : ''", returnByValue = true }, timeout.Token).ConfigureAwait(false)).GetProperty("result").GetProperty("value").GetString();
             else
