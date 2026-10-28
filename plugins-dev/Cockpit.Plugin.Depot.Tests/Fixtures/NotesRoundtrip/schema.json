@@ -257,7 +257,7 @@
       "defining": true,
       "attrs": {
         "checked": {
-          "default": false
+          "default": true
         }
       }
     },
