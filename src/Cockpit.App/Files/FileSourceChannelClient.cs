@@ -18,7 +18,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         if (string.IsNullOrWhiteSpace(read.Version) || read.ContentBase64 is null)
             throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a file version.");
         return new FileReadResult(new MemoryStream(FileSourceChannel.DecodeContent(read.ContentBase64), writable: false),
-            read.Version, read.Size, read.Modified, read.ContentType) { CanWrite = read.CanWrite };
+            read.Version, read.Size, read.Modified, read.ContentType) { CanWrite = read.CanWrite, ModifiedBy = read.ModifiedBy };
     }, cancellationToken);
 
     public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,

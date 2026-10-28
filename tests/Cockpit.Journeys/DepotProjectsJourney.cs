@@ -62,11 +62,15 @@ public sealed class DepotProjectsJourney
 
         var fileHost = cockpit.Cockpit.LocalPluginUiPart("depot")?.Host
             ?? throw new InvalidOperationException("The Depot UI was not initialized.");
-        await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => fileHost.OpenFileWorkspaceAsync("depot.markdown",
+        Task OpenEditor(bool createNew) => fileHost.OpenFileWorkspaceAsync("depot.markdown",
             new FileWorkspaceOpenOptions(new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", "notes/editor.md" }), "notes/editor.md"),
                 "depot:journey:acme/cockpit:notes/editor.md", "editor.md", "Depot / Journey / acme/cockpit",
-                Edit: true, CreateNew: true, InitialText: "# Journey\n\n")));
+                Edit: true, CreateNew: createNew, InitialText: createNew ? "# Journey\n\n" : ""));
+        await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => OpenEditor(true));
         Assert.Equal("# Journey\n\nWritten in Cockpit.", depot.EditorText);
+        await FileWorkspaceSteps.ChangedBehindYourBackThenMergedAsync(cockpit, () => OpenEditor(false),
+            () => depot.ChangeEditorFromOutside("# Journey\n\nWritten in Cockpit.\nAdded by the assistant."));
+        Assert.Equal("# Journey\n\nWritten in Cockpit, edited.\nAdded by the assistant.", depot.EditorText);
 
         var memory = cockpit.Services.GetRequiredService<IProjectMemorySourceRegistry>().Sources.Single(source => source.Scheme == "depot");
         var shared = cockpit.Services.GetRequiredService<ISharedProjectSourceRegistry>().Sources.Single(source => source.Key == "depot");
@@ -223,6 +227,8 @@ public sealed class DepotProjectsJourney
         public string Inbox => state.Inbox;
         public string? EditorText => state.EditorText;
 
+        public void ChangeEditorFromOutside(string text) => state.ChangeEditorFromOutside(text);
+
         public void ChangeFromSecondClient(string name) => state.ChangeFromSecondClient(name);
 
         public async Task AllowWritesAsync()
@@ -308,19 +314,38 @@ public sealed class DepotProjectsJourney
         public bool CanWrite { get; private set; }
         public string? EditorText { get; private set; }
 
+        private int _editorVersion;
+        private string _editorBy = "journey-user";
+        private string EditorChecksum => $"editor-v{_editorVersion}";
+
+        public void ChangeEditorFromOutside(string text)
+        {
+            EditorText = text;
+            _editorVersion++;
+            _editorBy = "cockpit-assistant";
+        }
+
         public async Task ReadEditorAsync(HttpContext context)
         {
-            await context.Response.WriteAsJsonAsync(new { files = new[] { new { path = "notes/editor.md", content = EditorText, checksum = "editor-v1" } } });
+            await context.Response.WriteAsJsonAsync(new
+            {
+                files = new[] { new { path = "notes/editor.md", content = EditorText, checksum = EditorChecksum, updatedAt = DateTimeOffset.UtcNow, updatedBy = _editorBy } },
+            });
         }
 
         public async Task WriteEditorAsync(HttpContext context)
         {
             using var request = await JsonDocument.ParseAsync(context.Request.Body);
             var entry = request.RootElement[0];
-            var expected = EditorText is null ? "" : "editor-v1";
+            var expected = EditorText is null ? "" : EditorChecksum;
             var matches = entry.GetProperty("baseChecksum").GetString() == expected;
-            EditorText = matches ? entry.GetProperty("content").GetString() : EditorText;
-            await context.Response.WriteAsJsonAsync(new { results = new[] { new { path = "notes/editor.md", status = matches ? "written" : "conflict", checksum = "editor-v1" } } });
+            if (matches)
+            {
+                EditorText = entry.GetProperty("content").GetString();
+                _editorVersion++;
+                _editorBy = "journey-user";
+            }
+            await context.Response.WriteAsJsonAsync(new { results = new[] { new { path = "notes/editor.md", status = matches ? "written" : "conflict", checksum = EditorChecksum } } });
         }
 
         private string Checksum => $"definition-v{_version}";

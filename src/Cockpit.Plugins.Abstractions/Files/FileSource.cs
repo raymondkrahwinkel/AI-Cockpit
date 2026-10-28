@@ -7,6 +7,7 @@ public sealed record FileReadResult(Stream Content, string Version, long? Size =
     DateTimeOffset? Modified = null, string? ContentType = null)
 {
     public bool CanWrite { get; init; }
+    public string? ModifiedBy { get; init; }
 }
 public enum FileWriteStatus { Written, Conflict }
 public sealed record FileWriteResult(FileWriteStatus Status, string? Version);
