@@ -150,7 +150,19 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         _permissionModeConfines = _PermissionModeConfines(options);
 
         var environment = _SpawnEnvironment(profile, launchOptions, contributed);
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
+        _scratchPane = string.IsNullOrEmpty(paneId) ? Guid.NewGuid().ToString("N") : paneId;
+        _scratch = SessionScratch.Create(_scratchPane, message => logger?.LogWarning("{Message}", message));
+        environment = new Dictionary<string, string>(environment, StringComparer.OrdinalIgnoreCase)
+        {
+            ["COCKPIT_SCRATCH"] = _scratch,
+            ["TEMP"] = _scratch,
+            ["TMP"] = _scratch,
+            ["TMPDIR"] = _scratch,
+        };
+        var scratchOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
+        scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
+            options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
     }
 
     // AC-964: the host-run tool loop for a provider that asked for one, null otherwise (the default today).
@@ -585,6 +597,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public async ValueTask DisposeAsync()
     {
+        using var process = SessionScratchCleanup.CaptureProcess(inner.ProcessId);
         // Before the driver goes: the host's tool loop holds live MCP clients (and, for stdio servers, their
         // processes), and any prompt still waiting has to be refused rather than left hanging.
         if (_hostToolset is not null)
@@ -593,7 +606,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
 
         await _DisposeInnerAsync().ConfigureAwait(false);
+        if (_scratch is { } scratch && _scratchPane is { } scratchPane)
+        {
+            await SessionScratchCleanup.DeleteAsync(scratch, scratchPane, worktreeManager, logger, process).ConfigureAwait(false);
+        }
     }
+
+    private string? _scratch;
+    private string? _scratchPane;
 
     private ValueTask _DisposeInnerAsync()
     {
