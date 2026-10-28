@@ -84,7 +84,7 @@ export function createRoom(clientId) {
       outgoing.push(toBase64(update));
     }
   });
-  undoManager = new Y.UndoManager([doc.getXmlFragment('default'), doc.getText('frontmatter')], { trackedOrigins: new Set([LOCAL, REMOTE]) });
+  undoManager = new Y.UndoManager([doc.getXmlFragment('default'), doc.getText('frontmatter')], { trackedOrigins: new Set([LOCAL]) });
   // markdown.ts sets up marked on its first parse; the lexer below has to see the same tokenizers.
   parseBody('');
 }
