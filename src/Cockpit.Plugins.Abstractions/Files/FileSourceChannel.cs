@@ -46,6 +46,9 @@ public static class FileSourceChannel
 public sealed record FileSourceReadRequest(FileRef File);
 public sealed record FileSourceWriteRequest(FileRef File, string ContentBase64, string? IfVersion, bool MustNotExist);
 public sealed record FileSourceReadAnswer(string ContentBase64, string Version, long? Size,
-    DateTimeOffset? Modified, string? ContentType, bool CanWrite = false);
+    DateTimeOffset? Modified, string? ContentType)
+{
+    public bool CanWrite { get; init; }
+}
 public sealed record FileSourceError(FileSourceErrorKind Kind, string Message);
 public sealed record FileSourceAnswer<T>(T? Data, FileSourceError? Error) where T : class;

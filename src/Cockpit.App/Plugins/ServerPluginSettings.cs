@@ -92,9 +92,10 @@ internal sealed class ServerPluginSettings
         ICockpitUiHost local,
         IPluginChannelRelay relay,
         string folderId,
-        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
+        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+        string serverName = "server")
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, () => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]), await ServerManagedClis.ReadAsync(relay, folderId));
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, () => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]), await ServerManagedClis.ReadAsync(relay, folderId), serverName);
         if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
         {
             return new Dictionary<string, Func<string?, IPluginProviderConfigView>>();

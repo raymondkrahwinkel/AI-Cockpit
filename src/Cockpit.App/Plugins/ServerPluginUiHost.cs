@@ -117,7 +117,7 @@ internal sealed class ServerPluginUiHost(
 
     public void AddFileWorkspaceType(string workspaceTypeId, string title)
     {
-        if (local is CockpitUiHost native) native.AddRemoteFileWorkspaceType(workspaceTypeId, title, sourceKey, channel, storage);
+        if (local is CockpitUiHost native) native.AddRemoteFileWorkspaceType(workspaceTypeId, title, sourceKey, channel);
     }
 
     public Task OpenFileWorkspaceAsync(string workspaceTypeId, Cockpit.Plugins.Abstractions.UI.Files.FileWorkspaceOpenOptions options) =>

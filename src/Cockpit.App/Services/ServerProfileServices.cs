@@ -146,7 +146,7 @@ public sealed class ServerProfileServices(
                 continue;
             }
 
-            foreach (var (providerId, create) in await ServerPluginSettings.OpenProviderViewsAsync(part.UiType, part.Host, relay, owner, () => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([])))
+            foreach (var (providerId, create) in await ServerPluginSettings.OpenProviderViewsAsync(part.UiType, part.Host, relay, owner, () => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]), server))
             {
                 views[providerId] = create;
             }

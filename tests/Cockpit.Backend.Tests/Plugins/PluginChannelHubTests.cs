@@ -37,7 +37,7 @@ public class PluginChannelHubTests
         var source = Substitute.For<IFileSource>();
         source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes));
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ =>
-            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes("# hello")), "v1", CanWrite: true)));
+            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes("# hello")), "v1") { CanWrite = true }));
         source.WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), "v1", false, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new FileWriteResult(FileWriteStatus.Conflict, "v2")));
         var provider = Substitute.For<IFileSourceProvider>();
@@ -82,7 +82,7 @@ public class PluginChannelHubTests
         Assert.Equal(FileSourceErrorKind.Forbidden, (forbidden.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error
             ?? throw new InvalidOperationException("The permission error was missing.")).Kind);
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(
-            new FileReadResult(new MemoryStream(), "v1", CanWrite: true)));
+            new FileReadResult(new MemoryStream(), "v1") { CanWrite = true }));
         var readonlySnapshot = await hub.InvokeAsync("files", FileSourceChannel.Read,
             JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
         Assert.False((readonlySnapshot.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)?.Data
@@ -93,6 +93,10 @@ public class PluginChannelHubTests
             JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
         Assert.False((incapableSnapshot.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)?.Data
             ?? throw new InvalidOperationException("The source capability snapshot was missing.")).CanWrite);
+        var readonlyConnections = await hub.InvokeAsync("files", FileSourceChannel.Connections,
+            JsonSerializer.SerializeToElement(new { }), default);
+        Assert.True(Assert.Single(readonlyConnections.Deserialize<FileSourceAnswer<FileConnection[]>>(FileSourceChannel.Json)?.Data
+            ?? throw new InvalidOperationException("The connection list was missing.")).ReadOnly);
         await source.Received(1).WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         var changes = new List<PluginChannelEvent>();
         using var subscription = hub.Subscribe("files", FileSourceChannel.Changed, changes.Add);

@@ -183,7 +183,7 @@ public sealed class WorkspacePopOutTests
         public IFileSource Open(string connectionId) => this;
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) => Task.FromResult(
             new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(Text ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "Missing file."))),
-                $"v{_version}", CanWrite: CanWrite));
+                $"v{_version}") { CanWrite = CanWrite });
         public async Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
         {
             if (!CanWrite) throw new FileSourceException(FileSourceErrorKind.Forbidden, "Read-only file.");

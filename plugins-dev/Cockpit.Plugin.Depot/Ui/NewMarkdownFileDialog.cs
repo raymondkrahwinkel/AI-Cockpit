@@ -21,6 +21,7 @@ internal sealed class NewMarkdownFileDialog : UserControl
         _exists = exists;
         _open = open;
         _folder = new ComboBox { ItemsSource = folders, SelectedItem = folder, HorizontalAlignment = HorizontalAlignment.Stretch };
+        _folder.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<string>((path, _) => new TextBlock { Text = string.IsNullOrEmpty(path) ? "/" : path });
         _name.TextChanged += (_, _) => _Validate();
         _folder.SelectionChanged += (_, _) => _Validate();
         _create.Click += async (_, _) => await _CreateAsync().ConfigureAwait(true);
@@ -56,8 +57,9 @@ internal sealed class NewMarkdownFileDialog : UserControl
     {
         var name = (_name.Text ?? "").Trim();
         var target = _Target();
+        var stem = name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ? name[..^3].Trim() : name;
         _path.Text = target;
-        _error.Text = name.Length == 0 ? "" : name is "." or ".." || name.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0']) >= 0
+        _error.Text = name.Length == 0 ? "" : stem is "" or "." or ".." || name.IndexOfAny(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0']) >= 0
             ? "Choose a file name without path separators or special characters."
             : _exists(target) ? "This file already exists. Open it or choose another name." : "";
         _create.IsEnabled = name.Length > 0 && _error.Text.Length == 0;

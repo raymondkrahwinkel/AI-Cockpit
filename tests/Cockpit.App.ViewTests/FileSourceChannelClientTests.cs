@@ -20,7 +20,7 @@ public class FileSourceChannelClientTests
         var file = new FileRef("c1", "opaque", "note.md");
         channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
             Task.FromResult(JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
-                new(Convert.ToBase64String(Encoding.UTF8.GetBytes("# read")), "v1", 6, null, "text/markdown", CanWrite: true), null), FileSourceChannel.Json)));
+                new(Convert.ToBase64String(Encoding.UTF8.GetBytes("# read")), "v1", 6, null, "text/markdown") { CanWrite = true }, null), FileSourceChannel.Json)));
         var read = await client.ReadAsync(file, default);
         using var reader = new StreamReader(read.Content);
         Assert.Equal("# read", await reader.ReadToEndAsync());

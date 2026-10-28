@@ -25,6 +25,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly TextBlock _state = new() { Name = "FileStatus", FontSize = 12 };
     private readonly TextBlock _message = new() { Name = "FileMessage", TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly TextBlock _footer = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock _shortcuts = new() { FontSize = 11.5, Margin = new Thickness(12, 0, 0, 0) };
     private readonly Button _save = new() { Content = "Save", Classes = { "Compact", "Accent" } };
     private readonly Button _edit = new() { Content = "Edit", Classes = { "Compact" } };
     private readonly ToggleButton _source = new() { Content = "Markdown source", Classes = { "Compact" } };
@@ -74,14 +75,14 @@ internal sealed class MarkdownFileWorkspace : UserControl
         var message = _Strip(_message, new Thickness(14, 4));
         _message.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitStatusErrorBrush"));
         message.Bind(Border.IsVisibleProperty, _message.GetObservable(IsVisibleProperty));
-        var shortcuts = new TextBlock { Text = "Ctrl+S save · Ctrl+/ source · Ctrl+B / I / K", FontSize = 11.5, Margin = new Thickness(12, 0, 0, 0) };
-        shortcuts.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
+        _shortcuts.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
         _footer.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
         var foot = new DockPanel { LastChildFill = true };
-        DockPanel.SetDock(shortcuts, Dock.Right);
-        foot.Children.Add(shortcuts);
+        DockPanel.SetDock(_shortcuts, Dock.Right);
+        foot.Children.Add(_shortcuts);
         foot.Children.Add(_footer);
         var footer = _Strip(foot, new Thickness(14, 5));
+        footer.BorderThickness = new Thickness(0, 1, 0, 0);
         DockPanel.SetDock(head, Dock.Top);
         DockPanel.SetDock(message, Dock.Top);
         DockPanel.SetDock(footer, Dock.Bottom);
@@ -105,6 +106,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
         _context.RefreshRequested += _OnRefresh;
         _context.Closed += _OnClosed;
+        AttachedToVisualTree += (_, _) => { if (_editing) Editor.TextEditor.TextArea.Focus(); };
         Ready = _LoadAsync();
     }
 
@@ -116,7 +118,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
     {
         if (!_loaded || !_canWrite || _closed) return;
         var wasEditing = _editing;
-        var markedLine = Math.Max(1, Editor.MarkedLine);
+        var markedLine = Math.Clamp(Editor.MarkedLine, 1, Editor.TextEditor.Document.LineCount);
         _context.Pin();
         _editing = true;
         Editor.IsReadOnly = false;
@@ -130,6 +132,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         if (_loading || _closed) return;
         _loading = true;
         _error = null;
+        _conflict = false;
         _UpdateState();
         try
         {
@@ -157,6 +160,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             _loaded = true;
             _editing = _canWrite && (_new || _options.Edit || _editing);
             Editor.IsReadOnly = !_editing;
+            if (!_editing) Editor.ShowSource = false;
         }
         catch (OperationCanceledException) when (_closed) { }
         catch (Exception error) when (error is FileSourceException or DecoderFallbackException)
@@ -276,6 +280,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _message.IsVisible = _error is not null;
         var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
+        _shortcuts.Text = _editing ? "Ctrl+S save · Ctrl+/ source · Ctrl+B / I / K"
+            : _loaded ? (_canWrite ? "Edit or start typing" : "Read-only") : "";
     }
 
     private Border _Strip(Control child, Thickness padding)
