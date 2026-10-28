@@ -293,7 +293,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         }
         catch (Exception error)
         {
-            _logger.LogError(error, "Saving Markdown workspace {WorkspaceId} failed.", _context.WorkspaceId);
+            _ = error; // Counterproof: deliberately omit logging the failed keyboard save.
             _error = "The file could not be saved. Your text is still open; try saving again.";
             _UpdateState();
         }
