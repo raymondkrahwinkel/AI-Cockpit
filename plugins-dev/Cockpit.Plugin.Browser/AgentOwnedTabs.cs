@@ -82,9 +82,8 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
         try
         {
             if (mode is not ("text" or "tree")) throw new OwnedTabException("invalid_argument", "Use mode text or tree.");
-            if (!_tabs.TryGetValue(tabId, out var entry))
+            if (!_tabs.TryGetValue(tabId, out var entry) || entry.Owner != caller)
                 throw new OwnedTabException("not_owner", "This tab does not belong to this session.");
-            caller = entry.Owner; // Local countercheck: deliberately bypass caller ownership.
             var session = Check(caller, entry.Generation);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var targets = JsonDocument.Parse(await Http.GetStringAsync(session.Upstream + "/json/list", timeout.Token).ConfigureAwait(false));
