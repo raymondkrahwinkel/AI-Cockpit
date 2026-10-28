@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- AC-1896 spike only (G7): what a plugin package would carry for the live bridge, loaded by the host's own PluginLoadContext. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
+    <!-- As every Cockpit plugin (Cockpit.Plugin.Depot.csproj): its own dependencies land next to it, with a deps.json. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <BundleDir Condition="'$(BundleDir)' == ''">C:\t\AC1896</BundleDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Jint" Version="4.17.0" />
+    <PackageReference Include="YDotNet" Version="0.6.0" />
+    <PackageReference Include="YDotNet.Native.Win32" Version="0.6.0" />
+    <PackageReference Include="YDotNet.Native.Linux" Version="0.6.0" />
+    <PackageReference Include="YDotNet.Native.MacOS" Version="0.6.0" />
+    <EmbeddedResource Include="$(BundleDir)\bridge.jint.js" LogicalName="bridge.jint.js" />
+  </ItemGroup>
+</Project>
