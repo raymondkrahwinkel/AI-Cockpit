@@ -79,7 +79,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
 
         return new PluginModelIntelligence
         {
-            IsSelfHosted = !OpenAiCompatConfig.UsesDefaultHost(config.BaseUrl, defaultBaseUrl),
+            IsSelfHosted = config.IsSelfHosted,
             Models = [new PluginModelCostEstimate(config.Model) { PublicModelRef = config.Model }],
         };
     }

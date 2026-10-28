@@ -100,21 +100,22 @@ public sealed class ModelOptionsTests
         Assert.Contains(meta, attribute => attribute.Name == AssistantAgentMcpTools.AlwaysLoadMeta);
     }
 
-    public static TheoryData<string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
+    public static TheoryData<string, string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
     {
-        { "claude-opus-5-5", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
-        { "~anthropic/claude-opus-latest", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding ontbreekt → intelligence", _Basis },
-        { "anthropic/claude-opus-5.5:batch", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
-        { "gpt-6.1-sol", "openai/gpt-6.1-sol", "coding ontbreekt → intelligence", _Basis },
-        { "openai/gpt-6.1-sol", "openai/gpt-6.1-sol", "coding ontbreekt → intelligence", _Basis },
-        { "qwen3.8-27b-Q4_K_M", "qwen/qwen3.8-27b", "coding ontbreekt → intelligence", _Basis },
-        { "onbekend-model", "onbekend-model", "unknown: geen match voor onbekend-model; dichtstbijzijnde: qwen/qwen3.8-27b", _Quality },
+        { "claude-opus-5-5", "coding", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
+        { "anthropic/claude-opus-5.5", "coding", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
+        { "~anthropic/claude-opus-latest", "coding", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding ontbreekt → intelligence", _Basis },
+        { "anthropic/claude-opus-5.5:batch", "coding", "anthropic/claude-opus-5.5", "coding ontbreekt → intelligence", _Basis },
+        { "gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding ontbreekt → intelligence", _Basis },
+        { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding ontbreekt → intelligence", _Basis },
+        { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding ontbreekt → intelligence", _Basis },
+        { "agentic-only", "agentic", "example/agentic-only", "agentic ontbreekt → coding", _Basis },
+        { "onbekend-model", "coding", "onbekend-model", "unknown: geen match voor onbekend-model; dichtstbijzijnde: qwen/qwen3.8-27b", _Quality },
     };
 
     [Theory]
     [MemberData(nameof(ModelReferenceCases))]
-    public async Task ModelOptions_NormalizesReferences_AndStatesFallbackBasis(string reference, string expectedPublicRef, string expectedQuality, Func<JsonNode, string> quality)
+    public async Task ModelOptions_NormalizesReferences_AndStatesFallbackBasis(string reference, string taskType, string expectedPublicRef, string expectedQuality, Func<JsonNode, string> quality)
     {
         // The real feed's shape: versioned canonical_slug, alias_target as an object, indices as numbers.
         const string feed = """
@@ -129,7 +130,8 @@ public sealed class ModelOptionsTests
               {"id":"anthropic/claude-fable-5.1","pricing":{"prompt":"0.00001","completion":"0.00005"},
                "benchmarks":{"artificial_analysis":{"intelligence_index":53.4}}},
               {"id":"~anthropic/claude-fable-latest","alias_target":{"slug":"anthropic/claude-fable-5.1"}},
-              {"id":"qwen/qwen3.8-27b","hugging_face_id":"Qwen/Qwen3.8-27B","benchmarks":{"artificial_analysis":{"intelligence_index":60.2}}}]}
+              {"id":"qwen/qwen3.8-27b","hugging_face_id":"Qwen/Qwen3.8-27B","benchmarks":{"artificial_analysis":{"intelligence_index":60.2}}},
+              {"id":"example/agentic-only","benchmarks":{"artificial_analysis":{"intelligence_index":54,"coding_index":55}}}]}
             """;
         var root = Path.Combine(Path.GetTempPath(), $"ac1855-{Guid.NewGuid():N}");
         try
@@ -145,7 +147,7 @@ public sealed class ModelOptionsTests
                 Substitute.For<IAssistantReadGateway>(), Substitute.For<IDelegationService>(), Substitute.For<INodeSessionsClient>(),
                 new NodeDiscoveryId(Path.Combine(root, "node-discovery-id.txt")), new ModelPictureReader(publicData, _provider, _profiles, new FakeClock(Now)));
 
-            var models = (JsonNode.Parse(await tools.ModelOptionsAsync("coding")) ?? throw new InvalidOperationException("Missing result"))["models"]?.AsArray()
+            var models = (JsonNode.Parse(await tools.ModelOptionsAsync(taskType)) ?? throw new InvalidOperationException("Missing result"))["models"]?.AsArray()
                 ?? throw new InvalidOperationException("Missing models");
             var model = models.Single() ?? throw new InvalidOperationException("Missing model");
             Assert.Equal(expectedPublicRef, model["publicModelRef"]?.GetValue<string>());
