@@ -61,6 +61,13 @@ public class SettingsCarrierWhitelistTests
         config = Config("\"Categories\":{\"Plugins\":[\"one\",\"two\"]}");
         Assert.True(JsonNode.DeepEquals(Extract(config, "one"), Extract(config, "two")));
         Assert.NotNull(Extract(config, "one")?["Plugins"]);
+
+        // AC-1847: a profile's own choice widens or narrows what the category says; a profile without one follows the category.
+        config = Config("\"Categories\":{\"Profiles\":[\"one\"]},\"Profiles\":{\"Home\":[\"two\"],\"Work\":[]}");
+        Assert.Empty(Extract(config, "one")!["Profiles"]!.AsArray());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Home"}]}"""), Extract(config, "two")));
+        config = Config("\"Categories\":{\"Profiles\":[\"one\"]},\"Profiles\":{\"Home\":[\"two\"]}");
+        Assert.Equal("Work", Extract(config, "one")!["Profiles"]!.AsArray().Single()!["Label"]!.GetValue<string>());
     }
 
     // AC-1861: project definitions and their category order belong only to project sync.

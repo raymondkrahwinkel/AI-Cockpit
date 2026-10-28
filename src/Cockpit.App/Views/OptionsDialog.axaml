@@ -2179,38 +2179,92 @@
                                 <ItemsControl ItemsSource="{Binding Rows}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:SyncCategoryRowViewModel">
-                                            <Border BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1" Padding="14,9">
-                                                <Grid ColumnDefinitions="*,260">
-                                                    <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center" Margin="0,0,12,0">
-                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                                                        <TextBlock Text="{Binding Description}" Classes="optionsHint"/>
-                                                    </StackPanel>
-                                                    <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalAlignment="Center"
-                                                            AutomationProperties.Name="{Binding Title}">
-                                                        <Button.Flyout>
-                                                            <Flyout Placement="BottomEdgeAlignedLeft">
-                                                                <StackPanel Spacing="4" MinWidth="236">
-                                                                    <ItemsControl ItemsSource="{Binding Servers}">
-                                                                        <ItemsControl.ItemTemplate>
-                                                                            <DataTemplate x:DataType="vm:SyncServerTickViewModel">
-                                                                                <Grid ColumnDefinitions="*,Auto">
-                                                                                    <CheckBox Grid.Column="0" Content="{Binding Server.Name}" IsChecked="{Binding IsTicked, Mode=TwoWay}" IsEnabled="{Binding IsEnabled}"/>
-                                                                                    <TextBlock Grid.Column="1" Text="{Binding Tag}" Classes="optionsHint" VerticalAlignment="Center"/>
-                                                                                </Grid>
-                                                                            </DataTemplate>
-                                                                        </ItemsControl.ItemTemplate>
-                                                                    </ItemsControl>
-                                                                    <TextBlock Classes="optionsHint" Text="Every ticked server is its own sync partner. None ticked = not synced."/>
-                                                                </StackPanel>
-                                                            </Flyout>
-                                                        </Button.Flyout>
-                                                        <Grid ColumnDefinitions="*,Auto">
-                                                            <TextBlock Grid.Column="0" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                            <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" VerticalAlignment="Center"/>
-                                                        </Grid>
-                                                    </Button>
-                                                </Grid>
-                                            </Border>
+                                            <StackPanel>
+                                                <Border BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1" Padding="14,9">
+                                                    <Grid ColumnDefinitions="*,260">
+                                                        <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <Button Classes="Subtle" Padding="0" IsVisible="{Binding IsExpandable}" Command="{Binding ToggleCommand}"
+                                                                        AutomationProperties.Name="Show the profiles">
+                                                                    <Panel>
+                                                                        <materialIcons:MaterialIcon Kind="ChevronRight" Width="14" Height="14" IsVisible="{Binding !IsExpanded}"/>
+                                                                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="14" Height="14" IsVisible="{Binding IsExpanded}"/>
+                                                                    </Panel>
+                                                                </Button>
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                                <Border Classes="syncPill accent" IsVisible="{Binding HasOverrides}"><TextBlock Text="{Binding OverriddenText}"/></Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding Description}" Classes="optionsHint"/>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalAlignment="Center"
+                                                                AutomationProperties.Name="{Binding Title}">
+                                                            <Button.Flyout>
+                                                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                                                    <StackPanel Spacing="4" MinWidth="236">
+                                                                        <ItemsControl ItemsSource="{Binding Servers}">
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate x:DataType="vm:SyncServerTickViewModel">
+                                                                                    <Grid ColumnDefinitions="*,Auto">
+                                                                                        <CheckBox Grid.Column="0" Content="{Binding Server.Name}" IsChecked="{Binding IsTicked, Mode=TwoWay}" IsEnabled="{Binding IsEnabled}"/>
+                                                                                        <TextBlock Grid.Column="1" Text="{Binding Tag}" Classes="optionsHint" VerticalAlignment="Center"/>
+                                                                                    </Grid>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+                                                                        <TextBlock Classes="optionsHint" Text="Every ticked server is its own sync partner. None ticked = not synced."/>
+                                                                    </StackPanel>
+                                                                </Flyout>
+                                                            </Button.Flyout>
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Grid.Column="0" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                                <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" VerticalAlignment="Center"/>
+                                                            </Grid>
+                                                        </Button>
+                                                    </Grid>
+                                                </Border>
+                                                <ItemsControl ItemsSource="{Binding Children}" IsVisible="{Binding IsExpanded}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:SyncProfileRowViewModel">
+                                                            <Border Background="{DynamicResource CockpitInsetBgBrush}" BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1" Padding="36,8,14,8">
+                                                                <Grid ColumnDefinitions="*,260">
+                                                                    <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold"/>
+                                                                            <Border Classes="syncPill accent" IsVisible="{Binding IsOverridden}"><TextBlock Text="overridden"/></Border>
+                                                                        </StackPanel>
+                                                                        <TextBlock Text="{Binding Subtitle}" Classes="optionsHint"/>
+                                                                    </StackPanel>
+                                                                    <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalAlignment="Center"
+                                                                            AutomationProperties.Name="{Binding Label}">
+                                                                        <Button.Flyout>
+                                                                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                                                                <StackPanel Spacing="4" MinWidth="236">
+                                                                                    <ItemsControl ItemsSource="{Binding Servers}">
+                                                                                        <ItemsControl.ItemTemplate>
+                                                                                            <DataTemplate x:DataType="vm:SyncServerTickViewModel">
+                                                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                                                    <CheckBox Grid.Column="0" Content="{Binding Server.Name}" IsChecked="{Binding IsTicked, Mode=TwoWay}" IsEnabled="{Binding IsEnabled}"/>
+                                                                                                    <TextBlock Grid.Column="1" Text="{Binding Tag}" Classes="optionsHint" VerticalAlignment="Center"/>
+                                                                                                </Grid>
+                                                                                            </DataTemplate>
+                                                                                        </ItemsControl.ItemTemplate>
+                                                                                    </ItemsControl>
+                                                                                    <Button Classes="Compact" Content="Same as Profiles" Command="{Binding UseCategoryCommand}" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left"/>
+                                                                                    <TextBlock Classes="optionsHint" Text="Ticking exactly what Profiles has means the profile follows it again."/>
+                                                                                </StackPanel>
+                                                                            </Flyout>
+                                                                        </Button.Flyout>
+                                                                        <Grid ColumnDefinitions="*,Auto">
+                                                                            <TextBlock Grid.Column="0" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                                            <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" VerticalAlignment="Center"/>
+                                                                        </Grid>
+                                                                    </Button>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

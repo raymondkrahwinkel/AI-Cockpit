@@ -1786,6 +1786,15 @@
         <Setter Property="FontSize" Value="10.5"/>
     </Style>
 
+    <!-- AC-1847: the same pill in accent for a profile that deviates from its category. -->
+    <Style Selector="Border.syncPill.accent">
+        <Setter Property="Background" Value="{DynamicResource CockpitAccentRingTintBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="Border.syncPill.accent > TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource CockpitAccentBrush}"/>
+    </Style>
+
     <!-- AC-1846: one answer to a settings conflict, a flat card that takes the accent edge once picked. -->
     <Style Selector="Border.syncChoice">
         <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>

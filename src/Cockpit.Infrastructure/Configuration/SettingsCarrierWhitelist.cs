@@ -119,11 +119,12 @@ internal sealed class SettingsCarrierFilter
     };
 
     private readonly HashSet<string>? _categories;
-    private readonly HashSet<string>? _profiles;
+    // AC-1847: per profile label, whether this carrier takes it; a profile that is not in here follows the Profiles category.
+    private readonly Dictionary<string, bool> _overrides;
 
-    private SettingsCarrierFilter(HashSet<string>? categories, HashSet<string>? profiles) => (_categories, _profiles) = (categories, profiles);
+    private SettingsCarrierFilter(HashSet<string>? categories, Dictionary<string, bool> overrides) => (_categories, _overrides) = (categories, overrides);
 
-    public static SettingsCarrierFilter All { get; } = new(null, null);
+    public static SettingsCarrierFilter All { get; } = new(null, new Dictionary<string, bool>(StringComparer.Ordinal));
 
     internal static IEnumerable<string> Categories => CategoryRoots.Keys;
 
@@ -137,15 +138,16 @@ internal sealed class SettingsCarrierFilter
         var categoriesForCarrier = categories
             .Where(pair => CategoryRoots.ContainsKey(pair.Key) && pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId))
             .Select(pair => pair.Key);
-        var profiles = config["SettingsSync"]?["Profiles"] as JsonObject;
-        var profilesForCarrier = profiles?
-            .Where(pair => pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId))
-            .Select(pair => pair.Key);
-        return new([.. categoriesForCarrier], profilesForCarrier is null ? null : [.. profilesForCarrier]);
+        var overrides = (config["SettingsSync"]?["Profiles"] as JsonObject)?
+            .Where(pair => pair.Value is JsonArray)
+            .ToDictionary(pair => pair.Key, pair => ((JsonArray)pair.Value!).Any(id => id?.GetValue<string>() == carrierId), StringComparer.Ordinal) ?? new Dictionary<string, bool>(StringComparer.Ordinal);
+        return new([.. categoriesForCarrier], overrides);
     }
 
     public bool Allows(string path) => _categories is null || path.Length == 0 || !CategoryRoots.Values.SelectMany(roots => roots).Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal)) ||
-        _categories.Any(category => CategoryRoots[category].Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal)));
+        _categories.Any(category => CategoryRoots[category].Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal))) ||
+        // A profile this carrier was picked for takes the Profiles section along, even when the category itself does not include it.
+        _overrides.ContainsValue(true) && (path == "Profiles" || path.StartsWith("Profiles[]", StringComparison.Ordinal));
 
-    public bool AllowsProfile(string? label) => _profiles is null || label is not null && _profiles.Contains(label);
+    public bool AllowsProfile(string? label) => _categories is null || (label is not null && _overrides.TryGetValue(label, out var picked) ? picked : _categories.Contains("Profiles"));
 }

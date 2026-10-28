@@ -13,7 +13,8 @@ public sealed record SyncOverview(
     int ProfileCount,
     bool Reviewed,
     IReadOnlyList<string> SeenServers,
-    IReadOnlyDictionary<string, SyncStanding> Standing);
+    IReadOnlyDictionary<string, SyncStanding> Standing,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> ProfileOverrides);
 
 // What Options › Sync reads and writes: which servers each category of settings is kept in step with.
 public interface ISyncOptions
@@ -21,5 +22,6 @@ public interface ISyncOptions
     Task<SyncOverview> ReadAsync(CancellationToken cancellationToken = default);
 
     // Always writes every category, as a list that may be empty: a missing `Categories` would be migrated again at the next start.
-    Task SaveAsync(IReadOnlyDictionary<string, IReadOnlyList<string>> categories, IReadOnlyList<string> seenServers, CancellationToken cancellationToken = default);
+    // `profileOverrides` holds only the profiles that deviate from the Profiles category (AC-1847): label → servers, empty meaning none.
+    Task SaveAsync(IReadOnlyDictionary<string, IReadOnlyList<string>> categories, IReadOnlyDictionary<string, IReadOnlyList<string>> profileOverrides, IReadOnlyList<string> seenServers, CancellationToken cancellationToken = default);
 }
