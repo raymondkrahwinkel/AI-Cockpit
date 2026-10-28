@@ -294,6 +294,7 @@ public sealed class CockpitBackend
         // AC-1706: and nudge a session the assistant started once when a turn ends without a closing; that wake above
         // turns the nudge into its turn.
         Services.GetService<StallNudger>()?.Start(sessionRegistry);
+        Services.GetService<HomeFolderWatcher>()?.Start(sessionRegistry, Services.GetService<IDelegationService>());
 
         // AC-1719: first fold what is older than 90 days into day aggregates, before the recorder reads or appends.
         Services.GetService<SessionDayRetention>()?.Run();
@@ -360,6 +361,7 @@ public sealed class CockpitBackend
 
         IDisposable?[] planners =
         [
+            Services.GetService<HomeFolderWatcher>(),
             Services.GetService<CiWatcher>(), Services.GetService<SessionWatcher>(), Services.GetService<InboxWakeScheduler>(), Services.GetService<StallNudger>(), Services.GetService<SessionTimelineRecorder>(),
             Services.GetService<WorktreeReconciler>(), Services.GetService<DepotSyncWatcher>(), Services.GetService<StaleClaimReaper>(),
             Services.GetService<ScheduledBackup>(), Services.GetService<SettingsCarrierSync>(),
