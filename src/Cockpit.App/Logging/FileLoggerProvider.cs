@@ -114,7 +114,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
             if (!_crashing)
             {
                 _crashDeadline = Stopwatch.GetTimestamp() + (long)(DrainBudget.TotalSeconds * Stopwatch.Frequency);
-                _crashing = false;
+                _crashing = true;
             }
         }
 
