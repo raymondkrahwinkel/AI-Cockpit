@@ -111,7 +111,7 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
     public async Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken)
     {
         var offset = int.Parse(await _CallAsync("offsetOfRelative", cancellationToken, relativeJson).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
-        return offset >= 0 ? offset : null;
+        return offset >= 0 ? offset + 1 : null;
     }
 
     public ValueTask DisposeAsync()
