@@ -42,6 +42,8 @@ internal static class FileSourceChannel
                     request.MustNotExist, ct).ConfigureAwait(false);
                 if (result.Status == FileWriteStatus.Written && string.IsNullOrWhiteSpace(result.Version))
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the saved version.");
+                if (result.Status == FileWriteStatus.Written)
+                    channel.Publish(Wire.Saved, JsonSerializer.SerializeToElement(request.File, Wire.Json));
                 return result;
             })));
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,

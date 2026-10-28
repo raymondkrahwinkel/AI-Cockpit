@@ -32,7 +32,7 @@ namespace Cockpit.App.Plugins;
 // AC-1389: the ICockpitUiHost a plugin's UI part receives. The window members are its own; what a backend can do
 // too (consent, intents, managed CLIs, ...) forwards to the same plugin's ICockpitHost. `services` stays private,
 // so the UI part gets no container to reach around its channel.
-internal sealed class CockpitUiHost(
+internal sealed partial class CockpitUiHost(
     string pluginId,
     string pluginName,
     ICockpitHost host,

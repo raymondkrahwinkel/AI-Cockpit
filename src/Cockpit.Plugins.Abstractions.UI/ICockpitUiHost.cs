@@ -182,6 +182,14 @@ public interface ICockpitUiHost
     /// </summary>
     Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => OpenWorkspaceAsync(workspaceTypeId);
 
+    /// <summary>Registers a host-owned Markdown file workspace bound to this plugin's channel; host 0.137.0+.</summary>
+    void AddFileWorkspaceType(string workspaceTypeId, string title)
+    {
+    }
+
+    /// <summary>Opens or focuses a file without replacing its document, undo history or unsaved changes.</summary>
+    Task OpenFileWorkspaceAsync(string workspaceTypeId, Files.FileWorkspaceOpenOptions options) => Task.CompletedTask;
+
     /// <summary>
     /// The live view of the embedded session <paramref name="paneId"/> (see <see cref="IEmbeddedSession"/>), the
     /// same control on every call, and a control has one parent, so place it in one spot. Null when no such

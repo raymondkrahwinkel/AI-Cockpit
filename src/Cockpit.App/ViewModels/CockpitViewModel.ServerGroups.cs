@@ -458,7 +458,7 @@ public partial class CockpitViewModel
 
         if (_LocalSettingsPartFor(row) is { } part)
         {
-            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles), () => _PluginProjectsAsync(projects)) is { } remote)
+            if (await ServerPluginSettings.OpenAsync(part.UiType, part.Host, relay, row.FolderId, () => _PluginProfilesAsync(profiles), () => _PluginProjectsAsync(projects), server) is { } remote)
             {
                 await _dialogService.ShowServerPluginSettingsAsync($"{row.Name} on {server}", remote.CreateView, remote.PersistAsync);
             }

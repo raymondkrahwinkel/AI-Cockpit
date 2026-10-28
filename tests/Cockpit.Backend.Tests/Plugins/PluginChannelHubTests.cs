@@ -32,6 +32,8 @@ public class PluginChannelHubTests
 
     private static async Task _FileSourceRoundtripAsync(PluginChannelHub hub)
     {
+        Assert.NotNull(typeof(FileReadResult).GetConstructor([typeof(Stream), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
+        Assert.NotNull(typeof(FileSourceReadAnswer).GetConstructor([typeof(string), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
         var source = Substitute.For<IFileSource>();
         source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes));
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ =>

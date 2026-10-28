@@ -9,6 +9,7 @@ public static class FileSourceChannel
     public const string Read = "files-read";
     public const string Write = "files-write";
     public const string Changed = "files-changed";
+    public const string Saved = "files-saved";
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 
     public static async Task<byte[]> ReadContentAsync(Stream content, long limit, CancellationToken cancellationToken)

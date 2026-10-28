@@ -115,9 +115,13 @@ internal sealed class MarkdownFileWorkspace : UserControl
     internal void BeginEdit()
     {
         if (!_loaded || !_canWrite || _closed) return;
+        var wasEditing = _editing;
+        var markedLine = Math.Max(1, Editor.MarkedLine);
         _context.Pin();
         _editing = true;
         Editor.IsReadOnly = false;
+        if (!wasEditing) Editor.EditLine(markedLine, atEnd: true);
+        else Editor.TextEditor.TextArea.Focus();
         _UpdateState();
     }
 
@@ -135,6 +139,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 _canWrite = connections.FirstOrDefault(c => c.Id == _options.File.ConnectionId) is { ReadOnly: false };
                 if (!_canWrite) throw new FileSourceException(FileSourceErrorKind.Forbidden, "This file connection does not allow a new file.");
                 Editor.Text = _options.InitialText;
+                Editor.TextEditor.CaretOffset = Editor.Text.Length;
                 _savedText = "";
             }
             else
