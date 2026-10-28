@@ -192,6 +192,8 @@ public class DepotSharedProjectSourceTests
 
         // The quiet period ends on a real timer; waiting for its Changed, not a fixed sleep, holds on a loaded runner.
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        // One more quiet period can only add a second, late Changed; it never empties the list.
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
 
         Assert.Equal<string?>([null], changes);
         var result = await source.ListAsync(CancellationToken.None);
