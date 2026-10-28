@@ -194,6 +194,9 @@ public class DepotBrowserServiceTests
 
         Assert.Equal(DepotBrowserStatus.Error, answer.Status);
         Assert.Contains("truncated", answer.Message, StringComparison.OrdinalIgnoreCase);
+        var truncated = await Assert.ThrowsAsync<FileSourceException>(() =>
+            _Source(rig).ReadAsync(DepotFileRefs.Create("c1", "acme/cockpit", "large.md"), default));
+        Assert.Equal(FileSourceErrorKind.TooLarge, truncated.Kind);
     }
 
     [Fact]
@@ -279,6 +282,11 @@ public class DepotBrowserServiceTests
             c => Assert.Contains("\"baseChecksum\":\"\"", c.Body, StringComparison.Ordinal));
         using var unguarded = new MemoryStream();
         await Assert.ThrowsAsync<FileSourceException>(() => source.WriteAsync(file, unguarded, null, false, default));
+        Assert.Equal(2, rig.CountRest("write"));
+        using var forgedContent = new MemoryStream();
+        var forged = await Assert.ThrowsAsync<FileSourceException>(() => source.WriteAsync(
+            file with { Path = "../escape.md" }, forgedContent, null, true, default));
+        Assert.Equal(FileSourceErrorKind.Unsupported, forged.Kind);
         Assert.Equal(2, rig.CountRest("write"));
     }
 

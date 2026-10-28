@@ -16,7 +16,7 @@ internal static class DepotFileRefs
             if (file.ConnectionId != connectionId || id is not { Length: 2 }
                 || string.IsNullOrWhiteSpace(id[0]) || id[0].Split('/').Length != 2
                 || string.IsNullOrWhiteSpace(id[1]) || id[1] != file.Path
-                || id.Any(part => part.Contains('\\') || part.Split('/').Any(s => s is "" or "." or "..")))
+                || id.Any(part => string.IsNullOrWhiteSpace(part) || part.Contains('\\') || part.Split('/').Any(s => s is "" or "." or "..")))
                 throw new JsonException();
             return (id[0], id[1]);
         }

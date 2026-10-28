@@ -54,11 +54,33 @@ public class PluginChannelHubTests
         var invalid = await hub.InvokeAsync("files", FileSourceChannel.Write,
             JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", null, false), FileSourceChannel.Json), default);
         Assert.NotNull(invalid.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)!.Error);
+        var malformed = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "!", "v1", false), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.Unsupported, malformed.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)!.Error!.Kind);
+        var oversized = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file,
+                Convert.ToBase64String(new byte[FileSourceChannel.MaxContentBytes + 1]), "v1", false), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.TooLarge, oversized.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)!.Error!.Kind);
+        source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(
+            new FileReadResult(new MemoryStream(new byte[FileSourceChannel.MaxContentBytes + 1]), "large")));
+        var tooLargeRead = await hub.InvokeAsync("files", FileSourceChannel.Read,
+            JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.TooLarge, tooLargeRead.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)!.Error!.Kind);
         provider.Connections.Returns([new FileConnection("c1", "Fake", "memory", true)]);
         var forbidden = await hub.InvokeAsync("files", FileSourceChannel.Write,
             JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", "v1", false), FileSourceChannel.Json), default);
         Assert.Equal(FileSourceErrorKind.Forbidden, forbidden.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)!.Error!.Kind);
         await source.Received(1).WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        var changes = new List<PluginChannelEvent>();
+        using var subscription = hub.Subscribe("files", FileSourceChannel.Changed, changes.Add);
+        provider.ConnectionsChanged += Raise.Event<EventHandler>(provider, EventArgs.Empty);
+        Assert.Single(changes);
+        files.Dispose();
+        provider.ConnectionsChanged += Raise.Event<EventHandler>(provider, EventArgs.Empty);
+        Assert.Single(changes);
+        await Assert.ThrowsAsync<PluginChannelUnknownActionException>(() => hub.InvokeAsync("files", FileSourceChannel.Read, default, default));
+        using var reloaded = Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), provider);
+        await Assert.ThrowsAsync<PluginChannelUnknownActionException>(() => hub.InvokeAsync("other-plugin", FileSourceChannel.Read, default, default));
     }
 
     [Fact]
