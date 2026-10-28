@@ -46,7 +46,7 @@ public sealed class HomeFolderWatcherTests
                 "New folder outside session scratch");
             Assert.Single(toasts.ReceivedCalls());
 
-            var renamed = Path.Combine(root, "renamed-spike-x");
+            var renamed = Path.GetFullPath(Path.Combine(root, "renamed-spike-x"));
             Directory.Move(hidden, renamed);
             watcher.ReportCreated(renamed);
             toasts.Received(1).Show(
