@@ -63,7 +63,26 @@ public static class LineMerge
         {
             return mine;
         }
-        return mine.SequenceEqual(baseRegion) ? theirs : [.. mine, .. theirs];
+        if (mine.SequenceEqual(baseRegion))
+        {
+            return theirs;
+        }
+        // One side only added lines next to the stretch the other changed: keep the change and the addition.
+        if (theirs.Take(baseRegion.Length).SequenceEqual(baseRegion))
+        {
+            return [.. mine, .. theirs.Skip(baseRegion.Length)];
+        }
+        if (theirs.TakeLast(baseRegion.Length).SequenceEqual(baseRegion))
+        {
+            return [.. theirs.SkipLast(baseRegion.Length), .. mine];
+        }
+        if (mine.Take(baseRegion.Length).SequenceEqual(baseRegion))
+        {
+            return [.. theirs, .. mine.Skip(baseRegion.Length)];
+        }
+        return mine.TakeLast(baseRegion.Length).SequenceEqual(baseRegion)
+            ? [.. mine.SkipLast(baseRegion.Length), .. theirs]
+            : [.. mine, .. theirs];
     }
 
     private static string[] _Slice(IReadOnlyList<string> lines, int from, int to) =>

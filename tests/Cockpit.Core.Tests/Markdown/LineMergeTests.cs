@@ -6,7 +6,7 @@ namespace Cockpit.Core.Tests.Markdown;
 public class LineMergeTests
 {
     [Theory]
-    [InlineData("a|b|c", "a|b|c|d", "a|B|c", "a|B|c|d")]
+    [InlineData("a|b", "a|b|d", "a|B", "a|B|d")]
     [InlineData("a|b|c", "a|X|c", "a|Y|c", "a|Y|X|c")]
     public void Merge_KeepsBothSidesAndPutsYoursFirstWhereBothChangedTheSameBlock(string baseText, string theirs, string mine, string expected)
     {
