@@ -46,3 +46,30 @@ where that backend runs: a future local-file source on a server addresses that s
 AC-1782 can add listing, metadata, watches and streaming later. A future local/SFTP source must supply
 the same conditional-write guarantee before advertising `CanWrite`; stat followed by rename alone
 does not implement compare-and-swap. No live Depot is used by the contract tests.
+
+## Host file workspaces (AC-1754)
+
+Requires host 0.137.0, Abstractions 3.43.0 and Abstractions.UI 3.17.0.
+`FileReadResult.CanWrite` and `FileSourceReadAnswer.CanWrite` are default-false init properties;
+the existing constructors remain binary compatible. Set the hint from the same authorization used for
+the snapshot. The channel also restricts it by the connection and source write capability. An older
+answer is read-only. Every write still needs authorization at the source.
+
+During UI initialization call `host.AddFileWorkspaceType("plugin.markdown", "Markdown file")`.
+Open a document with `host.OpenFileWorkspaceAsync(typeId, new FileWorkspaceOpenOptions(file, key,
+title, location, Edit: true))`. Omit `Edit` for a viewer; use `CreateNew: true` and `InitialText` for a
+draft. A draft is written only by explicit Save or Ctrl+S. The host owns the editor, conditional save,
+unsaved marker and discard confirmation. A repeated key focuses the same document and undo history.
+Pop out and Dock back move that same body. Server-admin copies use a server-scoped workspace type
+and the original remote channel, including after moving the window.
+
+The host persists the file descriptor in local workspace metadata. It never persists editor text,
+dirty state or draft contents. Restart loads the source again. Tab, floating-window and application
+close ask before discarding unsaved text; hiding to the tray leaves it open. Generic plugin workspaces
+can use `context.SetCloseGuard(Func<Task<bool>>)` to veto closure asynchronously, or null to clear it.
+The guard runs before session teardown, and is not called for Pop out or Dock back.
+
+Successful writes publish `FileSourceChannel.Saved` (`files-saved`) with the `FileRef` on the original
+plugin channel. The Depot browser refreshes that project after a local save. The current remote channel
+supports invocations only, so use its Refresh action to see an updated listing. Conflicts retain local
+text and the original version; comparison and resolution belong to AC-1755.

@@ -10,8 +10,10 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Material.Icons.Avalonia;
 using NSubstitute;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using DepotBrowserPanel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserPanel;
 using DepotConnectionRegistration = UiAsm::Cockpit.Plugin.Depot.UI.DepotConnectionRegistration;
+using NewMarkdownFileDialog = UiAsm::Cockpit.Plugin.Depot.UI.NewMarkdownFileDialog;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -77,6 +79,13 @@ public class DepotBrowserPanelTests
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("Console.WriteLine", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A following heading", StringComparison.Ordinal) == true);
         Assert.DoesNotContain(panel.GetVisualDescendants().OfType<TextBlock>().SelectMany(block => block.Inlines?.OfType<Run>() ?? []), run => run.Text?.Contains("A second paragraph does not.", StringComparison.Ordinal) == true);
+        (_Button(panel, "Open") ?? throw new InvalidOperationException("Open is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options =>
+            options.File.Path == "docs/Notes.md" && options.InstanceKey == "depot:c1:cockpit:docs/Notes.md" && !options.Edit && !options.CreateNew));
+        (_Button(panel, "Edit") ?? throw new InvalidOperationException("Edit is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => options.Edit && !options.CreateNew));
+        Assert.True((_Button(panel, "New Markdown file") ?? throw new InvalidOperationException("New file is missing.")).IsVisible);
+        _NewFileValidation();
     }
 
     // AC-1573: the backend's reading of the role (`canShare`) decides whether the Upload button is there at all.
@@ -99,6 +108,34 @@ public class DepotBrowserPanelTests
         _Until(() => panel.GetVisualDescendants().OfType<TreeViewItem>().Any());
 
         Assert.False(_UploadButton(panel).IsVisible);
+        Assert.False((_Button(panel, "New Markdown file") ?? throw new InvalidOperationException("New file is missing.")).IsVisible);
+        Assert.Null(_Button(panel, "Edit"));
+    }
+
+    private static void _NewFileValidation()
+    {
+        string? opened = null;
+        var dialog = new NewMarkdownFileDialog("Cockpit", "docs", ["", "docs"], path => path == "docs/taken.md", path =>
+        {
+            opened = path;
+            return Task.CompletedTask;
+        });
+        var window = new Window { Width = 480, Height = 480, Content = dialog };
+        window.Show();
+        var name = dialog.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "MarkdownFileName");
+        var create = _Button(dialog, "Create") ?? throw new InvalidOperationException("Create is missing.");
+        Assert.False(create.IsEnabled);
+        name.Text = "../escape";
+        Assert.False(create.IsEnabled);
+        name.Text = ".md";
+        Assert.False(create.IsEnabled);
+        name.Text = "taken.md";
+        Assert.False(create.IsEnabled);
+        name.Text = "new-note";
+        Assert.True(create.IsEnabled);
+        create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("docs/new-note.md", opened);
+        Assert.False(window.IsVisible);
     }
 
     [Fact]
@@ -224,7 +261,7 @@ public class DepotBrowserPanelTests
         canShare = true,
     });
 
-    private static Button? _Button(DepotBrowserPanel panel, string content) =>
+    private static Button? _Button(Control panel, string content) =>
         panel.GetVisualDescendants().OfType<Button>().SingleOrDefault(button => Equals(button.Content, content));
 
     private static void _SaveFrame(Window window, string variable)

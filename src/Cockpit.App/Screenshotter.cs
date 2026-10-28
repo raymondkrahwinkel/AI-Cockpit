@@ -196,6 +196,15 @@ internal static partial class Screenshotter
         ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
         ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
+        ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
+        ["markdown-file-editing"] = (width, height) => _MarkdownFileScene(width, height, "editing"),
+        ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
+        ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
+        ["markdown-file-discard"] = (_, _) => new ConfirmationDialog
+        {
+            DataContext = new ConfirmationDialogViewModel("Discard unsaved changes?",
+                "Close md-editor-in-cockpit.md without saving? Your changes will be lost.", "Discard changes"),
+        },
         ["markdown-editor-table"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
         ["markdown-editor-source"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.ShowSource = true),
         ["markdown-editor-readonly"] = (width, height) => _MarkdownEditorScene(width, height, editor =>

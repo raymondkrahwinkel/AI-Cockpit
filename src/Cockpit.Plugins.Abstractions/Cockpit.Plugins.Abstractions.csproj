@@ -625,7 +625,8 @@
     <!-- 3.40.0 (AC-1804): ICockpitHost.Notify, PluginNotification and AddNotificationSource, kept across a restart and re-checked by
          the plugin. A plugin that calls them sets minHostVersion 0.132.0. Additive; still v3. -->
     <!-- 3.42.0 (AC-1783): IFileSource snapshot reads and conditional writes, registered on the plugin's channel. -->
-    <Version>3.42.0</Version>
+    <!-- 3.43.0: file snapshot write hints and asynchronous workspace close guards (AC-1754). -->
+    <Version>3.43.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -16,6 +16,11 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using NSubstitute;
+using Avalonia.Controls;
+using Cockpit.App.Plugins;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Workspaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.ViewTests;
 
@@ -90,7 +95,40 @@ public class MainWindowCloseConfirmationTests
             Assert.True(closed);
             _ = dialogService.DidNotReceive().ShowConfirmationDialogAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+            await _UnsavedFileCloseAsync();
         });
+
+    private static async Task _UnsavedFileCloseAsync()
+    {
+        var accepted = false;
+        var confirmations = 0;
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("file.close", "File", context =>
+        {
+            context.SetCloseGuard(() =>
+            {
+                confirmations++;
+                return Task.FromResult(accepted);
+            });
+            return new TextBlock { Text = "Unsaved text" };
+        }), new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
+        var vm = new CockpitViewModel(workspaceTypeRegistry: registry);
+        await vm.Workspaces.OpenWorkspaceAsync("file.close");
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Assert.False(await window.ConfirmWorkspaceCloseAsync());
+        Assert.True(window.IsVisible);
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
+        await _PumpAsync();
+        Assert.True(window.IsVisible);
+        accepted = true;
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
+        await _WaitUntilAsync(() => !window.IsVisible);
+        Assert.False(window.IsVisible);
+        Assert.Equal(3, confirmations);
+    }
 
     private static async Task _PumpAsync()
     {
