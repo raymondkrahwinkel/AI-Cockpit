@@ -57,14 +57,15 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
 
     public SignalRDepotNotesHub(DepotConnectionRegistration connection, string userId, Func<HttpMessageHandler> handler, Func<Exception?, Task> onClosed)
     {
-        // WebSockets only: long polling would send every poll through the gate again. No Origin, no cookie: the gate takes the bearer.
+        // Server-sent events: SignalR never hands a WebSocket upgrade to this handler (measured: 403, no bearer), while the stream and
+        // every send of SSE go through it. No Origin, no cookie: the gate takes the bearer.
         // No automatic reconnect either: the new connection has no Join, so the session joins again itself.
         _connection = new HubConnectionBuilder()
             .WithUrl(
                 $"{connection.Url.TrimEnd('/')}/hubs/notes?expectedUser={Uri.EscapeDataString(userId)}",
                 options =>
                 {
-                    options.Transports = HttpTransportType.WebSockets;
+                    options.Transports = HttpTransportType.ServerSentEvents;
                     options.HttpMessageHandlerFactory = _ => handler();
                 })
             .Build();
