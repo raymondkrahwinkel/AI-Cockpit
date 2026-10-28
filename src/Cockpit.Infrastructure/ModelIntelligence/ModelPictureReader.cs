@@ -189,7 +189,7 @@ internal sealed class ModelPictureReader(
     private static string _Normalize(string value)
     {
         var normalized = value.Trim().ToLowerInvariant().TrimStart('~');
-        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @":(?:free|latest)$", string.Empty);
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @":(?:batch|free|latest)$", string.Empty);
         normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"(?:[-._]q\d(?:_[a-z0-9]+)+|[-._]gguf|-\d{8})$", string.Empty);
         return normalized.Replace('.', '-');
     }
