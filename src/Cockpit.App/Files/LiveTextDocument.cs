@@ -63,6 +63,7 @@ internal sealed class LiveTextDocument : IDisposable
         _rev = snapshot.Rev;
         _base.Clear().Append(snapshot.Text);
         Status = snapshot.Status;
+        _document.UndoStack.SizeLimit = 0;
         _document.Changed += _OnChanged;
         foreach (var payload in _beforeOpen)
         {

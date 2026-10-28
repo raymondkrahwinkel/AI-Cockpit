@@ -519,7 +519,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         else if (_live is not null && _editing && !Editor.IsReadOnly && _UndoKey(e) is { } redo)
         {
             e.Handled = true;
-            Editor.TextEditor.Undo();
+            _live.Undo(redo);
         }
     }
 
