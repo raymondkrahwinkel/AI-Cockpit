@@ -1,8 +1,11 @@
 using System.ComponentModel;
+using Cockpit.App.Docking;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Assistant;
+using Cockpit.Plugins.Abstractions.Docking;
 using NSubstitute;
 using Cockpit.Tests.Shared;
 
@@ -22,7 +25,9 @@ public sealed class Ac1303ColumnRolesTests
     // The parameterless constructor is the previewer's and seeds sample sessions; a real cockpit starts empty.
     private static CockpitViewModel _Cockpit()
     {
-        var cockpit = new CockpitViewModel { SimpleView = true };
+        var panels = new DockPanelRegistry();
+        panels.Register(new DockPanelRegistration("sample.browser", "Browser", Material.Icons.MaterialIconKind.Web, () => new Avalonia.Controls.TextBlock()));
+        var cockpit = new CockpitViewModel(panels) { SimpleView = true };
         cockpit.Sessions.Clear();
         return cockpit;
     }
@@ -71,6 +76,14 @@ public sealed class Ac1303ColumnRolesTests
         Assert.Contains(nameof(CockpitViewModel.SimpleStandDocksTheAssistant), announced);
         Assert.Contains(nameof(CockpitViewModel.SimpleStandShowsTheAssistantInTheMainColumn), announced);
         Assert.True(cockpit.SimpleStandDocksTheAssistant);
+
+        // AC-1862 (L2a): a plugin panel takes the rail from the docked assistant, and the way back is offered and works.
+        Assert.False(cockpit.ShowBackToAssistant);
+        cockpit.ToggleDockPanelCommand.Execute("sample.browser");
+        Assert.True(cockpit.ShowBackToAssistant);
+        cockpit.BackToAssistantCommand.Execute(null);
+        Assert.False(cockpit.ShowBackToAssistant);
+        Assert.Equal(AssistantIndicatorCoordinator.DockPanelId, cockpit.EffectiveOpenDockPanelId);
 
         // 5(b): the other order — the agent keeps the column and the dock goes away with the assistant.
         announced.Clear();
