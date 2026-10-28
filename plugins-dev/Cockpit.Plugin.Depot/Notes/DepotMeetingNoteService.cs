@@ -68,7 +68,7 @@ internal sealed class DepotMeetingNoteService(
             var template = request.Template is DepotMeetingNoteTemplate.Meeting or DepotMeetingNoteTemplate.Empty
                 ? request.Template
                 : throw new DepotFailure(DepotBrowserStatus.Error, "Choose a template.");
-            var date = _today();
+            var date = _Date(request);
             var path = DepotMeetingNoteName.Build(request.Folder, topic, date);
 
             // The whole of what Cockpit sends: where, what it is about, which template, who. No content.
@@ -115,8 +115,11 @@ internal sealed class DepotMeetingNoteService(
             : throw new DepotFailure(DepotBrowserStatus.Error, "The Depot project has no organization-qualified address.");
     }
 
+    private DateOnly _Date(DepotMeetingNoteRequest request) =>
+        DateOnly.TryParseExact(request.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : _today();
+
     private string _NotePath(DepotMeetingNoteRequest request) =>
-        DepotMeetingNoteName.Build(request.Folder, DepotRequests.Required(request.Topic, "topic"), _today());
+        DepotMeetingNoteName.Build(request.Folder, DepotRequests.Required(request.Topic, "topic"), _Date(request));
 
     private static IEnumerable<JsonElement> _Items(JsonElement root, string name) =>
         root.TryGetProperty(name, out var items) && items.ValueKind == JsonValueKind.Array ? items.EnumerateArray() : [];

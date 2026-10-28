@@ -24,10 +24,10 @@ internal static class DepotMeetingNoteChannel
 }
 
 // One request shape for every action; each action reads the fields it needs. There is deliberately no content field:
-// what a note says is Depot's to write.
+// what a note says is Depot's to write. Date is the day the dialog opened on, so the name it showed is the name that is made.
 internal sealed record DepotMeetingNoteRequest(
     string ConnectionId, string? Project = null, string? Topic = null, string? Folder = null, string? Template = null,
-    IReadOnlyList<string>? Attendees = null, string? Path = null);
+    IReadOnlyList<string>? Attendees = null, string? Path = null, string? Date = null);
 
 internal sealed record DepotMeetingNoteProject(
     string Address, string Name, string Organization, string Role, string? Folder, bool Allowed, string? PlanHref);

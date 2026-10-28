@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -14,11 +13,14 @@ internal sealed class NewMeetingNoteDialog : UserControl
 {
     private readonly IDepotMeetingNotes _notes;
     private readonly Func<string, string, Task> _open;
+    private readonly Func<Task<string?>>? _defaultProject;
+    private string? _wanted;
+    private string _template = DepotMeetingNoteTemplate.Meeting;
     private readonly DateOnly _today;
     private readonly TimeSpan _checkDelay;
     private readonly ComboBox _project = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly TextBox _topic = new() { Name = "MeetingNoteTopic", MaxLength = 200 };
-    private readonly ComboBox _folder = new() { MinWidth = 120 };
+    private readonly ComboBox _folder = new() { MinWidth = 120, MinHeight = 26, Padding = new Thickness(10, 0), CornerRadius = new CornerRadius(20), BorderThickness = new Thickness(1) };
     private readonly TextBlock _name = new() { FontFamily = _Mono(), VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeight.SemiBold };
     private readonly TextBlock _prefix = new() { FontFamily = _Mono(), VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _projectHint = new() { Text = "Only projects where you are Editor or higher.", TextWrapping = TextWrapping.Wrap, FontSize = 12 };
@@ -28,10 +30,13 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private readonly TextBlock _full = new() { FontFamily = _Mono(), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly Border _exists = new() { IsVisible = false, Padding = new Thickness(12, 8), CornerRadius = new CornerRadius(9), BorderThickness = new Thickness(1) };
     private readonly TextBlock _existsText = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly RadioButton _meeting = _Template("Meeting note", "Date, attendees, notes, action items", DepotMeetingNoteTemplate.Meeting, true);
-    private readonly RadioButton _empty = _Template("Empty", "Only the title", DepotMeetingNoteTemplate.Empty, false);
+    private readonly Dictionary<string, Border> _templates = [];
     private readonly WrapPanel _chips = new() { Orientation = Orientation.Horizontal };
-    private readonly ComboBox _addPerson = new() { PlaceholderText = "Add a colleague…", MinWidth = 180 };
+    private readonly AutoCompleteBox _addPerson = new()
+    {
+        PlaceholderText = "Add a colleague…", MinWidth = 150, MinimumPrefixLength = 0, FilterMode = AutoCompleteFilterMode.Contains,
+        BorderThickness = new Thickness(0), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center,
+    };
     private readonly CheckBox _openInCockpit = new() { Name = "OpenInCockpit", Content = "Open in Cockpit", IsChecked = true };
     private readonly Button _create = new() { Name = "CreateMeetingNote", Classes = { "Accent" }, Content = "Create and open", IsEnabled = false };
     private readonly List<DepotMeetingNotePerson> _people = [];
@@ -42,14 +47,17 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private Task _check = Task.CompletedTask;
     private bool _taken;
 
-    public NewMeetingNoteDialog(IDepotMeetingNotes notes, Func<string, string, Task> open, DateOnly today, TimeSpan? checkDelay = null)
+    public NewMeetingNoteDialog(
+        IDepotMeetingNotes notes, Func<string, string, Task> open, DateOnly today, TimeSpan? checkDelay = null, Func<Task<string?>>? defaultProject = null)
     {
+        _defaultProject = defaultProject;
         _checkDelay = checkDelay ?? TimeSpan.FromMilliseconds(300);
         _notes = notes;
         _open = open;
         _today = today;
         _project.ItemTemplate = new FuncDataTemplate<DepotMeetingNoteProject>((project, _) => _ProjectRow(project));
         _addPerson.ItemTemplate = new FuncDataTemplate<DepotMeetingNotePerson>((person, _) => _PersonRow(person));
+        _addPerson.ItemFilter = (text, item) => item is DepotMeetingNotePerson person && person.Name.Contains(text ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         _folder.ItemTemplate = new FuncDataTemplate<string>((path, _) => new TextBlock { Text = string.IsNullOrEmpty(path) ? "/" : path + "/", FontFamily = _Mono() });
         _project.SelectionChanged += (_, _) => _selecting = _SelectProjectAsync();
         _topic.TextChanged += (_, _) => _Changed();
@@ -57,7 +65,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
         _addPerson.SelectionChanged += (_, _) => _AddPerson();
         _openInCockpit.IsCheckedChanged += (_, _) => _create.Content = _openInCockpit.IsChecked == true ? "Create and open" : "Create";
         _create.Click += async (_, _) => await _CreateAsync().ConfigureAwait(true);
-        var cancel = new Button { Content = "Cancel", Classes = { "Ghost" } };
+        var cancel = new Button { Content = "Cancel" };
         cancel.Click += (_, _) => _Close();
         _error.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitStatusErrorBrush"));
         _projectHint.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
@@ -68,8 +76,10 @@ internal sealed class NewMeetingNoteDialog : UserControl
         _exists.Bind(Border.BackgroundProperty, this.GetResourceObservable("CockpitStatusWaitingChipTintBrush"));
         _exists.Bind(Border.BorderBrushProperty, this.GetResourceObservable("CockpitStatusWaitingRingTintBrush"));
         _hint.Text = "Today's date + topic. Folder per project (default Meetings/).";
-        _chips.Children.Add(_Chip("You", null));
-        var path = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), ColumnSpacing = 8, Margin = new Thickness(0, 0, 0, 0) };
+        _folder.Bind(ComboBox.BorderBrushProperty, this.GetResourceObservable("CockpitAccentBrush"));
+        _folder.Background = Brushes.Transparent;
+        _RebuildChips();
+        var path = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*"), ColumnSpacing = 8 };
         path.Children.Add(_prefix);
         Grid.SetColumn(_folder, 1);
         path.Children.Add(_folder);
@@ -82,6 +92,14 @@ internal sealed class NewMeetingNoteDialog : UserControl
         Grid.SetColumn(_create, 2);
         footer.Children.Add(_create);
         _exists.Child = _existsText;
+        var file = _Field(path);
+        var templates = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), ColumnSpacing = 8 };
+        templates.Children.Add(_TemplateCard("Meeting note", "Date, attendees, notes, action items", DepotMeetingNoteTemplate.Meeting));
+        var emptyCard = _TemplateCard("Empty", "Only the title", DepotMeetingNoteTemplate.Empty);
+        Grid.SetColumn(emptyCard, 1);
+        templates.Children.Add(emptyCard);
+        _Restyle();
+        var attendees = _Field(new WrapPanel { Children = { _chips, _addPerson } });
         Content = new StackPanel
         {
             Spacing = 8,
@@ -91,11 +109,9 @@ internal sealed class NewMeetingNoteDialog : UserControl
                 new TextBlock { Text = "Depot project" }, _project,
                 _projectHint,
                 new TextBlock { Text = "Topic" }, _topic,
-                new TextBlock { Text = "File" }, path, _hint, _exists,
-                new TextBlock { Text = "Template" },
-                new UniformGrid { Columns = 2, Children = { _meeting, _empty } },
-                new TextBlock { Text = "Attendees" },
-                new StackPanel { Spacing = 4, Children = { _chips, _addPerson } },
+                new TextBlock { Text = "File" }, file, _hint, _exists,
+                new TextBlock { Text = "Template" }, templates,
+                new TextBlock { Text = "Attendees" }, attendees,
                 _attendeeHint, _openInCockpit, _error, footer,
             },
         };
@@ -117,14 +133,43 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private static FontFamily _Mono() =>
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily family ? family : FontFamily.Default;
 
-    private static RadioButton _Template(string title, string detail, string id, bool selected) => new()
+    // A bordered, inset field: the one frame the file row and the attendees share.
+    private Border _Field(Control child)
     {
-        GroupName = "MeetingNoteTemplate",
-        Tag = id,
-        IsChecked = selected,
-        HorizontalAlignment = HorizontalAlignment.Stretch,
-        Content = new StackPanel { Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = detail, FontSize = 12, Opacity = 0.7 } } },
-    };
+        var field = new Border { Padding = new Thickness(10, 6), CornerRadius = new CornerRadius(9), BorderThickness = new Thickness(1), Child = child };
+        field.Bind(Border.BorderBrushProperty, this.GetResourceObservable("CockpitHairlineBrush"));
+        field.Bind(Border.BackgroundProperty, this.GetResourceObservable("CockpitInsetBgBrush"));
+        return field;
+    }
+
+    private Border _TemplateCard(string title, string detail, string id)
+    {
+        var card = new Border
+        {
+            Padding = new Thickness(12, 8),
+            CornerRadius = new CornerRadius(9),
+            BorderThickness = new Thickness(1),
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+            Child = new StackPanel { Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = detail, FontSize = 12, Opacity = 0.7 } } },
+        };
+        card.PointerPressed += (_, _) =>
+        {
+            _template = id;
+            _Restyle();
+        };
+        _templates[id] = card;
+        return card;
+    }
+
+    private void _Restyle()
+    {
+        foreach (var (id, card) in _templates)
+        {
+            var chosen = id == _template;
+            card.Bind(Border.BorderBrushProperty, this.GetResourceObservable(chosen ? "CockpitAccentBrush" : "CockpitHairlineBrush"));
+            card.Bind(Border.BackgroundProperty, this.GetResourceObservable(chosen ? "CockpitAccentRingTintBrush" : "CockpitInsetBgBrush"));
+        }
+    }
 
     private async Task _LoadAsync()
     {
@@ -144,7 +189,9 @@ internal sealed class NewMeetingNoteDialog : UserControl
             }
 
             _project.ItemsSource = options.Projects;
-            _project.SelectedItem = options.Recent.Select(address => options.Projects.FirstOrDefault(project => project.Address == address && project.Allowed)).FirstOrDefault(project => project is not null)
+            _wanted = _defaultProject is null ? null : await _defaultProject().ConfigureAwait(true);
+            _project.SelectedItem = options.Projects.FirstOrDefault(project => project.Allowed && _wanted is not null && (project.Address == _wanted || project.Address.EndsWith("/" + _wanted, StringComparison.Ordinal)))
+                ?? options.Recent.Select(address => options.Projects.FirstOrDefault(project => project.Address == address && project.Allowed)).FirstOrDefault(project => project is not null)
                 ?? options.Projects.FirstOrDefault(project => project.Allowed) ?? options.Projects[0];
             await _selecting.ConfigureAwait(true);
         }
@@ -177,6 +224,8 @@ internal sealed class NewMeetingNoteDialog : UserControl
         }
 
         _current = project;
+        _projectHint.Text = (project.Address == _wanted || (_wanted is not null && project.Address.EndsWith("/" + _wanted, StringComparison.Ordinal)) ? "The Depot project of the active Cockpit project. " : string.Empty)
+            + "Only projects where you are Editor or higher.";
         _CancelCheck();
         _create.IsEnabled = false;
         _taken = false;
@@ -245,7 +294,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
             }
 
             await Task.Delay(_checkDelay, cancellationToken).ConfigureAwait(true);
-            var answer = await _notes.CheckAsync(project.Address, folder, topic).ConfigureAwait(true);
+            var answer = await _notes.CheckAsync(project.Address, folder, topic, _today).ConfigureAwait(true);
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
@@ -286,16 +335,17 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private void _RefreshPeople()
     {
         _addPerson.SelectedItem = null;
+        _addPerson.Text = string.Empty;
         _addPerson.ItemsSource = _people.Where(person => _attendees.All(chosen => chosen.Id != person.Id)).ToList();
     }
 
     private void _RebuildChips()
     {
         _chips.Children.Clear();
-        _chips.Children.Add(_Chip("You", null));
+        _chips.Children.Add(_Chip("You", "(you)", null));
         foreach (var person in _attendees)
         {
-            _chips.Children.Add(_Chip(person.Name, () =>
+            _chips.Children.Add(_Chip(person.Name, null, () =>
             {
                 _attendees.Remove(person);
                 _RebuildChips();
@@ -304,9 +354,24 @@ internal sealed class NewMeetingNoteDialog : UserControl
         }
     }
 
-    private Border _Chip(string name, Action? remove)
+    private static readonly string[] _AvatarBrushes = ["CockpitAccentBrush", "CockpitStatusWaitingBrush", "CockpitStatusDoneBrush", "CockpitStatusBusyBrush"];
+
+    private Border _Chip(string name, string? suffix, Action? remove)
     {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center } } };
+        var avatar = new Border
+        {
+            Width = 20, Height = 20, CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1.5),
+            Child = new TextBlock { Text = name.Length > 0 ? name[..1].ToUpperInvariant() : "?", FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
+        };
+        avatar.Bind(Border.BorderBrushProperty, this.GetResourceObservable(_AvatarBrushes[_chips.Children.Count % _AvatarBrushes.Length]));
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { avatar, new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center } } };
+        if (suffix is not null)
+        {
+            var hint = new TextBlock { Text = suffix, VerticalAlignment = VerticalAlignment.Center };
+            hint.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
+            row.Children.Add(hint);
+        }
+
         if (remove is not null)
         {
             var button = new Button { Content = "×", Classes = { "Subtle" }, Padding = new Thickness(2, 0) };
@@ -314,7 +379,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
             row.Children.Add(button);
         }
 
-        var chip = new Border { CornerRadius = new CornerRadius(20), BorderThickness = new Thickness(1), Padding = new Thickness(10, 2), Margin = new Thickness(0, 0, 6, 4), Child = row };
+        var chip = new Border { CornerRadius = new CornerRadius(20), BorderThickness = new Thickness(1), Padding = new Thickness(4, 2, 10, 2), Margin = new Thickness(0, 0, 6, 0), Child = row };
         chip.Bind(Border.BorderBrushProperty, this.GetResourceObservable("CockpitHairlineBrush"));
         return chip;
     }
@@ -351,8 +416,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
         _error.Text = string.Empty;
         try
         {
-            var template = (_empty.IsChecked == true ? _empty : _meeting).Tag as string ?? DepotMeetingNoteTemplate.Meeting;
-            var answer = await _notes.CreateAsync(project.Address, _Topic, _Folder, template, [.. _attendees.Select(person => person.Id)]).ConfigureAwait(true);
+            var answer = await _notes.CreateAsync(project.Address, _Topic, _Folder, _template, _today, [.. _attendees.Select(person => person.Id)]).ConfigureAwait(true);
             if (answer.Data is not { } created)
             {
                 _error.Text = answer.Message ?? "Could not create the note.";

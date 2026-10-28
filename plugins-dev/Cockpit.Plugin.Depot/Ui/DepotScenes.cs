@@ -162,12 +162,12 @@ internal sealed class DepotMeetingNoteScene : IDepotMeetingNotes
     public Task<DepotBrowserAnswer<DepotMeetingNoteProjectInfo>> ProjectAsync(string project) => Task.FromResult(
         DepotBrowserAnswer<DepotMeetingNoteProjectInfo>.Success(new(["Meetings"], [new("s", "Sanne", "Editor"), new("j", "Jithran", "Viewer"), new("m", "Mirthe", null)])));
 
-    public Task<DepotBrowserAnswer<DepotMeetingNoteCheck>> CheckAsync(string project, string? folder, string topic) => Task.FromResult(
+    public Task<DepotBrowserAnswer<DepotMeetingNoteCheck>> CheckAsync(string project, string? folder, string topic, DateOnly date) => Task.FromResult(
         DepotBrowserAnswer<DepotMeetingNoteCheck>.Success(new(false, null, null, 0)));
 
     public Task<DepotBrowserAnswer<DepotMeetingNoteCreated>> CreateAsync(
-        string project, string topic, string? folder, string template, IReadOnlyList<string> attendees) => Task.FromResult(
-        DepotBrowserAnswer<DepotMeetingNoteCreated>.Success(new(DepotMeetingNoteName.Build(folder, topic, new DateOnly(2026, 10, 19)), false)));
+        string project, string topic, string? folder, string template, DateOnly date, IReadOnlyList<string> attendees) => Task.FromResult(
+        DepotBrowserAnswer<DepotMeetingNoteCreated>.Success(new(DepotMeetingNoteName.Build(folder, topic, date), false)));
 
     public Task<DepotBrowserAnswer<string>> LinkAsync(string project, string path) => Task.FromResult(
         DepotBrowserAnswer<string>.Success("https://depot.example.com/n/token"));
