@@ -1,12 +1,17 @@
 // AC-1896 spike: Depot's own markdown.ts and merge.ts (plus marked, @tiptap/markdown) bundled into one script for Jint.
-// Usage: node build.mjs <depot notes dir> <out.js> [--marked <dir>]   (--marked swaps marked for another copy: the counter-proof)
+// Usage: node build.mjs <depot notes dir> <out.js> [--yjs] [--marked <file>]
+//   --yjs     also the room (room.js: yjs + @tiptap/y-tiptap), the workaround for G1/G2
+//   --marked  swaps marked for another copy: the counter-proof
 import { createRequire } from 'node:module';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const [notes, out] = process.argv.slice(2).map((p) => resolve(p));
 // esbuild comes from the notes folder's own node_modules, so the bundle is built with the version Depot builds with.
 const { build } = createRequire(join(notes, 'package.json'))('esbuild');
 const markedAt = process.argv.indexOf('--marked');
+const yjs = process.argv.includes('--yjs');
+const here = dirname(fileURLToPath(import.meta.url));
 const entry = `
 import { parseBody, serializeNote, serializeBody, splitFrontmatter, lineEnding, roundTrip, noteExtensions } from './src/markdown.ts';
 import { mergeNote } from './src/merge.ts';
@@ -22,6 +27,7 @@ export function parse(markdown) { return JSON.stringify(parseBody(splitFrontmatt
 export function serialize(frontmatter, docJson, eol) { return serializeNote(frontmatter, JSON.parse(docJson), eol); }
 export function merge(base, theirs, frontmatter, docJson) { const m = mergeNote(base, theirs, { frontmatter, doc: JSON.parse(docJson) }); return JSON.stringify({ ...m, doc: m.doc }); }
 export { roundTrip, splitFrontmatter, lineEnding, serializeBody };
+${yjs ? `export * as room from ${JSON.stringify(join(here, 'room.js'))};` : ''}
 `;
 await build({
   stdin: { contents: entry, resolveDir: notes, loader: 'ts', sourcefile: 'entry.ts' },
@@ -33,7 +39,9 @@ await build({
   platform: 'neutral',
   mainFields: ['module', 'main'],
   minify: false,
-  alias: markedAt > 0 ? { marked: resolve(process.argv[markedAt + 1]) } : {},
+  // room.js sits outside the notes folder: its packages and 'depot-notes/' resolve to the notes folder's own.
+  nodePaths: [join(notes, 'node_modules')],
+  alias: { 'depot-notes': join(notes, 'src'), ...(markedAt > 0 ? { marked: resolve(process.argv[markedAt + 1]) } : {}) },
   logLevel: 'warning',
 });
 console.log(out);
