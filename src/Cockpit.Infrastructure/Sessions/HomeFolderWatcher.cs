@@ -43,7 +43,7 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
 
     private void _OnRegistryChanged(object? sender, EventArgs e) => _Refresh();
 
-    private void _OnLiveStateChanged(Cockpit.Core.Sessions.SessionLiveState state) => _Refresh();
+    private void _OnLiveStateChanged(SessionLiveState state) => _Refresh();
 
     private IReadOnlyList<string> _SessionNames()
     {
