@@ -20,12 +20,12 @@ public class AgentOwnedTabTests
         Assert.True(a.Ok, a.Error);
         Assert.Equal("Local fixture", a.Title);
         Assert.Equal("hidden", a.Presentation);
-        var more = await Task.WhenAll(tabs.OpenAsync("a", fixture.Url, "operator"), tabs.OpenAsync("b", fixture.Url, "self"));
+        var more = await Task.WhenAll(tabs.OpenAsync("a", fixture.Url, "operator"), tabs.OpenAsync("a", fixture.Url, "self"), tabs.OpenAsync("b", fixture.Url, "self"));
         Assert.All(more, tab => Assert.True(tab.Ok, tab.Error));
         Assert.Equal("unavailable", more[0].Presentation);
-        Assert.Equal(2, (await tabs.ListAsync("a")).Count);
-        Assert.Equal(more[1].TabId, Assert.Single(await tabs.ListAsync("b")).TabId);
-        Assert.DoesNotContain(await tabs.ListAsync("a"), tab => tab.TabId == more[1].TabId);
+        Assert.Equal(3, (await tabs.ListAsync("a")).Count);
+        Assert.Equal(more[2].TabId, Assert.Single(await tabs.ListAsync("b")).TabId);
+        Assert.DoesNotContain(await tabs.ListAsync("a"), tab => tab.TabId == more[2].TabId);
         var text = await tabs.ReadAsync("a", a.TabId!, "text");
         Assert.True(text.Ok, text.Error);
         Assert.Equal("Local fixture", text.Title);
@@ -37,9 +37,9 @@ public class AgentOwnedTabTests
         var image = await tabs.ReadAsync("a", a.TabId!, "text", screenshot: true);
         Assert.True(image.Ok, image.Error);
         Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, Convert.FromBase64String(image.ImagePng!)[..8]);
-        Assert.Contains("Fixture content", (await tabs.ReadAsync("b", more[1].TabId!, "text")).Text);
-        Assert.Contains("heading: Fixture content", (await tabs.ReadAsync("b", more[1].TabId!, "tree")).Text);
-        Assert.NotEmpty((await tabs.ReadAsync("b", more[1].TabId!, "text", screenshot: true)).ImagePng!);
+        Assert.Contains("Fixture content", (await tabs.ReadAsync("b", more[2].TabId!, "text")).Text);
+        Assert.Contains("heading: Fixture content", (await tabs.ReadAsync("b", more[2].TabId!, "tree")).Text);
+        Assert.NotEmpty((await tabs.ReadAsync("b", more[2].TabId!, "text", screenshot: true)).ImagePng!);
     }
 
     // L2b: caller and generation boundaries, takeover, validation and failed starts leave no usable browser.

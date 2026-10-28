@@ -40,7 +40,8 @@ internal sealed class CdpPage : IDisposable
     public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement> onEvent, CancellationToken cancellationToken)
     {
         var page = new CdpPage();
-        await page._socket.ConnectAsync(new Uri(socketUrl), cancellationToken).ConfigureAwait(false);
+        try { await page._socket.ConnectAsync(new Uri(socketUrl), cancellationToken).ConfigureAwait(false); }
+        catch { page.Dispose(); throw; }
         _ = page.ReadAsync(onEvent);
         return page;
     }
