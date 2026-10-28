@@ -12,6 +12,11 @@ public interface IPluginHealthSection
     string Name { get; }
 
     /// <summary>
+    /// Whether an unhealthy read fails the container probe (/healthz 503). Optional integrations leave this false and only degrade the status.
+    /// </summary>
+    bool IsEssential => false;
+
+    /// <summary>
     /// The section's state right now, read on every health request and given about two seconds.
     /// A read that takes longer or throws counts as unhealthy.
     /// </summary>
