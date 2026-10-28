@@ -2,8 +2,8 @@ extern alias UiAsm;
 
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Inbox;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Notifications;
 using NSubstitute;
 using DepotInboxModel = UiAsm::Cockpit.Plugin.Depot.UI.DepotInboxModel;
 using DepotInvitationNotifications = UiAsm::Cockpit.Plugin.Depot.UI.DepotInvitationNotifications;
