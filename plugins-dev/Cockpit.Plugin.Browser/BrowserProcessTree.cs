@@ -8,8 +8,9 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
 {
     private readonly List<Process> _children = [];
 
-    public void Capture()
+    public int Capture()
     {
+        var before = _children.Count;
         var candidates = new List<(Process Process, int Parent)>();
         foreach (var process in Process.GetProcesses())
         {
@@ -42,6 +43,7 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
         }
         foreach (var (process, _) in candidates)
             if (!_children.Contains(process)) process.Dispose();
+        return _children.Count - before;
     }
 
     public bool Wait(TimeSpan timeout)

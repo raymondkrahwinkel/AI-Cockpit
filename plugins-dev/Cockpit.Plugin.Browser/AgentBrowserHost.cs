@@ -332,10 +332,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         tree.Capture();
         try { CloseAsync(profile).GetAwaiter().GetResult(); }
         catch (Exception ex) when (ex is IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or InvalidOperationException) { }
-        if (tree.Wait(TimeSpan.FromSeconds(5)))
+        var graceful = Stopwatch.StartNew();
+        while (tree.Wait(TimeSpan.FromSeconds(5) - graceful.Elapsed))
         {
-            tree.Capture();
-            if (tree.Wait(TimeSpan.FromSeconds(5))) return true;
+            if (tree.Capture() == 0) return true;
         }
         tree.Kill();
         return tree.Wait(TimeSpan.FromSeconds(5));
