@@ -177,7 +177,12 @@ public class DepotSharedProjectSourceTests
         var source = new DepotSharedProjectSource(connection, "depot:test", host, events, http);
         await source.ListAsync(CancellationToken.None);
         var changes = new List<string?>();
-        source.Changed += changes.Add;
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.Changed += address =>
+        {
+            changes.Add(address);
+            changed.TrySetResult();
+        };
         var hub = await hubStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         for (var version = 1; version <= 10; version++)
@@ -185,7 +190,8 @@ public class DepotSharedProjectSourceTests
             hub.Push(new DepotEvent("projects", "created", "acme/project", version));
         }
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        // The quiet period ends on a real timer; waiting for its Changed, not a fixed sleep, holds on a loaded runner.
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal<string?>([null], changes);
         var result = await source.ListAsync(CancellationToken.None);
