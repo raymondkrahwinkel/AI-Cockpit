@@ -137,7 +137,7 @@ internal sealed class DepotNotesModel : IDisposable
     {
         if (page.State is DepotInboxState.SignIn or DepotInboxState.Expired)
         {
-            return;
+            page = page with { Notes = [] };
         }
 
         lock (_pagesLock)
