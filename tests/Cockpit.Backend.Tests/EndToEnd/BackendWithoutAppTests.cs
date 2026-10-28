@@ -46,10 +46,8 @@ public sealed class BackendWithoutAppTests : IDisposable
         }
     }
 
-    // A planner started before the startup reconcile is refused, and after it the planners run: the worktree planner's
-    // crash net assumes the startup sweep has run, and a sweep that runs after it can remove work.
-    // AC-1889: and the background start hands control back at once while a planner takes 3 s, which is what lets the
-    // window show first. Merged into this case so the project's test ceiling does not move.
+    // A planner started before the startup reconcile is refused: its crash net assumes the sweep ran. AC-1889: the
+    // background start hands back at once while a planner takes 3 s; merged here to keep the test ceiling.
     [Fact]
     public async Task ThePlanners_StartOnlyAfterTheStartupReconcile_AndNeverHoldTheCaller()
     {
