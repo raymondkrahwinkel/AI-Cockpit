@@ -52,6 +52,12 @@ File-source plugins can register `IFileSourceProvider` through `ICockpitHost.Add
 plugin's existing channel, including server-admin relays. The initial channel limits file content to
 1 MiB. See the [file source contract](docs/plugins/FILE-SOURCES.md) for ownership and conflict semantics.
 
+Host 0.137.0 (Abstractions 3.43.0 / UI 3.17.0) adds host-owned Markdown file workspaces.
+In Depot files, Open views a Markdown document, Edit enables changes, and New Markdown file opens a
+draft in the chosen folder. Save or Ctrl+S writes with the original checksum. Pop out and Dock back
+keep the same text and undo history. Closing warns about unsaved changes; unsaved text is not restored
+after restart. A source conflict preserves local text for the later conflict-resolution flow.
+
 The cockpit does not talk to any model API of its own accord. A session is a driver: it spawns the provider's own
 client, or speaks to the provider's own endpoint, under your own login and your own credentials — which the
 cockpit never reads, stores or transmits.

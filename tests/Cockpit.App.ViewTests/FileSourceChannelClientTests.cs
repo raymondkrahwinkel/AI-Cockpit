@@ -20,11 +20,17 @@ public class FileSourceChannelClientTests
         var file = new FileRef("c1", "opaque", "note.md");
         channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
             Task.FromResult(JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
-                new(Convert.ToBase64String(Encoding.UTF8.GetBytes("# read")), "v1", 6, null, "text/markdown"), null), FileSourceChannel.Json)));
+                new(Convert.ToBase64String(Encoding.UTF8.GetBytes("# read")), "v1", 6, null, "text/markdown") { CanWrite = true }, null), FileSourceChannel.Json)));
         var read = await client.ReadAsync(file, default);
         using var reader = new StreamReader(read.Content);
         Assert.Equal("# read", await reader.ReadToEndAsync());
         Assert.Equal("v1", read.Version);
+        Assert.True(read.CanWrite);
+        channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
+            Task.FromResult(JsonSerializer.SerializeToElement(new { data = new { contentBase64 = "", version = "old" } }, FileSourceChannel.Json)));
+        var oldSnapshot = await client.ReadAsync(file, default);
+        using var oldContent = oldSnapshot.Content;
+        Assert.False(oldSnapshot.CanWrite);
         channel.InvokeAsync(Arg.Any<string>(), Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(
             Task.FromResult(JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Written, "v2"), null), FileSourceChannel.Json)));
         using var content = new MemoryStream(Encoding.UTF8.GetBytes("# saved"));

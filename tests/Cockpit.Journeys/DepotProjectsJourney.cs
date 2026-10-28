@@ -19,6 +19,8 @@ using Cockpit.Infrastructure.Projects;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
 using Cockpit.Plugins.Abstractions.Projects;
+using Cockpit.Plugins.Abstractions.Files;
+using Cockpit.Plugins.Abstractions.UI.Files;
 
 namespace Cockpit.Journeys;
 
@@ -57,6 +59,14 @@ public sealed class DepotProjectsJourney
         }
 
         await cockpit.StartDesktopAsync();
+
+        var fileHost = cockpit.Cockpit.LocalPluginUiPart("depot")?.Host
+            ?? throw new InvalidOperationException("The Depot UI was not initialized.");
+        await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => fileHost.OpenFileWorkspaceAsync("depot.markdown",
+            new FileWorkspaceOpenOptions(new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", "notes/editor.md" }), "notes/editor.md"),
+                "depot:journey:acme/cockpit:notes/editor.md", "editor.md", "Depot / Journey / acme/cockpit",
+                Edit: true, CreateNew: true, InitialText: "# Journey\n\n")));
+        Assert.Equal("# Journey\n\nWritten in Cockpit.", depot.EditorText);
 
         var memory = cockpit.Services.GetRequiredService<IProjectMemorySourceRegistry>().Sources.Single(source => source.Scheme == "depot");
         var shared = cockpit.Services.GetRequiredService<ISharedProjectSourceRegistry>().Sources.Single(source => source.Key == "depot");
@@ -211,6 +221,7 @@ public sealed class DepotProjectsJourney
         public string BaseUrl { get; } = baseUrl;
         public string DefinitionName => state.Name;
         public string Inbox => state.Inbox;
+        public string? EditorText => state.EditorText;
 
         public void ChangeFromSecondClient(string name) => state.ChangeFromSecondClient(name);
 
@@ -251,6 +262,8 @@ public sealed class DepotProjectsJourney
             app.MapGet("/cockpit/projects", state.WriteProjectsAsync);
             app.MapPut("/cockpit/projects/{org}/{slug}/definition", state.WriteDefinitionAsync);
             app.MapPost("/sync/{org}/{slug}/append", state.AppendAsync);
+            app.MapPost("/sync/{org}/{slug}/read", state.ReadEditorAsync);
+            app.MapPost("/sync/{org}/{slug}/write", state.WriteEditorAsync);
             app.MapPost("/sync/{org}/{slug}/uploads", state.RequestUploadsAsync);
             app.MapPost("/sync/{org}/{slug}/downloads", state.RequestDownloadsAsync);
             app.MapPost("/sync/{org}/{slug}/delete", state.DeleteAsync);
@@ -293,6 +306,22 @@ public sealed class DepotProjectsJourney
         public string? Logo { get; private set; }
         public string Inbox { get; private set; } = string.Empty;
         public bool CanWrite { get; private set; }
+        public string? EditorText { get; private set; }
+
+        public async Task ReadEditorAsync(HttpContext context)
+        {
+            await context.Response.WriteAsJsonAsync(new { files = new[] { new { path = "notes/editor.md", content = EditorText, checksum = "editor-v1" } } });
+        }
+
+        public async Task WriteEditorAsync(HttpContext context)
+        {
+            using var request = await JsonDocument.ParseAsync(context.Request.Body);
+            var entry = request.RootElement[0];
+            var expected = EditorText is null ? "" : "editor-v1";
+            var matches = entry.GetProperty("baseChecksum").GetString() == expected;
+            EditorText = matches ? entry.GetProperty("content").GetString() : EditorText;
+            await context.Response.WriteAsJsonAsync(new { results = new[] { new { path = "notes/editor.md", status = matches ? "written" : "conflict", checksum = "editor-v1" } } });
+        }
 
         private string Checksum => $"definition-v{_version}";
 

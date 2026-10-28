@@ -42,7 +42,8 @@
     <!-- 3.14.0 (AC-1778): ICockpitUiHost.AddLinkHandler lets plugins claim recognized transcript links. -->
     <!-- 3.15.0 (AC-1753): ICockpitUiHost.CreateMarkdownEditor and IMarkdownEditor, the host's live-preview Markdown editor. A plugin that calls it sets minHostVersion 0.134.0. -->
     <!-- 3.16.0 (AC-1751): WorkspaceTypeRegistration.CanFloat, Pop out / Dock back for a workspace type. A plugin that sets it sets minHostVersion 0.135.0; an older host ignores it. -->
-    <Version>3.16.0</Version>
+    <!-- 3.17.0: host-owned file workspaces; requires host 0.137.0 (AC-1754). -->
+    <Version>3.17.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

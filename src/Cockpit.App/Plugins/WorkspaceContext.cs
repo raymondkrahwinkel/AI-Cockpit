@@ -35,6 +35,18 @@ internal sealed class WorkspaceContext(
     public event EventHandler? RefreshRequested;
 
     public event EventHandler? Closed;
+    private Func<Task<bool>>? _closeGuard;
+
+    public void SetCloseGuard(Func<Task<bool>>? guard)
+    {
+        _closeGuard = guard;
+        CloseGuardVersion++;
+    }
+    internal long CloseGuardVersion { get; private set; }
+
+    internal bool HasCloseGuard => _closeGuard is not null;
+
+    internal Task<bool> ConfirmCloseAsync() => _closeGuard?.Invoke() ?? Task.FromResult(true);
 
     public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request)
     {
@@ -77,5 +89,9 @@ internal sealed class WorkspaceContext(
     }
 
     // Raised by the shell when this workspace is really closed (its tab dismissed), so a body can tear down a long-running job.
-    public void RaiseClosed() => Closed?.Invoke(this, EventArgs.Empty);
+    public void RaiseClosed()
+    {
+        _closeGuard = null;
+        Closed?.Invoke(this, EventArgs.Empty);
+    }
 }

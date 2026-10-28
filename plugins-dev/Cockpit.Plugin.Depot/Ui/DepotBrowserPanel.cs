@@ -15,7 +15,7 @@ namespace Cockpit.Plugin.Depot.UI;
 
 // AC-1568: browse a connected Depot project — documents and artifacts in one tree, view or download either, and for
 // an artifact manage its share link. The behaviour is DepotBrowserModel's; this is only the controls.
-internal sealed class DepotBrowserPanel : UserControl
+internal sealed partial class DepotBrowserPanel : UserControl
 {
     private readonly ICockpitUiHost _host;
     private readonly IReadOnlyList<DepotConnectionRegistration> _connections;
@@ -25,6 +25,7 @@ internal sealed class DepotBrowserPanel : UserControl
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button _signIn = new() { IsVisible = false };
     private readonly Button _upload = new() { Content = "Upload", IsVisible = false };
+    private readonly Button _newMarkdown = new() { Content = "New Markdown file", IsVisible = false };
     private readonly Button _publishFolder = new() { Content = "Publish folder here…", IsVisible = false };
     private readonly StackPanel _publications = new() { Spacing = 6, Margin = new Thickness(12, 6) };
     private readonly TreeView _tree = new();
@@ -68,6 +69,8 @@ internal sealed class DepotBrowserPanel : UserControl
 
         _upload.Click += async (_, _) => await UploadAsync().ConfigureAwait(true);
         _publishFolder.Click += async (_, _) => await PublishFolderAsync().ConfigureAwait(true);
+        _newMarkdown.Click += async (_, _) => await _NewMarkdownAsync(_SelectedFolder()).ConfigureAwait(true);
+        _ListenForFileSaves();
         var layout = _FilesLayout(refresh);
         var ownsInbox = inbox is null;
         var inboxModel = inbox ?? new DepotInboxModel(host);
@@ -101,6 +104,7 @@ internal sealed class DepotBrowserPanel : UserControl
         _project = scene.Project.Project;
         _loaded = scene.Tree;
         _upload.IsVisible = scene.Tree.CanShare;
+        _newMarkdown.IsVisible = scene.Tree.CanShare;
         _publishFolder.IsVisible = scene.Tree.CanShare;
         Content = _Tabs(_FilesLayout(refresh), new TextBlock { Text = "Inbox", Margin = new Thickness(12) }, false);
 
@@ -123,13 +127,13 @@ internal sealed class DepotBrowserPanel : UserControl
     private Control _FilesLayout(Button refresh)
     {
         _AddTreeSelectionStyles();
-        foreach (var button in new[] { _signIn, _upload, _publishFolder })
+        foreach (var button in new[] { _signIn, _upload, _publishFolder, _newMarkdown })
         {
             button.Classes.Add("Compact");
         }
 
         var top = new WrapPanel { Margin = new Thickness(12, 8, 6, 2) };
-        foreach (var control in new Control[] { _connectionBox, _projectBox, refresh, _upload, _publishFolder })
+        foreach (var control in new Control[] { _connectionBox, _projectBox, refresh, _newMarkdown, _upload, _publishFolder })
         {
             control.Margin = new Thickness(0, 0, 6, 6);
             top.Children.Add(control);
@@ -254,6 +258,7 @@ internal sealed class DepotBrowserPanel : UserControl
 
         _loaded = answer.Data ?? new([], false);
         _upload.IsVisible = _loaded.CanShare;
+        _newMarkdown.IsVisible = _loaded.CanShare;
         _publishFolder.IsVisible = _loaded.CanShare;
         if (_loaded.Nodes.Count == 0)
         {
@@ -355,6 +360,7 @@ internal sealed class DepotBrowserPanel : UserControl
         {
             row.DoubleTapped += async (_, _) => await OpenAsync(item.Node).ConfigureAwait(true);
         }
+        _AddMarkdownMenu(row, item);
         if (selectPath is not null && (selectPath == item.Path || selectPath.StartsWith(item.Path + "/", StringComparison.Ordinal)))
         {
             row.IsExpanded = true;
@@ -432,6 +438,12 @@ internal sealed class DepotBrowserPanel : UserControl
             var documentOpen = _Button("Open");
             documentOpen.Click += async (_, _) => await OpenAsync(node).ConfigureAwait(true);
             actions.Children.Add(documentOpen);
+            if (_loaded.CanShare && DepotMarkdownFiles.IsMarkdown(node))
+            {
+                var edit = _Button("Edit");
+                edit.Click += async (_, _) => await _EditMarkdownAsync(node).ConfigureAwait(true);
+                actions.Children.Add(edit);
+            }
             return;
         }
 
@@ -756,6 +768,11 @@ internal sealed class DepotBrowserPanel : UserControl
     {
         if (_model is { } model && _project is { } project)
         {
+            if (DepotMarkdownFiles.IsMarkdown(node))
+            {
+                await DepotMarkdownFiles.OpenAsync(_host, model.Connection, project, node.Path, edit: false).ConfigureAwait(true);
+                return;
+            }
             if (ArtifactWorkspace.CanOpenInCockpit(node))
             {
                 await _host.OpenWorkspaceAsync(ArtifactWorkspace.WorkspaceTypeId, new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceOpenOptions($"depot:{model.Connection.Id}:{project}:{node.Path}", Path.GetFileName(node.Path))).ConfigureAwait(true);

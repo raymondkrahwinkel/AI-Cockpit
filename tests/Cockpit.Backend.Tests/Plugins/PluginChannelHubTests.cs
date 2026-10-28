@@ -32,10 +32,12 @@ public class PluginChannelHubTests
 
     private static async Task _FileSourceRoundtripAsync(PluginChannelHub hub)
     {
+        Assert.NotNull(typeof(FileReadResult).GetConstructor([typeof(Stream), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
+        Assert.NotNull(typeof(FileSourceReadAnswer).GetConstructor([typeof(string), typeof(string), typeof(long?), typeof(DateTimeOffset?), typeof(string)]));
         var source = Substitute.For<IFileSource>();
         source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes));
         source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ =>
-            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes("# hello")), "v1")));
+            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes("# hello")), "v1") { CanWrite = true }));
         source.WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), "v1", false, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new FileWriteResult(FileWriteStatus.Conflict, "v2")));
         var provider = Substitute.For<IFileSourceProvider>();
@@ -50,6 +52,7 @@ public class PluginChannelHubTests
         Assert.NotNull(content.Data);
         Assert.Equal("# hello", Encoding.UTF8.GetString(Convert.FromBase64String(content.Data.ContentBase64)));
         Assert.Equal("v1", content.Data.Version);
+        Assert.True(content.Data.CanWrite);
         var stale = await hub.InvokeAsync("files", FileSourceChannel.Write,
             JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", "v1", false), FileSourceChannel.Json), default);
         var staleResult = stale.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Data
@@ -78,6 +81,22 @@ public class PluginChannelHubTests
             JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", "v1", false), FileSourceChannel.Json), default);
         Assert.Equal(FileSourceErrorKind.Forbidden, (forbidden.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error
             ?? throw new InvalidOperationException("The permission error was missing.")).Kind);
+        source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(
+            new FileReadResult(new MemoryStream(), "v1") { CanWrite = true }));
+        var readonlySnapshot = await hub.InvokeAsync("files", FileSourceChannel.Read,
+            JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
+        Assert.False((readonlySnapshot.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)?.Data
+            ?? throw new InvalidOperationException("The readonly snapshot was missing.")).CanWrite);
+        provider.Connections.Returns([new FileConnection("c1", "Fake", "memory", false)]);
+        source.Capabilities.Returns(new FileSourceCapabilities(false, FileSourceChannel.MaxContentBytes));
+        var incapableSnapshot = await hub.InvokeAsync("files", FileSourceChannel.Read,
+            JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
+        Assert.False((incapableSnapshot.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)?.Data
+            ?? throw new InvalidOperationException("The source capability snapshot was missing.")).CanWrite);
+        var readonlyConnections = await hub.InvokeAsync("files", FileSourceChannel.Connections,
+            JsonSerializer.SerializeToElement(new { }), default);
+        Assert.True(Assert.Single(readonlyConnections.Deserialize<FileSourceAnswer<FileConnection[]>>(FileSourceChannel.Json)?.Data
+            ?? throw new InvalidOperationException("The connection list was missing.")).ReadOnly);
         await source.Received(1).WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         var changes = new List<PluginChannelEvent>();
         using var subscription = hub.Subscribe("files", FileSourceChannel.Changed, changes.Add);

@@ -35,6 +35,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
     public void InitializeUi(ICockpitUiHost host)
     {
         var settings = new DepotSettings(host.Storage);
+        host.AddFileWorkspaceType(DepotMarkdownFiles.WorkspaceTypeId, "Markdown file");
         host.AddWorkspaceType(new WorkspaceTypeRegistration(ArtifactWorkspace.WorkspaceTypeId, "Depot file", context => new ArtifactWorkspace(host, context, settings.Connections))
         {
             IconKind = MaterialIconKind.FileOutline,

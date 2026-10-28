@@ -105,4 +105,9 @@ public interface IWorkspaceContext
         add { }
         remove { }
     }
+
+    /// <summary>Asks this body before its tab, floating window or the app closes. Null clears the guard.</summary>
+    void SetCloseGuard(Func<Task<bool>>? guard)
+    {
+    }
 }

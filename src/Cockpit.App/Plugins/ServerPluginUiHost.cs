@@ -27,7 +27,8 @@ internal sealed class ServerPluginUiHost(
     Func<string, CancellationToken, Task> mcpSignOut,
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
     Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
-    ServerManagedClis managedClis) : ICockpitUiHost
+    ServerManagedClis managedClis,
+    string sourceKey = "server") : ICockpitUiHost
 {
     private readonly List<Action> _saved = [];
     private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
@@ -114,6 +115,17 @@ internal sealed class ServerPluginUiHost(
 
     public Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => Task.CompletedTask;
 
+    public void AddFileWorkspaceType(string workspaceTypeId, string title)
+    {
+        if (local is CockpitUiHost native)
+        {
+            native.AddRemoteFileWorkspaceType(workspaceTypeId, title, sourceKey, channel);
+        }
+    }
+
+    public Task OpenFileWorkspaceAsync(string workspaceTypeId, Cockpit.Plugins.Abstractions.UI.Files.FileWorkspaceOpenOptions options) =>
+        local is CockpitUiHost native ? native.OpenRemoteFileWorkspaceAsync(workspaceTypeId, sourceKey, options) : Task.CompletedTask;
+
     public Task OpenDockPanelAsync(string panelId) => Task.CompletedTask;
 
     public void SetStatusText(string? text)
@@ -126,7 +138,7 @@ internal sealed class ServerPluginUiHost(
         local.ShowDialogAsync(title, createContent, width, height);
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
-        local.ShowDialogAsync(title, createContent, singleInstanceKey, width, height);
+        local.ShowDialogAsync(title, createContent, $"server:{sourceKey}:{singleInstanceKey}", width, height);
 
     public Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null) => Task.CompletedTask;
 

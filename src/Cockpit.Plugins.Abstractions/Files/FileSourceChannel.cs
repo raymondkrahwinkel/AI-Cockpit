@@ -9,6 +9,7 @@ public static class FileSourceChannel
     public const string Read = "files-read";
     public const string Write = "files-write";
     public const string Changed = "files-changed";
+    public const string Saved = "files-saved";
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 
     public static async Task<byte[]> ReadContentAsync(Stream content, long limit, CancellationToken cancellationToken)
@@ -45,6 +46,9 @@ public static class FileSourceChannel
 public sealed record FileSourceReadRequest(FileRef File);
 public sealed record FileSourceWriteRequest(FileRef File, string ContentBase64, string? IfVersion, bool MustNotExist);
 public sealed record FileSourceReadAnswer(string ContentBase64, string Version, long? Size,
-    DateTimeOffset? Modified, string? ContentType);
+    DateTimeOffset? Modified, string? ContentType)
+{
+    public bool CanWrite { get; init; }
+}
 public sealed record FileSourceError(FileSourceErrorKind Kind, string Message);
 public sealed record FileSourceAnswer<T>(T? Data, FileSourceError? Error) where T : class;

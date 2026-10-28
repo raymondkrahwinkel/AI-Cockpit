@@ -17,6 +17,8 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Files;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
@@ -511,6 +513,14 @@ public sealed class RemoteAdminJourney
             Assert.Equal("# from the journey", depotDocuments["notes/journey.md"]);
             Assert.Contains(depotTree["data"]?["nodes"]?.AsArray() ?? [], node => node?["path"]?.GetValue<string>() == "notes/journey.md");
             Assert.Equal("# from the journey", openedDocument["data"]?.GetValue<string>());
+
+            var fileHost = cockpit.Cockpit.LocalPluginUiPart("depot")?.Host as CockpitUiHost
+                ?? throw new InvalidOperationException("The local Depot UI host is missing.");
+            await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => fileHost.OpenRemoteFileWorkspaceAsync("depot.markdown", Server,
+                new FileWorkspaceOpenOptions(new FileRef(depotId, System.Text.Json.JsonSerializer.Serialize(new[] { "acme/cockpit", "notes/editor.md" }), "notes/editor.md"),
+                    $"depot:{depotId}:acme/cockpit:notes/editor.md", "editor.md", "Depot / Work / acme/cockpit",
+                    Edit: true, CreateNew: true, InitialText: "# Journey\n\n")));
+            Assert.Equal("# Journey\n\nWritten in Cockpit.", depotDocuments["notes/editor.md"]);
 
             // AC-1574: publishing a folder of this machine to the Depot project, through the same relay. A first run puts both
             // files there, a changed document goes with exactly one write guarded by the checksum it replaces, and a file
@@ -1096,9 +1106,10 @@ public sealed class RemoteAdminJourney
                     ? guard.GetString()
                     : null;
                 calls.Enqueue(("write", path, baseChecksum, null, null));
-                if (baseChecksum is not null && documents.TryGetValue(path, out var current) && _Checksum(current) != baseChecksum)
+                var currentChecksum = documents.TryGetValue(path, out var current) ? _Checksum(current) : "";
+                if (baseChecksum is not null && currentChecksum != baseChecksum)
                 {
-                    results.Add(new { path, status = "conflict", checksum = _Checksum(current), message = "Changed in Depot." });
+                    results.Add(new { path, status = "conflict", checksum = currentChecksum, message = "Changed in Depot." });
                     continue;
                 }
 

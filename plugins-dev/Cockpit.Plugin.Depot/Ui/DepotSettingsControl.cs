@@ -46,6 +46,9 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
 
         var addConnection = new Button { Content = "+ Add connection" };
         addConnection.Click += (_, _) => _AddRow(existing: null);
+        var browse = new Button { Content = "Browse files" };
+        browse.Click += async (_, _) => await host.ShowDialogAsync("Depot files",
+            () => new DepotBrowserPanel(host, settings.Connections), "depot-browser", 1000, 680).ConfigureAwait(true);
 
         var connectionsHeading = new StackPanel
         {
@@ -64,6 +67,7 @@ internal sealed class DepotSettingsControl : UserControl, IPluginSettingsView
                 _Hint("Each connection is offered to a session on the project whose memory it holds, as \"Depot: <name>\", using Depot's own OAuth sign-in — the plugin never holds a token."),
                 _connectionsPanel,
                 addConnection,
+                browse,
             },
         };
 

@@ -16,6 +16,11 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using NSubstitute;
+using Avalonia.Controls;
+using Cockpit.App.Plugins;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Workspaces;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.App.ViewTests;
 
@@ -90,7 +95,80 @@ public class MainWindowCloseConfirmationTests
             Assert.True(closed);
             _ = dialogService.DidNotReceive().ShowConfirmationDialogAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
+            await _UnsavedFileCloseAsync();
         });
+
+    private static async Task _UnsavedFileCloseAsync()
+    {
+        var accepted = false;
+        var confirmations = 0;
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("file.close", "File", context =>
+        {
+            context.SetCloseGuard(() =>
+            {
+                confirmations++;
+                return Task.FromResult(accepted);
+            });
+            return new TextBlock { Text = "Unsaved text" };
+        }), new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
+        var vm = new CockpitViewModel(workspaceTypeRegistry: registry);
+        vm.Sessions.Clear();
+        await vm.Workspaces.OpenWorkspaceAsync("file.close");
+        var window = new MainWindow { DataContext = vm };
+        window.Show();
+        Assert.False(await window.ConfirmWorkspaceCloseAsync());
+        Assert.True(window.IsVisible);
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
+        await _PumpAsync();
+        Assert.True(window.IsVisible);
+        accepted = true;
+        Assert.True(await window.ConfirmWorkspaceCloseAsync());
+        Assert.False(window.IsEnabled);
+        window.CancelWorkspaceClose();
+        Assert.True(window.IsEnabled);
+        window.Close();
+        Dispatcher.UIThread.RunJobs();
+        await _WaitUntilAsync(() => !window.IsVisible);
+        Assert.False(window.IsVisible);
+        Assert.Equal(4, confirmations);
+        await _NewDraftDuringCloseAsync();
+        await _RestartBeforeDiscardAsync();
+    }
+
+    private static async Task _NewDraftDuringCloseAsync()
+    {
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answers = new Dictionary<string, Task<bool>> { ["first"] = ready.Task, ["late"] = Task.FromResult(false) };
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("file.race", "File", context =>
+        {
+            context.SetCloseGuard(() => answers[context.InstanceKey ?? "first"]);
+            return new TextBlock();
+        }), new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
+        var vm = new WorkspacesViewModel(store: null, workspaceTypes: registry);
+        await vm.OpenWorkspaceAsync("file.race", new WorkspaceOpenOptions("first"));
+        var closing = vm.ConfirmCloseAllAsync();
+        await vm.OpenWorkspaceAsync("file.race", new WorkspaceOpenOptions("late"));
+        ready.SetResult(true);
+        Assert.False(await closing);
+    }
+
+    private static async Task _RestartBeforeDiscardAsync()
+    {
+        var approved = false;
+        var updaterStarts = 0;
+        var launches = 0;
+        var shutdowns = 0;
+        var restart = new AppRestartService(() => { updaterStarts++; return true; }, () => launches++, () => shutdowns++,
+            confirmWorkspaceClose: () => Task.FromResult(approved));
+        await restart.RestartAsync();
+        Assert.Equal((0, 0, 0), (updaterStarts, launches, shutdowns));
+        approved = true;
+        await restart.RestartAsync();
+        Assert.Equal((1, 0, 1), (updaterStarts, launches, shutdowns));
+    }
 
     private static async Task _PumpAsync()
     {

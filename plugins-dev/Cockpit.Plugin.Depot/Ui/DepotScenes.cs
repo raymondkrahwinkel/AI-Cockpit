@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Cockpit.Plugin.Depot.Contracts;
 
@@ -41,6 +42,14 @@ internal static class DepotScenes
             null)),
         ["depot-browser-empty"] = () => _Scene(new DepotBrowserSceneModel(_Project, new DepotBrowserTree([], true), null, null)),
         ["depot-settings-sync"] = _SettingsSyncScene,
+        ["depot-new-markdown"] = () =>
+        {
+            var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
+                { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top };
+            var name = dialog.GetLogicalDescendants().OfType<TextBox>().Single();
+            name.Text = "md-editor-in-cockpit";
+            return dialog;
+        },
     };
 
     private static Control _Scene(DepotBrowserSceneModel model)

@@ -39,7 +39,8 @@ internal sealed class ServerPluginSettings
         ICockpitUiHost local,
         Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
-        IReadOnlyDictionary<string, string?> managedClis)
+        IReadOnlyDictionary<string, string?> managedClis,
+        string serverName)
     {
         _relay = relay;
         _folderId = folderId;
@@ -60,7 +61,7 @@ internal sealed class ServerPluginSettings
             (name, cancellationToken) => relay.SignOutMcpServerAsync(folderId, name, cancellationToken),
             profiles,
             projects,
-            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)));
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName);
     }
 
     public Func<Control> CreateView => _host.CreateSettingsView ?? throw new InvalidOperationException("The plugin registered no settings view.");
@@ -72,9 +73,10 @@ internal sealed class ServerPluginSettings
         IPluginChannelRelay relay,
         string folderId,
         Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
-        Func<Task<IReadOnlyList<PluginProjectInfo>>> projects)
+        Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
+        string serverName = "server")
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId));
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName);
         if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
         {
             return null;
@@ -90,9 +92,10 @@ internal sealed class ServerPluginSettings
         ICockpitUiHost local,
         IPluginChannelRelay relay,
         string folderId,
-        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles)
+        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+        string serverName = "server")
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, () => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]), await ServerManagedClis.ReadAsync(relay, folderId));
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, () => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]), await ServerManagedClis.ReadAsync(relay, folderId), serverName);
         if (Activator.CreateInstance(uiType) is not ICockpitPluginUi ui)
         {
             return new Dictionary<string, Func<string?, IPluginProviderConfigView>>();

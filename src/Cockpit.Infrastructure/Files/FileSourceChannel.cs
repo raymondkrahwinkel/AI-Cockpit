@@ -13,7 +13,10 @@ internal static class FileSourceChannel
         try
         {
             registration.Handlers.Add(channel.Handle(Wire.Connections, (_, _) =>
-                _RunAsync(() => Task.FromResult(provider.Connections.ToArray()))));
+                _RunAsync(() => Task.FromResult(provider.Connections.Select(connection => connection with
+                {
+                    ReadOnly = connection.ReadOnly || !provider.Open(connection.Id).Capabilities.CanWrite,
+                }).ToArray()))));
             registration.Handlers.Add(channel.Handle(Wire.Read, (payload, ct) => _RunAsync(async () =>
             {
                 var request = payload.Deserialize<FileSourceReadRequest>(Wire.Json)
@@ -25,7 +28,11 @@ internal static class FileSourceChannel
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a file version.");
                 var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, ct).ConfigureAwait(false);
                 return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version,
-                    bytes.LongLength, result.Modified, result.ContentType);
+                    bytes.LongLength, result.Modified, result.ContentType)
+                {
+                    CanWrite = result.CanWrite && source.Capabilities.CanWrite
+                        && provider.Connections.FirstOrDefault(c => c.Id == request.File.ConnectionId) is { ReadOnly: false },
+                };
             })));
             registration.Handlers.Add(channel.Handle(Wire.Write, (payload, ct) => _RunAsync(async () =>
             {
@@ -41,6 +48,10 @@ internal static class FileSourceChannel
                     request.MustNotExist, ct).ConfigureAwait(false);
                 if (result.Status == FileWriteStatus.Written && string.IsNullOrWhiteSpace(result.Version))
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the saved version.");
+                if (result.Status == FileWriteStatus.Written)
+                {
+                    channel.Publish(Wire.Saved, JsonSerializer.SerializeToElement(request.File, Wire.Json));
+                }
                 return result;
             })));
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,
