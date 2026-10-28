@@ -12,6 +12,8 @@ internal sealed class EngineHealth(TimeProvider time, TimeSpan tick) : IPluginHe
 
     public string Name => "schedules-engine";
 
+    public bool IsEssential => true;
+
     public void Beat(int unusableTasks, bool isTaskListReadable)
     {
         Interlocked.Exchange(ref _unusable, unusableTasks);

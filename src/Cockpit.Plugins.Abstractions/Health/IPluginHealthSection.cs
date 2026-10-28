@@ -11,6 +11,9 @@ public interface IPluginHealthSection
     /// </summary>
     string Name { get; }
 
+    // AC-1815: optional integrations report degradation without failing the container probe.
+    bool IsEssential => false;
+
     /// <summary>
     /// The section's state right now, read on every health request and given about two seconds.
     /// A read that takes longer or throws counts as unhealthy.

@@ -21,9 +21,11 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
     public bool Add(string pluginId, IPluginHealthSection section)
     {
         string name;
+        bool isEssential;
         try
         {
             name = section.Name;
+            isEssential = section.IsEssential;
         }
         catch (Exception exception)
         {
@@ -43,13 +45,13 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
                 return false;
             }
 
-            _entries.Add(new _Entry(name, section));
+            _entries.Add(new _Entry(name, section, isEssential));
             return true;
         }
     }
 
     // AC-1470: `Actions` is the section itself when it offers any; /healthz never looks at it.
-    public async Task<IReadOnlyList<(string Name, PluginHealthReport Report, IPluginHealthActions? Actions)>> ReadAsync()
+    public async Task<IReadOnlyList<(string Name, PluginHealthReport Report, IPluginHealthActions? Actions, bool IsEssential)>> ReadAsync()
     {
         _Entry[] entries;
         lock (_entries)
@@ -62,7 +64,7 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
 
     // A read still running from an earlier request is waited on again rather than started anew, so a section that
     // hangs holds one thread however many probes arrive. Late reads as unhealthy, like a throw.
-    private async Task<(string Name, PluginHealthReport Report, IPluginHealthActions? Actions)> _ReadAsync(_Entry entry)
+    private async Task<(string Name, PluginHealthReport Report, IPluginHealthActions? Actions, bool IsEssential)> _ReadAsync(_Entry entry)
     {
         Task<PluginHealthReport> read;
         lock (entry)
@@ -72,12 +74,12 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
 
         try
         {
-            return (entry.Name, await read.WaitAsync(ReadBudget).ConfigureAwait(false), entry.Section as IPluginHealthActions);
+            return (entry.Name, await read.WaitAsync(ReadBudget).ConfigureAwait(false), entry.Section as IPluginHealthActions, entry.IsEssential);
         }
         catch (TimeoutException)
         {
             logger.LogWarning("Health section '{HealthSection}' did not report within {ReadBudget}; it reads as unhealthy", entry.Name, ReadBudget);
-            return (entry.Name, new PluginHealthReport(false, []), entry.Section as IPluginHealthActions);
+            return (entry.Name, new PluginHealthReport(false, []), entry.Section as IPluginHealthActions, entry.IsEssential);
         }
     }
 
@@ -99,11 +101,13 @@ internal sealed partial class PluginHealthSections(ILogger<PluginHealthSections>
     [GeneratedRegex(@"^[a-z0-9][a-z0-9-]{0,39}\z")]
     private static partial Regex _Slug();
 
-    private sealed class _Entry(string name, IPluginHealthSection section)
+    private sealed class _Entry(string name, IPluginHealthSection section, bool isEssential)
     {
         public string Name { get; } = name;
 
         public IPluginHealthSection Section { get; } = section;
+
+        public bool IsEssential { get; } = isEssential;
 
         public Task<PluginHealthReport>? Pending { get; set; }
     }

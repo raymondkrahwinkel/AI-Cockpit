@@ -75,6 +75,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
         _health.Disconnected();
         _connection?.Dispose();
         _connection = null;
+        _health.Disconnected("Not configured");
 
         if (_host is not { } host || _settings is not { } settings)
         {
@@ -87,6 +88,8 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
         {
             return;
         }
+
+        _health.Disconnected("Connecting");
 
         // AC-1074: same gap as Slack's — the shape check runs on save, so an id stored before it survives every load
         // and then matches nothing Discord can ever send. Said out loud here; the relay still opens.
@@ -107,6 +110,7 @@ public sealed class DiscordChannelPlugin : ICockpitPlugin, IOperatorMessageChann
         // Null on a host with no assistant (a headless/test host) — nothing to connect to.
         if (host.OpenAssistantChannel(contribution) is not { } gateway)
         {
+            _health.Disconnected("Assistant channel unavailable");
             return;
         }
 
