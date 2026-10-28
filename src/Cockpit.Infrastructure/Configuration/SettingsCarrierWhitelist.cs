@@ -149,5 +149,5 @@ internal sealed class SettingsCarrierFilter
         // A profile this carrier was picked for takes the Profiles section along, even when the category itself does not include it.
         _overrides.ContainsValue(true) && (path == "Profiles" || path.StartsWith("Profiles[]", StringComparison.Ordinal));
 
-    public bool AllowsProfile(string? label) => _categories is null || _categories.Contains("Profiles");
+    public bool AllowsProfile(string? label) => _categories is null || (label is not null && _overrides.TryGetValue(label, out var picked) ? picked : _categories.Contains("Profiles"));
 }
