@@ -23,14 +23,21 @@ public class DepotUrlNormalizerTests
     // Decision (documented on the class): a literal trailing-substring transform, not a URI parse — a query string
     // or fragment after /mcp stops the literal suffix match, so it is left untouched rather than guessed at. Depot's
     // own documented URL never carries either.
-    [Theory]
-    [InlineData("https://depot.example.com", "https://depot.example.com")]
-    [InlineData("  not a url at all  ", "not a url at all")]
-    [InlineData("https://depot.example.com/mcp?token=abc", "https://depot.example.com/mcp?token=abc")]
-    [InlineData("https://depot.example.com/mcp#section", "https://depot.example.com/mcp#section")]
-    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed(string url, string expected)
+    [Fact]
+    public void Normalize_WithNoTrailingMcpSegment_IsOnlyTrimmed()
     {
-        Assert.Equal(expected, DepotUrlNormalizer.Normalize(url));
+        (string Url, string Expected)[] rows =
+        [
+            ("https://depot.example.com", "https://depot.example.com"),
+            ("  not a url at all  ", "not a url at all"),
+            ("https://depot.example.com/mcp?token=abc", "https://depot.example.com/mcp?token=abc"),
+            ("https://depot.example.com/mcp#section", "https://depot.example.com/mcp#section"),
+        ];
+
+        foreach (var (url, expected) in rows)
+        {
+            Assert.Equal(expected, DepotUrlNormalizer.Normalize(url));
+        }
     }
 
     [Theory]

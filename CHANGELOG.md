@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **the Depot plugin can join a live note.** Its backend connects to a Depot note room with your Depot sign-in (the
+  token stays in Cockpit), keeps the room's document in step, and joins again with no lost text when Depot closes the
+  connection after a few minutes. The plugin reports whether the note is live, reconnecting, out of date, or needs you to sign
+  in again, and it asks for a sign-in only once instead of retrying. Plugin Depot 0.34.0. The editor that shows it follows.
+
 - added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
 
 - added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without
