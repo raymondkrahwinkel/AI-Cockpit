@@ -33,7 +33,7 @@ await build({
   platform: 'neutral',
   mainFields: ['module', 'main'],
   minify: false,
-  alias: { marked: 'C:/t/AC1896/marked-alt/node_modules/marked/lib/marked.esm.js' },
+  alias: markedAt > 0 ? { marked: resolve(process.argv[markedAt + 1]) } : {},
   logLevel: 'warning',
 });
 console.log(out);
