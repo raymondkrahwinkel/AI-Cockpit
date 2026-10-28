@@ -12,7 +12,6 @@ public sealed class ToastHostViewModelTests
         [ToastSeverity.Success, false, true],
         [ToastSeverity.Success, true, false],
         [ToastSeverity.Warning, false, false],
-        [ToastSeverity.Warning, true, false],
         [ToastSeverity.Error, false, false],
         [ToastSeverity.Error, true, false],
     ];

@@ -64,7 +64,7 @@
                             <TextBlock Text="{Binding MoreLabel}" IsVisible="{Binding MoreLabel, Converter={x:Static ObjectConverters.IsNotNull}}"
                                        FontSize="12" Margin="18,0,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                         </StackPanel>
-                        <Button Grid.Row="0" Grid.Column="2" Classes="Subtle" Padding="4,0"
+                        <Button Grid.Row="0" Grid.Column="2" Classes="Subtle" Padding="4,0" VerticalAlignment="Top"
                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                 Command="{Binding CloseCommand}" ToolTip.Tip="Dismiss">
                             <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>

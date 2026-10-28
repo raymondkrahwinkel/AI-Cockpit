@@ -8,6 +8,7 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
+    <!-- 0.132.0 (AC-1853): PluginNotification.Title is shown above the message (Cockpit.Plugins.Abstractions 3.41.0). -->
     <!-- 0.132.0: ICockpitHost.Notify and AddNotificationSource, needs-you notifications kept across a restart and re-checked
          by their plugin (AC-1804, Cockpit.Plugins.Abstractions 3.40.0); a plugin that calls them sets minHostVersion 0.132.0. -->
     <!-- 0.129.0: provider model-intelligence reads locally and over /api/v1 (AC-1808, Cockpit.Plugins.Abstractions

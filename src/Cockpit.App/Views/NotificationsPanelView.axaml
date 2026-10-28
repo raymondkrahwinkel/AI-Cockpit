@@ -107,9 +107,10 @@
                         <DataTemplate x:DataType="vm:NotificationGroupViewModel">
                             <StackPanel Spacing="4">
                                 <DockPanel Margin="4,2,0,0" MinHeight="20">
-                                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="4,1" FontSize="11"
-                                            Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                            IsVisible="{Binding HasRead}" Command="{Binding ClearReadCommand}" Content="Clear read"/>
+                                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="4,1"
+                                            IsVisible="{Binding HasRead}" Command="{Binding ClearReadCommand}">
+                                        <TextBlock Classes="groupHeader" Text="Clear read"/>
+                                    </Button>
                                     <StackPanel Orientation="Horizontal" Spacing="5">
                                         <materialIcons:MaterialIcon Kind="History" Width="12" Height="12" IsVisible="{Binding IsLastSession}"
                                                    Foreground="{DynamicResource CockpitTextFaintBrush}" VerticalAlignment="Center"/>

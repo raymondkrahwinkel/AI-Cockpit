@@ -3597,7 +3597,7 @@ internal static partial class Screenshotter
         {
             AssistantDocked = true,
             OpenDockPanelId = ViewModels.NotificationCenterViewModel.DockPanelId,
-            DockRailWidth = 380,
+            DockRailWidth = 420,
         };
         cockpit.RegisterNotificationsPanel();
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
