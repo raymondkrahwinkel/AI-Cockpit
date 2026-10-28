@@ -46,7 +46,8 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
         Assert.Empty(b.Sync.Conflicts);
         Assert.Equal((18, 18), (_Local(b)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
-        await _AssertProjectsStayLocalAsync();
+        await _AssertProjectsStayLocalAsync("forward-a", "forward-b");
+        await _AssertProjectsStayLocalAsync("reverse-b", "reverse-a");
     }
 
     // Acceptance 4: a key the manifest manages (AC-1507), a leaf or a whole dictionary, is neither pushed nor taken over.
@@ -75,63 +76,58 @@ public sealed class SettingsCarrierSyncTests : IDisposable
     }
 
     // AC-1861: each direction uses separate state roots and exercises an older carrier and pending state.
-    private async Task _AssertProjectsStayLocalAsync()
+    private async Task _AssertProjectsStayLocalAsync(string ownerName, string receiverName)
     {
-        foreach (var direction in new[] { "a-to-b", "b-to-a" })
-        {
-            var space = new _Space();
-            var ownerConfig = """{"Projects":[{"Id":"owner","Name":"Owner","SourceDirectory":"C:/owner"}],"CategoryOrder":["Owner"],"Terminal":{"FontSize":17}}""";
-            var receiverConfig = """{"Projects":[{"Id":"copy","Name":"Existing copy","SourceDirectory":"C:/copy"}],"CategoryOrder":["Local"],"Terminal":{"FontSize":17}}""";
-            ownerConfig = JsonSerializer.Serialize(JsonSerializer.Deserialize<CockpitConfigFile>(ownerConfig, CockpitConfigFileAccess.SerializerOptions), CockpitConfigFileAccess.SerializerOptions);
-            receiverConfig = JsonSerializer.Serialize(JsonSerializer.Deserialize<CockpitConfigFile>(receiverConfig, CockpitConfigFileAccess.SerializerOptions), CockpitConfigFileAccess.SerializerOptions);
-            var a = _Machine(direction + "-a", direction == "a-to-b" ? ownerConfig : receiverConfig, space);
-            var b = _Machine(direction + "-b", direction == "a-to-b" ? receiverConfig : ownerConfig, space);
-            var owner = direction == "a-to-b" ? a : b;
-            var receiver = direction == "a-to-b" ? b : a;
-            await owner.Sync.RunOnceAsync();
-            var outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
-            Assert.NotNull(outgoing);
-            Assert.False(outgoing.ContainsKey("Projects"));
-            Assert.False(outgoing.ContainsKey("CategoryOrder"));
+        var space = new _Space();
+        var ownerConfig = """{"Projects":[{"Id":"owner","Name":"Owner","SourceDirectory":"C:/owner"}],"CategoryOrder":["Owner"],"Terminal":{"FontSize":17}}""";
+        var receiverConfig = """{"Projects":[{"Id":"copy","Name":"Existing copy","SourceDirectory":"C:/copy"}],"CategoryOrder":["Local"],"Terminal":{"FontSize":17}}""";
+        ownerConfig = JsonSerializer.Serialize(JsonSerializer.Deserialize<CockpitConfigFile>(ownerConfig, CockpitConfigFileAccess.SerializerOptions), CockpitConfigFileAccess.SerializerOptions);
+        receiverConfig = JsonSerializer.Serialize(JsonSerializer.Deserialize<CockpitConfigFile>(receiverConfig, CockpitConfigFileAccess.SerializerOptions), CockpitConfigFileAccess.SerializerOptions);
+        var owner = _Machine(ownerName, ownerConfig, space);
+        var receiver = _Machine(receiverName, receiverConfig, space);
+        await owner.Sync.RunOnceAsync();
+        var outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+        Assert.NotNull(outgoing);
+        Assert.False(outgoing.ContainsKey("Projects"));
+        Assert.False(outgoing.ContainsKey("CategoryOrder"));
 
-            // An older client still sends projects; even a pending deletion from the old sync must be ignored.
-            space.Blob = Encoding.UTF8.GetBytes(ownerConfig);
-            var statePath = Path.Combine(Path.GetDirectoryName(receiver.ConfigPath) ?? ".", "settings-sync.json");
-            File.WriteAllText(statePath, """
-                {"ProjectIds":{"owner":"copy"},"Base":{"Projects.owner":"{}","CategoryOrder":"[]"},
-                 "Incoming":{"Projects.copy":{"Value":null,"Was":null,"Steps":[{"Name":"Projects","Element":"copy"}]},
-                             "CategoryOrder":{"Value":"[]","Was":null,"Steps":[{"Name":"CategoryOrder","Element":null}]}},
-                 "Conflicts":{"Projects.owner":{"Mine":"{}","Theirs":null,"Steps":[{"Name":"Projects","Element":"owner"}]}}}
-                """);
-            await SettingsCarrierSync.ApplyIncomingAsync(receiver.ConfigPath, NullLogger.Instance);
-            await receiver.Sync.RunOnceAsync();
-            await SettingsCarrierSync.ApplyIncomingAsync(receiver.ConfigPath, NullLogger.Instance);
-            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(receiverConfig)?["Projects"], _Local(receiver)["Projects"]));
-            Assert.Equal("Local", _Local(receiver)["CategoryOrder"]?[0]?.GetValue<string>());
-            Assert.Empty(receiver.Sync.Conflicts);
-            var saved = JsonNode.Parse(File.ReadAllText(statePath)) as JsonObject;
-            Assert.NotNull(saved);
-            Assert.False(saved.ContainsKey("ProjectIds"));
-            outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
-            Assert.NotNull(outgoing);
-            Assert.False(outgoing.ContainsKey("Projects"));
-            Assert.False(outgoing.ContainsKey("CategoryOrder"));
+        // An older client still sends projects; even a pending deletion from the old sync must be ignored.
+        space.Blob = Encoding.UTF8.GetBytes(ownerConfig);
+        var statePath = Path.Combine(Path.GetDirectoryName(receiver.ConfigPath) ?? ".", "settings-sync.json");
+        File.WriteAllText(statePath, """
+            {"ProjectIds":{"owner":"copy"},"Base":{"Projects.owner":"{}","CategoryOrder":"[]"},
+             "Incoming":{"Projects.copy":{"Value":null,"Was":null,"Steps":[{"Name":"Projects","Element":"copy"}]},
+                         "CategoryOrder":{"Value":"[]","Was":null,"Steps":[{"Name":"CategoryOrder","Element":null}]}},
+             "Conflicts":{"Projects.owner":{"Mine":"{}","Theirs":null,"Steps":[{"Name":"Projects","Element":"owner"}]}}}
+            """);
+        await SettingsCarrierSync.ApplyIncomingAsync(receiver.ConfigPath, NullLogger.Instance);
+        await receiver.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(receiver.ConfigPath, NullLogger.Instance);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(receiverConfig)?["Projects"], _Local(receiver)["Projects"]));
+        Assert.Equal("Local", _Local(receiver)["CategoryOrder"]?[0]?.GetValue<string>());
+        Assert.Empty(receiver.Sync.Conflicts);
+        var saved = JsonNode.Parse(File.ReadAllText(statePath)) as JsonObject;
+        Assert.NotNull(saved);
+        Assert.False(saved.ContainsKey("ProjectIds"));
+        outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+        Assert.NotNull(outgoing);
+        Assert.False(outgoing.ContainsKey("Projects"));
+        Assert.False(outgoing.ContainsKey("CategoryOrder"));
 
-            // Removing a local duplicate cannot remove the owner's project.
-            _Write(receiver, """{"Projects":[],"Terminal":{"FontSize":18}}""");
-            await receiver.Sync.RunOnceAsync();
-            outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
-            Assert.NotNull(outgoing);
-            Assert.False(outgoing.ContainsKey("Projects"));
-            Assert.False(outgoing.ContainsKey("CategoryOrder"));
-            await owner.Sync.RunOnceAsync();
-            await SettingsCarrierSync.ApplyIncomingAsync(owner.ConfigPath, NullLogger.Instance);
-            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(ownerConfig)?["Projects"], _Local(owner)["Projects"]));
-            Assert.Equal("Owner", _Local(owner)["CategoryOrder"]?[0]?.GetValue<string>());
-            Assert.Empty(owner.Sync.Conflicts);
-            owner.Sync.Dispose();
-            receiver.Sync.Dispose();
-        }
+        // Removing a local duplicate cannot remove the owner's project.
+        _Write(receiver, """{"Projects":[],"Terminal":{"FontSize":18}}""");
+        await receiver.Sync.RunOnceAsync();
+        outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+        Assert.NotNull(outgoing);
+        Assert.False(outgoing.ContainsKey("Projects"));
+        Assert.False(outgoing.ContainsKey("CategoryOrder"));
+        await owner.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(owner.ConfigPath, NullLogger.Instance);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(ownerConfig)?["Projects"], _Local(owner)["Projects"]));
+        Assert.Equal("Owner", _Local(owner)["CategoryOrder"]?[0]?.GetValue<string>());
+        Assert.Empty(owner.Sync.Conflicts);
+        owner.Sync.Dispose();
+        receiver.Sync.Dispose();
     }
 
     private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config, _Space? space = null)
