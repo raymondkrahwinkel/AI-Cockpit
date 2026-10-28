@@ -20,7 +20,10 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
         }
 
         var parents = new Dictionary<int, Process> { [root.Id] = root };
-        foreach (var child in _children) parents[child.Id] = child;
+        foreach (var child in _children)
+        {
+            parents[child.Id] = child;
+        }
         var added = true;
         while (added)
         {
@@ -42,7 +45,12 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
             }
         }
         foreach (var (process, _) in candidates)
-            if (!_children.Contains(process)) process.Dispose();
+        {
+            if (!_children.Contains(process))
+            {
+                process.Dispose();
+            }
+        }
         return _children.Count - before;
     }
 
@@ -58,7 +66,13 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
         Capture();
         foreach (var process in new[] { root }.Concat(_children))
         {
-            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
             catch (InvalidOperationException) { }
         }
     }
@@ -71,7 +85,10 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
 
     public void Dispose()
     {
-        foreach (var child in _children) child.Dispose();
+        foreach (var child in _children)
+        {
+            child.Dispose();
+        }
     }
 
     private static int ParentId(Process process)

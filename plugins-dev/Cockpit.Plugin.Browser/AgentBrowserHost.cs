@@ -29,7 +29,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         {
             lock (_gate)
             {
-                if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch) return null;
+                if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch)
+                {
+                    return null;
+                }
             }
             if (SessionFor(paneId) is { } current)
             {
@@ -38,9 +41,15 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
             lock (_gate)
             {
-                if (_disposed || _running.ContainsKey(paneId)) return null;
+                if (_disposed || _running.ContainsKey(paneId))
+                {
+                    return null;
+                }
             }
-            if (resolveExecutable() is not { } executable) return null;
+            if (resolveExecutable() is not { } executable)
+            {
+                return null;
+            }
             return await StartAsync(paneId, executable, Environment.IsPrivilegedProcess, cancellationToken, epoch).ConfigureAwait(false);
         }
         finally { _startGate.Release(); }
@@ -87,9 +96,15 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         long epoch;
         lock (_gate)
         {
-            if (_disposed) return null;
+            if (_disposed)
+            {
+                return null;
+            }
             epoch = _epochs.GetValueOrDefault(paneId);
-            if (expectedEpoch is { } expected && epoch != expected) return null;
+            if (expectedEpoch is { } expected && epoch != expected)
+            {
+                return null;
+            }
         }
         var profile = Path.Combine(profilesRoot, Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
@@ -132,7 +147,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             // only a session without an endpoint.
             lock (_gate)
             {
-                if (!_running.TryGetValue(paneId, out var current) || current != running) return null;
+                if (!_running.TryGetValue(paneId, out var current) || current != running)
+                {
+                    return null;
+                }
             }
             var exited = running.Exited;
             if (exited)
@@ -160,7 +178,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         // Playwright is given the proxy's endpoint (AC-1713); the browser's own stays with the host.
         lock (_gate)
         {
-            if (_disposed || !_running.TryGetValue(paneId, out var current) || current != running) return null;
+            if (_disposed || !_running.TryGetValue(paneId, out var current) || current != running)
+            {
+                return null;
+            }
             running.Upstream = $"http://127.0.0.1:{port}";
             running.Proxy = AgentCdpProxy.Start(port.Value);
         }
@@ -284,7 +305,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         foreach (var profile in Directory.EnumerateDirectories(profilesRoot))
         {
-            if (StopOwner(Path.Combine(profile, OwnerFile))) DeleteProfile(profile);
+            if (StopOwner(Path.Combine(profile, OwnerFile)))
+            {
+                DeleteProfile(profile);
+            }
         }
     }
 
@@ -315,7 +339,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             using var process = Process.GetProcessById(id);
             if (Math.Abs(process.StartTime.ToUniversalTime().Ticks - ticks) < TimeSpan.TicksPerSecond)
             {
-                return Shutdown(process, Path.GetDirectoryName(ownerFile)!);
+                return Path.GetDirectoryName(ownerFile) is { Length: > 0 } profile && Shutdown(process, profile);
             }
             return false;
         }
@@ -330,12 +354,16 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     {
         using var tree = new BrowserProcessTree(process);
         tree.Capture();
+        // Dispose and the startup sweep are synchronous and must finish shutdown before releasing the profile.
         try { CloseAsync(profile).GetAwaiter().GetResult(); }
         catch (Exception ex) when (ex is IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or InvalidOperationException) { }
         var graceful = Stopwatch.StartNew();
         while (tree.Wait(TimeSpan.FromSeconds(5) - graceful.Elapsed))
         {
-            if (tree.Capture() == 0) return true;
+            if (tree.Capture() == 0)
+            {
+                return true;
+            }
         }
         tree.Kill();
         return tree.Wait(TimeSpan.FromSeconds(5));
@@ -343,11 +371,16 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     private static async Task CloseAsync(string profile)
     {
-        if (!TryParsePort(Path.Combine(profile, "DevToolsActivePort"), out var port)) return;
+        if (!TryParsePort(Path.Combine(profile, "DevToolsActivePort"), out var port))
+        {
+            return;
+        }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         using var http = new HttpClient();
         using var version = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version", timeout.Token).ConfigureAwait(false));
-        using var browser = await CdpPage.ConnectAsync(version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()!, (_, _) => { }, timeout.Token).ConfigureAwait(false);
+        var socketUrl = version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()
+            ?? throw new IOException("The browser response is missing its socket URL.");
+        using var browser = await CdpPage.ConnectAsync(socketUrl, (_, _) => { }, timeout.Token).ConfigureAwait(false);
         await browser.SendAsync("Browser.close").WaitAsync(timeout.Token).ConfigureAwait(false);
     }
 
@@ -531,7 +564,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             }
 
             finally { Process.Dispose(); }
-            if (exited) DeleteProfile(Profile);
+            if (exited)
+            {
+                DeleteProfile(Profile);
+            }
         }
     }
 }

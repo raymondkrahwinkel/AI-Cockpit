@@ -39,7 +39,10 @@ internal sealed partial class TabShareMcpTools(ICockpitHost host, TabShareBridge
             return _Refusal(NoCaller);
         }
 
-        if (mode is not ("text" or "tree")) return _Refusal("invalid_argument: Use mode text or tree.");
+        if (mode is not ("text" or "tree"))
+        {
+            return _Refusal("invalid_argument: Use mode text or tree.");
+        }
         var answer = AgentOwnedTabs.IsOwnedId(tabId)
             ? owned is null ? new TabShareAnswer("", false, "browser_unavailable") : await owned.ReadAsync(caller, tabId, mode).ConfigureAwait(false)
             : await bridge.AskAsync(caller, "read", tabId, mode).ConfigureAwait(false);

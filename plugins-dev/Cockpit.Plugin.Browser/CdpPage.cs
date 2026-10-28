@@ -92,8 +92,14 @@ internal sealed class CdpPage : IDisposable
                 var root = document.RootElement;
                 if (root.TryGetProperty("id", out var answerId) && _pending.TryRemove(answerId.GetInt32(), out var completion))
                 {
-                    if (root.TryGetProperty("error", out _)) completion.TrySetException(new IOException("The browser command failed."));
-                    else completion.TrySetResult(root.GetProperty("result").Clone());
+                    if (root.TryGetProperty("error", out _))
+                    {
+                        completion.TrySetException(new IOException("The browser command failed."));
+                    }
+                    else
+                    {
+                        completion.TrySetResult(root.GetProperty("result").Clone());
+                    }
                 }
                 if (root.TryGetProperty("method", out var method) && method.GetString() is { } name)
                 {
@@ -107,7 +113,10 @@ internal sealed class CdpPage : IDisposable
         }
         finally
         {
-            foreach (var completion in _pending.Values) completion.TrySetException(new IOException("The tab connection closed."));
+            foreach (var completion in _pending.Values)
+            {
+                completion.TrySetException(new IOException("The tab connection closed."));
+            }
         }
     }
 }
