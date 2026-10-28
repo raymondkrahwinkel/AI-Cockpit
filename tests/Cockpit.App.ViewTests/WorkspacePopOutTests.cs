@@ -185,7 +185,7 @@ public sealed class WorkspacePopOutTests
             viewer.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "not allowed" });
             Assert.Equal("# someone else", viewer.Editor.Text);
             Assert.Contains("Viewer", viewer.GetLogicalDescendants().OfType<TextBlock>().Select(block => block.Text));
-            Assert.DoesNotContain(viewer.GetLogicalDescendants().OfType<Button>().Where(button => button.IsVisible), button => Equals(button.Content, "Edit"));
+            Assert.DoesNotContain(viewer.GetLogicalDescendants().OfType<Button>().Where(button => button.IsVisible), button => Equals(button.Content, "✎ Edit"));
             Assert.Contains("Read-only: you are a Viewer in", viewer.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "FileMessage").Text);
             channel.Failure = new NotSupportedException("Unexpected refresh failure.");
             var viewerContext = fileContext ?? throw new InvalidOperationException("The viewer context is missing.");

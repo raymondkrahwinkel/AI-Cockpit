@@ -102,6 +102,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
     internal DepotBrowserPanel(DepotBrowserSceneModel scene)
     {
         _host = null!;
+        _sceneBelowTree = scene.BelowTree;
         _connections = [];
         var refresh = _Button("Refresh");
         _connectionBox.IsVisible = false;
@@ -377,7 +378,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         var row = new TreeViewItem { Tag = item, Header = header, ItemsSource = item.Children.Select(child => _Row(child, selectPath)).ToList() };
         if (item.Node is not null)
         {
-            var badge = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitAccentBrush"), Margin = new Thickness(6, 0, 0, 0) };
+            var badge = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitStatusBusyBrush"), Margin = new Thickness(6, 0, 0, 0) };
             header.Children.Add(badge);
             _openBadges[item.Path] = badge;
             row.Tapped += async (_, _) =>
@@ -473,6 +474,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
             if (_loaded.CanShare && DepotMarkdownFiles.IsMarkdown(node))
             {
                 var edit = _Button("✎ Edit");
+                edit.Classes.Add("Accent");
                 edit.Click += async (_, _) => await _EditMarkdownAsync(node).ConfigureAwait(true);
                 actions.Children.Add(edit);
             }
@@ -524,6 +526,14 @@ internal sealed partial class DepotBrowserPanel : UserControl
             if (excerpt is not null)
             {
                 _AddExcerpt(excerpt);
+            }
+
+            actions.Children.Add(_Button("Open"));
+            if (_loaded.CanShare && DepotMarkdownFiles.IsMarkdown(node))
+            {
+                var edit = _Button("✎ Edit");
+                edit.Classes.Add("Accent");
+                actions.Children.Add(edit);
             }
 
             return;
@@ -796,7 +806,9 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
     }
 
-    private bool _PreviewMode => _settings?.OpenFilesInPreviewTab ?? true;
+    private bool _sceneBelowTree;
+
+    private bool _PreviewMode => !_sceneBelowTree && (_settings?.OpenFilesInPreviewTab ?? true);
 
     // A single click opens the preview tab and a double-click or the Open button a kept one; a file that has no tab only opens on the latter.
     private async Task OpenAsync(DepotBrowserNode node, bool preview = false)

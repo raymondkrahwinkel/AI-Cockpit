@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Cockpit.Plugin.Depot.Contracts;
@@ -15,10 +16,14 @@ internal sealed partial class DepotBrowserPanel
     {
         var preview = new MenuItem { Header = "Preview tab (like VS Code)", ToggleType = MenuItemToggleType.Radio, GroupName = "open-files-in" };
         var below = new MenuItem { Header = "Below the tree", ToggleType = MenuItemToggleType.Radio, GroupName = "open-files-in" };
+        var explanation = new TextBlock { FontSize = 11.5, MaxWidth = 240, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Margin = new Thickness(12, 4), Foreground = _Brush("CockpitTextFaintBrush") };
         void Sync()
         {
             preview.IsChecked = _PreviewMode;
             below.IsChecked = !_PreviewMode;
+            explanation.Text = _PreviewMode
+                ? "Single click opens the file in the preview tab. Double-click or Open keeps it in its own tab."
+                : "Single click shows the file in the detail strip. Double-click or Open puts it in a tab.";
         }
         preview.Click += (_, _) => { if (_settings is not null) { _settings.OpenFilesInPreviewTab = true; } Sync(); };
         below.Click += (_, _) => { if (_settings is not null) { _settings.OpenFilesInPreviewTab = false; } Sync(); };
@@ -27,6 +32,8 @@ internal sealed partial class DepotBrowserPanel
         menu.Items.Add(new MenuItem { Header = "Open files in", IsEnabled = false });
         menu.Items.Add(preview);
         menu.Items.Add(below);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = explanation, IsEnabled = false });
         menu.Opening += (_, _) => Sync();
         return menu;
     }

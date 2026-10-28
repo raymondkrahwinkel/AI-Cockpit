@@ -40,8 +40,9 @@ internal static class DepotScenes
             ],
             true),
             "Ideas/depot-sync.md",
-            null,
-            new Dictionary<string, string> { ["Ideas/depot-sync.md"] = "◌ preview", ["Notes.md"] = "● open" })),
+            new DepotDocumentExcerpt("Depot-sync for sessions", "Idea: a session can write its transcript to Depot."),
+            new Dictionary<string, string> { ["Ideas/depot-sync.md"] = "◌ preview", ["Notes.md"] = "● open" },
+            BelowTree: true)),
         ["depot-browser-artifact"] = () => _Scene(new DepotBrowserSceneModel(
             _Project,
             new DepotBrowserTree(
@@ -129,4 +130,5 @@ internal sealed record DepotBrowserSceneModel(
     DepotBrowserTree Tree,
     string? SelectedPath,
     DepotDocumentExcerpt? Excerpt,
-    IReadOnlyDictionary<string, string>? Badges = null);
+    IReadOnlyDictionary<string, string>? Badges = null,
+    bool BelowTree = false);

@@ -34,7 +34,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly TextBlock _footer = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _shortcuts = new() { FontSize = 11.5, Margin = new Thickness(12, 0, 0, 0) };
     private readonly Button _save = new() { Content = "Save", Classes = { "Compact", "Accent" } };
-    private readonly Button _edit = new() { Content = "Edit", Classes = { "Compact" } };
+    private readonly Button _edit = new() { Content = "✎ Edit", Classes = { "Compact", "Accent" } };
     private readonly Button _keepOpen = new() { Content = "Keep open", Classes = { "Compact" } };
     private readonly Button _download = new() { Content = "Download", Classes = { "Compact" } };
     private readonly TextBlock _hint = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, Text = "Preview: a single click on another file replaces this tab. Double-click the tab, Keep open, Edit or start typing to keep it." };
