@@ -45,7 +45,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                     "text/markdown")
                 {
                     CanWrite = role.CanWrite(),
-                    ModifiedBy = DepotRequests.String(entry, "updatedBy") ?? DepotRequests.String(entry, "actor"),
+                    ModifiedBy = DepotRequests.String(entry, "updatedBy"),
                 };
             }, cancellationToken);
 
