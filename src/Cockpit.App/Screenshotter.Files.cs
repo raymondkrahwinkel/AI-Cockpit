@@ -32,7 +32,7 @@ internal static partial class Screenshotter
             Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"))),
+            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state == "live")),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
@@ -54,6 +54,10 @@ internal static partial class Screenshotter
                 body.ToggleCompare();
             }
         }
+        if (state == "live")
+        {
+            body.Editor.EditLine(body.Editor.TextEditor.Document.LineCount - 1, atEnd: true);
+        }
         if (state is "editing" or "floating")
         {
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "\nA new idea, ready to save.");
@@ -67,7 +71,7 @@ internal static partial class Screenshotter
         return new MainWindow { Width = width, Height = height, DataContext = cockpit };
     }
 
-    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false) : IPluginUiChannel
+    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false) : IPluginUiChannel
     {
         private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
         private bool _read;
@@ -80,7 +84,10 @@ internal static partial class Screenshotter
                     { CanWrite = writable, ModifiedBy = "cockpit-assistant" }, null), FileSourceChannel.Json),
             FileSourceChannel.Connections => JsonSerializer.SerializeToElement(new FileSourceAnswer<IReadOnlyList<FileConnection>>([new("scene", "Work", "memory", !writable)], null), FileSourceChannel.Json),
             FileSourceChannel.Read when _MarkRead() => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
-                new(Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), "e7a1b6c9", Encoding.UTF8.GetByteCount(text), null, "text/markdown") { CanWrite = writable }, null), FileSourceChannel.Json),
+                new(Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), "e7a1b6c9", Encoding.UTF8.GetByteCount(text), null, "text/markdown") { CanWrite = writable, Live = live }, null), FileSourceChannel.Json),
+            FileSourceChannel.LiveOpen when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveSnapshot>(
+                new("scene", Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), 1, new(LiveFileState.Live)), null), FileSourceChannel.Json),
+            FileSourceChannel.LiveClose when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveRequest>(new("scene"), null), FileSourceChannel.Json),
             _ => throw new InvalidOperationException("This scene only reads its in-memory source."),
         });
         private bool _MarkRead() => _read = true;

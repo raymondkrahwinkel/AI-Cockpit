@@ -37,6 +37,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   connection after a few minutes. The plugin reports whether the note is live, reconnecting, out of date, or needs you to sign
   in again, and it asks for a sign-in only once instead of retrying. Plugin Depot 0.34.0. The editor that shows it follows.
 
+- added: **live Markdown files.** When a file source shares a file live, the Markdown workspace edits it as you
+  type: others' changes appear without moving your cursor or selection, Ctrl+Z only takes back your own typing,
+  and there is no Save. A green dot on the tab says the file is live; an amber dot says your changes are not
+  shared yet (offline or signed out). Sources without live sharing work as before (plugin SDK 3.46.0).
+
 - added: Depot note invitations show a toast with **Join**, and a silent desktop notification while Cockpit is in
   the background. Closing means Later and keeps the invitation unread. Repeated invitations for the same note and
   account show once per connection. Join opens the note in your browser until the native note editor is available.

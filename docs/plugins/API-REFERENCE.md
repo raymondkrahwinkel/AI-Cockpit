@@ -865,6 +865,9 @@ public interface IWorkspaceContext
   `CreateEmbeddedSessionView(paneId)`. Null when the host cannot embed. From host 0.86.0 it may be called from any
   thread, and so may the returned session's `SetInputEnabled` and `CloseAsync`: the host marshals to its UI thread.
 - `RefreshRequested` — raised when the host asks this workspace to refresh.
+- `SetMarker(WorkspaceMarker?)` — a dot on the tab: `Unsaved` draws amber, `Live` draws green (the body is
+  shared live, there is nothing to save). *(`Live` added in SDK 3.46.0, host 0.142.0; an older host draws no dot.)*
+  The host's Markdown workspace uses it for a live file source, see [File sources](FILE-SOURCES.md#live-file-sources-ac-1898).
 - **Deliberately narrow, like `IWidgetContext`.** Cross-plugin intents (`host.SendIntent`), dialogs and the
   theme are already yours to reach: the body factory is a closure created in `Initialize`, where you captured
   the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they are not

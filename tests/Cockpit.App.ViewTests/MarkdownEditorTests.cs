@@ -10,10 +10,12 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class MarkdownEditorTests
 {
-    // Layer 2, unit: what goes in comes back out, whatever the editor drew in between.
+    // Layer 2, view: what goes in comes back out, whatever the editor drew in between; each line kind gets its own look,
+    // what it cannot show is labelled, and a read-only key only asks.
     [Fact]
-    public void LoadingAndAskingBack_GivesTheSameText_ByteForByte() => HeadlessAvalonia.Run(() =>
+    public void LoadingAndAskingBack_GivesTheSameText_AndEachLineKind_IsDrawnItsWay() => HeadlessAvalonia.Run(() =>
     {
+        _EachLineKind_IsDrawnItsWay_AndAKeyInTheReadOnlyView_OnlyAsksToEdit();
         string[] files =
         [
             "---\r\ntitle: Edge cases\r\ntags: [md]\r\n---\r\n# Title\r\n\r\nA footnote[^1] and **bold**.\r\n\r\n<details>\r\n<summary>HTML</summary>\r\n</details>\r\n\r\n"
@@ -48,9 +50,7 @@ public sealed class MarkdownEditorTests
         }
     });
 
-    // Layer 2, view: each line kind gets its own look, what it cannot show is labelled, and a read-only key only asks.
-    [Fact]
-    public void EachLineKind_IsDrawnItsWay_AndAKeyInTheReadOnlyView_OnlyAsksToEdit() => HeadlessAvalonia.Run(() =>
+    private static void _EachLineKind_IsDrawnItsWay_AndAKeyInTheReadOnlyView_OnlyAsksToEdit()
     {
         const string File = "# Title\n- item\n- [x] done\n<div>\nraw\n</div>\n[^1]: note\nplain";
         var editor = new MarkdownEditor { Text = File };
@@ -89,5 +89,5 @@ public sealed class MarkdownEditorTests
         {
             window.Close();
         }
-    });
+    }
 }

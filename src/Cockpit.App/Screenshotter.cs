@@ -208,6 +208,7 @@ internal static partial class Screenshotter
         ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
+        ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
         ["preview-tab"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
         ["markdown-file-discard"] = (_, _) => new ConfirmationDialog

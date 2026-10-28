@@ -73,3 +73,44 @@ Successful writes publish `FileSourceChannel.Saved` (`files-saved`) with the `Fi
 plugin channel. The Depot browser refreshes that project after a local save. The current remote channel
 supports invocations only, so use its Refresh action to see an updated listing. Conflicts retain local
 text and the original version; comparison and resolution belong to AC-1755.
+
+## Live file sources (AC-1898)
+
+Requires host 0.142.0 and `Cockpit.Plugins.Abstractions` 3.46.0. A plugin that implements it sets
+`minHostVersion` 0.142.0; an older host never asks for a live session and keeps saving snapshots.
+
+A source that shares a file live also implements `ILiveFileSource`. The host then opens a session with
+`OpenLiveAsync(file, ct)` when the Markdown workspace loads the file, and disposes it when the workspace
+closes. Without it, or when opening fails, the workspace reads and saves snapshots as above.
+
+`ILiveFileSession` keeps one revision counter. Every change, the host's or anyone else's, raises it by
+exactly one.
+
+| Member | Contract |
+|---|---|
+| `ReadAsync` | The whole text, its revision and status, from one moment. Used on open and to resync. |
+| `EditAsync(baseRev, ops)` | Applies the host's ops only when `baseRev` is the current revision and answers `Applied` with `baseRev + 1`. Otherwise it applies nothing and answers `Stale` with the current revision; the host sends again after the patches it missed. The source never transforms an edit. |
+| `Patched` | Every change the host did not send, in revision order: `LiveFilePatch(Rev, Ops, Who)`, ops on the text at `Rev - 1`. The host's own edits are never echoed. |
+| `UndoAsync(redo)` | Undoes or redoes the host's own last edit, the way `Y.UndoManager` tracks one origin. The result arrives as a patch. |
+| `StatusChanged` | `Connecting`, `Live`, `Offline`, `SignInNeeded`, `ReadOnly`, `NoSaver` or `Stale`, with an optional reason. |
+
+A `TextOp(Offset, Length, Text)` replaces `Length` UTF-16 characters at `Offset`; in a list each op applies to
+the text the previous one left. The host keeps one edit in flight. It shifts a patch past the ops the source has
+not applied yet, so the caret, the selection and those ops stay on their characters. Patches land through
+`TextDocument.Replace`, never by replacing the whole text. When a patch overlaps an unsent op, a revision is
+missing, the status is `Stale`, or the source cannot be reached, the host reads the whole text again. It then
+merges what was typed here per line, so no local text is lost.
+
+Undo belongs to the source. AvaloniaEdit's own undo stack is off for a live file, because it would also take
+back other people's patches. Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z call `UndoAsync`.
+
+While live, the workspace has no Save button, Ctrl+S does nothing, and the footer leaves out "Ctrl+S save". The
+tab gets a green dot (`WorkspaceMarker.Live`) for `Live`, `ReadOnly` and `NoSaver`. It gets the amber
+unsaved dot for `Offline`, `SignInNeeded`, or when an edit could not be sent. Closing waits until every
+local edit has reached the source; if that fails, it asks before discarding.
+
+The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
+`files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
+text travels as base64 under the same 1 MiB cap as `files-read`. Op text is plain JSON and limited to the same
+size per edit. `FileSourceReadAnswer.Live` tells the host to open a session. Presence and cursors are not part
+of this contract yet.

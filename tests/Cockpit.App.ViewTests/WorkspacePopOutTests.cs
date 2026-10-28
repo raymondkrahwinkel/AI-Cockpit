@@ -56,6 +56,7 @@ public sealed class WorkspacePopOutTests
     public Task PopOutAndDockBack_MoveTheSameBody_PinAPreview_AndTheTabLeavesAndComesBackToItsPlace() => HeadlessAvalonia.RunAsync(async () =>
     {
         await _FileWorkspaceFlowAsync();
+        await _AFloatingWorkspace_StaysFloatingWhenTheCockpitCloses_AndReopensInItsWindowAtItsBoundsAsync();
         var workspaces = _Workspaces();
         var host = new WorkspaceWindowHost(workspaces, _ => Task.CompletedTask, () => null);
         host.Start();
@@ -247,9 +248,7 @@ public sealed class WorkspacePopOutTests
         public void ChangeFromOutside(string text) { Text = text; _version++; }
     }
 
-    // Layer 2, view.
-    [Fact]
-    public Task AFloatingWorkspace_StaysFloatingWhenTheCockpitCloses_AndReopensInItsWindowAtItsBounds() => HeadlessAvalonia.RunAsync(async () =>
+    private async Task _AFloatingWorkspace_StaysFloatingWhenTheCockpitCloses_AndReopensInItsWindowAtItsBoundsAsync()
     {
         var config = Path.Combine(Path.GetTempPath(), $"cockpit-ac1751-{Guid.NewGuid():n}.json");
         try
@@ -292,7 +291,7 @@ public sealed class WorkspacePopOutTests
         {
             File.Delete(config);
         }
-    });
+    }
 
     private sealed class NoStorage : IPluginStorage
     {
