@@ -104,7 +104,7 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
         }
     }
 
-    internal static bool ShouldWatchDrive(DriveType type) => true;
+    internal static bool ShouldWatchDrive(DriveType type) => type == DriveType.Fixed;
 
     private void _ScheduleWorker()
     {
