@@ -78,7 +78,6 @@ internal sealed class DepotMeetingNoteService(
                 new("topic", topic.Trim()),
                 new("template", template),
                 new("date", date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                new("content", "# my own content"),
                 .. (request.Attendees ?? []).Select(id => new KeyValuePair<string, string>("attendee", id)),
             ];
             using var document = await _PostFormAsync(
