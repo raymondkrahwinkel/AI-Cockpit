@@ -18,6 +18,17 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 
 ## Why
 
+The `cockpit-browser` endpoint supports session-owned tabs with `browser_open_tab(url, purpose)`
+and `browser_list_tabs`. Use `browser_read_tab` (text/tree) and `browser_screenshot_tab` with the
+returned opaque id. An authenticated session is required; each browser run has separate ownership.
+`purpose=self` stays hidden; `purpose=operator` currently reports presentation `unavailable`.
+Downloads are denied before navigation. AC-1839 ticket C must add redirect, popup, file-chooser
+and protocol enforcement before ticket B's controls go live.
+
+AC-1870's local gate is the Release solution, Browser plugin and Browser test-project builds with
+`-warnaserror`, filtered `AgentOwnedTabTests` and existing `Agent*` isolation tests, the test-count
+check, and local mutation/revert counterchecks. No full suite is required for this ticket.
+
 Running more than one AI coding agent at once means a terminal per agent. Nothing tells you which one is waiting
 for you, which one is still working, and which one finished ten minutes ago — you go and look. Each terminal is
 its own island: its own login, its own MCP setup, its own scrollback.
