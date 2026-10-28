@@ -25,7 +25,8 @@ internal static class FileSourceChannel
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a file version.");
                 var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, ct).ConfigureAwait(false);
                 return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version,
-                    bytes.LongLength, result.Modified, result.ContentType);
+                    bytes.LongLength, result.Modified, result.ContentType, result.CanWrite && source.Capabilities.CanWrite
+                        && provider.Connections.FirstOrDefault(c => c.Id == request.File.ConnectionId) is { ReadOnly: false });
             })));
             registration.Handlers.Add(channel.Handle(Wire.Write, (payload, ct) => _RunAsync(async () =>
             {

@@ -26,7 +26,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
             {
                 var (project, path) = DepotFileRefs.Parse(file, connectionId);
                 var connection = _Connection();
-                await _AuthorizeAsync(connection, project, false, cancellationToken).ConfigureAwait(false);
+                var role = await _AuthorizeAsync(connection, project, false, cancellationToken).ConfigureAwait(false);
                 using var response = await _PostAsync(connection, project, "read", new[] { path }, cancellationToken).ConfigureAwait(false);
                 if (response.RootElement.TryGetProperty("truncated", out var truncated) && truncated.ValueKind == JsonValueKind.True)
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "Depot truncated the file; no partial text was opened.");
@@ -42,7 +42,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
                 return new FileReadResult(new MemoryStream(bytes, writable: false), version, bytes.LongLength,
                     DateTimeOffset.TryParse(DepotRequests.String(entry, "updatedAt"), out var modified) ? modified : null,
-                    "text/markdown");
+                    "text/markdown", role.CanWrite());
             }, cancellationToken);
 
         public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,
@@ -73,11 +73,12 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
         private DepotConnectionRegistration _Connection() => connections().FirstOrDefault(c => c.Id == connectionId)
             ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "This Depot connection is no longer configured.");
 
-        private async Task _AuthorizeAsync(DepotConnectionRegistration connection, string project, bool write, CancellationToken cancellationToken)
+        private async Task<DepotProjectRole> _AuthorizeAsync(DepotConnectionRegistration connection, string project, bool write, CancellationToken cancellationToken)
         {
             var role = await new DepotRequests(host, () => [connection]).RoleAsync(connectionId, project, cancellationToken).ConfigureAwait(false);
             if (role == DepotProjectRole.Unknown || (write && !role.CanWrite()))
                 throw new FileSourceException(FileSourceErrorKind.Forbidden, "Your role does not allow this file operation.");
+            return role;
         }
 
         private async Task<JsonDocument> _PostAsync<T>(DepotConnectionRegistration connection, string project, string operation, T request, CancellationToken cancellationToken)

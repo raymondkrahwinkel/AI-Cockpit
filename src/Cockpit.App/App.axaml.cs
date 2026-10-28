@@ -1229,6 +1229,12 @@ public partial class App : Application
         // Before the first await, so MainWindow's close sees a real quit rather than a close-to-tray.
         IsQuitting = true;
 
+        if (_mainWindow is Views.MainWindow main && !await main.ConfirmWorkspaceCloseAsync().ConfigureAwait(true))
+        {
+            IsQuitting = false;
+            return;
+        }
+
         await (_teardown ??= Program.TearDownCockpitAsync());
 
         // Posted, not called: with nothing to tear down this returns inside the ShutdownRequested handler that just

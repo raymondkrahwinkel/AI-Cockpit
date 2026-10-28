@@ -397,8 +397,28 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // Answering false is what greys the ✕ and the menu entry of the last desk and of the projects overview, a fixture.
     public bool CanClose(string workspaceId) => Settings.CanClose(workspaceId);
 
+    internal bool HasCloseGuards => _pluginContexts.Values.OfType<WorkspaceContext>().Any(context => context.HasCloseGuard);
+
+    public Task<bool> ConfirmCloseAsync(string workspaceId) =>
+        (_pluginContexts.GetValueOrDefault(workspaceId) as WorkspaceContext)?.ConfirmCloseAsync() ?? Task.FromResult(true);
+
+    public async Task<bool> ConfirmCloseAllAsync()
+    {
+        foreach (var context in _pluginContexts.Values.OfType<WorkspaceContext>().ToArray())
+        {
+            if (!await context.ConfirmCloseAsync().ConfigureAwait(true)) return false;
+        }
+        return true;
+    }
+
+    internal Task CloseConfirmedAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));
+
     [RelayCommand]
-    private Task CloseWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));
+    private async Task CloseWorkspaceAsync(string workspaceId)
+    {
+        if (CanClose(workspaceId) && await ConfirmCloseAsync(workspaceId).ConfigureAwait(true))
+            await CloseConfirmedAsync(workspaceId).ConfigureAwait(true);
+    }
 
     [RelayCommand]
     private Task SelectWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithActive(workspaceId));
