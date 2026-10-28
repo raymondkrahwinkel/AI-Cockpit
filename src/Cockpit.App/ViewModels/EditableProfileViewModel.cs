@@ -24,6 +24,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     // handed out (a server's secrets) needs it to tell a rename from a new profile.
     public string? OriginalLabel { get; init; }
 
+    // AC-1847: which servers this profile is kept in step with; set by Options › Sync, which owns the choice.
+    [ObservableProperty]
+    private SyncProfileRowViewModel? _syncChoice;
+
     [ObservableProperty]
     private string _configDir;
 

@@ -22,10 +22,16 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
     ];
 
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+    private readonly Dictionary<EditableProfileViewModel, SyncProfileRowViewModel> _profileRows = [];
+    private ManageProfilesDialogViewModel? _profiles;
     private SyncOverview? _loaded;
     private string _savedFingerprint = string.Empty;
+    private bool _touched;
 
     public ObservableCollection<SyncCategoryRowViewModel> Rows { get; } = [];
+
+    // AC-1847: one row per profile, the same choice the profile page shows; listed under the Profiles row when it is opened.
+    public ObservableCollection<SyncProfileRowViewModel> ProfileRows { get; } = [];
 
     // Inline notes about what a pending change does; nothing here is ever deleted from a server.
     public ObservableCollection<SyncNote> Notes { get; } = [];
@@ -52,6 +58,14 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
 
     partial void OnBannerServersChanged(string value) => OnPropertyChanged(nameof(ShowBanner));
 
+    // The profile list the Options › Profiles page edits; a row follows each profile, new, renamed or removed.
+    public void AttachProfiles(ManageProfilesDialogViewModel profiles)
+    {
+        _profiles = profiles;
+        profiles.Profiles.CollectionChanged += (_, _) => _RebuildProfileRows();
+        _RebuildProfileRows();
+    }
+
     [RelayCommand]
     public async Task LoadAsync()
     {
@@ -74,27 +88,36 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
             row => row.Id,
             row => (IReadOnlyList<string>)[.. row.Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Id)],
             StringComparer.Ordinal);
-        await source.SaveAsync(categories, [.. _loaded.Servers.Select(server => server.Id).Union(_loaded.SeenServers)]).ConfigureAwait(true);
+        var overrides = ProfileRows
+            .Where(row => row.IsOverridden && row.Label.Length > 0)
+            .GroupBy(row => row.Label, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)[.. group.Last().TickedIds], StringComparer.Ordinal);
+        await source.SaveAsync(categories, overrides, [.. _loaded.Servers.Select(server => server.Id).Union(_loaded.SeenServers)]).ConfigureAwait(true);
         await LoadAsync().ConfigureAwait(true);
     }
 
     private void _Show(SyncOverview overview)
     {
         _loaded = overview;
+        _touched = false;
         foreach (var row in Rows)
         {
             row.Changed = null;
         }
+
+        _profileRows.Clear();
 
         Rows.Clear();
         foreach (var (id, title, description) in Catalogue)
         {
             var ticked = overview.Categories?.GetValueOrDefault(id) ?? [];
             var row = new SyncCategoryRowViewModel(id, title, description, [.. overview.Servers.Select(server => new SyncServerTickViewModel(server, ticked.Contains(server.Id), !overview.SeenServers.Contains(server.Id)))]);
-            row.Changed = _Refresh;
+            row.Changed = _CategoryChanged;
+            row.Children = id == "Profiles" ? ProfileRows : null;
             Rows.Add(row);
         }
 
+        _RebuildProfileRows();
         _savedFingerprint = _Fingerprint();
         BannerServers = overview.Categories is null || overview.Reviewed
             ? string.Empty
@@ -102,8 +125,63 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
         _Refresh();
     }
 
+    private void _CategoryChanged()
+    {
+        _touched = true;
+        foreach (var row in ProfileRows)
+        {
+            row.FollowCategory();
+        }
+
+        _Refresh();
+    }
+
+    // The rows follow the profile list; what a profile was saved with is looked up by the label it had when the page opened.
+    private void _RebuildProfileRows()
+    {
+        ProfileRows.Clear();
+        var profilesRow = Rows.FirstOrDefault(row => row.Id == "Profiles");
+        if (_loaded is null || _profiles is null || profilesRow is null)
+        {
+            return;
+        }
+
+        foreach (var profile in _profiles.Profiles)
+        {
+            if (!_profileRows.TryGetValue(profile, out var row))
+            {
+                var saved = _loaded.ProfileOverrides.GetValueOrDefault(profile.OriginalLabel ?? profile.Label);
+                row = new SyncProfileRowViewModel(
+                    profile,
+                    [.. _loaded.Servers.Select(server => new SyncServerTickViewModel(server, saved?.Contains(server.Id) ?? profilesRow.Servers.First(tick => tick.Server.Id == server.Id).IsTicked, isNew: false))],
+                    profilesRow,
+                    () =>
+                    {
+                        _touched = true;
+                        _Refresh();
+                    });
+                _profileRows[profile] = row;
+            }
+
+            ProfileRows.Add(row);
+        }
+
+        foreach (var gone in _profileRows.Keys.Where(profile => !_profiles.Profiles.Contains(profile)).ToList())
+        {
+            _profileRows.Remove(gone);
+        }
+
+        if (!_touched)
+        {
+            _savedFingerprint = _Fingerprint();
+        }
+
+        _Refresh();
+    }
+
     private void _Refresh()
     {
+        _RefreshOverriddenText();
         Notes.Clear();
         foreach (var row in Rows)
         {
@@ -129,6 +207,15 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
         OnPropertyChanged(nameof(HasNotes));
         OnPropertyChanged(nameof(HasOffers));
         OnPropertyChanged(nameof(Fingerprint));
+    }
+
+    private void _RefreshOverriddenText()
+    {
+        var count = ProfileRows.Count(row => row.IsOverridden);
+        if (Rows.FirstOrDefault(row => row.Id == "Profiles") is { } row)
+        {
+            row.OverriddenText = count == 0 ? string.Empty : $"{count} overridden";
+        }
     }
 
     private void _TickEverything(SyncServer server)
@@ -165,7 +252,8 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
 
     private static string _Size(long bytes) => bytes < 1024 ? $"{bytes} B" : $"{bytes / 1024} KB";
 
-    private string _Fingerprint() => string.Join("|", Rows.Select(row => row.Id + "=" + string.Join(",", row.Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Id))));
+    private string _Fingerprint() => string.Join("|", Rows.Select(row => row.Id + "=" + string.Join(",", row.Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Id))))
+        + "|" + string.Join("|", ProfileRows.Where(row => row.IsOverridden).Select(row => row.Label + "=" + string.Join(",", row.TickedIds)));
 }
 
 public sealed record SyncNote(string Title, string Text);
@@ -194,6 +282,9 @@ public sealed record SyncServerCardViewModel(SyncServer Server, IReadOnlyList<Sy
 
 public sealed class SyncCategoryRowViewModel : ObservableObject
 {
+    private bool _isExpanded;
+    private string _overriddenText = string.Empty;
+
     public SyncCategoryRowViewModel(string id, string title, string description, IReadOnlyList<SyncServerTickViewModel> servers)
     {
         (Id, Title, Description, Servers) = (id, title, description, servers);
@@ -217,6 +308,33 @@ public sealed class SyncCategoryRowViewModel : ObservableObject
 
     public Action? Changed { get; set; }
 
+    // The Profiles row only: the per-profile rows listed under it when it is opened (AC-1847).
+    public IReadOnlyList<SyncProfileRowViewModel>? Children { get; set; }
+
+    public bool IsExpandable => Children is not null;
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+
+    public string OverriddenText
+    {
+        get => _overriddenText;
+        set
+        {
+            if (SetProperty(ref _overriddenText, value))
+            {
+                OnPropertyChanged(nameof(HasOverrides));
+            }
+        }
+    }
+
+    public bool HasOverrides => _overriddenText.Length > 0;
+
+    public IRelayCommand ToggleCommand => new RelayCommand(() => IsExpanded = !IsExpanded);
+
     // "Depot: Home" for one, "Home + Work" for several, "Not synced" for none.
     public string Summary => Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Name).ToList() switch
     {
@@ -224,6 +342,8 @@ public sealed class SyncCategoryRowViewModel : ObservableObject
         [var only] => only,
         var many => string.Join(" + ", many.Select(ShortName)),
     };
+
+    public IReadOnlyList<string> TickedIds => [.. Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Id)];
 
     internal static string ShortName(string name) => name.Contains(": ", StringComparison.Ordinal) ? name[(name.IndexOf(": ", StringComparison.Ordinal) + 2)..] : name;
 }
@@ -241,4 +361,110 @@ public sealed partial class SyncServerTickViewModel(SyncServer server, bool isTi
     public string Tag => !Server.SignedIn ? "sign in first" : isNew ? "new" : string.Empty;
 
     partial void OnIsTickedChanged(bool value) => OnPropertyChanged(nameof(IsEnabled));
+}
+
+// AC-1847: one profile's choice. It shows the servers the profile goes to; equal to the Profiles category means "same as Profiles", anything else overrides it.
+public sealed class SyncProfileRowViewModel : ObservableObject
+{
+    private readonly SyncCategoryRowViewModel _category;
+    private readonly Action _changed;
+    private bool _applying;
+    private bool _follows;
+
+    public SyncProfileRowViewModel(EditableProfileViewModel profile, IReadOnlyList<SyncServerTickViewModel> servers, SyncCategoryRowViewModel category, Action changed)
+    {
+        (Profile, Servers, _category, _changed) = (profile, servers, category, changed);
+        _follows = _SameAsCategory();
+        foreach (var tick in servers)
+        {
+            tick.PropertyChanged += (_, e) =>
+            {
+                if (!_applying && e.PropertyName == nameof(SyncServerTickViewModel.IsTicked))
+                {
+                    _follows = _SameAsCategory();
+                    _Raise();
+                    _changed();
+                }
+            };
+        }
+
+        profile.PropertyChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Label));
+            OnPropertyChanged(nameof(Subtitle));
+        };
+        profile.SyncChoice = this;
+    }
+
+    public EditableProfileViewModel Profile { get; }
+
+    public IReadOnlyList<SyncServerTickViewModel> Servers { get; }
+
+    public string Label => Profile.Label ?? string.Empty;
+
+    public string Subtitle => string.Join(" · ", new[] { Profile.SelectedProvider?.Label, Profile.Purpose }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+    public IReadOnlyList<string> TickedIds => [.. Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Id)];
+
+    public bool IsOverridden => !_follows;
+
+    public string InheritedText => _category.Summary;
+
+    public string Hint => $"Tick one or more servers; the profile appears on your other machines via each. Nothing ticked = not synced. “Same as Profiles” (now: {_category.Summary}) is the default and follows Options › Sync › Profiles. Unticking a server deletes nothing on the server.";
+
+    public string Summary => _follows ? $"Same as Profiles · {_category.Summary}" : _Names(capitalised: true);
+
+    // The small tag in the profile list: nothing while it follows Profiles.
+    public string ListPill => _follows ? string.Empty : _Names(capitalised: false);
+
+    public IRelayCommand UseCategoryCommand => new RelayCommand(() =>
+    {
+        _Copy();
+        _follows = true;
+        _Raise();
+        _changed();
+    });
+
+    // The Profiles category moved: a profile that followed it moves along, one that deviated may now match it again.
+    public void FollowCategory()
+    {
+        if (_follows)
+        {
+            _Copy();
+        }
+        else
+        {
+            _follows = _SameAsCategory();
+        }
+
+        _Raise();
+    }
+
+    private string _Names(bool capitalised)
+    {
+        var ticked = Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Name).ToList();
+        return ticked.Count == 0 ? (capitalised ? "Not synced" : "not synced") : string.Join(" + ", ticked.Select(SyncCategoryRowViewModel.ShortName));
+    }
+
+    private bool _SameAsCategory() => TickedIds.OrderBy(id => id, StringComparer.Ordinal).SequenceEqual(_category.TickedIds.OrderBy(id => id, StringComparer.Ordinal));
+
+    private void _Copy()
+    {
+        _applying = true;
+        foreach (var tick in Servers)
+        {
+            tick.IsTicked = _category.TickedIds.Contains(tick.Server.Id);
+        }
+
+        _applying = false;
+    }
+
+    private void _Raise()
+    {
+        OnPropertyChanged(nameof(IsOverridden));
+        OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(ListPill));
+        OnPropertyChanged(nameof(InheritedText));
+        OnPropertyChanged(nameof(Hint));
+    }
 }

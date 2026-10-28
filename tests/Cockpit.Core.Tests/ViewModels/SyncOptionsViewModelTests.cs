@@ -39,9 +39,10 @@ public class SyncOptionsViewModelTests
             0,
             true,
             ["home", "work"],
-            new Dictionary<string, SyncStanding>()));
+            new Dictionary<string, SyncStanding>(),
+            new Dictionary<string, IReadOnlyList<string>>()));
 
-        public Task SaveAsync(IReadOnlyDictionary<string, IReadOnlyList<string>> categories, IReadOnlyList<string> seenServers, CancellationToken cancellationToken = default)
+        public Task SaveAsync(IReadOnlyDictionary<string, IReadOnlyList<string>> categories, IReadOnlyDictionary<string, IReadOnlyList<string>> profileOverrides, IReadOnlyList<string> seenServers, CancellationToken cancellationToken = default)
         {
             Saved = categories;
             return Task.CompletedTask;

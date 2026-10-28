@@ -241,7 +241,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Options → Profiles (AC-1001), replacing the standalone ManageProfilesDialog window. Handed in by the app
     // at startup, same reason as the two above — the profile store it needs is not part of this view model's own
     // constructor. Null in the test/design-time graphs, where the category simply shows nothing to edit.
-    public ManageProfilesDialogViewModel? Profiles { get; set; }
+    public ManageProfilesDialogViewModel? Profiles
+    {
+        get => _profiles;
+        set
+        {
+            _profiles = value;
+            if (value is not null)
+            {
+                Sync.AttachProfiles(value);
+            }
+        }
+    }
+
+    private ManageProfilesDialogViewModel? _profiles;
 
     // Options → MCP Servers (AC-1002), replacing the standalone McpServersDialog window — same reasoning as
     // Profiles above: the server store it needs is not part of this view model's own constructor. Null in the

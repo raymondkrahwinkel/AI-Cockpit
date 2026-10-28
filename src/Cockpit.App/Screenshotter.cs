@@ -210,6 +210,9 @@ internal static partial class Screenshotter
         ["options-sync-changes"] = SyncScene.Changed,
         ["options-sync-servers"] = SyncScene.Changed,
         ["options-sync-picker"] = SyncScene.Changed,
+        // AC-1847: the Profiles row opened with two overrides, and the same choice as a field on the profile page.
+        ["options-sync-profiles"] = SyncScene.Profiles,
+        ["options-sync-profile-dialog"] = SyncScene.ProfilePage,
         ["options-sync-conflict"] = (width, height) => SyncScene.Disagree(width, height),
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
         ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
@@ -1257,6 +1260,7 @@ internal static partial class Screenshotter
         // on Height alone to make it fit.
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-sync-changes"] = SyncScene.StageChanges,
+        ["options-sync-profiles"] = SyncScene.ExpandProfiles,
         ["options-sync-servers"] = window =>
         {
             SyncScene.StageChanges(window);
