@@ -316,18 +316,19 @@ public class DepotBrowserServiceTests
         public string Respond(HttpRequestMessage request, string body)
         {
             using var json = JsonDocument.Parse(body);
-            if (request.RequestUri!.AbsolutePath.EndsWith("/read", StringComparison.Ordinal))
+            var uri = request.RequestUri ?? throw new InvalidOperationException("The request had no URI.");
+            if (uri.AbsolutePath.EndsWith("/read", StringComparison.Ordinal))
             {
-                var path = json.RootElement[0].GetString()!;
+                var path = json.RootElement[0].GetString() ?? throw new InvalidOperationException("The read request had no path.");
                 return JsonSerializer.Serialize(new { files = new[] { new { path, content = Files[path], checksum = _Checksum(Files[path]) } }, truncated = false });
             }
             var entry = json.RootElement[0];
-            var target = entry.GetProperty("path").GetString()!;
+            var target = entry.GetProperty("path").GetString() ?? throw new InvalidOperationException("The write request had no path.");
             var current = Files.TryGetValue(target, out var content) ? _Checksum(content) : "";
             var expected = entry.GetProperty("baseChecksum").GetString();
             if (expected is not null && expected != current)
                 return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "conflict", checksum = current } } });
-            Files[target] = entry.GetProperty("content").GetString()!;
+            Files[target] = entry.GetProperty("content").GetString() ?? throw new InvalidOperationException("The write request had no content.");
             return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "written", checksum = _Checksum(Files[target]) } } });
         }
     }
