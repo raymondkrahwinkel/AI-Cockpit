@@ -55,7 +55,7 @@ internal static partial class Screenshotter
             Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly)),
+            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state))),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
@@ -96,6 +96,20 @@ internal static partial class Screenshotter
                 { Width = width, Height = height };
         }
         return new MainWindow { Width = width, Height = height, DataContext = cockpit };
+    }
+
+    // Mockup v2 screens 4, 3a and 6: who saved the live note last, as the source reports it (AC-1901).
+    private static LiveFileStatus? _SceneStatus(string state)
+    {
+        var today = TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 10, 28));
+        LiveFileSave? saved = state switch
+        {
+            "presence-saved" => new LiveFileSave("Sanne", "#3fb8c4", new DateTimeOffset(2026, 10, 28, 14, 12, 0, today)),
+            "presence-not-yet" => LiveFileSave.NotYet,
+            "presence-agent" => new LiveFileSave("Assistant", "#a78bda", new DateTimeOffset(2026, 10, 28, 14, 15, 0, today)),
+            _ => null,
+        };
+        return saved is null ? null : new LiveFileStatus(LiveFileState.Live) { Saved = saved };
     }
 
     private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null) : IPluginUiChannel

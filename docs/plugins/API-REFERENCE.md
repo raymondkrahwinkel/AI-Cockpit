@@ -870,6 +870,7 @@ public interface IWorkspaceContext
   The host's Markdown workspace uses it for a live file source, see [File sources](FILE-SOURCES.md#live-file-sources-ac-1898).
   A live session can also implement `ILivePresence` (SDK 3.47.0, host 0.144.0) to show who else is in the file: the host draws
   their carets, selections and avatars in the colour the source sends, see [Presence](FILE-SOURCES.md#presence-in-live-files-ac-1900).
+  Its `LiveFileStatus.Saved` (SDK 3.49.0, host 0.146.0) names who last saved the file, which the status chip shows.
 - **Deliberately narrow, like `IWidgetContext`.** Cross-plugin intents (`host.SendIntent`), dialogs and the
   theme are already yours to reach: the body factory is a closure created in `Initialize`, where you captured
   the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they are not

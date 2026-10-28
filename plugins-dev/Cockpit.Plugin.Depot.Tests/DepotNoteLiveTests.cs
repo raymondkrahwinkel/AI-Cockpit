@@ -16,17 +16,20 @@ public class DepotNoteLiveTests
 
     private const string Secret = "sk-live-bearer-0123456789";
 
-    [Theory]
-    [InlineData("http-401")]
-    [InlineData("hub-code")]
-    public async Task SignInNeeded_IsPublishedOnce_WithoutRetry_AndNeverCarriesTheToken(string how)
+    // AC-1901: the two ways a sign-in ends (an HTTP 401 and the hub's code) in one test, every assert kept, instead of a theory that
+    // branched on its parameter.
+    [Fact]
+    public async Task SignInNeeded_IsPublishedOnce_WithoutRetry_AndNeverCarriesTheToken()
+    {
+        await _SignInNeededOnceAsync(new HttpRequestException($"401 Authorization: Bearer {Secret}", null, HttpStatusCode.Unauthorized));
+        await _SignInNeededOnceAsync(new HubException($"auth.session_expired: refused (Bearer {Secret})"));
+    }
+
+    private static async Task _SignInNeededOnceAsync(Exception failure)
     {
         var factoryCalls = 0;
         var statuses = new List<DepotNoteLiveStatus>();
         var logger = new _Log();
-        Exception failure = how == "http-401"
-            ? new HttpRequestException($"401 Authorization: Bearer {Secret}", null, HttpStatusCode.Unauthorized)
-            : new HubException($"auth.session_expired: refused (Bearer {Secret})");
         await using var session = new DepotNoteSession(
             Connection, Note, _ => Task.FromResult("user-1"),
             (_, _, onClosed) =>
@@ -80,6 +83,12 @@ public class DepotNoteLiveTests
         public Task<bool> RefillAsync(string documentId, CancellationToken cancellationToken) => Task.FromResult(false);
 
         public Task PresenceAsync(string documentId, byte[] awareness, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public string? ConnectionId => null;
+
+        public Task<DepotNoteText?> TextAsync(string documentId, string? checksum, CancellationToken cancellationToken) => Task.FromResult<DepotNoteText?>(null);
+
+        public Task MergedAsync(string documentId, string checksum, int[] blocks, int conflicts, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public ValueTask DisposeAsync() => _closed is null ? ValueTask.CompletedTask : new ValueTask(_closed(null));
     }

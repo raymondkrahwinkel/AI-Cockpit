@@ -33,6 +33,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly ILogger<MarkdownFileWorkspace> _logger;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _state = new() { Name = "FileStatus", FontSize = 12 };
+    // Mockup v2: the colour of whoever saved the live file last, before the name.
+    private readonly Avalonia.Controls.Shapes.Ellipse _saverDot = new() { Name = "FileSaverDot", Width = 7, Height = 7, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
     private readonly TextBlock _message = new() { Name = "FileMessage", TextWrapping = TextWrapping.Wrap, IsVisible = false };
     private readonly TextBlock _footer = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _shortcuts = new() { FontSize = 11.5, Margin = new Thickness(12, 0, 0, 0) };
@@ -102,7 +104,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
         };
         location.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
-        _statusChip = new Border { Child = _state, Padding = new Thickness(8, 2), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        _statusChip = new Border { Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _saverDot, _state } }, Padding = new Thickness(8, 2), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
         _statusChip.Bind(Border.CornerRadiusProperty, this.GetResourceObservable("CockpitPillRadius"));
         var header = new DockPanel { LastChildFill = true };
         foreach (var action in new Control[] { _save, _edit, _download, _keepOpen, _source, _statusChip, _people })
@@ -732,6 +734,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 LiveFileState.ReadOnly => live.ReadOnlyReason == LiveReadOnlyReason.Viewer ? "Viewer · read only" : "Read only",
                 LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
                 LiveFileState.Stale => "Catching up…",
+                LiveFileState.Live when live.Saved is { Name: { } by } saved => saved.At is { } at ? $"Saved by {by} · {at.ToLocalTime():HH:mm}" : $"Saved by {by}",
+                LiveFileState.Live when live.Saved is not null => $"Not saved to {_sourceName} yet",
                 LiveFileState.Live => "Live",
                 _ => live.State.ToString(),
             }
@@ -751,8 +755,12 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _updates.IsVisible = live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch;
         _copy.IsVisible = readOnly && dirty;
         _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null;
+        var saverColor = live is { State: LiveFileState.Live, Saved.Name: not null } && Color.TryParse(live.Saved.Color, out var parsed) ? parsed : (Color?)null;
+        _saverDot.Fill = saverColor is { } color ? new SolidColorBrush(color) : null;
+        _saverDot.IsVisible = saverColor is not null && !_loading && !_saving && !_conflict && !notSent;
         var unsaved = _conflict || (dirty && !_saving) || notSent
-            || live?.State is LiveFileState.Offline or LiveFileState.SignInNeeded or LiveFileState.NoSaver;
+            || live?.State is LiveFileState.Offline or LiveFileState.SignInNeeded or LiveFileState.NoSaver
+            || live is { State: LiveFileState.Live, Saved: { Name: null } };
         if (_wasUnsaved != unsaved)
         {
             _wasUnsaved = unsaved;

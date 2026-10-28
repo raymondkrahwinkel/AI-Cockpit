@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Microsoft.Extensions.Logging;
@@ -35,7 +36,9 @@ internal sealed class DepotNoteLive(
             {
                 session = new DepotNoteSession(
                     connection, request, cancellationToken => ReadUserAsync(connection, handlerFor(connection), cancellationToken),
-                    hubFactory, roomFactory, publish, logger: logger);
+                    hubFactory, roomFactory, publish, logger: logger,
+                    post: (content, baseChecksum, session, cancellationToken) =>
+                        PostAsync(connection, handlerFor(connection), request, content, baseChecksum, session, cancellationToken));
                 _sessions[key] = session;
             }
         }
@@ -104,7 +107,25 @@ internal sealed class DepotNoteLive(
             : me.UserId;
     }
 
+    // Protocol section 6 duty 3, the bearer door (DEP-528): URL-encoded, so a file keeps its own line endings, with no antiforgery.
+    internal static async Task<DepotNoteSaveAnswer> PostAsync(
+        DepotConnectionRegistration connection, HttpMessageHandler handler, DepotNoteLiveRequest note, string content, string baseChecksum, string session,
+        CancellationToken cancellationToken)
+    {
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+        using var form = new FormUrlEncodedContent([
+            new("path", note.Path), new("baseChecksum", baseChecksum), new("content", content), new("session", session)]);
+        var url = $"{connection.Url.TrimEnd('/')}/cockpit/projects/{Uri.EscapeDataString(note.Organization)}/{Uri.EscapeDataString(note.Project)}/note-save";
+        using var response = await http.PostAsync(url, form, cancellationToken).ConfigureAwait(false);
+        // A 403 or a 400 may carry no JSON at all; the status alone decides then.
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        var answer = body.StartsWith('{') ? JsonSerializer.Deserialize<SaveResponse>(body, DepotChannel.Json) : null;
+        return new DepotNoteSaveAnswer((int)response.StatusCode, answer?.Checksum, answer?.Version, answer?.Own == true);
+    }
+
     private static string _Key(DepotNoteLiveRequest request) => $"{request.ConnectionId}|{request.Organization}/{request.Project}/{request.Path}";
 
     private sealed record Me(string? UserId);
+
+    private sealed record SaveResponse(string? Checksum, int? Version, bool? Own);
 }

@@ -215,6 +215,9 @@ internal static partial class Screenshotter
         ["markdown-file-presence"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
         ["markdown-file-presence-popover"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
         ["markdown-file-presence-away"] = (width, height) => _MarkdownFileScene(width, height, "presence-away"),
+        ["markdown-file-saver-saved"] = (width, height) => _MarkdownFileScene(width, height, "presence-saved"),
+        ["markdown-file-saver-not-yet"] = (width, height) => _MarkdownFileScene(width, height, "presence-not-yet"),
+        ["markdown-file-saver-agent"] = (width, height) => _MarkdownFileScene(width, height, "presence-agent"),
         ["preview-tab"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
         ["markdown-file-discard"] = (_, _) => new ConfirmationDialog

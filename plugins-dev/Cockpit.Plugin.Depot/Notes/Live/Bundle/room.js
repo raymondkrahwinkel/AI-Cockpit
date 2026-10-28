@@ -14,6 +14,7 @@ import {
   yXmlFragmentToProsemirrorJSON,
 } from '@tiptap/y-tiptap';
 import { lineEnding, noteExtensions, parseBody, serializeBody, serializeNote, splitFrontmatter } from 'depot-notes/markdown.ts';
+import { mergeNote } from 'depot-notes/merge.ts';
 
 export { Y };
 
@@ -69,6 +70,10 @@ export function serialize(markdown, docJson) {
 const REMOTE = 'remote';
 const LOCAL = 'local';
 const SEED = 'seed';
+const OUTSIDE = 'outside';
+// editor.ts: a block someone else in the room changed this recently may still have keystrokes on their way into it (DEP-405 M3).
+const REMOTE_RECENT_MS = 5000;
+let remoteAt = new WeakMap();
 let doc;
 let undoManager;
 let outgoing = [];
@@ -86,6 +91,7 @@ export function createRoom(clientId) {
   mirror = '';
   ranges = [];
   frontLength = 0;
+  remoteAt = new WeakMap();
   doc.on('update', (update, origin) => {
     if (origin !== REMOTE) {
       outgoing.push(toBase64(update));
@@ -351,6 +357,34 @@ export function offsetOfRelative(relativeJson) {
   return -1;
 }
 
+/** Protocol §6 duty 1: the note as the saver writes it, serializeNote of the doc (not the host's text, which may still be half-typed). */
+export function serialized() {
+  const json = pmDoc ? pmDoc.toJSON() : yXmlFragmentToProsemirrorJSON(fragment());
+  return serializeNote(frontmatter().toString(), json, eol());
+}
+
+/**
+ * Protocol §6 duty 4: merges an outside write (theirs, the file now) into the doc against base (the room's last save, or null when
+ * it is gone), with Depot's own merge.ts, as editor.ts' mergeOnce does. Returns the host's ops, the v1 updates, the marked blocks.
+ */
+export function merge(base, theirs, from) {
+  if (!pmDoc) {
+    throw new Error('The room has no text to merge into yet.');
+  }
+  // As editor.ts' guardedSince: measured from when the merge was asked for, not from when a save in flight let it run.
+  const since = Math.min(from, Date.now()) - REMOTE_RECENT_MS;
+  const guarded = fragment().toArray().flatMap((block, index) => ((remoteAt.get(block) ?? 0) >= since ? [index] : []));
+  const merged = mergeNote(base, theirs, { frontmatter: frontmatter().toString(), doc: pmDoc.toJSON() }, guarded);
+  const node = tree(merged.doc);
+  const ops = changed(() => doc.transact(() => {
+    updateYFragment(doc, fragment(), node, binding);
+    setText(frontmatter(), merged.frontmatter);
+  }, OUTSIDE));
+  const taken = outgoing;
+  outgoing = [];
+  return JSON.stringify({ ops, updates: taken, blocks: merged.changed, conflicts: merged.conflicts });
+}
+
 /**
  * The host's ops, each on the text the one before it left, as one local transaction. Returns the v1 updates to send. When an op
  * fails, the room goes back to the host's text before the edit and the error goes to the host, which then has nothing applied.
@@ -524,7 +558,7 @@ export function apply(base64) {
     Y.applyUpdate(doc, fromBase64(base64), REMOTE);
     return '[]';
   }
-  return JSON.stringify(changed(() => Y.applyUpdate(doc, fromBase64(base64), REMOTE)));
+  return JSON.stringify(changed(() => Y.applyUpdate(doc, fromBase64(base64), REMOTE), Date.now()));
 }
 /** Undoes (or redoes) the host's own edits; returns the ops for the host and the v1 updates to send. */
 export function undo(redo) {
@@ -535,14 +569,16 @@ export function undo(redo) {
 }
 // A change the host did not type, as ops on its text. When the doc no longer reads (another client wrote what the schema refuses),
 // the bridge lets go of its view rather than edit on a stale one: the session loads again once the doc reads.
-function changed(run) {
+function changed(run, remote) {
   const was = new Map(fragment().toArray().map((type, i) => [type, ranges[i]]));
   const touched = new Set();
   let structural = false;
   let front = false;
+  const added = [];
   const onBody = (events) => events.forEach((event) => {
     if (event.target === fragment()) {
       structural = true;
+      event.changes.added.forEach((item) => item.content.getContent().forEach((type) => added.push(type)));
     } else {
       touched.add(fragment().get(event.path[0]));
     }
@@ -557,6 +593,9 @@ function changed(run) {
   } finally {
     fragment().unobserveDeep(onBody);
     frontmatter().unobserve(onFront);
+  }
+  if (remote !== undefined) {
+    [...touched, ...added].forEach((type) => typeof type === 'object' && type !== null && remoteAt.set(type, remote));
   }
   if (!structural && !front && touched.size === 0) {
     return [];

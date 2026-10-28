@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a live Markdown file says who saved it last.** The status chip reads "Saved by {name} · hh:mm" with a dot in their
+  colour, or "Not saved to Depot yet" until someone has saved since you joined (plugin SDK 3.49.0, Cockpit 0.146.0). The
+  Depot plugin 0.39.0 can now be the one that saves a live note: it fills an empty note from the file, saves your typing after
+  three seconds of quiet, and merges a change written outside the note (by the assistant, a sync or an upload) into it before
+  it saves again, so nothing written from outside is lost. Depot notes go live in Cockpit in a later step.
+
 - added: **other people in a live Markdown file, when the file source reports them.** Their carets and selections are drawn in the colour Depot gave them, with
   their first name on a small flag. Avatars in the header show who is in the file (an agent is a rounded square, someone who
   dropped offline fades); a click opens the list with role, what they are doing and where they are editing from (plugin SDK

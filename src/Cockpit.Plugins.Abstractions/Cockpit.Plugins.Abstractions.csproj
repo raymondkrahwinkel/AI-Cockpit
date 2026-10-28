@@ -639,7 +639,9 @@
          files-live-presence-set action. A plugin that implements ILivePresence sets minHostVersion 0.144.0. Additive; still v3. -->
     <!-- 3.48.0 (AC-1902): LiveReadOnlyReason and LiveFileStatus.UnsentSourceText preserve edits on read-only transitions.
          A plugin that supplies these members sets minHostVersion 0.145.0. Additive; still v3. -->
-    <Version>3.48.0</Version>
+    <!-- 3.49.0 (AC-1901): LiveFileStatus.Saved and LiveFileSave, who last saved a live file. A plugin that sets Saved sets
+         minHostVersion 0.146.0. Additive; still v3. -->
+    <Version>3.49.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -417,6 +417,12 @@ public class DepotNoteBridgeTests
             return Task.CompletedTask;
         }
 
+        public string? ConnectionId => null;
+
+        public Task<DepotNoteText?> TextAsync(string documentId, string? checksum, CancellationToken cancellationToken) => Task.FromResult<DepotNoteText?>(null);
+
+        public Task MergedAsync(string documentId, string checksum, int[] blocks, int conflicts, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public ValueTask DisposeAsync() => _closed is null ? ValueTask.CompletedTask : new ValueTask(_closed(null));
     }
 }
