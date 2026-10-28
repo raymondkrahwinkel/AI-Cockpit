@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Plugin.Browser;
@@ -283,8 +284,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
         foreach (var profile in Directory.EnumerateDirectories(profilesRoot))
         {
-            StopOwner(Path.Combine(profile, OwnerFile));
-            DeleteProfile(profile);
+            if (StopOwner(Path.Combine(profile, OwnerFile))) DeleteProfile(profile);
         }
     }
 
@@ -302,27 +302,49 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
     }
 
-    private static void StopOwner(string ownerFile)
+    private static bool StopOwner(string ownerFile)
     {
         try
         {
             var lines = File.Exists(ownerFile) ? File.ReadAllLines(ownerFile) : [];
             if (lines.Length < 2 || !int.TryParse(lines[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !long.TryParse(lines[1], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks))
             {
-                return;
+                return false;
             }
 
             using var process = Process.GetProcessById(id);
             if (Math.Abs(process.StartTime.ToUniversalTime().Ticks - ticks) < TimeSpan.TicksPerSecond)
             {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5000);
+                return Shutdown(process, Path.GetDirectoryName(ownerFile)!);
             }
+            return false;
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException or Win32Exception)
         {
-            // Not running any more, or not ours to read: nothing left to stop.
+            // Without a verified root we cannot prove that its descendants have released the profile.
+            return false;
         }
+    }
+
+    private static bool Shutdown(Process process, string profile)
+    {
+        using var tree = new BrowserProcessTree(process);
+        tree.Capture();
+        try { CloseAsync(profile).GetAwaiter().GetResult(); }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or InvalidOperationException) { }
+        if (tree.Wait(TimeSpan.FromSeconds(5))) return true;
+        tree.Kill();
+        return tree.Wait(TimeSpan.FromSeconds(5));
+    }
+
+    private static async Task CloseAsync(string profile)
+    {
+        if (!TryParsePort(Path.Combine(profile, "DevToolsActivePort"), out var port)) return;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var http = new HttpClient();
+        using var version = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/version", timeout.Token).ConfigureAwait(false));
+        using var browser = await CdpPage.ConnectAsync(version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()!, (_, _) => { }, timeout.Token).ConfigureAwait(false);
+        await browser.SendAsync("Browser.close").WaitAsync(timeout.Token).ConfigureAwait(false);
     }
 
     // Chromium's own words when it cannot set up its sandbox: user namespaces refused, or no setuid helper to fall back on.
@@ -496,11 +518,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             _ended = true;
             try
             {
-                if (!Process.HasExited)
-                {
-                    Process.Kill(entireProcessTree: true);
-                    Process.WaitForExit(5000);
-                }
+                if (!Shutdown(Process, Profile)) return;
             }
             catch (InvalidOperationException)
             {
