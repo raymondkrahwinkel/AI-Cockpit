@@ -21,12 +21,17 @@ internal sealed class DepotInvitationNotifications(
             return;
         }
 
-        _seeded.Add((connection.Id, page.Recipient));
+        var seed = _seeded.Add((connection.Id, page.Recipient));
         foreach (var message in page.Messages)
         {
             if (message.Kind != DepotInboxKind.NoteInvitation || message.IsRead || message.Handled
                 || message.Note?.OpenUrl is not { Length: > 0 } noteLink
                 || !_shown.Add((connection.Id, page.Recipient, noteLink)))
+            {
+                continue;
+            }
+
+            if (seed)
             {
                 continue;
             }
