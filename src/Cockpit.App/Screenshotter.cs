@@ -209,6 +209,10 @@ internal static partial class Screenshotter
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
         ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
+        // AC-1900 (mockup AC-1895 v2, screens 4 and 4p): others' carets and selections, the avatars in the header, and the list they open.
+        ["markdown-file-presence"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-presence-popover"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-presence-away"] = (width, height) => _MarkdownFileScene(width, height, "presence-away"),
         ["preview-tab"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
         ["markdown-file-discard"] = (_, _) => new ConfirmationDialog
@@ -1251,6 +1255,11 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["markdown-file-presence-popover"] = window =>
+        {
+            window.GetVisualDescendants().OfType<Files.LivePresenceBar>().First().IsOpen = true;
+            Dispatcher.UIThread.RunJobs();
+        },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),

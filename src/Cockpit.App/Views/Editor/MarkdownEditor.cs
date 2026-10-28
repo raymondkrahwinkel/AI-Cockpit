@@ -60,6 +60,8 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
         _collapser = new BlockCollapser(_editor.TextArea.TextView);
         var textView = _editor.TextArea.TextView;
         textView.BackgroundRenderers.Add(new LineBackgrounds(this));
+        textView.BackgroundRenderers.Add(new RemoteCursors(this, AvaloniaEdit.Rendering.KnownLayer.Selection));
+        textView.BackgroundRenderers.Add(new RemoteCursors(this, AvaloniaEdit.Rendering.KnownLayer.Caret));
         textView.LineTransformers.Add(new Colorizer(this));
         textView.ElementGenerators.Add(new Elements(this));
         _editor.TextArea.LeftMargins.Add(new Gutter(this));

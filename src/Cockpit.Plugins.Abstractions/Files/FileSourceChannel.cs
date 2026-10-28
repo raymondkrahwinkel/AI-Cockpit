@@ -17,6 +17,8 @@ public static class FileSourceChannel
     public const string LiveClose = "files-live-close";
     public const string LivePatch = "files-live-patch";
     public const string LiveState = "files-live-state";
+    public const string LivePresence = "files-live-presence";
+    public const string LivePresenceSet = "files-live-presence-set";
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
 
     public static async Task<byte[]> ReadContentAsync(Stream content, long limit, CancellationToken cancellationToken)
@@ -70,7 +72,13 @@ public sealed record FileSourceReadAnswer(string ContentBase64, string Version, 
 public sealed record FileSourceLiveRequest(string SessionId);
 public sealed record FileSourceLiveEditRequest(string SessionId, string EditId, long BaseRev, TextOp[] Ops);
 public sealed record FileSourceLiveUndoRequest(string SessionId, bool Redo);
-public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase64, long Rev, LiveFileStatus Status);
+public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase64, long Rev, LiveFileStatus Status)
+{
+    public IReadOnlyList<LivePeer>? Peers { get; init; }
+    public string? OpenUrl { get; init; }
+}
+public sealed record FileSourceLivePresenceSet(string SessionId, LivePresenceState State);
+public sealed record FileSourceLivePresence(string SessionId, IReadOnlyList<LivePeer> Peers);
 public sealed record FileSourceLivePatch(string SessionId, long Rev, TextOp[] Ops, string? Who);
 public sealed record FileSourceLiveState(string SessionId, LiveFileStatus Status);
 public sealed record FileSourceError(FileSourceErrorKind Kind, string Message);

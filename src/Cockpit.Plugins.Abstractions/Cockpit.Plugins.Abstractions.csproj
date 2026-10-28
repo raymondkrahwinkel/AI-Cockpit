@@ -635,7 +635,9 @@
     <!-- 3.45.0 (AC-1749): merges the Markdown-editor epic above with main's 3.41.0 and 3.42.0. Additive; still v3. -->
     <!-- 3.46.0 (AC-1898): ILiveFileSource and ILiveFileSession, the live-file wire records, FileSourceReadAnswer.Live and
          WorkspaceMarker.Live. A plugin that implements ILiveFileSource sets minHostVersion 0.143.0. Additive; still v3. -->
-    <Version>3.46.0</Version>
+    <!-- 3.47.0 (AC-1900): ILivePresence, LivePeer, LiveRange and LivePresenceState, the files-live-presence event and the
+         files-live-presence-set action. A plugin that implements ILivePresence sets minHostVersion 0.144.0. Additive; still v3. -->
+    <Version>3.47.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

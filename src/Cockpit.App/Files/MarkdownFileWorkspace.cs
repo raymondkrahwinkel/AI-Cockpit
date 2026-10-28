@@ -70,6 +70,9 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private bool _closed;
     private Task? _saveTask;
     private LiveTextDocument? _live;
+    private LivePresenceFeed? _presence;
+    private readonly LivePresenceBar _people = new();
+    private string? _openUrl;
 
     internal MarkdownFileWorkspace(IWorkspaceContext context, FileWorkspaceOpenOptions options,
         FileSourceChannelClient client, Func<Task<bool>> confirmDiscard, ILogger<MarkdownFileWorkspace>? logger = null)
@@ -94,7 +97,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _statusChip = new Border { Child = _state, Padding = new Thickness(8, 2), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
         _statusChip.Bind(Border.CornerRadiusProperty, this.GetResourceObservable("CockpitPillRadius"));
         var header = new DockPanel { LastChildFill = true };
-        foreach (var action in new Control[] { _save, _edit, _download, _keepOpen, _source, _statusChip })
+        foreach (var action in new Control[] { _save, _edit, _download, _keepOpen, _source, _statusChip, _people })
         {
             DockPanel.SetDock(action, Dock.Right);
             action.Margin = new Thickness(6, 0, 0, 0);
@@ -138,6 +141,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         Content = new DockPanel { Children = { head, _hintStrip, message, _banner, _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
         this.Bind(BackgroundProperty, this.GetResourceObservable("CockpitSecondaryBgBrush"));
 
+        _people.OpenRequested += async (_, _) => await _OpenInSourceAsync().ConfigureAwait(true);
         _save.Click += async (_, _) => await _SaveFromUiAsync().ConfigureAwait(true);
         _edit.Click += (_, _) => BeginEdit();
         _keepOpen.Click += (_, _) => _context.Pin();
@@ -278,7 +282,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 var snapshot = await _ReadSnapshotAsync().ConfigureAwait(true);
                 _hasBom = snapshot.HasBom;
                 _canWrite = snapshot.CanWrite;
-                if (snapshot.Live && _live is null && await _OpenLiveAsync().ConfigureAwait(true))
+                if (snapshot.Live && _live is null && await _OpenLiveAsync(snapshot).ConfigureAwait(true))
                 {
                     _version = snapshot.Version;
                 }
@@ -316,12 +320,12 @@ internal sealed class MarkdownFileWorkspace : UserControl
     }
 
     // A live source keeps the text itself; when it cannot open the session, the file is edited and saved as a snapshot.
-    private async Task<bool> _OpenLiveAsync()
+    private async Task<bool> _OpenLiveAsync(Snapshot read)
     {
         var live = new LiveTextDocument(Editor.TextEditor.Document, _client, _logger);
         try
         {
-            var (id, snapshot) = await _client.OpenLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
+            var (id, snapshot, wire) = await _client.OpenLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
             if (_closed)
             {
                 live.Dispose();
@@ -333,6 +337,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
             live.Attach(id, snapshot);
             live.Changed += (_, _) => _UpdateState();
             _live = live;
+            if (wire.Peers is { } peers)
+            {
+                await _ShowPresenceAsync(id, peers, wire.OpenUrl, read).ConfigureAwait(true);
+            }
             return true;
         }
         catch (FileSourceException error)
@@ -340,6 +348,32 @@ internal sealed class MarkdownFileWorkspace : UserControl
             live.Dispose();
             _logger.LogWarning(error, "Markdown workspace {WorkspaceId} could not open its file live; it saves snapshots instead.", _context.WorkspaceId);
             return false;
+        }
+    }
+
+    // The source reports who is in the file: draw them, and tell the source where this cursor is.
+    private async Task _ShowPresenceAsync(string sessionId, IReadOnlyList<LivePeer> peers, string? openUrl, Snapshot read)
+    {
+        _openUrl = Uri.TryCreate(openUrl, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.AbsoluteUri : null;
+        var saved = read.ModifiedBy is { Length: > 0 } by && read.Modified is { } at ? $"Saved by {by} · {at.ToLocalTime():HH:mm}" : null;
+        _people.SetFooter(saved, _openUrl is null ? null : $"Open in {_sourceName} ↗");
+        _presence = new LivePresenceFeed(_client, Editor, _people, _logger);
+        await _presence.AttachAsync(sessionId, peers).ConfigureAwait(true);
+    }
+
+    private async Task _OpenInSourceAsync()
+    {
+        if (_openUrl is not { } url || TopLevel.GetTopLevel(this)?.Launcher is not { } launcher)
+        {
+            return;
+        }
+        try
+        {
+            await launcher.LaunchUriAsync(new Uri(url)).ConfigureAwait(true);
+        }
+        catch (Exception error)
+        {
+            _logger.LogWarning(error, "Markdown workspace {WorkspaceId} could not open {Source} in the browser.", _context.WorkspaceId, _sourceName);
         }
     }
 
@@ -610,6 +644,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _context.Closed -= _OnClosed;
         _context.Pinned -= _OnPinned;
         _savedSubscription?.Dispose();
+        _presence?.Dispose();
         _live?.Dispose();
         // Cancelled, not disposed: a save still in flight reads _lifetime.Token, which throws once the source is disposed.
         _lifetime.Cancel();

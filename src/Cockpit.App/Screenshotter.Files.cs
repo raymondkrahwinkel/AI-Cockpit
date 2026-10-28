@@ -24,15 +24,32 @@ internal static partial class Screenshotter
         return window;
     }
 
+    // The note of the AC-1895 v2 mockup, with its people: Sanne selects a phrase, Joris has his caret after "Linux".
+    private const string PresenceNote = "# Weekly sync — 28 October\n\n**Date:** Wednesday 28 October 2026, 14:00 · **Present:** Raymond, Sanne, Joris\n\n## Notes\n- Notes taker: the native editor replaces the webview; the mockups are in review\n- Live bridge spike passed G3: byte-equal on all six fixtures\n- Release 0.141 stays on Friday\n\n## Decisions\n- Jint runs `markdown.ts` in the Depot plugin, not in the host\n\n## Action items\n- [x] Sanne: send the fixtures diff to the team\n- [ ] Joris: measure Jint start-up on Linux\n- [ ] Raymond: review mockups 4, 5 and 6\n";
+
+    private static IReadOnlyList<LivePeer> _PresencePeers(bool away)
+    {
+        var sanne = PresenceNote.IndexOf("not in the host", StringComparison.Ordinal);
+        var joris = PresenceNote.IndexOf("on Linux", StringComparison.Ordinal) + "on Linux".Length;
+        return
+        [
+            new("raymond", "Raymond Krahwinkel", "#3b82f6", "Cockpit", "Editor", "editing", You: true),
+            new("sanne", "Sanne de Vries", "#3fb8c4", "web", "Editor", "selecting", Away: away, Caret: sanne + 15, Selection: new LiveRange(sanne, sanne + 15)),
+            new("joris", "Joris Bakker", "#d9a441", "Cockpit", "Editor", "editing", Away: away, Caret: joris),
+        ];
+    }
+
     private static Window _MarkdownFileScene(int width, int height, string state)
     {
-        const string text = "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
-        var options = new FileWorkspaceOpenOptions(new FileRef("scene", "idea", "Ideas/md-editor-in-cockpit.md"),
-            "idea", "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
+        var presence = state.StartsWith("presence");
+        var text = presence ? PresenceNote : "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
+        var options = new FileWorkspaceOpenOptions(
+            presence ? new FileRef("scene", "idea", "Meetings/2026-10-28 Weekly sync.md") : new FileRef("scene", "idea", "Ideas/md-editor-in-cockpit.md"),
+            "idea", presence ? "2026-10-28 Weekly sync.md" : "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
             Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state == "live")),
+            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away")),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
@@ -58,6 +75,10 @@ internal static partial class Screenshotter
         {
             body.Editor.EditLine(body.Editor.TextEditor.Document.LineCount - 1, atEnd: true);
         }
+        if (presence)
+        {
+            body.Editor.EditLine(PresenceNote.Split('\n').ToList().FindIndex(line => line.StartsWith("- Release 0.141", StringComparison.Ordinal)) + 1, atEnd: true);
+        }
         if (state is "editing" or "floating")
         {
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "\nA new idea, ready to save.");
@@ -71,7 +92,7 @@ internal static partial class Screenshotter
         return new MainWindow { Width = width, Height = height, DataContext = cockpit };
     }
 
-    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false) : IPluginUiChannel
+    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false) : IPluginUiChannel
     {
         private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
         private bool _read;
@@ -84,9 +105,14 @@ internal static partial class Screenshotter
                     { CanWrite = writable, ModifiedBy = "cockpit-assistant" }, null), FileSourceChannel.Json),
             FileSourceChannel.Connections => JsonSerializer.SerializeToElement(new FileSourceAnswer<IReadOnlyList<FileConnection>>([new("scene", "Work", "memory", !writable)], null), FileSourceChannel.Json),
             FileSourceChannel.Read when _MarkRead() => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
-                new(Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), "e7a1b6c9", Encoding.UTF8.GetByteCount(text), null, "text/markdown") { CanWrite = writable, Live = live }, null), FileSourceChannel.Json),
+                new(Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), "e7a1b6c9", Encoding.UTF8.GetByteCount(text),
+                    presence ? new DateTimeOffset(2026, 10, 28, 14, 12, 0, TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 10, 28))) : null, "text/markdown")
+                    { CanWrite = writable, Live = live, ModifiedBy = presence ? "Sanne" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LiveOpen when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveSnapshot>(
-                new("scene", Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), 1, new(LiveFileState.Live)), null), FileSourceChannel.Json),
+                new("scene", Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), 1, new(LiveFileState.Live))
+                    { Peers = presence ? _PresencePeers(away) : null, OpenUrl = presence ? "https://depot.example/projects/krahwinkel-it/cockpit" : null }, null), FileSourceChannel.Json),
+            FileSourceChannel.LivePresenceSet when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLivePresenceSet>(
+                JsonSerializer.Deserialize<FileSourceLivePresenceSet>(payload, FileSourceChannel.Json), null), FileSourceChannel.Json),
             FileSourceChannel.LiveClose when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveRequest>(new("scene"), null), FileSourceChannel.Json),
             _ => throw new InvalidOperationException("This scene only reads its in-memory source."),
         });

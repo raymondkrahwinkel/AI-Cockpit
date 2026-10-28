@@ -94,7 +94,9 @@ internal static class FileSourceChannel
                 (_, patch) => channel.Publish(Wire.LivePatch, JsonSerializer.SerializeToElement(
                     new FileSourceLivePatch(id, patch.Rev, [.. patch.Ops], patch.Who), Wire.Json)),
                 (_, status) => channel.Publish(Wire.LiveState, JsonSerializer.SerializeToElement(
-                    new FileSourceLiveState(id, status), Wire.Json)));
+                    new FileSourceLiveState(id, status), Wire.Json)),
+                (_, peers) => channel.Publish(Wire.LivePresence, JsonSerializer.SerializeToElement(
+                    new FileSourceLivePresence(id, peers), Wire.Json)));
             registration.Sessions[id] = open;
             try
             {
@@ -130,6 +132,19 @@ internal static class FileSourceChannel
             await _Live(registration, request.SessionId).UndoAsync(request.Redo, ct).ConfigureAwait(false);
             return request;
         })));
+        registration.Handlers.Add(channel.Handle(Wire.LivePresenceSet, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceLivePresenceSet>(Wire.Json) ?? throw new JsonException();
+            if (request.State?.Activity is null)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "The presence is invalid.");
+            }
+            if (_Live(registration, request.SessionId) is ILivePresence presence)
+            {
+                await presence.SetPresenceAsync(request.State, ct).ConfigureAwait(false);
+            }
+            return request;
+        })));
         registration.Handlers.Add(channel.Handle(Wire.LiveClose, (payload, _) => _RunAsync(async () =>
         {
             var request = payload.Deserialize<FileSourceLiveRequest>(Wire.Json) ?? throw new JsonException();
@@ -149,7 +164,11 @@ internal static class FileSourceChannel
         {
             throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
         }
-        return new FileSourceLiveSnapshot(id, Convert.ToBase64String(bytes), snapshot.Rev, snapshot.Status);
+        return new FileSourceLiveSnapshot(id, Convert.ToBase64String(bytes), snapshot.Rev, snapshot.Status)
+        {
+            Peers = (session as ILivePresence)?.Peers,
+            OpenUrl = (session as ILivePresence)?.OpenUrl,
+        };
     }
 
     private static ILiveFileSession _Live(Registration registration, string? id) =>
@@ -242,14 +261,21 @@ internal static class FileSourceChannel
     {
         private readonly EventHandler<LiveFilePatch> _patched;
         private readonly EventHandler<LiveFileStatus> _status;
+        private readonly EventHandler<IReadOnlyList<LivePeer>> _peers;
 
-        public LiveSession(ILiveFileSession session, EventHandler<LiveFilePatch> patched, EventHandler<LiveFileStatus> status)
+        public LiveSession(ILiveFileSession session, EventHandler<LiveFilePatch> patched, EventHandler<LiveFileStatus> status,
+            EventHandler<IReadOnlyList<LivePeer>> peers)
         {
             Session = session;
             _patched = patched;
             _status = status;
+            _peers = peers;
             session.Patched += patched;
             session.StatusChanged += status;
+            if (session is ILivePresence presence)
+            {
+                presence.PeersChanged += peers;
+            }
         }
 
         public ILiveFileSession Session { get; }
@@ -258,6 +284,10 @@ internal static class FileSourceChannel
         {
             Session.Patched -= _patched;
             Session.StatusChanged -= _status;
+            if (Session is ILivePresence presence)
+            {
+                presence.PeersChanged -= _peers;
+            }
             return Session.DisposeAsync();
         }
     }

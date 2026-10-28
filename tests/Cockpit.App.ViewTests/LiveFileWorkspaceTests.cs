@@ -27,8 +27,9 @@ public sealed class LiveFileWorkspaceTests
 
     // Layer 2, view: a remote patch above the caret keeps the caret and selection on their characters; a local edit
     // goes out as one op on the right base revision; Live shows no Save and a green tab dot, and Ctrl+S writes nothing.
+    // Then, on a fresh workspace, the undo checks below.
     [Fact]
-    public Task ARemotePatch_KeepsCaretAndSelection_AndALocalEditIsOneOp() => HeadlessAvalonia.RunAsync(async () =>
+    public Task ARemotePatch_KeepsCaretAndSelection_AndALocalEditIsOneOp_AndUndoTakesBackOnlyTheOwnEdit() => HeadlessAvalonia.RunAsync(async () =>
     {
         var (source, body, marker, window) = await _OpenAsync();
         try
@@ -65,12 +66,13 @@ public sealed class LiveFileWorkspaceTests
         {
             window.Close();
         }
+
+        await _Undo_TakesBackOnlyTheOwnEdit_AndKeepsRemoteTextAsync();
     });
 
     // Layer 2, view (data loss): Ctrl+Z takes back only what was typed here; the remote text that came after stays.
     // Text still on its way when a remote delete removes the word around it survives on both sides, once.
-    [Fact]
-    public Task Undo_TakesBackOnlyTheOwnEdit_AndKeepsRemoteText() => HeadlessAvalonia.RunAsync(async () =>
+    private static async Task _Undo_TakesBackOnlyTheOwnEdit_AndKeepsRemoteTextAsync()
     {
         var (source, body, _, window) = await _OpenAsync();
         try
@@ -109,7 +111,7 @@ public sealed class LiveFileWorkspaceTests
         {
             window.Close();
         }
-    });
+    }
 
     private static async Task<(LiveSource Source, MarkdownFileWorkspace Body, Func<WorkspaceMarker?> Marker, Window Window)> _OpenAsync()
     {
