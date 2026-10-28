@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Cockpit.Plugins.Shared;
+namespace Cockpit.Plugin.CliAgentProvider;
 
 internal static class CliLoginText
 {

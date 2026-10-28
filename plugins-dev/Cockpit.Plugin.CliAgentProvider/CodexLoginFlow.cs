@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 

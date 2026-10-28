@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Sessions;
-using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
