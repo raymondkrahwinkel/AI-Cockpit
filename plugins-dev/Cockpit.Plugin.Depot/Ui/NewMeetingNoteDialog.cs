@@ -38,6 +38,8 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private readonly List<DepotMeetingNotePerson> _attendees = [];
     private CancellationTokenSource? _checking;
     private DepotMeetingNoteProject? _current;
+    private Task _selecting = Task.CompletedTask;
+    private Task _check = Task.CompletedTask;
     private bool _taken;
 
     public NewMeetingNoteDialog(IDepotMeetingNotes notes, Func<string, string, Task> open, DateOnly today, TimeSpan? checkDelay = null)
@@ -49,7 +51,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
         _project.ItemTemplate = new FuncDataTemplate<DepotMeetingNoteProject>((project, _) => _ProjectRow(project));
         _addPerson.ItemTemplate = new FuncDataTemplate<DepotMeetingNotePerson>((person, _) => _PersonRow(person));
         _folder.ItemTemplate = new FuncDataTemplate<string>((path, _) => new TextBlock { Text = string.IsNullOrEmpty(path) ? "/" : path + "/", FontFamily = _Mono() });
-        _project.SelectionChanged += (_, _) => _ = _SelectProjectAsync();
+        _project.SelectionChanged += (_, _) => _selecting = _SelectProjectAsync();
         _topic.TextChanged += (_, _) => _Changed();
         _folder.SelectionChanged += (_, _) => _Changed();
         _addPerson.SelectionChanged += (_, _) => _AddPerson();
@@ -153,7 +155,21 @@ internal sealed class NewMeetingNoteDialog : UserControl
         }
     }
 
+    // Never faults: the SelectionChanged handler cannot await it.
     private async Task _SelectProjectAsync()
+    {
+        try
+        {
+            await _SelectCoreAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: choosing the meeting-note project failed: {exception}");
+            _error.Text = "Could not load that project. Try again.";
+        }
+    }
+
+    private async Task _SelectCoreAsync()
     {
         if (_project.SelectedItem is not DepotMeetingNoteProject project || project == _current)
         {
@@ -206,7 +222,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
         _checking?.Cancel();
         _checking?.Dispose();
         _checking = new CancellationTokenSource();
-        _ = _CheckAsync(_current, _Topic, _Folder, _checking.Token);
+        _check = _CheckAsync(_current, _Topic, _Folder, _checking.Token);
     }
 
     // A taken name is an answer, not an error: it says who made the note and how many are in it now.
