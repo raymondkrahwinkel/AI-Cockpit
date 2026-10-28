@@ -126,12 +126,16 @@ public class DepotBrowserPanelTests
         var create = _Button(dialog, "Create") ?? throw new InvalidOperationException("Create is missing.");
         Assert.False(create.IsEnabled);
         name.Text = "../escape";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.False(create.IsEnabled);
         name.Text = ".md";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.False(create.IsEnabled);
         name.Text = "taken.md";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.False(create.IsEnabled);
         name.Text = "new-note";
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(create.IsEnabled);
         create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.Equal("docs/new-note.md", opened);

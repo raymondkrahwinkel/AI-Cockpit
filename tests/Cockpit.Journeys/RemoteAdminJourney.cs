@@ -17,7 +17,6 @@ using Cockpit.App.ViewTests;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Core.Abstractions.Remote;
@@ -517,13 +516,6 @@ public sealed class RemoteAdminJourney
 
             var fileHost = cockpit.Cockpit.LocalPluginUiPart("depot")?.Host as CockpitUiHost
                 ?? throw new InvalidOperationException("The local Depot UI host is missing.");
-            var fileServer = cockpit.Services.GetRequiredService<IRemoteServers>().Servers.Single(remote => remote.Name == Server);
-            var relay = fileServer.Plugins as IPluginChannelRelay ?? throw new InvalidOperationException("The server has no channel relay.");
-            await HeadlessAvalonia.RunAsync(() =>
-            {
-                fileHost.AddRemoteFileWorkspaceType("depot.markdown", "Markdown", Server, new RemotePluginUiChannel(relay, "depot"));
-                return Task.CompletedTask;
-            });
             await FileWorkspaceSteps.CreateSaveAndFloatAsync(cockpit, () => fileHost.OpenRemoteFileWorkspaceAsync("depot.markdown", Server,
                 new FileWorkspaceOpenOptions(new FileRef(depotId, System.Text.Json.JsonSerializer.Serialize(new[] { "acme/cockpit", "notes/editor.md" }), "notes/editor.md"),
                     $"depot:{depotId}:acme/cockpit:notes/editor.md", "editor.md", "Depot / Work / acme/cockpit",

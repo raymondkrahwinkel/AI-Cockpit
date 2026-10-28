@@ -113,6 +113,7 @@ public class MainWindowCloseConfirmationTests
             return new TextBlock { Text = "Unsaved text" };
         }), new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var vm = new CockpitViewModel(workspaceTypeRegistry: registry);
+        vm.Sessions.Clear();
         await vm.Workspaces.OpenWorkspaceAsync("file.close");
         var window = new MainWindow { DataContext = vm };
         window.Show();
@@ -128,6 +129,41 @@ public class MainWindowCloseConfirmationTests
         await _WaitUntilAsync(() => !window.IsVisible);
         Assert.False(window.IsVisible);
         Assert.Equal(3, confirmations);
+        await _NewDraftDuringCloseAsync();
+        await _RestartBeforeDiscardAsync();
+    }
+
+    private static async Task _NewDraftDuringCloseAsync()
+    {
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answers = new Dictionary<string, Task<bool>> { ["first"] = ready.Task, ["late"] = Task.FromResult(false) };
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("file.race", "File", context =>
+        {
+            context.SetCloseGuard(() => answers[context.InstanceKey ?? "first"]);
+            return new TextBlock();
+        }), new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
+        var vm = new WorkspacesViewModel(store: null, workspaceTypes: registry);
+        await vm.OpenWorkspaceAsync("file.race", new WorkspaceOpenOptions("first"));
+        var closing = vm.ConfirmCloseAllAsync();
+        await vm.OpenWorkspaceAsync("file.race", new WorkspaceOpenOptions("late"));
+        ready.SetResult(true);
+        Assert.False(await closing);
+    }
+
+    private static async Task _RestartBeforeDiscardAsync()
+    {
+        var approved = false;
+        var updaterStarts = 0;
+        var launches = 0;
+        var shutdowns = 0;
+        var restart = new AppRestartService(() => { updaterStarts++; return true; }, () => launches++, () => shutdowns++,
+            confirmWorkspaceClose: () => Task.FromResult(approved));
+        await restart.RestartAsync();
+        Assert.Equal((0, 0, 0), (updaterStarts, launches, shutdowns));
+        approved = true;
+        await restart.RestartAsync();
+        Assert.Equal((1, 0, 1), (updaterStarts, launches, shutdowns));
     }
 
     private static async Task _PumpAsync()

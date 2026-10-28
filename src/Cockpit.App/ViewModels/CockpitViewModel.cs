@@ -4892,7 +4892,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         UpdateStatus = "Restarting…";
-        updates.ApplyDownloadedUpdateAndRestart();
+        try { updates.ApplyDownloadedUpdateAndRestart(); }
+        catch
+        {
+            AppRestartService.CancelWorkspaceClose();
+            throw;
+        }
     }
 
     // Downloads the build on offer and asks for it to be applied the next time the cockpit starts, leaving this
@@ -4950,11 +4955,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Names how many sessions are running before "Update now" restarts (criterion 7) — never a generic "are you
     // sure?". `SessionPanelViewModel.RequiresCloseConfirmation` is the same reading the close-confirm
     // prompt already uses for "is this session doing something a restart would cut off".
-    private Task<bool> _ConfirmRestartAsync()
+    private async Task<bool> _ConfirmRestartAsync()
     {
         if (_dialogService is not { } dialogs)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         // _AllSessions(), not Sessions: an embedded agent (an Autopilot step, a plugin-run) is a full session the
@@ -4969,7 +4974,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _ => $"{running.Count} sessions are still running ({string.Join(", ", running.Select(session => session.Title))}) and will be cut off: the cockpit will close and reopen on {UpdateName}.",
         };
 
-        return dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now");
+        return await dialogs.ShowConfirmationDialogAsync("Restart now?", message, "Restart now").ConfigureAwait(true)
+            && await AppRestartService.ConfirmWorkspaceCloseAsync(Workspaces).ConfigureAwait(true);
     }
 
     // Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying

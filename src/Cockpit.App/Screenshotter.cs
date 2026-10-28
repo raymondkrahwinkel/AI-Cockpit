@@ -197,6 +197,7 @@ internal static partial class Screenshotter
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
         ["markdown-editor"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(12, atEnd: true)),
         ["markdown-file-new"] = (width, height) => _MarkdownFileScene(width, height, "new"),
+        ["markdown-file-create"] = (_, _) => _NewMarkdownFileDialogScene(),
         ["markdown-file-editing"] = (width, height) => _MarkdownFileScene(width, height, "editing"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
         ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),

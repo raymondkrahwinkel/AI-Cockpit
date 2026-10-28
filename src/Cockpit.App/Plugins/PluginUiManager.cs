@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.UI;
@@ -17,6 +19,16 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
     // AC-1571: the host each UI part was given, which a server's copy of that part borrows its window helpers from.
     private readonly Dictionary<DiscoveredPlugin, ICockpitUiHost> _hosts = [];
+
+    internal void RegisterRemoteFileWorkspaces(IRemoteServer server)
+    {
+        if (server.Plugins is not IPluginChannelRelay relay) return;
+        foreach (var (plugin, host) in _hosts)
+        {
+            if (host is CockpitUiHost native)
+                native.RegisterRemoteFileWorkspaces(server.Name, new RemotePluginUiChannel(relay, plugin.FolderId));
+        }
+    }
 
     // AC-1033: the assembly each loaded plugin came out of, which is where the knowledge base reads its embedded
     // documentation. AC-1389: a plugin that is only a UI part has an assembly once InitializeUi activated it.

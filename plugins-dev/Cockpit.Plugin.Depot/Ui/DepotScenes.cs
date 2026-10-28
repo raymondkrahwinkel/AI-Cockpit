@@ -45,7 +45,7 @@ internal static class DepotScenes
         ["depot-new-markdown"] = () =>
         {
             var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
-                { Width = 480, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Top };
             var name = dialog.GetLogicalDescendants().OfType<TextBox>().Single();
             name.Text = "md-editor-in-cockpit";
             return dialog;

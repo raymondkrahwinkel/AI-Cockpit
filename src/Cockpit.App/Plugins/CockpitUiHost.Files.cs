@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.App.Files;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -14,10 +16,21 @@ namespace Cockpit.App.Plugins;
 internal sealed partial class CockpitUiHost
 {
     private readonly HashSet<string> _fileWorkspaceTypes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _localFileWorkspaceTypes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IPluginUiChannel> _fileWorkspaceChannels = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Type, string Key), FileWorkspaceOpenOptions> _pendingFiles = [];
 
-    public void AddFileWorkspaceType(string workspaceTypeId, string title) =>
+    public void AddFileWorkspaceType(string workspaceTypeId, string title)
+    {
         _RegisterFileWorkspace(workspaceTypeId, title, Channel);
+        _localFileWorkspaceTypes[workspaceTypeId] = title;
+    }
+
+    internal void RegisterRemoteFileWorkspaces(string server, IPluginUiChannel channel)
+    {
+        foreach (var (id, title) in _localFileWorkspaceTypes)
+            AddRemoteFileWorkspaceType(id, title, server, channel);
+    }
 
     internal void AddRemoteFileWorkspaceType(string workspaceTypeId, string title, string server,
         IPluginUiChannel channel) =>
@@ -27,6 +40,7 @@ internal sealed partial class CockpitUiHost
 
     private void _RegisterFileWorkspace(string id, string title, IPluginUiChannel channel)
     {
+        _fileWorkspaceChannels[id] = channel;
         if (!_fileWorkspaceTypes.Add(id)) return;
         var registration = new WorkspaceTypeRegistration(id, title, context =>
         {
@@ -36,7 +50,7 @@ internal sealed partial class CockpitUiHost
                 return new TextBlock { Text = "Open a Markdown file from a file browser.", Margin = new Thickness(24) };
             options = options with { Location = options.Location ?? "", InitialText = options.InitialText ?? "" };
             context.Storage.Set("file", options with { Edit = false, CreateNew = false, InitialText = "" });
-            return new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(channel), () =>
+            return new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileWorkspaceChannel(() => _fileWorkspaceChannels[id])), () =>
                 ConfirmAsync("Discard unsaved changes?", $"Close {options.Title} without saving? Your changes will be lost.", "Discard changes"));
         }) { CanFloat = true, IconKind = MaterialIconKind.FileDocumentOutline };
         if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, Storage, host.Sessions))
@@ -77,5 +91,12 @@ internal sealed partial class CockpitUiHost
             }
             finally { _pendingFiles.Remove(key); }
         }).ConfigureAwait(true);
+    }
+
+    private sealed class FileWorkspaceChannel(Func<IPluginUiChannel> channel) : IPluginUiChannel
+    {
+        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+            channel().InvokeAsync(action, payload, cancellationToken);
+        public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel().Subscribe(name, handler);
     }
 }

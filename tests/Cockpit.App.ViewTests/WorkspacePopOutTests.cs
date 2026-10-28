@@ -125,6 +125,16 @@ public sealed class WorkspacePopOutTests
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
             Assert.Equal("# Draft\n\ntyped", source.Text);
             Assert.Null(workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
+            var writeReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.PendingWrite = writeReady.Task;
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " queued");
+            var pendingSave = body.SaveAsync();
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " during save");
+            writeReady.SetResult();
+            await pendingSave;
+            Assert.Equal("# Draft\n\ntyped queued", source.Text);
+            Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
+            source.PendingWrite = Task.CompletedTask;
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " while floating");
             await workspaces.PopOutAsync(workspace.Id);
             Dispatcher.UIThread.RunJobs();
@@ -134,11 +144,11 @@ public sealed class WorkspacePopOutTests
             Assert.Same(body, workspaces.ActivePluginBody);
             Assert.Same(document, body.Editor.TextEditor.Document);
             Assert.Same(undo, body.Editor.TextEditor.Document.UndoStack);
-            Assert.Equal("# Draft\n\ntyped while floating", body.Editor.Text);
+            Assert.Equal("# Draft\n\ntyped queued during save while floating", body.Editor.Text);
             source.ChangeFromOutside("# someone else");
             await body.SaveAsync();
             Assert.Equal("# someone else", source.Text);
-            Assert.Equal("# Draft\n\ntyped while floating", body.Editor.Text);
+            Assert.Equal("# Draft\n\ntyped queued during save while floating", body.Editor.Text);
             await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspace.Id);
             Assert.Contains(workspaces.Settings.Workspaces, entry => entry.Id == workspace.Id);
             await workspaces.PopOutAsync(workspace.Id);
@@ -176,6 +186,7 @@ public sealed class WorkspacePopOutTests
     {
         public string? Text { get; private set; }
         public bool CanWrite { get; set; } = true;
+        public Task PendingWrite { get; set; } = Task.CompletedTask;
         private int _version;
         public IReadOnlyList<FileConnection> Connections => [new("c1", "Fake", "memory", false)];
         public FileSourceCapabilities Capabilities => new(CanWrite, FileSourceChannel.MaxContentBytes);
@@ -186,6 +197,7 @@ public sealed class WorkspacePopOutTests
                 $"v{_version}") { CanWrite = CanWrite });
         public async Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
         {
+            await PendingWrite;
             if (!CanWrite) throw new FileSourceException(FileSourceErrorKind.Forbidden, "Read-only file.");
             if (mustNotExist ? Text is not null : ifVersion != $"v{_version}") return new(FileWriteStatus.Conflict, $"v{_version}");
             using var reader = new StreamReader(content, Encoding.UTF8, leaveOpen: true);

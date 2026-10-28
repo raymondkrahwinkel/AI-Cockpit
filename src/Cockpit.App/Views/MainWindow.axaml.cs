@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Controls;
@@ -37,6 +38,7 @@ public partial class MainWindow : Window
     private Task<bool>? _fileCloseConfirmation;
     private bool _fileCloseApproved;
     private bool _fileClosePending;
+    private readonly List<Window> _closingWindows = [];
 
     public MainWindow()
         : this(Program.Services?.GetService<IWindowBoundsStore>())
@@ -188,7 +190,26 @@ public partial class MainWindow : Window
             _fileCloseApproved = false;
         }
         if (!_fileCloseApproved) _fileCloseConfirmation = null;
+        else if (_closingWindows.Count == 0)
+        {
+            // A slow teardown must not allow fresh edits after the last discard decision.
+            var windows = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+                ? desktop.Windows.ToArray() : [this];
+            foreach (var window in windows.Where(window => window.IsEnabled))
+            {
+                _closingWindows.Add(window);
+                window.IsEnabled = false;
+            }
+        }
         return _fileCloseApproved;
+    }
+
+    internal void CancelWorkspaceClose()
+    {
+        _fileCloseApproved = false;
+        _fileCloseConfirmation = null;
+        foreach (var window in _closingWindows) window.IsEnabled = true;
+        _closingWindows.Clear();
     }
 
     private async Task _ConfirmFilesThenCloseAsync()

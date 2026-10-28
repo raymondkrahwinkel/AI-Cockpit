@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Configuration;
@@ -21,6 +24,7 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
     private readonly Action<Exception> _logStagedUpdateFailure;
     private readonly Action _launchNewInstance;
     private readonly Action _shutDownCurrentInstance;
+    private readonly Func<Task<bool>> _confirmWorkspaceClose;
 
     public AppRestartService(IUpdateService updates, ILogger<AppRestartService> logger)
         : this(
@@ -40,8 +44,9 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
         Func<bool> startStagedUpdateAndRestart,
         Action launchNewInstance,
         Action shutDownCurrentInstance,
-        Action<Exception>? logStagedUpdateFailure = null)
-        : this(startStagedUpdateAndRestart, logStagedUpdateFailure ?? (static _ => { }), launchNewInstance, shutDownCurrentInstance)
+        Action<Exception>? logStagedUpdateFailure = null,
+        Func<Task<bool>>? confirmWorkspaceClose = null)
+        : this(startStagedUpdateAndRestart, logStagedUpdateFailure ?? (static _ => { }), launchNewInstance, shutDownCurrentInstance, confirmWorkspaceClose)
     {
     }
 
@@ -49,16 +54,21 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
         Func<bool> startStagedUpdateAndRestart,
         Action<Exception> logStagedUpdateFailure,
         Action launchNewInstance,
-        Action shutDownCurrentInstance)
+        Action shutDownCurrentInstance,
+        Func<Task<bool>>? confirmWorkspaceClose = null)
     {
         _startStagedUpdateAndRestart = startStagedUpdateAndRestart;
         _logStagedUpdateFailure = logStagedUpdateFailure;
         _launchNewInstance = launchNewInstance;
         _shutDownCurrentInstance = shutDownCurrentInstance;
+        _confirmWorkspaceClose = confirmWorkspaceClose ?? (() => ConfirmWorkspaceCloseAsync());
     }
 
-    public void Restart()
+    public void Restart() => _ = RestartAsync();
+
+    internal async Task RestartAsync()
     {
+        if (!await _confirmWorkspaceClose().ConfigureAwait(true)) return;
         try
         {
             if (_startStagedUpdateAndRestart())
@@ -74,8 +84,26 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
             _logStagedUpdateFailure(exception);
         }
 
-        _launchNewInstance();
-        _shutDownCurrentInstance();
+        try
+        {
+            _launchNewInstance();
+            _shutDownCurrentInstance();
+        }
+        catch
+        {
+            CancelWorkspaceClose();
+            throw;
+        }
+    }
+
+    internal static Task<bool> ConfirmWorkspaceCloseAsync(WorkspacesViewModel? fallback = null) =>
+        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: MainWindow main }
+            ? main.ConfirmWorkspaceCloseAsync() : fallback?.ConfirmCloseAllAsync() ?? Task.FromResult(true);
+
+    internal static void CancelWorkspaceClose()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: MainWindow main })
+            main.CancelWorkspaceClose();
     }
 
     private static void _LaunchNewInstance()

@@ -404,11 +404,16 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     public async Task<bool> ConfirmCloseAllAsync()
     {
-        foreach (var context in _pluginContexts.Values.OfType<WorkspaceContext>().ToArray())
+        var confirmed = new Dictionary<WorkspaceContext, long>();
+        while (true)
         {
+            var context = _pluginContexts.Values.OfType<WorkspaceContext>().FirstOrDefault(candidate =>
+                candidate.HasCloseGuard && (!confirmed.TryGetValue(candidate, out var version) || version != candidate.CloseGuardVersion));
+            if (context is null) return true;
+            var currentVersion = context.CloseGuardVersion;
             if (!await context.ConfirmCloseAsync().ConfigureAwait(true)) return false;
+            confirmed[context] = currentVersion;
         }
-        return true;
     }
 
     internal Task CloseConfirmedAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));

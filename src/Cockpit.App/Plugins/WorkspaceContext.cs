@@ -37,7 +37,12 @@ internal sealed class WorkspaceContext(
     public event EventHandler? Closed;
     private Func<Task<bool>>? _closeGuard;
 
-    public void SetCloseGuard(Func<Task<bool>>? guard) => _closeGuard = guard;
+    public void SetCloseGuard(Func<Task<bool>>? guard)
+    {
+        _closeGuard = guard;
+        CloseGuardVersion++;
+    }
+    internal long CloseGuardVersion { get; private set; }
 
     internal bool HasCloseGuard => _closeGuard is not null;
 

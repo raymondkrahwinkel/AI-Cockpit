@@ -17,6 +17,13 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
+    private static Window _NewMarkdownFileDialogScene()
+    {
+        var window = PluginScenes.Build("plugin:depot-new-markdown", 480, 480);
+        Controls.CockpitWindowChrome.Apply(window, "New Markdown file");
+        return window;
+    }
+
     private static Window _MarkdownFileScene(int width, int height, string state)
     {
         const string text = "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
