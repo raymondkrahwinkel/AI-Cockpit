@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Model;
-using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cockpit.Plugin.Depot.Notes.Live;
@@ -69,17 +68,11 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
 
     public SignalRDepotNotesHub(DepotConnectionRegistration connection, string userId, Func<HttpMessageHandler> handler, Func<Exception?, Task> onClosed)
     {
-        // Server-sent events: SignalR never hands a WebSocket upgrade to this handler (measured: 403, no bearer), while the stream and
-        // every send of SSE go through it (AC-1905). No Origin, no cookie: the gate takes the bearer.
-        // No automatic reconnect either: the new connection has no Join, so the session joins again itself.
+        // No automatic reconnect: the new connection has no Join, so the session joins again itself.
         _connection = new HubConnectionBuilder()
             .WithUrl(
                 $"{connection.Url.TrimEnd('/')}/hubs/notes?expectedUser={Uri.EscapeDataString(userId)}",
-                options =>
-                {
-                    options.Transports = HttpTransportType.ServerSentEvents;
-                    options.HttpMessageHandlerFactory = _ => handler();
-                })
+                options => DepotSignalR.Configure(options, handler))
             .Build();
         _connection.Closed += onClosed;
     }

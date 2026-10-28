@@ -70,6 +70,7 @@
          ProjectResourceScopeParityTests can pin the host's ProjectResourcePathPortability.ClassifyScope and this
          plugin's own ProjectResourcePortabilityClassifier.Classify against the same shared table. -->
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

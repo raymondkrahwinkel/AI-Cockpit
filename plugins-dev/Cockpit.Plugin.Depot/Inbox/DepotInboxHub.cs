@@ -17,7 +17,7 @@ internal delegate IDepotInboxHub DepotInboxHubFactory(
 
 internal sealed record DepotInboxPush(int Unread, IReadOnlyDictionary<string, int> PerOrganization);
 
-// The real hub: SignalR over the host's authorized handler, WebSockets included, so the bearer stays in the host.
+// SignalR's HTTP requests and WebSocket upgrade use the host's handler, so the bearer stays in the host.
 // Depot closes it after at most five minutes; reconnecting is DepotInboxService's, through onClosed.
 internal sealed class SignalRDepotInboxHub : IDepotInboxHub
 {
@@ -33,7 +33,7 @@ internal sealed class SignalRDepotInboxHub : IDepotInboxHub
         _connection = new HubConnectionBuilder()
             .WithUrl(
                 $"{connection.Url.TrimEnd('/')}/hubs/inbox?expectedUser={Uri.EscapeDataString(userId)}",
-                options => options.HttpMessageHandlerFactory = _ => handler())
+                options => DepotSignalR.Configure(options, handler))
             .Build();
         _connection.On<JsonElement>("inbox", payload =>
         {

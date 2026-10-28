@@ -10,10 +10,15 @@ public class DepotApiTests
 {
     private const string Token = "secret-access-token";
 
-    [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, nameof(DepotApiOutcome.NotSignedIn))]
-    [InlineData(HttpStatusCode.Forbidden, nameof(DepotApiOutcome.Forbidden))]
-    public async Task GetAsync_MapsSpecialStatusesWithoutExposingAuthorization(HttpStatusCode statusCode, string expected)
+    // Layer 2: auth status mapping and credential redaction for the same API operation.
+    [Fact]
+    public async Task GetAsync_MapsSpecialStatusesWithoutExposingAuthorization()
+    {
+        await _AssertStatusAsync(HttpStatusCode.Unauthorized, DepotApiOutcome.NotSignedIn);
+        await _AssertStatusAsync(HttpStatusCode.Forbidden, DepotApiOutcome.Forbidden);
+    }
+
+    private static async Task _AssertStatusAsync(HttpStatusCode statusCode, DepotApiOutcome expected)
     {
         var host = Substitute.For<ICockpitHost>();
         var connection = new DepotConnectionRegistration("c1", "Work", "https://depot.example.com");
@@ -22,7 +27,7 @@ public class DepotApiTests
 
         var result = await api.GetAsync("cockpit/projects", CancellationToken.None);
 
-        Assert.Equal(expected, result.Outcome.ToString());
+        Assert.Equal(expected, result.Outcome);
         Assert.DoesNotContain("Authorization", result.ToString(), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(Token, result.ToString(), StringComparison.Ordinal);
     }

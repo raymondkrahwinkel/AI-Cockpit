@@ -114,8 +114,8 @@ public sealed class PluginMcpAuthorizedHandlerTests
         Assert.DoesNotContain(Token, outcome?.ToString() ?? "", StringComparison.Ordinal);
     }
 
-    // Through the host and a real listener: the bearer rides a WebSocket upgrade (how SignalR's WebSockets transport
-    // uses HttpMessageHandlerFactory), a redirect comes back unfollowed, a cookie the server set is not sent back,
+    // Through the host and a real listener: an explicit WebSocket invoker carries the bearer on the upgrade,
+    // a redirect comes back unfollowed, a cookie the server set is not sent back,
     // and a server another plugin contributed is refused.
     [Fact]
     public async Task CreateAuthorizedHandler_AgainstARealServer_KeepsTheBearerOnItsOwnServersOrigin()
