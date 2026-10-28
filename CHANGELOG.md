@@ -32,6 +32,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: Depot note invitations show a toast with **Join**, and a silent desktop notification while Cockpit is in
+  the background. Closing means Later and keeps the invitation unread. Repeated invitations for the same note and
+  account show once per connection. Join opens the note in your browser until the native note editor is available.
+
 - added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
 
 - added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without

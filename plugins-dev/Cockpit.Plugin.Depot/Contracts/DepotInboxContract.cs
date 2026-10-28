@@ -39,7 +39,8 @@ internal sealed record DepotInboxCount(string ConnectionId, string State, int Un
 internal sealed record DepotInboxOrganization(string Slug, string Name);
 
 // A NoteInvitation's note as Depot reads it for this account now. Title and Path are only there when Depot gave them.
-internal sealed record DepotInboxNote(string State, string? Title, string? Path, bool Live, string? OpenUrl);
+internal sealed record DepotInboxNote(string State, string? Title, string? Path, bool Live, string? OpenUrl,
+    string? Project = null, IReadOnlyList<string>? Participants = null);
 
 // OpenUrl (and Note.OpenUrl) are absolute: the backend puts the connection's address in front of Depot's relative link.
 internal sealed record DepotInboxMessage(
@@ -47,7 +48,8 @@ internal sealed record DepotInboxMessage(
     string Summary, string OpenUrl, DepotInboxNote? Note = null);
 
 // UpdatedAt is when Depot last answered; on Unreachable the messages are that answer's.
-internal sealed record DepotInboxPage(DepotInboxCount Count, IReadOnlyList<DepotInboxMessage> Messages, DateTimeOffset? UpdatedAt);
+internal sealed record DepotInboxPage(DepotInboxCount Count, IReadOnlyList<DepotInboxMessage> Messages, DateTimeOffset? UpdatedAt,
+    string? Recipient = null);
 
 internal static class DepotInboxKind
 {

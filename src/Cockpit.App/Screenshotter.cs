@@ -250,6 +250,7 @@ internal static partial class Screenshotter
         ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
         // AC-1503: what the first start after a restore says about the sign-ins that came back empty.
         ["restore-signins"] = (width, height) => _MainWindowAfterARestore(width, height),
+        ["depot-invitation"] = (width, height) => _MainWindowWithDepotInvitation(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
@@ -2130,6 +2131,14 @@ internal static partial class Screenshotter
     {
         var cockpit = new ViewModels.CockpitViewModel();
         cockpit.Sessions.Add(new ViewModels.SessionViewModel { Title = "Session", WorkspaceId = cockpit.Workspaces.Active!.Id });
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
+    private static MainWindow _MainWindowWithDepotInvitation(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.ToastHost.Add("Sanne invited you to Sprint review\nWork · cockpit · Sanne, Alex", ToastSeverity.Information,
+            [new ToastAction("Join", () => { })], sticky: false, source: "Depot");
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
