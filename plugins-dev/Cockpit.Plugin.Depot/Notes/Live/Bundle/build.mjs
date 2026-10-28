@@ -1,6 +1,6 @@
-// AC-1899: builds room.bundle.js from one pinned AI-Depot commit and checks it. Clean clone, `npm ci` from Depot's lockfile, Depot's own
-// esbuild; then the schema check (the schema the bundle describes hashes to that commit's schema.json) and the bundle's SHA-256.
-// Usage: node build.mjs [commit] [work dir]. Without a commit it rebuilds the pin in the csproj and fails unless the bytes are the same.
+// AC-1899: builds room.bundle.js from one pinned AI-Depot commit (clean clone, `npm ci` from its lockfile, its own esbuild), checks the
+// bundle's schema against that commit's schema.json and prints the bundle's SHA-256. Usage: node build.mjs [commit] [work dir]; without a
+// commit it rebuilds the csproj's pin and fails on other bytes, without a work dir it uses a temporary one and removes it after.
 import { execFileSync, execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -63,6 +63,9 @@ if (expected !== actual) {
 writeFileSync(join(here, 'schema.json'), schema);
 
 const bundle = sha256(readFileSync(out));
+if (!process.argv[3]) {
+  rmSync(work, { recursive: true, force: true });
+}
 console.log(`commit ${commit}\nschema ${expected}\nbundle ${bundle}`);
 if (commit === pinned('DepotBundleCommit') && bundle !== pinned('DepotBundleSha256')) {
   console.error(`FAIL the pinned commit builds ${bundle}, the csproj pins ${pinned('DepotBundleSha256')}`);
