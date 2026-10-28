@@ -49,50 +49,61 @@ public class DepotNotesTests
         defaultBadge.Tone = SideMenuButtonBadgeTone.Success;
         Assert.Equal(["Tone"], changes);
         var application = Application.Current ?? throw new InvalidOperationException("No Avalonia application.");
-        foreach (var theme in new[] { ThemeVariant.Dark, ThemeVariant.Light })
-        {
-            application.RequestedThemeVariant = theme;
-            using var inbox = new DepotInboxModel(rig.Host);
-            using var notes = new DepotNotesModel(rig.Host, inbox);
-            var panel = new DepotBrowserPanel(rig.Host, [new UiConnection("a", "Work", "https://depot.example.com")], inbox, notes: notes);
-            var tabs = Assert.Single(Assert.IsType<DockPanel>(panel.Content).Children.OfType<TabControl>());
-            tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Notes"));
-            var window = new Window { Width = 360, Height = 850, Content = panel };
-            try
-            {
-                window.Show();
-                _Until(() => panel.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "✎ 2026-10-12 Sprint review.md"));
-                using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
-                if (Environment.GetEnvironmentVariable("DEPOT_NOTES_SCENE_PNG") is { Length: > 0 } path)
-                {
-                    using var stream = File.Create(Path.ChangeExtension(path, null) + "." + theme.Key.ToString()?.ToLowerInvariant() + ".png");
-                    frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
-                }
-
-                var text = panel.GetVisualDescendants().OfType<TextBlock>().ToList();
-                Assert.True(frame.PixelSize.Width > 0);
-                Assert.Contains(text, block => block.Text == "Invited by Sanne");
-                Assert.Contains(text, block => block.Text == "● live · 2");
-                Assert.DoesNotContain(text, block => block.Text?.Contains("Invitations", StringComparison.OrdinalIgnoreCase) == true);
-                var heading = Assert.Single(text, block => block.Text == "● LIVE NOW");
-                Assert.Equal(11, heading.FontSize);
-                Assert.Equal(FontWeight.SemiBold, heading.FontWeight);
-                Assert.Equal(theme == ThemeVariant.Dark ? "#FF949AA5" : "#FF5A616D", heading.Foreground?.ToString()?.ToUpperInvariant());
-                var title = Assert.Single(text, block => block.Text == "Sprint review");
-                Assert.Equal(12.5, title.FontSize);
-                Assert.Equal(FontWeight.SemiBold, title.FontWeight);
-                Assert.Equal(2, panel.GetVisualDescendants().OfType<Button>().Count(button => Equals(button.Content, "Join")));
-                var link = panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "All in Inbox (3)"));
-                link.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal("Inbox", Assert.IsType<TabItem>(tabs.SelectedItem).Header);
-            }
-            finally
-            {
-                window.Close();
-            }
-        }
+        _AssertRenderedTheme(registered, rig, ThemeVariant.Dark, "#FF949AA5");
+        _AssertRenderedTheme(registered, rig, ThemeVariant.Light, "#FF5A616D");
         application.RequestedThemeVariant = ThemeVariant.Dark;
         _AssertInboxNavigationUsesTheSelectedConnection();
+    }
+
+    private static void _AssertRenderedTheme(Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration registered,
+        DepotBrowserModelTests.Rig rig, ThemeVariant theme, string headingColor)
+    {
+        var application = Application.Current ?? throw new InvalidOperationException("No Avalonia application.");
+        application.RequestedThemeVariant = theme;
+        var panel = Assert.IsType<DepotBrowserPanel>(registered.CreateView());
+        var tabs = Assert.Single(Assert.IsType<DockPanel>(panel.Content).Children.OfType<TabControl>());
+        tabs.SelectedItem = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Notes"));
+        var window = new Window { Width = 360, Height = 850, Content = panel };
+        try
+        {
+            window.Show();
+            _Until(() => panel.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "✎ 2026-10-12 Sprint review.md"));
+            using var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("Nothing was rendered.");
+            if (Environment.GetEnvironmentVariable("DEPOT_NOTES_SCENE_PNG") is { Length: > 0 } path)
+            {
+                using var stream = File.Create(Path.ChangeExtension(path, null) + "." + theme.Key.ToString()?.ToLowerInvariant() + ".png");
+                frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+
+            var text = panel.GetVisualDescendants().OfType<TextBlock>().ToList();
+            Assert.True(frame.PixelSize.Width > 0);
+            Assert.Contains(text, block => block.Text == "Invited by Sanne");
+            Assert.Contains(text, block => block.Text == "● live · 2");
+            Assert.DoesNotContain(text, block => block.Text?.Contains("Invitations", StringComparison.OrdinalIgnoreCase) == true);
+            var heading = Assert.Single(text, block => block.Text == "● LIVE NOW");
+            Assert.Equal(11, heading.FontSize);
+            Assert.Equal(FontWeight.SemiBold, heading.FontWeight);
+            Assert.Equal(headingColor, heading.Foreground?.ToString()?.ToUpperInvariant());
+            var title = Assert.Single(text, block => block.Text == "Sprint review");
+            Assert.Equal(12.5, title.FontSize);
+            Assert.Equal(FontWeight.SemiBold, title.FontWeight);
+            Assert.Equal(["#FFE0A33E", "#FF5AA576", "#FFE0A33E"], panel.GetVisualDescendants().OfType<Border>()
+                .Where(border => border.Width == 22 && border.Height == 22).Select(border => border.BorderBrush?.ToString()?.ToUpperInvariant()));
+            Assert.Contains(text, block => block.Text == "1.1 KB");
+            Assert.Equal(2, panel.GetVisualDescendants().OfType<Button>().Count(button => Equals(button.Content, "Join")));
+            var create = panel.GetVisualDescendants().OfType<Button>().Single(button => button.Content is StackPanel content
+                && content.Children.OfType<TextBlock>().Any(block => block.Text == "New meeting note"));
+            create.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Contains(rig.Host.ReceivedCalls(), call => call.GetMethodInfo().Name == "ShowDialogAsync"
+                && Equals(call.GetArguments()[0], "New meeting note"));
+            var link = panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "All in Inbox (3)"));
+            link.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal("Inbox", Assert.IsType<TabItem>(tabs.SelectedItem).Header);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     // Layer 2, integration: the backend's real REST projection crosses the UI channel; invitations stay per connection.
@@ -116,16 +127,21 @@ public class DepotNotesTests
                     notes = listed.Select(note => new
                     {
                         note.Address, note.Project, note.Path, note.Title, note.Href, note.Join,
-                        people = structuredPeople ? (object)note.People : note.People.Select(person => person.Name).ToArray(),
+                        people = note.People.Select(person => person.Name).ToArray(),
+                        peopleDetails = structuredPeople ? note.People : null,
                     }),
                 }, JsonSerializerOptions.Web)),
             };
         }));
         await using var backend = new DepotNotes(backendHost,
             () => [new DepotConnectionRegistration(first, "Work", "https://depot.example.com"), new DepotConnectionRegistration(second, "Home", "https://home.example.com")], _ => { });
-        rig.Answer = (action, payload) => action == "notes-live"
-            ? backend.ListAsync(new(payload.GetProperty("connectionId").GetString() ?? string.Empty), CancellationToken.None).GetAwaiter().GetResult()
-            : action == "inbox-list" && payload.GetProperty("connectionId").GetString() == first
+        rig.Host.Channel.InvokeAsync("notes-live", Arg.Any<JsonElement>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            var id = call.ArgAt<JsonElement>(1).GetProperty("connectionId").GetString() ?? string.Empty;
+            var page = await backend.ListAsync(new(id), CancellationToken.None);
+            return JsonSerializer.SerializeToElement(page, JsonSerializerOptions.Web);
+        });
+        rig.Answer = (action, payload) => action == "inbox-list" && payload.GetProperty("connectionId").GetString() == first
                 ? _Inbox(first, messages: []) : rig.Answers[action];
         rig.Answers["inbox-list"] = _Inbox(second, [_Invitation()]);
         using var inbox = new DepotInboxModel(rig.Host);
@@ -236,8 +252,9 @@ public class DepotNotesTests
             _Until(() => panel.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, "All in Inbox (3)")));
             panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "All in Inbox (3)"))
                 .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            _Until(() => panel.GetVisualDescendants().OfType<ComboBox>().Any());
-            Assert.Equal(1, Assert.Single(panel.GetVisualDescendants().OfType<ComboBox>()).SelectedIndex);
+            var inboxPanel = Assert.IsAssignableFrom<Control>(Assert.IsType<TabItem>(tabs.SelectedItem).Content);
+            _Until(() => inboxPanel.GetVisualDescendants().OfType<ComboBox>().Any());
+            Assert.Equal(1, Assert.Single(inboxPanel.GetVisualDescendants().OfType<ComboBox>()).SelectedIndex);
         }
         finally
         {

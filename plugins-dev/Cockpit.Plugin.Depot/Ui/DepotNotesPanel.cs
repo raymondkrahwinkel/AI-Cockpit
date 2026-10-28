@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -287,7 +288,7 @@ internal sealed class DepotNotesPanel : UserControl
                 }
                 else
                 {
-                    var size = _Text(node.Size < 1024 ? $"{node.Size} B" : $"{node.Size / 1024.0:0.#} KB", 11, "CockpitTextFaintBrush", mono: true);
+                    var size = _Text(node.Size < 1024 ? $"{node.Size} B" : string.Create(CultureInfo.InvariantCulture, $"{node.Size / 1024.0:0.#} KB"), 11, "CockpitTextFaintBrush", mono: true);
                     Grid.SetColumn(size, 1);
                     row.Children.Add(size);
                 }
@@ -326,15 +327,19 @@ internal sealed class DepotNotesPanel : UserControl
         var people = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
         foreach (var person in note.People.Take(4))
         {
-            var letter = _Text(person.Name.Length > 0 ? person.Name[..1].ToUpperInvariant() : "?", 10, "CockpitTextSecondaryBrush", FontWeight.SemiBold);
+            var letter = new TextBlock { Text = person.Name.Length > 0 ? person.Name[..1].ToUpperInvariant() : "?", FontSize = 10, FontWeight = FontWeight.SemiBold };
             letter.HorizontalAlignment = HorizontalAlignment.Center;
             letter.VerticalAlignment = VerticalAlignment.Center;
             var avatar = new Border { Width = 22, Height = 22, BorderThickness = new(1), CornerRadius = _Radius("CockpitPillRadius"), Child = letter };
-            _Bind(avatar, Border.BorderBrushProperty, "CockpitTextSecondaryBrush");
             if (person.Color is { Length: 7 } color && color[0] == '#' && Color.TryParse(color, out var parsed))
             {
                 avatar.BorderBrush = new SolidColorBrush(parsed);
                 letter.Foreground = avatar.BorderBrush;
+            }
+            else
+            {
+                _Bind(avatar, Border.BorderBrushProperty, "CockpitTextSecondaryBrush");
+                _Bind(letter, TextBlock.ForegroundProperty, "CockpitTextSecondaryBrush");
             }
             ToolTip.SetTip(avatar, person.Name);
             people.Children.Add(avatar);

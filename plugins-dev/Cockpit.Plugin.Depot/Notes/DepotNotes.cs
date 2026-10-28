@@ -142,13 +142,14 @@ internal sealed class DepotNotes(
             }
 
             var list = JsonSerializer.Deserialize<_List>(answer.Content.Span, DepotChannel.Json);
-            if (list?.Notes is null || list.Notes.Any(note => note.People.ValueKind != JsonValueKind.Array))
+            if (list?.Notes is null || list.Notes.Any(note => note.People is null
+                || note.PeopleDetails?.Any(person => person.Name is null) == true))
             {
                 throw new JsonException("Depot returned no live notes list or participants.");
             }
             return new(connection.Id, DepotInboxState.Ok, list.Notes.Select(note => new DepotLiveNote(
                 note.Address, note.Project, note.Path, note.Title, note.Href, note.Join,
-                note.People.EnumerateArray().Select(_Person).ToList())).ToList());
+                note.PeopleDetails ?? note.People.Select(name => new DepotNotePerson(name)).ToList())).ToList());
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException
             || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))
@@ -158,12 +159,7 @@ internal sealed class DepotNotes(
         }
     }
 
-    // DEP-535 adds name/color objects; existing Depots still send a string per participant.
-    private static DepotNotePerson _Person(JsonElement person) => person.ValueKind == JsonValueKind.String
-        ? new(person.GetString() ?? string.Empty)
-        : person.Deserialize<DepotNotePerson>(DepotChannel.Json) is { Name: not null } named
-            ? named : throw new JsonException("Depot returned no participant name.");
-
     private sealed record _List(IReadOnlyList<_Note> Notes);
-    private sealed record _Note(string Address, string Project, string Path, string Title, string Href, bool Join, JsonElement People);
+    private sealed record _Note(string Address, string Project, string Path, string Title, string Href, bool Join,
+        IReadOnlyList<string> People, IReadOnlyList<DepotNotePerson>? PeopleDetails = null);
 }

@@ -53,25 +53,23 @@ public sealed class DepotInboxModelTests
         Assert.Equal(3, rig.Toasts.Count);
         Assert.Equal(3, rig.System.Count);
         Assert.Equal(4, rig.Model.Total);
+        await _AssertRemovedTitlesStayPrivateAsync();
     }
 
     [Theory]
-    [InlineData("NoteInvitation", true)]
-    [InlineData("AccessRequest", false)]
-    public async Task OnlyUnreadInvitations_UseTheSilentSystemNotificationContract(string kind, bool expected)
+    [InlineData("NoteInvitation", 1, "https://work.example.com/n/token", "Sanne invited you to Sprint review", "Work · cockpit · Sanne, Alex")]
+    [InlineData("AccessRequest", 0, "https://work.example.com/mailbox?id=m1", null, null)]
+    public async Task OnlyUnreadInvitations_UseTheSilentSystemNotificationContract(
+        string kind, int notificationCount, string openUrl, string? title, string? body)
     {
         using var rig = new Rig();
         rig.Seed("a", "u1");
         rig.Push(_Page("a", "u1", "m1", kind));
 
-        Assert.Equal(expected ? 1 : 0, rig.System.Count);
-        Assert.Equal(expected ? 1 : 0, rig.Toasts.Count);
-        if (expected)
-        {
-            var notification = Assert.Single(rig.System);
-            Assert.Equal("Sanne invited you to Sprint review", notification.Title);
-            Assert.Equal("Work · cockpit · Sanne, Alex", notification.Body);
-        }
+        Assert.Equal(notificationCount, rig.System.Count);
+        Assert.Equal(notificationCount, rig.Toasts.Count);
+        Assert.Equal(title, rig.System.SingleOrDefault().Title);
+        Assert.Equal(body, rig.System.SingleOrDefault().Body);
         await DepotInboxModel.OpenAsync(
             rig.Model.PageOf("a")?.Messages.Single() ?? throw new InvalidOperationException("The message was not applied."),
             uri =>
@@ -79,23 +77,21 @@ public sealed class DepotInboxModelTests
                 rig.Joined.Add(uri);
                 return Task.CompletedTask;
             });
-        Assert.Equal([new Uri(expected ? "https://work.example.com/n/token" : "https://work.example.com/mailbox?id=m1")], rig.Joined);
+        Assert.Equal([new Uri(openUrl)], rig.Joined);
 
-        foreach (var other in new[] { "ArtifactShared", "OrganizationInvitation", "ProjectInvitation" })
-        {
-            rig.Push(_Page("a", "u1", other, other));
-        }
+        rig.Push(_Page("a", "u1", "ArtifactShared", "ArtifactShared"));
+        rig.Push(_Page("a", "u1", "OrganizationInvitation", "OrganizationInvitation"));
+        rig.Push(_Page("a", "u1", "ProjectInvitation", "ProjectInvitation"));
 
         rig.Push(_Page("a", "u1", "read", isRead: true));
         rig.Push(_Page("a", "u1", "handled", handled: true));
         rig.Push(_Page("a", "u1", "offline", state: "unreachable"));
-        Assert.Equal(expected ? 1 : 0, rig.System.Count);
-        Assert.Equal(expected ? 1 : 0, rig.Toasts.Count);
+        Assert.Equal(notificationCount, rig.System.Count);
+        Assert.Equal(notificationCount, rig.Toasts.Count);
         Assert.Equal(2, rig.Model.Total);
     }
 
-    [Fact]
-    public async Task ATitleDepotNoLongerGives_IsAbsentFromBothNotifications_EvenAfterAnEarlierAnswer()
+    private static async Task _AssertRemovedTitlesStayPrivateAsync()
     {
         using var rig = new Rig();
         rig.Seed("a", "u1");

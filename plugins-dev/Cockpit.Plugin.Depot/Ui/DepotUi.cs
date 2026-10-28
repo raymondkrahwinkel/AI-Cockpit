@@ -57,7 +57,10 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         var invitations = new DepotInvitationNotifications(host, () => settings.Connections,
             message => DepotInboxModel.JoinAsync(message, _LaunchNoteAsync));
         inbox.Changed += page => Dispatcher.UIThread.Post(() => invitations.Show(page));
-        var notes = new DepotNotesModel(host, inbox);
+        var notes = new DepotNotesModel(host, inbox)
+        {
+            NewMeetingNote = (connection, _) => DepotMeetingNotes.ShowAsync(host, [connection]),
+        };
         var badge = host.AddSideMenuButtonWithBadge("Depot inbox", () =>
         {
             // Side-menu callbacks are synchronous, so the wrapper observes and logs the detached dialog task.

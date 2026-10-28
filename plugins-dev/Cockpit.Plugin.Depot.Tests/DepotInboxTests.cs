@@ -14,9 +14,9 @@ public class DepotInboxTests
     private static readonly DepotConnectionRegistration Home = new("b", "Home", "https://home.example.com");
 
     [Fact]
-    public async Task APushOnOneConnection_RefreshesThatOneOnly_AndEachListIsItsOwn()
+    public async Task AConnectionsLifecycle_RefreshesItsOwnList_AndClearsItWhenSignInIsRefused()
     {
-        var depots = new Dictionary<string, _Depot> { [Work.Id] = new("w1", "w2"), [Home.Id] = new("h1") };
+        var depots = new Dictionary<string, _Depot> { [Work.Id] = new("w1", "w2") { Title = "Sprint review" }, [Home.Id] = new("h1") };
         var hubs = new Dictionary<string, _Hub>();
         await using var inbox = new DepotInbox(
             () => [Work, Home],
@@ -32,24 +32,13 @@ public class DepotInboxTests
         Assert.Equal(1, depots[Home.Id].ListFetches);
         Assert.Equal(["w1", "w2"], (await inbox.ListAsync(new(Work.Id), CancellationToken.None)).Messages.Select(message => message.Id));
         Assert.Equal(["h1"], (await inbox.ListAsync(new(Home.Id), CancellationToken.None)).Messages.Select(message => message.Id));
-    }
-
-    // Acceptance 4: after Depot refuses the sign-in there is no message and no title in the model, and the hub is closed.
-    [Fact]
-    public async Task ASignInDepotRefuses_LeavesNoMessage_AndClosesTheHub()
-    {
-        var depot = new _Depot("w1") { Title = "Sprint review" };
-        _Hub? hub = null;
-        await using var service = new DepotInboxService(Work, depot, (_, _, onPush, _) => hub = new _Hub(onPush), _ => { });
-        await service.RefreshAsync(CancellationToken.None);
-
-        depot.Refuse = true;
-        var page = await service.RefreshAsync(CancellationToken.None);
+        depots[Work.Id].Refuse = true;
+        var page = await inbox.ListAsync(new(Work.Id), CancellationToken.None);
 
         Assert.Equal(DepotInboxState.Expired, page.Count.State);
         Assert.Empty(page.Messages);
-        Assert.DoesNotContain("Sprint review", JsonSerializer.Serialize(service.Page), StringComparison.Ordinal);
-        Assert.True(hub?.Disposed);
+        Assert.DoesNotContain("Sprint review", JsonSerializer.Serialize(page), StringComparison.Ordinal);
+        Assert.True(hubs[Work.Id].Disposed);
     }
 
     private static async Task _Until(Func<bool> condition)
