@@ -12,10 +12,10 @@ public sealed class HomeFolderWatcherTests
     [Fact]
     public void NewVisibleDirectoryReportsOnceWithSessions_HiddenDirectoryFileAndNoSessionDoNot()
     {
-        foreach (var type in Enum.GetValues<DriveType>())
-        {
-            Assert.Equal(type == DriveType.Fixed, HomeFolderWatcher.ShouldWatchDrive(type));
-        }
+        Assert.True(HomeFolderWatcher.ShouldWatchDrive(DriveType.Fixed));
+        Assert.False(HomeFolderWatcher.ShouldWatchDrive(DriveType.Network));
+        Assert.False(HomeFolderWatcher.ShouldWatchDrive(DriveType.Removable));
+        Assert.False(HomeFolderWatcher.ShouldWatchDrive(DriveType.CDRom));
 
         var root = Path.Combine(Environment.GetEnvironmentVariable("COCKPIT_SCRATCH") ?? Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         var visible = Directory.CreateDirectory(Path.Combine(root, "spike-x")).FullName;

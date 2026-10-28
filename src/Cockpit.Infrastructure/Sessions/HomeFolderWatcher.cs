@@ -40,7 +40,6 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
             {
                 delegation.TasksChanged += _Refresh;
             }
-
         }
 
         _Refresh();
