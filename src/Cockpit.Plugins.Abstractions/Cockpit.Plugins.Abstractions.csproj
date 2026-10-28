@@ -622,7 +622,9 @@
     <!-- 3.38.0 (AC-1827): ICockpitHost.AddStartupStep, a plugin's own step on the splash. A plugin that calls it sets minHostVersion 0.130.0. Additive; still v3. -->
     <!-- 3.40.0 (AC-1804): ICockpitHost.Notify, PluginNotification and AddNotificationSource, kept across a restart and re-checked by
          the plugin. A plugin that calls them sets minHostVersion 0.132.0. Additive; still v3. -->
-    <Version>3.40.0</Version>
+    <!-- 3.41.0 (AC-1853): PluginNotification.Title, an optional bold line above the message. Host 0.132.0 reads it; an older
+         host shows the message alone. Additive; still v3. -->
+    <Version>3.41.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

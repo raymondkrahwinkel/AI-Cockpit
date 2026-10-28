@@ -36,6 +36,20 @@ public sealed partial class ToastViewModel
 
     public string Message { get; }
 
+    // AC-1853: an optional bold line above the message; the message then reads as its secondary text.
+    public string? Title { get; init; }
+
+    public bool HasTitle => !string.IsNullOrWhiteSpace(Title);
+
+    // The startup bundle's own parts: a quiet tail on the headline, one line per bundled item and a "+N more".
+    public string? Note { get; init; }
+
+    public IReadOnlyList<ToastLineViewModel> Lines { get; init; } = [];
+
+    public bool HasLines => Lines.Count > 0;
+
+    public string? MoreLabel { get; init; }
+
     public ToastSeverity Severity { get; }
 
     public string? ActionLabel { get; }
@@ -85,3 +99,6 @@ public sealed partial class ToastActionViewModel(string label, bool isPrimary, A
     [RelayCommand]
     public void Invoke() => invoke();
 }
+
+// One item named in the startup bundle: its glyph, its source in bold, and its text.
+public sealed record ToastLineViewModel(MaterialIconKind Glyph, string BrushKey, string Source, string Text);

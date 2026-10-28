@@ -5733,6 +5733,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CanFloat = true,
         });
         Notifications.Badge.Activated += (_, _) => OpenDockPanelId = NotificationCenterViewModel.DockPanelId;
+        Notifications.PluginIcon = pluginId => PluginSideButtons.FirstOrDefault(button => button.PluginId == pluginId && button.IconKind is not null)?.IconKind;
     }
 
     // The bell. The Simple stand's rail holds the conversation, so there the panel stands in its own window.

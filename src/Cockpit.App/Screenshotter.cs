@@ -634,6 +634,9 @@ internal static partial class Screenshotter
         // bell opens it in from the Simple stand.
         ["notifications-panel"] = (_, _) => _NotificationsPanel(),
         ["notifications-startup-bundle"] = (_, _) => _NotificationsStartupBundle(),
+        // AC-1853 (screens 04 and 09): All with titles, day groups and Clear read; what a restart brought back.
+        ["notifications-all"] = (_, _) => _NotificationsPanel(_SeedAllNotifications, ViewModels.NotificationFilter.All),
+        ["notifications-restart"] = (_, _) => _NotificationsPanel(_SeedRestartedNotifications, ViewModels.NotificationFilter.NeedsYou),
         ["notifications-window"] = (_, _) =>
         {
             var notifications = _SampleNotifications();
@@ -3585,7 +3588,9 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit };
     }
 
-    private static Window _NotificationsPanel()
+    private static Window _NotificationsPanel() => _NotificationsPanel(_SeedNotifications, ViewModels.NotificationFilter.NeedsYou);
+
+    private static Window _NotificationsPanel(Action<ViewModels.ToastHostViewModel> seed, ViewModels.NotificationFilter filter)
     {
         var panels = new Docking.DockPanelRegistry();
         var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
@@ -3598,9 +3603,49 @@ internal static partial class Screenshotter
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         panels.Register(_PullRequestsDockPanel());
-        _SeedNotifications(cockpit.ToastHost);
+        cockpit.PluginSideButtons.Add(new Plugins.PluginSideButton("github.pull-requests", "Pull Requests", static () => { }, IconKind: Material.Icons.MaterialIconKind.SourcePull));
+        cockpit.PluginSideButtons.Add(new Plugins.PluginSideButton("slack", "Slack", static () => { }, IconKind: Material.Icons.MaterialIconKind.Slack));
+        seed(cockpit.ToastHost);
+        cockpit.Notifications.Filter = filter;
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    // Mockup screen 04: the day so far, unread and read, with a receipt for the conflict already answered.
+    private static void _SeedAllNotifications(ViewModels.ToastHostViewModel host)
+    {
+        host.Add("You're on 0.131.2. Install now or on next start.", ToastSeverity.Information,
+            [new ToastAction("Update now", () => { }), new ToastAction("What's new", () => { })], sticky: false, key: "cockpit.update", title: "Cockpit 0.132.0 is available");
+        host.Add("GitHub Pull Requests 1.4.0 · Schedules 0.6.2 · Slack 0.9.1", ToastSeverity.Information,
+            [new ToastAction("Review updates", () => { })], sticky: false, title: "3 plugin updates").Actions[0].Invoke();
+        host.Add("Resolved at 09:05.", ToastSeverity.Warning, [new ToastAction("this machine (14)", () => { })], sticky: false,
+            source: "Settings sync", key: "settings-sync.conflicts", title: "14 settings changed both here and on your other machine").Actions[0].Invoke();
+        host.Add("Its OAuth token expired. Sessions that use YouTrack tools will fail until you sign in.", ToastSeverity.Warning,
+            [new ToastAction("Sign in", () => { })], sticky: true, title: "YouTrack MCP needs you to sign in again");
+        host.Add("qwen-local · \"Summarise the CHANGELOG since 0.46\" — 2 m 14 s.", ToastSeverity.Success,
+            [new ToastAction("Show result", () => { })], sticky: false, title: "Delegated task finished");
+        host.Add("AC-1790 sidebar visual finish · all checks green", ToastSeverity.Information, [new ToastAction("Open PR", () => { })], sticky: false,
+            source: "GitHub Pull Requests", sourceId: "github.pull-requests", title: "PR #1514 is mergeable");
+        host.Toasts.Clear();
+    }
+
+    // Mockup screen 09: what still needed you at exit, re-checked at start; one of them was answered elsewhere.
+    private static void _SeedRestartedNotifications(ViewModels.ToastHostViewModel host)
+    {
+        var earlier = DateTimeOffset.Now.Date.AddDays(-2);
+        host.Add("You're on 0.131.2. Install now or on next start.", ToastSeverity.Information,
+            [new ToastAction("Update now", () => { }), new ToastAction("What's new", () => { })], sticky: false, key: "cockpit.update", title: "Cockpit 0.132.0 is available");
+        host.Notifications.Post(new ViewModels.ToastViewModel("Nothing left to choose.", ToastSeverity.Warning, []) { Title = "14 settings changed both here and on your other machine" },
+            "Settings sync", "settings-sync.conflicts").KeptFrom(earlier.AddHours(8).AddMinutes(41));
+        host.Notifications.Items[0].MarkResolved();
+        host.Add("The Slack app token lacks channels:history. Reinstall the Slack app with that scope, then reconnect.", ToastSeverity.Error,
+            [new ToastAction("Open Slack settings", () => { }), new ToastAction("Copy error", () => { })], sticky: true,
+            source: "Slack", key: "slack.scope", sourceId: "slack", title: "Slack can't read channels: missing_scope");
+        host.Notifications.Items[0].KeptFrom(earlier.AddHours(8).AddMinutes(41));
+        host.Add("Its OAuth token expired. Sessions that use YouTrack tools will fail until you sign in.", ToastSeverity.Warning,
+            [new ToastAction("Sign in", () => { })], sticky: true, key: "mcp.youtrack", title: "YouTrack MCP needs you to sign in again");
+        host.Notifications.Items[0].KeptFrom(earlier.AddHours(17).AddMinutes(40));
+        host.Toasts.Clear();
     }
 
     // AC-1803 (mockup 2026-10-27 screen 02): one startup summary stays visible while the bell owns the three rows.
@@ -3616,9 +3661,10 @@ internal static partial class Screenshotter
         panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
             Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
         cockpit.ToastHost.BeginStartupNotificationBundle(TimeSpan.FromMinutes(1), () => _ = cockpit.ShowNotificationsAsync());
-        cockpit.ToastHost.Add("Settings conflict", ToastSeverity.Warning, [new ToastAction("Choose", static () => { })], sticky: true, source: "Settings sync");
-        cockpit.ToastHost.Add("Slack missing_scope", ToastSeverity.Error, [new ToastAction("Open Slack settings", static () => { })], sticky: true, source: "Slack");
-        cockpit.ToastHost.Add("Depot needs attention", ToastSeverity.Error, [new ToastAction("Open in Depot", static () => { })], sticky: true, source: "Depot");
+        cockpit.ToastHost.Add("Nothing was overwritten.", ToastSeverity.Warning, [new ToastAction("Choose", static () => { })], sticky: true,
+            source: "Settings sync", title: "14 settings changed on both machines");
+        cockpit.ToastHost.Add("missing_scope: channels:history", ToastSeverity.Error, [new ToastAction("Open Slack settings", static () => { })], sticky: true, source: "Slack");
+        cockpit.ToastHost.Add("couldn't move \"eve-workbench\"", ToastSeverity.Error, [new ToastAction("Open in Depot", static () => { })], sticky: true, source: "Depot");
 
         return new MainWindow { DataContext = cockpit };
     }
