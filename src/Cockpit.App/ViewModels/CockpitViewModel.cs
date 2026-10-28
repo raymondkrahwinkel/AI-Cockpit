@@ -4893,10 +4893,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         UpdateStatus = "Restarting…";
         try { updates.ApplyDownloadedUpdateAndRestart(); }
-        catch
+        finally
         {
+            // A refused/no-op apply returns normally; the operator must still be able to use this process.
             AppRestartService.CancelWorkspaceClose();
-            throw;
         }
     }
 

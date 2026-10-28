@@ -124,11 +124,15 @@ public class MainWindowCloseConfirmationTests
         await _PumpAsync();
         Assert.True(window.IsVisible);
         accepted = true;
+        Assert.True(await window.ConfirmWorkspaceCloseAsync());
+        Assert.False(window.IsEnabled);
+        window.CancelWorkspaceClose();
+        Assert.True(window.IsEnabled);
         window.Close();
         Dispatcher.UIThread.RunJobs();
         await _WaitUntilAsync(() => !window.IsVisible);
         Assert.False(window.IsVisible);
-        Assert.Equal(3, confirmations);
+        Assert.Equal(4, confirmations);
         await _NewDraftDuringCloseAsync();
         await _RestartBeforeDiscardAsync();
     }
