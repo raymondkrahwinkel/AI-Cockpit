@@ -69,6 +69,13 @@ public class ProjectDialogMemorySourceFamilyTests
         Assert.Null(row.SelectedFamilyInstance);
         Assert.Equal("depot.wispslate:cockpit", row.Reference);
         Assert.Equal("depot.wispslate:cockpit", viewModel.ToProject().MemoryRef);
+
+        // The same rule with no source registered at all, as if the Depot plugin were not installed on this machine:
+        // opening and saving the editor for an unrelated reason must not lose or corrupt what the project points at.
+        var uninstalled = await ProjectDialogViewModel.CreateAsync(Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" }, ProfileStore(), Catalog());
+
+        Assert.True(Assert.Single(uninstalled.ResourceRows).IsMemoryFolderMode);
+        Assert.Equal("depot:cockpit", uninstalled.ToProject().MemoryRef);
     }
 
     // --- The empty state itself is reachable from the picker, per ProjectMemorySourceFamily's own doc comment ------
