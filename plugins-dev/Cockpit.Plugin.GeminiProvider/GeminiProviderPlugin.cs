@@ -40,6 +40,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.Gemini),
+            ReadModelIntelligenceAsync = (configJson, _) => Task.FromResult(_ReadModelIntelligence(configJson, OpenAiCompatDefaultBaseUrls.Gemini)),
         });
 
         host.AddSessionProvider(new SessionProviderRegistration(
@@ -53,7 +54,34 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
                 // flips SupportsTools once a session actually gets tools; the registration cannot know that yet.
                 HostToolLoop = PluginHostToolLoop.ToolsAndSearch,
             },
-            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenAi));
+            DefaultBaseUrl: OpenAiCompatDefaultBaseUrls.OpenAi)
+        {
+            ReadModelIntelligenceAsync = (configJson, _) => Task.FromResult(_ReadModelIntelligence(configJson, OpenAiCompatDefaultBaseUrls.OpenAi)),
+        });
+    }
+
+    private static PluginModelIntelligence _ReadModelIntelligence(string configJson, string defaultBaseUrl)
+    {
+        OpenAiCompatConfig? config;
+        try
+        {
+            config = System.Text.Json.JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new PluginModelIntelligence();
+        }
+
+        if (config is null || string.IsNullOrWhiteSpace(config.Model))
+        {
+            return new PluginModelIntelligence();
+        }
+
+        return new PluginModelIntelligence
+        {
+            IsSelfHosted = config.IsSelfHosted,
+            Models = [new PluginModelCostEstimate(config.Model) { PublicModelRef = config.Model }],
+        };
     }
 
     public void Dispose()

@@ -104,7 +104,7 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
         {
             if (_String(entry, "id") is { } alias && entry.TryGetProperty("alias_target", out var target) && _String(target, "slug") is { } slug && byId.TryGetValue(slug, out var targetSnapshot))
             {
-                byId[alias] = targetSnapshot with { Id = alias };
+                byId[alias] = targetSnapshot with { Id = alias, AliasTarget = slug };
             }
         }
 
@@ -151,7 +151,11 @@ internal sealed class OpenRouterModelIntelligence : IModelIntelligence
             windows,
             Source,
             fetchedAt,
-            RefreshInterval);
+            RefreshInterval)
+        {
+            CanonicalSlug = _String(model, "canonical_slug"),
+            HuggingFaceId = _String(model, "hugging_face_id"),
+        };
     }
 
     private async Task<_Cache?> _ReadCacheAsync(CancellationToken cancellationToken)
