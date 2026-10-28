@@ -79,6 +79,8 @@ public class DepotNoteLiveTests
 
         public Task<bool> RefillAsync(string documentId, CancellationToken cancellationToken) => Task.FromResult(false);
 
+        public Task PresenceAsync(string documentId, byte[] awareness, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public ValueTask DisposeAsync() => _closed is null ? ValueTask.CompletedTask : new ValueTask(_closed(null));
     }
 

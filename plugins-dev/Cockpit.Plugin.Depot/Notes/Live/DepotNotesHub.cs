@@ -41,6 +41,9 @@ internal interface IDepotNotesHub : IAsyncDisposable
 
     // True when the room is refilled from the file; a `reset` then follows.
     Task<bool> RefillAsync(string documentId, CancellationToken cancellationToken);
+
+    // A y-protocols awareness update (protocol §5.4); the hub stamps it and relays it as `presence`.
+    Task PresenceAsync(string documentId, byte[] awareness, CancellationToken cancellationToken);
 }
 
 internal delegate IDepotNotesHub DepotNotesHubFactory(DepotConnectionRegistration connection, string userId, Func<Exception?, Task> onClosed);
@@ -116,6 +119,9 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
 
     public Task CompactAsync(string documentId, byte[] snapshot, CancellationToken cancellationToken) =>
         _connection.InvokeAsync("Compact", documentId, snapshot, cancellationToken);
+
+    public Task PresenceAsync(string documentId, byte[] awareness, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("Presence", documentId, awareness, cancellationToken);
 
     public Task<bool> RefillAsync(string documentId, CancellationToken cancellationToken) =>
         _connection.InvokeAsync<bool>("Refill", documentId, cancellationToken);

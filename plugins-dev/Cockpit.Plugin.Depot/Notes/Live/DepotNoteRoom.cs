@@ -35,6 +35,12 @@ internal interface IDepotNoteRoom : IAsyncDisposable
 
     // Undoes (or redoes) the host's own edits: the ops for the host's text and the v1 updates to send.
     Task<DepotNoteUndo> UndoAsync(bool redo, CancellationToken cancellationToken);
+
+    // Cursors: a Markdown offset in the host's text as relativePositionToJSON, or null where no block holds it; and back, or null when the
+    // position is not in the text any more.
+    Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken);
+
+    Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken);
 }
 
 internal sealed record DepotNoteUndo(IReadOnlyList<TextOp> Ops, IReadOnlyList<byte[]> Updates);
@@ -93,6 +99,19 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
         return new DepotNoteUndo(
             undo.RootElement.GetProperty("ops").Deserialize<TextOp[]>(Json) ?? [],
             [.. undo.RootElement.GetProperty("updates").EnumerateArray().Select(update => update.GetBytesFromBase64())]);
+    }
+
+
+    public async Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken)
+    {
+        var json = await _CallAsync("relativeAtOffset", cancellationToken, offset).ConfigureAwait(false);
+        return json is { Length: > 0 } && json != "null" ? json : null;
+    }
+
+    public async Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken)
+    {
+        var offset = int.Parse(await _CallAsync("offsetOfRelative", cancellationToken, relativeJson).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
+        return offset >= 0 ? offset : null;
     }
 
     public ValueTask DisposeAsync()

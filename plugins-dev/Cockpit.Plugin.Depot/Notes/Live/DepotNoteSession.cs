@@ -22,7 +22,7 @@ internal static class DepotNoteSchema
 // One note's connection to /hubs/notes: Join (protocol section 3), the room's Y.Doc, and a new Join when the hub closes it; a `reset`
 // swaps the room. The host's text goes through the room's mirror on ILiveFileSession's terms (AC-1898): every change is one revision,
 // the host's edits go out as Edited plus Update, and everything else, its own undo included, comes back as a patch.
-internal sealed partial class DepotNoteSession : IAsyncDisposable
+internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 {
     // Protocol §7: an Update or a Compact is no larger.
     private const int MaxSnapshotBytes = 4 * 1024 * 1024;
@@ -48,6 +48,9 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     private string? _lastEditId;
     private long _lastEditRev;
     private string? _role;
+    private DepotNotePresence? _presence;
+    private LivePresenceState _wanted = new("reading");
+    private IReadOnlyList<LivePeer> _peers = [];
     private bool _schemaMismatch;
 
     // Set once the room has a text or the session has stopped: a read before that would hand the host an empty note.
@@ -92,6 +95,25 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     public DepotNoteLiveRequest Note => _note;
 
     public IDepotNoteRoom Room => _room;
+
+    public event EventHandler<IReadOnlyList<LivePeer>>? PeersChanged;
+
+    // Everyone in the note, this Cockpit first; empty until the first Join is through.
+    public IReadOnlyList<LivePeer> Peers => _peers;
+
+    // The note in Depot's own web editor.
+    public string? OpenUrl => string.Join('/', new[] { _connection.Url.TrimEnd('/'), "projects", Uri.EscapeDataString(_note.Organization), Uri.EscapeDataString(_note.Project), "view" }
+        .Concat(_note.Path.Split('/').Select(Uri.EscapeDataString)));
+
+    // Where this Cockpit's caret is and what it is doing; sent at once when joined, and with every beat after that.
+    public async Task SetPresenceAsync(LivePresenceState state, CancellationToken cancellationToken)
+    {
+        _wanted = state;
+        if (_presence is { } presence)
+        {
+            await presence.SetOwnAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     // Ends when the session stops trying: signed out, refused, stale, or disposed.
     public Task Completion => _loop;
@@ -189,6 +211,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         await _life.CancelAsync().ConfigureAwait(false);
         await _CloseHubAsync().ConfigureAwait(false);
         await _loop.ConfigureAwait(false);
+        _presence?.Dispose();
         await _room.DisposeAsync().ConfigureAwait(false);
         _ready.TrySetResult();
         _text.Dispose();
@@ -210,6 +233,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
                 }
 
                 await _CloseHubAsync().ConfigureAwait(false);
+                if (_presence is { } away)
+                {
+                    await away.SetAwayAsync(true, CancellationToken.None).ConfigureAwait(false);
+                }
+
                 if (_terminal)
                 {
                     break;
@@ -296,6 +324,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
                 return false;
             }
 
+            await _StartPresenceAsync(hub, result, user, cancellationToken).ConfigureAwait(false);
             _Status(DepotNoteLiveState.Live);
             return true;
         }
@@ -308,6 +337,40 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             _Failed(exception);
             return false;
         }
+    }
+
+    // One presence for the session: the hub gives a connection one client id and ignores any other, so each connection brings a new id,
+    // and the people stay in the list, dimmed, until they are heard again. A first send that fails does not fail the Join.
+    private async Task _StartPresenceAsync(IDepotNotesHub hub, DepotNoteJoinResult result, string userId, CancellationToken cancellationToken)
+    {
+        var documentId = result.DocumentId;
+        Task Send(byte[] bytes, CancellationToken ct) => hub.PresenceAsync(documentId, bytes, ct);
+        try
+        {
+            var presence = _presence;
+            if (presence is null)
+            {
+                presence = new DepotNotePresence(_NewClientId(), new DepotRoomCursorMap(() => _room), Send, _OnPeers, logger: _logger);
+                _presence = presence;
+            }
+            else
+            {
+                await presence.ReconnectAsync(_NewClientId(), Send, cancellationToken).ConfigureAwait(false);
+            }
+
+            await presence.SetSelfAsync(DepotPresenceSelf.For(userId, result.Role), cancellationToken).ConfigureAwait(false);
+            await presence.SetOwnAsync(_wanted, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger?.LogWarning(exception, "Starting presence for the live note of {Connection} failed; the next beat tries again.", _connection.Name);
+        }
+    }
+
+    private void _OnPeers(IReadOnlyList<LivePeer> peers)
+    {
+        _peers = peers;
+        PeersChanged?.Invoke(this, peers);
     }
 
     // Section 3 steps 3 to 5: the rows, then the updates that came in before the result, then the seed or the repair, then what the hub
@@ -569,6 +632,20 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         {
             case { Kind: "update", Args: [_, byte[] data, ..] }:
                 await _GuardAsync(() => _ApplyRemoteAsync(data, _life.Token), "Applying a live note update").ConfigureAwait(false);
+                break;
+            case { Kind: "presence", Args: [_, string from, byte[] data, ..] }:
+                if (_presence is { } presence)
+                {
+                    await _GuardAsync(() => presence.ReceiveAsync(from, data, _life.Token), "Reading a presence update").ConfigureAwait(false);
+                }
+
+                break;
+            case { Kind: "left", Args: [_, string from, ..] }:
+                if (_presence is { } leaving)
+                {
+                    await _GuardAsync(() => leaving.LeftAsync(from, _life.Token), "Removing someone who left").ConfigureAwait(false);
+                }
+
                 break;
             case { Kind: "reset" }:
                 // Edits stop at once (stale until the new fill), so nothing typed goes to the rows that are gone. The loop closes the hub

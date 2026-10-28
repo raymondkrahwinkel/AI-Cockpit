@@ -12,6 +12,10 @@ public class DepotNotePresenceTests
     private const string Selecting = "Aaz74e8HAeQCeyJ1c2VyIjp7ImlkIjoidS1zYW5uZSIsIm5hbWUiOiJTYW5uZSBkZSBWcmllcyIsInJvbGUiOiJlZGl0b3IiLCJjb2xvciI6IiMzZmI4YzQiLCJzb3VyY2UiOiJ3ZWIifSwiYWN0aXZpdHkiOiJzZWxlY3RpbmciLCJjdXJzb3IiOnsiYW5jaG9yIjp7InR5cGUiOnsiY2xpZW50IjoyMTEzNDM3MTAwLCJjbG9jayI6M30sInRuYW1lIjpudWxsLCJpdGVtIjp7ImNsaWVudCI6MjExMzQzNzEwMCwiY2xvY2siOjE3fSwiYXNzb2MiOjB9LCJoZWFkIjp7InR5cGUiOnsiY2xpZW50IjoyMTEzNDM3MTAwLCJjbG9jayI6M30sInRuYW1lIjpudWxsLCJpdGVtIjp7ImNsaWVudCI6MjExMzQzNzEwMCwiY2xvY2siOjMyfSwiYXNzb2MiOjB9fX0=";
     private const string Left = "Aaz74e8HAgRudWxs";
 
+    // Relayed by a local Depot (AI-Depot 6fe38ee8, SQLite) as the `presence` event: Depot's web editor, a range selected in the note,
+    // the hub's own stamp (client 3670873689, clock 4, anchor at item clock 71, head at 87, colour #a78bda).
+    private const string Relayed = "AdmstNYNBIgDeyJ1c2VyIjp7ImlkIjoiMTNjYjE1MWItNjk1Yi00OWQ1LWIwYmItMDk0ZDg4YzllZWQzIiwibmFtZSI6ImFkbWluQGRlcG90LmxvY2FsIiwicm9sZSI6ImVkaXRvciIsImNvbG9yIjoiI2E3OGJkYSIsInNvdXJjZSI6IndlYiJ9LCJhY3Rpdml0eSI6InNlbGVjdGluZyIsImN1cnNvciI6eyJhbmNob3IiOnsidHlwZSI6eyJjbGllbnQiOjM2NzA4NzM2ODksImNsb2NrIjo2OX0sInRuYW1lIjpudWxsLCJpdGVtIjp7ImNsaWVudCI6MzY3MDg3MzY4OSwiY2xvY2siOjcxfSwiYXNzb2MiOi0xfSwiaGVhZCI6eyJ0eXBlIjp7ImNsaWVudCI6MzY3MDg3MzY4OSwiY2xvY2siOjY5fSwidG5hbWUiOm51bGwsIml0ZW0iOnsiY2xpZW50IjozNjcwODczNjg5LCJjbG9jayI6ODd9LCJhc3NvYyI6LTF9fX0=";
+
     [Fact]
     public async Task WebClientAwareness_RoundTripsByteForByte_AndEveryOwnUpdateHasAHigherClock_AndPeersGoOnLeftOrSilence()
     {
@@ -42,7 +46,7 @@ public class DepotNotePresenceTests
         Assert.Empty(presence.Peers);
 
         await presence.ReceiveAsync("conn-2", bytes, CancellationToken.None);
-        presence.Left("conn-2");
+        await presence.LeftAsync("conn-2");
         Assert.Empty(presence.Peers);
 
         await presence.ReceiveAsync("conn-3", bytes, CancellationToken.None);
@@ -52,6 +56,13 @@ public class DepotNotePresenceTests
         time.Advance(TimeSpan.FromSeconds(1));
         await presence.BeatAsync();
         Assert.Empty(presence.Peers);
+
+        var relayed = Convert.FromBase64String(Relayed);
+        Assert.Equal(relayed, DepotAwarenessCodec.Encode(DepotAwarenessCodec.Decode(relayed)));
+        await presence.ReceiveAsync("conn-4", relayed, CancellationToken.None);
+        var real = Assert.Single(presence.Peers);
+        Assert.Equal(("admin@depot.local", "#a78bda", "web", "Editor", "selecting"), (real.Name, real.Color, real.Source, real.Role, real.Activity));
+        Assert.Equal((87, new LiveRange(71, 87)), (real.Caret, real.Selection));
     }
 
     // A cursor "position" that is only its item clock, which is all this test needs of the bridge's mapping.
