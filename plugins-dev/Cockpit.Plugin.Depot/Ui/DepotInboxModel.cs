@@ -100,6 +100,16 @@ internal sealed class DepotInboxModel : IDisposable
     {
         lock (_pagesLock)
         {
+            if (_pages.TryGetValue(page.Count.ConnectionId, out var previous))
+            {
+                page = page with
+                {
+                    Messages = page.Messages.Select(message => message.Note is { Title: null } note
+                        && previous.Messages.FirstOrDefault(known => known.Note?.OpenUrl == note.OpenUrl)?.Note?.Title is { } title
+                            ? message with { Note = note with { Title = title } } : message).ToList(),
+                };
+            }
+
             _pages[page.Count.ConnectionId] = page;
         }
 

@@ -24,7 +24,7 @@ internal sealed class DepotInvitationNotifications(
         {
             if (message.Kind != DepotInboxKind.NoteInvitation || message.IsRead || message.Handled
                 || message.Note?.OpenUrl is not { Length: > 0 } noteLink
-                || !_shown.Add((connection.Id, page.Recipient, noteLink)))
+                || !_shown.Add((connection.Id, page.Recipient, noteLink + message.Id)))
             {
                 continue;
             }
