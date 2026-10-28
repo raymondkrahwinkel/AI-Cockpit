@@ -524,6 +524,8 @@ internal sealed class LiveTextDocument : IDisposable
         catch (FileSourceException error) when (error.Kind == FileSourceErrorKind.Forbidden)
         {
             _Requeue();
+            _ApplyToDocument([new TextOp(0, _document.TextLength, _base.ToString())]);
+            _queue.Clear();
             _ReadOnly();
             return;
         }

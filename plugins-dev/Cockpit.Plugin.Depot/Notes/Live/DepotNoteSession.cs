@@ -431,7 +431,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             _roleLost = result.Role != "editor" && (_role == "editor" || _roleLost);
             _role = result.Role;
             _schemaMismatch = result.SchemaMismatch;
-            _editor = result.Role == "editor" && !result.SchemaMismatch;
+            _editor = result.Role == "editor";
             try
             {
                 if (_editor && await _WriteAsync(hub, result, known, cancellationToken).ConfigureAwait(false))
