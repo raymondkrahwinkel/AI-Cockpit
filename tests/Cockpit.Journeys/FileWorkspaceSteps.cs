@@ -36,6 +36,27 @@ internal static class FileWorkspaceSteps
         });
     }
 
+    // A single click is a preview the next preview replaces; a double-click keeps it, and the next preview opens beside it.
+    public static async Task PreviewReplacedUntilKeptAsync(JourneyHost cockpit, Func<string, bool, Task> open)
+    {
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var workspaces = cockpit.Cockpit.Workspaces;
+            int FileTabs() => workspaces.Settings.Workspaces.Count(workspace => workspace.InstanceKey is not null);
+            Task Close(string title) => workspaces.CloseWorkspaceCommand.ExecuteAsync(
+                workspaces.Settings.Workspaces.Single(workspace => workspace.Name == title).Id);
+            await open("notes/a.md", true);
+            await open("notes/b.md", true);
+            Assert.Equal(1, FileTabs());
+            Assert.Equal("b.md", workspaces.Active?.Name);
+            await open("notes/b.md", false);
+            await open("notes/c.md", true);
+            Assert.Equal(2, FileTabs());
+            await Close("b.md");
+            await Close("c.md");
+        });
+    }
+
     // Someone else writes between opening and saving: nothing is written, Merge keeps both, the next save lands.
     public static async Task ChangedBehindYourBackThenMergedAsync(JourneyHost cockpit, Func<Task> open, Action changeFromOutside)
     {

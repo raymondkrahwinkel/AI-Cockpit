@@ -18,6 +18,9 @@ namespace Cockpit.Plugin.Depot.UI;
 internal sealed partial class DepotBrowserPanel : UserControl
 {
     private readonly ICockpitUiHost _host;
+    private readonly DepotSettings? _settings;
+    private readonly Dictionary<string, TextBlock> _openBadges = new(StringComparer.Ordinal);
+    private readonly Button _openIn = new() { Name = "OpenFilesInButton", Classes = { "Compact" }, Content = new MaterialIcon { Kind = MaterialIconKind.CogOutline, Width = 14, Height = 14 } };
     private readonly IReadOnlyList<DepotConnectionRegistration> _connections;
     private readonly HttpClient _http = new();
     private readonly ComboBox _connectionBox = new() { MinWidth = 140 };
@@ -44,6 +47,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
     public DepotBrowserPanel(ICockpitUiHost host, IReadOnlyList<DepotConnectionRegistration> connections, DepotInboxModel? inbox = null, bool openInbox = false)
     {
         _host = host;
+        _settings = new DepotSettings(host.Storage);
         _connections = connections;
         var refresh = _Button("Refresh");
         refresh.Click += async (_, _) => await LoadTreeAsync().ConfigureAwait(true);
@@ -71,6 +75,9 @@ internal sealed partial class DepotBrowserPanel : UserControl
         _publishFolder.Click += async (_, _) => await PublishFolderAsync().ConfigureAwait(true);
         _newMarkdown.Click += async (_, _) => await _NewMarkdownAsync(_SelectedFolder()).ConfigureAwait(true);
         _ListenForFileSaves();
+        _ListenForOpenWorkspaces();
+        _openIn.Flyout = _OpenInMenu();
+        ToolTip.SetTip(_openIn, "Open files in");
         var layout = _FilesLayout(refresh);
         var ownsInbox = inbox is null;
         var inboxModel = inbox ?? new DepotInboxModel(host);
@@ -95,6 +102,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
     internal DepotBrowserPanel(DepotBrowserSceneModel scene)
     {
         _host = null!;
+        _sceneBelowTree = scene.BelowTree;
         _connections = [];
         var refresh = _Button("Refresh");
         _connectionBox.IsVisible = false;
@@ -109,7 +117,16 @@ internal sealed partial class DepotBrowserPanel : UserControl
         Content = _Tabs(_FilesLayout(refresh), new TextBlock { Text = "Inbox", Margin = new Thickness(12) }, false);
 
         var items = DepotTreeBuilder.Build(scene.Tree.Nodes);
+        _openBadges.Clear();
         _tree.ItemsSource = items.Select(item => _Row(item, scene.SelectedPath)).ToList();
+        _openIn.Flyout = _OpenInMenu();
+        foreach (var (path, text) in scene.Badges ?? new Dictionary<string, string>())
+        {
+            if (_openBadges.TryGetValue(path, out var badge))
+            {
+                badge.Text = text;
+            }
+        }
         if (scene.Tree.Nodes.Count == 0)
         {
             _SetState("No Depot files yet", "This project has no documents or artifacts yet.", MaterialIconKind.FolderOpenOutline);
@@ -133,7 +150,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
 
         var top = new WrapPanel { Margin = new Thickness(12, 8, 6, 2) };
-        foreach (var control in new Control[] { _connectionBox, _projectBox, refresh, _newMarkdown, _upload, _publishFolder })
+        foreach (var control in new Control[] { _connectionBox, _projectBox, refresh, _newMarkdown, _upload, _publishFolder, _openIn })
         {
             control.Margin = new Thickness(0, 0, 6, 6);
             top.Children.Add(control);
@@ -270,7 +287,9 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
         _detail.Children.Clear();
         _detailContainer.IsVisible = false;
+        _openBadges.Clear();
         _tree.ItemsSource = DepotTreeBuilder.Build(_loaded.Nodes).Select(item => _Row(item, selectPath)).ToList();
+        _RefreshOpenBadges();
         await RefreshPublicationsAsync().ConfigureAwait(true);
     }
 
@@ -355,9 +374,20 @@ internal sealed partial class DepotBrowserPanel : UserControl
 
     private TreeViewItem _Row(DepotTreeItem item, string? selectPath)
     {
-        var row = new TreeViewItem { Tag = item, Header = _Header(item), ItemsSource = item.Children.Select(child => _Row(child, selectPath)).ToList() };
+        var header = _Header(item);
+        var row = new TreeViewItem { Tag = item, Header = header, ItemsSource = item.Children.Select(child => _Row(child, selectPath)).ToList() };
         if (item.Node is not null)
         {
+            var badge = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitStatusBusyBrush"), Margin = new Thickness(6, 0, 0, 0) };
+            header.Children.Add(badge);
+            _openBadges[item.Path] = badge;
+            row.Tapped += async (_, _) =>
+            {
+                if (_PreviewMode)
+                {
+                    await OpenAsync(item.Node, preview: true).ConfigureAwait(true);
+                }
+            };
             row.DoubleTapped += async (_, _) => await OpenAsync(item.Node).ConfigureAwait(true);
         }
         _AddMarkdownMenu(row, item);
@@ -388,7 +418,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         return null;
     }
 
-    private static Control _Header(DepotTreeItem item)
+    private static StackPanel _Header(DepotTreeItem item)
     {
         var kind = item.Kind switch
         {
@@ -429,10 +459,13 @@ internal sealed partial class DepotBrowserPanel : UserControl
 
         if (node.Kind == DepotBrowserKind.Document)
         {
-            var excerpt = await _model.ReadDocumentExcerptAsync(_project, node).ConfigureAwait(true);
-            if (_Accepted(excerpt) && excerpt.Data is { } shown)
+            if (!_PreviewMode)
             {
-                _AddExcerpt(shown);
+                var excerpt = await _model.ReadDocumentExcerptAsync(_project, node).ConfigureAwait(true);
+                if (_Accepted(excerpt) && excerpt.Data is { } shown)
+                {
+                    _AddExcerpt(shown);
+                }
             }
 
             var documentOpen = _Button("Open");
@@ -440,7 +473,8 @@ internal sealed partial class DepotBrowserPanel : UserControl
             actions.Children.Add(documentOpen);
             if (_loaded.CanShare && DepotMarkdownFiles.IsMarkdown(node))
             {
-                var edit = _Button("Edit");
+                var edit = _Button("✎ Edit");
+                edit.Classes.Add("Accent");
                 edit.Click += async (_, _) => await _EditMarkdownAsync(node).ConfigureAwait(true);
                 actions.Children.Add(edit);
             }
@@ -492,6 +526,14 @@ internal sealed partial class DepotBrowserPanel : UserControl
             if (excerpt is not null)
             {
                 _AddExcerpt(excerpt);
+            }
+
+            actions.Children.Add(_Button("Open"));
+            if (_loaded.CanShare && DepotMarkdownFiles.IsMarkdown(node))
+            {
+                var edit = _Button("✎ Edit");
+                edit.Classes.Add("Accent");
+                actions.Children.Add(edit);
             }
 
             return;
@@ -764,18 +806,27 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
     }
 
-    private async Task OpenAsync(DepotBrowserNode node)
+    private bool _sceneBelowTree;
+
+    private bool _PreviewMode => !_sceneBelowTree && (_settings?.OpenFilesInPreviewTab ?? true);
+
+    // A single click opens the preview tab and a double-click or the Open button a kept one; a file that has no tab only opens on the latter.
+    private async Task OpenAsync(DepotBrowserNode node, bool preview = false)
     {
         if (_model is { } model && _project is { } project)
         {
             if (DepotMarkdownFiles.IsMarkdown(node))
             {
-                await DepotMarkdownFiles.OpenAsync(_host, model.Connection, project, node.Path, edit: false).ConfigureAwait(true);
+                await DepotMarkdownFiles.OpenAsync(_host, model.Connection, project, node.Path, edit: false, preview: preview).ConfigureAwait(true);
                 return;
             }
             if (ArtifactWorkspace.CanOpenInCockpit(node))
             {
-                await _host.OpenWorkspaceAsync(ArtifactWorkspace.WorkspaceTypeId, new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceOpenOptions($"depot:{model.Connection.Id}:{project}:{node.Path}", Path.GetFileName(node.Path))).ConfigureAwait(true);
+                await _host.OpenWorkspaceAsync(ArtifactWorkspace.WorkspaceTypeId, new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceOpenOptions($"depot:{model.Connection.Id}:{project}:{node.Path}", Path.GetFileName(node.Path), preview)).ConfigureAwait(true);
+                return;
+            }
+            if (preview)
+            {
                 return;
             }
 

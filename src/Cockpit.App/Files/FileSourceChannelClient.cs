@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Core.Abstractions.Remote;
@@ -8,6 +9,8 @@ namespace Cockpit.App.Files;
 // A client is tied to the plugin/backend channel it was opened on, including a server-admin relay.
 internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
+    public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => channel.Subscribe(name, handler);
+
     public async Task<IReadOnlyList<FileConnection>> ConnectionsAsync(CancellationToken cancellationToken) =>
         await _RunAsync(() => _CallAsync<FileConnection[]>(FileSourceChannel.Connections, new { }, cancellationToken), cancellationToken).ConfigureAwait(false);
 

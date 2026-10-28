@@ -7,8 +7,11 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Cockpit.App.Views.Editor;
 using Cockpit.Core.Markdown;
+using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.Workspaces;
@@ -31,7 +34,12 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly TextBlock _footer = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _shortcuts = new() { FontSize = 11.5, Margin = new Thickness(12, 0, 0, 0) };
     private readonly Button _save = new() { Content = "Save", Classes = { "Compact", "Accent" } };
-    private readonly Button _edit = new() { Content = "Edit", Classes = { "Compact" } };
+    private readonly Button _edit = new() { Content = "✎ Edit", Classes = { "Compact", "Accent" } };
+    private readonly Button _keepOpen = new() { Content = "Keep open", Classes = { "Compact" } };
+    private readonly Button _download = new() { Content = "Download", Classes = { "Compact" } };
+    private readonly TextBlock _hint = new() { FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis, Text = "Preview: a single click on another file replaces this tab. Double-click the tab, Keep open, Edit or start typing to keep it." };
+    private readonly Border _hintStrip;
+    private IDisposable? _savedSubscription;
     private readonly CheckBox _source = new() { Name = "MarkdownSourceSwitch", Content = "Markdown source", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
     private readonly Border _statusChip;
     private readonly MarkdownEditor _compare = new() { IsReadOnly = true, IsVisible = false };
@@ -85,7 +93,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _statusChip = new Border { Child = _state, Padding = new Thickness(8, 2), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
         _statusChip.Bind(Border.CornerRadiusProperty, this.GetResourceObservable("CockpitPillRadius"));
         var header = new DockPanel { LastChildFill = true };
-        foreach (var action in new Control[] { _save, _edit, _source, _statusChip })
+        foreach (var action in new Control[] { _save, _edit, _download, _keepOpen, _source, _statusChip })
         {
             DockPanel.SetDock(action, Dock.Right);
             action.Margin = new Thickness(6, 0, 0, 0);
@@ -94,6 +102,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
         header.Children.Add(location);
         var head = _Strip(header, new Thickness(14, 10));
         var message = _Strip(_message, new Thickness(14, 4));
+        _hint.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
+        _hintStrip = _Strip(_hint, new Thickness(14, 4));
         _message.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitStatusErrorBrush"));
         message.Bind(Border.IsVisibleProperty, _message.GetObservable(IsVisibleProperty));
         _shortcuts.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
@@ -106,6 +116,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         footer.BorderThickness = new Thickness(0, 1, 0, 0);
         DockPanel.SetDock(head, Dock.Top);
         DockPanel.SetDock(message, Dock.Top);
+        DockPanel.SetDock(_hintStrip, Dock.Top);
         DockPanel.SetDock(footer, Dock.Bottom);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         actions.Children.AddRange([_compareButton, _reload, _merge, _overwrite]);
@@ -123,11 +134,13 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _legend.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
         DockPanel.SetDock(_banner, Dock.Top);
         DockPanel.SetDock(_compareBar, Dock.Top);
-        Content = new DockPanel { Children = { head, message, _banner, _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
+        Content = new DockPanel { Children = { head, _hintStrip, message, _banner, _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
         this.Bind(BackgroundProperty, this.GetResourceObservable("CockpitSecondaryBgBrush"));
 
         _save.Click += async (_, _) => await _SaveFromUiAsync().ConfigureAwait(true);
         _edit.Click += (_, _) => BeginEdit();
+        _keepOpen.Click += (_, _) => _context.Pin();
+        _download.Click += async (_, _) => await _RunUiAsync(_DownloadAsync).ConfigureAwait(true);
         _compareButton.Click += (_, _) => ToggleCompare();
         _reload.Click += async (_, _) => await _RunUiAsync(ReloadFromSourceAsync).ConfigureAwait(true);
         _merge.Click += (_, _) => MergeSourceChanges();
@@ -144,6 +157,12 @@ internal sealed class MarkdownFileWorkspace : UserControl
         Editor.TextChanged += (_, _) => _UpdateState();
         Editor.EditRequested += (line, text) =>
         {
+            if (_loaded && !_canWrite)
+            {
+                _error = $"Read-only: you are a Viewer in {(_options.Location.Length == 0 ? _sourceName : _options.Location.Split(" / ")[^1])}";
+                _UpdateState();
+                return;
+            }
             if (!_canWrite || !_loaded)
             {
                 return;
@@ -157,6 +176,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
         AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
         _context.RefreshRequested += _OnRefresh;
         _context.Closed += _OnClosed;
+        _context.Pinned += _OnPinned;
+        _savedSubscription = _client.Subscribe(FileSourceChannel.Saved, evt => Dispatcher.UIThread.Post(() => _OnFileSaved(evt.Payload)));
         AttachedToVisualTree += (_, _) =>
         {
             if (_editing)
@@ -171,6 +192,38 @@ internal sealed class MarkdownFileWorkspace : UserControl
     internal Task Ready { get; }
     internal bool HasConflict => _theirs is not null;
     internal bool IsDirty => _loaded && _editing && (_new || Editor.Text != _savedText);
+
+    // A read-only body follows its file: a save from another tab or window, or a click on an already-open file, reloads it quietly.
+    internal Task ReloadIfViewingAsync() => _editing || _loading || _saving || _closed ? Task.CompletedTask : _RunUiAsync(_LoadAsync);
+
+    private void _OnFileSaved(JsonElement payload)
+    {
+        try
+        {
+            if (payload.Deserialize<FileRef>(FileSourceChannel.Json) == _options.File)
+            {
+                _ = ReloadIfViewingAsync();
+            }
+        }
+        catch (JsonException) { }
+    }
+
+    private void _OnPinned(object? sender, EventArgs e) => _UpdateState();
+
+    private async Task _DownloadAsync()
+    {
+        if (!_loaded || TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions { SuggestedFileName = Path.GetFileName(_options.File.Path) }).ConfigureAwait(true);
+        if (file is null)
+        {
+            return;
+        }
+        await using var stream = await file.OpenWriteAsync().ConfigureAwait(true);
+        await stream.WriteAsync(new UTF8Encoding(false).GetBytes(_savedText)).ConfigureAwait(true);
+    }
 
     internal void BeginEdit()
     {
@@ -484,6 +537,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _context.SetCloseGuard(null);
         _context.RefreshRequested -= _OnRefresh;
         _context.Closed -= _OnClosed;
+        _context.Pinned -= _OnPinned;
+        _savedSubscription?.Dispose();
         _lifetime.Cancel();
         _lifetime.Dispose();
     }
@@ -500,11 +555,14 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _context.SetCloseGuard(dirty || _saving ? _ConfirmCloseAsync : null);
         _edit.IsVisible = _loaded && _canWrite && !_editing;
         _save.IsVisible = _editing;
+        _keepOpen.IsVisible = _context.IsPreview;
+        _hintStrip.IsVisible = _context.IsPreview;
+        _download.IsVisible = _loaded && !_editing && !_new;
         _save.IsEnabled = dirty && !_saving;
         _source.IsVisible = _editing;
         _source.IsChecked = Editor.ShowSource;
         _state.Text = _loading ? "Loading…" : _saving ? "Saving…" : _conflict ? $"Changed in {_sourceName}"
-            : !_loaded ? "Unavailable" : !_editing ? (_canWrite ? "Read-only" : "Viewer") : dirty ? "Unsaved" : "Saved";
+            : !_loaded ? "Unavailable" : !_editing ? (_context.IsPreview ? "Preview · " : "") + (_canWrite ? "read-only" : "Viewer") : dirty ? "Unsaved" : "Saved";
         var unsaved = _conflict || (dirty && !_saving);
         if (_wasUnsaved != unsaved)
         {
@@ -532,7 +590,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
         _shortcuts.Text = _editing ? "Ctrl+S save · Ctrl+/ source · Ctrl+B / I / K"
-            : _loaded ? (_canWrite ? "Edit or start typing" : "Read-only") : "";
+            : _loaded ? (_canWrite ? (_context.IsPreview ? "Type to edit · Double-click tab to keep" : "Edit or start typing") : "Read-only") : "";
     }
 
     private sealed record Snapshot(string Text, bool HasBom, string Version, DateTimeOffset? Modified, string? ModifiedBy, bool CanWrite);

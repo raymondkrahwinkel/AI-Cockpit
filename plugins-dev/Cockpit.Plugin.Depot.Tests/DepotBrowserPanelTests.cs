@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Material.Icons.Avalonia;
@@ -42,6 +43,7 @@ public class DepotBrowserPanelTests
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
         var markdownView = new Border { Child = new TextBlock { Text = "Full markdown view" } };
         rig.Host.CreateMarkdownView(Arg.Any<string>()).Returns(markdownView);
+        rig.Host.Storage.Get<string>("openFilesIn").Returns("below");
         Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
         var panel = new DepotBrowserPanel(rig.Host, [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
         var window = new Window { Width = 1000, Height = 640, Content = panel };
@@ -82,8 +84,9 @@ public class DepotBrowserPanelTests
         (_Button(panel, "Open") ?? throw new InvalidOperationException("Open is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options =>
             options.File.Path == "docs/Notes.md" && options.InstanceKey == "depot:c1:cockpit:docs/Notes.md" && !options.Edit && !options.CreateNew));
-        (_Button(panel, "Edit") ?? throw new InvalidOperationException("Edit is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        (_Button(panel, "✎ Edit") ?? throw new InvalidOperationException("Edit is missing.")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => options.Edit && !options.CreateNew));
+        _ClickByStand(rig, selected);
         Assert.True((_Button(panel, "New Markdown file") ?? throw new InvalidOperationException("New file is missing.")).IsVisible);
         _NewFileValidation();
     }
@@ -109,7 +112,31 @@ public class DepotBrowserPanelTests
 
         Assert.False(_UploadButton(panel).IsVisible);
         Assert.False((_Button(panel, "New Markdown file") ?? throw new InvalidOperationException("New file is missing.")).IsVisible);
-        Assert.Null(_Button(panel, "Edit"));
+        Assert.Null(_Button(panel, "✎ Edit"));
+    }
+
+    // AC-1781: a single click is the preview tab and a double-click a kept one; "Below the tree" only selects on a single click.
+    private static void _ClickByStand(DepotBrowserModelTests.Rig rig, TreeViewItem row)
+    {
+        rig.Host.ClearReceivedCalls();
+        rig.Host.Storage.Get<string>("openFilesIn").Returns("preview");
+        _Tap(row, InputElement.TappedEvent);
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => options.Preview && !options.Edit));
+        _Tap(row, InputElement.DoubleTappedEvent);
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => !options.Preview && !options.Edit));
+        rig.Host.ClearReceivedCalls();
+        rig.Host.Storage.Get<string>("openFilesIn").Returns("below");
+        _Tap(row, InputElement.TappedEvent);
+        _ = rig.Host.DidNotReceive().OpenFileWorkspaceAsync(Arg.Any<string>(), Arg.Any<FileWorkspaceOpenOptions>());
+        _Tap(row, InputElement.DoubleTappedEvent);
+        _ = rig.Host.Received().OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options => !options.Preview));
+    }
+
+    private static void _Tap(TreeViewItem row, RoutedEvent<TappedEventArgs> gesture)
+    {
+        var pointer = new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true);
+        var released = new PointerEventArgs(InputElement.PointerReleasedEvent, row, pointer, null, default, 0, new PointerPointProperties(), KeyModifiers.None);
+        row.RaiseEvent(new TappedEventArgs(gesture, released));
     }
 
     private static void _NewFileValidation()

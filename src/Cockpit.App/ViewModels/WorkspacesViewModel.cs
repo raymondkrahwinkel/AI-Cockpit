@@ -326,7 +326,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         if (options.InstanceKey is { } key
             && Settings.Workspaces.FirstOrDefault(workspace => workspace.Type == type && workspace.InstanceKey == key) is { } keyed)
         {
-            return _ApplyAsync(Settings.WithActive(keyed.Id));
+            // Opening a preview as a kept tab (a double-click on its row) keeps it, as VS Code does.
+            return keyed.IsPreview && !options.Preview ? _PinAndShowAsync(keyed.Id) : _ApplyAsync(Settings.WithActive(keyed.Id));
         }
 
         var title = options.Title
@@ -341,6 +342,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return options.Preview && Settings.Workspaces.FirstOrDefault(workspace => workspace.IsPreview) is { } preview
             ? _ApplyAsync(Settings.WithReplaced(preview.Id, created))
             : _ApplyAsync(Settings.WithWorkspace(created));
+    }
+
+    private async Task _PinAndShowAsync(string workspaceId)
+    {
+        await PinWorkspaceAsync(workspaceId);
+        await _ApplyAsync(Settings.WithActive(workspaceId));
     }
 
     // AC-1750: makes a preview tab a kept one, so the next preview opens beside it. A no-op on a tab that is not a preview.

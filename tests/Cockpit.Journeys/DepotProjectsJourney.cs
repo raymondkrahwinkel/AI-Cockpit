@@ -71,6 +71,9 @@ public sealed class DepotProjectsJourney
         await FileWorkspaceSteps.ChangedBehindYourBackThenMergedAsync(cockpit, () => OpenEditor(false),
             () => depot.ChangeEditorFromOutside("# Journey\n\nWritten in Cockpit.\nAdded by the assistant."));
         Assert.Equal("# Journey\n\nWritten in Cockpit, edited.\nAdded by the assistant.", depot.EditorText);
+        await FileWorkspaceSteps.PreviewReplacedUntilKeptAsync(cockpit, (path, preview) => fileHost.OpenFileWorkspaceAsync("depot.markdown",
+            new FileWorkspaceOpenOptions(new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", path }), path),
+                $"depot:journey:acme/cockpit:{path}", Path.GetFileName(path), "Depot / Journey / acme/cockpit", Preview: preview)));
 
         var memory = cockpit.Services.GetRequiredService<IProjectMemorySourceRegistry>().Sources.Single(source => source.Scheme == "depot");
         var shared = cockpit.Services.GetRequiredService<ISharedProjectSourceRegistry>().Sources.Single(source => source.Key == "depot");
