@@ -84,7 +84,7 @@ public static class SessionScratch
             return null;
         }
         var parts = File.ReadAllText(marker).Split('\n');
-        return parts.Length == 2 && parts[0].Length == 16 && !string.IsNullOrWhiteSpace(parts[1])
+        return parts.Length == 2 && parts[0] == _Fingerprint() && !string.IsNullOrWhiteSpace(parts[1])
             ? parts[1] : null;
     }
 
