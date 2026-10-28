@@ -25,7 +25,7 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            if (await browsers.StartAsync(caller, timeout.Token).ConfigureAwait(false) is null)
+            if (await browsers.GetOrCreateAsync(caller, timeout.Token).ConfigureAwait(false) is null)
                 return new(false, Code: "browser_unavailable", Error: "The session browser is unavailable.");
             var session = RequireSession(caller);
             Check(caller, session.Generation, mutate: true);
