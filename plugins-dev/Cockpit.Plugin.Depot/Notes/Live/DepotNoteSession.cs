@@ -19,10 +19,9 @@ internal static class DepotNoteSchema
         ?? throw new InvalidOperationException("The build left out the schema version.");
 }
 
-// One note's connection to /hubs/notes: connect, Join (protocol section 3), keep the room's Y.Doc, and join again when the hub closes
-// the connection (after five minutes at most, or when the token runs out). The session owns its room; a `reset` swaps it for a new one.
-// The host's text goes through the room's mirror, on the terms of ILiveFileSession (AC-1898): every change raises the revision by
-// one, the host's edits go out as Edited plus Update, and everything else, its own undo included, comes back as a patch.
+// One note's connection to /hubs/notes: Join (protocol section 3), the room's Y.Doc, and a new Join when the hub closes it; a `reset`
+// swaps the room. The host's text goes through the room's mirror on ILiveFileSession's terms (AC-1898): every change is one revision,
+// the host's edits go out as Edited plus Update, and everything else, its own undo included, comes back as a patch.
 internal sealed partial class DepotNoteSession : IAsyncDisposable
 {
     // Protocol §7: an Update or a Compact is no larger.
