@@ -25,7 +25,7 @@ internal sealed class McpOAuthProxyHost : IMcpOAuthProxy, ISingletonService, IAs
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<McpOAuthProxyHost> _logger;
     private readonly ConcurrentDictionary<string, string> _mounted = new(StringComparer.Ordinal);
-    private readonly List<WebApplication> _apps = [];
+    private readonly ConcurrentBag<WebApplication> _apps = [];
 
     // One gate per server, not a global one — a launch's shared mount budget (five seconds on the TTY route)
     // would otherwise have a slow first mount spend the second server's time too.

@@ -363,8 +363,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 .Where(McpConfigFile.IsAgentEligible)
                 .ToList();
 
-            var servers = new List<PluginMcpServer>();
-            foreach (var server in eligible)
+            var resolved = await Task.WhenAll(eligible.Select(async server =>
             {
                 // The endpoint first, because it changes what has to be asked for. Behind it the session never holds
                 // a token at all, so it only has to be established that a sign-in exists; without it the token goes
@@ -376,12 +375,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     // Left out rather than handed over bare: the CLI's initialize would meet the same refusal
                     // and report the server as failing instead of absent — worse, since that asks the operator
                     // to distinguish broken from unauthorized. The coordinator's own line names the cause.
-                    continue;
+                    return null;
                 }
 
                 if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
-                    servers.Add(mapped);
+                    return mapped;
                 }
                 else
                 {
@@ -391,7 +390,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                         "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
                         server.Name);
                 }
-            }
+
+                return null;
+            })).ConfigureAwait(false);
+            var servers = resolved.OfType<PluginMcpServer>().ToList();
 
             // #44: say what the session got and against which selection, so "why are my MCP servers missing?"
             // is a log line, not a bisect. A non-empty selection resolving to nothing is usually a wiring slip — Warning; ordinary fan-out stays Information.

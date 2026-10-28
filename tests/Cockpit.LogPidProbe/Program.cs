@@ -26,8 +26,26 @@ internal static class Program
             }
         }
 
-        var provider = new FileLoggerProvider(logPath);
+        var provider = label == "crash"
+            ? new FileLoggerProvider(logPath, () => new SlowCrashSink(logPath))
+            : new FileLoggerProvider(logPath);
         var logger = provider.CreateLogger("probe");
+        if (label == "crash")
+        {
+            LifecycleLog.Use(LoggerFactory.Create(builder => builder.AddProvider(provider)));
+            AppDomain.CurrentDomain.UnhandledException += (_, _) =>
+            {
+                LifecycleLog.Write("lifecycle from later crash handler");
+                // Model runtimes that terminate directly after crash handlers without ProcessExit.
+                Environment.FailFast("AC-1893 end immediately after the late crash handler");
+            };
+            LifecycleLog.Write("lifecycle before managed crash");
+            throw new InvalidOperationException("AC-1893 managed crash probe");
+        }
+
+        // Complete startup rotation before announcing readiness; the next process overlaps an open stream.
+        logger.LogInformation("startup {Label}", label);
+        provider.Flush();
         File.WriteAllText($"{logPath}.constructed.{label}", "");
 
         if (label == "A")
@@ -43,6 +61,15 @@ internal static class Program
         for (var i = 0; i < LineCount; i++)
         {
             logger.LogInformation("probe {Label} line {Index}", label, i);
+        }
+    }
+
+    private sealed class SlowCrashSink(string path) : FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read)
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Thread.Sleep(500);
+            base.Write(buffer, offset, count);
         }
     }
 }
