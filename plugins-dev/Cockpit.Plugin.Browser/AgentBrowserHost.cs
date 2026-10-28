@@ -21,9 +21,15 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     public async Task<string?> GetOrCreateAsync(string paneId, CancellationToken cancellationToken = default)
     {
+        long epoch;
+        lock (_gate) { epoch = _epochs.GetValueOrDefault(paneId); }
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            lock (_gate)
+            {
+                if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch) return null;
+            }
             if (SessionFor(paneId) is { } current)
             {
                 return current.Endpoint;
@@ -33,7 +39,8 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             {
                 if (_disposed || _running.ContainsKey(paneId)) return null;
             }
-            return await StartCoreAsync(paneId, cancellationToken).ConfigureAwait(false);
+            if (resolveExecutable() is not { } executable) return null;
+            return await StartAsync(paneId, executable, Environment.IsPrivilegedProcess, cancellationToken, epoch).ConfigureAwait(false);
         }
         finally { _startGate.Release(); }
     }
@@ -74,13 +81,14 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         return await StartAsync(paneId, executable, Environment.IsPrivilegedProcess, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<string?> StartAsync(string paneId, string executable, bool noSandbox, CancellationToken cancellationToken)
+    private async Task<string?> StartAsync(string paneId, string executable, bool noSandbox, CancellationToken cancellationToken, long? expectedEpoch = null)
     {
         long epoch;
         lock (_gate)
         {
             if (_disposed) return null;
             epoch = _epochs.GetValueOrDefault(paneId);
+            if (expectedEpoch is { } expected && epoch != expected) return null;
         }
         var profile = Path.Combine(profilesRoot, Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
@@ -141,7 +149,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             if (exited && !noSandbox && OperatingSystem.IsLinux() && IsSandboxFailure(reason))
             {
                 Report(LogLevel.Warning, $"the agent browser '{executable}' has no usable sandbox here, so it runs without one: {reason}");
-                return await StartAsync(paneId, executable, noSandbox: true, cancellationToken).ConfigureAwait(false);
+                return await StartAsync(paneId, executable, noSandbox: true, cancellationToken, epoch + 1).ConfigureAwait(false);
             }
 
             Report(LogLevel.Error, $"the agent browser '{executable}' did not come up ({(exited ? "process exited" : $"no port within {StartTimeout.TotalSeconds:0}s")}): {reason}");

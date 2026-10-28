@@ -76,6 +76,25 @@ public class AgentOwnedTabTests
         Assert.Null(await failed.GetOrCreateAsync("failed"));
         Assert.Empty(failed.Live());
         Assert.Empty(Directory.GetDirectories(fixture.Root + "-failed"));
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var resolutions = 0;
+        using var queued = new AgentBrowserHost(() =>
+        {
+            Interlocked.Increment(ref resolutions);
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+            return null;
+        }, fixture.Root + "-queued");
+        var firstStart = Task.Run(() => queued.GetOrCreateAsync("starting"));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+        var endedStart = queued.GetOrCreateAsync("ended");
+        queued.Stop("ended");
+        release.Set();
+        Assert.Null(await firstStart);
+        Assert.Null(await endedStart);
+        Assert.Equal(1, resolutions);
+        Assert.Null(queued.SessionFor("ended"));
     }
 }
 
@@ -127,5 +146,6 @@ internal sealed class OwnedTabFixture : IDisposable
         _listener.Close();
         if (Directory.Exists(Root)) Directory.Delete(Root, true);
         if (Directory.Exists(Root + "-failed")) Directory.Delete(Root + "-failed", true);
+        if (Directory.Exists(Root + "-queued")) Directory.Delete(Root + "-queued", true);
     }
 }
