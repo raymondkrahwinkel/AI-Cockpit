@@ -98,6 +98,9 @@ public class PluginBackendHost(
     // AC-1389: this plugin's slice of the backend's channel hub, which the UI part's CockpitUiHost reaches by the same id.
     public IPluginBackendChannel Channel => services.GetRequiredService<PluginChannelHub>().For(pluginId);
 
+    public IDisposable AddFileSource(Cockpit.Plugins.Abstractions.Files.IFileSourceProvider provider) =>
+        Files.FileSourceChannel.Register(Channel, provider);
+
     public ICockpitSessionObserver Sessions => sessions;
 
     // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
