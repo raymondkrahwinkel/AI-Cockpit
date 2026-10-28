@@ -428,7 +428,6 @@ public partial class App : Application
         };
 
         desktop.MainWindow = window;
-
     }
 
     // Locks only the running cockpit UI; the in-memory key and agents remain active (AC-5). The coordinator provides

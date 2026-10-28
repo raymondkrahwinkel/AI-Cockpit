@@ -102,5 +102,5 @@ public partial class SplashWindow : Window
         }
     }
 
-    private void OnQuit(object? sender, RoutedEventArgs e) => Close();
+    private void OnQuit(object? sender, RoutedEventArgs e) => (Application.Current as App)?.RequestQuit();
 }
