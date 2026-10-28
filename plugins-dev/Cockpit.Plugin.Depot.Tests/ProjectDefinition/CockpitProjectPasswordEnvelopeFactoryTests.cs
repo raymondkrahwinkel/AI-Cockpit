@@ -16,39 +16,24 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
         return envelope ?? throw new InvalidOperationException("Test setup produced a null envelope.");
     }
 
+    // One Create: the password and the recovery code both unwrap the same data key, and the code uses only the unambiguous alphabet.
     [Fact]
-    public void Create_ThenUnwrapWithPassword_RecoversTheSameDataKey()
+    public void Create_ThenUnwrapWithPasswordOrRecoveryCode_RecoversTheSameDataKey_AndTheCodeIsUnambiguous()
     {
-        var (envelope, dataKey, _) = CockpitProjectPasswordEnvelopeFactory.Create("correct horse battery staple");
+        var (envelope, dataKey, recoveryCode) = CockpitProjectPasswordEnvelopeFactory.Create("correct horse battery staple");
 
-        var recovered = CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "correct horse battery staple");
-
-        Assert.Equal(dataKey, recovered);
+        Assert.Equal(dataKey, CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "correct horse battery staple"));
+        Assert.Equal(dataKey, CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithRecoveryCode(envelope, recoveryCode));
+        Assert.Equal(24, recoveryCode.Length);
+        Assert.DoesNotContain(recoveryCode, character => "0O1IL".Contains(character));
     }
 
     [Fact]
-    public void Create_ThenUnwrapWithRecoveryCode_RecoversTheSameDataKey()
-    {
-        var (envelope, dataKey, recoveryCode) = CockpitProjectPasswordEnvelopeFactory.Create("hunter2");
-
-        var recovered = CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithRecoveryCode(envelope, recoveryCode);
-
-        Assert.Equal(dataKey, recovered);
-    }
-
-    [Fact]
-    public void TryUnwrapWithPassword_WrongPassword_ReturnsNull()
+    public void TryUnwrap_WrongPasswordOrWrongCode_ReturnsNull()
     {
         var (envelope, _, _) = CockpitProjectPasswordEnvelopeFactory.Create("right-password");
 
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(envelope, "wrong-password"));
-    }
-
-    [Fact]
-    public void TryUnwrapWithRecoveryCode_WrongCode_ReturnsNull()
-    {
-        var (envelope, _, _) = CockpitProjectPasswordEnvelopeFactory.Create("right-password");
-
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithRecoveryCode(envelope, "WRONGWRONGWRONGWRONGWRON"));
     }
 
@@ -71,15 +56,6 @@ public class CockpitProjectPasswordEnvelopeFactoryTests
         Assert.Null(CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(changed, "old-password"));
         Assert.Equal(dataKey, CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithPassword(changed, "new-password"));
         Assert.Equal(dataKey, CockpitProjectPasswordEnvelopeFactory.TryUnwrapWithRecoveryCode(changed, recoveryCode));
-    }
-
-    [Fact]
-    public void Create_RecoveryCodeUsesOnlyTheUnambiguousAlphabetAndRequestedLength()
-    {
-        var (_, _, recoveryCode) = CockpitProjectPasswordEnvelopeFactory.Create("whatever");
-
-        Assert.Equal(24, recoveryCode.Length);
-        Assert.DoesNotContain(recoveryCode, character => "0O1IL".Contains(character));
     }
 
     // Iron Law #8: no password, data key or recovery code character ever reaches an exception message or ToString().

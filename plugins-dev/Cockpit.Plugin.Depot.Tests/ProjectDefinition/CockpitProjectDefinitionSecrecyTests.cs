@@ -39,37 +39,17 @@ public class CockpitProjectDefinitionSecrecyTests
         Assert.Equal(_FieldsClearedForSharing.OrderBy(name => name, StringComparer.Ordinal), actual);
     }
 
-    // AC-607: the definition deliberately DOES carry a secret-derived row (SensitiveFields, ciphertext only).
-    // This guards against a plaintext `AdditionalInfo`-shaped or `Secret`-named property ever appearing —
-    // `SensitiveFields`/`PasswordEnvelope` correctly do not trip either check.
+    // AC-607: the definition deliberately DOES carry a secret-derived row (SensitiveFields, ciphertext only), never a plaintext
+    // `AdditionalInfo`-shaped or `Secret`-named one. AC-618 criterion 3 and AC-1071 criterion 4: a project's category and its assistant
+    // are local to each operator, and sharing either would impose one operator's filing or persona on every colleague. Pinned by name.
     [Fact]
-    public void Definition_CarriesNoSecretOrAdditionalInfoNamedProperty_OnlyTheEncryptedSensitiveFieldsRow()
+    public void Definition_CarriesNoSecretAdditionalInfoCategoryOrAssistant_OnlyTheEncryptedSensitiveFieldsRow()
     {
         var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
 
         Assert.DoesNotContain(names, name => name.Contains("Secret", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(names, name => name.Contains("AdditionalInfo", StringComparison.OrdinalIgnoreCase));
-    }
-
-    // AC-618 criterion 3: a project's category is explicitly local (`Project.Category`, stored only in
-    // `cockpit.json`) — sharing it would let whoever shares a project impose their own filing on every
-    // colleague. Pinned by name so it reads as a decision, not an accident of the whitelist test above.
-    [Fact]
-    public void Definition_CarriesNoCategory_SinceCategoryIsAlwaysLocalToEachOperator()
-    {
-        var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
-
         Assert.DoesNotContain(names, name => name.Contains("Category", StringComparison.OrdinalIgnoreCase));
-    }
-
-    // AC-1071 acceptance criterion 4: a project's assistant is explicitly local, for the same reason its category
-    // is — sharing it would impose one operator's persona on every colleague who binds the project, which is the
-    // exact complaint this ticket came from. Pinned by name so it reads as a decision, not as coverage.
-    [Fact]
-    public void Definition_CarriesNoAssistant_SinceTheAssistantIsAlwaysLocalToEachOperator()
-    {
-        var names = typeof(CockpitProjectDefinition).GetProperties().Select(property => property.Name).ToArray();
-
         Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
     }
 

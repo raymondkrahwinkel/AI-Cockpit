@@ -30,22 +30,15 @@ public class SharedProjectPublishDefinitionSecrecyTests
         Assert.Equal(_FieldsClearedForSharing.OrderBy(name => name, StringComparer.Ordinal), actual);
     }
 
+    // AdditionalInfo rows are where secrets live. AC-1071 acceptance criterion 4: the same rule one boundary earlier, an assistant must
+    // not reach the type PublishAsync is handed either, or it would travel however careful the definition below it is.
     [Fact]
-    public void Definition_CarriesNoAdditionalInfo_SinceThoseRowsAreWhereSecretsLive()
+    public void Definition_CarriesNoAdditionalInfoOrAssistant_SinceSecretsAndTheAssistantStayLocal()
     {
         var names = typeof(SharedProjectPublishDefinition).GetProperties().Select(property => property.Name).ToArray();
 
         Assert.DoesNotContain(names, name => name.Contains("Secret", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(names, name => name.Contains("AdditionalInfo", StringComparison.OrdinalIgnoreCase));
-    }
-
-    // AC-1071 acceptance criterion 4: the same rule one boundary earlier — an assistant must not reach the type
-    // PublishAsync is handed either, or it would travel however careful the definition below it is.
-    [Fact]
-    public void Definition_CarriesNoAssistant_SinceTheAssistantIsAlwaysLocalToEachOperator()
-    {
-        var names = typeof(SharedProjectPublishDefinition).GetProperties().Select(property => property.Name).ToArray();
-
         Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
     }
 

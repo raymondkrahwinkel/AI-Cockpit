@@ -1,0 +1,360 @@
+{
+  "nodes": {
+    "blockquote": {
+      "group": "block",
+      "content": "block+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": true,
+      "attrs": {}
+    },
+    "bulletList": {
+      "group": "block list",
+      "content": "listItem+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "codeBlock": {
+      "group": "block",
+      "content": "text*",
+      "marks": "",
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": true,
+      "defining": true,
+      "attrs": {
+        "language": {
+          "default": null
+        }
+      }
+    },
+    "doc": {
+      "group": null,
+      "content": "block+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "hardBreak": {
+      "group": "inline",
+      "content": null,
+      "marks": null,
+      "inline": true,
+      "atom": true,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "heading": {
+      "group": "block",
+      "content": "inline*",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": true,
+      "attrs": {
+        "level": {
+          "default": 1
+        }
+      }
+    },
+    "horizontalRule": {
+      "group": "block",
+      "content": null,
+      "marks": null,
+      "inline": false,
+      "atom": true,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "image": {
+      "group": "block",
+      "content": null,
+      "marks": null,
+      "inline": false,
+      "atom": true,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {
+        "src": {
+          "default": null
+        },
+        "alt": {
+          "default": null
+        },
+        "title": {
+          "default": null
+        },
+        "width": {
+          "default": null
+        },
+        "height": {
+          "default": null
+        }
+      }
+    },
+    "imageUpload": {
+      "group": "block",
+      "content": null,
+      "marks": null,
+      "inline": false,
+      "atom": true,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {
+        "id": {
+          "default": ""
+        },
+        "by": {
+          "default": ""
+        },
+        "name": {
+          "default": ""
+        },
+        "target": {
+          "default": ""
+        }
+      }
+    },
+    "listItem": {
+      "group": null,
+      "content": "paragraph block*",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": true,
+      "attrs": {}
+    },
+    "orderedList": {
+      "group": "block list",
+      "content": "listItem+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {
+        "start": {
+          "default": 1
+        },
+        "type": {
+          "default": null
+        }
+      }
+    },
+    "paragraph": {
+      "group": "block",
+      "content": "inline*",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "table": {
+      "group": "block",
+      "content": "tableRow+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": true,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "tableCell": {
+      "group": null,
+      "content": "block+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": true,
+      "code": null,
+      "defining": null,
+      "attrs": {
+        "colspan": {
+          "default": 1
+        },
+        "rowspan": {
+          "default": 1
+        },
+        "colwidth": {
+          "default": null
+        },
+        "align": {
+          "default": null
+        }
+      }
+    },
+    "tableHeader": {
+      "group": null,
+      "content": "block+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": true,
+      "code": null,
+      "defining": null,
+      "attrs": {
+        "colspan": {
+          "default": 1
+        },
+        "rowspan": {
+          "default": 1
+        },
+        "colwidth": {
+          "default": null
+        },
+        "align": {
+          "default": null
+        }
+      }
+    },
+    "tableRow": {
+      "group": null,
+      "content": "(tableCell | tableHeader)*",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "taskItem": {
+      "group": null,
+      "content": "paragraph block*",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": true,
+      "attrs": {
+        "checked": {
+          "default": false
+        }
+      }
+    },
+    "taskList": {
+      "group": "block list",
+      "content": "taskItem+",
+      "marks": null,
+      "inline": false,
+      "atom": false,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "text": {
+      "group": "inline",
+      "content": null,
+      "marks": null,
+      "inline": true,
+      "atom": true,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    }
+  },
+  "marks": {
+    "bold": {
+      "group": null,
+      "content": null,
+      "marks": null,
+      "inline": null,
+      "atom": null,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "code": {
+      "group": null,
+      "content": null,
+      "marks": null,
+      "inline": null,
+      "atom": null,
+      "isolating": null,
+      "code": true,
+      "defining": null,
+      "attrs": {}
+    },
+    "italic": {
+      "group": null,
+      "content": null,
+      "marks": null,
+      "inline": null,
+      "atom": null,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    },
+    "link": {
+      "group": null,
+      "content": null,
+      "marks": null,
+      "inline": null,
+      "atom": null,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {
+        "href": {
+          "default": null
+        },
+        "target": {
+          "default": "_blank"
+        },
+        "rel": {
+          "default": "noopener noreferrer nofollow"
+        },
+        "class": {
+          "default": null
+        },
+        "title": {
+          "default": null
+        }
+      }
+    },
+    "strike": {
+      "group": null,
+      "content": null,
+      "marks": null,
+      "inline": null,
+      "atom": null,
+      "isolating": null,
+      "code": null,
+      "defining": null,
+      "attrs": {}
+    }
+  }
+}
