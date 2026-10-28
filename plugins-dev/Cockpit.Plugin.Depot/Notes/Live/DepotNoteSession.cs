@@ -155,11 +155,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             _hub = hub;
 
             // Handlers first, then Join (section 3 step 1): events can arrive before the Join result does.
-            hub.Subscribe(_OnEventAsync);
             await hub.StartAsync(cancellationToken).ConfigureAwait(false);
             var result = await hub.JoinAsync(
                 new DepotNoteJoinRequest(_note.Organization, _note.Project, _note.Path, Watch: false, _epoch, DepotNoteSchema.Version, Save: false),
                 cancellationToken).ConfigureAwait(false);
+            hub.Subscribe(_OnEventAsync);
             if (result.Stale)
             {
                 _Terminal(DepotNoteLiveState.Stale);
