@@ -203,7 +203,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             var result = await _client.WriteAsync(_options.File, content, _version, _new, _lifetime.Token).ConfigureAwait(true);
             if (result.Status == FileWriteStatus.Written)
             {
-                _savedText = Editor.Text;
+                _savedText = submitted;
                 _version = result.Version;
                 _new = false;
             }
