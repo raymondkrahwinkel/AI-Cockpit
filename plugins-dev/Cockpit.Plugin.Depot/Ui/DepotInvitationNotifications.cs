@@ -38,9 +38,8 @@ internal sealed class DepotInvitationNotifications(
 
     public static (string Title, string Body) Text(string connectionName, DepotInboxMessage message)
     {
-        const string suffix = " invites you to a note";
-        var inviter = message.Summary.EndsWith(suffix, StringComparison.Ordinal)
-            ? message.Summary[..^suffix.Length] : message.Summary;
+        var invitation = message.Summary.IndexOf(" invites you", StringComparison.Ordinal);
+        var inviter = invitation >= 0 ? message.Summary[..invitation] : message.Summary;
         var hasTitle = !string.IsNullOrWhiteSpace(message.Note?.Title);
         var title = $"{inviter} invited you to {(hasTitle ? message.Note?.Title : "a note")}";
         List<string> details = [connectionName];
