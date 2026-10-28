@@ -522,6 +522,9 @@ public partial class App : Application
                 return;
             }
 
+            // The start failed before it reached its own planner start (AC-1889); the window is up, so start them here.
+            _StartPlanners();
+
             // A skeleton that never clears would read as a hang; show what there is instead.
             if (Current is App { _mainWindow.DataContext: CockpitViewModel cockpit })
             {
