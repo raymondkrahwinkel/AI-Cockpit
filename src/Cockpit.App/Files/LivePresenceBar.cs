@@ -116,13 +116,20 @@ internal sealed class LivePresenceBar : ContentControl
         };
         var initial = new TextBlock
         {
-            Text = peer.Name.Trim().Length == 0 ? "?" : peer.Name.Trim()[..1].ToUpperInvariant(),
+            Text = peer.Name.Trim().Length == 0 ? (peer.You ? "Y" : "?") : peer.Name.Trim()[..1].ToUpperInvariant(),
             FontSize = 9.5, FontWeight = FontWeight.Bold, Foreground = color,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
         };
         var face = Ring(22, agent ? 6 : 11, null, initial);
         face.Bind(Border.BackgroundProperty, this.GetResourceObservable("CockpitInsetBgBrush"));
         var ring = Ring(25, agent ? 7.5 : 12.5, color, face);
+        if (color is null)
+        {
+            // No colour from the source: a neutral ring and initial, never one made up here.
+            ring.Bind(Border.BackgroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
+            initial.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));
+        }
+
         var outer = Ring(28, agent ? 9 : 14, null, ring);
         outer.Bind(Border.BackgroundProperty, this.GetResourceObservable(surroundKey));
         return new Grid { Width = 22, Height = 22, Opacity = peer.Away ? 0.35 : 1, Children = { outer } };
@@ -130,7 +137,7 @@ internal sealed class LivePresenceBar : ContentControl
 
     private Control _Row(LivePeer peer)
     {
-        var name = new TextBlock { Text = peer.You ? $"{peer.Name} (you)" : peer.Name, FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        var name = new TextBlock { Text = !peer.You ? peer.Name : peer.Name.Length == 0 ? "You" : $"{peer.Name} (you)", FontSize = 12.5, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
         name.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextPrimaryBrush"));
         var detail = new TextBlock { Text = $"{peer.Role} · {peer.Activity}", FontSize = 11 };
         detail.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextFaintBrush"));

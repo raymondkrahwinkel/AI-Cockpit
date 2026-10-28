@@ -21,18 +21,12 @@ internal sealed class DepotRoomCursorMap(Func<IDepotNoteRoom> room) : IDepotCurs
     public Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken) => room().RelativeAtAsync(offset, cancellationToken);
 }
 
-// This host's own identity in the room, for its entry in the list. The hub stamps the same fields on what it relays to others, but not
-// back to the sender, and /cockpit/me names only the user id: the entry is "This Cockpit" in the colour the hub gives that id.
-internal sealed record DepotPresenceSelf(string Id, string Name, string Color, string Role, string Source)
+// This host's own identity in the room, for its entry in the list. The hub stamps name and colour on what it relays to others but
+// not back to the sender, and /cockpit/me names only the user id: both stay null until Depot says them, and the host shows "You".
+internal sealed record DepotPresenceSelf(string Id, string? Name, string? Color, string Role, string Source)
 {
-    // NoteAwareness.Palette of AI-Depot: the colour is fixed per user id, SHA-256 of the id mod 8.
-    // ponytail: a copy of the hub's rule for this one entry; drop it when Depot tells the client its own identity.
-    private static readonly string[] Palette = ["#3b82f6", "#d9a441", "#5fc58a", "#a78bda", "#ef6a5c", "#3fb8c4", "#e07bb0", "#a3c94d"];
-
-    public static DepotPresenceSelf For(string userId, string role) => new(
-        userId, "This Cockpit",
-        Palette[(int)(BitConverter.ToUInt32(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)), 0) % Palette.Length)],
-        role.Length == 0 ? role : char.ToUpperInvariant(role[0]) + role[1..], "Cockpit");
+    public static DepotPresenceSelf For(string userId, string role, string? name = null, string? color = null) => new(
+        userId, name, color, role.Length == 0 ? role : char.ToUpperInvariant(role[0]) + role[1..], "Cockpit");
 }
 
 // Presence of one note (notes-hub-protocol section 5.4): this editor's cursor every five seconds under a rising clock, what the hub
@@ -369,7 +363,7 @@ internal sealed class DepotNotePresence : IDisposable
             var peers = new List<LivePeer>();
             if (self is not null)
             {
-                peers.Add(new LivePeer(self.Id, self.Name, self.Color, self.Source, self.Role, self.Role == "Viewer" ? "watching" : own.Activity, You: true, Away: away));
+                peers.Add(new LivePeer(self.Id, self.Name ?? "", self.Color ?? "", self.Source, self.Role, self.Role == "Viewer" ? "watching" : own.Activity, You: true, Away: away));
             }
 
             foreach (var item in remote)

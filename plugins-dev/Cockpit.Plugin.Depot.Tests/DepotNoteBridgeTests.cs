@@ -189,7 +189,7 @@ public class DepotNoteBridgeTests
         await hub.Push(new DepotNoteEvent("presence", ["doc-1", "conn-9", DepotAwarenessCodec.Encode([new DepotAwarenessEntry(2113437100, 1, state)])]));
         var you = bridge.Peers[0];
         var sanne = bridge.Peers[1];
-        Assert.Equal(("This Cockpit", true, "Cockpit"), (you.Name, you.You, you.Source));
+        Assert.Equal(("", "", true, "Cockpit"), (you.Name, you.Color, you.You, you.Source));
         Assert.Equal(("Sanne de Vries", "#3fb8c4", "web", "selecting"), (sanne.Name, sanne.Color, sanne.Source, sanne.Activity));
         Assert.Equal((heading, new LiveRange(heading, paragraph)), (sanne.Caret, sanne.Selection));
 

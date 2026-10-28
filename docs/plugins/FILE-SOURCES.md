@@ -127,7 +127,7 @@ A live session that also implements `ILivePresence` shows who else is in the fil
 | `LivePeer` | Meaning |
 |---|---|
 | `Who`, `Name` | A stable person id, and the name to show. The caret flag shows the first word of `Name`. |
-| `Color` | `#rrggbb`, fixed per person. The host draws it as given and never works one out; a peer without a valid colour has no caret. |
+| `Color` | `#rrggbb`, fixed per person. The host draws it as given and never works one out; a peer without a valid colour has no caret and a neutral avatar ring. |
 | `Source`, `Role`, `Activity` | `Cockpit`, `web` or `agent`; for example `Editor`; `editing`, `selecting`, `reading` or `watching`. A Viewer is `watching`. |
 | `You` | This host's own entry. It is listed ("(you)") but not drawn as a remote caret. |
 | `Away` | The source lost them (offline). The avatar, caret and selection fade to 35%. |
@@ -151,4 +151,5 @@ own colour passed on. The note session implements `ILivePresence`: it starts a p
 one client id), reads the hub's `presence` and `left` events, sends its own cursor with `Presence`, and keeps the people in the list,
 dimmed, while it reconnects. A Markdown offset and a Yjs RelativePosition map to each other through the room's mirror, block by block
 (`relativeAtOffset` and `offsetOfRelative` in the bundle). The hub does not send an identity back to its sender and `/cockpit/me` names
-only the user id, so this Cockpit's own entry is "This Cockpit" in the colour the hub's palette gives that id.
+only the user id, so this Cockpit's own entry has no name or colour yet: the host shows "You" with a neutral ring. Both fields are
+optional on the entry and fill in when Depot sends them.
