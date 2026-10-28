@@ -87,7 +87,7 @@ internal sealed class DepotNotesModel : IDisposable
             return null;
         }
 
-        var invitation = _pages.Keys.Select(id => _inbox.PageOf(id)).SelectMany(page => page?.Messages ?? [])
+        var invitation = _inbox.PageOf(connectionId)?.Messages
             .Where(message => message.Kind == DepotInboxKind.NoteInvitation && message.Note?.State == "note"
                 && _Token(message.Note.OpenUrl) == token)
             .OrderByDescending(message => message.CreatedAt).FirstOrDefault();
