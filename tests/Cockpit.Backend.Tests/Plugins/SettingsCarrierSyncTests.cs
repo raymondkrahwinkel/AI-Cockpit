@@ -112,6 +112,10 @@ public sealed class SettingsCarrierSyncTests : IDisposable
             var saved = JsonNode.Parse(File.ReadAllText(statePath)) as JsonObject;
             Assert.NotNull(saved);
             Assert.False(saved.ContainsKey("ProjectIds"));
+            outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+            Assert.NotNull(outgoing);
+            Assert.False(outgoing.ContainsKey("Projects"));
+            Assert.False(outgoing.ContainsKey("CategoryOrder"));
 
             // Removing a local duplicate cannot remove the owner's project.
             _Write(receiver, """{"Projects":[],"Terminal":{"FontSize":18}}""");

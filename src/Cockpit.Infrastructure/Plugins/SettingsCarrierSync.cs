@@ -329,7 +329,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         }
 
         var written = remoteBytes;
-        if (push.Count > 0)
+        if (push.Count > 0 || remoteDocument.ContainsKey("Projects") || remoteDocument.ContainsKey("CategoryOrder"))
         {
             remoteDocument.Remove("Projects");
             remoteDocument.Remove("CategoryOrder");
