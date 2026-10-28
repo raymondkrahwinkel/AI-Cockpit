@@ -248,8 +248,9 @@ function editBlock(index, removed, inserted) {
   const children = [];
   pmDoc.forEach((child, _, i) => children.push(i === index ? made : child));
   const next = pmDoc.copy(Fragment.fromArray(children));
-  updateYFragment(doc, fragment(), next, binding);
-  pmDoc = next;
+  fragment().delete(0, fragment().length);
+  prosemirrorJSONToYXmlFragment(noteSchema(), next.toJSON(), fragment());
+  rebind();
   ranges = ranges.map((range, i) => (i === index ? [start, end + delta] : range && i > index ? [range[0] + delta, range[1] + delta] : range));
   return true;
 }
