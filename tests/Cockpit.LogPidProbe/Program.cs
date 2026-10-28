@@ -31,6 +31,8 @@ internal static class Program
         if (label == "crash")
         {
             LifecycleLog.Use(LoggerFactory.Create(builder => builder.AddProvider(provider)));
+            AppDomain.CurrentDomain.UnhandledException += (_, _) =>
+                LifecycleLog.Write("lifecycle from later crash handler");
             LifecycleLog.Write("lifecycle before managed crash");
             throw new InvalidOperationException("AC-1893 managed crash probe");
         }

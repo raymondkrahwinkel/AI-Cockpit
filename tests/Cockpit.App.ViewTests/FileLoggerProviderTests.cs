@@ -94,6 +94,7 @@ public class FileLoggerProviderTests
             Assert.True(crash.WaitForExit(10_000));
             Assert.NotEqual(0, crash.ExitCode);
             Assert.Contains("lifecycle before managed crash", File.ReadAllText(crashPath));
+            Assert.Contains("lifecycle from later crash handler", File.ReadAllText(crashPath));
         }
         finally
         {

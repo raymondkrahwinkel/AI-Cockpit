@@ -92,7 +92,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private void _OnProcessExit(object? sender, EventArgs args) => Dispose();
 
     // FailFast and hard kills cannot run managed flush hooks; a wedged disk is bounded by DrainBudget.
-    private void _OnUnhandledException(object sender, UnhandledExceptionEventArgs args) => Dispose();
+    private void _OnUnhandledException(object sender, UnhandledExceptionEventArgs args) => Flush();
 
     internal static string RolloverPathFor(string logFilePath)
     {
