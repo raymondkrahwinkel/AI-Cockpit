@@ -129,7 +129,7 @@ public sealed class StartupSequence(TimeProvider? clock = null, TimeSpan? slowAf
         var work = Task.Run(() => step.Run(cancellation.Token));
         try
         {
-            if (!await _FinishesWithinAsync(work, SlowAfter).ConfigureAwait(false))
+            if (!step.AwaitsOperator && !await _FinishesWithinAsync(work, SlowAfter).ConfigureAwait(false))
             {
                 _Move(step, StartupStepState.Slow);
                 if (!step.Essential && !await _FinishesWithinAsync(work, GiveUpAfter - SlowAfter).ConfigureAwait(false))
