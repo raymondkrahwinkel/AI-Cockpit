@@ -275,10 +275,14 @@ internal sealed class MarkdownFileWorkspace : UserControl
             {
                 var snapshot = await _ReadSnapshotAsync().ConfigureAwait(true);
                 _hasBom = snapshot.HasBom;
-                Editor.Text = snapshot.Text;
-                _savedText = Editor.Text;
-                _version = snapshot.Version;
                 _canWrite = snapshot.CanWrite;
+                // Typed into while the read was out: keep that text and the old version, so its save meets the conflict banner.
+                if (!(_loaded && _editing && Editor.Text != _savedText))
+                {
+                    Editor.Text = snapshot.Text;
+                    _savedText = Editor.Text;
+                    _version = snapshot.Version;
+                }
             }
             _loaded = true;
             _editing = _canWrite && (_new || _options.Edit || _editing);
@@ -539,8 +543,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _context.Closed -= _OnClosed;
         _context.Pinned -= _OnPinned;
         _savedSubscription?.Dispose();
+        // Cancelled, not disposed: a save still in flight reads _lifetime.Token, which throws once the source is disposed.
         _lifetime.Cancel();
-        _lifetime.Dispose();
     }
 
     private void _UpdateState()

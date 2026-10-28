@@ -233,7 +233,9 @@ public interface ICockpitUiHost
     /// <summary>
     /// Registers first-refusal handling for transcript links recognized by this plugin.
     /// </summary>
-    void AddLinkHandler(LinkHandlerRegistration registration);
+    void AddLinkHandler(LinkHandlerRegistration registration)
+    {
+    }
 
     /// <summary>
     /// A small "?" that opens <paramref name="article"/> in the help window; invisible when there is no such article.

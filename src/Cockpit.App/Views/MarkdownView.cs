@@ -1045,7 +1045,8 @@ public sealed class MarkdownView : ContentControl
                 continue;
             }
 
-            if (registeredHandlers.FirstOrDefault(candidate => candidate.TryMatch(link.Url, out _, out _)) is { } registered && registered.Handle(link.Url, _Modifiers(e)))
+            if (registeredHandlers.FirstOrDefault(candidate => _Guarded(() => candidate.TryMatch(link.Url, out _, out _))) is { } registered
+                && _Guarded(() => registered.Handle(link.Url, _Modifiers(e))))
             {
             }
             else if (handler is not null && handler(link.Url))
@@ -1070,15 +1071,32 @@ public sealed class MarkdownView : ContentControl
     {
         foreach (var handler in RegisteredLinkHandlers)
         {
-            if (handler.TryMatch(text, out start, out length))
+            int matchStart = 0, matchLength = 0;
+            if (_Guarded(() => handler.TryMatch(text, out matchStart, out matchLength)))
             {
                 match = handler;
+                start = matchStart;
+                length = matchLength;
                 return true;
             }
         }
         match = null;
         start = length = 0;
         return false;
+    }
+
+    // A plugin's link handler runs inside transcript rendering on the UI thread; one that throws counts as no match
+    // rather than breaking the conversation it is drawn in.
+    private static bool _Guarded(Func<bool> pluginCall)
+    {
+        try
+        {
+            return pluginCall();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private static Run _AddRun(InlineTextBlock block, string text)
