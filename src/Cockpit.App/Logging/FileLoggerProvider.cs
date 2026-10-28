@@ -137,6 +137,8 @@ public sealed class FileLoggerProvider : ILoggerProvider
             _queue.AddLast(new LogEntry(level, line + Environment.NewLine));
             Monitor.PulseAll(_queueGate);
         }
+
+        Flush();
     }
 
     private void _WriteQueued()
