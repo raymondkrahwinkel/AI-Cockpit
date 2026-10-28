@@ -13,6 +13,12 @@ public sealed record ModelSnapshot(
     DateTimeOffset FetchedAt,
     TimeSpan TimeToLive)
 {
+    public string? CanonicalSlug { get; init; }
+
+    public string? AliasTarget { get; init; }
+
+    public string? HuggingFaceId { get; init; }
+
     public ModelPrice PriceAt(DateTimeOffset utc) => PriceWindows.FirstOrDefault(window => window.IsActiveAt(utc))?.Price ?? Price;
 }
 

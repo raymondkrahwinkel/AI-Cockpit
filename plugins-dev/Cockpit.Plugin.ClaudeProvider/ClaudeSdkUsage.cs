@@ -19,12 +19,15 @@ internal sealed class ClaudeSdkUsage
     private readonly Action<PluginModelObservation>? _recordObservation;
 
     private double? _contextUsedPercent;
+    private string? _model;
 
     private volatile PluginSessionStatus? _status;
 
     // The latest snapshot, or `null` while the CLI has reported neither figure — which is also
     // what a session reports before its first turn settles.
     public PluginSessionStatus? Status => _status;
+
+    public void ObserveModel(string? model) => _model = string.IsNullOrWhiteSpace(model) ? null : model;
 
     public ClaudeSdkUsage(
         ClaudeModelIntelligence? intelligence = null,
@@ -59,7 +62,7 @@ internal sealed class ClaudeSdkUsage
             }
         }
 
-        _intelligence?.ObserveWindows(windows.Values, "Claude get_usage", DateTimeOffset.UtcNow, _recordObservation);
+        _intelligence?.ObserveWindows(windows.Values, "Claude get_usage", DateTimeOffset.UtcNow, _recordObservation, _model);
     }
 
     // Folds in a `get_context_usage` reply — the CLI's own `percentage`, the figure `/context` prints. A reply
@@ -104,12 +107,12 @@ internal sealed class ClaudeSdkUsage
 
         if (window is not null)
         {
-            _intelligence?.ObserveWindows([window], "Claude rate_limit_event", asOf, _recordObservation);
+            _intelligence?.ObserveWindows([window], "Claude rate_limit_event", asOf, _recordObservation, _model);
         }
 
         if (_IsRateLimitRefusal(root))
         {
-            _recordObservation?.Invoke(new PluginModelObservation(ClaudeProviderIds.Claude, PluginModelObservationKind.RateLimitRefusal, asOf));
+            _recordObservation?.Invoke(new PluginModelObservation(ClaudeProviderIds.Claude, PluginModelObservationKind.RateLimitRefusal, asOf) { Model = _model });
         }
     }
 

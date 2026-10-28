@@ -76,11 +76,14 @@ internal sealed class ModelPictureReader(
     {
         var estimate = model is null ? null : reading?.Models.FirstOrDefault(candidate => string.Equals(candidate.Model, model, StringComparison.Ordinal));
         var reference = estimate?.PublicModelRef ?? model;
-        var snapshot = _Match(reference, snapshots);
-        var publicRef = snapshot?.Id ?? reference;
+        var match = _Match(reference, snapshots);
+        var snapshot = match.Snapshot;
+        var publicRef = snapshot?.AliasTarget is { } target
+            ? $"{target} via {snapshot.Id}"
+            : snapshot?.Id ?? reference;
         var unmatched = reference is null ? "the provider names no public model id for it"
             : snapshots.Count == 0 ? "no public model data: OpenRouter /api/v1/models was not reachable and nothing is cached"
-            : snapshot is null ? $"no public match for {reference}"
+            : snapshot is null ? $"geen match voor {reference}; dichtstbijzijnde: {match.Closest ?? "geen kandidaat"}"
             : null;
         var providerName = profile.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : profile.Provider.ToString();
 
@@ -88,10 +91,9 @@ internal sealed class ModelPictureReader(
 
         // A provider's own price wins over the public one for the same model; its source says which one you got.
         ModelPriceFact? price = null;
-        if (profile.ProviderConfig is LmStudioConfig or OllamaConfig)
+        if (profile.ProviderConfig is LmStudioConfig or OllamaConfig || reading?.IsSelfHosted == true)
         {
-            // A model on this machine costs nothing per token; the public cloud price of the same model is not what it costs here.
-            price = new ModelPriceFact(0m, 0m, new Sourced("local model on this machine", now, TimeSpan.MaxValue));
+            price = new ModelPriceFact(null, null, new Sourced("zelf gehost / eigen hardware", now, TimeSpan.MaxValue));
         }
         else if (estimate is { Source: { } estimateSource } && (estimate.EstimatedInputUsdPerMillionTokens is not null || estimate.EstimatedOutputUsdPerMillionTokens is not null))
         {
@@ -144,24 +146,70 @@ internal sealed class ModelPictureReader(
             [.. (reading?.Quota ?? [])],
             publicSource,
             own,
+            reading?.IsSelfHosted == true || profile.ProviderConfig is LmStudioConfig or OllamaConfig,
             unmatched);
     }
 
-    // Exact public id first; a bare provider id joins the one public id ending in "/<id>", never a pick between several.
-    private static ModelSnapshot? _Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
+    private static ModelMatch _Match(string? reference, IReadOnlyDictionary<string, ModelSnapshot> snapshots)
     {
-        if (reference is null)
+        if (string.IsNullOrWhiteSpace(reference))
         {
-            return null;
+            return new(null, null);
         }
 
         if (snapshots.TryGetValue(reference, out var exact))
         {
-            return exact;
+            return new(exact, null);
         }
 
-        var candidates = snapshots.Values.Where(snapshot => snapshot.Id.EndsWith("/" + reference, StringComparison.Ordinal)).Take(2).ToArray();
-        return candidates.Length == 1 ? candidates[0] : null;
+        var normalized = _Normalize(reference);
+        var candidates = snapshots.Values
+            .Where(snapshot => _Keys(snapshot).Any(key => key == normalized || key.EndsWith("/" + normalized, StringComparison.Ordinal) || normalized.EndsWith("/" + key, StringComparison.Ordinal)))
+            .GroupBy(snapshot => snapshot.AliasTarget ?? snapshot.Id, StringComparer.Ordinal)
+            .Select(group => group.OrderBy(snapshot => snapshot.AliasTarget is null ? 0 : 1).First())
+            .Take(2)
+            .ToArray();
+        if (candidates.Length == 1)
+        {
+            return new(candidates[0], null);
+        }
+
+        var closest = snapshots.Values
+            .OrderBy(snapshot => _Distance(normalized, _Normalize(snapshot.Id)))
+            .ThenBy(snapshot => snapshot.Id, StringComparer.Ordinal)
+            .FirstOrDefault()?.Id;
+        return new(null, closest);
+    }
+
+    private static IEnumerable<string> _Keys(ModelSnapshot snapshot) =>
+        new[] { snapshot.Id, snapshot.CanonicalSlug, snapshot.HuggingFaceId }
+            .OfType<string>()
+            .Select(_Normalize);
+
+    private static string _Normalize(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant().TrimStart('~');
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @":(?:batch|free|latest)$", string.Empty);
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"(?:[-._]q\d(?:_[a-z0-9]+)+|[-._]gguf|-\d{8})$", string.Empty);
+        return normalized.Replace('.', '-');
+    }
+
+    private static int _Distance(string left, string right)
+    {
+        var previous = Enumerable.Range(0, right.Length + 1).ToArray();
+        for (var i = 1; i <= left.Length; i++)
+        {
+            var current = new int[right.Length + 1];
+            current[0] = i;
+            for (var j = 1; j <= right.Length; j++)
+            {
+                current[j] = Math.Min(Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + (left[i - 1] == right[j - 1] ? 0 : 1));
+            }
+
+            previous = current;
+        }
+
+        return previous[right.Length];
     }
 
     // Wall-clock window in its own IANA zone; one running past midnight belongs to the day it opened.
@@ -190,6 +238,8 @@ internal sealed class ModelPictureReader(
 }
 
 internal sealed record ModelPicture(DateTimeOffset At, IReadOnlyList<ModelPictureRow> Rows);
+
+internal sealed record ModelMatch(ModelSnapshot? Snapshot, string? Closest);
 
 internal sealed record Sourced(string Name, DateTimeOffset AsOf, TimeSpan ValidFor)
 {
@@ -221,6 +271,7 @@ internal sealed record ModelPictureRow(
     IReadOnlyList<PluginQuotaState> Quota,
     Sourced? PublicSource,
     IReadOnlyList<ModelDerivedFact> Derived,
+    bool SelfHosted,
     string? Unmatched = null);
 
 internal sealed record ModelDerivedFact(DerivedPattern Pattern, Sourced Source);
