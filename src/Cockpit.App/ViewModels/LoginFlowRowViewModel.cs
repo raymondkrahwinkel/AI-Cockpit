@@ -13,6 +13,21 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
 
     private readonly ILoginFlow _flow;
     private readonly CancellationTokenSource _cts = new();
+    private bool _disposed;
+
+    public Func<Task>? RestartSignIn { get; init; }
+
+    public bool CanRestart => RestartSignIn is not null;
+
+    [RelayCommand(CanExecute = nameof(CanRestart))]
+    private async Task RestartAsync()
+    {
+        await DisposeAsync();
+        if (RestartSignIn is { } restart)
+        {
+            await restart();
+        }
+    }
 
     [ObservableProperty]
     private string _message = "Starting…";
@@ -194,6 +209,12 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         await _cts.CancelAsync();
         await _flow.DisposeAsync();
         _cts.Dispose();

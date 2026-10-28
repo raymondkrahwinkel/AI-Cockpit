@@ -429,7 +429,14 @@ public partial class EditableProfileViewModel : ViewModelBase
             return;
         }
 
-        var loginFlow = new LoginFlowRowViewModel(flow);
+        var loginFlow = new LoginFlowRowViewModel(flow)
+        {
+            RestartSignIn = () =>
+            {
+                Login();
+                return Task.CompletedTask;
+            },
+        };
         loginFlow.Completed = succeeded =>
         {
             if (succeeded)
