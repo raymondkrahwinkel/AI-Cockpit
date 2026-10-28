@@ -14,6 +14,16 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Files;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions.Files;
+using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.UI.Files;
+using Cockpit.Plugins.Abstractions.Channels;
+using Microsoft.Extensions.Logging.Abstractions;
+using Avalonia.Input;
+using System.Text;
+using System.Text.Json;
 
 namespace Cockpit.App.ViewTests;
 
@@ -44,6 +54,7 @@ public sealed class WorkspacePopOutTests
     [Fact]
     public Task PopOutAndDockBack_MoveTheSameBody_PinAPreview_AndTheTabLeavesAndComesBackToItsPlace() => HeadlessAvalonia.RunAsync(async () =>
     {
+        await _FileWorkspaceFlowAsync();
         var workspaces = _Workspaces();
         var host = new WorkspaceWindowHost(workspaces, _ => Task.CompletedTask, () => null);
         host.Start();
@@ -80,6 +91,109 @@ public sealed class WorkspacePopOutTests
         Assert.Same(body, workspaces.ActivePluginBody);
         Assert.False(workspaces.Active!.IsPreview);
     });
+
+    private static async Task _FileWorkspaceFlowAsync()
+    {
+        var source = new FileSource();
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+        using var registration = Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), source);
+        var client = new FileSourceChannelClient(new Channel(hub));
+        var options = new FileWorkspaceOpenOptions(new FileRef("c1", "doc", "draft.md"), "draft", "draft.md",
+            "Depot / Work / Cockpit", Edit: true, CreateNew: true, InitialText: "# Draft\n\n");
+        var discard = false;
+        var confirmations = 0;
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("test.file", "Markdown", context =>
+            new MarkdownFileWorkspace(context, options, client, () =>
+            {
+                confirmations++;
+                return Task.FromResult(discard);
+            })) { CanFloat = true }, new NoStorage(), NullCockpitSessionObserver.Instance);
+        var workspaces = new WorkspacesViewModel(store: null, workspaceTypes: registry);
+        var host = new WorkspaceWindowHost(workspaces, id => workspaces.CloseWorkspaceCommand.ExecuteAsync(id), () => null);
+        host.Start();
+        try
+        {
+            await workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("draft", "draft.md"));
+            var workspace = workspaces.Active ?? throw new InvalidOperationException("No file workspace opened.");
+            var body = workspaces.ActivePluginBody as MarkdownFileWorkspace ?? throw new InvalidOperationException("The host file workspace is missing.");
+            await body.Ready;
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "typed");
+            var document = body.Editor.TextEditor.Document;
+            var undo = document.UndoStack;
+            Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
+            body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
+            Assert.Equal("# Draft\n\ntyped", source.Text);
+            Assert.Null(workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " while floating");
+            await workspaces.PopOutAsync(workspace.Id);
+            Dispatcher.UIThread.RunJobs();
+            Assert.NotNull(host.WindowFor(workspace.Id));
+            await host.DockBackAsync(workspace.Id);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Same(body, workspaces.ActivePluginBody);
+            Assert.Same(document, body.Editor.TextEditor.Document);
+            Assert.Same(undo, body.Editor.TextEditor.Document.UndoStack);
+            Assert.Equal("# Draft\n\ntyped while floating", body.Editor.Text);
+            source.ChangeFromOutside("# someone else");
+            await body.SaveAsync();
+            Assert.Equal("# someone else", source.Text);
+            Assert.Equal("# Draft\n\ntyped while floating", body.Editor.Text);
+            await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspace.Id);
+            Assert.Contains(workspaces.Settings.Workspaces, entry => entry.Id == workspace.Id);
+            await workspaces.PopOutAsync(workspace.Id);
+            var floating = host.WindowFor(workspace.Id) ?? throw new InvalidOperationException("The file window is missing.");
+            floating.Close();
+            Dispatcher.UIThread.RunJobs();
+            Assert.NotNull(host.WindowFor(workspace.Id));
+            discard = true;
+            await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspace.Id);
+            Assert.DoesNotContain(workspaces.Settings.Workspaces, entry => entry.Id == workspace.Id);
+            Assert.Equal(3, confirmations);
+            source.CanWrite = false;
+            options = options with { CreateNew = false, InitialText = "" };
+            await workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("viewer", "draft.md"));
+            var viewer = workspaces.ActivePluginBody as MarkdownFileWorkspace ?? throw new InvalidOperationException("The viewer workspace is missing.");
+            await viewer.Ready;
+            Assert.True(viewer.Editor.IsReadOnly);
+            viewer.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "not allowed" });
+            Assert.Equal("# someone else", viewer.Editor.Text);
+        }
+        finally
+        {
+            host.CloseWithTheCockpit();
+        }
+    }
+
+    private sealed class Channel(PluginChannelHub hub) : IPluginUiChannel
+    {
+        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+            hub.InvokeAsync("files", action, payload, cancellationToken);
+        public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => hub.Subscribe("files", name, handler);
+    }
+
+    private sealed class FileSource : IFileSourceProvider, IFileSource
+    {
+        public string? Text { get; private set; }
+        public bool CanWrite { get; set; } = true;
+        private int _version;
+        public IReadOnlyList<FileConnection> Connections => [new("c1", "Fake", "memory", false)];
+        public FileSourceCapabilities Capabilities => new(CanWrite, FileSourceChannel.MaxContentBytes);
+        public event EventHandler? ConnectionsChanged { add { } remove { } }
+        public IFileSource Open(string connectionId) => this;
+        public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) => Task.FromResult(
+            new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(Text ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "Missing file."))),
+                $"v{_version}", CanWrite: CanWrite));
+        public async Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
+        {
+            if (!CanWrite) throw new FileSourceException(FileSourceErrorKind.Forbidden, "Read-only file.");
+            if (mustNotExist ? Text is not null : ifVersion != $"v{_version}") return new(FileWriteStatus.Conflict, $"v{_version}");
+            using var reader = new StreamReader(content, Encoding.UTF8, leaveOpen: true);
+            Text = await reader.ReadToEndAsync(cancellationToken);
+            return new(FileWriteStatus.Written, $"v{++_version}");
+        }
+        public void ChangeFromOutside(string text) { Text = text; _version++; }
+    }
 
     // Layer 2, view.
     [Fact]
