@@ -52,8 +52,11 @@ internal static class CodexModelIntelligence
 
             return new PluginModelIntelligence
             {
-                // Codex reports these ids live; no price, modifier, or alias is invented here.
-                Models = listing.Ids.Select(id => new PluginModelCostEstimate(id) { PublicModelRef = id }).ToArray(),
+                // Codex reports bare model ids; public facts use the vendor-qualified OpenRouter id.
+                Models = listing.Ids.Select(id => new PluginModelCostEstimate(id)
+                {
+                    PublicModelRef = id.Contains('/', StringComparison.Ordinal) ? id : "openai/" + id,
+                }).ToArray(),
                 Quota = quota,
             };
         }

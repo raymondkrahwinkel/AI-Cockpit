@@ -130,12 +130,12 @@ public sealed class ModelOptionsTests
                 Models = [
                     new PluginModelCostEstimate("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
                     new PluginModelCostEstimate("sonnet") { PublicModelRef = "anthropic/claude-sonnet-5.5" },
-                    new PluginModelCostEstimate("fable") { PublicModelRef = "fable" },
+                    new PluginModelCostEstimate("fable") { PublicModelRef = "~anthropic/claude-fable-latest" },
                     new PluginModelCostEstimate("missing") { PublicModelRef = "anthropic/missing" }],
             });
             _provider.ReadAsync("Codex", Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
             {
-                Models = [new PluginModelCostEstimate("gpt-6.1-sol") { PublicModelRef = "gpt-6.1-sol" }],
+                Models = [new PluginModelCostEstimate("gpt-6.1-sol") { PublicModelRef = "openai/gpt-6.1-sol" }],
             });
             McpRequestContext.Set(AssistantIdentity.PaneId);
             var tools = new AssistantReadMcpTools(
@@ -149,19 +149,23 @@ public sealed class ModelOptionsTests
             Assert.Equal(4m, (decimal)opus["price"]!["inputPerMTokens"]!);
             Assert.Equal("OpenRouter /api/v1/models", (string)opus["price"]!["fact"]!["source"]!);
             Assert.False((bool)opus["price"]!["fact"]!["stale"]!);
-            foreach (var (model, reference, input, quality) in new[]
-            {
-                ("sonnet", "anthropic/claude-sonnet-5.5", 2m, 56m),
-                ("gpt-6.1-sol", "openai/gpt-6.1-sol", 2m, 76.7m),
-                ("fable", "~anthropic/claude-fable-latest", 10m, 53.4m),
-            })
-            {
-                var row = models.Single(row => row?["model"]?.GetValue<string>() == model)
-                    ?? throw new InvalidOperationException("Missing model");
-                Assert.Equal(reference, row["publicModelRef"]?.GetValue<string>());
-                Assert.Equal(input, row["price"]?["inputPerMTokens"]?.GetValue<decimal>());
-                Assert.Equal(quality, row["quality"]?["index"]?.GetValue<decimal>());
-            }
+            var sonnet = models.Single(row => row?["model"]?.GetValue<string>() == "sonnet")
+                ?? throw new InvalidOperationException("Missing Sonnet");
+            Assert.Equal("anthropic/claude-sonnet-5.5", sonnet["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(2m, sonnet["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(56m, sonnet["quality"]?["index"]?.GetValue<decimal>());
+
+            var codex = models.Single(row => row?["model"]?.GetValue<string>() == "gpt-6.1-sol")
+                ?? throw new InvalidOperationException("Missing Codex");
+            Assert.Equal("openai/gpt-6.1-sol", codex["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(2m, codex["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(76.7m, codex["quality"]?["index"]?.GetValue<decimal>());
+
+            var fable = models.Single(row => row?["model"]?.GetValue<string>() == "fable")
+                ?? throw new InvalidOperationException("Missing Fable");
+            Assert.Equal("~anthropic/claude-fable-latest", fable["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(10m, fable["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(53.4m, fable["quality"]?["index"]?.GetValue<decimal>());
 
             var missing = models.Single(row => row?["model"]?.GetValue<string>() == "missing")
                 ?? throw new InvalidOperationException("Missing unknown model");
