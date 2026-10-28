@@ -208,6 +208,16 @@
                             </Grid>
                         </ListBoxItem>
 
+                        <ListBoxItem Tag="sync">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Grid.Column="0" Kind="Sync" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Sync" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge">
+                                    <TextBlock/>
+                                </Border>
+                            </Grid>
+                        </ListBoxItem>
+
                         <ListBoxItem Tag="backup">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Archive" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -2114,6 +2124,181 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- ================= SYNC (AC-1846) ================= -->
+                <ScrollViewer Tag="sync"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=sync}">
+                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8" DataContext="{Binding Sync}" x:DataType="vm:SyncOptionsViewModel">
+                        <TextBlock Text="Sync" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Classes="optionsHint"
+                                   Text="Choose which servers this cockpit keeps in step — tick one or more per category. Nothing here is sent anywhere you haven't ticked."/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <Border IsVisible="{Binding ShowBanner}" Padding="12,10"
+                                Background="{DynamicResource CockpitStatusDoneChipTintBrush}"
+                                BorderBrush="{DynamicResource CockpitStatusDoneRingTintBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CockpitControlRadius}">
+                            <DockPanel>
+                                <materialIcons:MaterialIcon DockPanel.Dock="Left" Kind="CheckCircleOutline" Width="16" Height="16"
+                                                            VerticalAlignment="Top" Margin="0,1,10,0"
+                                                            Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                <TextBlock TextWrapping="Wrap" FontSize="12">
+                                    <Run Text="Nothing has changed." FontWeight="SemiBold"/>
+                                    <Run Text="Until you change a choice below, everything keeps going to"/>
+                                    <Run Text="{Binding BannerServers}" FontWeight="SemiBold"/>
+                                    <Run Text="— the server that was already set to carry your settings. Turning a row off never removes anything from the server."/>
+                                </TextBlock>
+                            </DockPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding Offers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SyncOfferViewModel">
+                                    <Border Classes="errorCard informational" Padding="12,8" Margin="0,0,0,6">
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Classes="Accent Compact" Content="Sync everything" Command="{Binding AcceptCommand}"/>
+                                            <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontSize="12"/>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="1. WHAT SYNCS"/>
+                        <Border Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CockpitControlRadius}">
+                            <StackPanel>
+                                <Grid ColumnDefinitions="*,260" Margin="14,8">
+                                    <TextBlock Grid.Column="0" Text="WHAT" Classes="optionsSectionHeader" Margin="0"/>
+                                    <TextBlock Grid.Column="1" Text="SYNCED" Classes="optionsSectionHeader" Margin="0"/>
+                                </Grid>
+                                <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}"/>
+                                <ItemsControl ItemsSource="{Binding Rows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SyncCategoryRowViewModel">
+                                            <Border BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1" Padding="14,9">
+                                                <Grid ColumnDefinitions="*,260">
+                                                    <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Description}" Classes="optionsHint"/>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalAlignment="Center"
+                                                            AutomationProperties.Name="{Binding Title}">
+                                                        <Button.Flyout>
+                                                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                                                <StackPanel Spacing="4" MinWidth="236">
+                                                                    <ItemsControl ItemsSource="{Binding Servers}">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate x:DataType="vm:SyncServerTickViewModel">
+                                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                                    <CheckBox Grid.Column="0" Content="{Binding Server.Name}" IsChecked="{Binding IsTicked, Mode=TwoWay}" IsEnabled="{Binding IsEnabled}"/>
+                                                                                    <TextBlock Grid.Column="1" Text="{Binding Tag}" Classes="optionsHint" VerticalAlignment="Center"/>
+                                                                                </Grid>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                    <TextBlock Classes="optionsHint" Text="Every ticked server is its own sync partner. None ticked = not synced."/>
+                                                                </StackPanel>
+                                                            </Flyout>
+                                                        </Button.Flyout>
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Grid.Column="0" Text="{Binding Summary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                            <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Border BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1" Padding="14,9">
+                                    <Grid ColumnDefinitions="*,260">
+                                        <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="Backups" FontWeight="SemiBold"/>
+                                                <Border Classes="syncPill"><TextBlock Text="Options › Backup"/></Border>
+                                            </StackPanel>
+                                            <TextBlock Classes="optionsHint" Text="Archives you create or schedule go to the target chosen there. Not a setting: nothing is kept in step."/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding BackupTargetText}" Classes="optionsHint" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <Border Padding="14,9">
+                                    <Grid ColumnDefinitions="*,260">
+                                        <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="Projects" FontWeight="SemiBold"/>
+                                                <Border Classes="syncPill"><TextBlock Text="per project"/></Border>
+                                            </StackPanel>
+                                            <TextBlock Classes="optionsHint" Text="Name, repository, default profile, behaviour prompt — chosen on each project."/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="Per project" Classes="optionsHint" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding Notes}" Margin="0,6,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SyncNote">
+                                    <Border Classes="errorCard informational" Padding="12,8" Margin="0,0,0,6">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Left" Classes="errorIcon" Kind="InformationOutline" Width="16" Height="16"
+                                                                        VerticalAlignment="Top" Margin="0,1,10,0"/>
+                                            <TextBlock TextWrapping="Wrap" FontSize="12">
+                                                <Run Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                <Run Text="{Binding Text}"/>
+                                            </TextBlock>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="optionsHint"
+                                   Text="Never synced, whatever you choose: API keys and tokens, folders and file paths on this machine, and plugin data. Applies after restart, like the other pages."/>
+
+                        <TextBlock Classes="optionsSectionHeader" Text="2. PER SERVER"/>
+                        <ItemsControl ItemsSource="{Binding Cards}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SyncServerCardViewModel">
+                                    <Border Width="268" Margin="0,0,10,10" Padding="14,12"
+                                            Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
+                                            CornerRadius="{StaticResource CockpitControlRadius}"
+                                            Opacity="{Binding Opacity}">
+                                        <StackPanel Spacing="6">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0" Text="{Binding Server.Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <Border Grid.Column="1" Classes="syncPill"><TextBlock Text="{Binding Pill}"/></Border>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Server.Address}" FontSize="11" Foreground="{DynamicResource CockpitClickablePathFgBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock IsVisible="{Binding IsSignedOut}" Classes="optionsHint" Text="{Binding SignedOutHint}"/>
+                                            <ItemsControl ItemsSource="{Binding Lines}" IsVisible="{Binding HasLines}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SyncCardLine">
+                                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                                            <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="12"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding Detail}" Classes="optionsHint" HorizontalAlignment="Right"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock IsVisible="{Binding HasStanding}" Classes="optionsHint" Text="{Binding Standing}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="optionsHint"
+                                   Text="A category can sit on several servers; each is an independent partner with its own last-seen state per key. If two servers disagree about a key you get a choice — never a silent merge."/>
                     </StackPanel>
                 </ScrollViewer>
 

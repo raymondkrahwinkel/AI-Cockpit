@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **Options › Sync.** One page decides which server each category of settings (profiles, plugins, notifications, shortcuts, session behaviour, usage, appearance, updates) is kept in step with: tick one or more per category, nothing ticked stays on this machine. A card per server shows what it receives and when it last synced; unticking never removes anything from the server. A settings conflict between two servers now shows one card per server (AC-1846).
 - added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
   4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;
