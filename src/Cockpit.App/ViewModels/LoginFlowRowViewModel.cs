@@ -2,17 +2,26 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Sessions;
+using System.Text.RegularExpressions;
 
 namespace Cockpit.App.ViewModels;
 
 // AC-713: a running `ILoginFlow`, rendered inline wherever it was started — one place a login ever plays out.
 public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposable
 {
+    private static readonly Regex DeviceCodePattern = new(@"\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b", RegexOptions.Compiled);
+
     private readonly ILoginFlow _flow;
     private readonly CancellationTokenSource _cts = new();
 
     [ObservableProperty]
     private string _message = "Starting…";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDeviceCode))]
+    private string _deviceCode = string.Empty;
+
+    public bool HasDeviceCode => DeviceCode.Length > 0;
 
     [ObservableProperty]
     private Uri? _linkToOpen;
@@ -112,6 +121,10 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
             await foreach (var step in _flow.Steps.WithCancellation(_cts.Token))
             {
                 Message = step.Message;
+                if (!step.AwaitsInput && DeviceCodePattern.Match(step.Message) is { Success: true } code)
+                {
+                    DeviceCode = code.Value;
+                }
                 // AC-731: sticky — a later step that carries no link (e.g. the CLI's own "paste code" prompt)
                 // must not blank out a link the operator has not opened yet.
                 if (step.LinkToOpen is not null)
