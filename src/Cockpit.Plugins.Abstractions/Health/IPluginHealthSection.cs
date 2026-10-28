@@ -11,7 +11,9 @@ public interface IPluginHealthSection
     /// </summary>
     string Name { get; }
 
-    // AC-1815: optional integrations report degradation without failing the container probe.
+    /// <summary>
+    /// Whether an unhealthy read fails the container probe (/healthz 503). Optional integrations leave this false and only degrade the status.
+    /// </summary>
     bool IsEssential => false;
 
     /// <summary>
