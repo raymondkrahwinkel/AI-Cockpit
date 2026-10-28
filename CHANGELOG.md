@@ -32,7 +32,15 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
-- added: **a save conflict in the Markdown editor no longer loses your text.** When the file changed in Depot since you opened it, nothing is written and a banner offers Compare (one column, red for lines only in Depot, green for lines only in yours, with who changed them), Reload, Merge (their new lines and yours, yours first where both changed the same lines) and Overwrite with mine. Depot files now also report who last changed them when Depot says so (plugin SDK 3.44.0, Depot plugin 0.30.0).
+- added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
+
+- added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without
+  a title it shows one line, as before. The startup toast now names up to three of what came in, each with its source,
+  and says "+N more" for the rest. The panel groups its rows under "Still open from your last session", "Today" and
+  "Earlier", and each group has its own **Clear read**, which removes only what you have read. The source tag shows the
+  plugin's own icon. Plugins set the title with `PluginNotification.Title` (plugin SDK 3.41.0, Cockpit 0.132.0).
+
+- added: **a save conflict in the Markdown editor no longer loses your text.** When the file changed in Depot since you opened it, nothing is written and a banner offers Compare (one column, red for lines only in Depot, green for lines only in yours, with who changed them), Reload, Merge (their new lines and yours, yours first where both changed the same lines) and Overwrite with mine. Depot files now also report who last changed them when Depot says so (plugin SDK 3.45.0, Depot plugin 0.30.0).
 - added: **preview tabs and one tab per item for plugin workspaces.** A plugin can open a workspace for one item (a file,
   say): opening the same item again brings its tab forward instead of adding another. A preview tab has an italic title and a
   "preview" label, and the next preview replaces it in the same place; double-click it to keep it open. A plugin can also set
@@ -369,6 +377,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the assistant's conversation no longer goes blank or jumps while you scroll (AC-1880).** Scrolling through
+  a long conversation, also while a reply streamed in and most of all since threads put short status lines beside
+  long replies, could show an empty pane for a moment and pull the view back. A row the window has not shown yet
+  now keeps the height it was first estimated at until it is drawn, so the rows above where you read no longer
+  move under you. The same holds in a session's transcript.
 - fixed: **the Projects page shows every connected Depot again.** A Depot whose team projects were all added or
   hidden already, or whose list could not be refreshed, used to vanish from "From your team". Each connection now keeps
   its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"

@@ -3130,7 +3130,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        var loginFlow = new LoginFlowRowViewModel(flow);
+        var loginFlow = new LoginFlowRowViewModel(flow)
+        {
+            RestartSignIn = () =>
+            {
+                _StartLoginFlow(entry);
+                return Task.CompletedTask;
+            },
+        };
         // A success is the CLI itself just reporting it — clear the bar now rather than wait for the poll's own
         // next tick (up to a minute away) to re-read a cache this flow just made stale.
         loginFlow.Completed = succeeded =>

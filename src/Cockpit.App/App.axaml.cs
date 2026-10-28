@@ -197,6 +197,7 @@ public partial class App : Application
         try
         {
             await startup.RunPendingAsync();
+            await Dispatcher.UIThread.InvokeAsync(() => _UnlockInSplashAsync(startup));
             await Dispatcher.UIThread.InvokeAsync(() => _BeginCockpit(desktop));
         }
         catch (Exception exception)
@@ -220,11 +221,23 @@ public partial class App : Application
         _splash = null;
     }
 
-    // The unlock window and the wizard are the operator's to answer, so the splash gives way at once.
-    private void _DismissSplash()
+    private async Task _UnlockInSplashAsync(StartupSequence startup)
     {
-        _splash?.Close();
-        _splash = null;
+        var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
+        if (_splash is not { } splash || _splashViewModel is not { } model || !_IsLockedAtStartup(protection))
+        {
+            return;
+        }
+
+        var unlock = new UnlockViewModel(protection);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        unlock.Unlocked += (_, _) => completed.TrySetResult();
+        startup.AddOperatorStep("Unlocking…", _ => completed.Task);
+        model.BeginUnlock(unlock);
+        splash.TakeFocus();
+        await startup.RunPendingAsync();
+        model.EndUnlock();
+        await _YieldToPaintAsync();
     }
 
     // The main window shows beneath the splash only once the steps are done and the minimum hold has passed.
@@ -246,6 +259,7 @@ public partial class App : Application
         finally
         {
             _mainWindow?.Show();
+            _StartPlanners();
             _splash = null;
             if (splash is not null)
             {
@@ -380,6 +394,8 @@ public partial class App : Application
 
         // Avalonia auto-shows only the first MainWindow; after startup unlock, this replacement needs Show().
         window.Show();
+        _splash?.Close();
+        _splash = null;
     }
 
     // Use the settings-store retry for concurrent saves (review #9). An unreadable file falls through to normal
@@ -413,12 +429,6 @@ public partial class App : Application
         };
 
         desktop.MainWindow = window;
-
-        if (_splash is not null)
-        {
-            window.Show();
-            _DismissSplash();
-        }
     }
 
     // Locks only the running cockpit UI; the in-memory key and agents remain active (AC-5). The coordinator provides
@@ -493,10 +503,10 @@ public partial class App : Application
             return;
         }
 
-        _ = _LogIfFaultedAsync(started);
+        _ = _LogIfFaultedAsync(started, desktop);
     }
 
-    private static async Task _LogIfFaultedAsync(Task started)
+    private async Task _LogIfFaultedAsync(Task started, IClassicDesktopStyleApplicationLifetime desktop)
     {
         try
         {
@@ -505,6 +515,15 @@ public partial class App : Application
         catch (Exception exception)
         {
             Program.Services.GetRequiredService<ILogger<App>>().LogError(exception, "Starting the cockpit failed after the splash was up.");
+
+            if (_splash is not null)
+            {
+                _ReportStartFailed(desktop, exception);
+                return;
+            }
+
+            // The start failed before it reached its own planner start (AC-1889); the window is up, so start them here.
+            _StartPlanners();
 
             // A skeleton that never clears would read as a hang; show what there is instead.
             if (Current is App { _mainWindow.DataContext: CockpitViewModel cockpit })
@@ -685,10 +704,6 @@ public partial class App : Application
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
         _ = _StartScheduledResumesAsync(cockpitViewModel);
 
-        // AC-1381: the planners the backend owns (AC-1380), started at the moment they always were: after the startup
-        // reconcile Program ran, and ahead of the session restore below.
-        Program.Services.GetRequiredService<CockpitBackend>().StartPlanners();
-
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
         var thresholdsLoaded = Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore
@@ -738,7 +753,17 @@ public partial class App : Application
         {
             _ = _FinishSplashAsync(sequence);
         }
+        else
+        {
+            _StartPlanners();
+        }
     }
+
+    // AC-1889: the backend's planners (AC-1380, AC-1381) start once the main window is shown, off the UI thread. Nothing
+    // before Show or the session restore needs them: the worktree reconcile gate comes from Start, and the crash-net
+    // sweep first ticks a quarter of an hour on. The recorder and the wake schedule begin a moment later than before.
+    private static void _StartPlanners() =>
+        _ = Program.Services.GetRequiredService<CockpitBackend>().StartPlannersInBackgroundAsync();
 
     // The assistant's standing parts: its hotkey, its host on the cockpit and the chip. AC-1422: internal so the
     // journeys start the assistant the way the cockpit does.

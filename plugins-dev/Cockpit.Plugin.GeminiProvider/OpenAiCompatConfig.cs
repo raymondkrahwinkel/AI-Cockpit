@@ -9,7 +9,7 @@ namespace Cockpit.Plugin.GeminiProvider;
 // registers (Gemini and OpenAI) — they differ only in which base URL a profile carries.
 // AC-1489: `TurnLimits` is the optional `turnLimits` object the driver bounds its turns with; opaque here, so the
 // config view carries it through a save untouched.
-internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, int? TimeoutSeconds = null, JsonElement? TurnLimits = null)
+internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string BaseUrl, int? TimeoutSeconds = null, JsonElement? TurnLimits = null, bool IsSelfHosted = false)
 {
     // AC-1344: the OpenAI SDK's own NetworkTimeout default (100s) is too short for a reasoning model that
     // "thinks" before its first token on a remote gateway (measured: Hetzner Inference, Qwen3.8-27B, timed

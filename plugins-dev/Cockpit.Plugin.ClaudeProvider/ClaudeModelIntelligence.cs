@@ -16,7 +16,8 @@ internal sealed class ClaudeModelIntelligence
         IEnumerable<PluginRateLimitWindow> windows,
         string sourceName,
         DateTimeOffset asOf,
-        Action<PluginModelObservation>? recordObservation)
+        Action<PluginModelObservation>? recordObservation,
+        string? model = null)
     {
         var source = new PluginFactSource(sourceName, asOf, QuotaValidFor);
         foreach (var window in windows)
@@ -28,6 +29,7 @@ internal sealed class ClaudeModelIntelligence
 
             recordObservation?.Invoke(new PluginModelObservation(ProviderId, PluginModelObservationKind.QuotaReading, asOf)
             {
+                Model = model,
                 Quota = window,
             });
         }

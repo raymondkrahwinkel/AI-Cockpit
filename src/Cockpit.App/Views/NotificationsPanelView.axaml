@@ -24,6 +24,22 @@
         <Style Selector="Border.notificationRow.read TextBlock.message">
             <Setter Property="FontWeight" Value="Normal"/>
         </Style>
+        <Style Selector="Border.notificationRow TextBlock.title">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.notificationRow.read TextBlock.title">
+            <Setter Property="FontWeight" Value="Normal"/>
+        </Style>
+        <!-- AC-1853: under a title the message is the secondary body (mockup screen 04). -->
+        <Style Selector="Border.notificationRow TextBlock.message.body">
+            <Setter Property="FontWeight" Value="Normal"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.groupHeader">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
         <!-- A row that needs you carries the waiting row tint, as a session that needs you does. -->
         <Style Selector="Border.notificationRow.attention">
             <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingRowTintBrush}"/>
@@ -80,68 +96,103 @@
                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"
                        Text="Nothing here. Toasts land in this list, so one that timed out can still be read and acted on."/>
             <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl ItemsSource="{Binding VisibleItems}" Margin="8,0,8,8">
+                <!-- AC-1853: "Still open from your last session", "Today" and "Earlier", each with its own Clear read. -->
+                <ItemsControl ItemsSource="{Binding VisibleGroups}" Margin="8,0,8,8">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <StackPanel Spacing="6"/>
+                            <StackPanel Spacing="4"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NotificationItemViewModel">
-                            <Border Classes="notificationRow" Classes.read="{Binding IsRead}" Classes.attention="{Binding NeedsYou}">
-                                <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-                                    <materialIcons:MaterialIcon Kind="{Binding Glyph}" Width="14" Height="14"
-                                               Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                               Margin="0,1,8,0" VerticalAlignment="Top"/>
-                                    <TextBlock Grid.Column="1" Classes="message" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"
-                                               MaxLines="4" TextTrimming="CharacterEllipsis"/>
-                                    <Panel Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Top">
-                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding TimeLabel}" FontSize="11"
-                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                            <Ellipse Width="6" Height="6" Fill="{DynamicResource CockpitAccentBrush}"
-                                                     IsVisible="{Binding !IsRead}"/>
-                                        </StackPanel>
-                                        <!-- Over the time, on hover or focus: Mark read and Dismiss (mockup screen 03). -->
-                                        <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
-                                                    Background="{DynamicResource CockpitSecondaryBgBrush}">
-                                            <Button Classes="Subtle" Padding="4" Command="{Binding MarkReadCommand}"
-                                                    IsVisible="{Binding !IsRead}" ToolTip.Tip="Mark read">
-                                                <materialIcons:MaterialIcon Kind="EmailOpenOutline" Width="13" Height="13"/>
-                                            </Button>
-                                            <Button Classes="Subtle" Padding="4" Command="{Binding DismissCommand}" ToolTip.Tip="Dismiss">
-                                                <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </Panel>
-                                    <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,8,0,0">
-                                        <Border Classes="tag" DockPanel.Dock="Left" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Source}"/>
-                                        </Border>
-                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsHandled}"
-                                                    VerticalAlignment="Center">
-                                            <materialIcons:MaterialIcon Kind="CheckCircleOutline" Width="12" Height="12"
-                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
-                                            <TextBlock Text="{Binding HandledReceipt}" FontSize="11.5"
-                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
-                                        </StackPanel>
-                                        <!-- The toast's own buttons: a click here runs its action and closes the toast too. -->
-                                        <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding NeedsYou}" HorizontalAlignment="Right">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:ToastActionViewModel">
-                                                    <Button Content="{Binding Label}" Classes="Compact" Classes.Accent="{Binding IsPrimary}"
-                                                            Margin="6,0,0,0" Command="{Binding InvokeCommand}"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </DockPanel>
-                                </Grid>
-                            </Border>
+                        <DataTemplate x:DataType="vm:NotificationGroupViewModel">
+                            <StackPanel Spacing="4">
+                                <DockPanel Margin="4,2,0,0" MinHeight="20">
+                                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="4,1"
+                                            IsVisible="{Binding HasRead}" Command="{Binding ClearReadCommand}">
+                                        <TextBlock Classes="groupHeader" Text="Clear read"/>
+                                    </Button>
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <materialIcons:MaterialIcon Kind="History" Width="12" Height="12" IsVisible="{Binding IsLastSession}"
+                                                   Foreground="{DynamicResource CockpitTextFaintBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Classes="groupHeader" Text="{Binding Title}"/>
+                                    </StackPanel>
+                                </DockPanel>
+                                <ItemsControl ItemsSource="{Binding Items}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Spacing="6"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:NotificationItemViewModel">
+                                            <Border Classes="notificationRow" Classes.read="{Binding IsRead}" Classes.attention="{Binding NeedsYou}">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                                                    <materialIcons:MaterialIcon Kind="{Binding Glyph}" Width="14" Height="14"
+                                                               Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                                               Margin="0,1,8,0" VerticalAlignment="Top"/>
+                                                    <!-- AC-1853: a bold title with the message under it in grey; without one, the message alone. -->
+                                                    <StackPanel Grid.Column="1" Spacing="3">
+                                                        <TextBlock Classes="title" Text="{Binding Title}" IsVisible="{Binding HasTitle}" TextWrapping="Wrap"
+                                                                   FontSize="12.5" MaxLines="2" TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock Classes="message" Classes.body="{Binding HasTitle}" Text="{Binding Message}" TextWrapping="Wrap"
+                                                                   FontSize="12.5" MaxLines="4" TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+                                                    <Panel Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Top">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding TimeLabel}" FontSize="11"
+                                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                            <Ellipse Width="6" Height="6" Fill="{DynamicResource CockpitAccentBrush}"
+                                                                     IsVisible="{Binding !IsRead}"/>
+                                                        </StackPanel>
+                                                        <!-- Over the time, on hover or focus: Mark read and Dismiss (mockup screen 03). -->
+                                                        <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
+                                                                    Background="{DynamicResource CockpitSecondaryBgBrush}">
+                                                            <Button Classes="Subtle" Padding="4" Command="{Binding MarkReadCommand}"
+                                                                    IsVisible="{Binding !IsRead}" ToolTip.Tip="Mark read">
+                                                                <materialIcons:MaterialIcon Kind="EmailOpenOutline" Width="13" Height="13"/>
+                                                            </Button>
+                                                            <Button Classes="Subtle" Padding="4" Command="{Binding DismissCommand}" ToolTip.Tip="Dismiss">
+                                                                <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
+                                                            </Button>
+                                                        </StackPanel>
+                                                    </Panel>
+                                                    <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                                                        <Border Classes="tag" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                <materialIcons:MaterialIcon Kind="{Binding SourceIcon}" Width="10" Height="10" VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                                <TextBlock Text="{Binding Source}" FontSize="10" VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsHandled}"
+                                                                    VerticalAlignment="Center">
+                                                            <materialIcons:MaterialIcon Kind="CheckCircleOutline" Width="12" Height="12"
+                                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                                            <TextBlock Text="{Binding HandledReceipt}" FontSize="11.5"
+                                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                                        </StackPanel>
+                                                        <!-- The toast's own buttons: a click here runs its action and closes the toast too. -->
+                                                        <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding NeedsYou}" HorizontalAlignment="Right">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <WrapPanel Orientation="Horizontal"/>
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate x:DataType="vm:ToastActionViewModel">
+                                                                    <Button Content="{Binding Label}" Classes="Compact" Classes.Accent="{Binding IsPrimary}"
+                                                                            Margin="6,0,0,0" Command="{Binding InvokeCommand}"/>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </DockPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

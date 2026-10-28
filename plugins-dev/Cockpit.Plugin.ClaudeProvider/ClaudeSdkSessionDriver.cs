@@ -515,9 +515,13 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             {
                 // AC-739: read once off the CLI's own init line, before the event is published, so a caller like
                 // InterruptAsync can feature-detect a control-protocol field the CLI just advertised.
-                if (evt is PluginSessionInitialized { Capabilities.Count: > 0 } initialized)
+                if (evt is PluginSessionInitialized initialized)
                 {
-                    _cliCapabilities = new HashSet<string>(initialized.Capabilities, StringComparer.Ordinal);
+                    _usage.ObserveModel(initialized.Model);
+                    if (initialized.Capabilities.Count > 0)
+                    {
+                        _cliCapabilities = new HashSet<string>(initialized.Capabilities, StringComparer.Ordinal);
+                    }
                 }
 
                 _events.Publish(evt);

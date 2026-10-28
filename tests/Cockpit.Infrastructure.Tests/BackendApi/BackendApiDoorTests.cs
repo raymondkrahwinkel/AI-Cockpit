@@ -547,14 +547,14 @@ public sealed class BackendApiDoorTests
     }
 
     // AC-1466 criterion 2: only a GET of /healthz needs no key. It is 200 with no section, names only slug-named
-    // sections, and is 503 once one is unhealthy or hangs past the budget; anything else without a key stays 401.
+    // sections, and degrades once a plugin is unhealthy or hangs; anything else without a key stays 401.
     [Fact]
-    public async Task Healthz_AnswersWithoutAKey_WithOnlyStatusAndSectionNames_WhileEveryOtherPathStays401()
+    public async Task Healthz_IsNotDeterminedByAPluginSection()
     {
         await using var door = new _Door();
-        await door.StartAsync();
+        var verifier = await door.StartAsync();
         var empty = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
-        var section = new _Section("probe");
+        var section = new _Section("probe", new PluginHealthRow("Not configured", PluginHealthStatus.Failed));
         door.Health.Add("test", section);
         door.Health.Add("test", new _Section("/home/operator/.ssh"));
         door.Health.Add("test", new _Section("probe\n"));
@@ -578,14 +578,27 @@ public sealed class BackendApiDoorTests
         var clock = Stopwatch.StartNew();
         var hung = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
         var waited = clock.Elapsed;
+        var key = await verifier.IssueAsync("reader", ConnectKeyCapability.Operate, 30, Operator);
+        var details = await door.GetAsync(door.NodeBase, "/api/v1/health", key.Secret);
+        var engine = new _Section("core-engine") { IsEssential = true };
+        door.Health.Add("core", engine);
+        var essentialHealthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
+        engine.Healthy = false;
+        var essentialUnhealthy = await door.GetAsync(door.NodeBase, "/healthz", bearer: null);
 
         Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[]}"""), empty);
         Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"healthy","sections":[{"name":"probe","healthy":true}]}"""), healthy);
-        Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":false}]}"""), unhealthy);
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"degraded","sections":[{"name":"probe","healthy":false}]}"""), unhealthy);
         Assert.Equal(others.Select(path => (path, HttpStatusCode.Unauthorized)), refused);
         Assert.Equal((HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized), (post.Status, head.Status));
-        Assert.Equal(new _Answer(HttpStatusCode.ServiceUnavailable, """{"status":"unhealthy","sections":[{"name":"probe","healthy":true},{"name":"hang","healthy":false}]}"""), hung);
+        Assert.Equal(new _Answer(HttpStatusCode.OK, """{"status":"degraded","sections":[{"name":"probe","healthy":true},{"name":"hang","healthy":false}]}"""), hung);
         Assert.True(waited < PluginHealthSections.ReadBudget + TimeSpan.FromSeconds(2), $"A hanging section held /healthz for {waited}.");
+        Assert.DoesNotContain("Not configured", unhealthy.Body, StringComparison.Ordinal);
+        Assert.Contains("Not configured", details.Body, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.OK, essentialHealthy.Status);
+        Assert.Equal("degraded", JsonNode.Parse(essentialHealthy.Body)?["status"]?.GetValue<string>());
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, essentialUnhealthy.Status);
+        Assert.Equal("unhealthy", JsonNode.Parse(essentialUnhealthy.Body)?["status"]?.GetValue<string>());
     }
 
     // AC-1470 criterion 1: an operate key scoped to project-a and profile "mine" reads only what lies in that scope, of
@@ -769,6 +782,8 @@ public sealed class BackendApiDoorTests
     private class _Section(string name, params PluginHealthRow[] rows) : IPluginHealthSection
     {
         public bool Healthy { get; set; } = true;
+
+        public bool IsEssential { get; init; }
 
         public string Name => name;
 

@@ -267,7 +267,7 @@ public class TtyLauncherTests
             Arg.Is<IReadOnlyDictionary<string, string>>(env =>
                 keyring.PaneFor(env["COCKPIT_MCP_KEY"]) == "tty-pane-under-test"
                 && env["COCKPIT_MCP_KEY"] != authKey.Value
-                && env["TEMP"] == Path.Combine(Cockpit.Core.Sessions.SessionTempDirectory.Root, "tty-pane-under-test")
+                && env["TEMP"] == Cockpit.Core.Sessions.SessionScratch.PathFor("tty-pane-under-test")
                 && env["TMP"] == env["TEMP"] && env["TMPDIR"] == env["TEMP"]),
             Arg.Any<short>(),
             Arg.Any<short>());

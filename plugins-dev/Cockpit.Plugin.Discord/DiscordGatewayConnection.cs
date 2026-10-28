@@ -61,7 +61,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
         }
         catch (Exception exception)
         {
-            _health.Disconnected();
+            _health.Disconnected("Connection failed; check the bot token and Discord connectivity");
             // AC-1024 criterion 5: report once, with no reconnect loop to run away.
             try
             {
@@ -191,7 +191,7 @@ internal sealed class DiscordGatewayConnection : IDisposable
 
     private Task _OnDisconnected(Exception _)
     {
-        _health.Disconnected();
+        _health.Disconnected("Connection lost");
         return Task.CompletedTask;
     }
 

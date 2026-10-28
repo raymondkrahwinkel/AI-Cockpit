@@ -1,6 +1,6 @@
 # File sources (AC-1783)
 
-Requires host 0.136.0 and `Cockpit.Plugins.Abstractions` 3.42.0, namespace
+Requires host 0.136.0 and `Cockpit.Plugins.Abstractions` 3.45.0, namespace
 `Cockpit.Plugins.Abstractions.Files`. Abstractions.UI remains 3.16.0; this feature adds no public UI API.
 
 Register one `IFileSourceProvider` with `host.AddFileSource(provider)` during backend initialization.
@@ -49,7 +49,7 @@ does not implement compare-and-swap. No live Depot is used by the contract tests
 
 ## Host file workspaces (AC-1754)
 
-Requires host 0.137.0, Abstractions 3.43.0 and Abstractions.UI 3.17.0.
+Requires host 0.137.0, Abstractions 3.45.0 and Abstractions.UI 3.17.0.
 `FileReadResult.CanWrite` and `FileSourceReadAnswer.CanWrite` are default-false init properties;
 the existing constructors remain binary compatible. Set the hint from the same authorization used for
 the snapshot. The channel also restricts it by the connection and source write capability. An older

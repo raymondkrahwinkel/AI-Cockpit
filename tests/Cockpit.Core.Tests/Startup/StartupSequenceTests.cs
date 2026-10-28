@@ -31,6 +31,8 @@ public class StartupSequenceTests
         });
         host.AddStartupStep("Broken…", _ => throw new InvalidOperationException("no answer"));
         var essential = sequence.AddCore("Loading plugins…", async _ => await Task.Delay(600), essential: true);
+        var unlock = sequence.AddOperatorStep("Unlocking…", async _ => await Task.Delay(1200));
+        var unlockStates = new List<StartupStepState>();
         var (hung, blocking, broken) = (sequence.Steps[0], sequence.Steps[1], sequence.Steps[2]);
         var seen = new List<StartupStepState>();
         sequence.Changed += () =>
@@ -38,6 +40,7 @@ public class StartupSequenceTests
             lock (seen)
             {
                 seen.Add(hung.State);
+                unlockStates.Add(unlock.State);
             }
         };
 
@@ -50,5 +53,7 @@ public class StartupSequenceTests
         Assert.Equal("“Connecting to Example” is taking too long — carrying on without it.", hung.Message);
         Assert.Equal("Couldn’t complete “Broken” — carrying on without it.", broken.Message);
         Assert.All([hung, blocking, broken], step => Assert.True(step.IsPlugin));
+        Assert.Equal(StartupStepState.Done, unlock.State);
+        Assert.DoesNotContain(StartupStepState.Slow, unlockStates);
     }
 }

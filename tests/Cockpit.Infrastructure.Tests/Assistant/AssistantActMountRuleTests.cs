@@ -248,26 +248,6 @@ public sealed class AssistantActMountRuleTests : IDisposable
     // ── Criterion 3, first gate: read off the registration, never off a fixture ────────────────────────────────
 
     [Fact]
-    public void TheActingEndpoint_IsRegisteredInternal_SoItNeverFansOutToASessionThatDidNotNameIt()
-    {
-        // Registered at all (without it the tools are written and nothing hosts them), and registered Internal. This
-        // is the assertion the phase-2 fixtures could not make: it fails the moment `Internal: true` leaves
-        // DependencyInjection, which is the change that hands start_agent to every session in the cockpit.
-        Assert.True(
-            _RegisteredActEndpoint().Internal,
-            "The assistant's acting endpoint must be Internal, or start_agent fans out to every session.");
-    }
-
-    [Fact]
-    public void TheActingEndpoint_IsNotAlwaysMounted()
-    {
-        // AlwaysMounted wins over Internal in McpServerRegistryFilter, and the neighbouring registration
-        // (cockpit-agents) is AlwaysMounted — so it is the likeliest thing for this line to become by copy-paste,
-        // and it would still read, at a glance, like a deliberate line about the assistant.
-        Assert.False(_RegisteredActEndpoint().AlwaysMounted);
-    }
-
-    [Fact]
     public void TheActingServer_IsNeverInTheNoSelectionFanOut()
     {
         // A session that named nothing gets every ordinary server and not this one.

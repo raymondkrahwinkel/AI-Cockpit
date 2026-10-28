@@ -1,9 +1,11 @@
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
+using Avalonia.Interactivity;
+using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Controls;
 
-// AC-713: pure XAML, no logic of its own — see the XAML header comment for what this shares and why.
 public partial class LoginFlowView : UserControl
 {
     public LoginFlowView()
@@ -12,4 +14,13 @@ public partial class LoginFlowView : UserControl
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    private void _OnCopyCodeClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is LoginFlowRowViewModel { HasDeviceCode: true } login
+            && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            _ = clipboard.SetTextAsync(login.DeviceCode);
+        }
+    }
 }

@@ -174,7 +174,15 @@ internal sealed class BrowserEngine
         _CreateOwnerOnly(_rootCachePath);
 
         _cefLoaded = true;
-        CefRuntime.Load(runtimeDir);
+        // CefGlue refuses a path off Windows (AC-1860); the DllImport resolver above already points at libcef.so.
+        if (OperatingSystem.IsLinux())
+        {
+            CefRuntime.Load();
+        }
+        else
+        {
+            CefRuntime.Load(runtimeDir);
+        }
         CefRuntime.Initialize(new CefMainArgs([]), CreateSettings(runtimeDir, subprocess, _rootCachePath), new BrowserApp(), nint.Zero);
     }
 

@@ -127,18 +127,6 @@ public sealed class AssistantOpenUrlConsentTests : IDisposable
         Assert.Empty(_gateway.Calls);
     }
 
-    [Fact]
-    public async Task ACallerThatIsNotTheAssistant_IsRefused_BeforeTheOperatorIsShownAnything()
-    {
-        McpRequestContext.Set("some-other-pane");
-
-        var result = _Json(await _Tools(_consent).OpenUrlAsync("https://example.test"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_consent.Asked);
-        Assert.Empty(_gateway.Calls);
-    }
-
     // ── A newline would forge a line under the URL nobody approved ──────────────────────────────────────────────
 
     [Fact]

@@ -73,10 +73,10 @@ public sealed class RestoreJourney
             await source.Services.GetRequiredService<IBackupService>().WriteAsync(archive, new BackupOptions(IncludeCredentials: false));
         }
 
-        var toasts = await _RestoreAndRestartToastsAsync(work, "depot-signin-target", (archive, ["depot"]));
-        var asked = Assert.Single(toasts, toast => toast.Message.Contains("Depot: Journey", StringComparison.Ordinal));
-        Assert.Equal("Sign in", asked.ActionLabel);
-        Assert.DoesNotContain(toasts, toast => toast.Message.Contains("NodeEndpoint", StringComparison.Ordinal));
+        var notices = await _RestoreAndRestartNoticesAsync(work, "depot-signin-target", (archive, ["depot"]));
+        var asked = Assert.Single(notices, notice => notice.Message.Contains("Depot: Journey", StringComparison.Ordinal));
+        Assert.Equal("Sign in", asked.Actions[0].Label);
+        Assert.DoesNotContain(notices, notice => notice.Message.Contains("NodeEndpoint", StringComparison.Ordinal));
     }
 
     // AC-1510: two machines, each a state root of its own, through the bundled Depot plugin against a fake account space.
@@ -126,16 +126,17 @@ public sealed class RestoreJourney
         space.Offline = true;
         var terminal = restarted.Services.GetRequiredService<ITerminalSettingsStore>();
         await terminal.SaveAsync(await terminal.LoadAsync() with { FontSize = 16 });
-        await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(restarted.Cockpit.Toasts, () =>
-            restarted.Cockpit.Toasts.Any(toast => toast.Message.StartsWith("Your settings could not be synced with Depot: Journey", StringComparison.Ordinal))));
+        await HeadlessAvalonia.RunAsync(() => Until.Holds(restarted.Cockpit.Notifications, () =>
+            restarted.Cockpit.Notifications.Items.Any(notice => notice.Message.StartsWith("Your settings could not be synced with Depot: Journey", StringComparison.Ordinal))));
         Assert.NotEqual(16, space.Document?["Terminal"]?["FontSize"]?.GetValue<int>());
 
         // Back online, and another machine writes just before this push: Depot answers 412, the plugin says so, and the
         // host reads again and pushes over the new version, keeping what the other machine wrote.
         space.Offline = false;
-        space.BeforeNextWrite = other => other["Projects"] = new JsonArray(new JsonObject { ["Id"] = "from-a", ["Name"] = "From A" });
+        // AC-1861: projects no longer travel, so the other machine writes a carried setting.
+        space.BeforeNextWrite = other => other["Notifications"] = new JsonObject { ["IdleThresholdMinutes"] = 42 };
         await sync.RunOnceAsync();
-        Assert.Equal((16, "From A"), (space.Document?["Terminal"]?["FontSize"]?.GetValue<int>(), space.Document?["Projects"]?[0]?["Name"]?.GetValue<string>()));
+        Assert.Equal((16, 42), (space.Document?["Terminal"]?["FontSize"]?.GetValue<int>(), space.Document?["Notifications"]?["IdleThresholdMinutes"]?.GetValue<int>()));
         Assert.Equal(1, space.Refused);
     }
 
@@ -266,9 +267,10 @@ public sealed class RestoreJourney
     }
 
     private static async Task<IReadOnlyList<string>> _RestoreAndRestartAsync(string work, string name, params (string Archive, string[] Plugins)[] restores) =>
-        [.. (await _RestoreAndRestartToastsAsync(work, name, restores)).Select(toast => toast.Message)];
+        [.. (await _RestoreAndRestartNoticesAsync(work, name, restores)).Select(notice => notice.Message)];
 
-    private static async Task<IReadOnlyList<ToastViewModel>> _RestoreAndRestartToastsAsync(string work, string name, params (string Archive, string[] Plugins)[] restores)
+    // AC-1803: what a start posts is held in the startup bundle for its first seconds, but is in the notification center at once.
+    private static async Task<IReadOnlyList<NotificationItemViewModel>> _RestoreAndRestartNoticesAsync(string work, string name, params (string Archive, string[] Plugins)[] restores)
     {
         var target = Directory.CreateDirectory(Path.Combine(work, name)).FullName;
 
@@ -285,7 +287,7 @@ public sealed class RestoreJourney
         await using var after = JourneyHost.Desktop(stateRoot: target);
         await after.StartDesktopAsync();
 
-        return HeadlessAvalonia.Run(() => after.Cockpit.Toasts.ToList());
+        return HeadlessAvalonia.Run(() => after.Cockpit.Notifications.Items.ToList());
     }
     // The bundled Depot plugin with one connection and the host holding its sign-in, as _SignedInDepotAsync seeds it.
     private static async Task _SignedInToProfileAsync(JourneyHost cockpit, string url)

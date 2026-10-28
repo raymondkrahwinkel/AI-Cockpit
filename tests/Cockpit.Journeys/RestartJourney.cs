@@ -107,6 +107,9 @@ public sealed class RestartJourney
             {
                 var item = HeadlessAvalonia.Run(() => after.Cockpit.ToastHost.Notifications.Items.Single(kept => kept.Key == "still-due"));
                 Assert.True(HeadlessAvalonia.Run(() => item.NeedsYou));
+                // AC-1853 (screen 09): it sits under the restart's own heading, not under Today.
+                Assert.Equal("Still open from your last session", HeadlessAvalonia.Run(() =>
+                    after.Cockpit.ToastHost.Notifications.VisibleGroups.Single(group => group.Items.Contains(item)).Title));
                 HeadlessAvalonia.Run(() => item.Actions.Single().InvokeCommand.Execute(null));
                 Assert.True(doneAfterRestart);
                 Assert.Equal("You chose: Done", HeadlessAvalonia.Run(() => item.HandledReceipt));

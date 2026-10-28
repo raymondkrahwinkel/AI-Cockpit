@@ -520,7 +520,8 @@ public sealed class FirstStartJourney
                 await using var restarted = JourneyHost.Desktop(stateRoot: fresh);
                 await restarted.StartDesktopAsync();
                 Assert.Equal(333, JsonNode.Parse(await File.ReadAllTextAsync(CockpitConfigPath.For(fresh)))?["Layout"]?["SidebarWidth"]?.GetValue<double>());
-                Assert.Contains(HeadlessAvalonia.Run(() => restarted.Cockpit.Toasts.Select(toast => toast.Message).ToList()),
+                // AC-1803: held in the startup bundle at first, but in the notification center at once.
+                Assert.Contains(HeadlessAvalonia.Run(() => restarted.Cockpit.Notifications.Items.Select(notice => notice.Message).ToList()),
                     message => message.Contains("new sign-in", StringComparison.Ordinal) && message.Contains("depot", StringComparison.OrdinalIgnoreCase));
             });
 

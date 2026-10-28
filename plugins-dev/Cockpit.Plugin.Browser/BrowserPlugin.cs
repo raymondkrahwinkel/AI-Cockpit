@@ -51,7 +51,7 @@ public sealed class BrowserPlugin : ICockpitPlugin
 
         // AC-1714: reading a tab the operator shared, answered by the UI half that holds the tabs and their grants.
         _share = new TabShareBridge(host);
-        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share));
+        _ = host.AddMcpEndpoint("cockpit-browser", new TabShareMcpTools(host, _share, new AgentOwnedTabs(browsers)));
     }
 
     public void Dispose()

@@ -16,11 +16,13 @@ internal static class HealthzEndpoint
         app.MapGet(Path, async () =>
         {
             var sections = await services.GetRequiredService<PluginHealthSections>().ReadAsync().ConfigureAwait(false);
-            var healthy = sections.All(section => section.Report.Healthy);
+            // AC-1815: optional integrations remain diagnostic; only essential sections gate readiness.
+            var healthy = sections.Where(section => section.IsEssential).All(section => section.Report.Healthy);
+            var degraded = sections.Any(section => !section.Report.Healthy);
             return Results.Json(
                 new
                 {
-                    status = healthy ? "healthy" : "unhealthy",
+                    status = !healthy ? "unhealthy" : degraded ? "degraded" : "healthy",
                     sections = sections.Select(section => new { name = section.Name, healthy = section.Report.Healthy }),
                 },
                 statusCode: healthy ? StatusCodes.Status200OK : StatusCodes.Status503ServiceUnavailable);
