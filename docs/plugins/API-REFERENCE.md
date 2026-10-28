@@ -690,6 +690,9 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
     public bool CanFloat { get; init; }    // SDK 3.22.0, host 0.111.0
 }
 ```
+- `DockPanelBadge.Tone` — optional `SideMenuButtonBadgeTone`, default `Accent` (the current amber),
+  `Success` for a green live count, `Neutral` for a quiet count. Changing it raises `PropertyChanged`.
+  Available in UI SDK 3.21.0, host 0.142.0; set `minHostVersion` when relying on it.
 - `Id` — stable and namespaced. It is persisted as the open panel, and for a floating panel as its stand and
   the key of its window's bounds, so treat it as an API surface. The first registration of an id wins.
 - `CreateView` — builds the panel's view on the UI thread: each time the panel opens, or **once** with

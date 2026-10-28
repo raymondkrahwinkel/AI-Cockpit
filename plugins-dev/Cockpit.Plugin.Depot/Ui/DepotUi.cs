@@ -57,17 +57,26 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         var invitations = new DepotInvitationNotifications(host, () => settings.Connections,
             message => DepotInboxModel.JoinAsync(message, _LaunchNoteAsync));
         inbox.Changed += page => Dispatcher.UIThread.Post(() => invitations.Show(page));
+        var notes = new DepotNotesModel(host, inbox);
         var badge = host.AddSideMenuButtonWithBadge("Depot inbox", () =>
         {
             // Side-menu callbacks are synchronous, so the wrapper observes and logs the detached dialog task.
-            _ = _ShowInboxAsync(host, settings, inbox);
+            _ = _ShowInboxAsync(host, settings, inbox, notes);
         }, MaterialIconKind.InboxOutline);
         inbox.Changed += _ => badge.Primary = inbox.Total;
         // Startup continues while counts load; LoadCountsAsync logs failures and a later push can refresh the badge.
         _ = inbox.LoadCountsAsync();
 
         // AC-1568: the file browser, as a dock panel and from the toolbar.
-        host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot files", MaterialIconKind.FolderNetworkOutline, () => new DepotBrowserPanel(host, settings.Connections, inbox)));
+        var liveBadge = new DockPanelBadge { Tone = SideMenuButtonBadgeTone.Success };
+        notes.Changed += _ => Dispatcher.UIThread.Post(() =>
+        {
+            liveBadge.Count = notes.Total;
+            host.SetStatusText($"● {notes.Total} live notes · Depot");
+        });
+        host.AddDockPanel(new DockPanelRegistration("depot-browser", "Depot", MaterialIconKind.FolderNetworkOutline,
+            () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes)) { Badge = liveBadge });
+        _ = notes.LoadAsync(settings.Connections);
         host.AddLinkHandler(new LinkHandlerRegistration(
             (string link, out int start, out int length) => DepotTranscriptLinks.TryMatch(link, settings.Connections.Select(connection => connection.Url).ToList(), out start, out length),
             (_, _) =>
@@ -75,8 +84,8 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
                 _ = _OpenBrowserAsync(host);
                 return true;
             }));
-        host.AddToolbarAction(new ToolbarAction("Depot files", MaterialIconKind.FolderNetworkOutline,
-            () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections, inbox), "depot-browser", 1000, 680)));
+        host.AddToolbarAction(new ToolbarAction("Depot", MaterialIconKind.FolderNetworkOutline,
+            () => host.ShowDialogAsync("Depot", () => new DepotBrowserPanel(host, settings.Connections, inbox, notes: notes), "depot-browser", 1000, 680)));
     }
 
     private static Task _LaunchNoteAsync(Uri uri) =>
@@ -109,12 +118,12 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         }
     }
 
-    private static async Task _ShowInboxAsync(ICockpitUiHost host, DepotSettings settings, DepotInboxModel inbox)
+    private static async Task _ShowInboxAsync(ICockpitUiHost host, DepotSettings settings, DepotInboxModel inbox, DepotNotesModel notes)
     {
         try
         {
             await host.ShowDialogAsync(
-                "Depot", () => new DepotBrowserPanel(host, settings.Connections, inbox, openInbox: true), "depot-browser", 1000, 680);
+                "Depot", () => new DepotBrowserPanel(host, settings.Connections, inbox, openInbox: true, notes: notes), "depot-browser", 1000, 680);
         }
         catch (Exception exception)
         {

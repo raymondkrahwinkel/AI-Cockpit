@@ -32,6 +32,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
     private readonly List<IDisposable> _handlers = [];
 
     private Inbox.DepotInbox? _inbox;
+    private Notes.DepotNotes? _notes;
     private Events.DepotEvents? _events;
     private Notes.Live.DepotNoteLive? _noteLive;
     private ILogger? _logger;
@@ -90,6 +91,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             {
                 source.RaiseAccountChanged();
             }
+            _notes?.Refresh();
         };
 
         // AC-1394: the settings view and the global-toolbar shortcut to it moved to DepotUi.InitializeUi — this
@@ -144,7 +146,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             connection => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope),
             (connection, userId, onPush, onClosed) => new Inbox.SignalRDepotInboxHub(
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName, Inbox.DepotInbox.Scope), onPush, onClosed),
-            page => host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)),
+            page =>
+            {
+                host.Channel.Publish(DepotInboxChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json));
+                _notes?.OnInboxPage(page);
+            },
             _logger = host.Services?.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.Plugin.Depot"));
         var inbox = _inbox;
         _handlers.Add(host.Channel.Handle(DepotInboxChannel.Unread, async (_, cancellationToken) =>
@@ -172,6 +178,16 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             await noteLive.CloseAsync(payload.Deserialize<DepotNoteLiveRequest>(DepotChannel.Json) ?? throw new ArgumentException("The request is empty.", nameof(payload))).ConfigureAwait(false);
             return JsonSerializer.SerializeToElement(true, DepotChannel.Json);
         }));
+        var notes = new Notes.DepotNotes(host, () => settings.Connections,
+            page => host.Channel.Publish(DepotNotesChannel.Changed, JsonSerializer.SerializeToElement(page, DepotChannel.Json)), _logger);
+        _notes = notes;
+        _handlers.Add(host.Channel.Handle(DepotNotesChannel.Live, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotNotesRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request names no Depot connection.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await notes.ListAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+        notes.Start();
 
         _events = new Events.DepotEvents(
             () => settings.Connections,
@@ -320,6 +336,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             settings,
             [.. request.Connections.Select(connection => new DepotConnectionRegistration(connection.Id, connection.Name, connection.Url, connection.SynchroniseSettings))],
             cancellationToken, _events, () => _fileSources?.NotifyChanged()).ConfigureAwait(false);
+        _notes?.Refresh();
         return JsonSerializer.SerializeToElement(new DepotSaveConnectionsAnswer(true), DepotChannel.Json);
     }
 
@@ -583,6 +600,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }
 
         _publishHttp.Dispose();
+        _ = _notes?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing Depot notes failed."),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
         // ICockpitPlugin has only a synchronous Dispose; closing the hubs is started, not waited on, so a shutdown on the UI
         // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
         _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
