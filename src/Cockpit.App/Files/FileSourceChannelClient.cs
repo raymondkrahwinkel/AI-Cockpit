@@ -8,25 +8,44 @@ namespace Cockpit.App.Files;
 internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
 {
     public async Task<IReadOnlyList<FileConnection>> ConnectionsAsync(CancellationToken cancellationToken) =>
-        await _CallAsync<FileConnection[]>(FileSourceChannel.Connections, new { }, cancellationToken).ConfigureAwait(false);
+        await _RunAsync(() => _CallAsync<FileConnection[]>(FileSourceChannel.Connections, new { }, cancellationToken), cancellationToken).ConfigureAwait(false);
 
-    public async Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken)
+    public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) => _RunAsync(async () =>
     {
         var read = await _CallAsync<FileSourceReadAnswer>(FileSourceChannel.Read,
             new FileSourceReadRequest(file), cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(read.Version))
+        if (string.IsNullOrWhiteSpace(read.Version) || read.ContentBase64 is null)
             throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a file version.");
         return new FileReadResult(new MemoryStream(FileSourceChannel.DecodeContent(read.ContentBase64), writable: false),
             read.Version, read.Size, read.Modified, read.ContentType);
-    }
+    }, cancellationToken);
 
-    public async Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,
-        bool mustNotExist, CancellationToken cancellationToken)
+    public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,
+        bool mustNotExist, CancellationToken cancellationToken) => _RunAsync(async () =>
     {
         FileSourceChannel.ValidateWrite(ifVersion, mustNotExist);
         var bytes = await FileSourceChannel.ReadContentAsync(content, FileSourceChannel.MaxContentBytes, cancellationToken).ConfigureAwait(false);
-        return await _CallAsync<FileWriteResult>(FileSourceChannel.Write,
+        var result = await _CallAsync<FileWriteResult>(FileSourceChannel.Write,
             new FileSourceWriteRequest(file, Convert.ToBase64String(bytes), ifVersion, mustNotExist), cancellationToken).ConfigureAwait(false);
+        if (result.Status == FileWriteStatus.Written && string.IsNullOrWhiteSpace(result.Version))
+            throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the saved version.");
+        return result;
+    }, cancellationToken);
+
+    private static async Task<T> _RunAsync<T>(Func<Task<T>> action, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await action().ConfigureAwait(false);
+        }
+        catch (FileSourceException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is IOException or HttpRequestException or JsonException
+            or FormatException or InvalidOperationException or ArgumentException or OperationCanceledException or TimeoutException)
+        {
+            throw new FileSourceException(FileSourceErrorKind.Unavailable, "The file source could not complete this operation.");
+        }
     }
 
     private async Task<T> _CallAsync<T>(string action, object request, CancellationToken cancellationToken) where T : class
