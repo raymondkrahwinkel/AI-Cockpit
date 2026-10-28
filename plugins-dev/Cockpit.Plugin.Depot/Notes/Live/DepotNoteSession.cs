@@ -52,6 +52,9 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
     private LivePresenceState _wanted = new("reading");
     private IReadOnlyList<LivePeer> _peers = [];
     private bool _schemaMismatch;
+    private bool _roleLost;
+    private IDepotNoteRoom? _sharedReadOnlyRoom;
+    private string? _unsentSourceText;
 
     // Set once the room has a text or the session has stopped: a read before that would hand the host an empty note.
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -172,11 +175,21 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
                 return new LiveEditResult(LiveEditStatus.Stale, _rev);
             }
 
+            var before = await _room.SnapshotAsync(cancellationToken).ConfigureAwait(false);
             var updates = await _room.EditAsync(ops, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _SendTypedAsync(updates, cancellationToken).ConfigureAwait(false);
+            }
+            catch (FileSourceException error) when (error.Kind == FileSourceErrorKind.Forbidden)
+            {
+                // The host keeps the rejected ops; the mirror must still describe the shared text for incoming patches.
+                await _RestoreSharedAsync(before, cancellationToken).ConfigureAwait(false);
+                throw;
+            }
             _rev++;
             _lastEditId = editId;
             _lastEditRev = _rev;
-            await _SendTypedAsync(updates, cancellationToken).ConfigureAwait(false);
             return new LiveEditResult(LiveEditStatus.Applied, _rev);
         }
         finally
@@ -196,9 +209,18 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
                 return;
             }
 
+            var before = await _room.SnapshotAsync(cancellationToken).ConfigureAwait(false);
             var undo = await _room.UndoAsync(redo, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _SendTypedAsync(undo.Updates, cancellationToken).ConfigureAwait(false);
+            }
+            catch (FileSourceException error) when (error.Kind == FileSourceErrorKind.Forbidden)
+            {
+                await _RestoreSharedAsync(before, cancellationToken).ConfigureAwait(false);
+                throw;
+            }
             _Patch(undo.Ops);
-            await _SendTypedAsync(undo.Updates, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -213,6 +235,10 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         await _loop.ConfigureAwait(false);
         _presence?.Dispose();
         await _room.DisposeAsync().ConfigureAwait(false);
+        if (_sharedReadOnlyRoom is { } shared)
+        {
+            await shared.DisposeAsync().ConfigureAwait(false);
+        }
         _ready.TrySetResult();
         _text.Dispose();
         _life.Dispose();
@@ -402,17 +428,37 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             // Early updates came from the hub, so the hub has them: they count as known, or the diff would send them back.
             known.AddRange(early);
             _epoch = result.Epoch ?? _epoch;
+            _roleLost = result.Role != "editor" && (_role == "editor" || _roleLost);
             _role = result.Role;
             _schemaMismatch = result.SchemaMismatch;
             _editor = result.Role == "editor" && !result.SchemaMismatch;
+            try
+            {
+                if (_editor && await _WriteAsync(hub, result, known, cancellationToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (HubException exception) when (exception.Message.Contains("notes.read_only", StringComparison.Ordinal))
+            {
+                _editor = false;
+                _roleLost = true;
+            }
+            if (_sharedReadOnlyRoom is { } previous)
+            {
+                await previous.DisposeAsync().ConfigureAwait(false);
+                _sharedReadOnlyRoom = null;
+                _unsentSourceText = null;
+            }
             if (!_editor && _typedAway)
             {
-                _logger?.LogWarning("Text typed in the live note for {Connection} while away cannot go out: the note came back read-only.", _connection.Name);
-            }
-
-            if (_editor && await _WriteAsync(hub, result, known, cancellationToken).ConfigureAwait(false))
-            {
-                return;
+                _sharedReadOnlyRoom = _roomFactory(_NewClientId());
+                foreach (var update in known)
+                {
+                    await _sharedReadOnlyRoom.ApplyAsync(update, cancellationToken).ConfigureAwait(false);
+                }
+                await _sharedReadOnlyRoom.LoadAsync(string.Empty, cancellationToken).ConfigureAwait(false);
+                _unsentSourceText = await _sharedReadOnlyRoom.ReadAsync(cancellationToken).ConfigureAwait(false);
             }
 
             await _LoadIfReadyAsync(cancellationToken).ConfigureAwait(false);
@@ -514,6 +560,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_sharedReadOnlyRoom is { } shared)
+            {
+                await shared.ApplyAsync(update, cancellationToken).ConfigureAwait(false);
+                _unsentSourceText = await shared.ReadAsync(cancellationToken).ConfigureAwait(false);
+            }
             await _ApplyAsync(update, cancellationToken).ConfigureAwait(false);
             await _LoadIfReadyAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -552,6 +603,16 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         _patched?.Invoke(new LiveFilePatch(_rev, ops));
     }
 
+    private async Task _RestoreSharedAsync(byte[] snapshot, CancellationToken cancellationToken)
+    {
+        var rejected = _room;
+        _room = _roomFactory(_NewClientId());
+        await _room.ApplyAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        await _room.LoadAsync(string.Empty, cancellationToken).ConfigureAwait(false);
+        await rejected.DisposeAsync().ConfigureAwait(false);
+        _typedAway = false;
+    }
+
     // Under _text. A send that fails leaves the change in the doc, and the next Join's diff carries it.
     private async Task _SendTypedAsync(IReadOnlyList<byte[]> updates, CancellationToken cancellationToken)
     {
@@ -567,7 +628,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         }
 
         var hub = _hub;
-        if (hub is null || documentId is null)
+        if (hub is null || documentId is null || _typedAway)
         {
             _typedAway = true;
             return;
@@ -585,9 +646,16 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 
             _typedAway = false;
         }
+        catch (HubException exception) when (exception.Message.Contains("notes.read_only", StringComparison.Ordinal))
+        {
+            _editor = false;
+            _roleLost = true;
+            throw new FileSourceException(FileSourceErrorKind.Forbidden, "You can no longer edit this note.");
+        }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             _logger?.LogWarning(exception, "Sending a live note edit for {Connection} failed; it goes out with the next Join.", _connection.Name);
+            _closed.TrySetResult(null);
         }
     }
 
@@ -743,10 +811,12 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             state = _state;
         }
 
-        return state switch
+        var status = state switch
         {
-            DepotNoteLiveState.Live when _schemaMismatch => new LiveFileStatus(LiveFileState.ReadOnly, "Update Cockpit to edit this note."),
-            DepotNoteLiveState.Live when _role != "editor" => new LiveFileStatus(LiveFileState.ReadOnly, "You can watch this note, not edit it."),
+            DepotNoteLiveState.Live when _schemaMismatch => new LiveFileStatus(LiveFileState.ReadOnly,
+                "This note uses a newer Depot editor. You can watch it live; editing comes back once Cockpit's Depot plugin is updated.") { ReadOnlyReason = LiveReadOnlyReason.SchemaMismatch },
+            DepotNoteLiveState.Live when _roleLost => new LiveFileStatus(LiveFileState.ReadOnly, "You can no longer edit this note.") { ReadOnlyReason = LiveReadOnlyReason.RoleLost },
+            DepotNoteLiveState.Live when _role != "editor" => new LiveFileStatus(LiveFileState.ReadOnly) { ReadOnlyReason = LiveReadOnlyReason.Viewer },
             DepotNoteLiveState.Live => new LiveFileStatus(LiveFileState.Live),
             DepotNoteLiveState.Reconnecting => new LiveFileStatus(LiveFileState.Offline),
             DepotNoteLiveState.SignInNeeded => new LiveFileStatus(LiveFileState.SignInNeeded, _MessageFor(state)),
@@ -754,6 +824,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             DepotNoteLiveState.Unavailable or DepotNoteLiveState.Disabled => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
             _ => new LiveFileStatus(LiveFileState.Connecting),
         };
+        return status with { UnsentSourceText = _unsentSourceText };
     }
 
     // Fixed sentences: never text from an exception or a response, which could carry a header.

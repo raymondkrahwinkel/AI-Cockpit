@@ -60,7 +60,8 @@ internal sealed partial class CockpitUiHost
             context.Storage.Set("file", options with { Edit = false, CreateNew = false, InitialText = "" });
             return new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileWorkspaceChannel(() => _fileWorkspaceChannels[id])), () =>
                 ConfirmAsync("Discard unsaved changes?", $"Close {options.Title} without saving? Your changes will be lost.", "Discard changes"),
-                services.GetService<ILogger<MarkdownFileWorkspace>>());
+                services.GetService<ILogger<MarkdownFileWorkspace>>(),
+                () => services.GetRequiredService<CockpitViewModel>().OpenPluginStoreUpdatesAsync());
         }) { CanFloat = true, IconKind = MaterialIconKind.FileDocumentOutline };
         if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, Storage, host.Sessions))
         {

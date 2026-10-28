@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -17,6 +18,8 @@ using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Files;
 
@@ -44,6 +47,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly Border _statusChip;
     private readonly MarkdownEditor _compare = new() { IsReadOnly = true, IsVisible = false };
     private readonly Border _banner;
+    private readonly Border _readOnlyBanner;
+    private readonly TextBlock _readOnlyText = new() { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button _updates = new() { Content = "Check for updates", Classes = { "Compact" } };
+    private readonly Button _copy = new() { Content = "Copy your text", Classes = { "Compact" } };
     private readonly Border _compareBar;
     private readonly TextBlock _bannerText = new() { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, FontSize = 12.5 };
     private readonly TextBlock _legend = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -75,7 +82,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private string? _openUrl;
 
     internal MarkdownFileWorkspace(IWorkspaceContext context, FileWorkspaceOpenOptions options,
-        FileSourceChannelClient client, Func<Task<bool>> confirmDiscard, ILogger<MarkdownFileWorkspace>? logger = null)
+        FileSourceChannelClient client, Func<Task<bool>> confirmDiscard, ILogger<MarkdownFileWorkspace>? logger = null,
+        Func<Task>? checkForUpdates = null)
     {
         _context = context;
         _options = options;
@@ -123,7 +131,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         DockPanel.SetDock(_hintStrip, Dock.Top);
         DockPanel.SetDock(footer, Dock.Bottom);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
-        actions.Children.AddRange([_compareButton, _reload, _merge, _overwrite]);
+        actions.Children.AddRange([_compareButton, _copy, _reload, _merge, _overwrite]);
         DockPanel.SetDock(actions, Dock.Right);
         _banner = new Border
         {
@@ -137,8 +145,20 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _compareBar.IsVisible = false;
         _legend.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
         DockPanel.SetDock(_banner, Dock.Top);
+        DockPanel.SetDock(_updates, Dock.Right);
+        var info = new MaterialIcon { Kind = MaterialIconKind.InformationOutline, Classes = { "errorIcon" }, Width = 16, Height = 16, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(info, Dock.Left);
+        _readOnlyBanner = new Border
+        {
+            Name = "LiveReadOnlyBanner", Classes = { "errorCard", "informational" }, Padding = new Thickness(14, 8),
+            CornerRadius = new CornerRadius(0), BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = new DockPanel { LastChildFill = true, Children = { _updates, info, _readOnlyText } }, IsVisible = false,
+        };
+        _readOnlyBanner.Bind(Border.BackgroundProperty, this.GetResourceObservable("CockpitChromeBgBrush"));
+        _readOnlyText.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextPrimaryBrush"));
+        DockPanel.SetDock(_readOnlyBanner, Dock.Top);
         DockPanel.SetDock(_compareBar, Dock.Top);
-        Content = new DockPanel { Children = { head, _hintStrip, message, _banner, _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
+        Content = new DockPanel { Children = { head, _readOnlyBanner, _hintStrip, message, _banner, _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
         this.Bind(BackgroundProperty, this.GetResourceObservable("CockpitSecondaryBgBrush"));
 
         _people.OpenRequested += async (_, _) => await _OpenInSourceAsync().ConfigureAwait(true);
@@ -147,6 +167,14 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _keepOpen.Click += (_, _) => _context.Pin();
         _download.Click += async (_, _) => await _RunUiAsync(_DownloadAsync).ConfigureAwait(true);
         _compareButton.Click += (_, _) => ToggleCompare();
+        _updates.Click += async (_, _) => await _RunUiAsync(checkForUpdates ?? (() => Task.CompletedTask)).ConfigureAwait(true);
+        _copy.Click += async (_, _) => await _RunUiAsync(async () =>
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+            {
+                await clipboard.SetTextAsync(Editor.Text).ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
         _reload.Click += async (_, _) => await _RunUiAsync(ReloadFromSourceAsync).ConfigureAwait(true);
         _merge.Click += (_, _) => MergeSourceChanges();
         _overwrite.Click += async (_, _) => await _RunUiAsync(OverwriteWithMineAsync).ConfigureAwait(true);
@@ -162,6 +190,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
         Editor.TextChanged += (_, _) => _UpdateState();
         Editor.EditRequested += (line, text) =>
         {
+            if (_live?.Status.State == LiveFileState.ReadOnly)
+            {
+                return;
+            }
             if (_loaded && !_canWrite)
             {
                 _error = $"Read-only: you are a Viewer in {(_options.Location.Length == 0 ? _sourceName : _options.Location.Split(" / ")[^1])}";
@@ -196,7 +228,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
     internal MarkdownEditor Editor { get; }
     internal Task Ready { get; }
     internal bool HasConflict => _theirs is not null;
-    internal bool IsDirty => _live is null && _loaded && _editing && (_new || Editor.Text != _savedText);
+    internal bool IsDirty => _live is { } live ? live.HasUnsentText : _loaded && _editing && (_new || Editor.Text != _savedText);
     internal LiveFileStatus? LiveStatus => _live?.Status;
 
     // A read-only body follows its file: a save from another tab or window, or a click on an already-open file, reloads it quietly.
@@ -233,7 +265,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     internal void BeginEdit()
     {
-        if (!_loaded || !_canWrite || _closed)
+        if (!_loaded || !_canWrite || _closed || _live?.Status.State == LiveFileState.ReadOnly)
         {
             return;
         }
@@ -296,7 +328,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             }
             _loaded = true;
             _editing = _canWrite && (_new || _options.Edit || _editing);
-            Editor.IsReadOnly = !_editing;
+            Editor.IsReadOnly = !_editing || _live?.Status.State == LiveFileState.ReadOnly;
             if (!_editing)
             {
                 Editor.ShowSource = false;
@@ -418,7 +450,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     private async Task _SaveCoreAsync()
     {
-        if (!IsDirty || !_canWrite || _closed)
+        if (!IsDirty || !_canWrite || _closed || _live is not null)
         {
             return;
         }
@@ -659,11 +691,21 @@ internal sealed class MarkdownFileWorkspace : UserControl
         var text = Editor.Text;
         var dirty = IsDirty;
         var live = _live?.Status;
+        var readOnly = live?.State == LiveFileState.ReadOnly;
         var notSent = _live?.Failed == true;
         if (live is not null)
         {
             Editor.IsReadOnly = !_editing || live.State == LiveFileState.ReadOnly;
-            _context.SetMarker(notSent || live.State is LiveFileState.Offline or LiveFileState.SignInNeeded ? WorkspaceMarker.Unsaved
+            if (readOnly)
+            {
+                Editor.ShowSource = false;
+            }
+            if (readOnly && _live is { HasUnsentText: true } pending)
+            {
+                _theirs = new Snapshot(pending.SourceText, _hasBom, _version ?? "", null, null, false);
+                _conflict = true;
+            }
+            _context.SetMarker(dirty || notSent || live.State is LiveFileState.Offline or LiveFileState.SignInNeeded ? WorkspaceMarker.Unsaved
                 : live.State is LiveFileState.Live or LiveFileState.ReadOnly or LiveFileState.NoSaver ? WorkspaceMarker.Live : null);
             _context.SetCloseGuard(_ConfirmLiveCloseAsync);
         }
@@ -672,13 +714,13 @@ internal sealed class MarkdownFileWorkspace : UserControl
             _context.SetMarker(dirty ? WorkspaceMarker.Unsaved : null);
             _context.SetCloseGuard(dirty || _saving ? _ConfirmCloseAsync : null);
         }
-        _edit.IsVisible = _loaded && _canWrite && !_editing;
+        _edit.IsVisible = _loaded && _canWrite && !_editing && !readOnly;
         _save.IsVisible = _editing && live is null;
         _keepOpen.IsVisible = _context.IsPreview;
         _hintStrip.IsVisible = _context.IsPreview;
-        _download.IsVisible = _loaded && !_editing && !_new;
+        _download.IsVisible = _loaded && (!_editing || readOnly) && !_new;
         _save.IsEnabled = dirty && !_saving;
-        _source.IsVisible = _editing;
+        _source.IsVisible = _editing && !readOnly;
         _source.IsChecked = Editor.ShowSource;
         _state.Text = _loading ? "Loading…" : _saving ? "Saving…" : _conflict ? $"Changed in {_sourceName}"
             : notSent ? $"Not sent to {_sourceName}"
@@ -687,7 +729,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 LiveFileState.Connecting => "Connecting…",
                 LiveFileState.Offline => $"Offline · not saved to {_sourceName}",
                 LiveFileState.SignInNeeded => $"Sign in to {_sourceName} again",
-                LiveFileState.ReadOnly => "Read only",
+                LiveFileState.ReadOnly => live.ReadOnlyReason == LiveReadOnlyReason.Viewer ? "Viewer · read only" : "Read only",
                 LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
                 LiveFileState.Stale => "Catching up…",
                 LiveFileState.Live => "Live",
@@ -695,6 +737,20 @@ internal sealed class MarkdownFileWorkspace : UserControl
             }
             : !_loaded ? "Unavailable" : !_editing ? (_context.IsPreview ? "Preview · " : "") + (_canWrite ? "read-only" : "Viewer") : dirty ? "Unsaved" : "Saved";
         ToolTip.SetTip(_statusChip, live?.Reason);
+        _readOnlyBanner.IsVisible = readOnly && live?.Reason is { Length: > 0 } && live.ReadOnlyReason != LiveReadOnlyReason.Viewer;
+        _readOnlyText.Inlines?.Clear();
+        if (live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch)
+        {
+            _readOnlyText.Inlines?.Add(new Run("This note uses a newer Depot editor.") { FontWeight = FontWeight.SemiBold });
+            _readOnlyText.Inlines?.Add(new Run(" You can watch it live; editing comes back once Cockpit's Depot plugin is updated."));
+        }
+        else
+        {
+            _readOnlyText.Inlines?.Add(new Run(live?.Reason ?? ""));
+        }
+        _updates.IsVisible = live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch;
+        _copy.IsVisible = readOnly && dirty;
+        _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null;
         var unsaved = _conflict || (dirty && !_saving) || notSent
             || live?.State is LiveFileState.Offline or LiveFileState.SignInNeeded or LiveFileState.NoSaver;
         if (_wasUnsaved != unsaved)
@@ -711,8 +767,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
             var by = theirs.ModifiedBy is { Length: > 0 } author ? $"by {author}" : "";
             var at = theirs.Modified?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "";
             var detail = string.Join(", ", new[] { by, at }.Where(part => part.Length > 0));
-            _bannerText.Inlines?.Add(new Run($"{Path.GetFileName(_options.File.Path)} changed in {_sourceName}") { FontWeight = FontWeight.SemiBold });
-            _bannerText.Inlines?.Add(new Run($" since you opened it{(detail.Length > 0 ? $" — {detail}" : "")}. Nothing was written; your text is still here."));
+            _bannerText.Inlines?.Add(new Run(readOnly ? "Your text has not been sent." : $"{Path.GetFileName(_options.File.Path)} changed in {_sourceName}") { FontWeight = FontWeight.SemiBold });
+            _bannerText.Inlines?.Add(new Run(readOnly ? " Your text is still here; compare or copy it before closing." : $" since you opened it{(detail.Length > 0 ? $" — {detail}" : "")}. Nothing was written; your text is still here."));
         }
         _compareButton.Content = _comparing ? "Back to editing" : "Compare";
         _compareBar.IsVisible = _comparing;

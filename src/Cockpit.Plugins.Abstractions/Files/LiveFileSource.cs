@@ -26,7 +26,26 @@ public enum LiveFileState
 }
 
 /// <summary>A <see cref="LiveFileState"/> with the operator-facing reason, when there is one.</summary>
-public sealed record LiveFileStatus(LiveFileState State, string? Reason = null);
+public sealed record LiveFileStatus(LiveFileState State, string? Reason = null)
+{
+    /// <summary>The read-only cause, for the workspace's badge and recovery action.</summary>
+    public LiveReadOnlyReason ReadOnlyReason { get; init; }
+    /// <summary>The shared text when the source holds local edits it can no longer send; null when none are held.</summary>
+    public string? UnsentSourceText { get; init; }
+}
+
+/// <summary>Why editing a live file is unavailable.</summary>
+public enum LiveReadOnlyReason
+{
+    /// <summary>No specific read-only cause was supplied.</summary>
+    None,
+    /// <summary>The source uses an editor schema this client cannot write.</summary>
+    SchemaMismatch,
+    /// <summary>The operator joined as a viewer.</summary>
+    Viewer,
+    /// <summary>The operator lost permission after joining as an editor.</summary>
+    RoleLost,
+}
 
 /// <summary>The whole text at revision <see cref="Rev"/>.</summary>
 public sealed record LiveFileSnapshot(string Text, long Rev, LiveFileStatus Status);
