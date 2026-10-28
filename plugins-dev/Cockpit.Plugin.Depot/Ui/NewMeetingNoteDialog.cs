@@ -146,7 +146,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
             _project.ItemsSource = options.Projects;
             _project.SelectedItem = options.Recent.Select(address => options.Projects.FirstOrDefault(project => project.Address == address && project.Allowed)).FirstOrDefault(project => project is not null)
                 ?? options.Projects.FirstOrDefault(project => project.Allowed) ?? options.Projects[0];
-            await _SelectProjectAsync().ConfigureAwait(true);
+            await _selecting.ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -177,6 +177,9 @@ internal sealed class NewMeetingNoteDialog : UserControl
         }
 
         _current = project;
+        _CancelCheck();
+        _create.IsEnabled = false;
+        _taken = false;
         _attendees.Clear();
         _RebuildChips();
         _attendeeHint.Text = $"Members of {project.Organization}. They get an invitation in Depot and, if they use Cockpit, a notice there.";
@@ -199,6 +202,13 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private static string? _PlanMessage(DepotMeetingNoteProject project) =>
         project.Allowed ? null : $"{project.Organization}'s plan has no notes-taker.";
 
+    private void _CancelCheck()
+    {
+        _checking?.Cancel();
+        _checking?.Dispose();
+        _checking = null;
+    }
+
     private string? _Folder => _folder.SelectedItem as string;
 
     private string _Topic => (_topic.Text ?? string.Empty).Trim();
@@ -219,8 +229,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
         _taken = false;
         _exists.IsVisible = false;
         _create.IsEnabled = false;
-        _checking?.Cancel();
-        _checking?.Dispose();
+        _CancelCheck();
         _checking = new CancellationTokenSource();
         _check = _CheckAsync(_current, _Topic, _Folder, _checking.Token);
     }
@@ -230,7 +239,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
     {
         try
         {
-            if (topic.Length == 0 || !project.Allowed)
+            if (!topic.Any(char.IsLetterOrDigit) || !project.Allowed)
             {
                 return;
             }
@@ -332,11 +341,12 @@ internal sealed class NewMeetingNoteDialog : UserControl
 
     private async Task _CreateAsync()
     {
-        if (_current is not { Allowed: true } project || _Topic.Length == 0 || _taken)
+        if (_current is not { Allowed: true } project || !_Topic.Any(char.IsLetterOrDigit) || _taken)
         {
             return;
         }
 
+        _CancelCheck();
         _create.IsEnabled = false;
         _error.Text = string.Empty;
         try
