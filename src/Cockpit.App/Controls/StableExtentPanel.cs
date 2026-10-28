@@ -18,6 +18,11 @@ internal sealed class StableExtentPanel : VirtualizingPanel
     // inserting a row does not shift every cached height by one. Weakly, because a panel that outlives a
     // removed row must not be the reason its view model stays alive.
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, StrongBox<double>> _heights = new();
+
+    // AC-1880: an unmeasured row keeps the guess it was first given until it is measured. Guessing every row
+    // from the live mean moved every unseen row above the viewport each time a row was measured, which placed
+    // the realised rows off screen: measured as 36-42 blank frames in 360 and an 18000px extent swing.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, StrongBox<double>> _guesses = new();
     private readonly Dictionary<int, Control> _realised = [];
 
     // Running sum of row heights, rebuilt only when something changed, so a measure costs a binary search
@@ -100,6 +105,7 @@ internal sealed class StableExtentPanel : VirtualizingPanel
             case NotifyCollectionChangedAction.Reset:
                 // A reset says nothing about which items survived, so the only safe reading is that none did.
                 _heights.Clear();
+                _guesses.Clear();
                 _heightSum = 0;
                 _heightCount = 0;
                 _RecycleOutside(0, -1);
@@ -136,9 +142,15 @@ internal sealed class StableExtentPanel : VirtualizingPanel
             return default;
         }
 
-        // A row's height is only valid for the width it was measured at, so a resize invalidates all of it.
+        // A row's height is only valid for the width it was measured at, so a resize invalidates all of it. What
+        // was measured stays as the row's guess: the closest one there is, and the rows above stay where they were.
         if (!double.IsNaN(_measuredWidth) && Math.Abs(_measuredWidth - availableSize.Width) > 0.5)
         {
+            foreach (var (item, known) in _heights)
+            {
+                _guesses.AddOrUpdate(item, new StrongBox<double>(known.Value));
+            }
+
             _heights.Clear();
             _heightSum = 0;
             _heightCount = 0;
@@ -206,7 +218,30 @@ internal sealed class StableExtentPanel : VirtualizingPanel
     }
 
     private double _HeightOf(int index) =>
-        index >= 0 && index < Items.Count && Items[index] is { } item && _heights.TryGetValue(item, out var h) ? h.Value : _Fallback;
+        index >= 0 && index < Items.Count && Items[index] is { } item ? _HeightOf(item) : _Fallback;
+
+    // Measured if it has been, else the guess the row was first given. Nothing is guessed for keeps before a
+    // first row is measured: the fallback would fix every row at InitialRowHeight.
+    private double _HeightOf(object item)
+    {
+        if (_heights.TryGetValue(item, out var measured))
+        {
+            return measured.Value;
+        }
+
+        if (_guesses.TryGetValue(item, out var guess))
+        {
+            return guess.Value;
+        }
+
+        if (_heightCount == 0)
+        {
+            return InitialRowHeight;
+        }
+
+        _guesses.Add(item, new StrongBox<double>(_Fallback));
+        return _Fallback;
+    }
 
     // Records a row's measured height and folds it into the estimate. True when the total moved.
     private bool _Remember(object item, double measured)
@@ -224,6 +259,7 @@ internal sealed class StableExtentPanel : VirtualizingPanel
         }
 
         _heights.Add(item, new StrongBox<double>(measured));
+        _guesses.Remove(item);
         _heightSum += measured;
         _heightCount++;
         return true;
@@ -246,7 +282,7 @@ internal sealed class StableExtentPanel : VirtualizingPanel
         for (var index = 0; index < items.Count; index++)
         {
             _starts.Add(y);
-            y += items[index] is { } item && _heights.TryGetValue(item, out var h) ? h.Value : _Fallback;
+            y += items[index] is { } item ? _HeightOf(item) : _Fallback;
         }
 
         _starts.Add(y);

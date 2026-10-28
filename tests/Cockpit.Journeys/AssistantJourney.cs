@@ -165,6 +165,31 @@ public sealed class AssistantJourney
 
         Assert.Equal([waymark.Id], closed);
         Assert.Empty(HeadlessAvalonia.Run(() => chat.ClosedThreadItems.ToList()));
+
+        // AC-1880: a long conversation runs on, short and long turns mixed, while the operator reads Questions for you;
+        // back in the window, scrolled through in All and in Depot's thread, it never paints an empty pane.
+        var empty = 0;
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.Questions);
+            for (var turn = 0; turn < 24; turn++)
+            {
+                chat.InputText = string.Join("\n\n", Enumerable.Repeat($"turn {turn} for Depot, long enough to wrap in the window", turn % 2 == 0 ? 1 : 14));
+                await chat.SendCommand.ExecuteAsync(null);
+                var echo = $"echo: turn {turn} ";
+                await Until.CollectionHolds(transcript, () => transcript.Any(row => row.Kind == TranscriptEntryKind.AssistantText && row.Text.StartsWith(echo, StringComparison.Ordinal)));
+            }
+
+            var view = opened.Task.Result.ChatView;
+            chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.Kind == AssistantThreadItemKind.All);
+            await AssistantChatScrolling.PumpAsync(20);
+            empty += await AssistantChatScrolling.UpAndDownAsync(view, 60);
+            chat.SelectedThreadItem = chat.ThreadItems.Single(item => item.ProjectId == depot.Id);
+            await AssistantChatScrolling.PumpAsync(20);
+            empty += await AssistantChatScrolling.UpAndDownAsync(view, 60);
+        });
+
+        Assert.Equal(0, empty);
     }
 
     // Switched on, with an SDK profile of its own; a second profile for it to put a session on; and two projects.

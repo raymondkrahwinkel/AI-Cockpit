@@ -62,7 +62,7 @@ public partial class AssistantChatView : UserControl
         return TranscriptItems.GetVisualChildren().OfType<ScrollViewer>().FirstOrDefault();
     }
 
-    private TranscriptFollower Follower =>
+    internal TranscriptFollower Follower =>
         _follower ??= new TranscriptFollower(TranscriptItems, () => TranscriptScroll);
 
     public AssistantChatView()

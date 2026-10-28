@@ -369,6 +369,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- fixed: **the assistant's conversation no longer goes blank or jumps while you scroll (AC-1880).** Scrolling through
+  a long conversation, also while a reply streamed in and most of all since threads put short status lines beside
+  long replies, could show an empty pane for a moment and pull the view back. A row the window has not shown yet
+  now keeps the height it was first estimated at until it is drawn, so the rows above where you read no longer
+  move under you. The same holds in a session's transcript.
 - fixed: **the Projects page shows every connected Depot again.** A Depot whose team projects were all added or
   hidden already, or whose list could not be refreshed, used to vanish from "From your team". Each connection now keeps
   its own section: one with everything added says so in a single line, an unreachable one shows its "last known list"
