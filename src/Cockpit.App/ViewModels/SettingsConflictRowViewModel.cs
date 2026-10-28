@@ -13,8 +13,14 @@ public sealed partial class SettingsConflictRowViewModel : ObservableObject
     public SettingsConflictRowViewModel(SettingsConflict conflict)
     {
         _conflict = conflict;
-        Carriers = [.. (conflict.CarrierValues ?? new Dictionary<string, string?> { ["Other machine"] = conflict.Theirs })
-            .Select(pair => new SettingsConflictCarrierValueViewModel(pair.Key, _Shown(pair.Value), () => _SelectCarrier(pair.Key)))];
+        var values = conflict.CarrierValues ?? new Dictionary<string, string?> { ["Other machine"] = conflict.Theirs };
+        Carriers = [.. values.Select(pair => new SettingsConflictCarrierValueViewModel(
+            pair.Key,
+            _Shown(pair.Value),
+            values.Count > 1 ? $"{_Names(values.Keys.Where(id => id != pair.Key))} will be updated to this value." : string.Empty,
+            () => _SelectCarrier(pair.Key)))];
+        Heading = $"{_Names(values.Keys)} {(values.Count > 1 ? "disagree" : "disagrees")} with this cockpit about “{Label}”.";
+        KeepMineText = $"Keep this cockpit's value ({Mine}) and write it to {(values.Count > 1 ? "all" : "the server")}";
     }
 
     [ObservableProperty]
@@ -29,6 +35,11 @@ public sealed partial class SettingsConflictRowViewModel : ObservableObject
     public IReadOnlyList<SettingsConflictCarrierValueViewModel> Carriers { get; }
 
     public string Key => _conflict.Key;
+
+    // What the mockup's warning line says: who disagrees about which setting, and that nothing is overwritten meanwhile.
+    public string Heading { get; }
+
+    public string KeepMineText { get; }
 
     public string Label => _conflict.Key.StartsWith("Profiles.", StringComparison.Ordinal) ? $"Profile {_conflict.Key["Profiles.".Length..]}"
         : _conflict.Key.StartsWith("Projects.", StringComparison.Ordinal) ? $"Project {_ProjectName(_conflict)}"
@@ -65,6 +76,8 @@ public sealed partial class SettingsConflictRowViewModel : ObservableObject
         foreach (var carrier in Carriers) carrier.IsSelected = carrier.Id == id;
     }
 
+    private static string _Names(IEnumerable<string> ids) => string.Join(" and ", ids);
+
     // A profile or project is named rather than dumped; a removed one says so.
     private static string _Shown(string? json) => JsonNode.Parse(json ?? "null") switch
     {
@@ -80,11 +93,15 @@ public sealed partial class SettingsConflictRowViewModel : ObservableObject
             : conflict.Key["Projects.".Length..];
 }
 
-public sealed partial class SettingsConflictCarrierValueViewModel(string id, string value, Action choose) : ObservableObject
+public sealed partial class SettingsConflictCarrierValueViewModel(string id, string value, string hint, Action choose) : ObservableObject
 {
     public string Id => id;
 
     public string Value => value;
+
+    public string Title => $"Use {id}";
+
+    public string Hint => hint;
 
     [ObservableProperty]
     private bool _isSelected;

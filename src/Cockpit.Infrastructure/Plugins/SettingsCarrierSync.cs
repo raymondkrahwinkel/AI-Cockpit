@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -35,6 +36,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     private readonly ILogger<SettingsCarrierSync> _logger;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ConcurrentDictionary<string, SyncStanding> _standing = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _stopping = new();
 
     private ITimer? _timer;
@@ -64,6 +66,9 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
     // AC-1663: whether the carrier's plugin waits for the operator to sign in. Replaced by the tests.
     internal Func<CancellationToken, Task<bool>> WaitsForSignIn { get; set; } = _ => Task.FromResult(false);
+
+    // AC-1846: when each server last took part in a successful run, and how large its blob was then; Options › Sync shows it.
+    public IReadOnlyDictionary<string, SyncStanding> Standing => new Dictionary<string, SyncStanding>(_standing, StringComparer.Ordinal);
 
     // Told when the operator has a choice to make; set by the desktop, which owns the dialog. Without it the toast says so.
     public Action<IReadOnlyList<SettingsConflict>>? OnConflicts { get; set; }
@@ -440,6 +445,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
                 written = blob;
             }
 
+            _standing[run.Carrier.Id] = new SyncStanding(_time.GetUtcNow(), written?.Length ?? 0);
             state.CarrierBases[run.Carrier.Id] = written is null
                 ? new Dictionary<string, string>(StringComparer.Ordinal)
                 : _Units(_Carried(JsonNode.Parse(written) as JsonObject ?? new JsonObject(), run.Filter)).ToDictionary(pair => pair.Key, pair => pair.Value.Text, StringComparer.Ordinal);
