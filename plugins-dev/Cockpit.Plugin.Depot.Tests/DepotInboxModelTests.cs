@@ -15,9 +15,22 @@ namespace Cockpit.Plugin.Depot.Tests;
 public sealed class DepotInboxModelTests
 {
     [Fact]
-    public void InvitationPushes_DeduplicatePerConnectionRecipientAndNote_AndJoinOnlyOnClick()
+    public async Task InvitationPushes_DeduplicatePerConnectionRecipientAndNote_AndJoinOnlyOnClick()
     {
         using var rig = new Rig();
+        rig.Browser.Answers["inbox-unread"] = new object[]
+        {
+            new { connectionId = "a", state = "ok", unread = 2, perOrganization = new Dictionary<string, int>() },
+            new { connectionId = "b", state = "unreachable", unread = 3, perOrganization = new Dictionary<string, int>() },
+            new { connectionId = "c", state = "sign-in", unread = 0, perOrganization = new Dictionary<string, int>() },
+        };
+        await rig.Model.LoadCountsAsync();
+        Assert.Equal(5, rig.Model.Total);
+        rig.Browser.Invokes.Clear();
+
+        rig.Push(_Page("a", "u1", "initial", noteLink: "old-token"));
+        Assert.Empty(rig.Toasts);
+        Assert.Empty(rig.System);
         rig.Push(_Page("a", "u1", "m1"));
         rig.Push(_Page("a", "u1", "m2"));
         Assert.Single(rig.Toasts);
@@ -31,7 +44,11 @@ public sealed class DepotInboxModelTests
         rig.System[0].Click?.Invoke();
         Assert.Equal([new Uri("https://work.example.com/n/token"), new Uri("https://work.example.com/n/token")], rig.Joined);
 
+        rig.Push(_Page("b", "u1", "initial", noteLink: "old-token"));
+        Assert.Single(rig.Toasts);
         rig.Push(_Page("b", "u1", "m3"));
+        rig.Push(_Page("a", "u2", "initial", noteLink: "old-token"));
+        Assert.Equal(2, rig.Toasts.Count);
         rig.Push(_Page("a", "u2", "m4"));
         Assert.Equal(3, rig.Toasts.Count);
         Assert.Equal(3, rig.System.Count);
@@ -44,6 +61,7 @@ public sealed class DepotInboxModelTests
     public async Task OnlyUnreadInvitations_UseTheSilentSystemNotificationContract(string kind, bool expected)
     {
         using var rig = new Rig();
+        rig.Seed("a", "u1");
         rig.Push(_Page("a", "u1", "m1", kind));
 
         Assert.Equal(expected ? 1 : 0, rig.System.Count);
@@ -54,17 +72,14 @@ public sealed class DepotInboxModelTests
             Assert.Equal("Sanne invited you to Sprint review", notification.Title);
             Assert.Equal("Work · cockpit · Sanne, Alex", notification.Body);
         }
-        else
-        {
-            await DepotInboxModel.OpenAsync(
-                rig.Model.PageOf("a")?.Messages.Single() ?? throw new InvalidOperationException("The message was not applied."),
-                uri =>
-                {
-                    rig.Joined.Add(uri);
-                    return Task.CompletedTask;
-                });
-            Assert.Equal([new Uri("https://work.example.com/mailbox?id=m1")], rig.Joined);
-        }
+        await DepotInboxModel.OpenAsync(
+            rig.Model.PageOf("a")?.Messages.Single() ?? throw new InvalidOperationException("The message was not applied."),
+            uri =>
+            {
+                rig.Joined.Add(uri);
+                return Task.CompletedTask;
+            });
+        Assert.Equal([new Uri(expected ? "https://work.example.com/n/token" : "https://work.example.com/mailbox?id=m1")], rig.Joined);
 
         foreach (var other in new[] { "ArtifactShared", "OrganizationInvitation", "ProjectInvitation" })
         {
@@ -83,6 +98,8 @@ public sealed class DepotInboxModelTests
     public async Task ATitleDepotNoLongerGives_IsAbsentFromBothNotifications_EvenAfterAnEarlierAnswer()
     {
         using var rig = new Rig();
+        rig.Seed("a", "u1");
+        rig.Seed("a", "u2");
         var depot = new DepotInboxTests._Depot("w1") { Title = "Sprint review" };
         await using var service = new DepotInboxService(
             new Cockpit.Plugin.Depot.Model.DepotConnectionRegistration("a", "Work", "https://work.example.com"), depot,
@@ -105,7 +122,7 @@ public sealed class DepotInboxModelTests
     }
 
     private static object _Page(string connection, string recipient, string id, string kind = "NoteInvitation",
-        bool isRead = false, bool handled = false, string state = "ok") => new
+        bool isRead = false, bool handled = false, string state = "ok", string noteLink = "token") => new
     {
         count = new { connectionId = connection, state, unread = 2, perOrganization = new Dictionary<string, int>() },
         messages = new[]
@@ -115,7 +132,7 @@ public sealed class DepotInboxModelTests
                 id, kind, isRead, handled, createdAt = DateTimeOffset.UtcNow, organization = (object?)null,
                 summary = "Sanne invites you to a note", openUrl = "https://work.example.com/mailbox?id=" + id,
                 note = new { state = "note", title = "Sprint review", path = "Meetings/sprint.md", live = true,
-                    openUrl = "https://work.example.com/n/token", project = "cockpit", participants = new[] { "Sanne", "Alex" } },
+                    openUrl = "https://work.example.com/n/" + noteLink, project = "cockpit", participants = new[] { "Sanne", "Alex" } },
             },
         },
         updatedAt = DateTimeOffset.UtcNow,
@@ -154,6 +171,14 @@ public sealed class DepotInboxModelTests
         }
 
         public void Push(object page) => _receive?.Invoke(new PluginChannelEvent("inbox-changed", 1, JsonSerializer.SerializeToElement(page, JsonSerializerOptions.Web)));
+
+        public void Seed(string connection, string recipient) => Push(new
+        {
+            count = new { connectionId = connection, state = "ok", unread = 0, perOrganization = new Dictionary<string, int>() },
+            messages = Array.Empty<object>(),
+            updatedAt = DateTimeOffset.UtcNow,
+            recipient,
+        });
 
         public void Dispose() => Model.Dispose();
     }

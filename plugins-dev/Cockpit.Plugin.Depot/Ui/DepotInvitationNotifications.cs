@@ -11,6 +11,7 @@ internal sealed class DepotInvitationNotifications(
     Func<DepotInboxMessage, Task> join)
 {
     private readonly HashSet<(string Connection, string Recipient, string NoteLink)> _shown = [];
+    private readonly HashSet<(string Connection, string Recipient)> _seeded = [];
 
     public void Show(DepotInboxPage page)
     {
@@ -20,11 +21,17 @@ internal sealed class DepotInvitationNotifications(
             return;
         }
 
+        var seed = _seeded.Add((connection.Id, page.Recipient));
         foreach (var message in page.Messages)
         {
             if (message.Kind != DepotInboxKind.NoteInvitation || message.IsRead || message.Handled
                 || message.Note?.OpenUrl is not { Length: > 0 } noteLink
                 || !_shown.Add((connection.Id, page.Recipient, noteLink)))
+            {
+                continue;
+            }
+
+            if (seed)
             {
                 continue;
             }
