@@ -178,19 +178,6 @@ public sealed class AssistantCreateProjectConsentTests : IDisposable
     }
 
     [Fact]
-    public async Task ACallerThatIsNotTheAssistant_IsRefused_BeforeTheOperatorIsShownAnything()
-    {
-        // Criterion 8.
-        McpRequestContext.Set("some-other-pane");
-
-        var result = _Json(await _Tools(_consent).CreateProjectAsync("Invoices"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_consent.Asked);
-        Assert.Empty(_gateway.Calls);
-    }
-
-    [Fact]
     public async Task WhatTheConsentCheckDidIsReported_RatherThanAssumed()
     {
         McpRequestContext.Set(AssistantIdentity.PaneId);

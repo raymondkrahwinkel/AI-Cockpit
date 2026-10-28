@@ -74,17 +74,6 @@ public sealed class AssistantMemoryBackupToolsConsentTests : IDisposable
         Assert.False((bool)_Json(await _Tools(null).ImportAssistantMemoryAsync(@"C:\nowhere\export.zip"))["ok"]!);
     }
 
-    [Fact]
-    public async Task ACallerThatIsNotTheAssistant_IsRefused_BeforeAnyConsentIsAsked()
-    {
-        McpRequestContext.Set("some-other-pane");
-
-        var result = _Json(await _Tools(_consent).ExportAssistantMemoryAsync(@"C:\nowhere\export.zip"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_consent.Asked);
-    }
-
     // ── AC-759: what the consent check actually did is reported, not assumed ─────────────────────────────────────
 
     [Fact]

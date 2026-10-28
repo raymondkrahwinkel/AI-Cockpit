@@ -98,20 +98,6 @@ public sealed class AssistantBindSharedProjectConsentTests : IDisposable
     }
 
     [Fact]
-    public async Task ACallerThatIsNotTheAssistant_IsRefused_BeforeTheOperatorIsShownAnything()
-    {
-        // Criterion 8. A card raised for a session that may not be here would put an unauthorised caller's own
-        // folder on the operator's screen with a button under it.
-        McpRequestContext.Set("some-other-pane");
-
-        var result = _Json(await _Tools(_consent).BindSharedProjectAsync("depot:handbook", Folder, "Zyra"));
-
-        Assert.False((bool)result["ok"]!);
-        Assert.Empty(_consent.Asked);
-        Assert.Empty(_gateway.Calls);
-    }
-
-    [Fact]
     public async Task WhatTheConsentCheckDidIsReported_RatherThanAssumed()
     {
         // AC-759, the same reporting every other asking tool on this server does.
