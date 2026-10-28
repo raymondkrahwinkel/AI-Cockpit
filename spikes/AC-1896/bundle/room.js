@@ -78,6 +78,14 @@ export function missing(rowsJson) {
   }
   return toBase64(Y.encodeStateAsUpdate(doc, Y.encodeStateVector(scratch)));
 }
+/** The counter-proof: the same diff in Yjs' v2 encoding, which the hub takes without looking (protocol §5.1). */
+export function missingV2(rowsJson) {
+  const scratch = new Y.Doc();
+  for (const row of JSON.parse(rowsJson)) {
+    Y.applyUpdate(scratch, fromBase64(row));
+  }
+  return toBase64(Y.encodeStateAsUpdateV2(doc, Y.encodeStateVector(scratch)));
+}
 
 /** G1: the fragment from a *.pm.json tree, the front matter and eol beside it, in one transaction (editor.ts `seed`). */
 export function seedPm(pmJson, frontmatter, eol) {
