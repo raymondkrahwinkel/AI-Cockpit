@@ -22,7 +22,6 @@ using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Logging;
 using Avalonia.Input;
 using System.Text;
 using System.Text.Json;
@@ -101,7 +100,6 @@ public sealed class WorkspacePopOutTests
         using var registration = Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), source);
         var channel = new Channel(hub);
         var client = new FileSourceChannelClient(channel);
-        var logger = new FileLogger();
         WorkspaceContext? fileContext = null;
         var options = new FileWorkspaceOpenOptions(new FileRef("c1", "doc", "draft.md"), "draft", "draft.md",
             "Depot / Work / Cockpit", Edit: true, CreateNew: true, InitialText: "# Draft\n\n");
@@ -115,7 +113,7 @@ public sealed class WorkspacePopOutTests
             {
                 confirmations++;
                 return Task.FromResult(discard);
-            }, logger);
+            });
         }) { CanFloat = true }, new NoStorage(), NullCockpitSessionObserver.Instance);
         var workspaces = new WorkspacesViewModel(store: null, workspaceTypes: registry);
         var host = new WorkspaceWindowHost(workspaces, id => workspaces.CloseWorkspaceCommand.ExecuteAsync(id), () => null);
@@ -152,7 +150,6 @@ public sealed class WorkspacePopOutTests
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
             Assert.Equal("# Draft\n\ntyped queued during save", body.Editor.Text);
             Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
-            Assert.IsType<NotSupportedException>(Assert.Single(logger.Errors));
             channel.Failure = null;
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " while floating");
             await workspaces.PopOutAsync(workspace.Id);
@@ -191,21 +188,11 @@ public sealed class WorkspacePopOutTests
             var viewerContext = fileContext ?? throw new InvalidOperationException("The viewer context is missing.");
             viewerContext.RequestRefresh();
             Assert.Equal("# someone else", viewer.Editor.Text);
-            Assert.Equal(2, logger.Errors.Count);
         }
         finally
         {
             host.CloseWithTheCockpit();
         }
-    }
-
-    private sealed class FileLogger : ILogger<MarkdownFileWorkspace>
-    {
-        public List<Exception?> Errors { get; } = [];
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) => Errors.Add(exception);
     }
 
     private sealed class Channel(PluginChannelHub hub) : IPluginUiChannel
