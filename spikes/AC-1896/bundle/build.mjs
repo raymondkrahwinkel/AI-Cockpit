@@ -38,7 +38,10 @@ await build({
   target: 'es2022',
   platform: 'neutral',
   mainFields: ['module', 'main'],
-  minify: false,
+  // Whitespace only, which also drops esbuild's path comments: the output must not depend on where the checkout sits (AC-1896).
+  minifyWhitespace: true,
+  // CommonJS wrappers carry their module path; relative to the notes folder it is the same in every checkout.
+  absWorkingDir: notes,
   // room.js sits outside the notes folder: its packages and 'depot-notes/' resolve to the notes folder's own.
   nodePaths: [join(notes, 'node_modules')],
   alias: { 'depot-notes': join(notes, 'src'), ...(markedAt > 0 ? { marked: resolve(process.argv[markedAt + 1]) } : {}) },

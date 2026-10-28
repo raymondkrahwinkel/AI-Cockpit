@@ -5,7 +5,10 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 
-internal sealed record JoinResult(string DocumentId, string Role, bool Seed, bool AwaitingSeed, bool SchemaMismatch, string? Saver, string Markdown, List<byte[]> Rows);
+internal sealed record JoinResult(string DocumentId, string Role, bool Seed, bool AwaitingSeed, bool SchemaMismatch, string? Saver, string Markdown, List<byte[]> Rows)
+{
+    public JsonElement Raw { get; init; }
+}
 
 internal sealed class NoteClient : IAsyncDisposable
 {
@@ -66,7 +69,7 @@ internal sealed class NoteClient : IAsyncDisposable
             rows.AddRange(_early);
             _early.Clear();
         }
-        return new JoinResult(_documentId!, S("role")!, B("seed"), B("awaitingSeed"), B("schemaMismatch"), S("saver"), S("markdown") ?? "", rows);
+        return new JoinResult(_documentId!, S("role")!, B("seed"), B("awaitingSeed"), B("schemaMismatch"), S("saver"), S("markdown") ?? "", rows) { Raw = r };
     }
 
     public string? ConnectionId => _hub.ConnectionId;
