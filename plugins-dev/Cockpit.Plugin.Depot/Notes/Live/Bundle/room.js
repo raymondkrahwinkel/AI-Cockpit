@@ -358,5 +358,5 @@ function rebuild(was, touched, front) {
   close(old.length);
   mirror = out;
   ranges = blocks.map((p) => (p === null ? null : at[p]));
-  return ops;
+  return [{ offset: 0, length: old.length, text: out }];
 }
