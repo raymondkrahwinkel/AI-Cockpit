@@ -96,12 +96,11 @@ public sealed class LiveFileWorkspaceTests
             Dispatcher.UIThread.RunJobs();
             source.Remote(word, "line 7".Length, "");
             Dispatcher.UIThread.RunJobs();
+            var landed = source.Landed.Task;
             source.Hold = null;
             hold.SetResult();
-            for (var turn = 0; turn < 100 && source.Text.ToString() != body.Editor.Text; turn++)
-            {
-                await Task.Delay(10);
-            }
+            await landed.WaitAsync(TimeSpan.FromSeconds(10));
+            Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(source.Text.ToString(), body.Editor.Text);
             Assert.Contains("\nXY of the note\n", body.Editor.Text);
@@ -144,6 +143,7 @@ public sealed class LiveFileWorkspaceTests
         public List<(long BaseRev, TextOp[] Ops)> Edits { get; } = [];
         public int Writes { get; private set; }
         public Task? Hold { get; set; }
+        public TaskCompletionSource Landed { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IReadOnlyList<FileConnection> Connections => [new("c1", "Fake", "memory", false)];
         public FileSourceCapabilities Capabilities => new(true, FileSourceChannel.MaxContentBytes);
         public event EventHandler? ConnectionsChanged { add { } remove { } }
@@ -176,6 +176,9 @@ public sealed class LiveFileWorkspaceTests
                 Text.Remove(op.Offset, op.Length).Insert(op.Offset, op.Text);
                 _own.Add((op.Offset, op.Text.Length));
             }
+            var landed = Landed;
+            Landed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            landed.SetResult();
             return new LiveEditResult(LiveEditStatus.Applied, ++Rev);
         }
         public Task UndoAsync(bool redo, CancellationToken cancellationToken)
