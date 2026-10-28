@@ -17,7 +17,10 @@ internal sealed partial class DepotBrowserPanel
 
     private Task _NewMarkdownAsync(string folder)
     {
-        if (_model is not { } model || _project is not { } project || !_loaded.CanShare) return Task.CompletedTask;
+        if (_model is not { } model || _project is not { } project || !_loaded.CanShare)
+        {
+            return Task.CompletedTask;
+        }
         var folders = new[] { "" }.Concat(_loaded.Nodes.SelectMany(node => _ParentFolders(node.Path)))
             .Append(folder).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         return _host.ShowDialogAsync("New Markdown file", () => new NewMarkdownFileDialog(
@@ -29,18 +32,31 @@ internal sealed partial class DepotBrowserPanel
 
     private static IEnumerable<string> _ParentFolders(string path)
     {
-        for (var slash = path.IndexOf('/'); slash >= 0; slash = path.IndexOf('/', slash + 1)) yield return path[..slash];
+        for (var slash = path.IndexOf('/'); slash >= 0; slash = path.IndexOf('/', slash + 1))
+        {
+            yield return path[..slash];
+        }
     }
 
     private void _AddMarkdownMenu(TreeViewItem row, DepotTreeItem item)
     {
-        if (!_loaded.CanShare) return;
+        if (!_loaded.CanShare)
+        {
+            return;
+        }
         var menu = new MenuItem { Header = item.Kind == DepotTreeKind.Folder ? "New Markdown file here…" : "Edit" };
         if (item.Kind == DepotTreeKind.Folder)
+        {
             menu.Click += async (_, _) => await _NewMarkdownAsync(item.Path).ConfigureAwait(true);
+        }
         else if (item.Node is { } node && DepotMarkdownFiles.IsMarkdown(node))
+        {
             menu.Click += async (_, _) => await _EditMarkdownAsync(node).ConfigureAwait(true);
-        else return;
+        }
+        else
+        {
+            return;
+        }
         row.ContextMenu = new ContextMenu { ItemsSource = new[] { menu } };
     }
 
@@ -51,7 +67,10 @@ internal sealed partial class DepotBrowserPanel
             try
             {
                 if (evt.Payload.Deserialize<FileRef>(FileSourceChannel.Json) is { } file)
+                {
+                    // Channel events are synchronous; the posted task handles failures with a toast below.
                     Dispatcher.UIThread.Post(() => _ = _RefreshAfterFileSaveAsync(file));
+                }
             }
             catch (JsonException) { }
         });
@@ -63,11 +82,17 @@ internal sealed partial class DepotBrowserPanel
     private async Task _RefreshAfterFileSaveAsync(FileRef file)
     {
         if (_fileSavedSubscription is null || _model is not { } model || _project is not { } project
-            || file.ConnectionId != model.Connection.Id) return;
+            || file.ConnectionId != model.Connection.Id)
+        {
+            return;
+        }
         try
         {
             var source = DepotFileRefs.Parse(file, model.Connection.Id);
-            if (source.Project == project) await LoadTreeAsync(source.Path).ConfigureAwait(true);
+            if (source.Project == project)
+            {
+                await LoadTreeAsync(source.Path).ConfigureAwait(true);
+            }
         }
         catch (FileSourceException) { }
         catch (OperationCanceledException) { }

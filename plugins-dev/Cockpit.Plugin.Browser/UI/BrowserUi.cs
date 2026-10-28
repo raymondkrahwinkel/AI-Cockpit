@@ -66,7 +66,10 @@ public sealed class BrowserUi : ICockpitPluginUi, IDisposable
         {
             desktop.ShutdownRequested += (_, request) =>
             {
-                if (!request.Cancel) BrowserEngine.Shared.Shutdown();
+                if (!request.Cancel)
+                {
+                    BrowserEngine.Shared.Shutdown();
+                }
             };
         }
     }

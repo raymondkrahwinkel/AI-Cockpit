@@ -22,11 +22,16 @@ public sealed class PluginUiManager(ILogger<PluginUiManager> logger, PluginDiagn
 
     internal void RegisterRemoteFileWorkspaces(IRemoteServer server)
     {
-        if (server.Plugins is not IPluginChannelRelay relay) return;
+        if (server.Plugins is not IPluginChannelRelay relay)
+        {
+            return;
+        }
         foreach (var (plugin, host) in _hosts)
         {
             if (host is CockpitUiHost native)
+            {
                 native.RegisterRemoteFileWorkspaces(server.Name, new RemotePluginUiChannel(relay, plugin.FolderId));
+            }
         }
     }
 

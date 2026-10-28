@@ -163,7 +163,10 @@ public partial class CockpitViewModel
     private void _SyncServerGroups()
     {
         var servers = _remoteServers?.Servers ?? [];
-        foreach (var server in servers) _registerRemoteFileWorkspaces?.Invoke(server);
+        foreach (var server in servers)
+        {
+            _registerRemoteFileWorkspaces?.Invoke(server);
+        }
         foreach (var group in ServerGroups.Where(group => !servers.Contains(group.Server)).ToList())
         {
             group.Dispose();
@@ -448,7 +451,10 @@ public partial class CockpitViewModel
     internal void FollowRemoteFileWorkspaces(Action<IRemoteServer> register)
     {
         _registerRemoteFileWorkspaces = register;
-        foreach (var server in _remoteServers?.Servers ?? []) register(server);
+        foreach (var server in _remoteServers?.Servers ?? [])
+        {
+            register(server);
+        }
     }
 
     private (Type UiType, ICockpitUiHost Host)? _LocalSettingsPartFor(ServerPluginRowViewModel row) =>

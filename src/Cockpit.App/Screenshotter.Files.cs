@@ -40,7 +40,10 @@ internal static partial class Screenshotter
         var entry = workspaces.Active ?? throw new InvalidOperationException("The file scene did not open.");
         var body = workspaces.BodyFor(entry) as MarkdownFileWorkspace ?? throw new InvalidOperationException("The editor scene is missing.");
         body.Ready.GetAwaiter().GetResult();
-        if (state is "editing" or "floating") body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "\nA new idea, ready to save.");
+        if (state is "editing" or "floating")
+        {
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "\nA new idea, ready to save.");
+        }
         if (state == "floating")
         {
             workspaces.PopOutAsync(entry.Id).GetAwaiter().GetResult();

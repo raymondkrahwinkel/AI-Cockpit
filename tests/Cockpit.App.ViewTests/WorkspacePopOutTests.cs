@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Docking;
@@ -21,6 +22,7 @@ using Cockpit.Plugins.Abstractions.UI;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Avalonia.Input;
 using System.Text;
 using System.Text.Json;
@@ -97,18 +99,24 @@ public sealed class WorkspacePopOutTests
         var source = new FileSource();
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         using var registration = Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), source);
-        var client = new FileSourceChannelClient(new Channel(hub));
+        var channel = new Channel(hub);
+        var client = new FileSourceChannelClient(channel);
+        var logger = new FileLogger();
+        WorkspaceContext? fileContext = null;
         var options = new FileWorkspaceOpenOptions(new FileRef("c1", "doc", "draft.md"), "draft", "draft.md",
             "Depot / Work / Cockpit", Edit: true, CreateNew: true, InitialText: "# Draft\n\n");
         var discard = false;
         var confirmations = 0;
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("test.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, client, () =>
+        {
+            fileContext = context as WorkspaceContext;
+            return new MarkdownFileWorkspace(context, options, client, () =>
             {
                 confirmations++;
                 return Task.FromResult(discard);
-            })) { CanFloat = true }, new NoStorage(), NullCockpitSessionObserver.Instance);
+            }, logger);
+        }) { CanFloat = true }, new NoStorage(), NullCockpitSessionObserver.Instance);
         var workspaces = new WorkspacesViewModel(store: null, workspaceTypes: registry);
         var host = new WorkspaceWindowHost(workspaces, id => workspaces.CloseWorkspaceCommand.ExecuteAsync(id), () => null);
         host.Start();
@@ -118,6 +126,11 @@ public sealed class WorkspacePopOutTests
             var workspace = workspaces.Active ?? throw new InvalidOperationException("No file workspace opened.");
             var body = workspaces.ActivePluginBody as MarkdownFileWorkspace ?? throw new InvalidOperationException("The host file workspace is missing.");
             await body.Ready;
+            var sourceSwitch = body.GetLogicalDescendants().OfType<CheckBox>().Single(control => control.Name == "MarkdownSourceSwitch");
+            sourceSwitch.IsChecked = true;
+            Assert.True(body.Editor.ShowSource);
+            body.Editor.ShowSource = false;
+            Assert.False(sourceSwitch.IsChecked);
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "typed");
             var document = body.Editor.TextEditor.Document;
             var undo = document.UndoStack;
@@ -135,6 +148,12 @@ public sealed class WorkspacePopOutTests
             Assert.Equal("# Draft\n\ntyped queued", source.Text);
             Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
             source.PendingWrite = Task.CompletedTask;
+            channel.Failure = new NotSupportedException("Unexpected save failure.");
+            body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
+            Assert.Equal("# Draft\n\ntyped queued during save", body.Editor.Text);
+            Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
+            Assert.IsType<NotSupportedException>(Assert.Single(logger.Errors));
+            channel.Failure = null;
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " while floating");
             await workspaces.PopOutAsync(workspace.Id);
             Dispatcher.UIThread.RunJobs();
@@ -168,6 +187,11 @@ public sealed class WorkspacePopOutTests
             Assert.True(viewer.Editor.IsReadOnly);
             viewer.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "not allowed" });
             Assert.Equal("# someone else", viewer.Editor.Text);
+            channel.Failure = new NotSupportedException("Unexpected refresh failure.");
+            var viewerContext = fileContext ?? throw new InvalidOperationException("The viewer context is missing.");
+            viewerContext.RequestRefresh();
+            Assert.Equal("# someone else", viewer.Editor.Text);
+            Assert.Equal(2, logger.Errors.Count);
         }
         finally
         {
@@ -175,10 +199,26 @@ public sealed class WorkspacePopOutTests
         }
     }
 
+    private sealed class FileLogger : ILogger<MarkdownFileWorkspace>
+    {
+        public List<Exception?> Errors { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Errors.Add(exception);
+    }
+
     private sealed class Channel(PluginChannelHub hub) : IPluginUiChannel
     {
-        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
-            hub.InvokeAsync("files", action, payload, cancellationToken);
+        public Exception? Failure { get; set; }
+        public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default)
+        {
+            if (Failure is { } failure)
+            {
+                throw failure;
+            }
+            return hub.InvokeAsync("files", action, payload, cancellationToken);
+        }
         public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => hub.Subscribe("files", name, handler);
     }
 
@@ -198,8 +238,14 @@ public sealed class WorkspacePopOutTests
         public async Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
         {
             await PendingWrite;
-            if (!CanWrite) throw new FileSourceException(FileSourceErrorKind.Forbidden, "Read-only file.");
-            if (mustNotExist ? Text is not null : ifVersion != $"v{_version}") return new(FileWriteStatus.Conflict, $"v{_version}");
+            if (!CanWrite)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Forbidden, "Read-only file.");
+            }
+            if (mustNotExist ? Text is not null : ifVersion != $"v{_version}")
+            {
+                return new(FileWriteStatus.Conflict, $"v{_version}");
+            }
             using var reader = new StreamReader(content, Encoding.UTF8, leaveOpen: true);
             Text = await reader.ReadToEndAsync(cancellationToken);
             return new(FileWriteStatus.Written, $"v{++_version}");

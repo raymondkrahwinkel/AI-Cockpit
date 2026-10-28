@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Services;
 
@@ -25,6 +26,7 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
     private readonly Action _launchNewInstance;
     private readonly Action _shutDownCurrentInstance;
     private readonly Func<Task<bool>> _confirmWorkspaceClose;
+    private readonly ILogger<AppRestartService> _logger = NullLogger<AppRestartService>.Instance;
 
     public AppRestartService(IUpdateService updates, ILogger<AppRestartService> logger)
         : this(
@@ -33,6 +35,7 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
             _LaunchNewInstance,
             _ShutDownCurrentInstance)
     {
+        _logger = logger;
     }
 
     internal AppRestartService(Action launchNewInstance, Action shutDownCurrentInstance)
@@ -64,11 +67,28 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
         _confirmWorkspaceClose = confirmWorkspaceClose ?? (() => ConfirmWorkspaceCloseAsync());
     }
 
-    public void Restart() => _ = RestartAsync();
+    // The command interface is synchronous; its async boundary catches and logs every failure.
+    public void Restart() => _ = _RestartFromUiAsync();
+
+    private async Task _RestartFromUiAsync()
+    {
+        try
+        {
+            await RestartAsync().ConfigureAwait(true);
+        }
+        catch (Exception error)
+        {
+            CancelWorkspaceClose();
+            _logger.LogError(error, "Could not restart Cockpit; keeping this instance open.");
+        }
+    }
 
     internal async Task RestartAsync()
     {
-        if (!await _confirmWorkspaceClose().ConfigureAwait(true)) return;
+        if (!await _confirmWorkspaceClose().ConfigureAwait(true))
+        {
+            return;
+        }
         try
         {
             if (_startStagedUpdateAndRestart())
@@ -103,7 +123,9 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
     internal static void CancelWorkspaceClose()
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: MainWindow main })
+        {
             main.CancelWorkspaceClose();
+        }
     }
 
     private static void _LaunchNewInstance()

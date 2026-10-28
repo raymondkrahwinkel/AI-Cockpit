@@ -49,7 +49,10 @@ internal sealed class NewMarkdownFileDialog : UserControl
     private string _Target()
     {
         var name = (_name.Text ?? "").Trim();
-        if (!name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) name += ".md";
+        if (!name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+        {
+            name += ".md";
+        }
         return _folder.SelectedItem is string { Length: > 0 } folder ? $"{folder}/{name}" : name;
     }
 
@@ -68,7 +71,10 @@ internal sealed class NewMarkdownFileDialog : UserControl
     private async Task _CreateAsync()
     {
         _Validate();
-        if (!_create.IsEnabled) return;
+        if (!_create.IsEnabled)
+        {
+            return;
+        }
         _create.IsEnabled = false;
         try
         {

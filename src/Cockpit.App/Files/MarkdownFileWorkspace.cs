@@ -2,7 +2,6 @@ using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -11,6 +10,8 @@ using Cockpit.App.Views.Editor;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.App.Files;
 
@@ -21,6 +22,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly FileWorkspaceOpenOptions _options;
     private readonly FileSourceChannelClient _client;
     private readonly Func<Task<bool>> _confirmDiscard;
+    private readonly ILogger<MarkdownFileWorkspace> _logger;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly TextBlock _state = new() { Name = "FileStatus", FontSize = 12 };
     private readonly TextBlock _message = new() { Name = "FileMessage", TextWrapping = TextWrapping.Wrap, IsVisible = false };
@@ -28,7 +30,9 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private readonly TextBlock _shortcuts = new() { FontSize = 11.5, Margin = new Thickness(12, 0, 0, 0) };
     private readonly Button _save = new() { Content = "Save", Classes = { "Compact", "Accent" } };
     private readonly Button _edit = new() { Content = "Edit", Classes = { "Compact" } };
-    private readonly ToggleButton _source = new() { Content = "Markdown source", Classes = { "Compact" } };
+    private readonly CheckBox _source = new() { Name = "MarkdownSourceSwitch", Content = "Markdown source", Classes = { "Switch" }, VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+    private readonly Border _statusChip;
+    private bool? _wasUnsaved;
     private string _savedText = "";
     private string? _version;
     private string? _error;
@@ -44,12 +48,13 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private Task? _saveTask;
 
     internal MarkdownFileWorkspace(IWorkspaceContext context, FileWorkspaceOpenOptions options,
-        FileSourceChannelClient client, Func<Task<bool>> confirmDiscard)
+        FileSourceChannelClient client, Func<Task<bool>> confirmDiscard, ILogger<MarkdownFileWorkspace>? logger = null)
     {
         _context = context;
         _options = options;
         _client = client;
         _confirmDiscard = confirmDiscard;
+        _logger = logger ?? NullLogger<MarkdownFileWorkspace>.Instance;
         _new = options.CreateNew;
         Editor = new MarkdownEditor { IsReadOnly = true };
         Editor.UseWorkspaceSourceToggle();
@@ -60,11 +65,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
             FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
         };
         location.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
-        var chip = new Border { Child = _state, Padding = new Thickness(8, 2), VerticalAlignment = VerticalAlignment.Center };
-        chip.Bind(Border.BackgroundProperty, this.GetResourceObservable("CockpitInsetBgBrush"));
-        chip.Bind(Border.CornerRadiusProperty, this.GetResourceObservable("CockpitPillRadius"));
+        _statusChip = new Border { Child = _state, Padding = new Thickness(8, 2), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        _statusChip.Bind(Border.CornerRadiusProperty, this.GetResourceObservable("CockpitPillRadius"));
         var header = new DockPanel { LastChildFill = true };
-        foreach (var action in new Control[] { _save, _edit, _source, chip })
+        foreach (var action in new Control[] { _save, _edit, _source, _statusChip })
         {
             DockPanel.SetDock(action, Dock.Right);
             action.Margin = new Thickness(6, 0, 0, 0);
@@ -89,14 +93,23 @@ internal sealed class MarkdownFileWorkspace : UserControl
         Content = new DockPanel { Children = { head, message, footer, Editor } };
         this.Bind(BackgroundProperty, this.GetResourceObservable("CockpitSecondaryBgBrush"));
 
-        _save.Click += async (_, _) => await SaveAsync().ConfigureAwait(true);
+        _save.Click += async (_, _) => await _SaveFromUiAsync().ConfigureAwait(true);
         _edit.Click += (_, _) => BeginEdit();
         _source.IsCheckedChanged += (_, _) => Editor.ShowSource = _source.IsChecked == true;
-        Editor.PropertyChanged += (_, e) => { if (e.Property == MarkdownEditor.ShowSourceProperty) _UpdateState(); };
+        Editor.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == MarkdownEditor.ShowSourceProperty)
+            {
+                _UpdateState();
+            }
+        };
         Editor.TextChanged += (_, _) => _UpdateState();
         Editor.EditRequested += (line, text) =>
         {
-            if (!_canWrite || !_loaded) return;
+            if (!_canWrite || !_loaded)
+            {
+                return;
+            }
             BeginEdit();
             Editor.EditLine(line, atEnd: true);
             var offset = Editor.TextEditor.CaretOffset;
@@ -106,7 +119,13 @@ internal sealed class MarkdownFileWorkspace : UserControl
         AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
         _context.RefreshRequested += _OnRefresh;
         _context.Closed += _OnClosed;
-        AttachedToVisualTree += (_, _) => { if (_editing) Editor.TextEditor.TextArea.Focus(); };
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (_editing)
+            {
+                Editor.TextEditor.TextArea.Focus();
+            }
+        };
         Ready = _LoadAsync();
     }
 
@@ -116,20 +135,32 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     internal void BeginEdit()
     {
-        if (!_loaded || !_canWrite || _closed) return;
+        if (!_loaded || !_canWrite || _closed)
+        {
+            return;
+        }
         var wasEditing = _editing;
         var markedLine = Math.Clamp(Editor.MarkedLine, 1, Editor.TextEditor.Document.LineCount);
         _context.Pin();
         _editing = true;
         Editor.IsReadOnly = false;
-        if (!wasEditing) Editor.EditLine(markedLine, atEnd: true);
-        else Editor.TextEditor.TextArea.Focus();
+        if (!wasEditing)
+        {
+            Editor.EditLine(markedLine, atEnd: true);
+        }
+        else
+        {
+            Editor.TextEditor.TextArea.Focus();
+        }
         _UpdateState();
     }
 
     private async Task _LoadAsync()
     {
-        if (_loading || _closed) return;
+        if (_loading || _closed)
+        {
+            return;
+        }
         _loading = true;
         _error = null;
         _conflict = false;
@@ -140,7 +171,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
             {
                 var connections = await _client.ConnectionsAsync(_lifetime.Token).ConfigureAwait(true);
                 _canWrite = connections.FirstOrDefault(c => c.Id == _options.File.ConnectionId) is { ReadOnly: false };
-                if (!_canWrite) throw new FileSourceException(FileSourceErrorKind.Forbidden, "This file connection does not allow a new file.");
+                if (!_canWrite)
+                {
+                    throw new FileSourceException(FileSourceErrorKind.Forbidden, "This file connection does not allow a new file.");
+                }
                 Editor.Text = _options.InitialText;
                 Editor.TextEditor.CaretOffset = Editor.Text.Length;
                 _savedText = "";
@@ -160,7 +194,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
             _loaded = true;
             _editing = _canWrite && (_new || _options.Edit || _editing);
             Editor.IsReadOnly = !_editing;
-            if (!_editing) Editor.ShowSource = false;
+            if (!_editing)
+            {
+                Editor.ShowSource = false;
+            }
         }
         catch (OperationCanceledException) when (_closed) { }
         catch (Exception error) when (error is FileSourceException or DecoderFallbackException)
@@ -181,16 +218,32 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     internal async Task SaveAsync()
     {
-        if (_saveTask is { } active) { await active.ConfigureAwait(true); return; }
+        if (_saveTask is { } active)
+        {
+            await active.ConfigureAwait(true);
+            return;
+        }
         var save = _SaveCoreAsync();
         _saveTask = save;
-        try { await save.ConfigureAwait(true); }
-        finally { if (ReferenceEquals(_saveTask, save)) _saveTask = null; }
+        try
+        {
+            await save.ConfigureAwait(true);
+        }
+        finally
+        {
+            if (ReferenceEquals(_saveTask, save))
+            {
+                _saveTask = null;
+            }
+        }
     }
 
     private async Task _SaveCoreAsync()
     {
-        if (!IsDirty || !_canWrite || _closed) return;
+        if (!IsDirty || !_canWrite || _closed)
+        {
+            return;
+        }
         var submitted = Editor.Text;
         _saving = true;
         _conflict = false;
@@ -227,29 +280,63 @@ internal sealed class MarkdownFileWorkspace : UserControl
         if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.Control)
         {
             e.Handled = true;
-            _ = SaveAsync();
+            // Key events cannot await; the UI boundary catches and logs unexpected failures.
+            _ = _SaveFromUiAsync();
+        }
+    }
+
+    private async Task _SaveFromUiAsync()
+    {
+        try
+        {
+            await SaveAsync().ConfigureAwait(true);
+        }
+        catch (Exception error)
+        {
+            _logger.LogError(error, "Saving Markdown workspace {WorkspaceId} failed.", _context.WorkspaceId);
+            _error = "The file could not be saved. Your text is still open; try saving again.";
+            _UpdateState();
         }
     }
 
     private async Task<bool> _ConfirmCloseAsync()
     {
-        if (_saveTask is { } save) await save.ConfigureAwait(true);
-        if (!IsDirty) return true;
+        if (_saveTask is { } save)
+        {
+            await save.ConfigureAwait(true);
+        }
+        if (!IsDirty)
+        {
+            return true;
+        }
         var owner = TopLevel.GetTopLevel(this) as Window
             ?? (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-        if (owner is { IsVisible: false }) owner.Show();
+        if (owner is { IsVisible: false })
+        {
+            owner.Show();
+        }
         return await _confirmDiscard().ConfigureAwait(true);
     }
 
     private async void _OnRefresh(object? sender, EventArgs e)
     {
-        if (IsDirty || _saving)
+        // This event has no Task result; keep exceptions inside its boundary.
+        try
         {
-            _error = "Save or close your unsaved changes before reloading this file.";
-            _UpdateState();
-            return;
+            if (IsDirty || _saving)
+            {
+                _error = "Save or close your unsaved changes before reloading this file.";
+                _UpdateState();
+                return;
+            }
+            await _LoadAsync().ConfigureAwait(true);
         }
-        await _LoadAsync().ConfigureAwait(true);
+        catch (Exception error)
+        {
+            _logger.LogError(error, "Refreshing Markdown workspace {WorkspaceId} failed.", _context.WorkspaceId);
+            _error = "The file could not be reloaded. Your current text is still open.";
+            _UpdateState();
+        }
     }
 
     private void _OnClosed(object? sender, EventArgs e)
@@ -264,7 +351,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     private void _UpdateState()
     {
-        if (_closed) return;
+        if (_closed)
+        {
+            return;
+        }
         var text = Editor.Text;
         var dirty = _loaded && _editing && (_new || text != _savedText);
         _context.SetMarker(dirty ? WorkspaceMarker.Unsaved : null);
@@ -275,7 +365,15 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _source.IsVisible = _editing;
         _source.IsChecked = Editor.ShowSource;
         _state.Text = _loading ? "Loading…" : _saving ? "Saving…" : _conflict ? "Save conflict"
-            : !_loaded ? "Unavailable" : !_editing ? (_canWrite ? "Read-only" : "Viewer") : dirty ? "Not saved" : "Saved";
+            : !_loaded ? "Unavailable" : !_editing ? (_canWrite ? "Read-only" : "Viewer") : dirty ? "Unsaved" : "Saved";
+        var unsaved = dirty && !_saving && !_conflict;
+        if (_wasUnsaved != unsaved)
+        {
+            _wasUnsaved = unsaved;
+            _statusChip.Bind(Border.BackgroundProperty, this.GetResourceObservable(unsaved ? "CockpitStatusWaitingChipTintBrush" : "CockpitInsetBgBrush"));
+            _statusChip.Bind(Border.BorderBrushProperty, this.GetResourceObservable(unsaved ? "CockpitStatusWaitingRingTintBrush" : "CockpitHairlineSoftBrush"));
+            _state.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable(unsaved ? "CockpitStatusWaitingBrush" : "CockpitTextSecondaryBrush"));
+        }
         _message.Text = _error;
         _message.IsVisible = _error is not null;
         var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
@@ -298,8 +396,15 @@ internal sealed class MarkdownFileWorkspace : UserControl
         var word = false;
         foreach (var character in text)
         {
-            if (char.IsWhiteSpace(character)) word = false;
-            else if (!word) { count++; word = true; }
+            if (char.IsWhiteSpace(character))
+            {
+                word = false;
+            }
+            else if (!word)
+            {
+                count++;
+                word = true;
+            }
         }
         return count;
     }

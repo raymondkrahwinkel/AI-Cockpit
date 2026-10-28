@@ -409,9 +409,15 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         {
             var context = _pluginContexts.Values.OfType<WorkspaceContext>().FirstOrDefault(candidate =>
                 candidate.HasCloseGuard && (!confirmed.TryGetValue(candidate, out var version) || version != candidate.CloseGuardVersion));
-            if (context is null) return true;
+            if (context is null)
+            {
+                return true;
+            }
             var currentVersion = context.CloseGuardVersion;
-            if (!await context.ConfirmCloseAsync().ConfigureAwait(true)) return false;
+            if (!await context.ConfirmCloseAsync().ConfigureAwait(true))
+            {
+                return false;
+            }
             confirmed[context] = currentVersion;
         }
     }
@@ -422,7 +428,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     private async Task CloseWorkspaceAsync(string workspaceId)
     {
         if (CanClose(workspaceId) && await ConfirmCloseAsync(workspaceId).ConfigureAwait(true))
+        {
             await CloseConfirmedAsync(workspaceId).ConfigureAwait(true);
+        }
     }
 
     [RelayCommand]

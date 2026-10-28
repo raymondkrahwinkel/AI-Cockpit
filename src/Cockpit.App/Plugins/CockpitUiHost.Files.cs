@@ -10,6 +10,7 @@ using Cockpit.Plugins.Abstractions.UI.Files;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Plugins;
 
@@ -29,7 +30,9 @@ internal sealed partial class CockpitUiHost
     internal void RegisterRemoteFileWorkspaces(string server, IPluginUiChannel channel)
     {
         foreach (var (id, title) in _localFileWorkspaceTypes)
+        {
             AddRemoteFileWorkspaceType(id, title, server, channel);
+        }
     }
 
     internal void AddRemoteFileWorkspaceType(string workspaceTypeId, string title, string server,
@@ -41,20 +44,28 @@ internal sealed partial class CockpitUiHost
     private void _RegisterFileWorkspace(string id, string title, IPluginUiChannel channel)
     {
         _fileWorkspaceChannels[id] = channel;
-        if (!_fileWorkspaceTypes.Add(id)) return;
+        if (!_fileWorkspaceTypes.Add(id))
+        {
+            return;
+        }
         var registration = new WorkspaceTypeRegistration(id, title, context =>
         {
             var options = context.InstanceKey is { } key ? _pendingFiles.GetValueOrDefault((id, key)) : null;
             options ??= context.Storage.Get<FileWorkspaceOpenOptions>("file");
             if (options?.File is null || string.IsNullOrWhiteSpace(options.File.Path))
+            {
                 return new TextBlock { Text = "Open a Markdown file from a file browser.", Margin = new Thickness(24) };
+            }
             options = options with { Location = options.Location ?? "", InitialText = options.InitialText ?? "" };
             context.Storage.Set("file", options with { Edit = false, CreateNew = false, InitialText = "" });
             return new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileWorkspaceChannel(() => _fileWorkspaceChannels[id])), () =>
-                ConfirmAsync("Discard unsaved changes?", $"Close {options.Title} without saving? Your changes will be lost.", "Discard changes"));
+                ConfirmAsync("Discard unsaved changes?", $"Close {options.Title} without saving? Your changes will be lost.", "Discard changes"),
+                services.GetService<ILogger<MarkdownFileWorkspace>>());
         }) { CanFloat = true, IconKind = MaterialIconKind.FileDocumentOutline };
         if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, Storage, host.Sessions))
+        {
             _fileWorkspaceTypes.Remove(id);
+        }
     }
 
     public Task OpenFileWorkspaceAsync(string workspaceTypeId, FileWorkspaceOpenOptions options) =>
@@ -71,10 +82,17 @@ internal sealed partial class CockpitUiHost
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.File);
         if (!_fileWorkspaceTypes.Contains(typeId))
+        {
             throw new InvalidOperationException("Register the file workspace type before opening a file.");
+        }
         if (string.IsNullOrWhiteSpace(options.InstanceKey) || string.IsNullOrWhiteSpace(options.File.Path))
+        {
             throw new ArgumentException("The file workspace needs a key and a file path.", nameof(options));
-        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces) return;
+        }
+        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces)
+        {
+            return;
+        }
         await UiThreadCall.DispatchAsync(async () =>
         {
             var key = (typeId, options.InstanceKey);
@@ -86,7 +104,10 @@ internal sealed partial class CockpitUiHost
                 if (entry is not null && workspaces.BodyFor(entry) is MarkdownFileWorkspace body)
                 {
                     await body.Ready.ConfigureAwait(true);
-                    if (options.Edit || options.CreateNew) body.BeginEdit();
+                    if (options.Edit || options.CreateNew)
+                    {
+                        body.BeginEdit();
+                    }
                 }
             }
             finally { _pendingFiles.Remove(key); }

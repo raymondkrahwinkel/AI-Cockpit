@@ -135,6 +135,7 @@ public partial class MainWindow : Window
             if (!_fileClosePending)
             {
                 _fileClosePending = true;
+                // Leave OnClosing before replaying Close; the posted task catches and logs failures below.
                 Dispatcher.UIThread.Post(() => _ = _ConfirmFilesThenCloseAsync());
             }
             return;
@@ -178,7 +179,10 @@ public partial class MainWindow : Window
 
     internal async Task<bool> ConfirmWorkspaceCloseAsync()
     {
-        if (DataContext is not CockpitViewModel cockpit) return true;
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return true;
+        }
         var confirmation = _fileCloseConfirmation ??= cockpit.Workspaces.ConfirmCloseAllAsync();
         try
         {
@@ -189,7 +193,10 @@ public partial class MainWindow : Window
             LifecycleLog.Write($"Confirming unsaved files failed; keeping Cockpit open: {exception.Message}");
             _fileCloseApproved = false;
         }
-        if (!_fileCloseApproved) _fileCloseConfirmation = null;
+        if (!_fileCloseApproved)
+        {
+            _fileCloseConfirmation = null;
+        }
         else if (_closingWindows.Count == 0)
         {
             // A slow teardown must not allow fresh edits after the last discard decision.
@@ -208,7 +215,10 @@ public partial class MainWindow : Window
     {
         _fileCloseApproved = false;
         _fileCloseConfirmation = null;
-        foreach (var window in _closingWindows) window.IsEnabled = true;
+        foreach (var window in _closingWindows)
+        {
+            window.IsEnabled = true;
+        }
         _closingWindows.Clear();
     }
 
@@ -216,7 +226,15 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (await ConfirmWorkspaceCloseAsync().ConfigureAwait(true)) Close();
+            if (await ConfirmWorkspaceCloseAsync().ConfigureAwait(true))
+            {
+                Close();
+            }
+        }
+        catch (Exception error)
+        {
+            CancelWorkspaceClose();
+            LifecycleLog.Write($"Closing after file confirmation failed; keeping Cockpit open: {error}");
         }
         finally
         {
