@@ -8,7 +8,7 @@ tags: [meeting, notes]
 **Datum:** maandag 19 oktober 2026
 **Aanwezigen:** Raymond, Sanne, Jithran
 
-## Notitie$
+## Notities
 
 - Redesign (DEP-174): alle RD-tickets staan op de epic
 - Notes-taker (DEP-385): *mockups* liggen klaar, zie [de mockup](https://example.com/mockup) en `Designs/`
