@@ -47,7 +47,7 @@ public sealed class BackendWithoutAppTests : IDisposable
     }
 
     // A planner started before the startup reconcile is refused: its crash net assumes the sweep ran. AC-1889: the
-    // background start hands back at once while a planner takes 3 s; merged here to keep the test ceiling.
+    // background start hands back at once while a planner takes 3 s; a second call does not start again.
     [Fact]
     public async Task ThePlanners_StartOnlyAfterTheStartupReconcile_AndNeverHoldTheCaller()
     {
@@ -57,15 +57,21 @@ public sealed class BackendWithoutAppTests : IDisposable
         var early = Record.Exception(backend.StartPlanners);
         var watchingBeforeStart = services.GetRequiredService<CiWatcher>().Watching;
         backend.Start();
-        backend.BeforePlanners = () => Thread.Sleep(TimeSpan.FromSeconds(3));
+        var starts = 0;
+        backend.BeforePlanners = () =>
+        {
+            starts++;
+            Thread.Sleep(TimeSpan.FromSeconds(3));
+        };
         var clock = Stopwatch.StartNew();
         var started = backend.StartPlannersInBackgroundAsync();
         var handedBackIn = clock.Elapsed;
-        await started;
+        await Task.WhenAll(started, backend.StartPlannersInBackgroundAsync());
 
         Assert.IsType<InvalidOperationException>(early);
         Assert.Null(watchingBeforeStart);
         Assert.True(handedBackIn < TimeSpan.FromSeconds(1), $"The caller was held for {handedBackIn}.");
+        Assert.Equal(1, starts);
         Assert.NotNull(services.GetRequiredService<CiWatcher>().Watching);
     }
 
