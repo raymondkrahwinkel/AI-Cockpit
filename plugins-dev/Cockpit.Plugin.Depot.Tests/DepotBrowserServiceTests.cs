@@ -27,6 +27,9 @@ public class DepotBrowserServiceTests
         public DepotBrowserService Service { get; }
         public Func<HttpRequestMessage, string, string>? RestResponse { get; set; }
         public HttpStatusCode FileStatus { get; set; } = HttpStatusCode.OK;
+        public Action? BeforeProjectsResponse { get; set; }
+        public IReadOnlyList<DepotConnectionRegistration> Connections { get; set; } =
+            [new("c1", "Work", "https://depot.example.com")];
 
         public _Rig(string role = "Editor")
         {
@@ -40,7 +43,7 @@ public class DepotBrowserServiceTests
                     Calls.Add((tool, arguments));
                     return Task.FromResult(Tools.TryGetValue(tool, out var answer) ? answer(arguments) : PluginMcpToolCallResult.Failed($"no {tool}"));
                 });
-            Service = new DepotBrowserService(Host, () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]);
+            Service = new DepotBrowserService(Host, () => Connections);
         }
 
         public int Count(string tool) => Calls.Count(call => call.Tool == tool);
@@ -55,6 +58,7 @@ public class DepotBrowserServiceTests
             var uri = request.RequestUri ?? throw new InvalidOperationException("The request had no URI.");
             if (uri.AbsolutePath == "/cockpit/projects")
             {
+                rig.BeforeProjectsResponse?.Invoke();
                 return _Json(projects);
             }
 
@@ -237,7 +241,7 @@ public class DepotBrowserServiceTests
     }
 
     private static IFileSource _Source(_Rig rig) => new Files.DepotFileSourceProvider(rig.Host,
-        () => [new DepotConnectionRegistration("c1", "Work", "https://depot.example.com")]).Open("c1");
+        () => rig.Connections).Open("c1");
 
     private static async Task _ReadSaveContractAsync()
     {
@@ -266,6 +270,7 @@ public class DepotBrowserServiceTests
 
     private static async Task _CreateContractAsync()
     {
+        await _ConnectionReplacementAsync();
         var depot = new _ConditionalDepot();
         var rig = new _Rig { RestResponse = depot.Respond };
         var source = _Source(rig);
@@ -288,6 +293,20 @@ public class DepotBrowserServiceTests
             file with { Path = "../escape.md" }, forgedContent, null, true, default));
         Assert.Equal(FileSourceErrorKind.Unsupported, forged.Kind);
         Assert.Equal(2, rig.CountRest("write"));
+    }
+
+    private static async Task _ConnectionReplacementAsync()
+    {
+        var depot = new _ConditionalDepot();
+        var rig = new _Rig { RestResponse = depot.Respond };
+        var source = _Source(rig);
+        rig.BeforeProjectsResponse = () => rig.Connections = [new("c1", "Work", "https://different.example.com")];
+        using var content = new MemoryStream(Encoding.UTF8.GetBytes("# original Depot"));
+        var changed = await Assert.ThrowsAsync<FileSourceException>(() => source.WriteAsync(
+            DepotFileRefs.Create("c1", "acme/cockpit", "a.md"), content, null, true, default));
+        Assert.Equal(FileSourceErrorKind.Unavailable, changed.Kind);
+        Assert.Empty(rig.RestCalls);
+        Assert.Empty(depot.Files);
     }
 
     private sealed class _ConditionalDepot
