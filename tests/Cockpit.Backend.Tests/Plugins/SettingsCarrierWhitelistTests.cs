@@ -32,16 +32,30 @@ public class SettingsCarrierWhitelistTests
         var expected = """
             {
               "Profiles": [ { "Label": "Work", "Provider": { "Model": "opus" }, "Delegation": { "MaxConcurrent": 2 } } ],
-              "Projects": [ { "Id": "p1" } ],
               "Plugins": { "kubernetes": { "Enabled": true } }
             }
             """;
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(blob)), blob);
+        _AssertProjectsAreNotExtracted();
 
         // NeverCarried as an invariant: no carried path may sit on, under or over a machine-bound one.
         Assert.DoesNotContain(
             SettingsCarrierWhitelist.Carried.SelectMany(carried => SettingsCarrierWhitelist.NeverCarried, (carried, never) => (carried, never)),
             pair => _Covers(pair.carried, pair.never) || _Covers(pair.never, pair.carried));
+    }
+
+    // AC-1861: project definitions and their category order belong only to project sync.
+    private static void _AssertProjectsAreNotExtracted()
+    {
+        var config = JsonNode.Parse("""
+            {"Projects":[{"Id":"p1","Name":"Project","SharedSourceKey":"depot:example/p1"}],
+             "CategoryOrder":["Work"],"ProjectsDisplay":{"LayoutMode":"List"}}
+            """) as JsonObject ?? throw new InvalidOperationException("The config is not an object.");
+        var extracted = JsonNode.Parse(SettingsCarrierWhitelist.Extract(config)) as JsonObject;
+        Assert.NotNull(extracted);
+        Assert.False(extracted.ContainsKey("Projects"));
+        Assert.False(extracted.ContainsKey("CategoryOrder"));
+        Assert.Equal("List", extracted["ProjectsDisplay"]?["LayoutMode"]?.GetValue<string>());
     }
 
     private static bool _Covers(string path, string inner) =>
