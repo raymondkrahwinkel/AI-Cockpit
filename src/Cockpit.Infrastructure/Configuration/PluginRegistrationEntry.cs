@@ -23,6 +23,8 @@ internal sealed class PluginRegistrationEntry
     public string? ExpectedMinVersion { get; set; }
 
     public bool VersionChosen { get; set; }
+    // Whether the operator muted this plugin's system notifications (AC-1588).
+    public bool NotificationsMuted { get; set; }
 
     // The plugin's own key/value storage (`Cockpit.Plugins.Abstractions.IPluginStorage`); values are JSON strings. Owned by the plugin, not the load decision.
     public Dictionary<string, string> Data { get; set; } = [];
@@ -36,9 +38,10 @@ internal sealed class PluginRegistrationEntry
         PinnedToSidebar = registration.PinnedToSidebar,
         ExpectedMinVersion = registration.ExpectedMinVersion,
         VersionChosen = registration.VersionChosen,
+        NotificationsMuted = registration.NotificationsMuted,
     };
 
     // AC-937 (Raymond, voorstel A): every plugin starts collapsed into "Plugins ›" until the operator pins it.
     public PluginRegistration ToDomain() =>
-        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen);
+        new(Enabled, PinnedSha256, MenuOrder, HiddenInMenu, PinnedToSidebar ?? false, ExpectedMinVersion, VersionChosen, NotificationsMuted);
 }

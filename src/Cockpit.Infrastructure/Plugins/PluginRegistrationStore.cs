@@ -89,6 +89,14 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
             }
         }, cancellationToken);
 
+    public Task SaveNotificationsMutedAsync(string folderId, bool muted, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(file =>
+        {
+            var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
+            entry.NotificationsMuted = muted;
+            file.Plugins[folderId] = entry;
+        }, cancellationToken);
+
     public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file => file.Plugins.Remove(folderId), cancellationToken);
 

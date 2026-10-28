@@ -266,6 +266,10 @@ dotnet run --project src/Cockpit.App
 Or build and launch the produced executable directly — the app is designed to run **detached**, with no attached
 console: all logging goes to a file logger rather than stdout.
 
+On Windows a build or publish of `Cockpit.App` also builds `src/Cockpit.Notify` and puts `Cockpit.Notify.exe`
+beside the app. That small helper shows a plugin's silent notification and reports its click, which the
+cross-platform app itself cannot hear. It is not in `Cockpit.slnx`, and Linux and macOS never build it.
+
 Create a session via **+ New session**: pick a profile, permission mode, model and effort. Settings live in
 **`cockpit.json`** — `%APPDATA%\Cockpit\cockpit.json` on Windows, `~/.config/Cockpit/cockpit.json` on Linux and
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that

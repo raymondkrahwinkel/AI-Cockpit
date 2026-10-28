@@ -408,6 +408,7 @@ internal static partial class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
+        ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -2898,6 +2899,24 @@ internal static partial class Screenshotter
 
     // Seed the plugin store directly so its full layout can be rendered headlessly without network access (#62).
     private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
+
+    // AC-1588: the Installed list with one plugin allowed and one muted, so a row shows both labels of the toggle.
+    private static PluginStoreDialog _PluginStoreInstalled()
+    {
+        static PluginRowViewModel Row(string id, string name, bool muted) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, "0.12.1", null, 3, null, null, $"The {name} plugin.", "Cockpit"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash", NotificationsMuted: muted),
+            null,
+            null,
+            null));
+
+        var viewModel = _PluginStoreViewModel();
+        viewModel.Manager.Plugins.Add(Row("depot", "Depot", muted: false));
+        viewModel.Manager.Plugins.Add(Row("github-pull-requests", "GitHub Pull Requests", muted: true));
+        viewModel.Manager.HasPlugins = true;
+        viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
+        return new PluginStoreDialog { DataContext = viewModel };
+    }
 
     // NeedsRestart is on in both because that is the state that was reported — "Update all" raises it after the first
     // plugin of the batch, so the footer offers a restart while the rest are still downloading (AC-420).
