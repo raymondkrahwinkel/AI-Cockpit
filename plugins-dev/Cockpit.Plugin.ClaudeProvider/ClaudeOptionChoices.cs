@@ -47,7 +47,7 @@ internal static class ClaudeOptionChoices
         new("haiku") { PublicModelRef = "~anthropic/claude-haiku-latest" },
         new("sonnet") { PublicModelRef = "~anthropic/claude-sonnet-latest" },
         new("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
-        new("fable"),
+        new("fable") { PublicModelRef = "~anthropic/claude-fable-latest" },
     ];
 
     public static readonly IReadOnlyList<string> EffortLevels = ["low", "medium", "high", "xhigh", "max"];

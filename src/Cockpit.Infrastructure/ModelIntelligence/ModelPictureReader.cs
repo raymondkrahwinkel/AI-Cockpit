@@ -80,7 +80,7 @@ internal sealed class ModelPictureReader(
         var publicRef = snapshot?.Id ?? reference;
         var unmatched = reference is null ? "the provider names no public model id for it"
             : snapshots.Count == 0 ? "no public model data: OpenRouter /api/v1/models was not reachable and nothing is cached"
-            : snapshot is null ? $"'{reference}' matches no single model id in OpenRouter /api/v1/models"
+            : snapshot is null ? $"no public match for {reference}"
             : null;
         var providerName = profile.ProviderConfig is PluginProviderConfig plugin ? plugin.ProviderId : profile.Provider.ToString();
 

@@ -32,7 +32,7 @@ public class CodexModelIntelligenceTests
 
         var intelligence = await readTask;
 
-        Assert.Equal("gpt-5.6-terra", Assert.Single(intelligence.Models).PublicModelRef);
+        Assert.Equal("openai/gpt-5.6-terra", Assert.Single(intelligence.Models).PublicModelRef);
         Assert.Equal(new[]
         {
             new PluginRateLimitWindow("5h", 60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300),

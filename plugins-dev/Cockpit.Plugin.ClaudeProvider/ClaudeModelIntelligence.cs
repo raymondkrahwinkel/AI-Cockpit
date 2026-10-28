@@ -61,13 +61,7 @@ internal sealed class ClaudeModelIntelligence
         return new PluginModelIntelligence
         {
             // OpenRouter's version-free aliases; the public feed says which release each points at today (AC-1855).
-            Models =
-            [
-                new PluginModelCostEstimate("haiku") { PublicModelRef = "~anthropic/claude-haiku-latest" },
-                new PluginModelCostEstimate("sonnet") { PublicModelRef = "~anthropic/claude-sonnet-latest" },
-                new PluginModelCostEstimate("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
-                new PluginModelCostEstimate("fable") { PublicModelRef = "~anthropic/claude-fable-latest" },
-            ],
+            Models = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst,
             Quota = quota,
         };
     }

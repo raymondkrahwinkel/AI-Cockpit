@@ -109,33 +109,68 @@ public sealed class ModelOptionsTests
               {"id":"anthropic/claude-opus-5.5","canonical_slug":"anthropic/claude-opus-5.5-20260921","name":"Opus","context_length":1000000,
                "pricing":{"prompt":"0.000004","completion":"0.00002"},"benchmarks":{"artificial_analysis":{"intelligence_index":57.6,"coding_index":null}}},
               {"id":"~anthropic/claude-opus-latest","canonical_slug":"~anthropic/claude-opus-latest","alias_target":{"slug":"anthropic/claude-opus-5.5"},"pricing":{"prompt":"0.000004","completion":"0.00002"}},
-              {"id":"openai/gpt-5.6-terra","canonical_slug":"openai/gpt-5.6-terra-20260709","pricing":{"prompt":"0.000002","completion":"0.000012"},
-               "benchmarks":{"artificial_analysis":{"coding_index":76.7}}}]}
+              {"id":"openai/gpt-6.1-sol","canonical_slug":"openai/gpt-6.1-sol-20260929","pricing":{"prompt":"0.000002","completion":"0.000012"},
+               "benchmarks":{"artificial_analysis":{"intelligence_index":76.7}}},
+              {"id":"other/gpt-6.1-sol","pricing":{"prompt":"0.000099"}},
+              {"id":"anthropic/claude-sonnet-5.5","canonical_slug":"anthropic/claude-sonnet-5.5-20260928",
+               "pricing":{"prompt":"0.000002","completion":"0.00001"},"benchmarks":{"artificial_analysis":{"intelligence_index":56}}},
+              {"id":"anthropic/claude-fable-5.1","pricing":{"prompt":"0.00001","completion":"0.00005"},
+               "benchmarks":{"artificial_analysis":{"intelligence_index":53.4}}},
+              {"id":"~anthropic/claude-fable-latest","alias_target":{"slug":"anthropic/claude-fable-5.1"}}]}
             """;
         var root = Path.Combine(Path.GetTempPath(), $"ac1855-{Guid.NewGuid():N}");
         try
         {
             var publicData = new OpenRouterModelIntelligence(root, new FeedHandler(feed), new FakeClock(Now));
-            _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("Prov", new PluginProviderConfig("p", "{}"))]);
+            _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([
+                new SessionProfile("Prov", new PluginProviderConfig("claude", "{}")),
+                new SessionProfile("Codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"))]);
             _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
             {
-                Models = [new PluginModelCostEstimate("opus") { PublicModelRef = "~anthropic/claude-opus-latest" }, new PluginModelCostEstimate("gpt-5.6-terra") { PublicModelRef = "gpt-5.6-terra" }],
+                Models = [
+                    new PluginModelCostEstimate("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
+                    new PluginModelCostEstimate("sonnet") { PublicModelRef = "anthropic/claude-sonnet-5.5" },
+                    new PluginModelCostEstimate("fable") { PublicModelRef = "~anthropic/claude-fable-latest" },
+                    new PluginModelCostEstimate("missing") { PublicModelRef = "anthropic/missing" }],
+            });
+            _provider.ReadAsync("Codex", Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
+            {
+                Models = [new PluginModelCostEstimate("gpt-6.1-sol") { PublicModelRef = "openai/gpt-6.1-sol" }],
             });
             McpRequestContext.Set(AssistantIdentity.PaneId);
             var tools = new AssistantReadMcpTools(
                 Substitute.For<IAssistantReadGateway>(), Substitute.For<IDelegationService>(), Substitute.For<INodeSessionsClient>(),
                 new NodeDiscoveryId(Path.Combine(root, "node-discovery-id.txt")), new ModelPictureReader(publicData, _provider, _profiles, new FakeClock(Now)));
 
-            var models = JsonNode.Parse(await tools.ModelOptionsAsync("coding"))!["models"]!.AsArray();
+            var models = (JsonNode.Parse(await tools.ModelOptionsAsync()) ?? throw new InvalidOperationException("Missing result"))["models"]?.AsArray()
+                ?? throw new InvalidOperationException("Missing models");
 
             var opus = models.Single(row => (string)row!["model"]! == "opus")!;
             Assert.Equal(4m, (decimal)opus["price"]!["inputPerMTokens"]!);
             Assert.Equal("OpenRouter /api/v1/models", (string)opus["price"]!["fact"]!["source"]!);
             Assert.False((bool)opus["price"]!["fact"]!["stale"]!);
-            var terra = models.Single(row => (string)row!["model"]! == "gpt-5.6-terra")!;
-            Assert.Equal("openai/gpt-5.6-terra", (string)terra["publicModelRef"]!);
-            Assert.Equal(12m, (decimal)terra["price"]!["outputPerMTokens"]!);
-            Assert.Equal(76.7m, (decimal)terra["quality"]!["index"]!);
+            var sonnet = models.Single(row => row?["model"]?.GetValue<string>() == "sonnet")
+                ?? throw new InvalidOperationException("Missing Sonnet");
+            Assert.Equal("anthropic/claude-sonnet-5.5", sonnet["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(2m, sonnet["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(56m, sonnet["quality"]?["index"]?.GetValue<decimal>());
+
+            var codex = models.Single(row => row?["model"]?.GetValue<string>() == "gpt-6.1-sol")
+                ?? throw new InvalidOperationException("Missing Codex");
+            Assert.Equal("openai/gpt-6.1-sol", codex["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(2m, codex["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(76.7m, codex["quality"]?["index"]?.GetValue<decimal>());
+
+            var fable = models.Single(row => row?["model"]?.GetValue<string>() == "fable")
+                ?? throw new InvalidOperationException("Missing Fable");
+            Assert.Equal("~anthropic/claude-fable-latest", fable["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(10m, fable["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(53.4m, fable["quality"]?["index"]?.GetValue<decimal>());
+
+            var missing = models.Single(row => row?["model"]?.GetValue<string>() == "missing")
+                ?? throw new InvalidOperationException("Missing unknown model");
+            Assert.Equal("unknown: no public match for anthropic/missing", missing["price"]?.GetValue<string>());
+            Assert.Equal("unknown: no public match for anthropic/missing", missing["quality"]?.GetValue<string>());
         }
         finally
         {
