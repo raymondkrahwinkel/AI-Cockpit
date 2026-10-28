@@ -11,7 +11,8 @@ import {
   yXmlFragmentToProsemirrorJSON,
 } from '@tiptap/y-tiptap';
 import { getSchema } from '@tiptap/core';
-import { lineEnding, noteExtensions, parseBody, serializeNote, splitFrontmatter } from 'depot-notes/markdown.ts';
+import { Fragment } from '@tiptap/pm/model';
+import { lineEnding, noteExtensions, parseBody, serializeBody, serializeNote, splitFrontmatter } from 'depot-notes/markdown.ts';
 
 const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 export function toBase64(bytes) {
@@ -141,6 +142,62 @@ export function setBlock(index, markdown) {
   const node = noteSchema().nodeFromJSON({ type: 'doc', content: blocks });
   doc.transact(() => updateYFragment(doc, fragment(), node, binding));
   rebind();
+}
+
+// G4, the incremental bridge: the host holds Markdown text and sends patches (offset, removed length, inserted text). The room keeps the
+// same text (the mirror) and where each top-level block sits in it, so a keystroke re-parses one block, not the note.
+let mirror = '';
+let ranges = []; // [start, end) of each top-level block in mirror (the body, after the front matter)
+let bodyStart = 0;
+
+function blockText(node) {
+  return serializeBody({ type: 'doc', content: [node.toJSON()] }).replace(/\n$/, '');
+}
+/** Builds the mirror and the block ranges from the room. Returns how many blocks were found in the text (the rest are a miss). */
+export function loadMirror() {
+  rebind();
+  mirror = readNote();
+  bodyStart = doc.getText('frontmatter').toString().length;
+  ranges = [];
+  let at = bodyStart;
+  let found = 0;
+  pmDoc.forEach((node) => {
+    const text = blockText(node);
+    const start = mirror.indexOf(text, at);
+    if (start < 0) {
+      ranges.push(null);
+      return;
+    }
+    found++;
+    ranges.push([start, start + text.length]);
+    at = start + text.length;
+  });
+  return JSON.stringify({ blocks: pmDoc.childCount, found, length: mirror.length });
+}
+/** One patch from the host. Returns which block it hit and whether the mirror still equals a full serialization (when checked). */
+export function edit(offset, removed, inserted) {
+  const index = ranges.findIndex((r) => r && r[0] <= offset && offset + removed <= r[1]);
+  mirror = mirror.slice(0, offset) + inserted + mirror.slice(offset + removed);
+  if (index < 0) {
+    // ponytail: an edit across blocks or between them takes the full path; per-range splitting if the host sends many of those.
+    setBody(mirror);
+    loadMirror();
+    return JSON.stringify({ block: -1 });
+  }
+  const [start, end] = ranges[index];
+  const newEnd = end - removed + inserted.length;
+  const parsed = (parseBody(mirror.slice(start, newEnd)).content ?? []).map((json) => noteSchema().nodeFromJSON(json));
+  const children = [];
+  pmDoc.forEach((node, _, i) => children.push(...(i === index ? parsed : [node])));
+  const next = pmDoc.copy(Fragment.fromArray(children));
+  doc.transact(() => updateYFragment(doc, fragment(), next, binding));
+  pmDoc = next;
+  const delta = inserted.length - removed;
+  ranges = ranges.flatMap((r, i) => (i === index ? parsed.map(() => [start, newEnd]) : [r && i > index ? [r[0] + delta, r[1] + delta] : r]));
+  return JSON.stringify({ block: index, parsed: parsed.length });
+}
+export function mirrorIsExact() {
+  return mirror === readNote();
 }
 
 /** G6: a ProseMirror position as relativePositionToJSON, and back. */
