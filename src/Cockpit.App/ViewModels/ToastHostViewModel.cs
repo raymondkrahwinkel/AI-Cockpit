@@ -12,6 +12,7 @@ namespace Cockpit.App.ViewModels;
 public sealed class ToastHostViewModel
 {
     private static readonly TimeSpan DefaultAutoDismissDelay = TimeSpan.FromSeconds(5);
+    private const int MaxBundleLines = 3;
     private readonly Action<ToastViewModel, TimeSpan> _scheduleAutoDismiss;
     private List<StartupToast>? _startupToasts;
     private ToastViewModel? _startupBundleToast;
@@ -37,23 +38,26 @@ public sealed class ToastHostViewModel
         Add(message, severity, !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [], sticky: false);
 
     // AC-1549: several buttons, the first primary; a sticky toast stays until a button or ✕ takes it down.
-    public ToastViewModel Add(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source = null, string? key = null, string? sourceId = null)
+    public ToastViewModel Add(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source = null, string? key = null, string? sourceId = null, string? title = null)
     {
         NotificationItemViewModel? item = null;
         var toast = new ToastViewModel(message, severity, [.. actions.Select(action => new ToastAction(action.Label, () =>
         {
             item?.MarkHandled(action.Label);
             action.OnInvoke();
-        }))]);
+        }))])
+        {
+            Title = title,
+        };
         toast.Dismissed += (_, _) => Toasts.Remove(toast);
         item = Notifications.Post(toast, source, key, sourceId);
 
         if (_startupToasts is not null)
         {
-            _startupToasts.Add(new StartupToast(toast, sticky));
+            _startupToasts.Add(new StartupToast(toast, sticky, item));
             if (_startupToasts.Count >= 2)
             {
-                _ShowStartupBundle();
+                _ShowStartupBundle(_startupToasts);
             }
 
             return toast;
@@ -67,7 +71,7 @@ public sealed class ToastHostViewModel
     // AC-1804: a plugin's notification, kept under its id while it needs you.
     internal ToastViewModel Notify(string sourceId, string source, PluginNotification notification) =>
         Add(notification.Message, DesktopBackendHost.ToToastSeverity(notification.Severity), [.. notification.Actions.Select(action => new ToastAction(action.Label, action.OnInvoke))],
-            sticky: notification.Actions.Count > 0, source, notification.Key, sourceId);
+            sticky: notification.Actions.Count > 0, source, notification.Key, sourceId, notification.Title);
 
     internal void AddNotificationSource(string sourceId, Func<string, Task<PluginNotification?>> recheck) => _sources[sourceId] = recheck;
 
@@ -87,8 +91,12 @@ public sealed class ToastHostViewModel
             }
             else
             {
-                Notifications.Post(new ToastViewModel(kept.Message, kept.Severity, []), kept.Source, kept.Key, kept.SourceId).MarkResolved();
+                Notifications.Post(new ToastViewModel(kept.Message, kept.Severity, []) { Title = kept.Title }, kept.Source, kept.Key, kept.SourceId).MarkResolved();
             }
+
+            // AC-1853: under "Still open from your last session", at the time it first came in.
+            // A recheck may answer under another key; that one is new, not kept.
+            Notifications.Items.FirstOrDefault(item => item.SourceId == kept.SourceId && item.Key == kept.Key)?.KeptFrom(kept.Time);
         }
 
         Notifications.KeepAt(path);
@@ -139,16 +147,23 @@ public sealed class ToastHostViewModel
         }
     }
 
-    private void _ShowStartupBundle()
+    // AC-1853 (mockup screen 02): the bundle names its first three items, then "+N more".
+    private void _ShowStartupBundle(IReadOnlyList<StartupToast> startupToasts)
     {
         _startupBundleToast?.CloseCommand.Execute(null);
-        var count = _startupToasts!.Count;
+        var items = startupToasts.Select(startupToast => startupToast.Item).ToList();
+        var needYou = items.Count(item => item.NeedsYou);
         // Captured: the bundle stays after the window ends, and its Show must still open the panel then.
         var show = _showStartupNotifications;
         var startupToast = new ToastViewModel(
-            $"{count} notifications at startup",
+            $"{items.Count} notifications at startup",
             ToastSeverity.Warning,
-            [new ToastAction("Show notifications", () => show?.Invoke()), new ToastAction("Later", static () => { })]);
+            [new ToastAction("Show notifications", () => show?.Invoke()), new ToastAction("Later", static () => { })])
+        {
+            Note = needYou == items.Count ? " · all need you" : needYou > 0 ? $" · {needYou} need you" : null,
+            Lines = [.. items.Take(MaxBundleLines).Select(item => new ToastLineViewModel(item.Glyph, item.BrushKey, item.Source, item.Title ?? item.Message))],
+            MoreLabel = items.Count > MaxBundleLines ? $"+{items.Count - MaxBundleLines} more" : null,
+        };
         startupToast.Dismissed += (_, _) => Toasts.Remove(startupToast);
         Toasts.Add(startupToast);
         _startupBundleToast = startupToast;
@@ -164,7 +179,7 @@ public sealed class ToastHostViewModel
         }
     }
 
-    private sealed record StartupToast(ToastViewModel Toast, bool Sticky);
+    private sealed record StartupToast(ToastViewModel Toast, bool Sticky, NotificationItemViewModel Item);
 
     private static void _ScheduleWithDispatcherTimer(ToastViewModel toast, TimeSpan delay)
     {

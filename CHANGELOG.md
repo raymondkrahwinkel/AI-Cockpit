@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without
+  a title it shows one line, as before. The startup toast now names up to three of what came in, each with its source,
+  and says "+N more" for the rest. The panel groups its rows under "Still open from your last session", "Today" and
+  "Earlier", and each group has its own **Clear read**, which removes only what you have read. The source tag shows the
+  plugin's own icon. Plugins set the title with `PluginNotification.Title` (plugin SDK 3.41.0, Cockpit 0.132.0).
+
 - added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
   4 seconds is marked slower than usual with a countdown, and after 12 seconds Cockpit opens without it and offers Retry;

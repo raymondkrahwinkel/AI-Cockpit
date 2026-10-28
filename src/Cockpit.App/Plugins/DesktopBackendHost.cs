@@ -47,31 +47,39 @@ internal sealed class DesktopBackendHost(
             Services.GetService<ILogger<DesktopBackendHost>>()?.LogError("Plugin {PluginId}: {Message}", PluginId, message);
         }
 
-        // AC-1802: through the overload with a source, so the notification center names the plugin.
-        Services.GetRequiredService<IToastService>().Show(
-            message, ToToastSeverity(severity), !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : [],
-            sticky: false, source: PluginName, key: null);
+        // AC-1853: under this plugin's id too, so the notification center finds the plugin's icon.
+        var actions = !string.IsNullOrWhiteSpace(actionLabel) && onAction is not null ? [new ToastAction(actionLabel, onAction)] : Array.Empty<ToastAction>();
+        _Post(toasts => toasts.Add(message, ToToastSeverity(severity), actions, sticky: false, PluginName, sourceId: PluginId),
+            () => Services.GetRequiredService<IToastService>().Show(message, ToToastSeverity(severity), actions, sticky: false, source: PluginName, key: null));
     }
 
     // AC-1549: a reminder's toast, with all its buttons, also while the plugin's own screen is closed.
-    public override void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky) =>
-        Services.GetRequiredService<IToastService>().Show(
-            message, ToToastSeverity(severity), [.. actions.Select(action => new ToastAction(action.Label, action.OnInvoke))], sticky, PluginName, key: null);
+    public override void ShowToast(string message, PluginToastSeverity severity, IReadOnlyList<PluginToastAction> actions, bool sticky)
+    {
+        ToastAction[] toastActions = [.. actions.Select(action => new ToastAction(action.Label, action.OnInvoke))];
+        _Post(toasts => toasts.Add(message, ToToastSeverity(severity), toastActions, sticky, PluginName, sourceId: PluginId),
+            () => Services.GetRequiredService<IToastService>().Show(message, ToToastSeverity(severity), toastActions, sticky, PluginName, key: null));
+    }
 
     // AC-1804: kept under this plugin's id, so the restart after it asks this plugin again.
-    public void Notify(PluginNotification notification)
+    public void Notify(PluginNotification notification) =>
+        _Post(toasts => toasts.Notify(PluginId, PluginName, notification),
+            () => ShowToast(notification.Message, notification.Severity, notification.Actions, sticky: notification.Actions.Count > 0));
+
+    // Straight onto the desktop's toast host on its UI thread; without one (a test host) through the toast service.
+    private void _Post(Action<ToastHostViewModel> post, Action fallback)
     {
         if (Services.GetService<CockpitViewModel>()?.ToastHost is not { } toasts)
         {
-            ShowToast(notification.Message, notification.Severity, notification.Actions, sticky: notification.Actions.Count > 0);
+            fallback();
         }
         else if (Dispatcher.UIThread.CheckAccess())
         {
-            toasts.Notify(PluginId, PluginName, notification);
+            post(toasts);
         }
         else
         {
-            Dispatcher.UIThread.Post(() => toasts.Notify(PluginId, PluginName, notification));
+            Dispatcher.UIThread.Post(() => post(toasts));
         }
     }
 
