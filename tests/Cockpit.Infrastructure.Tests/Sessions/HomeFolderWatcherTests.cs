@@ -12,7 +12,7 @@ public sealed class HomeFolderWatcherTests
     [Fact]
     public void NewVisibleDirectoryReportsOnceWithSessions_HiddenDirectoryFileAndNoSessionDoNot()
     {
-        var root = Path.Combine(Environment.GetEnvironmentVariable("COCKPIT_SCRATCH") ?? "C:/t/AC-1820", Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Environment.GetEnvironmentVariable("COCKPIT_SCRATCH") ?? Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         var visible = Directory.CreateDirectory(Path.Combine(root, "spike-x")).FullName;
         var hidden = Directory.CreateDirectory(Path.Combine(root, ".cache-x")).FullName;
         var file = Path.Combine(root, "file.txt");
