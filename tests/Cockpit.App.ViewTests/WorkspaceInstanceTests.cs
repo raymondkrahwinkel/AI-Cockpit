@@ -82,6 +82,13 @@ public sealed class WorkspaceInstanceTests
 
         Assert.Equal(["kept.md", "two.md", "three.md"], _KeyedTabs(workspaces));
         Assert.Single(workspaces.Settings.Workspaces, workspace => workspace.IsPreview);
+        var guarded = workspaces.Active ?? throw new InvalidOperationException("No active preview workspace.");
+        _contexts["three.md"].SetCloseGuard(() => Task.FromResult(false));
+        await workspaces.CloseWorkspaceCommand.ExecuteAsync(guarded.Id);
+        Assert.Contains(workspaces.Settings.Workspaces, workspace => workspace.Id == guarded.Id);
+        _contexts["three.md"].SetCloseGuard(() => Task.FromResult(true));
+        await workspaces.CloseWorkspaceCommand.ExecuteAsync(guarded.Id);
+        Assert.DoesNotContain(workspaces.Settings.Workspaces, workspace => workspace.Id == guarded.Id);
     });
 
     private sealed class NoStorage : IPluginStorage

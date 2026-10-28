@@ -4,7 +4,7 @@ public sealed record FileRef(string ConnectionId, string Id, string Path);
 public sealed record FileConnection(string Id, string Label, string Kind, bool ReadOnly);
 public sealed record FileSourceCapabilities(bool CanWrite, long MaxWriteBytes);
 public sealed record FileReadResult(Stream Content, string Version, long? Size = null,
-    DateTimeOffset? Modified = null, string? ContentType = null);
+    DateTimeOffset? Modified = null, string? ContentType = null, bool CanWrite = false);
 public enum FileWriteStatus { Written, Conflict }
 public sealed record FileWriteResult(FileWriteStatus Status, string? Version);
 public enum FileSourceErrorKind { SignIn, NotFound, Forbidden, TooLarge, Unavailable, Unsupported }

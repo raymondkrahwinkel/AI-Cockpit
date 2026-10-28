@@ -251,6 +251,7 @@ public class DepotBrowserServiceTests
         var source = _Source(rig);
         var file = DepotFileRefs.Create("c1", "acme/cockpit", "a.md");
         var read = await source.ReadAsync(file, default);
+        Assert.True(read.CanWrite);
         using var reader = new StreamReader(read.Content);
         Assert.Equal("# original", await reader.ReadToEndAsync());
         using var text = new MemoryStream(Encoding.UTF8.GetBytes("# saved"));
