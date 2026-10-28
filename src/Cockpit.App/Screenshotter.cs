@@ -413,6 +413,8 @@ internal static partial class Screenshotter
         // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
         ["simple-dock-rail-collapsed"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null) },
         ["simple-dock-rail-browser"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser") },
+        ["simple-dock-rail-over-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser", sessionPicked: true) },
+        ["simple-dock-rail-back-to-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null, sessionPicked: true) },
         ["simple-dock-rail-files"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.files") },
         // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
@@ -3317,7 +3319,7 @@ internal static partial class Screenshotter
     }
 
     // AC-1824: Home with two stand-in plugin panels on the rail — the real plugins are store-distributed and not referenced here.
-    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId)
+    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId, bool sessionPicked = false)
     {
         var cockpit = _SimpleStand(withAssistant: true, morePanels: panels =>
         {
@@ -3327,6 +3329,13 @@ internal static partial class Screenshotter
                 "sample.files", "Files", Material.Icons.MaterialIconKind.FolderOutline, _FilesStandIn));
         });
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        if (sessionPicked)
+        {
+            // AC-1862: a conversation in the main column puts the assistant in the rail, where a panel replaces it.
+            cockpit.SimpleSelectedSession = _Named(cockpit, "kind→staging");
+            cockpit.SimplePage = ViewModels.SimplePage.Conversation;
+        }
+
         cockpit.SimpleOpenDockPanelId = openPanelId;
         cockpit.DockRailWidth = 420;
         return cockpit;
