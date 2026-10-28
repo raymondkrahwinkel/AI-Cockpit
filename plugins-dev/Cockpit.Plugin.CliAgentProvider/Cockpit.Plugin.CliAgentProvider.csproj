@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <Compile Include="..\_shared\JsonLineText.cs" Link="JsonLineText.cs" />
+    <Compile Include="..\_shared\CliLoginText.cs" Link="CliLoginText.cs" />
     <None Include="plugin.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
