@@ -1,15 +1,19 @@
 using Cockpit.Plugins.Abstractions.Channels;
 using Cockpit.Plugins.Abstractions.Files;
+using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wire = Cockpit.Plugins.Abstractions.Files.FileSourceChannel;
 
 namespace Cockpit.Infrastructure.Files;
 
 internal static class FileSourceChannel
 {
-    public static IDisposable Register(IPluginBackendChannel channel, IFileSourceProvider provider)
+    public static IDisposable Register(IPluginBackendChannel channel, IFileSourceProvider provider, ILogger? logger = null)
     {
-        var registration = new Registration(provider);
+        var registration = new Registration(provider, logger ?? NullLogger.Instance);
         try
         {
             registration.Handlers.Add(channel.Handle(Wire.Connections, (_, _) =>
@@ -35,6 +39,7 @@ internal static class FileSourceChannel
                     ModifiedBy = result.ModifiedBy,
                     CanWrite = result.CanWrite && source.Capabilities.CanWrite
                         && provider.Connections.FirstOrDefault(c => c.Id == request.File.ConnectionId) is { ReadOnly: false },
+                    Live = source is ILiveFileSource,
                 };
             })));
             registration.Handlers.Add(channel.Handle(Wire.Write, (payload, ct) => _RunAsync(async () =>
@@ -61,6 +66,7 @@ internal static class FileSourceChannel
                 }
                 return result;
             })));
+            _RegisterLive(channel, provider, registration);
             registration.Changed = (_, _) => channel.Publish(Wire.Changed,
                 JsonSerializer.SerializeToElement(provider.Connections, Wire.Json));
             provider.ConnectionsChanged += registration.Changed;
@@ -72,6 +78,83 @@ internal static class FileSourceChannel
             throw;
         }
     }
+
+    private static void _RegisterLive(IPluginBackendChannel channel, IFileSourceProvider provider, Registration registration)
+    {
+        registration.Handlers.Add(channel.Handle(Wire.LiveOpen, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceReadRequest>(Wire.Json) ?? throw new JsonException();
+            if (_Source(provider, request.File, false) is not ILiveFileSource live)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "This file is not shared live.");
+            }
+            var id = Guid.NewGuid().ToString("n");
+            var session = await live.OpenLiveAsync(request.File, ct).ConfigureAwait(false);
+            var open = new LiveSession(session,
+                (_, patch) => channel.Publish(Wire.LivePatch, JsonSerializer.SerializeToElement(
+                    new FileSourceLivePatch(id, patch.Rev, [.. patch.Ops], patch.Who), Wire.Json)),
+                (_, status) => channel.Publish(Wire.LiveState, JsonSerializer.SerializeToElement(
+                    new FileSourceLiveState(id, status), Wire.Json)));
+            registration.Sessions[id] = open;
+            try
+            {
+                return await _SnapshotAsync(id, session, ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                registration.Sessions.TryRemove(id, out _);
+                await open.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.LiveRead, (payload, ct) => _RunAsync(() =>
+        {
+            var request = payload.Deserialize<FileSourceLiveRequest>(Wire.Json) ?? throw new JsonException();
+            return _SnapshotAsync(request.SessionId, _Live(registration, request.SessionId), ct);
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.LiveEdit, (payload, ct) => _RunAsync(() =>
+        {
+            var request = payload.Deserialize<FileSourceLiveEditRequest>(Wire.Json) ?? throw new JsonException();
+            var ops = request.Ops ?? [];
+            var valid = request.Ops is not null && ops.All(op => op?.Text is not null && op.Offset >= 0 && op.Length >= 0)
+                && ops.Sum(op => (long)op.Text.Length) <= Wire.MaxContentBytes;
+            if (!valid || string.IsNullOrWhiteSpace(request.EditId))
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "The edit is invalid.");
+            }
+            return _Live(registration, request.SessionId).EditAsync(request.EditId, request.BaseRev, ops, ct);
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.LiveUndo, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceLiveUndoRequest>(Wire.Json) ?? throw new JsonException();
+            await _Live(registration, request.SessionId).UndoAsync(request.Redo, ct).ConfigureAwait(false);
+            return request;
+        })));
+        registration.Handlers.Add(channel.Handle(Wire.LiveClose, (payload, _) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceLiveRequest>(Wire.Json) ?? throw new JsonException();
+            if (registration.Sessions.TryRemove(request.SessionId, out var session))
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+            return request;
+        })));
+    }
+
+    private static async Task<FileSourceLiveSnapshot> _SnapshotAsync(string id, ILiveFileSession session, CancellationToken ct)
+    {
+        var snapshot = await session.ReadAsync(ct).ConfigureAwait(false);
+        var bytes = Encoding.UTF8.GetBytes(snapshot.Text);
+        if (bytes.Length > Wire.MaxContentBytes)
+        {
+            throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
+        }
+        return new FileSourceLiveSnapshot(id, Convert.ToBase64String(bytes), snapshot.Rev, snapshot.Status);
+    }
+
+    private static ILiveFileSession _Live(Registration registration, string? id) =>
+        id is not null && registration.Sessions.TryGetValue(id, out var open) ? open.Session
+            : throw new FileSourceException(FileSourceErrorKind.NotFound, "This live session has ended.");
 
     private static IFileSource _Source(IFileSourceProvider provider, FileRef file, bool write)
     {
@@ -118,10 +201,11 @@ internal static class FileSourceChannel
         }
     }
 
-    private sealed class Registration(IFileSourceProvider provider) : IDisposable
+    private sealed class Registration(IFileSourceProvider provider, ILogger logger) : IDisposable
     {
         public List<IDisposable> Handlers { get; } = [];
         public EventHandler? Changed { get; set; }
+        public ConcurrentDictionary<string, LiveSession> Sessions { get; } = new(StringComparer.Ordinal);
         public void Dispose()
         {
             provider.ConnectionsChanged -= Changed;
@@ -130,6 +214,51 @@ internal static class FileSourceChannel
                 handler.Dispose();
             }
             Handlers.Clear();
+            foreach (var id in Sessions.Keys.ToList())
+            {
+                if (Sessions.TryRemove(id, out var session))
+                {
+                    // Unloading cannot await; the close runs on and its failure is logged.
+                    _ = _CloseAsync(session);
+                }
+            }
+        }
+
+        private async Task _CloseAsync(LiveSession session)
+        {
+            try
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                logger.LogWarning(error, "Closing a live file session failed while its file source was removed.");
+            }
+        }
+    }
+
+    // A session the UI opened; it is closed by files-live-close or when the plugin's file source goes away.
+    private sealed class LiveSession : IAsyncDisposable
+    {
+        private readonly EventHandler<LiveFilePatch> _patched;
+        private readonly EventHandler<LiveFileStatus> _status;
+
+        public LiveSession(ILiveFileSession session, EventHandler<LiveFilePatch> patched, EventHandler<LiveFileStatus> status)
+        {
+            Session = session;
+            _patched = patched;
+            _status = status;
+            session.Patched += patched;
+            session.StatusChanged += status;
+        }
+
+        public ILiveFileSession Session { get; }
+
+        public ValueTask DisposeAsync()
+        {
+            Session.Patched -= _patched;
+            Session.StatusChanged -= _status;
+            return Session.DisposeAsync();
         }
     }
 }

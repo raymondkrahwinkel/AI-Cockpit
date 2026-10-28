@@ -7,4 +7,7 @@ public enum WorkspaceMarker
 {
     /// <summary>The body holds changes that are not saved yet.</summary>
     Unsaved,
+
+    /// <summary>The body is live with its source: changes are shared as they are typed, there is nothing to save.</summary>
+    Live,
 }

@@ -641,6 +641,13 @@ public void Initialize(ICockpitHost host)
 | `Icon` / `IconKind` | The "+" menu and tab icon; `IconKind` (a bundled vector icon) wins over the `Icon` emoji when set. Defaults: `🧩` / none. |
 | `Description` | One line for the "+" menu. |
 
+### Editing a file live {#editing-a-file-live}
+
+A file source that also implements `ILiveFileSource` (SDK 3.46.0, host 0.143.0) gets the host's Markdown
+workspace in live mode: edits go out as text ops, other people's changes arrive as patches, undo is the
+source's, and there is no Save. The contract, the revision rules and the channel are in
+[File sources](FILE-SOURCES.md#live-file-sources-ac-1898).
+
 ### Embedding a live session {#embedding-a-live-session}
 
 The reason a workspace type is more than a widget: `IWorkspaceContext.EmbedSession(...)` starts a **real host

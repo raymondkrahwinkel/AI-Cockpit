@@ -69,6 +69,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
     private bool _hasBom;
     private bool _closed;
     private Task? _saveTask;
+    private LiveTextDocument? _live;
 
     internal MarkdownFileWorkspace(IWorkspaceContext context, FileWorkspaceOpenOptions options,
         FileSourceChannelClient client, Func<Task<bool>> confirmDiscard, ILogger<MarkdownFileWorkspace>? logger = null)
@@ -191,10 +192,11 @@ internal sealed class MarkdownFileWorkspace : UserControl
     internal MarkdownEditor Editor { get; }
     internal Task Ready { get; }
     internal bool HasConflict => _theirs is not null;
-    internal bool IsDirty => _loaded && _editing && (_new || Editor.Text != _savedText);
+    internal bool IsDirty => _live is null && _loaded && _editing && (_new || Editor.Text != _savedText);
+    internal LiveFileStatus? LiveStatus => _live?.Status;
 
     // A read-only body follows its file: a save from another tab or window, or a click on an already-open file, reloads it quietly.
-    internal Task ReloadIfViewingAsync() => _editing || _loading || _saving || _closed ? Task.CompletedTask : _RunUiAsync(_LoadAsync);
+    internal Task ReloadIfViewingAsync() => _editing || _loading || _saving || _closed || _live is not null ? Task.CompletedTask : _RunUiAsync(_LoadAsync);
 
     private void _OnFileSaved(JsonElement payload)
     {
@@ -222,7 +224,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             return;
         }
         await using var stream = await file.OpenWriteAsync().ConfigureAwait(true);
-        await stream.WriteAsync(new UTF8Encoding(false).GetBytes(_savedText)).ConfigureAwait(true);
+        await stream.WriteAsync(new UTF8Encoding(false).GetBytes(_live is null ? _savedText : Editor.Text)).ConfigureAwait(true);
     }
 
     internal void BeginEdit()
@@ -276,8 +278,12 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 var snapshot = await _ReadSnapshotAsync().ConfigureAwait(true);
                 _hasBom = snapshot.HasBom;
                 _canWrite = snapshot.CanWrite;
+                if (snapshot.Live && _live is null && await _OpenLiveAsync().ConfigureAwait(true))
+                {
+                    _version = snapshot.Version;
+                }
                 // Typed into while the read was out: keep that text and the old version, so its save meets the conflict banner.
-                if (!(_loaded && _editing && Editor.Text != _savedText))
+                else if (!(_loaded && _editing && Editor.Text != _savedText))
                 {
                     Editor.Text = snapshot.Text;
                     _savedText = Editor.Text;
@@ -309,14 +315,42 @@ internal sealed class MarkdownFileWorkspace : UserControl
         }
     }
 
+    // A live source keeps the text itself; when it cannot open the session, the file is edited and saved as a snapshot.
+    private async Task<bool> _OpenLiveAsync()
+    {
+        var live = new LiveTextDocument(Editor.TextEditor.Document, _client, _logger);
+        try
+        {
+            var (id, snapshot) = await _client.OpenLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
+            if (_closed)
+            {
+                live.Dispose();
+                await _client.CloseLiveAsync(id, CancellationToken.None).ConfigureAwait(true);
+                return false;
+            }
+            Editor.Text = snapshot.Text;
+            _savedText = snapshot.Text;
+            live.Attach(id, snapshot);
+            live.Changed += (_, _) => _UpdateState();
+            _live = live;
+            return true;
+        }
+        catch (FileSourceException error)
+        {
+            live.Dispose();
+            _logger.LogWarning(error, "Markdown workspace {WorkspaceId} could not open its file live; it saves snapshots instead.", _context.WorkspaceId);
+            return false;
+        }
+    }
+
     private async Task<Snapshot> _ReadSnapshotAsync()
     {
-        var read = await _client.ReadAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
+        var (read, live) = await _client.ReadWithLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
         await using var content = read.Content;
         var bytes = await FileSourceChannel.ReadContentAsync(content, FileSourceChannel.MaxContentBytes, _lifetime.Token).ConfigureAwait(true);
         var text = new UTF8Encoding(false, true).GetString(bytes);
         var bom = text.StartsWith('\uFEFF');
-        return new Snapshot(bom ? text[1..] : text, bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite);
+        return new Snapshot(bom ? text[1..] : text, bom, read.Version, read.Modified, read.ModifiedBy, read.CanWrite) { Live = live };
     }
 
     private void _ClearConflict()
@@ -476,10 +510,26 @@ internal sealed class MarkdownFileWorkspace : UserControl
         if (e.Key == Key.S && e.KeyModifiers == KeyModifiers.Control)
         {
             e.Handled = true;
-            // Key events cannot await; the UI boundary catches and logs unexpected failures.
-            _ = _SaveFromUiAsync();
+            if (_live is null)
+            {
+                // Key events cannot await; the UI boundary catches and logs unexpected failures.
+                _ = _SaveFromUiAsync();
+            }
+        }
+        else if (_live is not null && _editing && !Editor.IsReadOnly && _UndoKey(e) is { } redo)
+        {
+            e.Handled = true;
+            _live.Undo(redo);
         }
     }
+
+    // Ctrl+Z undoes; Ctrl+Y and Ctrl+Shift+Z redo. Null for any other key.
+    private static bool? _UndoKey(KeyEventArgs e) => (e.Key, e.KeyModifiers) switch
+    {
+        (Key.Z, KeyModifiers.Control) => false,
+        (Key.Y, KeyModifiers.Control) or (Key.Z, KeyModifiers.Control | KeyModifiers.Shift) => true,
+        _ => null,
+    };
 
     private async Task _SaveFromUiAsync()
     {
@@ -493,6 +543,18 @@ internal sealed class MarkdownFileWorkspace : UserControl
             _error = "The file could not be saved. Your text is still open; try saving again.";
             _UpdateState();
         }
+    }
+
+    // Every local edit reaches the source before the tab goes; one that cannot within a few seconds asks first.
+    private async Task<bool> _ConfirmLiveCloseAsync()
+    {
+        if (_live is not { } live)
+        {
+            return true;
+        }
+        var flush = live.FlushAsync();
+        var flushed = await Task.WhenAny(flush, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(true) == flush && await flush.ConfigureAwait(true);
+        return flushed || await _confirmDiscard().ConfigureAwait(true);
     }
 
     private async Task<bool> _ConfirmCloseAsync()
@@ -519,6 +581,11 @@ internal sealed class MarkdownFileWorkspace : UserControl
         // This event has no Task result; keep exceptions inside its boundary.
         try
         {
+            if (_live is not null)
+            {
+                _live.Resync();
+                return;
+            }
             if (IsDirty || _saving)
             {
                 _error = "Save or close your unsaved changes before reloading this file.";
@@ -543,6 +610,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _context.Closed -= _OnClosed;
         _context.Pinned -= _OnPinned;
         _savedSubscription?.Dispose();
+        _live?.Dispose();
         // Cancelled, not disposed: a save still in flight reads _lifetime.Token, which throws once the source is disposed.
         _lifetime.Cancel();
     }
@@ -554,11 +622,23 @@ internal sealed class MarkdownFileWorkspace : UserControl
             return;
         }
         var text = Editor.Text;
-        var dirty = _loaded && _editing && (_new || text != _savedText);
-        _context.SetMarker(dirty ? WorkspaceMarker.Unsaved : null);
-        _context.SetCloseGuard(dirty || _saving ? _ConfirmCloseAsync : null);
+        var dirty = IsDirty;
+        var live = _live?.Status;
+        var notSent = _live?.Failed == true;
+        if (live is not null)
+        {
+            Editor.IsReadOnly = !_editing || live.State == LiveFileState.ReadOnly;
+            _context.SetMarker(notSent || live.State is LiveFileState.Offline or LiveFileState.SignInNeeded ? WorkspaceMarker.Unsaved
+                : live.State is LiveFileState.Live or LiveFileState.ReadOnly or LiveFileState.NoSaver ? WorkspaceMarker.Live : null);
+            _context.SetCloseGuard(_ConfirmLiveCloseAsync);
+        }
+        else
+        {
+            _context.SetMarker(dirty ? WorkspaceMarker.Unsaved : null);
+            _context.SetCloseGuard(dirty || _saving ? _ConfirmCloseAsync : null);
+        }
         _edit.IsVisible = _loaded && _canWrite && !_editing;
-        _save.IsVisible = _editing;
+        _save.IsVisible = _editing && live is null;
         _keepOpen.IsVisible = _context.IsPreview;
         _hintStrip.IsVisible = _context.IsPreview;
         _download.IsVisible = _loaded && !_editing && !_new;
@@ -566,8 +646,22 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _source.IsVisible = _editing;
         _source.IsChecked = Editor.ShowSource;
         _state.Text = _loading ? "Loading…" : _saving ? "Saving…" : _conflict ? $"Changed in {_sourceName}"
+            : notSent ? $"Not sent to {_sourceName}"
+            : live is not null ? live.State switch
+            {
+                LiveFileState.Connecting => "Connecting…",
+                LiveFileState.Offline => $"Offline · not saved to {_sourceName}",
+                LiveFileState.SignInNeeded => $"Sign in to {_sourceName} again",
+                LiveFileState.ReadOnly => "Read only",
+                LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
+                LiveFileState.Stale => "Catching up…",
+                LiveFileState.Live => "Live",
+                _ => live.State.ToString(),
+            }
             : !_loaded ? "Unavailable" : !_editing ? (_context.IsPreview ? "Preview · " : "") + (_canWrite ? "read-only" : "Viewer") : dirty ? "Unsaved" : "Saved";
-        var unsaved = _conflict || (dirty && !_saving);
+        ToolTip.SetTip(_statusChip, live?.Reason);
+        var unsaved = _conflict || (dirty && !_saving) || notSent
+            || live?.State is LiveFileState.Offline or LiveFileState.SignInNeeded or LiveFileState.NoSaver;
         if (_wasUnsaved != unsaved)
         {
             _wasUnsaved = unsaved;
@@ -593,11 +687,15 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _message.IsVisible = _error is not null;
         var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
-        _shortcuts.Text = _editing ? "Ctrl+S save · Ctrl+/ source · Ctrl+B / I / K"
+        _shortcuts.Text = live?.State == LiveFileState.ReadOnly ? "Read-only"
+            : _editing ? (live is null ? "Ctrl+S save · " : "") + "Ctrl+/ source · Ctrl+B / I / K"
             : _loaded ? (_canWrite ? (_context.IsPreview ? "Type to edit · Double-click tab to keep" : "Edit or start typing") : "Read-only") : "";
     }
 
-    private sealed record Snapshot(string Text, bool HasBom, string Version, DateTimeOffset? Modified, string? ModifiedBy, bool CanWrite);
+    private sealed record Snapshot(string Text, bool HasBom, string Version, DateTimeOffset? Modified, string? ModifiedBy, bool CanWrite)
+    {
+        public bool Live { get; init; }
+    }
 
     private Border _Strip(Control child, Thickness padding)
     {
