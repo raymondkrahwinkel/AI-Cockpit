@@ -21,6 +21,7 @@ public sealed class HomeFolderWatcherTests
         {
             var registry = Substitute.For<ISessionRegistry>();
             registry.All.Returns(Array.Empty<ISessionHandle>());
+            registry.Assistant.Returns((ISessionHandle?)null);
             var toasts = Substitute.For<IToastService>();
             using var watcher = new HomeFolderWatcher(NullLogger<HomeFolderWatcher>.Instance, toasts);
             watcher.Start(registry);
