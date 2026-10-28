@@ -95,7 +95,8 @@ public sealed class ToastHostViewModel
             }
 
             // AC-1853: under "Still open from your last session", at the time it first came in.
-            Notifications.Items.First(item => item.SourceId == kept.SourceId && item.Key == kept.Key).KeptFrom(kept.Time);
+            // A recheck may answer under another key; that one is new, not kept.
+            Notifications.Items.FirstOrDefault(item => item.SourceId == kept.SourceId && item.Key == kept.Key)?.KeptFrom(kept.Time);
         }
 
         Notifications.KeepAt(path);

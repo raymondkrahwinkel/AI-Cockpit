@@ -176,7 +176,7 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
 
     private static NotificationGroup _GroupOf(NotificationItemViewModel item) =>
         item.FromLastSession ? NotificationGroup.LastSession
-        : item.Time.Date == DateTimeOffset.Now.Date ? NotificationGroup.Today
+        : item.Time.ToLocalTime().Date == DateTime.Today ? NotificationGroup.Today
         : NotificationGroup.Earlier;
 
     private void _OnItemChanged(object? sender, PropertyChangedEventArgs e) => _Refresh();
@@ -324,9 +324,9 @@ public sealed partial class NotificationItemViewModel : ObservableObject
     public DateTimeOffset Time { get; private set; }
 
     // A day other than today reads as "Mon 17:40" (mockup screen 09).
-    public string TimeLabel => Time.Date == DateTimeOffset.Now.Date
-        ? Time.ToString("HH:mm", CultureInfo.InvariantCulture)
-        : Time.ToString("ddd HH:mm", CultureInfo.InvariantCulture);
+    public string TimeLabel => Time.ToLocalTime().Date == DateTime.Today
+        ? Time.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
+        : Time.ToLocalTime().ToString("ddd HH:mm", CultureInfo.InvariantCulture);
 
     public bool IsHandled => HandledReceipt is not null;
 

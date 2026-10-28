@@ -9,8 +9,8 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class NotificationsPanelViewTests
 {
-    // Layer 2, view (AC-1853, mockup screens 04 and 09): a title over its message, one line without, the restart's own
-    // group above Today, and Clear read takes only what was read.
+    // Layer 2, view (AC-1853, mockup screens 04 and 09; AC-1802): a title over its message, one line without, the restart's
+    // own group above Today, one item per key, the row's button is the toast's own, and Clear read takes only what was read.
     [Fact]
     public void ThePanel_ShowsTitleAndMessage_GroupsByLastSessionAndToday_AndClearsOnlyRead() => HeadlessAvalonia.Run(() =>
     {
@@ -19,7 +19,8 @@ public sealed class NotificationsPanelViewTests
             key: "mcp.youtrack", sourceId: "youtrack", title: "YouTrack MCP needs you to sign in again");
         host.Notifications.Items[0].KeptFrom(DateTimeOffset.Now.AddDays(-2));
         host.Add("Saved the layout.", ToastSeverity.Success, [], sticky: false);
-        host.Add("You're on 0.131.2.", ToastSeverity.Information, [], sticky: false, title: "Cockpit 0.132.0 is available");
+        host.Add("You're on 0.131.1.", ToastSeverity.Information, [], sticky: false, key: "cockpit.update", title: "Cockpit 0.132.0 is available");
+        host.Add("You're on 0.131.2.", ToastSeverity.Information, [], sticky: false, key: "cockpit.update", title: "Cockpit 0.132.0 is available");
         host.Notifications.Items[0].MarkReadCommand.Execute(null);
         host.Notifications.Filter = NotificationFilter.All;
 
@@ -32,6 +33,10 @@ public sealed class NotificationsPanelViewTests
             ["Still open from your last session", "YouTrack MCP needs you to sign in again", "Its OAuth token expired.",
                 "Clear read", "Today", "Cockpit 0.132.0 is available", "You're on 0.131.2.", "Saved the layout."],
             shown.Where(text => text is "Still open from your last session" or "Today" or "Clear read" || host.Notifications.Items.Any(item => item.Message == text || item.Title == text)));
+
+        Assert.Equal(1, host.Notifications.Badge.Count);
+        host.Notifications.Items[2].Actions[0].InvokeCommand.Execute(null);
+        Assert.Equal(("You chose: Sign in", 0), (host.Notifications.Items[2].HandledReceipt, host.Notifications.Badge.Count));
 
         host.Notifications.VisibleGroups[1].ClearReadCommand.Execute(null);
 
