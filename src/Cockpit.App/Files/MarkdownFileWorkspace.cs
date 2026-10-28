@@ -330,10 +330,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
     // The save wrote nothing; read what the source holds now so the operator can compare, merge or overwrite.
     private async Task _CaptureConflictAsync()
     {
-        _conflict = true;
         try
         {
             _theirs = await _ReadSnapshotAsync().ConfigureAwait(true);
+            _conflict = true;
         }
         catch (Exception error) when (error is FileSourceException or DecoderFallbackException)
         {
@@ -364,6 +364,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             return;
         }
         _ClearConflict();
+        _new = false;
         _hasBom = theirs.HasBom;
         Editor.Text = theirs.Text;
         _savedText = theirs.Text;
@@ -379,6 +380,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         }
         var merged = LineMerge.Merge(_savedText.Split('\n'), theirs.Text.Split('\n'), Editor.Text.Split('\n'));
         _ClearConflict();
+        _new = false;
         _hasBom = theirs.HasBom;
         _savedText = theirs.Text;
         _version = theirs.Version;
@@ -393,6 +395,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             return;
         }
         _version = theirs.Version;
+        _new = false;
         _ClearConflict();
         await SaveAsync().ConfigureAwait(true);
     }
