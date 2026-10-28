@@ -40,4 +40,6 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
     /// Host 0.111.0 and later; an older host ignores it.
     /// </summary>
     public bool CanFloat { get; init; }
+
+    public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];
 }
