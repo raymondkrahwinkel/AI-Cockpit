@@ -28,6 +28,16 @@ internal static class Program
 
         var provider = new FileLoggerProvider(logPath);
         var logger = provider.CreateLogger("probe");
+        if (label == "crash")
+        {
+            LifecycleLog.Use(LoggerFactory.Create(builder => builder.AddProvider(provider)));
+            LifecycleLog.Write("lifecycle before managed crash");
+            throw new InvalidOperationException("AC-1893 managed crash probe");
+        }
+
+        // Complete startup rotation before announcing readiness; the next process overlaps an open stream.
+        logger.LogInformation("startup {Label}", label);
+        provider.Flush();
         File.WriteAllText($"{logPath}.constructed.{label}", "");
 
         if (label == "A")
@@ -45,4 +55,5 @@ internal static class Program
             logger.LogInformation("probe {Label} line {Index}", label, i);
         }
     }
+
 }

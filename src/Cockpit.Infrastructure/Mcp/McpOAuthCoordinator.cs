@@ -16,8 +16,10 @@ internal sealed class McpOAuthCoordinator(
     IMcpOAuthAuthorizer authorizer,
     ILogger<McpOAuthCoordinator> logger,
     IToastNotifier? toastNotifier = null,
-    McpOAuthRefreshGate? refreshGate = null) : IMcpOAuthCoordinator, ISingletonService
+    McpOAuthRefreshGate? refreshGate = null,
+    Func<HttpMessageHandler>? httpHandlerFactory = null) : IMcpOAuthCoordinator, ISingletonService
 {
+    internal static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(15);
     private readonly McpOAuthRefreshGate _refreshGate = refreshGate ?? new McpOAuthRefreshGate();
 
     // How much of an access token's remaining life has to be left for it to be worth using for *one request*:
@@ -342,20 +344,21 @@ internal sealed class McpOAuthCoordinator(
     // find out what happened. Whatever went wrong is folded into the outcome instead.
     private async Task<HandshakeOutcome> _RenewAsync(McpServerConfig server, TimeSpan margin)
     {
+        using var deadline = new CancellationTokenSource(HttpTimeout);
         try
         {
-            // CancellationToken.None on purpose: this work is shared, so honouring the first caller's token would
-            // let whoever happened to arrive first cancel a renewal the others are still waiting on.
-            // AC-1586: one refresh per server at a time, a host-only token's included, since each one rotates the grant.
+            // AC-1893: the shared renewal has its own deadline, independent of any caller's wait.
+            // AC-1586: one refresh per server at a time, including host-only tokens whose grants rotate.
             return await _refreshGate.RunAsync(
                 server.IdentityKey,
-                () => _HandshakeAsync(server, interactive: false, margin, CancellationToken.None),
-                CancellationToken.None).ConfigureAwait(false);
+                () => _HandshakeAsync(server, interactive: false, margin, deadline.Token),
+                deadline.Token).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             logger.LogWarning(exception, "Renewing the authorization for MCP server {Server} ended unexpectedly.", server.Name);
-            return new HandshakeOutcome(McpSignInStage.NoBrowserLaunched, Explained: false, Unreachable: _IsUnreachable(exception), GrantRejected: false);
+            return new HandshakeOutcome(McpSignInStage.NoBrowserLaunched, Explained: false,
+                Unreachable: deadline.IsCancellationRequested || _IsUnreachable(exception), GrantRejected: false);
         }
     }
 
@@ -520,7 +523,7 @@ internal sealed class McpOAuthCoordinator(
         // The transport's own HttpClient, made rather than left to the SDK, so the token endpoint's answer passes
         // through something that can see it (AC-646). Owned by the transport and disposed with it — the SDK builds
         // one per transport anyway, so this costs the same connection pool it already had.
-        var grantWatcher = new McpOAuthGrantRejectionWatcher { InnerHandler = new HttpClientHandler() };
+        var grantWatcher = new McpOAuthGrantRejectionWatcher { InnerHandler = httpHandlerFactory?.Invoke() ?? new HttpClientHandler() };
         try
         {
             await using var transport = new HttpClientTransport(
@@ -531,7 +534,7 @@ internal sealed class McpOAuthCoordinator(
                     TransportMode = HttpTransportMode.AutoDetect,
                     OAuth = authorizer.CreateOptions(server, interactive, stageRecorder, margin),
                 },
-                new HttpClient(grantWatcher),
+                CreateHttpClient(grantWatcher),
                 loggerFactory: null,
                 ownsHttpClient: true);
 
@@ -567,6 +570,8 @@ internal sealed class McpOAuthCoordinator(
 
         return new HandshakeOutcome(stageRecorder.Reached, Explained: false, Unreachable: false, grantWatcher.GrantRejected);
     }
+
+    internal static HttpClient CreateHttpClient(HttpMessageHandler handler) => new(handler) { Timeout = HttpTimeout };
 
     // Whether the handshake failed because nothing answered, rather than because what answered refused. Walked down
     // the inner exceptions because the MCP client wraps a transport failure in its own type, so the socket error that

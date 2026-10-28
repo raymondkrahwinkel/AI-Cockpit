@@ -93,10 +93,11 @@ sealed class Program
 
         // One logger factory shared between the pre-container plugin pass (below) and DI, so both write
         // to the same file — a second FileLoggerProvider would truncate the log a second time at startup.
-        var loggerFactory = LoggerFactory.Create(builder =>
+        using var fileLogger = new Cockpit.App.Logging.FileLoggerProvider(logPath);
+        using var loggerFactory = LoggerFactory.Create(builder =>
         {
             builder.AddConsole();
-            builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath));
+            builder.AddProvider(fileLogger);
         });
         using var installationInstance = InstallationInstanceGuard.Acquire(
             loggerFactory.CreateLogger<InstallationInstanceGuard>());
@@ -198,6 +199,7 @@ sealed class Program
             // After bounded child cleanup, hard-exit: Kestrel StopAsync can ignore cancellation while draining SSE,
             // and SoundFlow native disposal can hang. The OS reclaims the loopback socket anyway.
             DisposeCockpit();
+            fileLogger.Flush();
             Environment.Exit(0);
         }
     }
