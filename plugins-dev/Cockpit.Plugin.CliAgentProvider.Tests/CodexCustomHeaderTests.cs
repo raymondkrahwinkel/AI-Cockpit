@@ -23,15 +23,6 @@ public class CodexCustomHeaderTests
         Assert.Contains("env_http_headers", config);
         Assert.Contains("\"X-Api-Key\" = \"COCKPIT_MCP_HEADER_0_0\"", config);
         Assert.Equal("the-key", launch.EnvironmentVariables["COCKPIT_MCP_HEADER_0_0"]);
-    }
-
-    [Fact]
-    public void Build_NeverPutsTheHeaderValueOnTheCommandLine()
-    {
-        var launch = CodexMcpConfig.Build([_ServerWithHeader("X-Api-Key", "the-key")]);
-
-        // The whole point of the env-var indirection. A -c argument shows up in /proc/<pid>/cmdline, so a literal
-        // here would hand the credential to every local account on the machine.
-        Assert.DoesNotContain("the-key", string.Join(" ", launch.ConfigArgs));
+        Assert.DoesNotContain("the-key", config);
     }
 }

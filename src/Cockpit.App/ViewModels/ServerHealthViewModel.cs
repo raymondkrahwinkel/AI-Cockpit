@@ -186,7 +186,7 @@ public sealed partial class ServerHealthViewModel : ObservableObject
         }
 
         _signInProfile = profile;
-        var flow = new LoginFlowRowViewModel(started);
+        var flow = new LoginFlowRowViewModel(started) { RestartSignIn = StartSignInAsync };
         flow.Completed = succeeded => Dispatcher.UIThread.Post(() => _ = SettleAsync(succeeded));
         SignIn = flow;
     }

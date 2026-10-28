@@ -10,7 +10,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 // AC-713: `codex login --device-auth`, OpenAI's own documented headless route — the subprocess polls the token endpoint itself.
 internal sealed class CodexLoginFlow : ILoginFlow
 {
-    private static readonly Regex _UrlPattern = new(@"https?://\S+", RegexOptions.Compiled);
+    private static readonly Regex _UrlPattern = new(@"https?://[^\s\x1b]+", RegexOptions.Compiled);
 
     private readonly Process _process;
     private readonly Channel<LoginFlowStep> _steps =
@@ -151,7 +151,7 @@ internal sealed class CodexLoginFlow : ILoginFlow
     // through as plain text.
     internal static LoginFlowStep? ClassifyLine(string line)
     {
-        var trimmed = line.Trim('\r', '\n', ' ');
+        var trimmed = CliLoginText.StripEscapes(line).Trim('\r', '\n', ' ');
         if (trimmed.Length == 0)
         {
             return null;
