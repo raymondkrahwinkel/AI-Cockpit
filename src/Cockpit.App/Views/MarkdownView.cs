@@ -955,11 +955,12 @@ public sealed class MarkdownView : ContentControl
             if (inline.Kind == MarkdownInlineKind.Text && _TryMatch(inline.Text, out _, out var start, out var length))
             {
                 _AddRun(block, inline.Text[..start]);
-                var linkRun = _AddRun(block, inline.Text.Substring(start, length));
+                var linkText = inline.Text.Substring(start, length);
+                var linkRun = _AddRun(block, linkText);
                 linkRun.Foreground = Accent;
                 linkRun.TextDecorations = TextDecorations.Underline;
                 _AddRun(block, inline.Text[(start + length)..]);
-                links.Add((offset + start, length, linkRun.Text!, null));
+                links.Add((offset + start, length, linkText, null));
                 offset += inline.Text.Length;
                 continue;
             }

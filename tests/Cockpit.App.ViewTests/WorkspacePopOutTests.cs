@@ -63,9 +63,11 @@ public sealed class WorkspacePopOutTests
         Assert.False(workspaces.CanPopOutActive);
 
         await workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("a.md", "a.md", Preview: true));
-        var popped = workspaces.Active!;
+        var popped = workspaces.Active;
+        Assert.NotNull(popped);
         var slot = workspaces.Tabs.ToList().FindIndex(tab => tab.Id == popped.Id);
         var body = workspaces.ActivePluginBody;
+        Assert.NotNull(body);
         var pinned = false;
         _contexts["a.md"].Pinned += (_, _) => pinned = true;
         Assert.True(workspaces.CanPopOutActive);
@@ -75,7 +77,7 @@ public sealed class WorkspacePopOutTests
 
         var window = host.WindowFor(popped.Id);
         Assert.NotNull(window);
-        Assert.Contains(body!, window.GetVisualDescendants());
+        Assert.Contains(body, window.GetVisualDescendants());
         Assert.True(pinned);
         Assert.DoesNotContain(workspaces.Tabs, tab => tab.Id == popped.Id);
         Assert.NotEqual(popped.Id, workspaces.Active?.Id);
@@ -90,7 +92,9 @@ public sealed class WorkspacePopOutTests
         Assert.Null(host.WindowFor(popped.Id));
         Assert.Equal(slot, workspaces.Tabs.ToList().FindIndex(tab => tab.Id == popped.Id && tab.IsActive));
         Assert.Same(body, workspaces.ActivePluginBody);
-        Assert.False(workspaces.Active!.IsPreview);
+        var docked = workspaces.Active;
+        Assert.NotNull(docked);
+        Assert.False(docked.IsPreview);
     });
 
     private static async Task _FileWorkspaceFlowAsync()
@@ -256,10 +260,14 @@ public sealed class WorkspacePopOutTests
             var host = new WorkspaceWindowHost(workspaces, _ => Task.CompletedTask, () => bounds);
             host.Start();
             await workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("a.md", "a.md"));
-            var id = workspaces.Active!.Id;
+            var opened = workspaces.Active;
+            Assert.NotNull(opened);
+            var id = opened.Id;
             await bounds.SaveAsync(id, new WindowBounds(120, 80, 700, 500, IsMaximized: false));
             await workspaces.PopOutAsync(id);
-            Assert.Equal(new PixelPoint(120, 80), host.WindowFor(id)!.Position);
+            var window = host.WindowFor(id);
+            Assert.NotNull(window);
+            Assert.Equal(new PixelPoint(120, 80), window.Position);
 
             var saved = new TaskCompletionSource();
             void OnWritten(string path) => _ = path == config && saved.TrySetResult();

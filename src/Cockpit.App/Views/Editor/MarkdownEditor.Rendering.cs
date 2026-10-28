@@ -324,9 +324,10 @@ public sealed partial class MarkdownEditor
 
         private Control _FrontMatterStrip(int lineCount)
         {
-            var text = new TextBlock { FontSize = 12, Foreground = TextSecondary };
-            text.Inlines!.Add(new Run($"▸ Front matter · {lineCount} line{(lineCount == 1 ? "" : "s")} "));
-            text.Inlines.Add(new Run("— not shown in the editor, kept byte for byte") { Foreground = TextFaint });
+            var inlines = new InlineCollection();
+            var text = new TextBlock { FontSize = 12, Foreground = TextSecondary, Inlines = inlines };
+            inlines.Add(new Run($"▸ Front matter · {lineCount} line{(lineCount == 1 ? "" : "s")} "));
+            inlines.Add(new Run("— not shown in the editor, kept byte for byte") { Foreground = TextFaint });
             var strip = new Border
             {
                 Child = text,
@@ -414,7 +415,8 @@ public sealed partial class MarkdownEditor
 
         private static TextBlock _InlineText(string text, double size, bool header)
         {
-            var block = new TextBlock { FontSize = size, Foreground = TextPrimary, FontWeight = header ? FontWeight.SemiBold : FontWeight.Normal };
+            var inlines = new InlineCollection();
+            var block = new TextBlock { FontSize = size, Foreground = TextPrimary, FontWeight = header ? FontWeight.SemiBold : FontWeight.Normal, Inlines = inlines };
             var at = 0;
             foreach (var span in MarkdownLineClassifier.Inlines(text))
             {
@@ -423,7 +425,7 @@ public sealed partial class MarkdownEditor
                     continue;
                 }
 
-                block.Inlines!.Add(new Run(text[at..span.Start]));
+                inlines.Add(new Run(text[at..span.Start]));
                 var run = new Run(text[(span.Start + span.OpenLength)..(span.End - span.CloseLength)]);
                 switch (span.Kind)
                 {
@@ -443,11 +445,11 @@ public sealed partial class MarkdownEditor
                         break;
                 }
 
-                block.Inlines.Add(run);
+                inlines.Add(run);
                 at = span.End;
             }
 
-            block.Inlines!.Add(new Run(text[at..]));
+            inlines.Add(new Run(text[at..]));
             return block;
         }
     }
@@ -618,7 +620,7 @@ internal sealed class BlockCollapser(TextView textView)
         foreach (var (first, section) in _sections.ToList())
         {
             var gone = first.IsDeleted || !section.IsCollapsed || section.End is null;
-            if (lineNumber > 0 && (gone || (lineNumber >= first.LineNumber - 1 && lineNumber <= section.End!.LineNumber + 1)))
+            if (lineNumber > 0 && (gone || (section.End is { } end && lineNumber >= first.LineNumber - 1 && lineNumber <= end.LineNumber + 1)))
             {
                 section.Uncollapse();
                 _sections.Remove(first);

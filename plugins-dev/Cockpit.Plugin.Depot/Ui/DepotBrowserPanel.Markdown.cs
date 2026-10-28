@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -150,6 +151,10 @@ internal sealed partial class DepotBrowserPanel
         }
         catch (FileSourceException) { }
         catch (OperationCanceledException) { }
-        catch (Exception) { _host.ShowToast("Could not refresh Depot files after saving."); }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: refreshing the file tree after a save failed: {exception}");
+            _host.ShowToast("Could not refresh Depot files after saving.");
+        }
     }
 }

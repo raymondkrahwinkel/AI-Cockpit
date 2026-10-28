@@ -25,7 +25,9 @@ internal static class FileSourceChannel
                 var result = await source.ReadAsync(request.File, ct).ConfigureAwait(false);
                 await using var content = result.Content;
                 if (string.IsNullOrWhiteSpace(result.Version))
+                {
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a file version.");
+                }
                 var bytes = await Wire.ReadContentAsync(content, Wire.MaxContentBytes, ct).ConfigureAwait(false);
                 return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version,
                     bytes.LongLength, result.Modified, result.ContentType)
@@ -43,12 +45,16 @@ internal static class FileSourceChannel
                 var source = _Source(provider, request.File, true);
                 var bytes = Wire.DecodeContent(request.ContentBase64 ?? throw new JsonException());
                 if (bytes.LongLength > source.Capabilities.MaxWriteBytes)
+                {
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file exceeds the source's size limit.");
+                }
                 using var content = new MemoryStream(bytes, writable: false);
                 var result = await source.WriteAsync(request.File, content, request.IfVersion,
                     request.MustNotExist, ct).ConfigureAwait(false);
                 if (result.Status == FileWriteStatus.Written && string.IsNullOrWhiteSpace(result.Version))
+                {
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the saved version.");
+                }
                 if (result.Status == FileWriteStatus.Written)
                 {
                     channel.Publish(Wire.Saved, JsonSerializer.SerializeToElement(request.File, Wire.Json));
@@ -71,14 +77,20 @@ internal static class FileSourceChannel
     {
         if (file is null || string.IsNullOrWhiteSpace(file.ConnectionId)
             || string.IsNullOrWhiteSpace(file.Id) || string.IsNullOrWhiteSpace(file.Path))
+        {
             throw new FileSourceException(FileSourceErrorKind.Unsupported, "The file reference is incomplete.");
+        }
         var connection = provider.Connections.FirstOrDefault(c => c.Id == file.ConnectionId)
             ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "This file connection is no longer configured.");
         if (write && connection.ReadOnly)
+        {
             throw new FileSourceException(FileSourceErrorKind.Forbidden, "This file connection is read-only.");
+        }
         var source = provider.Open(connection.Id);
         if (write && !source.Capabilities.CanWrite)
+        {
             throw new FileSourceException(FileSourceErrorKind.Forbidden, "This source does not allow writing.");
+        }
         return source;
     }
 
@@ -113,7 +125,10 @@ internal static class FileSourceChannel
         public void Dispose()
         {
             provider.ConnectionsChanged -= Changed;
-            foreach (var handler in Handlers) handler.Dispose();
+            foreach (var handler in Handlers)
+            {
+                handler.Dispose();
+            }
             Handlers.Clear();
         }
     }

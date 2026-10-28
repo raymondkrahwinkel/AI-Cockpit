@@ -328,7 +328,9 @@ public class DepotBrowserServiceTests
             var current = Files.TryGetValue(target, out var content) ? _Checksum(content) : "";
             var expected = entry.GetProperty("baseChecksum").GetString();
             if (expected is not null && expected != current)
+            {
                 return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "conflict", checksum = current } } });
+            }
             Files[target] = entry.GetProperty("content").GetString() ?? throw new InvalidOperationException("The write request had no content.");
             return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "written", checksum = _Checksum(Files[target]) } } });
         }

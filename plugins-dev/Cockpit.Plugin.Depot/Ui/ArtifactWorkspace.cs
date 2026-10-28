@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
@@ -27,7 +28,7 @@ internal sealed class ArtifactWorkspace : UserControl
     {
         _host = host;
         Content = _body;
-        _ = _LoadAsync(context.InstanceKey, connections);
+        _ = _SafelyAsync(() => _LoadAsync(context.InstanceKey, connections));
     }
 
     internal ArtifactWorkspace(ICockpitUiHost host, DepotBrowserNode node, Func<CancellationToken, Task<byte[]?>> read)
@@ -52,15 +53,16 @@ internal sealed class ArtifactWorkspace : UserControl
         }
 
         var connection = connections.FirstOrDefault(candidate => candidate.Id == connectionId);
-        if (connection is null)
+        if (connection is null || _host is null)
         {
             _Empty("The Depot connection for this tab is no longer configured.");
             return;
         }
 
-        _model = new DepotBrowserModel(_host!, connection, new HttpClient());
+        var model = new DepotBrowserModel(_host, connection, new HttpClient());
+        _model = model;
         _project = project;
-        var tree = await _model.TreeAsync(project).ConfigureAwait(true);
+        var tree = await model.TreeAsync(project).ConfigureAwait(true);
         var node = tree.Data?.Nodes.FirstOrDefault(candidate => candidate.Path == path);
         if (tree.Status != DepotBrowserStatus.Ok || node is null)
         {
@@ -68,12 +70,12 @@ internal sealed class ArtifactWorkspace : UserControl
             return;
         }
 
-        _Show(node, cancellation => _ReadAsync(node, cancellation));
+        _Show(node, cancellation => _ReadAsync(model, project, node, cancellation));
     }
 
-    private async Task<byte[]?> _ReadAsync(DepotBrowserNode node, CancellationToken cancellationToken)
+    private async Task<byte[]?> _ReadAsync(DepotBrowserModel model, string project, DepotBrowserNode node, CancellationToken cancellationToken)
     {
-        var answer = await _model!.ReadBytesAsync(_project!, node, cancellationToken).ConfigureAwait(true);
+        var answer = await model.ReadBytesAsync(project, node, cancellationToken).ConfigureAwait(true);
         if (answer.Status == DepotBrowserStatus.Ok)
         {
             return answer.Data;
@@ -103,7 +105,21 @@ internal sealed class ArtifactWorkspace : UserControl
                 return;
         }
 
-        _ = _ShowContentAsync(node, read);
+        _ = _SafelyAsync(() => _ShowContentAsync(node, read));
+    }
+
+    // The tab's loads run unawaited from the constructor and from _Show: a failure becomes the empty state, never an unobserved task.
+    private async Task _SafelyAsync(Func<Task> load)
+    {
+        try
+        {
+            await load().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            Trace.TraceWarning($"Depot: loading an artifact tab failed: {exception}");
+            _Empty("Cockpit could not load this file.");
+        }
     }
 
     private async Task _ShowContentAsync(DepotBrowserNode node, Func<CancellationToken, Task<byte[]?>> read)

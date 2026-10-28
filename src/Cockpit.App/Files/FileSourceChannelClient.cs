@@ -19,7 +19,9 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         var read = await _CallAsync<FileSourceReadAnswer>(FileSourceChannel.Read,
             new FileSourceReadRequest(file), cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(read.Version) || read.ContentBase64 is null)
+        {
             throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not return a file version.");
+        }
         return new FileReadResult(new MemoryStream(FileSourceChannel.DecodeContent(read.ContentBase64), writable: false),
             read.Version, read.Size, read.Modified, read.ContentType) { CanWrite = read.CanWrite, ModifiedBy = read.ModifiedBy };
     }, cancellationToken);
@@ -32,7 +34,9 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         var result = await _CallAsync<FileWriteResult>(FileSourceChannel.Write,
             new FileSourceWriteRequest(file, Convert.ToBase64String(bytes), ifVersion, mustNotExist), cancellationToken).ConfigureAwait(false);
         if (result.Status == FileWriteStatus.Written && string.IsNullOrWhiteSpace(result.Version))
+        {
             throw new FileSourceException(FileSourceErrorKind.Unavailable, "The source did not confirm the saved version.");
+        }
         return result;
     }, cancellationToken);
 
@@ -56,7 +60,10 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
     {
         var json = await channel.InvokeAsync(action, JsonSerializer.SerializeToElement(request, FileSourceChannel.Json), cancellationToken).ConfigureAwait(false);
         var answer = json.Deserialize<FileSourceAnswer<T>>(FileSourceChannel.Json);
-        if (answer?.Error is { } error) throw new FileSourceException(error.Kind, error.Message);
+        if (answer?.Error is { } error)
+        {
+            throw new FileSourceException(error.Kind, error.Message);
+        }
         return answer?.Data ?? throw new FileSourceException(FileSourceErrorKind.Unavailable, "The file source returned an invalid answer.");
     }
 }

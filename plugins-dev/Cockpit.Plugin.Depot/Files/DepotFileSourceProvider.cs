@@ -29,17 +29,25 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 var role = await _AuthorizeAsync(connection, project, false, cancellationToken).ConfigureAwait(false);
                 using var response = await _PostAsync(connection, project, "read", new[] { path }, cancellationToken).ConfigureAwait(false);
                 if (response.RootElement.TryGetProperty("truncated", out var truncated) && truncated.ValueKind == JsonValueKind.True)
+                {
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "Depot truncated the file; no partial text was opened.");
+                }
                 var entry = _Entries(response.RootElement, "files").FirstOrDefault(e => DepotRequests.String(e, "path") == path);
                 if (entry.ValueKind != JsonValueKind.Object)
+                {
                     throw new FileSourceException(FileSourceErrorKind.NotFound, "The file is no longer available in Depot.");
+                }
                 var content = DepotRequests.String(entry, "content");
                 var version = DepotRequests.String(entry, "checksum");
                 if (content is null || string.IsNullOrWhiteSpace(version))
+                {
                     throw new FileSourceException(FileSourceErrorKind.Unavailable, "Depot did not return the file and its version.");
+                }
                 var bytes = Encoding.UTF8.GetBytes(content);
                 if (bytes.Length > FileSourceChannel.MaxContentBytes)
+                {
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
+                }
                 return new FileReadResult(new MemoryStream(bytes, writable: false), version, bytes.LongLength,
                     DateTimeOffset.TryParse(DepotRequests.String(entry, "updatedAt"), out var modified) ? modified : null,
                     "text/markdown")
@@ -81,19 +89,24 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
         {
             var role = await new DepotRequests(host, () => [connection]).RoleAsync(connectionId, project, cancellationToken).ConfigureAwait(false);
             if (role == DepotProjectRole.Unknown || (write && !role.CanWrite()))
+            {
                 throw new FileSourceException(FileSourceErrorKind.Forbidden, "Your role does not allow this file operation.");
+            }
             return role;
         }
 
         private async Task<JsonDocument> _PostAsync<T>(DepotConnectionRegistration connection, string project, string operation, T request, CancellationToken cancellationToken)
         {
             if (_Connection() != connection)
+            {
                 throw new FileSourceException(FileSourceErrorKind.Unavailable, "The Depot connection changed during this file operation. Open the file again.");
+            }
             var address = project.Split('/');
             using var api = new DepotApi(host, connection);
             var result = await api.PostJsonAsync($"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/{operation}",
                 request, cancellationToken).ConfigureAwait(false);
             if (result.Outcome != DepotApiOutcome.Success)
+            {
                 throw new FileSourceException(result.Outcome switch
                 {
                     DepotApiOutcome.NotSignedIn => FileSourceErrorKind.SignIn,
@@ -101,6 +114,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                     DepotApiOutcome.TooLarge => FileSourceErrorKind.TooLarge,
                     _ => FileSourceErrorKind.Unavailable,
                 }, "Depot could not complete this file operation.");
+            }
             return JsonDocument.Parse(result.Content);
         }
 

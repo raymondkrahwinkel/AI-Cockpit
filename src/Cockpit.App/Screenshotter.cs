@@ -4343,9 +4343,12 @@ internal static partial class Screenshotter
             NullCockpitSessionObserver.Instance);
         var workspaces = new CockpitViewModel(workspaceTypeRegistry: registry).Workspaces;
         workspaces.OpenWorkspaceAsync("scene.markdown", new("Ideas/md-editor.md", "md-editor.md")).GetAwaiter().GetResult();
-        var workspace = workspaces.Active!;
+        if (workspaces.Active is not { } workspace || workspaces.BodyFor(workspace) is not { } body)
+        {
+            throw new InvalidOperationException("The floating-workspace scene opened no workspace body.");
+        }
         workspaces.PopOutAsync(workspace.Id).GetAwaiter().GetResult();
-        return new Docking.DockPanelWindow(workspace.Id, workspace.Name, workspaces.BodyFor(workspace)!, boundsStore: null, "Put this workspace back in the tab strip")
+        return new Docking.DockPanelWindow(workspace.Id, workspace.Name, body, boundsStore: null, "Put this workspace back in the tab strip")
         {
             Width = 900,
             Height = 560,

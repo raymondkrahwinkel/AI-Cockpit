@@ -20,7 +20,9 @@ public static class FileSourceChannel
         while ((count = await content.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
         {
             if (bytes.Length + count > limit)
+            {
                 throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
+            }
             bytes.Write(buffer, 0, count);
         }
         return bytes.ToArray();
@@ -29,16 +31,22 @@ public static class FileSourceChannel
     public static void ValidateWrite(string? ifVersion, bool mustNotExist)
     {
         if (mustNotExist ? ifVersion is not null : string.IsNullOrWhiteSpace(ifVersion))
+        {
             throw new FileSourceException(FileSourceErrorKind.Unsupported, "A save needs a base version; a new file must not exist.");
+        }
     }
 
     public static byte[] DecodeContent(string content)
     {
         if (content.Length > ((MaxContentBytes + 2) / 3) * 4)
+        {
             throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
+        }
         var bytes = Convert.FromBase64String(content);
         if (bytes.Length > MaxContentBytes)
+        {
             throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
+        }
         return bytes;
     }
 }
