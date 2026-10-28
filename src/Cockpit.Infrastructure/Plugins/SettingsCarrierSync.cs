@@ -331,13 +331,13 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         var written = remoteBytes;
         if (push.Count > 0)
         {
+            remoteDocument.Remove("Projects");
+            remoteDocument.Remove("CategoryOrder");
             foreach (var (key, value) in push)
             {
                 _Set(remoteDocument, _UnitFor(key, local, remote), value);
             }
 
-            remoteDocument.Remove("Projects");
-            remoteDocument.Remove("CategoryOrder");
             var blob = JsonSerializer.SerializeToUtf8Bytes(remoteDocument);
             var version = remoteBytes is null ? null : Version(remoteBytes);
             if (!await _WriteAsync(carrier, blob, version, cancellationToken).ConfigureAwait(false))
