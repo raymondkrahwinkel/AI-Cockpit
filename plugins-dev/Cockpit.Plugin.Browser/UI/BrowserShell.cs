@@ -318,7 +318,7 @@ internal sealed class BrowserShell : UserControl
     private void _RebuildProfile()
     {
         _profile.Children.Clear();
-        _profile.Children.Add(_Pill("● Raymond", _agentSide == false, () => _SwitchSide(agents: false)));
+        _profile.Children.Add(_Pill("● You", _agentSide == false, () => _SwitchSide(agents: false)));
         var count = _agents.Tabs.Count;
         _profile.Children.Add(_Pill(count > 0 ? $"◆ Agents {count}" : "◆ Agents", _agentSide, () => _SwitchSide(agents: true)));
     }
