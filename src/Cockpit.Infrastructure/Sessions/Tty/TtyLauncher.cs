@@ -36,7 +36,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ISessionMemory
         var scratch = SessionScratch.Create(scratchPane, message => logger.LogWarning("{Message}", message));
         options = new Dictionary<string, string>(options)
         {
-            [WellKnownPluginSessionOptions.AppendSystemPrompt] = SessionScratch.Instruction(scratch),
+            [WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
+                options.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(scratch)).TrimStart('\n'),
         };
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
