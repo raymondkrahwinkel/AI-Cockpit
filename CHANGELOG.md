@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a sync choice per profile.** On Options › Sync the Profiles row opens to one row per profile, and the profile page has a "Synchronise this profile" field: tick the servers a profile goes to, or leave it on "Same as Profiles". Nothing ticked keeps that profile on this machine; unticking never removes anything from a server (AC-1847).
 - added: **Options › Sync.** One page decides which server each category of settings (profiles, plugins, notifications, shortcuts, session behaviour, usage, appearance, updates) is kept in step with: tick one or more per category, nothing ticked stays on this machine. A card per server shows what it receives and when it last synced; unticking never removes anything from the server. A settings conflict between two servers now shows one card per server (AC-1846).
 - added: **a start-up screen.** Cockpit now opens a splash window straight away, before anything heavy loads, and shows the
   real steps of the start (settings, plugins, projects, sessions) instead of an empty desktop. A step that takes longer than
