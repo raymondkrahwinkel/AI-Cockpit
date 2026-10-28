@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Notes.Live;
+using Cockpit.Plugins.Abstractions.Files;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -55,13 +56,14 @@ public class DepotNoteBridgeTests
         Assert.Equal(SchemaSha[..12], DepotNoteSchema.Version);
     }
 
-    // One keystroke in a paragraph is one Edited and one Update, and that update changes that paragraph and no other Y item.
+    // One keystroke in a paragraph is one Edited and one Update, and that update changes that paragraph and no other Y item; the same
+    // edit again under its id (an answer the host lost) applies nothing.
     [Fact]
     public async Task Keystroke_InAParagraph_IsOneUpdate_ThatLeavesEveryOtherBlockTheSameYItem()
     {
         await using var web = new JintNoteRoom(2);
         var hub = new _Hub(await _SeedAsync(web, "canonical.md"));
-        var patches = new List<DepotNoteLivePatch>();
+        var patches = new List<LiveFilePatch>();
         var loaded = new TaskCompletionSource();
         await using var bridge = _Session(hub, patch =>
         {
@@ -75,8 +77,9 @@ public class DepotNoteBridgeTests
         var bridgeBefore = _Parse(await room.EvaluateAsync(Blocks, CancellationToken.None));
         var webBefore = _Parse(await web.EvaluateAsync(Blocks, CancellationToken.None));
 
-        var result = await bridge.EditAsync(1, [new DepotNoteTextOp(text.IndexOf("Slotregel", StringComparison.Ordinal) + 4, 0, "x")], CancellationToken.None);
-        Assert.Equal(new DepotNoteEditResult(true, 2), result);
+        TextOp[] keystroke = [new(text.IndexOf("Slotregel", StringComparison.Ordinal) + 4, 0, "x")];
+        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, keystroke, CancellationToken.None));
+        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, keystroke, CancellationToken.None));
         Assert.Equal(["edited", "update"], hub.Calls);
         await web.ApplyAsync(Assert.Single(hub.Updates), CancellationToken.None);
         var bridgeAfter = _Parse(await room.EvaluateAsync(Blocks, CancellationToken.None));
@@ -91,7 +94,7 @@ public class DepotNoteBridgeTests
 
     // AC-1897's join (an update that comes before the result is applied and not sent back), then the bridge and the web typing at once,
     // in the same block and in others: both docs end equal, the host's text plus its patches is the mirror and the serialization, and
-    // each remote keystroke reaches the host as one insert of just its own text.
+    // each remote keystroke reaches the host as one insert of just its own text. Undo then takes back the bridge's typing, not the web's.
     [Fact]
     public async Task BothSidesTypingAtOnce_ConvergeWithoutLoss_AndEachRemoteKeystrokeIsOneInsert()
     {
@@ -99,7 +102,7 @@ public class DepotNoteBridgeTests
         var seed = await _SeedAsync(web, "structure.md");
         var early = _Taken(await web.EvaluateAsync($"(() => {{ {TextOf} t(f.get(1)).insert(0, 'EARLY '); return {Taken}; }})()", CancellationToken.None));
         var hub = new _Hub(seed, early);
-        var patches = new List<DepotNoteLivePatch>();
+        var patches = new List<LiveFilePatch>();
         var loaded = new TaskCompletionSource();
         await using var bridge = _Session(hub, patch =>
         {
@@ -117,8 +120,8 @@ public class DepotNoteBridgeTests
 
         // The bridge types in the heading and in the bullet list (each op on the text the one before left); the web, not having seen
         // that, in the heading and in the ordered list.
-        DepotNoteTextOp[] typed = [new(joined.Text.IndexOf("ruc", StringComparison.Ordinal), 0, "AB"), new(joined.Text.IndexOf("three", StringComparison.Ordinal) + "AB".Length + 2, 0, "CD")];
-        Assert.Equal(new DepotNoteEditResult(true, 2), await bridge.EditAsync(1, typed, CancellationToken.None));
+        TextOp[] typed = [new(joined.Text.IndexOf("ruc", StringComparison.Ordinal), 0, "AB"), new(joined.Text.IndexOf("three", StringComparison.Ordinal) + "AB".Length + 2, 0, "CD")];
+        Assert.Equal(new LiveEditResult(LiveEditStatus.Applied, 2), await bridge.EditAsync("edit-1", 1, typed, CancellationToken.None));
         var webTyped = _Taken(await web.EvaluateAsync(
             $"(() => {{ {TextOf} t(f.get(0)).insert(0, 'WEB1 '); const one = JSON.parse({Taken}); t(f.get(3)).insert(0, 'WEB2 '); return JSON.stringify([...one, ...JSON.parse({Taken})]); }})()",
             CancellationToken.None));
@@ -138,9 +141,20 @@ public class DepotNoteBridgeTests
         Assert.Equal(4, mirror.Rev);
         Assert.Equal([3L, 4L], patches.Skip(1).Select(patch => patch.Rev));
         Assert.Equal([(0, "WEB1 "), (0, "WEB2 ")], patches.Skip(1).Select(patch => Assert.Single(patch.Ops)).Select(op => (op.Length, op.Text)));
+
+        await bridge.UndoAsync(redo: false, CancellationToken.None);
+        await web.ApplyAsync(hub.Updates[^1], CancellationToken.None);
+        var undone = await bridge.ReadAsync(CancellationToken.None);
+        await web.LoadAsync(string.Empty, CancellationToken.None);
+        Assert.Equal(_Applied(mirror.Text, patches.Skip(3).SelectMany(patch => patch.Ops)), undone.Text);
+        Assert.Equal(await web.ReadAsync(CancellationToken.None), undone.Text);
+        Assert.Contains("# WEB1 Structure", undone.Text);
+        Assert.Contains("- three", undone.Text);
+        Assert.Contains("1. WEB2 first", undone.Text);
+        Assert.Equal(5, undone.Rev);
     }
 
-    private static DepotNoteSession _Session(_Hub hub, Action<DepotNoteLivePatch> patched) => new(
+    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched) => new(
         Connection, Note, _ => Task.FromResult("user-1"), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
         _ => { }, [TimeSpan.Zero], patched: patched);
 
@@ -151,7 +165,7 @@ public class DepotNoteBridgeTests
         return await web.MissingAsync([], CancellationToken.None) ?? throw new InvalidOperationException("The seed is empty.");
     }
 
-    private static string _Applied(string text, IEnumerable<DepotNoteTextOp> ops) =>
+    private static string _Applied(string text, IEnumerable<TextOp> ops) =>
         ops.Aggregate(text, (current, op) => current[..op.Offset] + op.Text + current[(op.Offset + op.Length)..]);
 
     private static byte[][] _Taken(string json) => [.. (JsonSerializer.Deserialize<string[]>(json) ?? []).Select(Convert.FromBase64String)];

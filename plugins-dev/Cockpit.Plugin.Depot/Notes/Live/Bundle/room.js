@@ -58,9 +58,12 @@ export function serialize(markdown, docJson) {
   return serializeNote(splitFrontmatter(markdown).frontmatter, JSON.parse(docJson), lineEnding(markdown));
 }
 
+// The host's own edits are LOCAL, and only those are undone (AC-1898: undo belongs to the source, like y-prosemirror's).
 const REMOTE = 'remote';
 const LOCAL = 'local';
+const SEED = 'seed';
 let doc;
+let undoManager;
 let outgoing = [];
 let pmDoc = null; // the fragment as ProseMirror, the way the binding knows it; null until load
 let binding;
@@ -79,6 +82,7 @@ export function createRoom(clientId) {
       outgoing.push(toBase64(update));
     }
   });
+  undoManager = new Y.UndoManager([doc.getXmlFragment('default'), doc.getText('frontmatter')], { trackedOrigins: new Set([LOCAL]) });
   // markdown.ts sets up marked on its first parse; the lexer below has to see the same tokenizers.
   parseBody('');
 }
@@ -109,7 +113,7 @@ export function seed(markdown) {
     prosemirrorJSONToYXmlFragment(noteSchema(), parseBody(split.body), fragment());
     frontmatter().insert(0, split.frontmatter);
     doc.getMap('meta').set('eol', lineEnding(markdown));
-  }, LOCAL);
+  }, SEED);
 }
 /** Protocol §5.3: the rows draw nothing while the file has text. */
 export function needsRefill(markdown) {
@@ -271,6 +275,17 @@ export function apply(base64) {
     Y.applyUpdate(doc, fromBase64(base64), REMOTE);
     return '[]';
   }
+  return JSON.stringify(changed(() => Y.applyUpdate(doc, fromBase64(base64), REMOTE)));
+}
+/** Undoes (or redoes) the host's own edits; returns the ops for the host and the v1 updates to send. */
+export function undo(redo) {
+  const ops = pmDoc ? changed(() => (redo ? undoManager.redo() : undoManager.undo())) : [];
+  const taken = outgoing;
+  outgoing = [];
+  return JSON.stringify({ ops, updates: taken });
+}
+// A change the host did not type, as ops on its text.
+function changed(run) {
   const was = new Map(fragment().toArray().map((type, i) => [type, ranges[i]]));
   const touched = new Set();
   let structural = false;
@@ -288,16 +303,16 @@ export function apply(base64) {
   fragment().observeDeep(onBody);
   frontmatter().observe(onFront);
   try {
-    Y.applyUpdate(doc, fromBase64(base64), REMOTE);
+    run();
   } finally {
     fragment().unobserveDeep(onBody);
     frontmatter().unobserve(onFront);
   }
   if (!structural && !front && touched.size === 0) {
-    return '[]';
+    return [];
   }
   rebind();
-  return JSON.stringify(rebuild(was, touched, front));
+  return rebuild(was, touched, front);
 }
 function rebuild(was, touched, front) {
   const old = mirror;

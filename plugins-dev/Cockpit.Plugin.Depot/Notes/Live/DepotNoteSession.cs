@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Events;
 using Cockpit.Plugin.Depot.Model;
+using Cockpit.Plugins.Abstractions.Files;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 
@@ -18,17 +19,10 @@ internal static class DepotNoteSchema
         ?? throw new InvalidOperationException("The build left out the schema version.");
 }
 
-// LB-2's host contract (AC-1898) inside the plugin: every change to the text raises the revision by one. A patch is a change the host
-// did not make, and its ops apply to the text at Rev - 1; an edit is applied only on the current revision.
-internal sealed record DepotNoteLivePatch(long Rev, IReadOnlyList<DepotNoteTextOp> Ops);
-
-internal sealed record DepotNoteLiveSnapshot(string Text, long Rev);
-
-internal sealed record DepotNoteEditResult(bool Applied, long Rev);
-
 // One note's connection to /hubs/notes: connect, Join (protocol section 3), keep the room's Y.Doc, and join again when the hub closes
 // the connection (after five minutes at most, or when the token runs out). The session owns its room; a `reset` swaps it for a new one.
-// The host's text goes through the room's mirror: its edits go out as Edited plus Update, the room's changes come back as patches.
+// The host's text goes through the room's mirror, on the terms of ILiveFileSession (AC-1898): every change raises the revision by
+// one, the host's edits go out as Edited plus Update, and everything else, its own undo included, comes back as a patch.
 internal sealed partial class DepotNoteSession : IAsyncDisposable
 {
     // Protocol §7: an Update or a Compact is no larger.
@@ -42,7 +36,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     private readonly Action<DepotNoteLiveStatus> _publish;
     private readonly IReadOnlyList<TimeSpan> _backoff;
     private readonly ILogger? _logger;
-    private readonly Action<DepotNoteLivePatch>? _patched;
+    private readonly Action<LiveFilePatch>? _patched;
     private readonly CancellationTokenSource _life = new();
 
     // The text side: the room's content, the revision and the host's edits change under this one, so a revision names one text.
@@ -52,6 +46,13 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     private string _previous = string.Empty;
     private bool _editor;
     private bool _typedAway;
+    private string? _lastEditId;
+    private long _lastEditRev;
+    private string? _role;
+    private bool _schemaMismatch;
+
+    // Set once the room has a text or the session has stopped: a read before that would hand the host an empty note.
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _gate = new();
     private readonly List<byte[]> _early = [];
     private IDepotNoteRoom _room;
@@ -73,7 +74,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         Action<DepotNoteLiveStatus> publish,
         IReadOnlyList<TimeSpan>? backoff = null,
         ILogger? logger = null,
-        Action<DepotNoteLivePatch>? patched = null)
+        Action<LiveFilePatch>? patched = null)
     {
         _connection = connection;
         _note = note;
@@ -111,13 +112,15 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         }
     }
 
-    // The whole text and its revision, from one moment; empty at revision 0 until the room has a text.
-    public async Task<DepotNoteLiveSnapshot> ReadAsync(CancellationToken cancellationToken)
+    // The whole text, its revision and its status, from one moment, once the room has a text (or the session stopped without one).
+    public async Task<LiveFileSnapshot> ReadAsync(CancellationToken cancellationToken)
     {
+        await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return new DepotNoteLiveSnapshot(_loaded ? await _room.ReadAsync(cancellationToken).ConfigureAwait(false) : _previous, _rev);
+            var text = _loaded ? await _room.ReadAsync(cancellationToken).ConfigureAwait(false) : _previous;
+            return new LiveFileSnapshot(text, _rev, _LiveStatus());
         }
         finally
         {
@@ -126,21 +129,55 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     }
 
     // The host's ops on the text at `baseRev`; on any other revision nothing applies, and the host takes the patches it is behind on
-    // first. Typed while the hub is away, the change stays in the doc and goes out with the next Join, Edited first (protocol §3 step 5).
-    public async Task<DepotNoteEditResult> EditAsync(long baseRev, IReadOnlyList<DepotNoteTextOp> ops, CancellationToken cancellationToken)
+    // first. An edit repeated under the last id answers what it got. Typed while the hub is away, the change stays in the doc and
+    // goes out with the next Join, Edited first (protocol §3 step 5).
+    public async Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
     {
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!_loaded || !_editor || baseRev != _rev)
+            if (editId == _lastEditId)
             {
-                return new DepotNoteEditResult(false, _rev);
+                return new LiveEditResult(LiveEditStatus.Applied, _lastEditRev);
+            }
+
+            if (_loaded && !_editor)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Forbidden, "This note is read-only here.");
+            }
+
+            if (!_loaded || baseRev != _rev)
+            {
+                return new LiveEditResult(LiveEditStatus.Stale, _rev);
             }
 
             var updates = await _room.EditAsync(ops, cancellationToken).ConfigureAwait(false);
             _rev++;
+            _lastEditId = editId;
+            _lastEditRev = _rev;
             await _SendTypedAsync(updates, cancellationToken).ConfigureAwait(false);
-            return new DepotNoteEditResult(true, _rev);
+            return new LiveEditResult(LiveEditStatus.Applied, _rev);
+        }
+        finally
+        {
+            _text.Release();
+        }
+    }
+
+    // Undoes (or redoes) the host's own edits only, the way the web's Y.UndoManager does; the result comes back as a patch.
+    public async Task UndoAsync(bool redo, CancellationToken cancellationToken)
+    {
+        await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_loaded || !_editor)
+            {
+                return;
+            }
+
+            var undo = await _room.UndoAsync(redo, cancellationToken).ConfigureAwait(false);
+            _Patch(undo.Ops);
+            await _SendTypedAsync(undo.Updates, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -154,6 +191,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         await _CloseHubAsync().ConfigureAwait(false);
         await _loop.ConfigureAwait(false);
         await _room.DisposeAsync().ConfigureAwait(false);
+        _ready.TrySetResult();
         _text.Dispose();
         _life.Dispose();
     }
@@ -302,6 +340,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             // Early updates came from the hub, so the hub has them: they count as known, or the diff would send them back.
             known.AddRange(early);
             _epoch = result.Epoch ?? _epoch;
+            _role = result.Role;
+            _schemaMismatch = result.SchemaMismatch;
             _editor = result.Role == "editor" && !result.SchemaMismatch;
             if (_editor && await _WriteAsync(hub, result, known, cancellationToken).ConfigureAwait(false))
             {
@@ -372,6 +412,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         _loaded = true;
         _previous = string.Empty;
         _Patch(ops);
+        _ready.TrySetResult();
     }
 
     private async Task _ApplyRemoteAsync(byte[] update, CancellationToken cancellationToken)
@@ -389,7 +430,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     }
 
     // Under _text: a change the host did not make, as the next revision.
-    private void _Patch(IReadOnlyList<DepotNoteTextOp> ops)
+    private void _Patch(IReadOnlyList<TextOp> ops)
     {
         if (ops.Count == 0)
         {
@@ -397,7 +438,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         }
 
         _rev++;
-        _patched?.Invoke(new DepotNoteLivePatch(_rev, ops));
+        _patched?.Invoke(new LiveFilePatch(_rev, ops));
     }
 
     // Under _text. A send that fails leaves the change in the doc, and the next Join's diff carries it.
@@ -512,6 +553,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     {
         _terminal = true;
         _Status(state);
+        _ready.TrySetResult();
     }
 
     private async Task _CloseHubAsync()
@@ -553,6 +595,28 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         }
 
         _publish(new DepotNoteLiveStatus(_connection.Id, _note.Organization, _note.Project, _note.Path, state, _MessageFor(state)));
+    }
+
+    // The session's state in the host's words (AC-1898). A viewer, or a Cockpit with another schema, may watch but not edit.
+    private LiveFileStatus _LiveStatus()
+    {
+        string? state;
+        lock (_gate)
+        {
+            state = _state;
+        }
+
+        return state switch
+        {
+            DepotNoteLiveState.Live when _schemaMismatch => new LiveFileStatus(LiveFileState.ReadOnly, "Update Cockpit to edit this note."),
+            DepotNoteLiveState.Live when _role != "editor" => new LiveFileStatus(LiveFileState.ReadOnly, "You can watch this note, not edit it."),
+            DepotNoteLiveState.Live => new LiveFileStatus(LiveFileState.Live),
+            DepotNoteLiveState.Reconnecting => new LiveFileStatus(LiveFileState.Offline),
+            DepotNoteLiveState.SignInNeeded => new LiveFileStatus(LiveFileState.SignInNeeded, _MessageFor(state)),
+            DepotNoteLiveState.Stale => new LiveFileStatus(LiveFileState.Stale, _MessageFor(state)),
+            DepotNoteLiveState.Unavailable or DepotNoteLiveState.Disabled => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
+            _ => new LiveFileStatus(LiveFileState.Connecting),
+        };
     }
 
     // Fixed sentences: never text from an exception or a response, which could carry a header.
