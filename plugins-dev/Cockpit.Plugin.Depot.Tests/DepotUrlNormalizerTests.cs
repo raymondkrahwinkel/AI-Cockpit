@@ -34,14 +34,13 @@ public class DepotUrlNormalizerTests
         Assert.Equal(string.Empty, DepotUrlNormalizer.Normalize("   "));
     }
 
-    [Theory]
-    [InlineData("https://depot.example.com", "https://depot.example.com")]
-    [InlineData("https://host/depot", "https://host")]
-    [InlineData("https://depot.example.com:8443", "https://depot.example.com:8443")]
-    [InlineData("depot.example.com", null)] // no scheme is not a URL to take an origin from
-    [InlineData("not a url at all", null)]
-    public void Origin_KeepsSchemeHostAndPort_AndIsNullWithoutAUrl(string url, string? expected)
+    [Fact]
+    public void Origin_KeepsSchemeHostAndPort_AndIsNullWithoutAUrl()
     {
-        Assert.Equal(expected, DepotUrlNormalizer.Origin(url));
+        Assert.Equal("https://depot.example.com", DepotUrlNormalizer.Origin("https://depot.example.com"));
+        Assert.Equal("https://host", DepotUrlNormalizer.Origin("https://host/depot"));
+        Assert.Equal("https://depot.example.com:8443", DepotUrlNormalizer.Origin("https://depot.example.com:8443"));
+        Assert.Null(DepotUrlNormalizer.Origin("depot.example.com")); // no scheme is not a URL to take an origin from
+        Assert.Null(DepotUrlNormalizer.Origin("not a url at all"));
     }
 }

@@ -13,8 +13,27 @@ internal interface IDepotCursorMap
     Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken);
 }
 
-// This host's own identity in the room, for its entry in the list. The hub stamps the same fields on what it relays to others.
-internal sealed record DepotPresenceSelf(string Id, string Name, string Color, string Role, string Source);
+// The room's current Y.Doc and mirror, whichever room the session holds now (a `reset` swaps it).
+internal sealed class DepotRoomCursorMap(Func<IDepotNoteRoom> room) : IDepotCursorMap
+{
+    public Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken) => room().OffsetOfAsync(relativeJson, cancellationToken);
+
+    public Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken) => room().RelativeAtAsync(offset, cancellationToken);
+}
+
+// This host's own identity in the room, for its entry in the list. The hub stamps the same fields on what it relays to others, but not
+// back to the sender, and /cockpit/me names only the user id: the entry is "This Cockpit" in the colour the hub gives that id.
+internal sealed record DepotPresenceSelf(string Id, string Name, string Color, string Role, string Source)
+{
+    // NoteAwareness.Palette of AI-Depot: the colour is fixed per user id, SHA-256 of the id mod 8.
+    // ponytail: a copy of the hub's rule for this one entry; drop it when Depot tells the client its own identity.
+    private static readonly string[] Palette = ["#3b82f6", "#d9a441", "#5fc58a", "#a78bda", "#ef6a5c", "#3fb8c4", "#e07bb0", "#a3c94d"];
+
+    public static DepotPresenceSelf For(string userId, string role) => new(
+        userId, "This Cockpit",
+        Palette[(int)(BitConverter.ToUInt32(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)), 0) % Palette.Length)],
+        role.Length == 0 ? role : char.ToUpperInvariant(role[0]) + role[1..], "Cockpit");
+}
 
 // Presence of one note (Docs/notes-hub-protocol.md section 5.4): sends this editor's cursor every five seconds with a clock that
 // only goes up, reads what the hub relays, and drops someone who left or stayed silent for fifteen seconds. The hub stamps `user`

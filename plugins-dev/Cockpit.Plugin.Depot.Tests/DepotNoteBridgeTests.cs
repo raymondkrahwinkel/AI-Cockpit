@@ -154,6 +154,56 @@ public class DepotNoteBridgeTests
         Assert.Equal(5, undone.Rev);
     }
 
+    // AC-1900, contract with Depot's web editor: a cursor is one Markdown offset in the bridge and one relativePositionToJSON in the web,
+    // and both name the same character, in a paragraph, a heading, a list item and a table cell, in either direction. Through the session:
+    // a web client's awareness becomes a peer with its caret and selection as offsets, and this host's caret goes out under a higher clock.
+    [Fact]
+    public async Task Cursors_NameTheSameCharacterOnBothSides_AndTravelThroughThePresenceOfTheSession()
+    {
+        await using var web = new JintNoteRoom(2);
+        var hub = new _Hub(await _SeedAsync(web, "structure.md"));
+        var loaded = new TaskCompletionSource();
+        await using var bridge = _Session(hub, _ => loaded.TrySetResult());
+        bridge.Connect();
+        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        await web.LoadAsync(string.Empty, CancellationToken.None);
+        var text = await web.ReadAsync(CancellationToken.None);
+        var paragraph = text.IndexOf("and italic", StringComparison.Ordinal);
+        var heading = text.IndexOf("ructure", StringComparison.Ordinal);
+        var item = text.IndexOf("ck to two", StringComparison.Ordinal);
+        var cell = text.IndexOf("ight", StringComparison.Ordinal);
+        Assert.Equal(text, (await bridge.ReadAsync(CancellationToken.None)).Text);
+        await _SameCharacterAsync(web, bridge.Room, paragraph);
+        await _SameCharacterAsync(web, bridge.Room, heading);
+        await _SameCharacterAsync(web, bridge.Room, item);
+        await _SameCharacterAsync(web, bridge.Room, cell);
+
+        var anchorAt = await web.RelativeAtAsync(paragraph, CancellationToken.None);
+        var headAt = await web.RelativeAtAsync(heading, CancellationToken.None);
+        var state = """{"user":{"id":"u-sanne","name":"Sanne de Vries","role":"editor","color":"#3fb8c4","source":"web"},"activity":"selecting","cursor":{"anchor":""" + anchorAt + ""","head":""" + headAt + "}}";
+        await hub.Push(new DepotNoteEvent("presence", ["doc-1", "conn-9", DepotAwarenessCodec.Encode([new DepotAwarenessEntry(2113437100, 1, state)])]));
+        var you = bridge.Peers[0];
+        var sanne = bridge.Peers[1];
+        Assert.Equal(("This Cockpit", true, "Cockpit"), (you.Name, you.You, you.Source));
+        Assert.Equal(("Sanne de Vries", "#3fb8c4", "web", "selecting"), (sanne.Name, sanne.Color, sanne.Source, sanne.Activity));
+        Assert.Equal((heading, new LiveRange(heading, paragraph)), (sanne.Caret, sanne.Selection));
+
+        await bridge.SetPresenceAsync(new LivePresenceState("editing", item), CancellationToken.None);
+        var first = DepotAwarenessCodec.Decode(hub.Presence[0])[0];
+        var last = DepotAwarenessCodec.Decode(hub.Presence[^1])[0];
+        Assert.Equal((first.ClientId, 1UL, 2UL), (last.ClientId, first.Clock, last.Clock));
+        var head = JsonDocument.Parse(last.State).RootElement.GetProperty("cursor").GetProperty("head").GetRawText();
+        Assert.Equal(item, await web.OffsetOfAsync(head, CancellationToken.None));
+    }
+
+    private static async Task _SameCharacterAsync(JintNoteRoom web, IDepotNoteRoom bridge, int offset)
+    {
+        var fromWeb = await web.RelativeAtAsync(offset, CancellationToken.None) ?? throw new InvalidOperationException("The web has no cursor there.");
+        var fromBridge = await bridge.RelativeAtAsync(offset, CancellationToken.None) ?? throw new InvalidOperationException("The bridge has no cursor there.");
+        Assert.Equal(offset, await bridge.OffsetOfAsync(fromWeb, CancellationToken.None));
+        Assert.Equal(offset, await web.OffsetOfAsync(fromBridge, CancellationToken.None));
+    }
+
     private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched) => new(
         Connection, Note, _ => Task.FromResult("user-1"), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
         _ => { }, [TimeSpan.Zero], patched: patched);
@@ -235,6 +285,14 @@ public class DepotNoteBridgeTests
         {
             Calls.Add("refill");
             return Task.FromResult(false);
+        }
+
+        public List<byte[]> Presence { get; } = [];
+
+        public Task PresenceAsync(string documentId, byte[] awareness, CancellationToken cancellationToken)
+        {
+            Presence.Add(awareness);
+            return Task.CompletedTask;
         }
 
         public ValueTask DisposeAsync() => _closed is null ? ValueTask.CompletedTask : new ValueTask(_closed(null));

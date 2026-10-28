@@ -147,4 +147,8 @@ read told who saved last, and the link.
 
 The Depot plugin keeps its awareness codec (y-protocols v1) and presence state in `Notes/Live`: a beat every five seconds with a clock
 that only goes up (the hub ignores an update that does not), someone gone on `left` or after fifteen seconds of silence, and the hub's
-own colour passed on. The mapping between a Markdown offset and a Yjs RelativePosition comes from the live bridge (AC-1899).
+own colour passed on. The note session implements `ILivePresence`: it starts a presence for every connection (the hub gives a connection
+one client id), reads the hub's `presence` and `left` events, sends its own cursor with `Presence`, and keeps the people in the list,
+dimmed, while it reconnects. A Markdown offset and a Yjs RelativePosition map to each other through the room's mirror, block by block
+(`relativeAtOffset` and `offsetOfRelative` in the bundle). The hub does not send an identity back to its sender and `/cockpit/me` names
+only the user id, so this Cockpit's own entry is "This Cockpit" in the colour the hub's palette gives that id.
