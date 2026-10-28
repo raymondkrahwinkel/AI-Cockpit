@@ -10,6 +10,49 @@ internal sealed partial class DepotBrowserPanel
 {
     private IDisposable? _fileSavedSubscription;
 
+    private MenuFlyout _OpenInMenu()
+    {
+        var preview = new MenuItem { Header = "Preview tab (like VS Code)", ToggleType = MenuItemToggleType.Radio, GroupName = "open-files-in" };
+        var below = new MenuItem { Header = "Below the tree", ToggleType = MenuItemToggleType.Radio, GroupName = "open-files-in" };
+        void Sync()
+        {
+            preview.IsChecked = _PreviewMode;
+            below.IsChecked = !_PreviewMode;
+        }
+        preview.Click += (_, _) => { if (_settings is not null) { _settings.OpenFilesInPreviewTab = true; } Sync(); };
+        below.Click += (_, _) => { if (_settings is not null) { _settings.OpenFilesInPreviewTab = false; } Sync(); };
+        Sync();
+        var menu = new MenuFlyout();
+        menu.Items.Add(new MenuItem { Header = "Open files in", IsEnabled = false });
+        menu.Items.Add(preview);
+        menu.Items.Add(below);
+        menu.Opening += (_, _) => Sync();
+        return menu;
+    }
+
+    private void _ListenForOpenWorkspaces()
+    {
+        void Changed(object? sender, EventArgs e) => Dispatcher.UIThread.Post(_RefreshOpenBadges);
+        AttachedToVisualTree += (_, _) => { _host.OpenWorkspacesChanged += Changed; _RefreshOpenBadges(); };
+        DetachedFromVisualTree += (_, _) => _host.OpenWorkspacesChanged -= Changed;
+    }
+
+    // "◌ preview", "● open" or "● open in window" next to a file that has a tab.
+    private void _RefreshOpenBadges()
+    {
+        if (_model is not { } model || _project is not { } project)
+        {
+            return;
+        }
+        var open = _host.GetOpenWorkspaces(DepotMarkdownFiles.WorkspaceTypeId)
+            .Concat(_host.GetOpenWorkspaces(ArtifactWorkspace.WorkspaceTypeId)).ToDictionary(i => i.InstanceKey, StringComparer.Ordinal);
+        foreach (var (path, badge) in _openBadges)
+        {
+            badge.Text = !open.TryGetValue($"depot:{model.Connection.Id}:{project}:{path}", out var instance) ? ""
+                : instance.IsPreview ? "◌ preview" : instance.IsFloating ? "● open in window" : "● open";
+        }
+    }
+
     private Task _EditMarkdownAsync(DepotBrowserNode node) =>
         _model is { } model && _project is { } project && _loaded.CanShare
             ? DepotMarkdownFiles.OpenAsync(_host, model.Connection, project, node.Path, edit: true)

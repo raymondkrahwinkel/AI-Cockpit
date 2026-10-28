@@ -11,9 +11,9 @@ internal static class DepotMarkdownFiles
         && (node.Path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || node.Path.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase));
 
     public static Task OpenAsync(ICockpitUiHost host, DepotConnectionRegistration connection,
-        string project, string path, bool edit, bool createNew = false) =>
+        string project, string path, bool edit, bool createNew = false, bool preview = false) =>
         host.OpenFileWorkspaceAsync(WorkspaceTypeId, new FileWorkspaceOpenOptions(
             DepotFileRefs.Create(connection.Id, project, path), $"depot:{connection.Id}:{project}:{path}",
             Path.GetFileName(path), $"Depot / {connection.Name} / {project}", edit, createNew,
-            createNew ? $"# {Path.GetFileNameWithoutExtension(path)}\n\n" : ""));
+            createNew ? $"# {Path.GetFileNameWithoutExtension(path)}\n\n" : "", preview));
 }

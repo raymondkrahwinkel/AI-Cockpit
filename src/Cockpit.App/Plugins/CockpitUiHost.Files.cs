@@ -97,13 +97,18 @@ internal sealed partial class CockpitUiHost
         {
             var key = (typeId, options.InstanceKey);
             _pendingFiles[key] = options;
+            var existed = workspaces.Settings.Workspaces.Any(w => w.Type.Id == typeId && w.InstanceKey == options.InstanceKey);
             try
             {
-                await workspaces.OpenWorkspaceAsync(typeId, new WorkspaceOpenOptions(options.InstanceKey, options.Title)).ConfigureAwait(true);
+                await workspaces.OpenWorkspaceAsync(typeId, new WorkspaceOpenOptions(options.InstanceKey, options.Title, options.Preview)).ConfigureAwait(true);
                 var entry = workspaces.Settings.Workspaces.FirstOrDefault(w => w.Type.Id == typeId && w.InstanceKey == options.InstanceKey);
                 if (entry is not null && workspaces.BodyFor(entry) is MarkdownFileWorkspace body)
                 {
                     await body.Ready.ConfigureAwait(true);
+                    if (existed)
+                    {
+                        await body.ReloadIfViewingAsync().ConfigureAwait(true);
+                    }
                     if (options.Edit || options.CreateNew)
                     {
                         body.BeginEdit();
@@ -112,6 +117,45 @@ internal sealed partial class CockpitUiHost
             }
             finally { _pendingFiles.Remove(key); }
         }).ConfigureAwait(true);
+    }
+
+    private EventHandler? _openWorkspacesChanged;
+    private bool _openWorkspacesHooked;
+
+    public IReadOnlyList<OpenWorkspaceInstance> GetOpenWorkspaces(string workspaceTypeId)
+    {
+        var instances = new List<OpenWorkspaceInstance>();
+        if (services.GetService<CockpitViewModel>()?.Workspaces is { } workspaces)
+        {
+            foreach (var workspace in workspaces.Settings.Workspaces)
+            {
+                if (workspace.InstanceKey is { } key && workspace.Type.Id == workspaceTypeId)
+                {
+                    instances.Add(new OpenWorkspaceInstance(key, workspace.IsPreview, workspace.IsFloating));
+                }
+            }
+        }
+        return instances;
+    }
+
+    public event EventHandler OpenWorkspacesChanged
+    {
+        add
+        {
+            _openWorkspacesChanged += value;
+            if (!_openWorkspacesHooked && services.GetService<CockpitViewModel>()?.Workspaces is { } workspaces)
+            {
+                _openWorkspacesHooked = true;
+                workspaces.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(WorkspacesViewModel.Settings))
+                    {
+                        _openWorkspacesChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                };
+            }
+        }
+        remove => _openWorkspacesChanged -= value;
     }
 
     private sealed class FileWorkspaceChannel(Func<IPluginUiChannel> channel) : IPluginUiChannel

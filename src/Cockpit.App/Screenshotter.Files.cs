@@ -29,14 +29,18 @@ internal static partial class Screenshotter
         const string text = "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
         var options = new FileWorkspaceOpenOptions(new FileRef("scene", "idea", "Ideas/md-editor-in-cockpit.md"),
             "idea", "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
-            Edit: state != "readonly", CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
+            Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
             new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"))),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
-        workspaces.OpenWorkspaceAsync("scene.file", new("idea", options.Title)).GetAwaiter().GetResult();
+        if (state == "preview")
+        {
+            workspaces.OpenWorkspaceAsync("scene.file", new("notes", "Notes.md")).GetAwaiter().GetResult();
+        }
+        workspaces.OpenWorkspaceAsync("scene.file", new("idea", options.Title, state == "preview")).GetAwaiter().GetResult();
         var entry = workspaces.Active ?? throw new InvalidOperationException("The file scene did not open.");
         var body = workspaces.BodyFor(entry) as MarkdownFileWorkspace ?? throw new InvalidOperationException("The editor scene is missing.");
         body.Ready.GetAwaiter().GetResult();

@@ -182,6 +182,16 @@ public interface ICockpitUiHost
     /// </summary>
     Task OpenWorkspaceAsync(string workspaceTypeId, WorkspaceOpenOptions options) => OpenWorkspaceAsync(workspaceTypeId);
 
+    /// <summary>The open instances of this plugin's workspace type that carry an instance key, in the main window and in their own windows; host 0.138.0+.</summary>
+    IReadOnlyList<OpenWorkspaceInstance> GetOpenWorkspaces(string workspaceTypeId) => [];
+
+    /// <summary>Raised when a workspace is opened, closed, pinned, floated or docked; host 0.138.0+.</summary>
+    event EventHandler OpenWorkspacesChanged
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>Registers a host-owned Markdown file workspace bound to this plugin's channel; host 0.137.0+.</summary>
     void AddFileWorkspaceType(string workspaceTypeId, string title)
     {

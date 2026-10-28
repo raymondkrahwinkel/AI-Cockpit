@@ -8,6 +8,7 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
+    <!-- 0.138.0: file workspaces open as the preview tab; ICockpitUiHost.GetOpenWorkspaces and OpenWorkspacesChanged (AC-1781, UI 3.18.0). -->
     <!-- 0.137.0: host-owned Markdown file workspaces, snapshot write hints and close guards (AC-1754, SDK 3.43.0 / UI 3.17.0). -->
     <!-- 0.136.0: ICockpitHost.AddFileSource and conditional file operations over plugin channels (AC-1783, Abstractions 3.42.0). -->
     <!-- 0.135.0: WorkspaceTypeRegistration.CanFloat, a workspace in its own window (AC-1751, Abstractions.UI 3.16.0); a plugin that sets it sets minHostVersion 0.135.0. -->
@@ -413,7 +414,7 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.137.0</VersionPrefix>
+    <VersionPrefix>0.138.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
