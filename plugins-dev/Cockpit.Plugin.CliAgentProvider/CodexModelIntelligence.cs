@@ -55,7 +55,7 @@ internal static class CodexModelIntelligence
                 // Codex reports bare model ids; public facts use the vendor-qualified OpenRouter id.
                 Models = listing.Ids.Select(id => new PluginModelCostEstimate(id)
                 {
-                    PublicModelRef = id.Contains('/', StringComparison.Ordinal) ? id : "openai/" + id,
+                    PublicModelRef = id,
                 }).ToArray(),
                 Quota = quota,
             };
