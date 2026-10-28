@@ -374,12 +374,10 @@ internal sealed class LiveTextDocument : IDisposable
         _document.BeginUpdate();
         try
         {
-            var text = new StringBuilder(_document.Text);
             foreach (var op in ops)
             {
-                text.Remove(op.Offset, op.Length).Insert(op.Offset, op.Text);
+                _document.Replace(op.Offset, op.Length, op.Text);
             }
-            _document.Text = text.ToString();
         }
         finally
         {
