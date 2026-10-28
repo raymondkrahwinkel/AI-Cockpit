@@ -26,34 +26,21 @@ public class DepotSharedProjectSourceWriteBackTests
             EnabledMcpServerNames: ["github"], LogoEdit: logoEdit, GitUrl: gitUrl);
 
     [Fact]
-    public async Task WriteBackAsync_Success_ReturnsTheChecksumTheWriteConfirmed()
+    public async Task WriteBackAsync_Success_ReturnsTheChecksumTheWriteConfirmed_AndSendsTheOperatorsBaseChecksumRatherThanTheFreshReadsOwn()
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
-        var handler = new _DefinitionHandler("""{"schemaVersion":1,"name":"Cockpit"}""", writtenChecksum: "chk-after");
+        var handler = new _DefinitionHandler(
+            """{"schemaVersion":1,"name":"Cockpit"}""", currentChecksum: "chk-fresh-read", writtenChecksum: "chk-after");
         using var http = new HttpClient(handler);
 
         var result = await SourceFor(host, http).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
+            $"{scheme}:cockpit", Edit(), "chk-operator-opened-with", CancellationToken.None);
 
         Assert.Equal(SharedProjectWriteBackOutcome.Success, result.Outcome);
         Assert.Equal("chk-after", result.Checksum);
         Assert.True(CockpitProjectDefinitionJson.TryDeserialize(handler.WrittenContent, out var sent, out var error), error);
         Assert.Equal("https://example.com/edited.git", sent!.GitUrl);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_SendsTheOperatorsBaseChecksumRatherThanTheFreshReadsOwn()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var scheme = _Scheme(host);
-        var handler = new _DefinitionHandler(
-            """{"schemaVersion":1,"name":"Cockpit"}""", currentChecksum: "chk-fresh-read");
-        using var http = new HttpClient(handler);
-
-        await SourceFor(host, http).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(), "chk-operator-opened-with", CancellationToken.None);
-
         Assert.Equal("\"chk-operator-opened-with\"", handler.IfMatch);
     }
 
@@ -83,33 +70,23 @@ public class DepotSharedProjectSourceWriteBackTests
     }
 
     [Fact]
-    public async Task WriteBackAsync_PermissionDenied_ReturnsAReason()
+    public async Task WriteBackAsync_AnIdBelongingToADifferentConnection_FailsWithoutCallingDepotAtAll_AndPermissionDenied_ReturnsAReason()
     {
         var host = Substitute.For<ICockpitHost>();
         var scheme = _Scheme(host);
         var handler = new _DefinitionHandler(
             """{"schemaVersion":1,"name":"Cockpit"}""", writeStatus: HttpStatusCode.Forbidden);
         using var http = new HttpClient(handler);
+        var source = SourceFor(host, http);
 
-        var result = await SourceFor(host, http).WriteBackAsync(
-            $"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
+        var other = await source.WriteBackAsync("some-other-scheme:cockpit", Edit(), "chk-before", CancellationToken.None);
+        var requestsForTheOtherId = handler.RequestCount;
+        var denied = await source.WriteBackAsync($"{scheme}:cockpit", Edit(), "chk-before", CancellationToken.None);
 
-        Assert.Equal(SharedProjectWriteBackOutcome.PermissionDenied, result.Outcome);
-        Assert.NotNull(result.Error);
-    }
-
-    [Fact]
-    public async Task WriteBackAsync_AnIdBelongingToADifferentConnection_FailsWithoutCallingDepotAtAll()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        var handler = new _DefinitionHandler("""{"schemaVersion":1,"name":"Cockpit"}""");
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).WriteBackAsync(
-            "some-other-scheme:cockpit", Edit(), "chk-before", CancellationToken.None);
-
-        Assert.Equal(SharedProjectWriteBackOutcome.Failed, result.Outcome);
-        Assert.Equal(0, handler.RequestCount);
+        Assert.Equal(SharedProjectWriteBackOutcome.Failed, other.Outcome);
+        Assert.Equal(0, requestsForTheOtherId);
+        Assert.Equal(SharedProjectWriteBackOutcome.PermissionDenied, denied.Outcome);
+        Assert.NotNull(denied.Error);
     }
 
     private sealed class _DefinitionHandler(

@@ -56,25 +56,17 @@ public class DepotMemorySourceTests
         """{"projects":[{"slug":"cockpit","name":"Cockpit","kind":"Project"},{"slug":"olaf","name":"Olaf","kind":"Brain"}]}""";
 
     [Fact]
-    public async Task CheckReachability_SlugInTheList_ReturnsConfirmed()
+    public async Task CheckReachability_SlugInTheList_ReturnsConfirmed_AndSlugNotInTheList_ReturnsNotFound()
     {
         var host = _HostReturning(_TwoProjectsJson);
         var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
+        var check = pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check.");
 
-        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
+        var inTheList = await check("cockpit", CancellationToken.None);
+        var notInTheList = await check("no-such-project", CancellationToken.None);
 
-        Assert.Equal(ProjectMemorySourceReachability.Confirmed, result.State);
-    }
-
-    [Fact]
-    public async Task CheckReachability_SlugNotInTheList_ReturnsNotFound()
-    {
-        var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
-
-        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("no-such-project", CancellationToken.None);
-
-        Assert.Equal(ProjectMemorySourceReachability.NotFound, result.State);
+        Assert.Equal(ProjectMemorySourceReachability.Confirmed, inTheList.State);
+        Assert.Equal(ProjectMemorySourceReachability.NotFound, notInTheList.State);
     }
 
     [Fact]
