@@ -24,17 +24,18 @@ internal static class Program
         var exitCode = 0;
         var thread = new Thread(() =>
         {
-            // Off Windows CefGlue refuses a path, and CEF reads argv[0] as the program name, which .NET's args drop.
+            // CefGlue refuses a path off Windows, and CEF reads argv[0] as the program name, which .NET's args drop.
             // The resolver above already points at libcef.so (AC-1860).
             if (OperatingSystem.IsLinux())
             {
                 CefRuntime.Load();
+                exitCode = CefRuntime.ExecuteProcess(new CefMainArgs(Environment.GetCommandLineArgs()), new SubprocessApp(), nint.Zero);
             }
             else
             {
                 CefRuntime.Load(runtimeDir);
+                exitCode = CefRuntime.ExecuteProcess(new CefMainArgs(args), new SubprocessApp(), nint.Zero);
             }
-            exitCode = CefRuntime.ExecuteProcess(new CefMainArgs(Environment.GetCommandLineArgs()), new SubprocessApp(), nint.Zero);
         }, 8 * 1024 * 1024);
         thread.Start();
         thread.Join();
