@@ -76,8 +76,8 @@ text and the original version; comparison and resolution belong to AC-1755.
 
 ## Live file sources (AC-1898)
 
-Requires host 0.142.0 and `Cockpit.Plugins.Abstractions` 3.46.0. A plugin that implements it sets
-`minHostVersion` 0.142.0; an older host never asks for a live session and keeps saving snapshots.
+Requires host 0.143.0 and `Cockpit.Plugins.Abstractions` 3.46.0. A plugin that implements it sets
+`minHostVersion` 0.143.0; an older host never asks for a live session and keeps saving snapshots.
 
 A source that shares a file live also implements `ILiveFileSource`. The host then opens a session with
 `OpenLiveAsync(file, ct)` when the Markdown workspace loads the file, and disposes it when the workspace

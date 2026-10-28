@@ -423,9 +423,9 @@
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
     <!-- 0.141.0: silent plugin system notifications (AC-1588, UI SDK 3.20.0).
          A plugin that calls ShowSystemNotification sets minHostVersion 0.141.0. -->
-    <!-- 0.142.0: live file sources in the Markdown workspace and the green Live tab dot (AC-1898, Abstractions 3.46.0).
-         A plugin that implements ILiveFileSource sets minHostVersion 0.142.0. -->
-    <VersionPrefix>0.142.0</VersionPrefix>
+    <!-- 0.143.0: live file sources in the Markdown workspace and the green Live tab dot (AC-1898, Abstractions 3.46.0).
+         A plugin that implements ILiveFileSource sets minHostVersion 0.143.0. -->
+    <VersionPrefix>0.143.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
