@@ -23,4 +23,21 @@ public sealed record PluginModelCostEstimate(string Model)
     /// Estimated price per million output tokens in USD, or <see langword="null"/> when the provider offers no figure.
     /// </summary>
     public decimal? EstimatedOutputUsdPerMillionTokens { get; init; }
+
+    /// <summary>
+    /// The model's id in public model data, e.g. <c>"anthropic/claude-sonnet-5.5"</c>, so the host can join it to a
+    /// public source without an alias table of its own (AC-1808). <see langword="null"/> when the provider cannot say.
+    /// </summary>
+    public string? PublicModelRef { get; init; }
+
+    /// <summary>
+    /// Where the prices came from and how long they hold (AC-1808). <see langword="null"/> on an estimate a provider
+    /// compiled in; a consumer then has no age to show and treats the figures as unverified.
+    /// </summary>
+    public PluginFactSource? Source { get; init; }
+
+    /// <summary>
+    /// The factors on these prices the provider reports live (AC-1808). Empty (the default) when it reports none.
+    /// </summary>
+    public IReadOnlyList<PluginPriceModifier> PriceModifiers { get; init; } = [];
 }

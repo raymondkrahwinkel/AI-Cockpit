@@ -121,31 +121,28 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
         };
     }
 
+    // AC-1804: the cockpit's kept toast after a restart: still due from the same firing gets its buttons back.
+    public PluginNotification? Recheck(string key) =>
+        Load().FirstOrDefault(reminder => reminder.State == ReminderState.Due && _FiringKey(reminder, reminder.FiredAt ?? default) == key) is { } due
+            ? _Notification(due, time.GetUtcNow())
+            : null;
+
     private async Task _SayAsync(Reminder reminder, DateTimeOffset now)
     {
-        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(reminder.TimeZone, out var found) ? found : TimeZoneInfo.Utc;
-        var was = TimeZoneInfo.ConvertTime(reminder.Due, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
-        var text = now - reminder.Due > OnTime ? $"⏰ {reminder.Text} · missed, was {was}" : $"⏰ {reminder.Text} · {was}";
+        var (text, _) = _Said(reminder, now);
         var occurrence = reminder.Slot;
         var firedAt = reminder.FiredAt ?? now;
 
         if (reminder.Delivery.Any(target => target.Channel == DeliveryTarget.CockpitNotification))
         {
-            var elsewhere = reminder.Delivery.Where(target => target.Channel != DeliveryTarget.CockpitNotification).Select(target => _ChannelName(target.Channel)).Distinct().ToList();
-            var detail = $"Reminder · {was}{(reminder.Repeats ? $" · {CronText.Describe(reminder.Schedule) ?? "repeats"}" : string.Empty)}"
-                + (elsewhere.Count == 0 ? "." : $". Also sent via {string.Join(" and ", elsewhere)}.");
-            host.ShowToast($"{text}\n{detail}", PluginToastSeverity.Warning,
-            [
-                new PluginToastAction(DoneLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, DoneLabel)),
-                new PluginToastAction(SnoozeShortLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, SnoozeShortLabel)),
-                new PluginToastAction(SnoozeLongLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, SnoozeLongLabel)),
-            ], sticky: true);
+            host.Notify(_Notification(reminder, now));
         }
 
         var message = new OperatorMessage
         {
-            Text = text,
-            CorrelationId = $"reminder-{reminder.Id}-{firedAt.UtcTicks}",
+            // The channels have no glyph of their own; the cockpit notification shows its warning glyph instead.
+            Text = $"⏰ {text}",
+            CorrelationId = _FiringKey(reminder, firedAt),
             Question = new AssistantChannelQuestion
             {
                 Question = reminder.Text,
@@ -161,6 +158,32 @@ internal sealed class ReminderService(ICockpitHost host, IPluginStorage storage,
         // What this time came to, every time: a note from an earlier week never stands for this one.
         _Update(reminder.Id, occurrence, current => current with { DeliveryNote = failed ?? notes });
     }
+
+    private PluginNotification _Notification(Reminder reminder, DateTimeOffset now)
+    {
+        var (text, was) = _Said(reminder, now);
+        var occurrence = reminder.Slot;
+        var firedAt = reminder.FiredAt ?? now;
+        var elsewhere = reminder.Delivery.Where(target => target.Channel != DeliveryTarget.CockpitNotification).Select(target => _ChannelName(target.Channel)).Distinct().ToList();
+        var detail = $"Reminder · {was}{(reminder.Repeats ? $" · {CronText.Describe(reminder.Schedule) ?? "repeats"}" : string.Empty)}"
+            + (elsewhere.Count == 0 ? "." : $". Also sent via {string.Join(" and ", elsewhere)}.");
+        return new PluginNotification(_FiringKey(reminder, firedAt), $"{text}\n{detail}", PluginToastSeverity.Warning,
+        [
+            new PluginToastAction(DoneLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, DoneLabel)),
+            new PluginToastAction(SnoozeShortLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, SnoozeShortLabel)),
+            new PluginToastAction(SnoozeLongLabel, () => _AnswerFromToast(reminder.Id, occurrence, firedAt, SnoozeLongLabel)),
+        ]);
+    }
+
+    private static (string Text, string Was) _Said(Reminder reminder, DateTimeOffset now)
+    {
+        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(reminder.TimeZone, out var found) ? found : TimeZoneInfo.Utc;
+        var was = TimeZoneInfo.ConvertTime(reminder.Due, zone).ToString("HH:mm", CultureInfo.InvariantCulture);
+        return (now - reminder.Due > OnTime ? $"{reminder.Text} · missed, was {was}" : $"{reminder.Text} · {was}", was);
+    }
+
+    // One firing of one reminder: a snooze that brings it back is a new one, and the old one is resolved.
+    private static string _FiringKey(Reminder reminder, DateTimeOffset firedAt) => $"reminder-{reminder.Id}-{firedAt.UtcTicks}";
 
     // On the cockpit's UI thread: a failure here is said, and the toast still closes behind it.
     private void _AnswerFromToast(string id, DateTimeOffset occurrence, DateTimeOffset firedAt, string choice)

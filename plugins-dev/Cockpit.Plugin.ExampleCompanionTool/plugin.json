@@ -1,7 +1,7 @@
 {
   "id": "example-companion-tool",
   "name": "Example Companion Tool",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "uiAssembly": "Cockpit.Plugin.ExampleCompanionTool.dll",
   "uiEntryType": "Cockpit.Plugin.ExampleCompanionTool.ExampleCompanionToolUi",
   "abstractionsVersion": 3,

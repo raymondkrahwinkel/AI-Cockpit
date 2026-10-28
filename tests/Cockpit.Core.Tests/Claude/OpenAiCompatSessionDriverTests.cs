@@ -38,7 +38,7 @@ public class OpenAiCompatSessionDriverTests
         Assert.Single(events, evt => evt is SessionInitialized);
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
         Assert.Contains(@"C:\\work\\AC-1838", systemPrompt);
-        Assert.Contains("Windows", systemPrompt);
+        Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
         Assert.Contains("relative paths resolve against this working directory", systemPrompt);
     }
 

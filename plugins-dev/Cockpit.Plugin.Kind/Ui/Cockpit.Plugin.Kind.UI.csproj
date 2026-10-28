@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
+    <PackageReference Include="Avalonia" Version="12.1.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The toolbar action's icon (MaterialIconKind.Kubernetes) is the only Material.Icons use left after the split. -->

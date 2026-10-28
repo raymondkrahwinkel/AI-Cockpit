@@ -24,6 +24,11 @@ public sealed record SharedProjectBinding(string Name)
     public string? GitUrl { get; init; }
 
     /// <summary>
+    /// An opaque identity a plugin assigns when it binds this project to a shared source; equal keys mean the same project.
+    /// </summary>
+    public string? SharedSourceKey { get; init; }
+
+    /// <summary>
     /// How the profile should behave here, the same idiom as <c>Project.BehaviorPrompt</c>. Null/blank appends nothing.
     /// </summary>
     public string? BehaviorPrompt { get; init; }

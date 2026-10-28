@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App;
 
@@ -22,6 +23,7 @@ public static class DependencyInjection
         services.AddSingleton<ISessionRegistry>(backend);
         services.AddSingleton<IBackendEventLog>(backend);
         services.AddSingleton<IProviderUsageSignals>(new RemoteProviderUsageSignals(backend));
+        services.AddSingleton<IProviderModelIntelligence>(new RemoteProviderModelIntelligence(client));
         services.AddSingleton<ISessionLoginFlows>(new RemoteSessionLoginFlows(backend, client));
         return services;
     }

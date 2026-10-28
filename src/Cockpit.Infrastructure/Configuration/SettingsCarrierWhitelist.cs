@@ -19,9 +19,6 @@ internal static class SettingsCarrierWhitelist
         "Profiles[].Delegation.AllowedAsTarget", "Profiles[].Delegation.MaxConcurrent", "Profiles[].Delegation.PermissionCeiling",
         "Profiles[].Delegation.MayDelegateFurther", "Profiles[].Delegation.TimeoutMinutes", "Profiles[].Delegation.AllowedTaskTypes",
         "Profiles[].Delegation.Purpose", "Profiles[].Delegation.Tags", "Profiles[].Delegation.AllowedTools",
-        "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl",
-        "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].Assistant", "Projects[].IsolateInWorktreeByDefault",
-        "CategoryOrder",
         "Plugins.*.Enabled", "Plugins.*.MenuOrder", "Plugins.*.HiddenInMenu", "Plugins.*.PinnedToSidebar",
         "Notifications.LocalEnabled", "Notifications.NotifyOnSessionFinished", "Notifications.NotifyOnSessionIdle",
         "Notifications.NotifyWhenAllSessionsIdle", "Notifications.NotifyOnCiFailure", "Notifications.IdleThresholdMinutes",
@@ -43,6 +40,9 @@ internal static class SettingsCarrierWhitelist
     // Codex's `Command` lives in PluginConfigJson; KubeconfigPath and the git-status repos in a plugin's Data.
     public static readonly IReadOnlyList<string> NeverCarried =
     [
+        "Projects[].Id", "Projects[].Name", "Projects[].Description", "Projects[].Category", "Projects[].GitUrl", "Projects[].SharedSourceKey",
+        "Projects[].DefaultProfileLabel", "Projects[].BehaviorPrompt", "Projects[].Assistant", "Projects[].IsolateInWorktreeByDefault",
+        "CategoryOrder",
         "Projects[].SourceDirectory", "Projects[].SourceDirectories", "Projects[].Resources", "Projects[].MemoryRef",
         "Profiles[].Delegation.AllowedWorkingDirs", "Profiles[].Provider.PluginConfigJson", "Plugins.*.Data", "WorkingPaths",
     ];

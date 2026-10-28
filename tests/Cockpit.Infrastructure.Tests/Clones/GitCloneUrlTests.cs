@@ -64,15 +64,10 @@ public sealed class GitCloneUrlTests
     }
 
     [Fact]
-    public void SameRepositoryAs_HttpsAndScpForTheSameRepo_Match()
+    public void SameRepositoryAs_HttpsAndScpOrADifferentCaseForTheSameRepo_Match()
     {
         Assert.True(GitCloneUrl.Parse("https://github.com/org/repo.git")
             .SameRepositoryAs("git@github.com:org/repo.git"));
-    }
-
-    [Fact]
-    public void SameRepositoryAs_DiffersOnlyByCase_StillMatches()
-    {
         // GitHub treats org/repo case-insensitively; the slug is lowercased so the same repository is not cloned
         // twice under two folders.
         Assert.True(GitCloneUrl.Parse("https://github.com/Org/Repo.git")
@@ -80,15 +75,10 @@ public sealed class GitCloneUrlTests
     }
 
     [Fact]
-    public void SameRepositoryAs_DifferentRepository_DoesNotMatch()
+    public void SameRepositoryAs_ADifferentOrUnparseableRemote_DoesNotMatch()
     {
         Assert.False(GitCloneUrl.Parse("https://github.com/org/repo.git")
             .SameRepositoryAs("https://github.com/org/other.git"));
-    }
-
-    [Fact]
-    public void SameRepositoryAs_UnparseableRemote_IsTreatedAsNotMatching()
-    {
         Assert.False(GitCloneUrl.Parse("https://github.com/org/repo.git")
             .SameRepositoryAs("not a url"));
     }

@@ -6,36 +6,23 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 public class ClaudeOptionChoicesTests
 {
     [Fact]
-    public void ModelCostEstimates_AreOrderedCheapestFirst()
+    public void ModelFacts_DoNotInventPricesJoinKnownPublicModelsAndCoverOfferedAliases()
     {
         // The list order is the claim consumers route on (AC-256), so it has to agree with the prices beside it —
         // reorder one entry without moving its price and this fails, which is the whole point of the field.
-        var input = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.EstimatedInputUsdPerMillionTokens).ToList();
-        var output = ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.EstimatedOutputUsdPerMillionTokens).ToList();
-
-        Assert.Equal(input.OrderBy(price => price), input);
-        Assert.Equal(output.OrderBy(price => price), output);
-    }
-
-    [Fact]
-    public void ModelCostEstimates_CoverExactlyTheOfferedAliases()
-    {
-        // A model offered but unpriced silently drops out of the ceiling that keeps a run cheap; a priced model that
-        // is not offered is a claim about something the operator can never pick.
+        Assert.All(ClaudeOptionChoices.ModelCostEstimatesCheapestFirst, estimate =>
+        {
+            Assert.Null(estimate.EstimatedInputUsdPerMillionTokens);
+            Assert.Null(estimate.EstimatedOutputUsdPerMillionTokens);
+        });
+        Assert.Equal("~anthropic/claude-haiku-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "haiku").PublicModelRef);
+        Assert.Equal("~anthropic/claude-sonnet-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "sonnet").PublicModelRef);
+        Assert.Equal("~anthropic/claude-opus-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "opus").PublicModelRef);
+        Assert.Equal("~anthropic/claude-fable-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "fable").PublicModelRef);
+        Assert.Equal(ClaudeOptionChoices.ModelCostEstimatesCheapestFirst, new ClaudeModelIntelligence().Read().Models);
         Assert.Equal(
             ClaudeOptionChoices.ModelSuggestions.OrderBy(alias => alias, StringComparer.Ordinal),
             ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.Model).OrderBy(alias => alias, StringComparer.Ordinal));
     }
 
-    [Fact]
-    public void ModelCostEstimates_QuoteBothDirections()
-    {
-        // Half a price reads as a fact while hiding the larger number: output tokens are the dearer side on every
-        // model here, so an input-only figure would understate the very thing the ceiling exists to control.
-        foreach (var estimate in ClaudeOptionChoices.ModelCostEstimatesCheapestFirst)
-        {
-            Assert.True(estimate.EstimatedInputUsdPerMillionTokens > 0, $"'{estimate.Model}' has no input price estimate");
-            Assert.True(estimate.EstimatedOutputUsdPerMillionTokens > 0, $"'{estimate.Model}' has no output price estimate");
-        }
-    }
 }

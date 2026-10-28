@@ -33,11 +33,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
+    <PackageReference Include="Avalonia" Version="12.1.2">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
     <!-- Measured on Diagram (AC-809): ExcludeAssets on Avalonia does not reach its own dependency, which then ships. -->
-    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.2">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">

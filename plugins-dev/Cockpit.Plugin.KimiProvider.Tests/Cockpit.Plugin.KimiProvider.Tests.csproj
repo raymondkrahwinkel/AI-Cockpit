@@ -15,7 +15,7 @@
     <!-- The plugin project marks these ExcludeAssets="runtime" (the host supplies its own copies at load
          time) — this test project runs standalone, so it needs its own runtime copies to exercise
          KimiProviderPlugin.Initialize against an ICockpitHost implementation. -->
-    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />

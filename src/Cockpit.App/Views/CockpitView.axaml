@@ -654,6 +654,13 @@
                      below; with room to spare it stands exactly where it did. -->
                 <ScrollViewer HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
+                <!-- AC-1829: until the first project read lands, a few placeholder rows hold the place of the section. -->
+                <StackPanel Spacing="8" Margin="2,2,2,12" IsVisible="{Binding IsLoadingProjects}" IsHitTestVisible="False">
+                    <controls:SkeletonBlock Width="44" Height="10" HorizontalAlignment="Left" Stagger="0"/>
+                    <controls:SkeletonBlock Height="16" Stagger="1"/>
+                    <controls:SkeletonBlock Height="16" Width="130" HorizontalAlignment="Left" Stagger="2"/>
+                    <controls:SkeletonBlock Height="16" Width="150" HorizontalAlignment="Left" Stagger="3"/>
+                </StackPanel>
                 <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
                      entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
                      ▶ starts on the project's own defaults and skips the dialog; the context menu holds the slower
@@ -800,9 +807,18 @@
                                             <!-- Criterion 4(b): the tab you are standing on keeps its node even with
                                                  nothing on it, and says so. -->
                                             <TextBlock Margin="13,0,0,0" FontSize="11" TextWrapping="Wrap"
-                                                       IsVisible="{Binding ShowEmptyNote}"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"
-                                                       Text="No session on this workspace tab yet"/>
+                                                       Text="No session on this workspace tab yet">
+                                                <TextBlock.IsVisible>
+                                                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                        <Binding Path="ShowEmptyNote"/>
+                                                        <Binding Path="!$parent[UserControl].((vm:CockpitViewModel)DataContext).IsRestoringSessions"/>
+                                                    </MultiBinding>
+                                                </TextBlock.IsVisible>
+                                            </TextBlock>
+                                            <!-- AC-1829: while the saved sessions are still coming back, a placeholder instead of that claim. -->
+                                            <controls:SkeletonBlock Margin="13,2,0,0" Width="110" HorizontalAlignment="Left"
+                                                                    IsVisible="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).IsRestoringSessions}"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -1424,6 +1440,31 @@
                     <controls:ProjectsToolbar DockPanel.Dock="Top" DataContext="{Binding Projects}"/>
                     <controls:ProjectsWorkspace DataContext="{Binding Projects}"/>
                 </DockPanel>
+
+                <!-- AC-1829: the saved sessions are still coming back — placeholder cards in the shape of the grid, so
+                     the area is neither empty ("No sessions yet" would be a lie) nor jumps when the real ones land. -->
+                <UniformGrid Columns="2" Rows="2" Margin="12" IsVisible="{Binding ShowSessionsSkeleton}" IsHitTestVisible="False">
+                    <Border Margin="6" Padding="12"
+                            Background="{DynamicResource CockpitPanelBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource CockpitPanelRadius}">
+                        <StackPanel Spacing="10">
+                            <controls:SkeletonBlock Height="30" Stagger="0"/>
+                            <controls:SkeletonBlock Width="240" HorizontalAlignment="Left" Stagger="1"/>
+                            <controls:SkeletonBlock Width="330" HorizontalAlignment="Left" Stagger="2"/>
+                            <controls:SkeletonBlock Width="180" HorizontalAlignment="Left" Stagger="3"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Margin="6" Padding="12"
+                            Background="{DynamicResource CockpitPanelBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}"
+                            BorderThickness="1" CornerRadius="{StaticResource CockpitPanelRadius}">
+                        <StackPanel Spacing="10">
+                            <controls:SkeletonBlock Height="30" Stagger="1"/>
+                            <controls:SkeletonBlock Width="240" HorizontalAlignment="Left" Stagger="2"/>
+                            <controls:SkeletonBlock Width="330" HorizontalAlignment="Left" Stagger="3"/>
+                            <controls:SkeletonBlock Width="180" HorizontalAlignment="Left" Stagger="4"/>
+                        </StackPanel>
+                    </Border>
+                </UniformGrid>
 
                 <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
                      a Sessions workspace being active, so a dashboard never shows it. -->
@@ -2147,6 +2188,15 @@
                                 ToolTip.Tip="Undock into its own window">
                             <materialIcons:MaterialIcon Kind="DockWindow" Width="15" Height="15"/>
                         </Button>
+                        <!-- AC-1862: the Simple stand's way back to the assistant this panel replaced in the rail. -->
+                        <Button x:Name="DockPanelBack" DockPanel.Dock="Left" Classes="Ghost Compact" IsVisible="False"
+                                Margin="0,0,8,0" Command="{Binding BackToAssistantCommand}"
+                                ToolTip.Tip="Back to the assistant">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="ArrowLeft" Width="13" Height="13"/>
+                                <TextBlock Text="Assistant"/>
+                            </StackPanel>
+                        </Button>
                         <TextBlock x:Name="DockPanelHeaderTitle" VerticalAlignment="Center" FontSize="12.5"/>
                     </DockPanel>
                 </Border>
@@ -2322,6 +2372,48 @@
                                Foreground="{DynamicResource CockpitStatusBusyBrush}"/>
                 </StackPanel>
                 <DockPanel IsVisible="{Binding !IsRemoteWindow}">
+                    <!-- AC-1802: the bell, outermost right, below where toasts appear. Amber with the waiting count when
+                         something needs you, the accent count for unread otherwise. -->
+                    <Button x:Name="NotificationsBell" DockPanel.Dock="Right"
+                            Classes="statusMeter"
+                            Padding="8,2"
+                            Margin="8,0,0,0"
+                            Command="{Binding ToggleNotificationsCommand}"
+                            ToolTip.Tip="Notifications — every toast of this session, with its buttons still live">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="BellOutline" Width="13" Height="13"
+                                       IsVisible="{Binding !Notifications.HasNeedsYou}"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <materialIcons:MaterialIcon Kind="BellRingOutline" Width="13" Height="13"
+                                       IsVisible="{Binding Notifications.HasNeedsYou}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+                            <Border Classes="waitingCount" IsVisible="{Binding Notifications.HasNeedsYou}">
+                                <TextBlock Text="{Binding Notifications.NeedsYouCount}"/>
+                            </Border>
+                            <Border IsVisible="{Binding Notifications.ShowsUnreadOnly}"
+                                    Background="{DynamicResource CockpitAccentBrush}" CornerRadius="{StaticResource CockpitPillRadius}"
+                                    Padding="5,0" MinWidth="16" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Notifications.UnreadCount}" FontSize="10" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Foreground="{DynamicResource CockpitTextOnAccentBrush}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- AC-1829: what the window is still waiting for after the splash, so a skeleton is never unexplained. -->
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" Margin="8,0,8,0" VerticalAlignment="Center">
+                        <StackPanel.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                                <Binding Path="IsRestoringSessions"/>
+                                <Binding Path="IsLoadingProjects"/>
+                            </MultiBinding>
+                        </StackPanel.IsVisible>
+                        <materialIcons:MaterialIcon Classes="pulse" Kind="Circle" Width="8" Height="8"
+                                                    Foreground="{DynamicResource CockpitStatusBusyBrush}" VerticalAlignment="Center"/>
+                        <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"
+                                   Text="Restoring sessions…" IsVisible="{Binding IsRestoringSessions}"/>
+                        <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"
+                                   Text="Loading projects…" IsVisible="{Binding !IsRestoringSessions}"/>
+                    </StackPanel>
                     <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
                          the point where the system starts killing things. A number that turns while you work is something
                          you can act on without being interrupted. -->

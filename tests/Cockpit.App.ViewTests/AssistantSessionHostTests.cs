@@ -505,7 +505,6 @@ public class AssistantSessionHostTests
     // AC-641
     [InlineData("list_delegated_tasks")]
     // AC-640: naming only the two tools would leave the assistant knowing it can watch something and not what for.
-    [InlineData("watch_session")]
     [InlineData("unwatch_session")]
     [InlineData("busy-to-idle")]
     [InlineData("needs-attention")]

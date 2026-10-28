@@ -5,7 +5,6 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Toasts;
-using Cockpit.Infrastructure.Clones;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Plugins.Abstractions.Settings;
 using Microsoft.Extensions.Logging;
@@ -134,7 +133,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         var failed = new List<string>();
         if (apply.Count > 0)
         {
-            await configFile.UpdateAsync(file => failed = _Apply(file, apply, state.ProjectIds, logger), cancellationToken).ConfigureAwait(false);
+            await configFile.UpdateAsync(file => failed = _Apply(file, apply, logger), cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Took over {Count} settings from the settings carrier: {Keys}", apply.Count - failed.Count, string.Join(", ", apply.Keys.Except(failed)));
         }
 
@@ -307,7 +306,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             var bytes = await carrier.ReadAsync(cancellationToken).ConfigureAwait(false);
             var document = bytes is null ? new JsonObject() : JsonNode.Parse(bytes) as JsonObject ?? new JsonObject();
             var remoteCarried = _Carried(document, filter);
-            var remote = _MapIncomingProjects(_Units(remoteCarried), remoteCarried, carried, state.ProjectIds);
+            var remote = _Units(remoteCarried);
             state.CarrierBases.TryGetValue(carrier.Id, out var baseForCarrier);
             runs.Add(new(carrier, filter, carried, units, bytes, document, remote, baseForCarrier));
         }
@@ -423,8 +422,11 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             }
 
             var written = run.Bytes;
-            if (push.Count > 0)
+            // AC-1861: projects and their order never belong on a carrier; an older client's copy is dropped on the next write.
+            if (push.Count > 0 || run.Document.ContainsKey("Projects") || run.Document.ContainsKey("CategoryOrder"))
             {
+                run.Document.Remove("Projects");
+                run.Document.Remove("CategoryOrder");
                 foreach (var (key, value) in push)
                 {
                     _Set(run.Document, _UnitFor(key, new(run.Local, local.Text, local.Managed, run.Carried, local.Document), run.Remote), value);
@@ -515,7 +517,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         var state = _LoadState();
         // Only what the white list carries is ever taken from the carrier, whatever else it holds.
         var remoteCarried = _Carried(remoteDocument);
-        var remote = _MapIncomingProjects(_Units(remoteCarried), remoteCarried, local.Carried, state.ProjectIds);
+        var remote = _Units(remoteCarried);
         var firstContact = state.Base is null;
         var baseline = state.Base ?? new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -578,8 +580,10 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         }
 
         var written = remoteBytes;
-        if (push.Count > 0)
+        if (push.Count > 0 || remoteDocument.ContainsKey("Projects") || remoteDocument.ContainsKey("CategoryOrder"))
         {
+            remoteDocument.Remove("Projects");
+            remoteDocument.Remove("CategoryOrder");
             foreach (var (key, value) in push)
             {
                 _Set(remoteDocument, _UnitFor(key, local, remote), value);
@@ -719,7 +723,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
 
     // Writes each taken-over key into its own top-level section, one key at a time; a key this build cannot write is
     // returned rather than thrown, so a value from a newer build never stops the cockpit from starting.
-    private static List<string> _Apply(CockpitConfigFile file, IReadOnlyDictionary<string, _Incoming> values, IReadOnlyDictionary<string, string> projectIds, ILogger logger)
+    private static List<string> _Apply(CockpitConfigFile file, IReadOnlyDictionary<string, _Incoming> values, ILogger logger)
     {
         var failed = new List<string>();
         foreach (var (key, taken) in values)
@@ -733,7 +737,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
             try
             {
                 var root = new JsonObject { [property.Name] = JsonSerializer.SerializeToNode(property.GetValue(file), property.PropertyType, CockpitConfigFileAccess.SerializerOptions) };
-                _Set(root, _LocalSteps(taken.Steps, projectIds), taken.Value);
+                _Set(root, taken.Steps, taken.Value);
                 property.SetValue(file, root[property.Name]?.Deserialize(property.PropertyType, CockpitConfigFileAccess.SerializerOptions));
             }
             catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException or ArgumentException)
@@ -746,64 +750,13 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         return failed;
     }
 
-    // A unit is a white-listed leaf as a whole, or one whole profile or project addressed by its label or id.
+    // A unit is a white-listed leaf as a whole, or one whole profile addressed by its label.
     private static Dictionary<string, _Unit> _Units(JsonObject carried)
     {
         var units = new Dictionary<string, _Unit>(StringComparer.Ordinal);
         _Walk(carried, [], string.Empty, units);
         return units;
     }
-
-    private static Dictionary<string, _Unit> _MapIncomingProjects(Dictionary<string, _Unit> units, JsonObject remote, JsonObject local, Dictionary<string, string> projectIds)
-    {
-        if (remote["Projects"] is not JsonArray remoteProjects || local["Projects"] is not JsonArray localProjects)
-        {
-            return units;
-        }
-
-        foreach (var incoming in remoteProjects.OfType<JsonObject>())
-        {
-            var remoteId = _ElementId(incoming);
-            var localProject = remoteId is null ? null : localProjects.OfType<JsonObject>().FirstOrDefault(project => _ElementId(project) == projectIds.GetValueOrDefault(remoteId))
-                ?? localProjects.OfType<JsonObject>().FirstOrDefault(project => _SameGitUrl(incoming, project));
-            if (remoteId is null || _ElementId(localProject) is not { } localId || remoteId == localId)
-            {
-                continue;
-            }
-
-            projectIds[remoteId] = localId;
-            var mapped = (JsonObject)incoming.DeepClone();
-            mapped["Id"] = localId;
-            units.Remove($"Projects.{remoteId}");
-            units[$"Projects.{localId}"] = new([new("Projects", remoteId)], mapped.ToJsonString(), true);
-        }
-
-        return units;
-    }
-
-    private static bool _SameGitUrl(JsonObject left, JsonObject right)
-    {
-        if (!_Text(left, "GitUrl", out var leftUrl) || !_Text(right, "GitUrl", out var rightUrl)) return false;
-        try { return GitCloneUrl.Parse(leftUrl).NormalizedKey == GitCloneUrl.Parse(rightUrl).NormalizedKey; }
-        catch (FormatException) { return false; }
-    }
-
-    private static bool _Text(JsonObject value, string name, out string text)
-    {
-        text = string.Empty;
-        if (value[name] is JsonValue json && json.TryGetValue<string>(out var candidate) && !string.IsNullOrWhiteSpace(candidate))
-        {
-            text = candidate;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static List<_Step> _LocalSteps(List<_Step> steps, IReadOnlyDictionary<string, string> projectIds) =>
-        steps is [var project] && project.Name == "Projects" && project.Element is { } remoteId && projectIds.TryGetValue(remoteId, out var localId)
-            ? [project with { Element = localId }]
-            : steps;
 
     // `pattern` is the white-list path the node sits at, with `*` for a dictionary key.
     private static void _Walk(JsonNode? node, List<_Step> steps, string pattern, Dictionary<string, _Unit> units)
@@ -855,7 +808,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         (local.Units.GetValueOrDefault(key) ?? remote.GetValueOrDefault(key))?.Steps
         ?? throw new InvalidOperationException($"No unit for {key}.");
 
-    // Null removes. A profile or project is laid over what is there, so what only this machine has stays as it is.
+    // Null removes. A profile is laid over what is there, so what only this machine has stays as it is.
     private static void _Set(JsonObject root, List<_Step> steps, string? json)
     {
         var parent = root;
@@ -957,7 +910,19 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
     {
         try
         {
-            return File.Exists(statePath) ? JsonSerializer.Deserialize<_State>(File.ReadAllText(statePath), StateJson) ?? new _State() : new _State();
+            var state = File.Exists(statePath) ? JsonSerializer.Deserialize<_State>(File.ReadAllText(statePath), StateJson) ?? new _State() : new _State();
+            // AC-1861: old project sync state must never add, change or delete local projects.
+            foreach (var key in (state.Base?.Keys ?? Enumerable.Empty<string>()).Union(state.Incoming.Keys).Union(state.Conflicts.Keys).ToList())
+            {
+                if (key is "Projects" or "CategoryOrder" || key.StartsWith("Projects.", StringComparison.Ordinal))
+                {
+                    state.Base?.Remove(key);
+                    state.Incoming.Remove(key);
+                    state.Conflicts.Remove(key);
+                }
+            }
+
+            return state;
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -999,7 +964,5 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         public Dictionary<string, _Incoming> Incoming { get; set; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, _Conflict> Conflicts { get; set; } = new(StringComparer.Ordinal);
-
-        public Dictionary<string, string> ProjectIds { get; set; } = new(StringComparer.Ordinal);
     }
 }

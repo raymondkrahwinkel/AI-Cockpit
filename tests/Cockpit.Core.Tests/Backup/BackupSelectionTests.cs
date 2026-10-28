@@ -13,29 +13,20 @@ namespace Cockpit.Core.Tests.Backup;
 public class BackupSelectionTests
 {
     [Fact]
-    public void ABackupWithNoListOfPlugins_TakesThemAll_BecauseThatIsWhatABackupIs()
+    public void BackupPluginSelection_KeepsAllNoneAndChosenDistinct()
     {
         var options = new BackupOptions();
 
         Assert.True(options.Includes("youtrack"));
         Assert.True(options.Includes("anything-at-all"));
-    }
 
-    [Fact]
-    public void AChosenPlugin_GoesIn_AndTheOthersDoNot()
-    {
-        var options = new BackupOptions(Plugins: ["youtrack", "workflows"]);
+        options = new BackupOptions(Plugins: ["youtrack", "workflows"]);
 
         Assert.True(options.Includes("youtrack"));
         Assert.True(options.Includes("WORKFLOWS"), "a plugin id is not case to argue over");
         Assert.False(options.Includes("git-status"));
-    }
 
-    [Fact]
-    public void AnEmptyList_TakesNoPlugins_WhichIsNotTheSameAsNoListAtAll()
-    {
-        // "None" and "all" are different answers, and the difference is the whole reason the list is nullable.
-        var options = new BackupOptions(Plugins: []);
+        options = new BackupOptions(Plugins: []);
 
         Assert.False(options.Includes("youtrack"));
     }

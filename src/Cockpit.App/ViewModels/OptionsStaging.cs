@@ -152,6 +152,7 @@ internal static class OptionsStaging
 
         // Two collections the dialog edits in place, which no property path reaches.
         parts.Add(string.Join(Separator, cockpit.ShortcutRows.Select(row => row.Gesture)));
+        parts.Add(cockpit.ModelIntelligence.LocalTableFingerprint);
         parts.Add(cockpit.UsageThresholdSettings is { } thresholds
             ? string.Join(
                 Separator,

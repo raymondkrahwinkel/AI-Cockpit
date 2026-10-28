@@ -23,15 +23,18 @@ public sealed class ToastService(CockpitViewModel cockpit) : IToastService, ISin
         }
     }
 
-    public void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky)
+    public void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky) =>
+        Show(message, severity, actions, sticky, source: null, key: null);
+
+    public void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source, string? key)
     {
         if (Dispatcher.UIThread.CheckAccess())
         {
-            cockpit.ToastHost.Add(message, severity, actions, sticky);
+            cockpit.ToastHost.Add(message, severity, actions, sticky, source, key);
         }
         else
         {
-            Dispatcher.UIThread.Post(() => cockpit.ToastHost.Add(message, severity, actions, sticky));
+            Dispatcher.UIThread.Post(() => cockpit.ToastHost.Add(message, severity, actions, sticky, source, key));
         }
     }
 

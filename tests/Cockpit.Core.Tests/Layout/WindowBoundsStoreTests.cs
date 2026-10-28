@@ -23,19 +23,13 @@ public class WindowBoundsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_PreAc866FlatForm_ReadsAsMain()
+    public async Task LoadAsync_ReadsThePreAc866FlatFormAsMain_AndSaveAsync_LeavesOtherSectionsIntact()
     {
-        await File.WriteAllTextAsync(_configFilePath,
+        var flatFormPath = Path.Combine(_tempDir, "flat.json");
+        await File.WriteAllTextAsync(flatFormPath,
             """{"WindowBounds":{"X":10,"Y":20,"Width":1200,"Height":800,"IsMaximized":false}}""");
+        Assert.Equal(new WindowBounds(10, 20, 1200, 800, IsMaximized: false), await new WindowBoundsStore(flatFormPath).LoadAsync("main"));
 
-        var store = new WindowBoundsStore(_configFilePath);
-
-        Assert.Equal(new WindowBounds(10, 20, 1200, 800, IsMaximized: false), await store.LoadAsync("main"));
-    }
-
-    [Fact]
-    public async Task SaveAsync_LeavesOtherSectionsIntact()
-    {
         var notificationStore = new NotificationSettingsStore(_configFilePath);
         await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
 

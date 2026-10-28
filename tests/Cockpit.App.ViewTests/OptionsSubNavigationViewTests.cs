@@ -29,7 +29,7 @@ public class OptionsSubNavigationViewTests
     [
         "sessions", "profiles", "appearance", "terminal", "notifications", "shortcuts",
         "voice", "assistant",
-        "security", "mcp-servers", "nodes", "backup", "updates", "debug",
+        "security", "mcp-servers", "nodes", "model-intelligence", "backup", "updates", "debug",
     ];
 
     [Fact]

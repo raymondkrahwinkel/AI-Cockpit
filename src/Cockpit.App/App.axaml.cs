@@ -40,6 +40,7 @@ using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Provisioning;
+using Cockpit.Core.Startup;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -50,6 +51,8 @@ public partial class App : Application
 {
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private MainWindow? _mainWindow;
+    private SplashWindow? _splash;
+    private SplashViewModel? _splashViewModel;
     private UnlockWindow? _screenLockWindow;
     private DispatcherTimer? _pluginUpdateTimer;
 
@@ -103,33 +106,46 @@ public partial class App : Application
                 _ = TearDownThenShutdownAsync();
             };
 
-            // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
-            // model, the plugins and the MCP servers all read settings, and reading them without the key would
-            // hand them ciphertext. The unlock window goes first and the app starts behind it.
-            var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
-            if (_IsLockedAtStartup(protection))
+            // AC-1827: the window first, then the heavy steps behind it; the cockpit itself is built once they are done.
+            if (Program.Startup is { } startup && Program.Services is null)
             {
-                _ShowUnlockWindow(desktop, protection);
+                _ShowSplash(desktop, startup);
                 base.OnFrameworkInitializationCompleted();
 
                 return;
             }
 
-#if DEBUG
-            if (_CanBypassOnboardingForMeasurementHarness(
-                Environment.GetEnvironmentVariable("COCKPIT_MEASUREMENT_HARNESS"),
-                Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable)))
-            {
-                _StartCockpit(desktop);
-            }
-            else
-#endif
-            {
-                _StartCockpitAndOnboard(desktop);
-            }
+            _BeginCockpit(desktop);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void _BeginCockpit(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
+        // model, the plugins and the MCP servers all read settings, and reading them without the key would
+        // hand them ciphertext. The unlock window goes first and the app starts behind it.
+        var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
+        if (_IsLockedAtStartup(protection))
+        {
+            _ShowUnlockWindow(desktop, protection);
+
+            return;
+        }
+
+#if DEBUG
+        if (_CanBypassOnboardingForMeasurementHarness(
+            Environment.GetEnvironmentVariable("COCKPIT_MEASUREMENT_HARNESS"),
+            Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable)))
+        {
+            _StartCockpit(desktop);
+        }
+        else
+#endif
+        {
+            _StartCockpitAndOnboard(desktop);
+        }
     }
 
 #if DEBUG
@@ -157,6 +173,88 @@ public partial class App : Application
         return true;
     }
 #endif
+
+    // AC-1827: the cockpit is built once the essential steps are done, its window shown at the end over the fading splash.
+    private void _ShowSplash(IClassicDesktopStyleApplicationLifetime desktop, StartupSequence startup)
+    {
+        var viewModel = new SplashViewModel(startup);
+        var splash = new SplashWindow(viewModel, Cockpit.Infrastructure.Layout.StartupWindowBounds.ReadMain());
+        _splash = splash;
+        _splashViewModel = viewModel;
+        desktop.MainWindow = splash;
+
+        // A tick as well, so the countdown moves while a step does not.
+        var clock = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Normal, (_, _) => viewModel.Refresh());
+        clock.Start();
+        splash.Closed += (_, _) => clock.Stop();
+        startup.Changed += () => Dispatcher.UIThread.Post(viewModel.Refresh);
+
+        _ = _StartBehindSplashAsync(desktop, startup);
+    }
+
+    private async Task _StartBehindSplashAsync(IClassicDesktopStyleApplicationLifetime desktop, StartupSequence startup)
+    {
+        try
+        {
+            await startup.RunPendingAsync();
+            await Dispatcher.UIThread.InvokeAsync(() => _BeginCockpit(desktop));
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => _ReportStartFailed(desktop, exception));
+        }
+    }
+
+    // No cockpit to open: say so rather than hang behind the splash.
+    private void _ReportStartFailed(IClassicDesktopStyleApplicationLifetime desktop, Exception exception)
+    {
+        LifecycleLog.Write($"Cockpit could not start: {exception}");
+        var dialog = new ConfirmationDialog
+        {
+            DataContext = new ConfirmationDialogViewModel("Cockpit could not start", exception.Message, "Close"),
+        };
+        dialog.Closed += (_, _) => desktop.Shutdown(1);
+        desktop.MainWindow = dialog;
+        dialog.Show();
+        _splash?.Close();
+        _splash = null;
+    }
+
+    // The unlock window and the wizard are the operator's to answer, so the splash gives way at once.
+    private void _DismissSplash()
+    {
+        _splash?.Close();
+        _splash = null;
+    }
+
+    // The main window shows beneath the splash only once the steps are done and the minimum hold has passed.
+    private async Task _FinishSplashAsync(StartupSequence startup)
+    {
+        var splash = _splash;
+        try
+        {
+            await startup.RunPendingAsync();
+            if (_splashViewModel?.StillToHold is { Ticks: > 0 } hold)
+            {
+                await Task.Delay(hold);
+            }
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogWarning(exception, "The start-up steps ended with an error; opening the cockpit anyway.");
+        }
+        finally
+        {
+            _mainWindow?.Show();
+            _splash = null;
+            if (splash is not null)
+            {
+                await splash.FadeOutAsync();
+            }
+        }
+
+        StartupStepNotices.Show(startup, Program.Services.GetRequiredService<IToastService>());
+    }
 
     // AC-509 criterion 4: unlock first, onboarding after. Every route that ends in the main window being shown
     // goes through this — see the Show()-inventory in the App.axaml.cs class doc and the two callers below.
@@ -315,6 +413,12 @@ public partial class App : Application
         };
 
         desktop.MainWindow = window;
+
+        if (_splash is not null)
+        {
+            window.Show();
+            _DismissSplash();
+        }
     }
 
     // Locks only the running cockpit UI; the in-memory key and agents remain active (AC-5). The coordinator provides
@@ -358,9 +462,70 @@ public partial class App : Application
         }
     }
 
+    private static void _HoldSkeletonsUntilLoaded(CockpitViewModel cockpit, Task<Task> restoreStarted)
+    {
+        cockpit.IsRestoringSessions = true;
+        cockpit.IsLoadingProjects = !cockpit.ProjectsLoaded.IsCompleted;
+        _ = _ClearWhenAsync(cockpit.ProjectsLoaded, () => cockpit.IsLoadingProjects = false);
+        _ = _ClearWhenAsync(restoreStarted.Unwrap(), () => cockpit.IsRestoringSessions = false);
+    }
+
+    // A failed load clears too: a skeleton that never goes away would be the very "stuck" feeling this avoids.
+    private static async Task _ClearWhenAsync(Task loading, Action clear)
+    {
+        try
+        {
+            await loading;
+        }
+        catch (Exception)
+        {
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(clear);
+    }
+
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
     {
+        var started = _StartCockpitAsync(desktop);
+        if (started.IsCompleted)
+        {
+            started.GetAwaiter().GetResult();
+            return;
+        }
+
+        _ = _LogIfFaultedAsync(started);
+    }
+
+    private static async Task _LogIfFaultedAsync(Task started)
+    {
+        try
+        {
+            await started;
+        }
+        catch (Exception exception)
+        {
+            Program.Services.GetRequiredService<ILogger<App>>().LogError(exception, "Starting the cockpit failed after the splash was up.");
+
+            // A skeleton that never clears would read as a hang; show what there is instead.
+            if (Current is App { _mainWindow.DataContext: CockpitViewModel cockpit })
+            {
+                cockpit.IsRestoringSessions = false;
+                cockpit.IsLoadingProjects = false;
+            }
+        }
+    }
+
+    // AC-1829: behind the splash the start is cut into pieces with a paint between each, so the splash keeps moving
+    // instead of waiting out one long block of UI-thread work. Without a splash it all runs in one go, as before.
+    private Task _YieldToPaintAsync() =>
+        _splash is null ? Task.CompletedTask : Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded).GetTask();
+
+    private async Task _StartCockpitAsync(IClassicDesktopStyleApplicationLifetime desktop)
+    {
         var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
+
+        // AC-1829: the restore only starts further down; the skeletons wait on it, not the splash.
+        var restoreStarted = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // AC-1094: core (non-plugin) sources of supervised background activity, e.g. RunTracker for a tracked test
         // run — resolved by the public interface only, so this needs no reference to any concrete Infrastructure
@@ -375,6 +540,11 @@ public partial class App : Application
         Converters.ProfileDisplayConverter.PluginProviderRegistry =
             Program.Services.GetRequiredService<Cockpit.Infrastructure.Sessions.IPluginProviderRegistry>();
 
+        await _YieldToPaintAsync();
+
+        // AC-1829: the window opens before these have landed, so the areas they fill show skeletons until then.
+        _HoldSkeletonsUntilLoaded(cockpitViewModel, restoreStarted.Task);
+
         _mainWindow = new MainWindow
         {
             DataContext = cockpitViewModel,
@@ -386,8 +556,13 @@ public partial class App : Application
         _mainWindow.Closed += (_, _) => _mainWindow = null;
 
         // The onboarding gate owns every creation route (AC-509). Show explicitly because Avalonia will not
-        // auto-show a MainWindow that replaces the startup unlock window.
-        _mainWindow.Show();
+        // auto-show a MainWindow that replaces the startup unlock window. AC-1827: behind a splash it is shown at the end.
+        if (_splash is null)
+        {
+            _mainWindow.Show();
+        }
+
+        await _YieldToPaintAsync();
         FollowTheme(cockpitViewModel);
         _SetUpTrayIcon();
 
@@ -467,7 +642,10 @@ public partial class App : Application
 
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
+        BeginStartupNotifications(cockpitViewModel);
+        await _YieldToPaintAsync();
         InitializePlugins();
+        await _YieldToPaintAsync();
 
         // AC-237: reopen the companion window if it was left open, now that plugins have had their chance to
         // register a tool — the first paint this way already shows them instead of an empty card. AC-1343:
@@ -519,7 +697,7 @@ public partial class App : Application
 
         // AC-1343: started here, not at MainWindow.Show() above — a pane restored before UsageThresholds is set
         // reads null and is never revisited (CockpitViewModel.cs sets it only once, from the load above).
-        _ = RestoreCockpitAsync(cockpitViewModel, thresholdsLoaded);
+        restoreStarted.SetResult(RestoreCockpitAsync(cockpitViewModel, thresholdsLoaded, Path.Combine(CockpitBuild.StateRoot, KeptNotificationsFile)));
 
         // AC-1001: Options → Profiles, built the same way SessionDialogService builds the standalone dialog it
         // replaces — same services, same view model type, just handed to the cockpit instead of a window.
@@ -555,6 +733,11 @@ public partial class App : Application
             _ = managedCliUpdateChecker.CheckNowAsync();
         };
         _pluginUpdateTimer.Start();
+
+        if (_splash is not null && Program.Startup is { } sequence)
+        {
+            _ = _FinishSplashAsync(sequence);
+        }
     }
 
     // The assistant's standing parts: its hotkey, its host on the cockpit and the chip. AC-1422: internal so the
@@ -884,9 +1067,11 @@ public partial class App : Application
         sync.OnConflicts = conflicts => Dispatcher.UIThread.Post(() => toasts.Show(
             $"{(conflicts.Count == 1 ? "1 setting" : $"{conflicts.Count} settings")} changed both here and on your other machine. Nothing was overwritten.",
             ToastSeverity.Warning,
-            "Choose",
             // Toast actions cannot return a task; the handler logs and surfaces failures itself.
-            () => _ = _ChooseSettingsAsync(sync)));
+            [new ToastAction("Choose…", () => _ = _ChooseSettingsAsync(sync))],
+            sticky: false,
+            source: "Settings sync",
+            key: "settings-sync.conflicts"));
     }
 
     private static async Task _ChooseSettingsAsync(SettingsCarrierSync sync)
@@ -1104,11 +1289,25 @@ public partial class App : Application
         TrayIcon.SetIcons(this, [tray]);
     }
 
+    // AC-1804: what still needs you from a plugin, in the state root; only the caller of RestoreCockpitAsync picks it.
+    internal const string KeptNotificationsFile = "notifications.json";
+
+    private static readonly TimeSpan StartupNotificationWindow = TimeSpan.FromSeconds(10);
+
+    // AC-1803: opened before the plugins start, since restored sign-ins and a plugin's first tick already post then.
+    internal static void BeginStartupNotifications(CockpitViewModel cockpit) =>
+        cockpit.ToastHost.BeginStartupNotificationBundle(StartupNotificationWindow, () => _ = cockpit.ShowNotificationsAsync());
+
     // Load workspaces before restoring their AI-session panes (AC-410). InitializeAsync never throws, so a failed
     // load continues safely with the in-memory default and nothing to restore. AC-1343: waits for thresholdsLoaded
     // first — a restored pane reads CockpitViewModel.UsageThresholds once, at creation, null until then.
-    internal static async Task RestoreCockpitAsync(CockpitViewModel cockpit, Task thresholdsLoaded)
+    internal static async Task RestoreCockpitAsync(CockpitViewModel cockpit, Task thresholdsLoaded, string? keptNotificationsPath = null)
     {
+        if (keptNotificationsPath is not null)
+        {
+            await cockpit.ToastHost.RestoreNotificationsAsync(keptNotificationsPath);
+        }
+
         await thresholdsLoaded;
         await cockpit.Workspaces.InitializeAsync();
         await cockpit.RestoreSessionPanesAsync();

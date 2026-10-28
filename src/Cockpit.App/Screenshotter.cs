@@ -20,6 +20,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Toasts;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Capabilities;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -168,6 +169,14 @@ internal static partial class Screenshotter
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
+        // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
+        // AC-1829: the real window while projects and sessions are still loading.
+        ["main-loading"] = (_, _) => _MainWhileLoading(),
+        ["splash-fast"] = (_, _) => SplashScene.Fast(),
+        ["splash-loading"] = (_, _) => SplashScene.Loading(),
+        ["splash-slow"] = (_, _) => SplashScene.Slow(),
+        ["splash-skipped"] = (_, _) => SplashScene.Skipped(),
+        ["splash-failed"] = (_, _) => SplashScene.Failed(),
         ["about"] = (_, _) => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
         // AC-512: the in-app glossary — the guide's own depth stays on the website, this is what a fresh install
         // can still read without a browser.
@@ -193,6 +202,9 @@ internal static partial class Screenshotter
         ["single-instance"] = (_, _) => new SingleInstanceNoticeDialog(),
         ["options"] = (_, _) => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
         ["shortcuts"] = (_, _) => _OptionsOnTab("Shortcuts"),
+        // AC-1814: Options › Model intelligence with data, and with too little data for any pattern.
+        ["options-model-intelligence"] = ModelIntelligenceScene.Filled,
+        ["options-model-intelligence-unknown"] = ModelIntelligenceScene.Unknown,
         ["debug"] = (_, _) => _OptionsOnTab("Debug"),
         ["appearance"] = (_, _) => _OptionsOnTab("Appearance"),
         // AC-445: the Layout section (single session / stack vertically / focus + rail) lives on the Sessions
@@ -401,6 +413,8 @@ internal static partial class Screenshotter
         // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
         ["simple-dock-rail-collapsed"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null) },
         ["simple-dock-rail-browser"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser") },
+        ["simple-dock-rail-over-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.browser", sessionPicked: true) },
+        ["simple-dock-rail-back-to-assistant"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail(null, sessionPicked: true) },
         ["simple-dock-rail-files"] = (_, _) => new MainWindow { DataContext = _SimpleStandWithDockRail("sample.files") },
         // AC-1532: Earlier conversations over Home (mockup simple-view-history.png).
         ["simple-view-history"] = (_, _) => new MainWindow { DataContext = _SimpleStandHistory() },
@@ -616,6 +630,19 @@ internal static partial class Screenshotter
         // the rail header's undock button, and the same panel standing in its own window with "Dock back".
         ["dock-panel-keepalive"] = (_, _) => _DockRailWithKeptPanel(),
         ["dock-panel-floating"] = (_, _) => new Docking.DockPanelWindow(_KeptDockPanel(), _KeptDockPanelView(), boundsStore: null),
+        // AC-1802 (mockup 2026-10-27 screen 03): the Notifications panel docked on Needs you, and the window the
+        // bell opens it in from the Simple stand.
+        ["notifications-panel"] = (_, _) => _NotificationsPanel(),
+        ["notifications-startup-bundle"] = (_, _) => _NotificationsStartupBundle(),
+        ["notifications-window"] = (_, _) =>
+        {
+            var notifications = _SampleNotifications();
+            return new Docking.DockPanelWindow(
+                new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+                    ViewModels.NotificationCenterViewModel.DockPanelId, "Notifications", Material.Icons.MaterialIconKind.BellOutline, () => new TextBlock()),
+                new NotificationsPanelView { DataContext = notifications.Notifications },
+                boundsStore: null);
+        },
         // AC-740 addendum: the picker in the pop-out's own composer, staged open by the Hovers table below.
         ["assistant-chat-mention-picker"] = (_, _) => _AssistantChatMentionPicker(),
         // AC-683 criteria 1-3: the usage-pill row and the stacked warning bar, both new to this window — it had
@@ -1135,6 +1162,16 @@ internal static partial class Screenshotter
         "Tracks the hours a session spends per project and totals them per week.",
         "Drafts invoices from a project's logged hours — drafts only, nothing is sent.",
     ];
+
+    // AC-1829: the cockpit as it stands right after the splash — no session or project has come back yet.
+    private static MainWindow _MainWhileLoading()
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.Sessions.Clear();
+        cockpit.IsRestoringSessions = true;
+        cockpit.IsLoadingProjects = true;
+        return new MainWindow { DataContext = cockpit };
+    }
 
     // Every scene name a render can be asked for, this table's own plus the selection surface's — that one keeps
     // its names with the scene because its modes are states the surface is driven into after it is shown, not
@@ -3282,7 +3319,7 @@ internal static partial class Screenshotter
     }
 
     // AC-1824: Home with two stand-in plugin panels on the rail — the real plugins are store-distributed and not referenced here.
-    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId)
+    private static ViewModels.CockpitViewModel _SimpleStandWithDockRail(string? openPanelId, bool sessionPicked = false)
     {
         var cockpit = _SimpleStand(withAssistant: true, morePanels: panels =>
         {
@@ -3292,6 +3329,13 @@ internal static partial class Screenshotter
                 "sample.files", "Files", Material.Icons.MaterialIconKind.FolderOutline, _FilesStandIn));
         });
         cockpit.ShowSimpleStartScreenCommand.Execute(null);
+        if (sessionPicked)
+        {
+            // AC-1862: a conversation in the main column puts the assistant in the rail, where a panel replaces it.
+            cockpit.SimpleSelectedSession = _Named(cockpit, "kind→staging");
+            cockpit.SimplePage = ViewModels.SimplePage.Conversation;
+        }
+
         cockpit.SimpleOpenDockPanelId = openPanelId;
         cockpit.DockRailWidth = 420;
         return cockpit;
@@ -3539,6 +3583,68 @@ internal static partial class Screenshotter
         };
 
         return new MainWindow { DataContext = cockpit };
+    }
+
+    private static Window _NotificationsPanel()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            AssistantDocked = true,
+            OpenDockPanelId = ViewModels.NotificationCenterViewModel.DockPanelId,
+            DockRailWidth = 380,
+        };
+        cockpit.RegisterNotificationsPanel();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        panels.Register(_PullRequestsDockPanel());
+        _SeedNotifications(cockpit.ToastHost);
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    // AC-1803 (mockup 2026-10-27 screen 02): one startup summary stays visible while the bell owns the three rows.
+    private static Window _NotificationsStartupBundle()
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new ViewModels.CockpitViewModel(dockPanelRegistry: panels)
+        {
+            AssistantDocked = true,
+            DockRailWidth = 380,
+        };
+        cockpit.RegisterNotificationsPanel();
+        panels.Register(new Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration(
+            Services.AssistantIndicatorCoordinator.DockPanelId, "Assistant", Material.Icons.MaterialIconKind.Creation, () => new TextBlock()));
+        cockpit.ToastHost.BeginStartupNotificationBundle(TimeSpan.FromMinutes(1), () => _ = cockpit.ShowNotificationsAsync());
+        cockpit.ToastHost.Add("Settings conflict", ToastSeverity.Warning, [new ToastAction("Choose", static () => { })], sticky: true, source: "Settings sync");
+        cockpit.ToastHost.Add("Slack missing_scope", ToastSeverity.Error, [new ToastAction("Open Slack settings", static () => { })], sticky: true, source: "Slack");
+        cockpit.ToastHost.Add("Depot needs attention", ToastSeverity.Error, [new ToastAction("Open in Depot", static () => { })], sticky: true, source: "Depot");
+
+        return new MainWindow { DataContext = cockpit };
+    }
+
+    private static ViewModels.ToastHostViewModel _SampleNotifications()
+    {
+        var host = new ViewModels.ToastHostViewModel();
+        _SeedNotifications(host);
+        return host;
+    }
+
+    // The startup burst of the mockup, as toasts that already went: only the bell still holds them.
+    private static void _SeedNotifications(ViewModels.ToastHostViewModel host)
+    {
+        host.Add("Cockpit 0.127.0 is out. You are on 0.126.0.", ToastSeverity.Information, [new ToastAction("Open it", () => { })], sticky: false, key: "cockpit.update")
+            .Actions[0].Invoke();
+        host.Add("Saved the layout.", ToastSeverity.Success, [], sticky: false);
+        host.Add("YouTrack MCP needs you to sign in again. Sessions that use YouTrack tools will fail until you sign in.",
+            ToastSeverity.Warning, [new ToastAction("Sign in", () => { })], sticky: true, source: "MCP sign-in");
+        host.Add("Depot couldn't move a project: 409 Conflict, a project with that slug already exists.",
+            ToastSeverity.Error, [new ToastAction("Retry", () => { }), new ToastAction("Open in Depot", () => { })], sticky: false, source: "Depot");
+        host.Add("Slack can't read channels: missing_scope. Reinstall the Slack app with channels:history, then reconnect.",
+            ToastSeverity.Error, [new ToastAction("Open Slack settings", () => { }), new ToastAction("Copy error", () => { })], sticky: false, source: "Slack");
+        host.Add("14 settings changed both here and on your other machine. Nothing was overwritten.",
+            ToastSeverity.Warning, [new ToastAction("Choose…", () => { })], sticky: false, source: "Settings sync", key: "settings-sync.conflicts");
+        host.Toasts.Clear();
     }
 
     private static Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration _KeptDockPanel() =>

@@ -49,7 +49,27 @@ public class ClaudeTranscriptIdentityTests : IDisposable
     }
 
     [Fact]
-    public void ReadEntries_KeepsOnlyTheLastRowsAsked_AndStillReportsTheTotal()
+    public void ReadEntries_ReplacesLoneSurrogateEscapesWithoutDroppingTheTranscript()
+    {
+        var transcript = _CreateTranscript("lone-surrogate");
+        File.WriteAllLines(
+            transcript,
+            [
+                _UserLine("before"),
+                """{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Grep","input":{}}]}}""",
+                """{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"low \udf3f pair \ud83c\udf3f high \ud83c text literal \\udf3f"}]}}""",
+                """{"type":"assistant","message":{"content":[{"type":"text","text":"after"}]}}""",
+            ]);
+
+        var slice = new ClaudeTranscriptReader().ReadEntries(_WriteStatusFile(transcript), count: 30);
+
+        Assert.Equal(3, slice.TotalEntries);
+        Assert.Equal("low \uFFFD pair 🌿 high \uFFFD text literal \\udf3f", slice.Entries[1].ToolResult);
+        Assert.Equal("after", slice.Entries[2].Text);
+    }
+
+    [Fact]
+    public void ReadEntries_KeepsTheRequestedTail_AndReportsNothingWithoutAStatusFile()
     {
         // A tail has to be reportable as a tail: a caller told it has thirty rows out of thirty reads them as the
         // whole conversation and says so out loud.
@@ -60,13 +80,6 @@ public class ClaudeTranscriptIdentityTests : IDisposable
 
         Assert.Equal(10, slice.TotalEntries);
         Assert.Equal(["line 7", "line 8", "line 9"], slice.Entries.Select(entry => entry.Text));
-    }
-
-    [Fact]
-    public void ReadEntries_WithoutAStatusFile_ReportsNothing()
-    {
-        // There is no honest guess to make here. An empty answer is a session that has written nothing this reader
-        // can name; a guess is somebody else's conversation handed over as this session's.
         Assert.Empty(new ClaudeTranscriptReader().ReadEntries(statusFile: null, count: 30).Entries);
     }
 

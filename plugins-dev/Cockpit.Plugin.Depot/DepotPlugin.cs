@@ -68,6 +68,12 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _host = host;
         _initializedHost = host;
 
+        foreach (var connection in settings.Connections)
+        {
+            host.AddStartupStep($"Connecting to {connection.Name}…", cancellationToken =>
+                DepotProjectListingSource.For(host, connection).ListAsync(cancellationToken));
+        }
+
         // AC-1665: signing in as someone else must not leave the previous account's project list to be shown.
         host.McpServerAccountChanged += (_, serverName) =>
         {

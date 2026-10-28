@@ -524,6 +524,7 @@ internal sealed class DepotSharedProjectSource(
         {
             Description = definition.Description,
             GitUrl = definition.GitUrl,
+            SharedSourceKey = $"depot:{new Uri(connection.Url).Authority}/{slug}",
             BehaviorPrompt = definition.BehaviorPrompt,
             IsolateInWorktreeByDefault = definition.IsolateInWorktreeByDefault,
             EnabledMcpServerNames = definition.McpOverlay?.Enabled,

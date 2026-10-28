@@ -1,7 +1,7 @@
 {
   "id": "docker",
   "name": "Docker",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "entryAssembly": "Cockpit.Plugin.Docker.dll",
   "entryType": "Cockpit.Plugin.Docker.DockerPlugin",
   "uiAssembly": "Cockpit.Plugin.Docker.UI.dll",

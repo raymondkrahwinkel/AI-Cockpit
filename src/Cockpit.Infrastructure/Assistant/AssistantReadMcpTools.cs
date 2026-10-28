@@ -10,6 +10,7 @@ using Cockpit.Core.Delegation;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Formatting;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.ModelIntelligence;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -20,7 +21,8 @@ internal sealed class AssistantReadMcpTools(
     IAssistantReadGateway gateway,
     IDelegationService delegation,
     INodeSessionsClient nodes,
-    NodeDiscoveryId self)
+    NodeDiscoveryId self,
+    ModelPictureReader modelPicture)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -288,6 +290,127 @@ internal sealed class AssistantReadMcpTools(
                     unreachableSince = read.Unreachable?.Since,
                 }),
             });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "model_options", ReadOnly = true)]
+    [McpMeta(AssistantAgentMcpTools.AlwaysLoadMeta, true)]
+    [Description("States what is known right now about the model behind each configured profile, so you can pick profile, model and effort with facts: call it BEFORE every start_agent and before giving a subagent a model, for the task type at hand. Per profile: price now (USD per million tokens, input and output) and which window or modifier is applied, the quality index for the task type (taskType coding uses the coding index, agentic the agentic one, anything else or none the intelligence index), context tokens, limits, peak windows (provider-reported or public, each with whether it is active now) and quota state (how far each usage window stands and when it resets). EVERY FACT CARRIES ITS SOURCE AND AGE (ageSeconds; stale true once it is past what its source vouches for) and attribution lists the sources used. \"unknown\" means no source knows it, and the text after it says why: it is never 0 and never free (a model that is genuinely free says price 0 with a source). Say so when you meet it, and when data is stale, and never fill a gap with a figure of your own. Rows are ranked by the quality index for the task type, best first, unknown last. maxPricePerMTokens keeps only rows whose known input and output price now are both at or under it; a row with an unknown price is kept and marked, never dropped. This tool states facts and does not choose: the choice stays yours, within the operator's rules, and you state it in one line with the reason.")]
+    public async Task<string> ModelOptionsAsync(
+        [Description("What the work is: coding, agentic, or anything else (e.g. review, research, chat) for the general intelligence index. Optional.")] string? taskType = null,
+        [Description("Keep only rows whose known price now (input and output, USD per million tokens) is at or under this. Optional.")] decimal? maxPricePerMTokens = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var picture = await modelPicture.ReadAsync().ConfigureAwait(false);
+            var kind = taskType?.Trim().ToLowerInvariant() switch { "coding" => "coding", "agentic" => "agentic", _ => "intelligence" };
+            decimal? Index(ModelPictureRow row) => row.Indices is null ? null : kind switch
+            {
+                "coding" => row.Indices.Coding,
+                "agentic" => row.Indices.Agentic,
+                _ => row.Indices.Intelligence,
+            };
+
+            var rows = picture.Rows
+                .Where(row => maxPricePerMTokens is not { } max || row.PriceNow is null
+                    || ((row.PriceNow.Input ?? 0m) <= max && (row.PriceNow.Output ?? 0m) <= max))
+                .OrderBy(row => Index(row) is null)
+                .ThenByDescending(row => Index(row) ?? 0m)
+                .ToArray();
+
+            var used = new SortedSet<string>(StringComparer.Ordinal);
+            object? Fact(Sourced? source)
+            {
+                if (source is null)
+                {
+                    return null;
+                }
+
+                used.Add(source.Name);
+                return new
+                {
+                    source = source.Name,
+                    asOf = source.AsOf,
+                    ageSeconds = (long)Math.Max(0, (picture.At - source.AsOf).TotalSeconds),
+                    stale = picture.At - source.AsOf > source.ValidFor,
+                };
+            }
+
+            static object Unknown(string why) => $"unknown: {why}";
+
+            var models = rows.Select(row =>
+            {
+                var index = Index(row);
+                return new
+                {
+                    profile = row.Profile,
+                    provider = row.Provider,
+                    model = row.Model,
+                    publicModelRef = row.PublicModelRef,
+                    price = row.Price is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no price for {row.PublicModelRef}") : new { inputPerMTokens = row.Price.Input, outputPerMTokens = row.Price.Output, fact = Fact(row.Price.Source) },
+                    priceNow = row.PriceNow is null ? (object)"unknown" : new { inputPerMTokens = row.PriceNow.Input, outputPerMTokens = row.PriceNow.Output, applied = row.PriceNow.Applied },
+                    modifiers = row.Modifiers.Select(modifier => new { modifier.Condition, modifier.Factor, modifier.ActiveNow }),
+                    quality = index is null ? Unknown(row.Unmatched ?? $"OpenRouter carries no Artificial Analysis {kind} index for {row.PublicModelRef}") : new { kind, index, fact = Fact(row.PublicSource) },
+                    contextTokens = row.Context is null ? Unknown(row.Unmatched ?? $"OpenRouter lists no context length for {row.PublicModelRef}") : new { tokens = row.Context.Tokens, fact = Fact(row.Context.Source) },
+                    limits = row.Limits.Count == 0
+                        ? (object)"unknown"
+                        : row.Limits.Select(limit => new { limit.Label, limit.Value, limit.Unit, limit.Model, fact = Fact(Sourced.From(limit.Source)) }).ToArray(),
+                    peakWindows = row.PeakWindows.Select(window => new
+                    {
+                        origin = window.Origin,
+                        kind = window.Kind,
+                        start = window.Start.ToString("HH:mm"),
+                        end = window.End.ToString("HH:mm"),
+                        timeZone = window.TimeZoneId,
+                        days = window.Days.Select(day => day.ToString()),
+                        activeNow = window.ActiveNow,
+                        fact = Fact(window.Source),
+                    }).ToArray(),
+                    ownMeasurements = row.Derived.Count == 0
+                        ? (object)"unknown"
+                        : row.Derived.Select(derived => new
+                        {
+                            metric = derived.Pattern.Metric.ToString(),
+                            timeZone = derived.Pattern.TimeZoneId,
+                            n = derived.Pattern.N,
+                            confidence = Math.Round(derived.Pattern.Confidence, 2),
+                            period = new { from = derived.Pattern.From, to = derived.Pattern.To },
+                            peaks = derived.Pattern.Peaks.Count == 0
+                                ? (object)"none stands out"
+                                : derived.Pattern.Peaks.Select(peak => new
+                                {
+                                    days = peak.Days.Select(day => day.ToString()),
+                                    start = peak.Start.ToString("HH:mm"),
+                                    end = peak.End.ToString("HH:mm"),
+                                    value = Math.Round(peak.Value, 3),
+                                    baseline = Math.Round(peak.Baseline, 3),
+                                    n = peak.N,
+                                }).ToArray(),
+                            fact = Fact(derived.Source),
+                        }).ToArray(),
+                    quota = row.Quota.Count == 0
+                        ? (object)"unknown"
+                        : row.Quota.Select(state => new
+                        {
+                            window = state.Window.Label,
+                            usedPercent = state.Window.UsedPercent,
+                            resetsAt = state.Window.ResetsAt,
+                            windowMinutes = state.Window.WindowMinutes,
+                            fact = Fact(Sourced.From(state.Source)),
+                        }).ToArray(),
+                };
+            }).ToArray();
+
+            return _Serialize(new { ok = true, taskType = kind, at = picture.At, count = models.Length, models, attribution = used });
         }
         catch (Exception exception)
         {

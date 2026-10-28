@@ -26,7 +26,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer.
     public SharedProjectBindingDialogViewModel()
     {
-        _composition = new SharedProjectComposition("depot:handbook", "Work", null, "Handbook", null, null, null, false, null, null, []);
+        _composition = new SharedProjectComposition("depot:handbook", "Work", null, "Handbook", null, null, null, null, false, null, null, []);
         SourceName = "Work";
         ProjectName = "Handbook";
         GitUrl = "git@github.com:example/handbook.git";
@@ -91,6 +91,7 @@ public partial class SharedProjectBindingDialogViewModel : ViewModelBase
             binding.Name,
             binding.Description,
             binding.GitUrl,
+            binding.SharedSourceKey,
             binding.BehaviorPrompt,
             binding.IsolateInWorktreeByDefault,
             binding.EnabledMcpServerNames,

@@ -1,0 +1,151 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.NotificationsPanelView"
+             x:DataType="vm:NotificationCenterViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.notificationRow">
+            <Setter Property="Background" Value="{DynamicResource CockpitSecondaryBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+            <Setter Property="Padding" Value="12,10"/>
+        </Style>
+        <Style Selector="Border.notificationRow TextBlock.message">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <!-- Read rows go flat: no fill, regular weight (mockup screen 04). -->
+        <Style Selector="Border.notificationRow.read">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.notificationRow.read TextBlock.message">
+            <Setter Property="FontWeight" Value="Normal"/>
+        </Style>
+        <!-- A row that needs you carries the waiting row tint, as a session that needs you does. -->
+        <Style Selector="Border.notificationRow.attention">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingRowTintBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitStatusWaitingRingTintBrush}"/>
+        </Style>
+        <Style Selector="Border.notificationRow:pointerover StackPanel.rowActions">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="Border.notificationRow:focus-within StackPanel.rowActions">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="12,10,8,8">
+            <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6" VerticalAlignment="Center"
+                    Command="{Binding MarkAllReadCommand}" ToolTip.Tip="Mark all read">
+                <materialIcons:MaterialIcon Kind="CheckAll" Width="15" Height="15"/>
+            </Button>
+            <!-- Wraps the source picker under the tabs on a narrow rail rather than drawing them over each other. -->
+            <WrapPanel Orientation="Horizontal">
+                <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2" Margin="0,0,6,4"
+                        Background="{DynamicResource CockpitInsetBgBrush}"
+                        BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="1">
+                        <Button Classes="Segment" Classes.on="{Binding IsNeedsYouFilter}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="NeedsYou">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <TextBlock Text="Needs you"/>
+                                <Border Classes="waitingCount" IsVisible="{Binding HasNeedsYou}">
+                                    <TextBlock Text="{Binding NeedsYouCount}"/>
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="Segment" Classes.on="{Binding IsUnreadFilter}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="Unread">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <TextBlock Text="Unread"/>
+                                <TextBlock Text="{Binding UnreadCount}" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="Segment" Classes.on="{Binding IsAllFilter}" Content="All"
+                                Command="{Binding SetFilterCommand}" CommandParameter="All"/>
+                    </StackPanel>
+                </Border>
+                <ComboBox Margin="0,0,0,4" VerticalAlignment="Center" FontSize="12"
+                          ItemsSource="{Binding Sources}" SelectedItem="{Binding SourceFilter}"/>
+            </WrapPanel>
+        </DockPanel>
+
+        <Panel>
+            <TextBlock IsVisible="{Binding !HasVisibleItems}" Margin="16,24" TextWrapping="Wrap"
+                       HorizontalAlignment="Center" TextAlignment="Center"
+                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                       Text="Nothing here. Toasts land in this list, so one that timed out can still be read and acted on."/>
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding VisibleItems}" Margin="8,0,8,8">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="6"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NotificationItemViewModel">
+                            <Border Classes="notificationRow" Classes.read="{Binding IsRead}" Classes.attention="{Binding NeedsYou}">
+                                <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                                    <materialIcons:MaterialIcon Kind="{Binding Glyph}" Width="14" Height="14"
+                                               Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                               Margin="0,1,8,0" VerticalAlignment="Top"/>
+                                    <TextBlock Grid.Column="1" Classes="message" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"
+                                               MaxLines="4" TextTrimming="CharacterEllipsis"/>
+                                    <Panel Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Top">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding TimeLabel}" FontSize="11"
+                                                       Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            <Ellipse Width="6" Height="6" Fill="{DynamicResource CockpitAccentBrush}"
+                                                     IsVisible="{Binding !IsRead}"/>
+                                        </StackPanel>
+                                        <!-- Over the time, on hover or focus: Mark read and Dismiss (mockup screen 03). -->
+                                        <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
+                                                    Background="{DynamicResource CockpitSecondaryBgBrush}">
+                                            <Button Classes="Subtle" Padding="4" Command="{Binding MarkReadCommand}"
+                                                    IsVisible="{Binding !IsRead}" ToolTip.Tip="Mark read">
+                                                <materialIcons:MaterialIcon Kind="EmailOpenOutline" Width="13" Height="13"/>
+                                            </Button>
+                                            <Button Classes="Subtle" Padding="4" Command="{Binding DismissCommand}" ToolTip.Tip="Dismiss">
+                                                <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Panel>
+                                    <DockPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                                        <Border Classes="tag" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Source}"/>
+                                        </Border>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsHandled}"
+                                                    VerticalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="CheckCircleOutline" Width="12" Height="12"
+                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                            <TextBlock Text="{Binding HandledReceipt}" FontSize="11.5"
+                                                       Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                        </StackPanel>
+                                        <!-- The toast's own buttons: a click here runs its action and closes the toast too. -->
+                                        <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding NeedsYou}" HorizontalAlignment="Right">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ToastActionViewModel">
+                                                    <Button Content="{Binding Label}" Classes="Compact" Classes.Accent="{Binding IsPrimary}"
+                                                            Margin="6,0,0,0" Command="{Binding InvokeCommand}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </DockPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Panel>
+    </DockPanel>
+</UserControl>

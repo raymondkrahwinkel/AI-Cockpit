@@ -22,6 +22,8 @@ internal static class ChatTurnLoop
 
     internal const int MaxTransportRetries = 2;
 
+    internal static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(120);
+
     internal const string CompletionMarker = "[turn complete]";
 
     // The convention the continuation net reads: a structured end-of-turn signal the model gives itself,
@@ -92,7 +94,7 @@ internal static class ChatTurnLoop
 
     // Runs the turn, appends every message it produced — tool calls and their results included — to `history`,
     // and streams its text through `onText`. Exceptions other than a retried transport failure propagate.
-    internal static async Task<ChatTurnOutcome> RunAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, Action<string> onText, ILogger? logger, CancellationToken cancellationToken)
+    internal static async Task<ChatTurnOutcome> RunAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, Action<string> onText, ILogger? logger, CancellationToken cancellationToken, TimeSpan? streamIdleTimeout = null)
     {
         logger ??= NullLogger.Instance;
         _TrimOldToolResults(history);
@@ -105,7 +107,7 @@ internal static class ChatTurnLoop
         for (var continuation = 0; ; continuation++)
         {
             var historyStart = history.Count;
-            var round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken).ConfigureAwait(false);
+            var round = await _RunRoundAsync(agent, history, options, turnText, onText, logger, cancellationToken, streamIdleTimeout ?? StreamIdleTimeout).ConfigureAwait(false);
             toolRounds += round.ToolRounds;
             if (_HasRepeatedToolFailureStop(history.Skip(historyStart)))
             {
@@ -172,7 +174,7 @@ internal static class ChatTurnLoop
         }
     }
 
-    private static async Task<RoundResult> _RunRoundAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, StringBuilder turnText, Action<string> onText, ILogger logger, CancellationToken cancellationToken)
+    private static async Task<RoundResult> _RunRoundAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, StringBuilder turnText, Action<string> onText, ILogger logger, CancellationToken cancellationToken, TimeSpan streamIdleTimeout)
     {
         var relay = new TextRelay(turnText, onText);
         var toolRounds = 0;
@@ -182,10 +184,41 @@ internal static class ChatTurnLoop
             var updates = new List<ChatResponseUpdate>();
             try
             {
-                await foreach (var update in agent.GetStreamingResponseAsync(history, options, cancellationToken).ConfigureAwait(false))
+                using var idleCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                var updatesEnumerator = agent.GetStreamingResponseAsync(history, options, idleCancellation.Token).GetAsyncEnumerator();
+                var timedOut = false;
+                try
                 {
-                    updates.Add(update);
-                    relay.Add(update.Text);
+                    while (true)
+                    {
+                        var moveNext = updatesEnumerator.MoveNextAsync().AsTask();
+                        if (await Task.WhenAny(moveNext, Task.Delay(streamIdleTimeout, cancellationToken)).ConfigureAwait(false) != moveNext)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            timedOut = true;
+                            idleCancellation.Cancel();
+                            throw new ChatStreamIdleTimeoutException(streamIdleTimeout);
+                        }
+
+                        if (!await moveNext.ConfigureAwait(false))
+                        {
+                            break;
+                        }
+
+                        var update = updatesEnumerator.Current;
+                        updates.Add(update);
+                        relay.Add(update.Text);
+                    }
+                }
+                finally
+                {
+                    try
+                    {
+                        await updatesEnumerator.DisposeAsync().ConfigureAwait(false);
+                    }
+                    catch (NotSupportedException) when (timedOut)
+                    {
+                    }
                 }
 
                 relay.Flush();
@@ -373,6 +406,12 @@ internal static class ChatTurnLoop
     }
 
     private sealed record RoundResult(string Text, ChatFinishReason? FinishReason, int ToolRounds);
+}
+
+internal sealed class ChatStreamIdleTimeoutException(TimeSpan timeout)
+    : TimeoutException($"The model did not send an update within {timeout.TotalSeconds:0} seconds.")
+{
+    internal TimeSpan Timeout { get; } = timeout;
 }
 
 internal sealed record ChatTurnOutcome(string Text, ChatFinishReason? FinishReason, int ToolRounds, int Continuations);

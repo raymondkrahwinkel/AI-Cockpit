@@ -79,6 +79,7 @@ public partial class OptionsDialog : Window
             {
                 cockpit.RefreshBackupPlugins();
                 cockpit.Diagnostics.Refresh();
+                cockpit.ModelIntelligence.LoadCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
                 _ApplySearch(cockpit.OptionsSearchText);
                 RequestAnimationFrame(_ => RequestAnimationFrame(_ => cockpit.OptionsOpenPresented()));
