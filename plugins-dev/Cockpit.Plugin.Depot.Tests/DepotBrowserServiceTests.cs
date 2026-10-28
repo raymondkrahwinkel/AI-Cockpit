@@ -305,7 +305,8 @@ public class DepotBrowserServiceTests
             var entry = json.RootElement[0];
             var target = entry.GetProperty("path").GetString()!;
             var current = Files.TryGetValue(target, out var content) ? _Checksum(content) : "";
-            if (entry.GetProperty("baseChecksum").GetString() != current)
+            var expected = entry.GetProperty("baseChecksum").GetString();
+            if (expected is not null && expected != current)
                 return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "conflict", checksum = current } } });
             Files[target] = entry.GetProperty("content").GetString()!;
             return JsonSerializer.Serialize(new { results = new[] { new { path = target, status = "written", checksum = _Checksum(Files[target]) } } });
