@@ -259,6 +259,7 @@ public partial class App : Application
         finally
         {
             _mainWindow?.Show();
+            _StartPlanners();
             _splash = null;
             if (splash is not null)
             {
@@ -700,10 +701,6 @@ public partial class App : Application
         // AC-234: and now start it watching the clock, once the sessions it resolves against can exist.
         _ = _StartScheduledResumesAsync(cockpitViewModel);
 
-        // AC-1381: the planners the backend owns (AC-1380), started at the moment they always were: after the startup
-        // reconcile Program ran, and ahead of the session restore below.
-        Program.Services.GetRequiredService<CockpitBackend>().StartPlanners();
-
         // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
         // the settings screen that edits them.
         var thresholdsLoaded = Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore
@@ -753,7 +750,17 @@ public partial class App : Application
         {
             _ = _FinishSplashAsync(sequence);
         }
+        else
+        {
+            _StartPlanners();
+        }
     }
+
+    // AC-1889: the backend's planners (AC-1380, AC-1381) start once the main window is shown, off the UI thread. Nothing
+    // before Show or the session restore needs them: the worktree reconcile gate comes from Start, and the crash-net
+    // sweep first ticks a quarter of an hour on. The recorder and the wake schedule begin a moment later than before.
+    private static void _StartPlanners() =>
+        _ = Program.Services.GetRequiredService<CockpitBackend>().StartPlannersInBackgroundAsync();
 
     // The assistant's standing parts: its hotkey, its host on the cockpit and the chip. AC-1422: internal so the
     // journeys start the assistant the way the cockpit does.

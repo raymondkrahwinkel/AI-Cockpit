@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Configuration;
@@ -47,8 +48,10 @@ public sealed class BackendWithoutAppTests : IDisposable
 
     // A planner started before the startup reconcile is refused, and after it the planners run: the worktree planner's
     // crash net assumes the startup sweep has run, and a sweep that runs after it can remove work.
+    // AC-1889: and the background start hands control back at once while a planner takes 3 s, which is what lets the
+    // window show first. Merged into this case so the project's test ceiling does not move.
     [Fact]
-    public async Task ThePlanners_StartOnlyAfterTheStartupReconcile()
+    public async Task ThePlanners_StartOnlyAfterTheStartupReconcile_AndNeverHoldTheCaller()
     {
         var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
         await using var services = backend.Services;
@@ -56,10 +59,15 @@ public sealed class BackendWithoutAppTests : IDisposable
         var early = Record.Exception(backend.StartPlanners);
         var watchingBeforeStart = services.GetRequiredService<CiWatcher>().Watching;
         backend.Start();
-        backend.StartPlanners();
+        backend.BeforePlanners = () => Thread.Sleep(TimeSpan.FromSeconds(3));
+        var clock = Stopwatch.StartNew();
+        var started = backend.StartPlannersInBackgroundAsync();
+        var handedBackIn = clock.Elapsed;
+        await started;
 
         Assert.IsType<InvalidOperationException>(early);
         Assert.Null(watchingBeforeStart);
+        Assert.True(handedBackIn < TimeSpan.FromSeconds(1), $"The caller was held for {handedBackIn}.");
         Assert.NotNull(services.GetRequiredService<CiWatcher>().Watching);
     }
 

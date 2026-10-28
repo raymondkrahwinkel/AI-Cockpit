@@ -237,6 +237,27 @@ public sealed class CockpitBackend
         _pluginsInitialized = true;
     }
 
+    // Test seam: runs first inside the background start, standing in for a planner that is slow to start.
+    internal Action? BeforePlanners { get; set; }
+
+    // AC-1889: the planners off the caller's thread, so a frontend can show its window first. Never throws: a planner
+    // that fails is logged, and the task still completes. Whatever must be up before the first frame stays out of here.
+    public Task StartPlannersInBackgroundAsync() => Task.Run(() =>
+    {
+        var logger = Services.GetRequiredService<ILoggerFactory>().CreateLogger<CockpitBackend>();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            BeforePlanners?.Invoke();
+            StartPlanners();
+            logger.LogInformation("Planners started in {ElapsedMs} ms.", clock.ElapsedMilliseconds);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "The planners did not start; a background watcher may be missing until the next start.");
+        }
+    });
+
     // AC-1380's planners. Never before `Start`: the worktree planner's crash net assumes the startup sweep has run, and
     // the rest read a registry the reconcile's roster decides. The Depot watcher polls only what its `BoundProjects`
     // names, which a frontend that owns a project list sets before this.
@@ -297,6 +318,7 @@ public sealed class CockpitBackend
         Services.GetService<HomeFolderWatcher>()?.Start(sessionRegistry, Services.GetService<IDelegationService>());
 
         // AC-1719: first fold what is older than 90 days into day aggregates, before the recorder reads or appends.
+        // Blocks this thread; fine, as the cockpit calls StartPlanners off the UI thread (AC-1889).
         Services.GetService<SessionDayRetention>()?.Run();
 
         // AC-1717: and keep every session's busy/idle, operator actions and statuslines in `session-timeline.jsonl`.
