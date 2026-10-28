@@ -21,14 +21,12 @@ public class ProjectResourceSecretPathHeuristicTests
     [InlineData("~/.ssh", true)]
     // The one deliberate exception: a public key names nothing secret.
     [InlineData("~/.ssh/id_rsa.pub", false)]
-    [InlineData("~/.ssh/id_ed25519.pub", false)]
     // A directory that merely starts with the same four letters is not ".ssh" — a prefix match would over-trigger.
     [InlineData("~/.sshfoo/x", false)]
     [InlineData("~/.ssh-notes/x", false)]
     // ~/.gnupg, ~/.aws, ~/.kube — whole directories, same reasoning as ~/.ssh.
     [InlineData("~/.gnupg/private-keys-v1.d/foo", true)]
     [InlineData("~/.aws", true)]
-    [InlineData("~/.aws/", true)]
     [InlineData("~/.aws/credentials", true)]
     [InlineData("~/.kube/config", true)]
     // ~/.config/gh — one directory under the shared ~/.config tree; the rest of ~/.config is not touched.

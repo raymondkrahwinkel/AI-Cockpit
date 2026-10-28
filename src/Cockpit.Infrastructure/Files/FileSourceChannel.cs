@@ -30,6 +30,7 @@ internal static class FileSourceChannel
                 return new FileSourceReadAnswer(Convert.ToBase64String(bytes), result.Version,
                     bytes.LongLength, result.Modified, result.ContentType)
                 {
+                    ModifiedBy = result.ModifiedBy,
                     CanWrite = result.CanWrite && source.Capabilities.CanWrite
                         && provider.Connections.FirstOrDefault(c => c.Id == request.File.ConnectionId) is { ReadOnly: false },
                 };

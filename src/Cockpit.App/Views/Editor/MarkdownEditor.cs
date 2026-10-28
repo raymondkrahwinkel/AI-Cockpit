@@ -32,6 +32,8 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
     private readonly Border _toolbar;
     private readonly ComboBox _blockStyle;
     private readonly ToggleButton _sourceToggle;
+    private IReadOnlyList<ComparedLine>? _compare;
+    private string _compareWho = "";
     private int _caretLine = 1;
     private int _markedLine;
     private bool _syncing;
@@ -130,6 +132,15 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
     internal int MarkedLine => IsReadOnly ? _markedLine : 0;
 
     internal TextEditor TextEditor => _editor;
+
+    // Shows the two texts in one column, each changed line marked; the editor is only for reading then.
+    internal void ShowCompare(IReadOnlyList<ComparedLine> lines, string theirsWho)
+    {
+        _compare = lines;
+        _compareWho = theirsWho;
+        Text = string.Join('\n', lines.Select(line => line.Text));
+        _Redraw();
+    }
 
     internal void UseWorkspaceSourceToggle() => _sourceToggle.IsVisible = false;
 

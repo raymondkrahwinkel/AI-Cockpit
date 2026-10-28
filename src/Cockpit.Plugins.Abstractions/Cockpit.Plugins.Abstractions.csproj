@@ -626,7 +626,8 @@
          the plugin. A plugin that calls them sets minHostVersion 0.132.0. Additive; still v3. -->
     <!-- 3.42.0 (AC-1783): IFileSource snapshot reads and conditional writes, registered on the plugin's channel. -->
     <!-- 3.43.0: file snapshot write hints and asynchronous workspace close guards (AC-1754). -->
-    <Version>3.43.0</Version>
+    <!-- 3.44.0 (AC-1755): FileReadResult.ModifiedBy, who last changed a file, when the source knows. Additive; still v3. -->
+    <Version>3.44.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

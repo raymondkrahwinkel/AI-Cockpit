@@ -42,7 +42,11 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "This file is too large to edit in Cockpit.");
                 return new FileReadResult(new MemoryStream(bytes, writable: false), version, bytes.LongLength,
                     DateTimeOffset.TryParse(DepotRequests.String(entry, "updatedAt"), out var modified) ? modified : null,
-                    "text/markdown") { CanWrite = role.CanWrite() };
+                    "text/markdown")
+                {
+                    CanWrite = role.CanWrite(),
+                    ModifiedBy = DepotRequests.String(entry, "updatedBy") ?? DepotRequests.String(entry, "actor"),
+                };
             }, cancellationToken);
 
         public Task<FileWriteResult> WriteAsync(FileRef file, Stream content, string? ifVersion,

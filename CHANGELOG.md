@@ -32,6 +32,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a save conflict in the Markdown editor no longer loses your text.** When the file changed in Depot since you opened it, nothing is written and a banner offers Compare (one column, red for lines only in Depot, green for lines only in yours, with who changed them), Reload, Merge (their new lines and yours, yours first where both changed the same lines) and Overwrite with mine. Depot files now also report who last changed them when Depot says so (plugin SDK 3.44.0, Depot plugin 0.30.0).
 - added: **preview tabs and one tab per item for plugin workspaces.** A plugin can open a workspace for one item (a file,
   say): opening the same item again brings its tab forward instead of adding another. A preview tab has an italic title and a
   "preview" label, and the next preview replaces it in the same place; double-click it to keep it open. A plugin can also set

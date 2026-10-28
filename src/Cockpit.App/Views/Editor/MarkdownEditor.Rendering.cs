@@ -22,6 +22,10 @@ public sealed partial class MarkdownEditor
     private static IBrush Accent => ThemeBrush.Resolve("CockpitAccentBrush", "#2563eb");
     private static IBrush Link => ThemeBrush.Resolve("CockpitClickablePathFgBrush", "#93b4f7");
     private static IBrush CaretLineFill => ThemeBrush.Resolve("CockpitAccentSelectionBrush", "#292563eb");
+    private static IBrush CompareTheirsFill => ThemeBrush.Resolve("CockpitStatusErrorChipTintBrush", "#26d64545");
+    private static IBrush CompareMineFill => ThemeBrush.Resolve("CockpitStatusDoneChipTintBrush", "#265aa576");
+    private static IBrush CompareTheirsBar => ThemeBrush.Resolve("CockpitStatusErrorBrush", "#d64545");
+    private static IBrush CompareMineBar => ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5aa576");
     private static IBrush CaretLineEdge => ThemeBrush.Resolve("CockpitAccentRingTintBrush", "#402563eb");
 
     // A table and front matter show their Markdown while the caret is anywhere inside them, not just on its line.
@@ -458,7 +462,7 @@ public sealed partial class MarkdownEditor
         // Shared with the gutter, so a fill runs on under the text's left edge and the bars sit beside the text, not on it.
         internal static void Paint(MarkdownEditor owner, TextView textView, DrawingContext drawingContext, double width, bool gutter)
         {
-            if (owner.ShowSource || !textView.VisualLinesValid)
+            if (!textView.VisualLinesValid)
             {
                 return;
             }
@@ -466,9 +470,15 @@ public sealed partial class MarkdownEditor
             foreach (var visual in textView.VisualLines)
             {
                 var number = visual.FirstDocumentLine.LineNumber;
-                var kind = owner.Classify(number);
                 var top = Math.Round(visual.VisualTop - textView.ScrollOffset.Y);
                 var row = new Rect(0, top, width, Math.Round(visual.VisualTop + visual.Height - textView.ScrollOffset.Y) - top);
+                _PaintCompare(owner, drawingContext, number, row, gutter);
+                if (owner.ShowSource)
+                {
+                    continue;
+                }
+
+                var kind = owner.Classify(number);
                 if (number == owner.CaretLine)
                 {
                     drawingContext.FillRectangle(CaretLineFill, row);
@@ -502,6 +512,27 @@ public sealed partial class MarkdownEditor
                     _Badge(drawingContext, visual, row, label);
                 }
             }
+        }
+
+        // Red for a line only the source has, green for a line only the editor has, with who wrote it.
+        private static void _PaintCompare(MarkdownEditor owner, DrawingContext drawingContext, int number, Rect row, bool gutter)
+        {
+            if (owner._compare is not { } compare || number > compare.Count || compare[number - 1].Change == LineChange.Same)
+            {
+                return;
+            }
+
+            var theirs = compare[number - 1].Change == LineChange.OnlyTheirs;
+            if (gutter)
+            {
+                drawingContext.FillRectangle(theirs ? CompareTheirsBar : CompareMineBar, row.WithWidth(3));
+                return;
+            }
+
+            drawingContext.FillRectangle(theirs ? CompareTheirsFill : CompareMineFill, row);
+            var who = new FormattedText(theirs ? owner._compareWho : "you", CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                new Typeface(FontFamily.Default, weight: FontWeight.Medium), 10.5, TextFaint);
+            drawingContext.DrawText(who, new Point(row.Right - who.Width - 12, row.Top + 2));
         }
 
         private static void _Badge(DrawingContext drawingContext, VisualLine visual, Rect row, string label)
