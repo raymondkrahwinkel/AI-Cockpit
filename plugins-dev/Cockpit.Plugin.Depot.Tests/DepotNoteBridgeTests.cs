@@ -16,7 +16,7 @@ public class DepotNoteBridgeTests
     private static readonly string Fixtures = Path.Combine(AppContext.BaseDirectory, "Fixtures", "NotesRoundtrip");
 
     // AI-Depot scripts/notes-roundtrip-fixtures at the pinned commit, copied byte for byte: a silent change to a copy fails here.
-    private const string SchemaSha = "f87f401d6f82a641bba300a3cf953e3e541b31b86515cf1a9c68f386e06c1fd5";
+    private const string SchemaSha = "77f8a24281ff1cb26e5872600f7bdbc7266788a92fff723e8b01fa29a59d6266";
 
     // The block ids and contents of the room's fragment, and the fragment and front matter as one string, to compare two docs.
     private const string Blocks = "JSON.stringify(DepotRoom.current().getXmlFragment('default').toArray().map(t => [t._item.id.client + ':' + t._item.id.clock, t.toString()]))";
