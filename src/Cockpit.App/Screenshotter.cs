@@ -173,6 +173,12 @@ internal static partial class Screenshotter
         // AC-1829: the real window while projects and sessions are still loading.
         ["main-loading"] = (_, _) => _MainWhileLoading(),
         ["splash-fast"] = (_, _) => SplashScene.Fast(),
+        ["splash-unlock"] = (_, _) => SplashScene.Unlock(),
+        ["splash-unlock-busy"] = (_, _) => SplashScene.Unlock(busy: true),
+        ["splash-unlock-wrong"] = (_, _) => SplashScene.Unlock(wrong: true),
+        ["splash-unlocked"] = (_, _) => SplashScene.Unlock(unlocked: true),
+        ["splash-unlocked-plugins"] = (_, _) => SplashScene.Unlock(unlocked: true, plugins: true),
+        ["splash-unlock-reset"] = (_, _) => UnlockWindow.CreateResetConfirmation(),
         ["splash-loading"] = (_, _) => SplashScene.Loading(),
         ["splash-slow"] = (_, _) => SplashScene.Slow(),
         ["splash-skipped"] = (_, _) => SplashScene.Skipped(),
@@ -1188,6 +1194,10 @@ internal static partial class Screenshotter
     {
         var window = BuildScene(scene, width, height);
         window.Show();
+        if (window is SplashWindow { DataContext: ViewModels.SplashViewModel { IsUnlocking: true } } splash)
+        {
+            splash.TakeFocus();
+        }
 
         // The selection surface's modes are states an operator drives it into, not windows that open in them, so
         // the scene reaches them here — after the window is up and has a size to measure positions against.

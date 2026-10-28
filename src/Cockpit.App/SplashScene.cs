@@ -12,6 +12,38 @@ internal static class SplashScene
 
     public static Window Fast() => _Build(_ => { });
 
+    public static Window Unlock(bool busy = false, bool wrong = false, bool unlocked = false, bool plugins = false)
+    {
+        var sequence = new StartupSequence();
+        sequence.AddCore("Loading settings…", _ => Task.CompletedTask);
+        sequence.AddCore("Loading plugins…", _ => Task.CompletedTask);
+        sequence.RunPendingAsync().GetAwaiter().GetResult();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var step = sequence.AddOperatorStep("Unlocking…", _ => gate.Task);
+        var run = sequence.RunPendingAsync();
+        var model = new SplashViewModel(sequence);
+        model.BeginUnlock(new UnlockViewModel
+        {
+            IsBusy = busy,
+            Password = busy ? "example-key" : "",
+            Error = wrong ? "That password does not open this configuration." : null,
+        });
+        if (unlocked)
+        {
+            gate.SetResult();
+            run.GetAwaiter().GetResult();
+            model.EndUnlock();
+            if (plugins)
+            {
+                sequence.AddPlugin("Connecting to Depot…", _ => new TaskCompletionSource().Task);
+                _ = sequence.RunPendingAsync();
+            }
+        }
+
+        model.Refresh();
+        return new SplashWindow(model, null);
+    }
+
     public static Window Loading() => _Build(scene =>
     {
         scene.Finish("Loading settings…", "Loading plugins…");

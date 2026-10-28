@@ -27,6 +27,8 @@ public sealed class StartupStep
     // Never given up on: the cockpit cannot open without it.
     public bool Essential { get; }
 
+    public bool AwaitsOperator { get; internal init; }
+
     public StartupStepState State { get; internal set; }
 
     public DateTimeOffset? StartedAt { get; internal set; }
@@ -69,9 +71,11 @@ public sealed class StartupSequence(TimeProvider? clock = null, TimeSpan? slowAf
 
     public StartupStep AddPlugin(string label, Func<CancellationToken, Task> run) => _Add(label, run, essential: false, plugin: true);
 
-    private StartupStep _Add(string label, Func<CancellationToken, Task> run, bool essential, bool plugin)
+    public StartupStep AddOperatorStep(string label, Func<CancellationToken, Task> run) => _Add(label, run, essential: true, plugin: false, awaitsOperator: true);
+
+    private StartupStep _Add(string label, Func<CancellationToken, Task> run, bool essential, bool plugin, bool awaitsOperator = false)
     {
-        var step = new StartupStep(label, run, essential, plugin);
+        var step = new StartupStep(label, run, essential, plugin) { AwaitsOperator = awaitsOperator };
         lock (_gate)
         {
             _steps.Add(step);
@@ -125,7 +129,7 @@ public sealed class StartupSequence(TimeProvider? clock = null, TimeSpan? slowAf
         var work = Task.Run(() => step.Run(cancellation.Token));
         try
         {
-            if (!await _FinishesWithinAsync(work, SlowAfter).ConfigureAwait(false))
+            if (!step.AwaitsOperator && !await _FinishesWithinAsync(work, SlowAfter).ConfigureAwait(false))
             {
                 _Move(step, StartupStepState.Slow);
                 if (!step.Essential && !await _FinishesWithinAsync(work, GiveUpAfter - SlowAfter).ConfigureAwait(false))

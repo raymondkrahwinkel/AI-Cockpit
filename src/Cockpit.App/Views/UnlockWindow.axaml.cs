@@ -56,10 +56,13 @@ public partial class UnlockWindow : Window
             return;
         }
 
-        // Spelled out rather than softened: this is the one door out of a forgotten password, and it costs the
-        // credentials. Everything else the operator configured survives, which is the part that makes it usable
-        // rather than a euphemism for "start over".
-        var confirmation = new ConfirmationDialog
+        if (await ConfirmResetAsync(this))
+        {
+            await viewModel.ResetAsync();
+        }
+    }
+
+    internal static ConfirmationDialog CreateResetConfirmation() => new()
         {
             DataContext = new ConfirmationDialogViewModel(
                 "Start without your credentials",
@@ -69,9 +72,5 @@ public partial class UnlockWindow : Window
                 "Empty credentials"),
         };
 
-        if (await confirmation.ShowDialog<bool>(this))
-        {
-            await viewModel.ResetAsync();
-        }
-    }
+    internal static Task<bool> ConfirmResetAsync(Window owner) => CreateResetConfirmation().ShowDialog<bool>(owner);
 }

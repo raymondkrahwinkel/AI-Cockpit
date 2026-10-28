@@ -42,6 +42,36 @@ public class SecurityOptionsViewTests
         Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text), text => text != null && text.Contains("encrypted"));
 
         window.Close();
+
+        // AC-1878, layer 2 view: startup asks in the splash; the separate window remains for screen lock.
+        var sequence = new Core.Startup.StartupSequence();
+        var splashModel = new SplashViewModel(sequence);
+        var unlock = new UnlockViewModel { Password = "temporary" };
+        splashModel.BeginUnlock(unlock);
+        var splash = new SplashWindow(splashModel, null);
+        splash.Show();
+        var splashPassword = splash.GetVisualDescendants().OfType<TextBox>().Single(box => box.Name == "PasswordBox");
+        Assert.True(splashPassword.IsVisible);
+        Assert.NotEqual('\0', splashPassword.PasswordChar);
+        Assert.Equal("temporary", splashPassword.Text);
+        Assert.Equal("Unlock to continue", splashModel.Headline);
+        unlock.IsBusy = true;
+        Assert.False(splashPassword.IsEffectivelyEnabled);
+        Assert.Equal("Checking the password", splashModel.Detail);
+        unlock.IsBusy = false;
+        var forgot = splash.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "I forgot my password"));
+        forgot.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        var confirmation = Assert.Single(splash.OwnedWindows);
+        Assert.IsType<ConfirmationDialog>(confirmation);
+        var cancel = confirmation.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Cancel"));
+        cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Assert.True(splashModel.IsUnlocking);
+        Assert.True(splash.IsVisible);
+        splashModel.EndUnlock();
+        Assert.False(splashPassword.IsEffectivelyVisible);
+        Assert.Empty(unlock.Password);
+        Assert.Equal("Opening your cockpit…", splashModel.Headline);
+        splash.Close();
     });
 
     [Fact]
