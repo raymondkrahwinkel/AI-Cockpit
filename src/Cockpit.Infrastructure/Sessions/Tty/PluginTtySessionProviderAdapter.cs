@@ -99,7 +99,7 @@ internal sealed class PluginTtySessionProviderAdapter(
             // wait the budget promises.
             using var budget = new CancellationTokenSource(RenewalBudget);
 
-            foreach (var server in selected.Where(McpConfigFile.IsAgentEligible))
+            var resolved = Task.WhenAll(selected.Where(McpConfigFile.IsAgentEligible).Select(server => Task.Run(() =>
             {
                 // The endpoint first, for the same reason as on the SDK route: behind it the launch never writes a
                 // token, so it only has to establish that a sign-in exists; without it the token goes into the
@@ -111,12 +111,12 @@ internal sealed class PluginTtySessionProviderAdapter(
                     // Same reasoning as the SDK route's PluginSessionDriverAdapter: handing it over anyway would only
                     // move the refusal into the CLI's own initialize, reading as a broken server rather than an
                     // absent one — the operator gets the coordinator's line naming the cause and action instead.
-                    continue;
+                    return null;
                 }
 
                 if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
                 {
-                    servers.Add(mapped);
+                    return mapped;
                 }
                 else
                 {
@@ -124,7 +124,9 @@ internal sealed class PluginTtySessionProviderAdapter(
                         "MCP server {Name} is agent-eligible but not mountable (no url for Http / no command for Stdio); it was skipped.",
                         server.Name);
                 }
-            }
+                return null;
+            }))).GetAwaiter().GetResult();
+            servers.AddRange(resolved.OfType<PluginMcpServer>());
             var canDelegate = selected.Any(server =>
                 server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
             return (servers, canDelegate);

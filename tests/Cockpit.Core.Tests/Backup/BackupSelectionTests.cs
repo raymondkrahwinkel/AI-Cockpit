@@ -13,7 +13,7 @@ namespace Cockpit.Core.Tests.Backup;
 public class BackupSelectionTests
 {
     [Fact]
-    public void BackupPluginSelection_KeepsAllNoneAndChosenDistinct()
+    public void BackupAndRestoreSelection_KeepAllNoneAndChosenDistinct()
     {
         var options = new BackupOptions();
 
@@ -29,15 +29,10 @@ public class BackupSelectionTests
         options = new BackupOptions(Plugins: []);
 
         Assert.False(options.Includes("youtrack"));
-    }
+        var restore = new RestoreOptions(Settings: false, Plugins: ["youtrack"]);
 
-    [Fact]
-    public void ARestore_TouchesOnlyWhatWasTicked()
-    {
-        var options = new RestoreOptions(Settings: false, Plugins: ["youtrack"]);
-
-        Assert.False(options.Settings, "this cockpit's own profiles and settings stay exactly as they are");
-        Assert.True(options.Includes("youtrack"));
-        Assert.False(options.Includes("workflows"));
+        Assert.False(restore.Settings, "this cockpit's own profiles and settings stay exactly as they are");
+        Assert.True(restore.Includes("youtrack"));
+        Assert.False(restore.Includes("workflows"));
     }
 }

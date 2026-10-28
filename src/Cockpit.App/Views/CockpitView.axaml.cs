@@ -442,9 +442,12 @@ public partial class CockpitView : UserControl
 
         var open = cockpit.DockPanels.FirstOrDefault(panel => panel.Id == cockpit.EffectiveOpenDockPanelId);
         var offersUndock = open is not null && cockpit.DockHost.OffersUndock(open);
+        var headerActions = open?.HeaderActions ?? [];
         DockPanelUndock.IsVisible = offersUndock;
         DockPanelBack.IsVisible = cockpit.ShowBackToAssistant;
-        DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant;
+        DockPanelHeaderActions.SetActions(headerActions, (action, exception) =>
+            cockpit.ReportToolbarActionFailure(open?.Id.Split('.')[0] ?? string.Empty, action.Title, exception.Message));
+        DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant || headerActions.Count > 0;
         DockPanelHeaderTitle.Text = open?.Title;
     }
 

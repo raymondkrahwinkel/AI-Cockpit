@@ -1,5 +1,7 @@
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Threading;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.Docking;
 using Cockpit.App.Services;
@@ -18,6 +20,7 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Docking;
 using Material.Icons;
 using NSubstitute;
@@ -43,7 +46,8 @@ public sealed class DockPanelKeepAliveFloatTests
             LayoutSettings? saved = null;
             var layout = _LayoutStore(new LayoutSettings { AssistantDocked = true });
             layout.When(store => store.SaveAsync(Arg.Any<LayoutSettings>())).Do(call => saved = call.Arg<LayoutSettings>());
-            var cockpit = _Cockpit(layout, _Panels());
+            var markedAllRead = false;
+            var cockpit = _Cockpit(layout, _Panels(() => markedAllRead = true));
             cockpit.SimpleView = simple;
 
             var main = new Window { Width = 1100, Height = 760, Content = new CockpitView { DataContext = cockpit } };
@@ -55,6 +59,16 @@ public sealed class DockPanelKeepAliveFloatTests
                 Dispatcher.UIThread.RunJobs();
                 var view = _RailContent(main);
                 Assert.NotNull(view);
+
+                var markAllRead = main.GetVisualDescendants().OfType<Button>().Single(button => AutomationProperties.GetName(button) == "Mark all read");
+                markAllRead.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Dispatcher.UIThread.RunJobs();
+                Assert.True(markedAllRead);
+
+                await cockpit.ToggleDockPanelCommand.ExecuteAsync("sample.other");
+                Dispatcher.UIThread.RunJobs();
+                Assert.DoesNotContain(main.GetVisualDescendants().OfType<Button>(), button => AutomationProperties.GetName(button) == "Mark all read");
+                await cockpit.ToggleDockPanelCommand.ExecuteAsync(KeptId);
 
                 if (simple)
                 {
@@ -96,7 +110,7 @@ public sealed class DockPanelKeepAliveFloatTests
 
                 // A restart reads the stand back off what was saved: floating, so a window and no tab.
                 Assert.NotNull(saved);
-                var restarted = _Cockpit(_LayoutStore(saved), _Panels());
+                var restarted = _Cockpit(_LayoutStore(saved), _Panels(static () => { }));
                 Assert.True(restarted.IsDockPanelFloating(KeptId));
 
                 // The load replaces the default stand, where the assistant floats: docked in the file, docked after it.
@@ -120,7 +134,7 @@ public sealed class DockPanelKeepAliveFloatTests
         });
     }
 
-    private static DockPanelRegistry _Panels()
+    private static DockPanelRegistry _Panels(Action markAllRead)
     {
         var panels = new DockPanelRegistry();
         panels.Register(new DockPanelRegistration("sample.other", "Other", MaterialIconKind.ViewDashboardOutline, () => new TextBlock()));
@@ -128,6 +142,11 @@ public sealed class DockPanelKeepAliveFloatTests
         {
             KeepAlive = true,
             CanFloat = true,
+            HeaderActions = [new ToolbarAction("Mark all read", MaterialIconKind.CheckAll, () =>
+            {
+                markAllRead();
+                return Task.CompletedTask;
+            })],
         });
         return panels;
     }

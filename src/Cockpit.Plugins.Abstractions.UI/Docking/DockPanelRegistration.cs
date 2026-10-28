@@ -40,4 +40,10 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
     /// Host 0.111.0 and later; an older host ignores it.
     /// </summary>
     public bool CanFloat { get; init; }
+
+    /// <summary>
+    /// Buttons the host draws in the active dock panel's rail header, immediately left of undock. Empty by default.
+    /// Host 0.133.0 and later; an older host ignores them.
+    /// </summary>
+    public IReadOnlyList<ToolbarAction> HeaderActions { get; init; } = [];
 }
