@@ -200,6 +200,67 @@ export function mirrorIsExact() {
   return mirror === readNote();
 }
 
+// G5: a change that did not come from the host (a remote update, or an undo) goes back to the host as text patches on the mirror.
+// Only the top-level blocks the change touched are serialized again; a change to the list of blocks itself takes the full text.
+let undoManager;
+export function trackUndo() {
+  // Tracks only transactions with origin null: the host's own edits (`edit`). Remote updates and the seed carry their own origin.
+  undoManager = new Y.UndoManager(fragment(), { captureTimeout: 0 });
+}
+function minimalPatch(offset, before, after) {
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) {
+    start++;
+  }
+  let end = 0;
+  while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) {
+    end++;
+  }
+  return { offset: offset + start, removed: before.length - start - end, inserted: after.slice(start, after.length - end) };
+}
+function patchesFor(change) {
+  const touched = new Set();
+  let structural = false;
+  const observer = (events) => events.forEach((event) => {
+    if (event.target === fragment()) {
+      structural = true;
+    } else {
+      touched.add(event.path[0]);
+    }
+  });
+  fragment().observeDeep(observer);
+  try {
+    change();
+  } finally {
+    fragment().unobserveDeep(observer);
+  }
+  if (touched.size === 0 && !structural) {
+    return [];
+  }
+  const old = mirror;
+  rebind();
+  if (structural) {
+    loadMirror();
+    return [minimalPatch(0, old, mirror)];
+  }
+  // Last block first, so each patch's offset is still right when the host applies them in order.
+  const patches = [...touched].sort((a, b) => b - a).map((index) => {
+    const [start, end] = ranges[index];
+    const text = blockText(pmDoc.child(index));
+    mirror = mirror.slice(0, start) + text + mirror.slice(end);
+    const delta = text.length - (end - start);
+    ranges = ranges.map((r, i) => (i === index ? [start, start + text.length] : i > index && r ? [r[0] + delta, r[1] + delta] : r));
+    return minimalPatch(start, old.slice(start, end), text);
+  });
+  return patches;
+}
+export function applyRemote(base64) {
+  return JSON.stringify(patchesFor(() => Y.applyUpdate(doc, fromBase64(base64), REMOTE)));
+}
+export function undo() {
+  return JSON.stringify(patchesFor(() => undoManager.undo()));
+}
+
 /** G6: a ProseMirror position as relativePositionToJSON, and back. */
 export function relativeAt(pos) {
   if (!pmDoc) {
