@@ -58,6 +58,32 @@
     <EmbeddedResource Include="Notes/Live/Bundle/room.bundle.js" />
   </ItemGroup>
 
+  <!-- AC-1899: the room bundle's pin, the AI-Depot commit it is built from and its SHA-256 (a schema hash alone misses a change of marked,
+       AC-1896 G3). Notes/Live/Bundle/build.mjs builds it and prints both; moving the pin is changing both here. -->
+  <PropertyGroup>
+    <DepotBundleCommit>6fe38ee8190553341b909770d12c48a57c202bbb</DepotBundleCommit>
+    <DepotBundleSha256>40809ba2f67f0065925f0618a44892296fd5c4488778a582bf8374d25756653d</DepotBundleSha256>
+  </PropertyGroup>
+
+  <!-- The build refuses a bundle that is not the pinned one, and takes the schema version Join sends (protocol §5.4: SHA-256[:12] of
+       schema.json) from the schema.json build.mjs copied beside it, into the assembly's metadata for DepotNoteSchema. -->
+  <Target Name="DepotRoomBundlePin" BeforeTargets="GetAssemblyAttributes">
+    <GetFileHash Files="Notes/Live/Bundle/room.bundle.js" Algorithm="SHA256" HashEncoding="hex">
+      <Output TaskParameter="Hash" PropertyName="_DepotBundleHash" />
+    </GetFileHash>
+    <Error Condition="'$(_DepotBundleHash.ToLowerInvariant())' != '$(DepotBundleSha256)'"
+           Text="Notes/Live/Bundle/room.bundle.js is not the bundle of AI-Depot $(DepotBundleCommit) (sha256 $(_DepotBundleHash.ToLowerInvariant()), pinned $(DepotBundleSha256)). Rebuild it with Notes/Live/Bundle/build.mjs." />
+    <GetFileHash Files="Notes/Live/Bundle/schema.json" Algorithm="SHA256" HashEncoding="hex">
+      <Output TaskParameter="Hash" PropertyName="_DepotSchemaHash" />
+    </GetFileHash>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>DepotNoteSchema</_Parameter1>
+        <_Parameter2>$(_DepotSchemaHash.ToLowerInvariant().Substring(0, 12))</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- Lets Cockpit.Plugin.Depot.Tests unit-test the registration without a host, same pattern as the
          YouTrack and GitHub Issues plugins' project fields. -->

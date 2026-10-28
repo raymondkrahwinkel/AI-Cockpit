@@ -4,19 +4,38 @@ using Jint.Native;
 
 namespace Cockpit.Plugin.Depot.Notes.Live;
 
-// The room's Y.Doc, behind one actor: every call is queued behind the one before it. Two transactions at once lost updates
-// silently in AC-1576, and a Jint engine is single-threaded anyway.
+// One text change in UTF-16 characters: replace Length at Offset with Text. In a list each op applies to what the one before left.
+// The shape of LB-2's host contract (AC-1898), kept inside the plugin until that contract is merged.
+internal sealed record DepotNoteTextOp(int Offset, int Length, string Text);
+
+// The room's Y.Doc and the bridge to the host's Markdown (the mirror), behind one actor: every call is queued behind the one before
+// it. Two transactions at once lost updates silently in AC-1576, and a Jint engine is single-threaded anyway.
 internal interface IDepotNoteRoom : IAsyncDisposable
 {
-    Task ApplyAsync(byte[] update, CancellationToken cancellationToken);
+    // A row or an update from the hub; once the mirror is loaded, what it changed in the host's text.
+    Task<IReadOnlyList<DepotNoteTextOp>> ApplyAsync(byte[] update, CancellationToken cancellationToken);
 
     // What the hub lacks: this doc beyond the state of `known` (rows and early updates), or null when that is nothing.
     Task<byte[]?> MissingAsync(IReadOnlyList<byte[]> known, CancellationToken cancellationToken);
 
-    Task<DepotNoteText> ReadAsync(CancellationToken cancellationToken);
-}
+    Task<bool> IsEmptyAsync(CancellationToken cancellationToken);
 
-internal sealed record DepotNoteText(string Fragment, string Frontmatter);
+    Task SeedAsync(string markdown, CancellationToken cancellationToken);
+
+    // Protocol §5.3: the rows draw nothing while the file has text, so the room needs a Refill.
+    Task<bool> NeedsRefillAsync(string markdown, CancellationToken cancellationToken);
+
+    // Builds the mirror from the doc and returns the ops that turn `previous`, the host's text so far, into it.
+    Task<IReadOnlyList<DepotNoteTextOp>> LoadAsync(string previous, CancellationToken cancellationToken);
+
+    Task<string> ReadAsync(CancellationToken cancellationToken);
+
+    // The host's ops, applied to the mirror and the doc as one local transaction; returns the v1 updates to send.
+    Task<IReadOnlyList<byte[]>> EditAsync(IReadOnlyList<DepotNoteTextOp> ops, CancellationToken cancellationToken);
+
+    // The whole doc as one v1 update, for Compact.
+    Task<byte[]> SnapshotAsync(CancellationToken cancellationToken);
+}
 
 internal delegate IDepotNoteRoom DepotNoteRoomFactory(uint clientId);
 
@@ -25,14 +44,15 @@ internal delegate IDepotNoteRoom DepotNoteRoomFactory(uint clientId);
 internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
 {
     private const string Bundle = "Cockpit.Plugin.Depot.Notes.Live.Bundle.room.bundle.js";
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     // ponytail: one engine per room (about 25 MiB each); one shared engine with several docs when many rooms are open at once.
     private readonly SemaphoreSlim _actor = new(1, 1);
     private Engine? _engine;
     private JsValue? _room;
 
-    public Task ApplyAsync(byte[] update, CancellationToken cancellationToken) =>
-        _CallAsync("apply", cancellationToken, Convert.ToBase64String(update));
+    public async Task<IReadOnlyList<DepotNoteTextOp>> ApplyAsync(byte[] update, CancellationToken cancellationToken) =>
+        _Ops(await _CallAsync("apply", cancellationToken, Convert.ToBase64String(update)).ConfigureAwait(false));
 
     public async Task<byte[]?> MissingAsync(IReadOnlyList<byte[]> known, CancellationToken cancellationToken)
     {
@@ -43,13 +63,27 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
         return diff.Length <= 2 ? null : diff;
     }
 
-    public async Task<DepotNoteText> ReadAsync(CancellationToken cancellationToken)
+    public async Task<bool> IsEmptyAsync(CancellationToken cancellationToken) =>
+        await _CallAsync("isEmpty", cancellationToken).ConfigureAwait(false) == "true";
+
+    public Task SeedAsync(string markdown, CancellationToken cancellationToken) => _CallAsync("seed", cancellationToken, markdown);
+
+    public async Task<bool> NeedsRefillAsync(string markdown, CancellationToken cancellationToken) =>
+        await _CallAsync("needsRefill", cancellationToken, markdown).ConfigureAwait(false) == "true";
+
+    public async Task<IReadOnlyList<DepotNoteTextOp>> LoadAsync(string previous, CancellationToken cancellationToken) =>
+        _Ops(await _CallAsync("load", cancellationToken, previous).ConfigureAwait(false));
+
+    public Task<string> ReadAsync(CancellationToken cancellationToken) => _CallAsync("text", cancellationToken);
+
+    public async Task<IReadOnlyList<byte[]>> EditAsync(IReadOnlyList<DepotNoteTextOp> ops, CancellationToken cancellationToken)
     {
-        using var document = JsonDocument.Parse(await _CallAsync("read", cancellationToken).ConfigureAwait(false));
-        return new DepotNoteText(
-            document.RootElement.GetProperty("fragment").GetString() ?? string.Empty,
-            document.RootElement.GetProperty("frontmatter").GetString() ?? string.Empty);
+        var updates = await _CallAsync("edit", cancellationToken, JsonSerializer.Serialize(ops, Json)).ConfigureAwait(false);
+        return [.. (JsonSerializer.Deserialize<string[]>(updates) ?? []).Select(Convert.FromBase64String)];
     }
+
+    public async Task<byte[]> SnapshotAsync(CancellationToken cancellationToken) =>
+        Convert.FromBase64String(await _CallAsync("snapshot", cancellationToken).ConfigureAwait(false));
 
     public ValueTask DisposeAsync()
     {
@@ -58,7 +92,14 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
         return ValueTask.CompletedTask;
     }
 
-    private async Task<string> _CallAsync(string function, CancellationToken cancellationToken, params object[] arguments)
+    // A script in the room's engine, where the bundle is `DepotRoom`: how the tests reach the converter and the doc (DepotRoom.current()).
+    internal Task<string> EvaluateAsync(string script, CancellationToken cancellationToken) =>
+        _InActorAsync((engine, _) => engine.Evaluate(script).ToString(), cancellationToken);
+
+    private Task<string> _CallAsync(string function, CancellationToken cancellationToken, params object[] arguments) =>
+        _InActorAsync((engine, room) => engine.Invoke(room.AsObject().Get(function), arguments).ToString(), cancellationToken);
+
+    private async Task<string> _InActorAsync(Func<Engine, JsValue, string> call, CancellationToken cancellationToken)
     {
         await _actor.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -66,7 +107,7 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
             return await Task.Run(() =>
             {
                 var (engine, room) = _Room();
-                return engine.Invoke(room.AsObject().Get(function), arguments).ToString();
+                return call(engine, room);
             }, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -74,6 +115,8 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
             _actor.Release();
         }
     }
+
+    private static IReadOnlyList<DepotNoteTextOp> _Ops(string json) => JsonSerializer.Deserialize<DepotNoteTextOp[]>(json, Json) ?? [];
 
     private (Engine Engine, JsValue Room) _Room()
     {

@@ -1,8 +1,11 @@
-# Room bundle pin (AC-1897)
+# Room bundle pin (AC-1899)
 
-`room.bundle.js` is `room.js` plus the yjs of AI-Depot `dev` @ `6fe38ee8` (`src/Depot.Api/ClientApp/notes`, `npm ci` from its lockfile),
-built with `node build.mjs <that notes dir> room.bundle.js`.
+`room.bundle.js` is `room.js` with Depot's own `markdown.ts`, yjs and y-tiptap, built from one AI-Depot commit. `schema.json` is that
+commit's `scripts/notes-roundtrip-fixtures/schema.json`; its SHA-256[:12] is the schema version every Join sends.
 
-sha256: `a58d3b383bc240df05d098a604c5b13b79e6984f096f8ce257ee44a9da0357e3`
+The pin is `DepotBundleCommit` and `DepotBundleSha256` in `Cockpit.Plugin.Depot.csproj`, and the build fails on any other bundle.
 
-Updating it is a deliberate step: change the commit and the sha together. AC-1899 replaces this with the full bridge pipeline.
+- **Check the pin:** `node build.mjs` rebuilds the pinned commit from a clean clone (`npm ci` from its lockfile, its own esbuild) and
+  fails unless the bytes are the pinned ones.
+- **Move the pin:** `node build.mjs <commit>`. It fails when the bundle's schema is not that commit's `schema.json`, and otherwise
+  prints the new sha256: put the commit and the sha in the csproj together. Moving it is a deliberate step, never part of other work.

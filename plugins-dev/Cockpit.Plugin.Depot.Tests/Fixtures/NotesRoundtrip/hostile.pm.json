@@ -1,0 +1,182 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": {
+        "level": 1
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Things that broke a serializer once"
+        }
+      ]
+    },
+    {
+      "type": "orderedList",
+      "content": [
+        {
+          "type": "listItem",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Run it:"
+                }
+              ]
+            },
+            {
+              "type": "codeBlock",
+              "attrs": {
+                "language": "bash"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "dotnet run"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "listItem",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Then show a block that shows a block:"
+                }
+              ]
+            },
+            {
+              "type": "codeBlock",
+              "attrs": {
+                "language": "markdown"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "```ts\nconst x = 1;\n```"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "Open "
+        },
+        {
+          "type": "text",
+          "text": "My File",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "My File.md",
+                "title": null
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " but not "
+        },
+        {
+          "type": "text",
+          "text": "x",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "a.md",
+                "title": null
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " or "
+        },
+        {
+          "type": "text",
+          "text": "a",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "b.md",
+                "title": "plain title"
+              }
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "."
+        }
+      ]
+    },
+    {
+      "type": "image",
+      "attrs": {
+        "src": "my pic.png",
+        "title": "a \"title\"",
+        "alt": "a pic"
+      }
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "dir\\",
+          "marks": [
+            {
+              "type": "bold"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " and "
+        },
+        {
+          "type": "text",
+          "text": "back\\",
+          "marks": [
+            {
+              "type": "code"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": " slash, a&nbsp;b &copy; sign and 2026. mid-line."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        {
+          "type": "text",
+          "text": "1986. was a year, as a line start."
+        }
+      ]
+    }
+  ]
+}

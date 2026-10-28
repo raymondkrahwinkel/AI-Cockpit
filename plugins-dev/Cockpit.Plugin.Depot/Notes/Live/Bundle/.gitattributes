@@ -1,0 +1,3 @@
+# AC-1899: the build hashes these bytes (the bundle pin, the schema version), so no checkout may change their line endings.
+room.bundle.js -text
+schema.json -text

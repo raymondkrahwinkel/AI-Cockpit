@@ -12,7 +12,11 @@ internal sealed record DepotNoteRow(long Seq, byte[] Data);
 
 internal sealed record DepotNoteJoinResult(
     string DocumentId, string Role, IReadOnlyList<DepotNoteRow> Updates, bool Seed, bool AwaitingSeed, string? Epoch, bool Stale,
-    bool SchemaMismatch, string? Saver = null);
+    bool SchemaMismatch, string? Saver = null, string Markdown = "", int CompactAfter = DepotNoteJoinResult.DefaultCompactAfter)
+{
+    // Protocol §7, for a hub that leaves the field out.
+    public const int DefaultCompactAfter = 200;
+}
 
 // Args are the event's arguments as the hub sends them (§4); `update` is (documentId, byte[]), `refused` is (code) alone.
 internal sealed record DepotNoteEvent(string Kind, object?[] Args)
@@ -30,6 +34,14 @@ internal interface IDepotNotesHub : IAsyncDisposable
     Task<DepotNoteJoinResult> JoinAsync(DepotNoteJoinRequest request, CancellationToken cancellationToken);
 
     Task UpdateAsync(string documentId, byte[] update, CancellationToken cancellationToken);
+
+    // A person typed: before the Update that carries it, or the room is never seen as dirty and never saved (protocol §6).
+    Task EditedAsync(string documentId, CancellationToken cancellationToken);
+
+    Task CompactAsync(string documentId, byte[] snapshot, CancellationToken cancellationToken);
+
+    // True when the room is refilled from the file; a `reset` then follows.
+    Task<bool> RefillAsync(string documentId, CancellationToken cancellationToken);
 }
 
 internal delegate IDepotNotesHub DepotNotesHubFactory(DepotConnectionRegistration connection, string userId, Func<Exception?, Task> onClosed);
@@ -99,11 +111,21 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
 
         return new DepotNoteJoinResult(
             Text("documentId") ?? string.Empty, Text("role") ?? "viewer", rows, Flag("seed"), Flag("awaitingSeed"), Text("epoch"), Flag("stale"),
-            Flag("schemaMismatch"), Text("saver"));
+            Flag("schemaMismatch"), Text("saver"), Text("markdown") ?? string.Empty,
+            answer.TryGetProperty("compactAfter", out var compactAfter) && compactAfter.TryGetInt32(out var after) ? after : DepotNoteJoinResult.DefaultCompactAfter);
     }
 
     public Task UpdateAsync(string documentId, byte[] update, CancellationToken cancellationToken) =>
         _connection.InvokeAsync("Update", documentId, update, cancellationToken);
+
+    public Task EditedAsync(string documentId, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("Edited", documentId, cancellationToken);
+
+    public Task CompactAsync(string documentId, byte[] snapshot, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("Compact", documentId, snapshot, cancellationToken);
+
+    public Task<bool> RefillAsync(string documentId, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync<bool>("Refill", documentId, cancellationToken);
 
     public ValueTask DisposeAsync() => _connection.DisposeAsync();
 }
