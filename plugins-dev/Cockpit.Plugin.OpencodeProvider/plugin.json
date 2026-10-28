@@ -1,7 +1,7 @@
 {
   "id": "opencode-provider",
   "name": "opencode Provider (ACP)",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "entryAssembly": "Cockpit.Plugin.OpencodeProvider.dll",
   "entryType": "Cockpit.Plugin.OpencodeProvider.OpencodeProviderPlugin",
   "uiAssembly": "Cockpit.Plugin.OpencodeProvider.UI.dll",

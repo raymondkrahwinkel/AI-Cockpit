@@ -1,7 +1,7 @@
 {
   "id": "git-status",
   "name": "Git status",
-  "version": "1.9.5",
+  "version": "1.9.6",
   "entryAssembly": "Cockpit.Plugin.GitStatus.dll",
   "entryType": "Cockpit.Plugin.GitStatus.GitStatusPlugin",
   "uiAssembly": "Cockpit.Plugin.GitStatus.UI.dll",

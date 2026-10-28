@@ -15,7 +15,7 @@
     <!-- Full refs (unlike the plugin's compile-only ones): CiStatusHeaderControlTests and
          CiWorkflowRunsDockPanelRegistrarTests construct real Avalonia media/icon values and an ICockpitUiHost
          fake, so a runtime copy needs to be present, which the host would otherwise supply. -->
-    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NSubstitute" Version="6.2.0" />

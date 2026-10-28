@@ -17,9 +17,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
     <!-- The candidate: wieslawsoltes/NodeEditor. Alone among the node editors it is published for Avalonia 12
          (12.0.0, April 2026); NodifyAvalonia is still on Avalonia 11.1 and FlowGraph — the one the research
          recommended — is not on NuGet at all. -->
