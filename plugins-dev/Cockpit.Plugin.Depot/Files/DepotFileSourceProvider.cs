@@ -54,7 +54,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 var bytes = await FileSourceChannel.ReadContentAsync(content, Capabilities.MaxWriteBytes, cancellationToken).ConfigureAwait(false);
                 var text = new UTF8Encoding(false, true).GetString(bytes);
                 // Depot dev d9d5a756, DiskFileStore.cs:107-125: only a missing file has an empty checksum, under the write gate.
-                var baseChecksum = ifVersion;
+                var baseChecksum = mustNotExist ? string.Empty : ifVersion;
                 using var response = await _PostAsync(project, "write",
                     new[] { new { path, content = text, baseChecksum } }, cancellationToken).ConfigureAwait(false);
                 var entry = _Entries(response.RootElement, "results").FirstOrDefault(e => DepotRequests.String(e, "path") == path);
