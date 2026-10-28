@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -99,6 +100,7 @@ public class OrchestratorFanOutTests
     public async Task StartAsync_AppendsTheDelegationNudge_WithoutDisplacingTheBriefingAlreadyOnThatKey()
     {
         var (adapter, inner) = _CreateHeadlessAdapter(_CatalogWith(_Orchestrator()));
+        await using var session = adapter;
 
         await adapter.StartAsync(
             launchOptions: new Dictionary<string, string>
@@ -106,11 +108,15 @@ public class OrchestratorFanOutTests
                 [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are the CEO. Plan the work first.",
             });
 
+        var environment = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
+            Assert.Single(inner.ReceivedCalls()).GetArguments()[5]);
+        var expected = "You are the CEO. Plan the work first.\n\n" + DelegationSystemPrompt.Default
+            + "\n\n" + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]);
+
         await inner.Received(1).StartAsync(
             Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
             Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
-                options![WellKnownPluginSessionOptions.AppendSystemPrompt].StartsWith("You are the CEO. Plan the work first.", StringComparison.Ordinal)
-                && options[WellKnownPluginSessionOptions.AppendSystemPrompt].EndsWith(DelegationSystemPrompt.Default, StringComparison.Ordinal)),
+                options != null && options[WellKnownPluginSessionOptions.AppendSystemPrompt] == expected),
             Arg.Any<IReadOnlyList<PluginMcpServer>?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<IPluginToolset?>(), Arg.Any<CancellationToken>());
     }
@@ -122,6 +128,7 @@ public class OrchestratorFanOutTests
     public async Task StartAsync_LeavesTheAppendedPromptAlone_WhenTheOrchestratorIsSwitchedOff()
     {
         var (adapter, inner) = _CreateHeadlessAdapter(_CatalogWith(_Orchestrator(enabled: false)));
+        await using var session = adapter;
 
         await adapter.StartAsync(
             launchOptions: new Dictionary<string, string>
@@ -129,10 +136,15 @@ public class OrchestratorFanOutTests
                 [WellKnownPluginSessionOptions.AppendSystemPrompt] = "You are the CEO. Plan the work first.",
             });
 
+        var environment = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
+            Assert.Single(inner.ReceivedCalls()).GetArguments()[5]);
+        var expected = "You are the CEO. Plan the work first.\n\n"
+            + SessionScratch.Instruction(environment["COCKPIT_SCRATCH"]);
+
         await inner.Received(1).StartAsync(
             Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
             Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
-                options![WellKnownPluginSessionOptions.AppendSystemPrompt] == "You are the CEO. Plan the work first."),
+                options != null && options[WellKnownPluginSessionOptions.AppendSystemPrompt] == expected),
             Arg.Any<IReadOnlyList<PluginMcpServer>?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<IPluginToolset?>(), Arg.Any<CancellationToken>());
     }

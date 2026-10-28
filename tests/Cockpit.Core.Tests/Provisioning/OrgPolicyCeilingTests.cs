@@ -274,7 +274,15 @@ public class OrgPolicyCeilingTests
 
         await acts[route]();
 
-        Assert.Equal("Set your status.\n\n" + Cockpit.Core.Projects.ProjectStartingPoint.NeverSendBehavior,
+        var scratchInstructions = new Dictionary<string, Func<string>>
+        {
+            ["sdk"] = () => string.Empty,
+            ["tty"] = () => "\n\n" + SessionScratch.Instruction(
+                Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(
+                    Assert.Single(rig.Pty.ReceivedCalls()).GetArguments()[3])["COCKPIT_SCRATCH"]),
+        };
+
+        Assert.Equal("Set your status.\n\n" + Cockpit.Core.Projects.ProjectStartingPoint.NeverSendBehavior + scratchInstructions[route](),
             rig.LaunchedOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt));
     }
 
