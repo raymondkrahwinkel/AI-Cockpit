@@ -290,8 +290,10 @@ public class DepotNoteBridgeTests
     private static async Task _ReadOnlyJoinAsync(byte[] seed, bool schemaMismatch, LiveReadOnlyReason reason)
     {
         var hub = new _Hub(seed) { Role = schemaMismatch ? "editor" : "viewer", SchemaMismatch = schemaMismatch };
-        await using var bridge = _Session(hub, _ => { });
+        var joined = new _Joins();
+        await using var bridge = _Session(hub, _ => { }, joined.Publish);
         bridge.Connect();
+        await joined.First.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var snapshot = await bridge.ReadAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(LiveFileState.ReadOnly, snapshot.Status.State);
         Assert.Equal(reason, snapshot.Status.ReadOnlyReason);
