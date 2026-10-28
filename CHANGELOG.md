@@ -32,11 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
-- added: **other people in a live Markdown file.** Their carets and selections are drawn in the colour Depot gave them, with
+- added: **other people in a live Markdown file, when the file source reports them.** Their carets and selections are drawn in the colour Depot gave them, with
   their first name on a small flag. Avatars in the header show who is in the file (an agent is a rounded square, someone who
   dropped offline fades); a click opens the list with role, what they are doing and where they are editing from (plugin SDK
-  3.47.0, Cockpit 0.144.0). Depot plugin 0.36.0 can read and write this presence format; it joins up with the note itself in a
-  later step.
+  3.47.0, Cockpit 0.144.0). The Depot plugin 0.36.0 can read and write Depot's presence format; it is joined up with the
+  note itself in a later step, so Depot notes do not show people yet.
 
 - added: **the Depot plugin can join a live note.** Its backend connects to a Depot note room with your Depot sign-in (the
   token stays in Cockpit), keeps the room's document in step, and joins again with no lost text when Depot closes the
