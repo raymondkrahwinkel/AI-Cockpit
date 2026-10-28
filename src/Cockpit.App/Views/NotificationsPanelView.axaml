@@ -55,10 +55,6 @@
 
     <DockPanel>
         <DockPanel DockPanel.Dock="Top" Margin="12,10,8,8">
-            <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6" VerticalAlignment="Center"
-                    Command="{Binding MarkAllReadCommand}" ToolTip.Tip="Mark all read">
-                <materialIcons:MaterialIcon Kind="CheckAll" Width="15" Height="15"/>
-            </Button>
             <!-- Wraps the source picker under the tabs on a narrow rail rather than drawing them over each other. -->
             <WrapPanel Orientation="Horizontal">
                 <Border CornerRadius="{StaticResource CockpitPillRadius}" Padding="2" Margin="0,0,6,4"

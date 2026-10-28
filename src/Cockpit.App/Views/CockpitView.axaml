@@ -2188,6 +2188,7 @@
                                 ToolTip.Tip="Undock into its own window">
                             <materialIcons:MaterialIcon Kind="DockWindow" Width="15" Height="15"/>
                         </Button>
+                        <controls:DockPanelHeaderActionsHost x:Name="DockPanelHeaderActions" DockPanel.Dock="Right"/>
                         <!-- AC-1862: the Simple stand's way back to the assistant this panel replaced in the rail. -->
                         <Button x:Name="DockPanelBack" DockPanel.Dock="Left" Classes="Ghost Compact" IsVisible="False"
                                 Margin="0,0,8,0" Command="{Binding BackToAssistantCommand}"

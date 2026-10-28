@@ -5731,6 +5731,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             Badge = Notifications.Badge,
             CanFloat = true,
+            HeaderActions = [new ToolbarAction("Mark all read", MaterialIconKind.CheckAll, () =>
+            {
+                Notifications.MarkAllReadCommand.Execute(null);
+                return Task.CompletedTask;
+            })],
         });
         Notifications.Badge.Activated += (_, _) => OpenDockPanelId = NotificationCenterViewModel.DockPanelId;
         Notifications.PluginIcon = pluginId => PluginSideButtons.FirstOrDefault(button => button.PluginId == pluginId && button.IconKind is not null)?.IconKind;
