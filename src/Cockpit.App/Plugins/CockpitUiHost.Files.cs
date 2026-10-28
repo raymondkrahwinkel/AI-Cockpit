@@ -100,7 +100,7 @@ internal sealed partial class CockpitUiHost
             var existed = workspaces.Settings.Workspaces.Any(w => w.Type.Id == typeId && w.InstanceKey == options.InstanceKey);
             try
             {
-                await workspaces.OpenWorkspaceAsync(typeId, new WorkspaceOpenOptions(options.InstanceKey, options.Title, options.Preview)).ConfigureAwait(true);
+                await workspaces.OpenWorkspaceAsync(typeId, new WorkspaceOpenOptions(options.InstanceKey, options.Title, false)).ConfigureAwait(true);
                 var entry = workspaces.Settings.Workspaces.FirstOrDefault(w => w.Type.Id == typeId && w.InstanceKey == options.InstanceKey);
                 if (entry is not null && workspaces.BodyFor(entry) is MarkdownFileWorkspace body)
                 {
