@@ -25,8 +25,9 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
             _RunAsync(async () =>
             {
                 var (project, path) = DepotFileRefs.Parse(file, connectionId);
-                await _AuthorizeAsync(project, false, cancellationToken).ConfigureAwait(false);
-                using var response = await _PostAsync(project, "read", new[] { path }, cancellationToken).ConfigureAwait(false);
+                var connection = _Connection();
+                await _AuthorizeAsync(connection, project, false, cancellationToken).ConfigureAwait(false);
+                using var response = await _PostAsync(connection, project, "read", new[] { path }, cancellationToken).ConfigureAwait(false);
                 if (response.RootElement.TryGetProperty("truncated", out var truncated) && truncated.ValueKind == JsonValueKind.True)
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "Depot truncated the file; no partial text was opened.");
                 var entry = _Entries(response.RootElement, "files").FirstOrDefault(e => DepotRequests.String(e, "path") == path);
@@ -50,12 +51,13 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
             {
                 FileSourceChannel.ValidateWrite(ifVersion, mustNotExist);
                 var (project, path) = DepotFileRefs.Parse(file, connectionId);
-                await _AuthorizeAsync(project, true, cancellationToken).ConfigureAwait(false);
+                var connection = _Connection();
+                await _AuthorizeAsync(connection, project, true, cancellationToken).ConfigureAwait(false);
                 var bytes = await FileSourceChannel.ReadContentAsync(content, Capabilities.MaxWriteBytes, cancellationToken).ConfigureAwait(false);
                 var text = new UTF8Encoding(false, true).GetString(bytes);
                 // Depot dev d9d5a756, DiskFileStore.cs:107-125: only a missing file has an empty checksum, under the write gate.
                 var baseChecksum = mustNotExist ? string.Empty : ifVersion;
-                using var response = await _PostAsync(project, "write",
+                using var response = await _PostAsync(connection, project, "write",
                     new[] { new { path, content = text, baseChecksum } }, cancellationToken).ConfigureAwait(false);
                 var entry = _Entries(response.RootElement, "results").FirstOrDefault(e => DepotRequests.String(e, "path") == path);
                 var version = DepotRequests.String(entry, "checksum");
@@ -68,17 +70,20 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 };
             }, cancellationToken);
 
-        private async Task _AuthorizeAsync(string project, bool write, CancellationToken cancellationToken)
+        private DepotConnectionRegistration _Connection() => connections().FirstOrDefault(c => c.Id == connectionId)
+            ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "This Depot connection is no longer configured.");
+
+        private async Task _AuthorizeAsync(DepotConnectionRegistration connection, string project, bool write, CancellationToken cancellationToken)
         {
-            var role = await new DepotRequests(host, connections).RoleAsync(connectionId, project, cancellationToken).ConfigureAwait(false);
+            var role = await new DepotRequests(host, () => [connection]).RoleAsync(connectionId, project, cancellationToken).ConfigureAwait(false);
             if (role == DepotProjectRole.Unknown || (write && !role.CanWrite()))
                 throw new FileSourceException(FileSourceErrorKind.Forbidden, "Your role does not allow this file operation.");
         }
 
-        private async Task<JsonDocument> _PostAsync<T>(string project, string operation, T request, CancellationToken cancellationToken)
+        private async Task<JsonDocument> _PostAsync<T>(DepotConnectionRegistration connection, string project, string operation, T request, CancellationToken cancellationToken)
         {
-            var connection = connections().FirstOrDefault(c => c.Id == connectionId)
-                ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "This Depot connection is no longer configured.");
+            if (_Connection() != connection)
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The Depot connection changed during this file operation. Open the file again.");
             var address = project.Split('/');
             using var api = new DepotApi(host, connection);
             var result = await api.PostJsonAsync($"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/{operation}",
