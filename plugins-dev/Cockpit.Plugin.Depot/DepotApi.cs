@@ -51,6 +51,14 @@ internal sealed class DepotApi : IDisposable
     public Task<DepotApiResult> PostJsonAsync<T>(string path, T value, CancellationToken cancellationToken) =>
         _SendJsonAsync(HttpMethod.Post, path, value, baseChecksum: null, guardWrite: false, cancellationToken);
 
+    // AC-1579: Depot's meeting-note routes take a form, as its own dialog posts it.
+    public async Task<DepotApiResult> PostFormAsync(
+        string path, IEnumerable<KeyValuePair<string, string>> fields, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, _Url(path)) { Content = new FormUrlEncodedContent(fields) };
+        return await _SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<DepotApiResult> PostAsync(string path, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, _Url(path));

@@ -36,6 +36,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the background. Closing means Later and keeps the invitation unread. Repeated invitations for the same note and
   account show once per connection. Join opens the note in your browser until the native note editor is available.
 
+- added: **start a meeting note from Cockpit.** A "New meeting note" button in the toolbar opens the same dialog as Depot: choose the project (only those where you are Editor), the topic, the folder, the template and the attendees. Cockpit sends only those choices; Depot writes the note from its template and sends the invitations. "Open in Cockpit" opens the new note in your browser for now (Depot plugin 0.32.0).
 - added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
 
 - added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without

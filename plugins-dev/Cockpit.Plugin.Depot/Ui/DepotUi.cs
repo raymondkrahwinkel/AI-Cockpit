@@ -75,6 +75,9 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
                 _ = _OpenBrowserAsync(host);
                 return true;
             }));
+        // AC-1579: its own way in, which AC-1577's "New meeting note" button hooks onto.
+        host.AddToolbarAction(new ToolbarAction("New meeting note", MaterialIconKind.NotePlusOutline,
+            () => DepotMeetingNotes.ShowAsync(host, settings.Connections)));
         host.AddToolbarAction(new ToolbarAction("Depot files", MaterialIconKind.FolderNetworkOutline,
             () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections, inbox), "depot-browser", 1000, 680)));
     }

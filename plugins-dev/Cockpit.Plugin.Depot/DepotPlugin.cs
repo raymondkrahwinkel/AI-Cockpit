@@ -128,6 +128,14 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _HandlePublish(host, DepotPublishChannel.Plan, publisher.PlanAsync);
         _HandlePublish(host, DepotPublishChannel.Run, publisher.RunAsync);
 
+        // AC-1579: the "New meeting note" dialog's Depot calls, one handler per action.
+        var meetingNotes = new Notes.DepotMeetingNoteService(host, () => settings.Connections);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Options, meetingNotes.OptionsAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Project, meetingNotes.ProjectAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Check, meetingNotes.CheckAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Create, meetingNotes.CreateAsync);
+        _HandleMeetingNote(host, DepotMeetingNoteChannel.Link, meetingNotes.LinkAsync);
+
         // AC-1586: the Depot inbox, over REST and the inbox hub with a host-only token for depot.inbox alone.
         _inbox = new Inbox.DepotInbox(
             () => settings.Connections,
@@ -231,6 +239,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<DepotInboxRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
+    private void _HandleMeetingNote<T>(
+        ICockpitHost host, string action, Func<DepotMeetingNoteRequest, CancellationToken, Task<DepotBrowserAnswer<T>>> handler) =>
+        _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotMeetingNoteRequest>(DepotChannel.Json)
                 ?? throw new ArgumentException("The request is empty.", nameof(payload));
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
