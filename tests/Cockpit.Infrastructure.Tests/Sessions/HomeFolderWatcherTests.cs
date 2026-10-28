@@ -45,6 +45,19 @@ public sealed class HomeFolderWatcherTests
                 Arg.Is<string>(key => string.Equals(key, "home-folder:" + keyPath, StringComparison.OrdinalIgnoreCase)),
                 "New folder outside session scratch");
             Assert.Single(toasts.ReceivedCalls());
+
+            var renamed = Path.Combine(root, "renamed-spike-x");
+            Directory.Move(hidden, renamed);
+            watcher.ReportCreated(renamed);
+            toasts.Received(1).Show(
+                Arg.Is<string>(message => message.Contains(renamed) && message.Contains("AC-1820 builder")),
+                ToastSeverity.Warning, Arg.Any<IReadOnlyList<ToastAction>>(), false, "Cockpit",
+                Arg.Any<string>(), "New folder outside session scratch");
+            Assert.Equal(2, toasts.ReceivedCalls().Count());
+
+            Directory.Move(renamed, hidden);
+            watcher.ReportCreated(hidden);
+            Assert.Equal(2, toasts.ReceivedCalls().Count());
             Assert.True(Directory.Exists(visible));
             Assert.True(Directory.Exists(hidden));
             Assert.True(File.Exists(file));
