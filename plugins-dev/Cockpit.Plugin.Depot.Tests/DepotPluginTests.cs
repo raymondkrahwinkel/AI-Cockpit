@@ -67,27 +67,17 @@ public class DepotPluginTests
     // AC-1647, layer 2: only Depot's built-in Cockpit sign-in receives the host scope used by profile and backups;
     // host-only narrowing keeps that scope off every agent-session token.
     [Fact]
-    public void GetMcpServers_BuiltInSignInRequestsDepotHostAndKeepsItHostOnly()
-    {
-        using var plugin = new DepotPlugin();
-        plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://depot.example.com")));
-
-        var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
-
-        Assert.Equal("depot depot.inbox depot.host offline_access", server.OAuthScopes);
-        Assert.Equal("depot.inbox depot.host", server.OAuthHostOnlyScopes);
-    }
-
-    // AC-499: OAuthAuthority is the origin (scheme+host+port) of the normalized URL, not the stored URL's own path —
-    // a subpath deployment's authority lives at the origin, not under the subpath.
-    [Fact]
-    public void GetMcpServers_ConnectionUrlHasASubpath_OAuthAuthorityIsTheOriginNotTheSubpath()
+    public void GetMcpServers_BuiltInSignInRequestsDepotHostAndKeepsItHostOnly_AndOAuthAuthorityIsTheOriginNotTheSubpath()
     {
         using var plugin = new DepotPlugin();
         plugin.Initialize(_HostWithConnections(new DepotConnectionRegistration("c1", "Acme", "https://host.example.com/depot")));
 
         var server = Assert.Single(plugin.GetMcpServers("project-a", ["depot"]));
 
+        Assert.Equal("depot depot.inbox depot.host offline_access", server.OAuthScopes);
+        Assert.Equal("depot.inbox depot.host", server.OAuthHostOnlyScopes);
+        // AC-499: OAuthAuthority is the origin (scheme+host+port) of the normalized URL, not the stored URL's own path -
+        // a subpath deployment's authority lives at the origin, not under the subpath.
         Assert.Equal("https://host.example.com/depot/mcp", server.Url);
         Assert.Equal("https://host.example.com", server.OAuthAuthority);
     }
