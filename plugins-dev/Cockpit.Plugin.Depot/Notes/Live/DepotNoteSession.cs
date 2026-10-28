@@ -321,7 +321,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             List<byte[]> known = [.. result.Updates.OrderBy(row => row.Seq).Select(row => row.Data)];
             foreach (var row in known)
             {
-                _Patch(await _room.ApplyAsync(row, cancellationToken).ConfigureAwait(false));
+                await _ApplyAsync(row, cancellationToken).ConfigureAwait(false);
             }
 
             List<byte[]> early;
@@ -334,7 +334,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
 
             foreach (var update in early)
             {
-                _Patch(await _room.ApplyAsync(update, cancellationToken).ConfigureAwait(false));
+                await _ApplyAsync(update, cancellationToken).ConfigureAwait(false);
             }
 
             // Early updates came from the hub, so the hub has them: they count as known, or the diff would send them back.
@@ -343,6 +343,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             _role = result.Role;
             _schemaMismatch = result.SchemaMismatch;
             _editor = result.Role == "editor" && !result.SchemaMismatch;
+            if (!_editor && _typedAway)
+            {
+                _logger?.LogWarning("Text typed in the live note for {Connection} while away cannot go out: the note came back read-only.", _connection.Name);
+            }
+
             if (_editor && await _WriteAsync(hub, result, known, cancellationToken).ConfigureAwait(false))
             {
                 return;
@@ -408,11 +413,38 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             return;
         }
 
-        var ops = await _room.LoadAsync(_previous, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<TextOp> ops;
+        try
+        {
+            ops = await _room.LoadAsync(_previous, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // A doc no note can be read from (protocol §5.3): the host keeps its text, and the next update may make the doc read again.
+            _logger?.LogWarning(exception, "The live note for {Connection} does not read as a note; waiting for the next change.", _connection.Name);
+            return;
+        }
+
         _loaded = true;
         _previous = string.Empty;
         _Patch(ops);
         _ready.TrySetResult();
+    }
+
+    // Under _text. A change the room cannot read lets go of the mirror instead of editing on a stale view: the host's text stays
+    // the last one it got, edits are stale until the doc reads again, and then the difference arrives as one patch.
+    private async Task _ApplyAsync(byte[] update, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _Patch(await _room.ApplyAsync(update, cancellationToken).ConfigureAwait(false));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException && _loaded)
+        {
+            _logger?.LogWarning(exception, "A change to the live note for {Connection} does not read; holding the text until it does.", _connection.Name);
+            _previous = await _room.ReadAsync(cancellationToken).ConfigureAwait(false);
+            _loaded = false;
+        }
     }
 
     private async Task _ApplyRemoteAsync(byte[] update, CancellationToken cancellationToken)
@@ -420,8 +452,25 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _Patch(await _room.ApplyAsync(update, cancellationToken).ConfigureAwait(false));
+            await _ApplyAsync(update, cancellationToken).ConfigureAwait(false);
             await _LoadIfReadyAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _text.Release();
+        }
+    }
+
+    private async Task _UnloadAsync()
+    {
+        await _text.WaitAsync(_life.Token).ConfigureAwait(false);
+        try
+        {
+            if (_loaded)
+            {
+                _previous = await _room.ReadAsync(_life.Token).ConfigureAwait(false);
+                _loaded = false;
+            }
         }
         finally
         {
@@ -462,6 +511,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             return;
         }
 
+        // Set before the send and cleared after it: a send that fails or is cancelled halfway still goes with the next Join, Edited first.
+        _typedAway = true;
         try
         {
             await hub.EditedAsync(documentId, cancellationToken).ConfigureAwait(false);
@@ -469,10 +520,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             {
                 await hub.UpdateAsync(documentId, update, cancellationToken).ConfigureAwait(false);
             }
+
+            _typedAway = false;
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            _typedAway = true;
             _logger?.LogWarning(exception, "Sending a live note edit for {Connection} failed; it goes out with the next Join.", _connection.Name);
         }
     }
@@ -496,6 +548,13 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
                     _early.Add(early);
                 }
 
+                // The rows this Join is getting are gone: once it is in, the loop joins again into the new fill.
+                if (hubEvent.Kind == "reset")
+                {
+                    _reset = true;
+                    _closed.TrySetResult(null);
+                }
+
                 return;
             }
 
@@ -513,7 +572,9 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
                 await _GuardAsync(() => _ApplyRemoteAsync(data, _life.Token), "Applying a live note update").ConfigureAwait(false);
                 break;
             case { Kind: "reset" }:
-                // The loop closes the hub and joins again; closing it here would wait for this very handler.
+                // Edits stop at once (stale until the new fill), so nothing typed goes to the rows that are gone. The loop closes the hub
+                // and joins again; closing it here would wait for this very handler.
+                await _GuardAsync(_UnloadAsync, "Letting go of a reset live note").ConfigureAwait(false);
                 _reset = true;
                 _closed.TrySetResult(null);
                 break;

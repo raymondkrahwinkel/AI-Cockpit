@@ -69,6 +69,7 @@ let pmDoc = null; // the fragment as ProseMirror, the way the binding knows it; 
 let binding;
 let mirror = ''; // the host's text
 let ranges = []; // per top-level block: [start, end) in the mirror, exact, or null where the block is not found in the text
+let frontLength = 0; // the front matter's length at the start of the mirror: the Y text's, even when a merge left it odd
 
 export function createRoom(clientId) {
   doc = new Y.Doc();
@@ -77,6 +78,7 @@ export function createRoom(clientId) {
   pmDoc = null;
   mirror = '';
   ranges = [];
+  frontLength = 0;
   doc.on('update', (update, origin) => {
     if (origin !== REMOTE) {
       outgoing.push(toBase64(update));
@@ -110,34 +112,86 @@ export function isEmpty() {
 export function seed(markdown) {
   const split = splitFrontmatter(markdown);
   doc.transact(() => {
-    prosemirrorJSONToYXmlFragment(noteSchema(), parseBody(split.body), fragment());
+    prosemirrorJSONToYXmlFragment(noteSchema(), body(split.body).toJSON(), fragment());
     frontmatter().insert(0, split.frontmatter);
     doc.getMap('meta').set('eol', lineEnding(markdown));
   }, SEED);
 }
-/** Protocol §5.3: the rows draw nothing while the file has text. */
+/** Protocol §5.3: the rows are empty as text while the file has text. Rows that draw something, however odd, are not repaired here. */
 export function needsRefill(markdown) {
-  let drawn = '';
   try {
-    const node = noteSchema().nodeFromJSON(yXmlFragmentToProsemirrorJSON(fragment()));
-    node.check();
-    drawn = serializeBody(node.toJSON());
+    const rows = repair(noteSchema().nodeFromJSON(yXmlFragmentToProsemirrorJSON(fragment())));
+    return (rows ? serializeBody(rows.toJSON()) : '').trim() === '' && serializeBody(body(splitFrontmatter(markdown).body).toJSON()).trim() !== '';
   } catch {
-    drawn = '';
+    return false;
   }
-  return drawn.trim() === '' && serializeBody(parseBody(splitFrontmatter(markdown).body)).trim() !== '';
 }
 
+// Two edits merged can leave what the schema refuses (a list whose items were all deleted). The web's binding drops such a node; the
+// bridge fills it in (repair) and writes that to the room once, so the doc reads again for everyone.
+const REPAIR = 'repair';
 function rebind() {
-  const made = initProseMirrorDoc(fragment(), noteSchema());
+  let made;
+  try {
+    made = initProseMirrorDoc(fragment(), noteSchema());
+    made.doc.check();
+  } catch {
+    const fixed = repair(noteSchema().nodeFromJSON(yXmlFragmentToProsemirrorJSON(fragment())));
+    if (!fixed) {
+      throw new Error('The room holds what no note can be.');
+    }
+    doc.transact(() => updateYFragment(doc, fragment(), fixed, { mapping: new Map(), isOMark: new Map() }), REPAIR);
+    made = initProseMirrorDoc(fragment(), noteSchema());
+    made.doc.check();
+  }
   pmDoc = made.doc;
   binding = made.meta;
 }
-const parsed = (text) => (parseBody(text).content ?? []).map((json) => noteSchema().nodeFromJSON(json));
-const invisible = (node) => node.type.name === 'paragraph' && node.content.size === 0;
+// Half-typed Markdown parses to what the schema refuses (`>` alone is a quote with nothing in it, `1.` an item without a paragraph):
+// ProseMirror fills in what a node lacks, the way the editor itself would, so nothing invalid ever reaches the room.
+function repair(node) {
+  if (node.isLeaf) {
+    return node;
+  }
+  const children = [];
+  node.forEach((child) => {
+    const fixed = repair(child);
+    if (fixed) {
+      children.push(fixed);
+    }
+  });
+  const content = Fragment.fromArray(children);
+  return node.type.validContent(content) ? node.copy(content) : node.type.createAndFill(node.attrs, content, node.marks);
+}
+function tree(json) {
+  const node = repair(noteSchema().nodeFromJSON(json));
+  if (!node) {
+    throw new Error('The text does not make a note.');
+  }
+  node.check();
+  return node;
+}
+const body = (markdown) => tree(parseBody(markdown));
+// The blocks a stretch of the text parses to; none for blank text (where a whole note would get an empty paragraph to be valid).
+function parsed(text) {
+  const json = parseBody(text);
+  const nodes = [];
+  if ((json.content ?? []).length > 0) {
+    tree(json).forEach((node) => nodes.push(node));
+  }
+  return nodes;
+}
 function blockText(node) {
   const text = serializeBody({ type: 'doc', content: [node.toJSON()] }).replace(/\n$/, '');
   return eol() === '\r\n' ? text.replace(/\n/g, '\r\n') : text;
+}
+// A block with no Markdown of its own (an empty paragraph, an upload's placeholder): it has no range, and an edit must keep it.
+const hiddenCache = new WeakMap();
+function hidden(node) {
+  if (!hiddenCache.has(node)) {
+    hiddenCache.set(node, blockText(node) === '');
+  }
+  return hiddenCache.get(node);
 }
 function minimalPatch(offset, before, after) {
   let start = 0;
@@ -156,45 +210,64 @@ function setText(type, value) {
   type.insert(patch.offset, patch.text);
 }
 
-// Each top-level block's range, from marked's own tokens (the parser's split of the text); a range counts only when its text parses
-// to exactly that block, so a range is exact or null and never a guess. marked lexes "\r\n" as "\n", so CRLF offsets are mapped back.
-function locate() {
-  const bodyStart = splitFrontmatter(mirror).frontmatter.length;
-  const body = mirror.slice(bodyStart);
+// The ranges of `nodes` in the mirror between `from` and `to`, from marked's own tokens (the parser's split of the text). A token
+// takes as many nodes as its text parses to; a range counts only for a token that is exactly one node, and the first token that
+// does not match ends the matching, so a range is exact or null and never a guess. marked lexes "\r\n" as "\n": offsets map back.
+function spans(from, to, nodes) {
+  const text = mirror.slice(from, to);
   const back = [];
   let lf = '';
-  for (let i = 0; i < body.length; i++) {
-    if (!(body[i] === '\r' && body[i + 1] === '\n')) {
+  for (let i = 0; i < text.length; i++) {
+    if (!(text[i] === '\r' && text[i + 1] === '\n')) {
       back.push(i);
-      lf += body[i];
+      lf += text[i];
     }
   }
-  back.push(body.length);
-  const spans = [];
+  back.push(text.length);
+  const tokens = [];
   let at = 0;
   // The lexer @tiptap/markdown parses with: the global marked, with markdown.ts' tokenizers and the note extensions on it.
   for (const token of new marked.Lexer(marked.defaults).lex(lf)) {
-    // A token's raw can carry the blank lines around it (a list after a list starts with one); the range is the block's own text.
-    if (token.type !== 'space') {
-      const lead = token.raw.length - token.raw.replace(/^\n+/, '').length;
-      // The end maps from the block's last character: the one after it may be the "\r" of a CRLF.
-      spans.push([bodyStart + back[at + lead], bodyStart + back[at + token.raw.replace(/\n+$/, '').length - 1] + 1]);
+    // A token's raw can carry the blank lines around it; the end maps from the block's last character, not a CRLF's "\r".
+    const lead = token.raw.length - token.raw.replace(/^\n+/, '').length;
+    const trimmed = token.raw.replace(/\n+$/, '').length;
+    if (token.type !== 'space' && trimmed > lead) {
+      tokens.push([from + back[at + lead], from + back[at + trimmed - 1] + 1]);
     }
     at += token.raw.length;
   }
+  const out = [];
   let next = 0;
-  ranges = [];
-  pmDoc.forEach((node) => {
-    const span = invisible(node) ? null : spans[next++];
-    const found = span ? parsed(mirror.slice(span[0], span[1])) : [];
-    ranges.push(span && found.length === 1 && found[0].eq(node) ? span : null);
-  });
+  let matching = true;
+  while (out.length < nodes.length) {
+    const node = nodes[out.length];
+    if (!matching || hidden(node)) {
+      out.push(null);
+      continue;
+    }
+    const token = tokens[next++];
+    const found = token ? parsed(mirror.slice(token[0], token[1])) : [];
+    if (token && found.length === 0) {
+      continue;
+    }
+    matching = found.length > 0 && found.every((made, k) => out.length + k < nodes.length && made.eq(nodes[out.length + k]));
+    if (matching) {
+      found.forEach(() => out.push(found.length === 1 ? token : null));
+    }
+  }
+  return out;
+}
+function locate() {
+  const children = [];
+  pmDoc.forEach((node) => children.push(node));
+  ranges = spans(frontLength, mirror.length, children);
 }
 
 /** Builds the mirror from the doc. Returns the ops that turn `previous` (the host's text so far) into it. */
 export function load(previous) {
   rebind();
   mirror = serializeNote(frontmatter().toString(), pmDoc.toJSON(), eol());
+  frontLength = frontmatter().length;
   locate();
   return JSON.stringify(previous === mirror ? [] : [minimalPatch(0, previous, mirror)]);
 }
@@ -202,66 +275,166 @@ export function text() {
   return mirror;
 }
 
-/** The host's ops, each on the text the one before it left, as one local transaction. Returns the v1 updates to send. */
+/**
+ * The host's ops, each on the text the one before it left, as one local transaction. Returns the v1 updates to send. When an op
+ * fails, the room goes back to the host's text before the edit and the error goes to the host, which then has nothing applied.
+ */
 export function edit(opsJson) {
-  doc.transact(() => {
-    for (const op of JSON.parse(opsJson)) {
-      editOne(op.offset, op.length, op.text);
-    }
-  }, LOCAL);
+  const ops = JSON.parse(opsJson);
+  if (!pmDoc && ops.length > 0) {
+    throw new Error('The room has no text to edit yet.');
+  }
+  const before = mirror;
+  try {
+    doc.transact(() => {
+      for (const op of ops) {
+        editOne(op.offset, op.length, op.text);
+      }
+    }, LOCAL);
+  } catch (error) {
+    mirror = before;
+    doc.transact(() => {
+      setText(frontmatter(), splitFrontmatter(mirror).frontmatter);
+      frontLength = frontmatter().length;
+      full();
+    }, LOCAL);
+    throw error;
+  }
   const taken = outgoing;
   outgoing = [];
   return JSON.stringify(taken);
 }
 function editOne(offset, length, text) {
+  const oldLength = mirror.length;
   mirror = mirror.slice(0, offset) + text + mirror.slice(offset + length);
   const front = splitFrontmatter(mirror).frontmatter;
-  if (front !== frontmatter().toString()) {
+  if (front !== frontmatter().toString() || offset < frontLength) {
     setText(frontmatter(), front);
-    full();
+    frontLength = front.length;
+    full({ from: offset, to: offset + length, length: oldLength });
     return;
   }
-  const index = ranges.findIndex((range) => range && range[0] <= offset && offset + length <= range[1]);
-  if (index < 0 || !editBlock(index, length, text.length)) {
-    full();
+  if (!editRun(offset, length, text.length)) {
+    full({ from: offset, to: offset + length, length: oldLength });
   }
 }
-// The neighbour the edited block has to stay apart from: null when there is none (or only an empty paragraph, which has no text),
-// undefined when it has text but no range, which leaves the edit to the full path.
-function neighbour(index) {
-  if (index < 0 || index >= pmDoc.childCount || invisible(pmDoc.child(index))) {
-    return null;
+// Whether the edit touches the gap block `index` (one without text) sits in, between the blocks with text around it. A gap whose
+// ends are not known counts as untouched.
+function inGap(index, edited) {
+  let start = frontLength;
+  let stop = edited.length;
+  for (let i = index - 1; i >= 0; i--) {
+    if (!hidden(pmDoc.child(i))) {
+      start = ranges[i]?.[1] ?? -1;
+      break;
+    }
   }
-  return ranges[index] ? { node: pmDoc.child(index), range: ranges[index] } : undefined;
+  for (let i = index + 1; i < pmDoc.childCount; i++) {
+    if (!hidden(pmDoc.child(i))) {
+      stop = ranges[i]?.[0] ?? -1;
+      break;
+    }
+  }
+  return start >= 0 && stop >= 0 && edited.from <= stop && edited.to >= start;
 }
-// One block, parsed again with its neighbours, so a change that would join it to one of them (a list that grows into the next) is seen.
-function editBlock(index, removed, inserted) {
-  const [start, end] = ranges[index];
+// The block with text nearest to `index` going `step`, past the ones without: null at the end, undefined when it has no range.
+function neighbour(index, step) {
+  for (let i = index; i >= 0 && i < pmDoc.childCount; i += step) {
+    if (!hidden(pmDoc.child(i))) {
+      return ranges[i] ? { index: i, node: pmDoc.child(i), range: ranges[i] } : undefined;
+    }
+  }
+  return null;
+}
+// The blocks the edit touches, parsed again between the nearest blocks with text on either side: a change that joins the run to one
+// of them (a list that grows into the next, a fence that swallows what follows) is seen, and the full path takes it. Blocks without
+// text outside the run stay the same Y items.
+function editRun(offset, removed, inserted) {
+  const end = offset + removed;
   const delta = inserted - removed;
-  const before = neighbour(index - 1);
-  const after = neighbour(index + 1);
+  let first = -1;
+  let last = -1;
+  ranges.forEach((range, i) => {
+    if (range && first < 0 && range[1] >= offset) {
+      first = i;
+    }
+    if (range && range[0] <= end) {
+      last = i;
+    }
+  });
+  if (first < 0 || last < 0) {
+    return false;
+  }
+  if (last < first) {
+    [first, last] = [last, first];
+  }
+  for (let i = first; i <= last; i++) {
+    if (!ranges[i] && !hidden(pmDoc.child(i))) {
+      return false;
+    }
+  }
+  const before = neighbour(first - 1, -1);
+  const after = neighbour(last + 1, 1);
   if (before === undefined || after === undefined) {
     return false;
   }
-  const window = parsed(mirror.slice(before ? before.range[0] : start, after ? after.range[1] + delta : end + delta));
-  const expected = (before ? 1 : 0) + 1 + (after ? 1 : 0);
-  if (window.length !== expected || (before && !window[0].eq(before.node)) || (after && !window[expected - 1].eq(after.node))) {
+  const start = Math.min(ranges[first][0], offset);
+  const stop = Math.max(ranges[last][1], end) + delta;
+  const window = parsed(mirror.slice(before ? before.range[0] : start, after ? after.range[1] + delta : stop));
+  const made = window.slice(before ? 1 : 0, after ? window.length - 1 : window.length);
+  if ((before && !window[0]?.eq(before.node)) || (after && !window[window.length - 1]?.eq(after.node)) || made.length === 0) {
     return false;
   }
-  const made = window[before ? 1 : 0];
   const children = [];
-  pmDoc.forEach((child, _, i) => children.push(i === index ? made : child));
+  pmDoc.forEach((child, _, i) => {
+    if (i === first) {
+      children.push(...made);
+    }
+    if (i < first || i > last) {
+      children.push(child);
+    }
+  });
   const next = pmDoc.copy(Fragment.fromArray(children));
   updateYFragment(doc, fragment(), next, binding);
   pmDoc = next;
-  ranges = ranges.map((range, i) => (i === index ? [start, end + delta] : range && i > index ? [range[0] + delta, range[1] + delta] : range));
+  const shifted = ranges.slice(last + 1).map((range) => range && [range[0] + delta, range[1] + delta]);
+  ranges = [...ranges.slice(0, first), ...spans(start, stop, made), ...shifted];
   return true;
 }
-// ponytail: a whole parse of the note (p95 350 ms at 2,000 lines), for an edit across blocks or one that splits a block in two;
-// splitting per range if Enter-Enter in long notes turns out slow.
-function full() {
-  const node = noteSchema().nodeFromJSON(parseBody(splitFrontmatter(mirror).body));
-  updateYFragment(doc, fragment(), node, binding);
+// ponytail: a whole parse of the note (p95 350 ms at 2,000 lines), for an edit in the front matter or next to a block without a range.
+// Blocks without text keep their place after the same number of blocks with text, so the Y items others type into stay, unless the
+// edit (`edited`, old offsets) touches the gap they sit in: there the text decides. One the parse makes as well is that same item.
+function full(edited) {
+  const kept = [];
+  let seen = 0;
+  pmDoc.forEach((node, _, i) => {
+    if (!hidden(node)) {
+      seen++;
+    } else if (!edited || !inGap(i, edited)) {
+      kept.push({ node, after: seen, used: false });
+    }
+  });
+  const children = [];
+  let visible = 0;
+  const flush = (all) => kept.filter((entry) => !entry.used && (all ? entry.after >= visible : entry.after === visible)).forEach((entry) => {
+    entry.used = true;
+    children.push(entry.node);
+  });
+  body(mirror.slice(frontLength)).forEach((node) => {
+    if (hidden(node)) {
+      const same = kept.find((entry) => !entry.used && entry.after === visible && entry.node.eq(node));
+      if (same) {
+        same.used = true;
+      }
+      children.push(same ? same.node : node);
+      return;
+    }
+    flush(false);
+    children.push(node);
+    visible++;
+  });
+  flush(true);
+  updateYFragment(doc, fragment(), pmDoc.copy(Fragment.fromArray(children)), binding);
   rebind();
   locate();
 }
@@ -284,7 +457,8 @@ export function undo(redo) {
   outgoing = [];
   return JSON.stringify({ ops, updates: taken });
 }
-// A change the host did not type, as ops on its text.
+// A change the host did not type, as ops on its text. When the doc no longer reads (another client wrote what the schema refuses),
+// the bridge lets go of its view rather than edit on a stale one: the session loads again once the doc reads.
 function changed(run) {
   const was = new Map(fragment().toArray().map((type, i) => [type, ranges[i]]));
   const touched = new Set();
@@ -311,13 +485,19 @@ function changed(run) {
   if (!structural && !front && touched.size === 0) {
     return [];
   }
-  rebind();
-  return rebuild(was, touched, front);
+  try {
+    rebind();
+    return rebuild(was, touched, front);
+  } catch (error) {
+    pmDoc = null;
+    ranges = [];
+    throw error;
+  }
 }
 function rebuild(was, touched, front) {
   const old = mirror;
   const blank = (from, to) => /^\s*$/.test(old.slice(from, to));
-  const oldFront = splitFrontmatter(old).frontmatter.length;
+  const oldFront = frontLength;
   // The new text as pieces: a stretch of the old text ([start, end)) or new text.
   const pieces = [front ? { text: frontmatter().toString() } : { keep: [0, oldFront] }];
   const blocks = [];
@@ -333,7 +513,7 @@ function rebuild(was, touched, front) {
     }
     if (any) {
       pieces.push(last && kept && last[1] <= kept[0] && blank(last[1], kept[0]) ? { keep: [last[1], kept[0]] } : { text: eol() + eol() });
-    } else if (kept && blank(oldFront, kept[0]) && !front) {
+    } else if (kept && !front && oldFront <= kept[0] && blank(oldFront, kept[0])) {
       pieces.push({ keep: [oldFront, kept[0]] });
     }
     blocks.push(pieces.length);
@@ -372,6 +552,7 @@ function rebuild(was, touched, front) {
   });
   close(old.length);
   mirror = out;
+  frontLength = front ? frontmatter().length : oldFront;
   ranges = blocks.map((p) => (p === null ? null : at[p]));
   return ops;
 }
