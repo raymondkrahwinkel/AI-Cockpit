@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
+    <PackageReference Include="Avalonia" Version="12.1.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- The CEF archives are .tar.bz2 and the BCL has no bzip2. Shipped with the plugin, so the host's copy

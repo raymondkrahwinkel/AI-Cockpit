@@ -1,7 +1,7 @@
 {
   "id": "example-workspace",
   "name": "Example Workspace",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "uiAssembly": "Cockpit.Plugin.ExampleWorkspace.dll",
   "uiEntryType": "Cockpit.Plugin.ExampleWorkspace.ExampleWorkspaceUi",
   "abstractionsVersion": 3,

@@ -1,7 +1,7 @@
 {
   "id": "clock",
   "name": "Clock",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "uiAssembly": "Cockpit.Plugin.Clock.dll",
   "uiEntryType": "Cockpit.Plugin.Clock.ClockUi",
   "abstractionsVersion": 3,

@@ -1,7 +1,7 @@
 {
   "id": "discord",
   "name": "Discord",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "entryAssembly": "Cockpit.Plugin.Discord.dll",
   "entryType": "Cockpit.Plugin.Discord.DiscordChannelPlugin",
   "uiAssembly": "Cockpit.Plugin.Discord.UI.dll",
