@@ -29,7 +29,8 @@ internal sealed class BrowserProcessTree(Process root) : IDisposable
                 try
                 {
                     if (!parents.ContainsKey(process.Id) && parents.TryGetValue(parentId, out var parent)
-                        && !parent.HasExited && process.StartTime >= parent.StartTime)
+                        && process.StartTime >= parent.StartTime
+                        && (!parent.HasExited || process.StartTime <= parent.ExitTime))
                     {
                         parents[process.Id] = process;
                         _children.Add(process);

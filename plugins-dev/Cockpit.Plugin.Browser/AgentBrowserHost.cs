@@ -332,7 +332,11 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         tree.Capture();
         try { CloseAsync(profile).GetAwaiter().GetResult(); }
         catch (Exception ex) when (ex is IOException or HttpRequestException or OperationCanceledException or System.Net.WebSockets.WebSocketException or InvalidOperationException) { }
-        if (tree.Wait(TimeSpan.FromSeconds(5))) return true;
+        if (tree.Wait(TimeSpan.FromSeconds(5)))
+        {
+            tree.Capture();
+            if (tree.Wait(TimeSpan.FromSeconds(5))) return true;
+        }
         tree.Kill();
         return tree.Wait(TimeSpan.FromSeconds(5));
     }
@@ -516,17 +520,18 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             }
 
             _ended = true;
+            var exited = false;
             try
             {
-                if (!Shutdown(Process, Profile)) return;
+                exited = Shutdown(Process, Profile);
             }
             catch (InvalidOperationException)
             {
                 // Already gone.
             }
 
-            Process.Dispose();
-            DeleteProfile(Profile);
+            finally { Process.Dispose(); }
+            if (exited) DeleteProfile(Profile);
         }
     }
 }
