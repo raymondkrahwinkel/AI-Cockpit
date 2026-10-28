@@ -35,10 +35,9 @@ internal sealed record DepotPresenceSelf(string Id, string Name, string Color, s
         role.Length == 0 ? role : char.ToUpperInvariant(role[0]) + role[1..], "Cockpit");
 }
 
-// Presence of one note (Docs/notes-hub-protocol.md section 5.4): sends this editor's cursor every five seconds with a clock that
-// only goes up, reads what the hub relays, and drops someone who left or stayed silent for fifteen seconds. The hub stamps `user`
-// (id, name, role, colour, source) on what it relays; the colour is the hub's and is passed on as it is. One instance serves the
-// session for good: a new hub connection brings a new client id (Reconnect) and the people stay, dimmed, until they are heard again.
+// Presence of one note (notes-hub-protocol section 5.4): this editor's cursor every five seconds under a rising clock, what the hub
+// relays (its stamped user and colour passed on as they are), and anyone gone on left or after fifteen seconds of silence.
+// One instance serves the session: a new hub connection brings a new client id and the people stay, dimmed, until heard again.
 internal sealed class DepotNotePresence : IDisposable
 {
     public static readonly TimeSpan Beat = TimeSpan.FromSeconds(5);
