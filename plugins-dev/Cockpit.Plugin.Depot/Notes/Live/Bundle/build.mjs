@@ -29,7 +29,7 @@ npm('ci --no-audit --no-fund --ignore-scripts', notes);
 npm('rebuild esbuild', notes);
 
 const out = join(here, 'room.bundle.js');
-const { build } = createRequire(join(notes, 'package.json'))('esbuild');
+const { build, stop } = createRequire(join(notes, 'package.json'))('esbuild');
 await build({
   entryPoints: [join(here, 'room.js')],
   outfile: out,
@@ -63,8 +63,10 @@ if (expected !== actual) {
 writeFileSync(join(here, 'schema.json'), schema);
 
 const bundle = sha256(readFileSync(out));
+// esbuild's service holds its own binary in the clone open; Windows refuses to remove that until the service is gone.
+stop();
 if (!process.argv[3]) {
-  rmSync(work, { recursive: true, force: true });
+  rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 console.log(`commit ${commit}\nschema ${expected}\nbundle ${bundle}`);
 if (commit === pinned('DepotBundleCommit') && bundle !== pinned('DepotBundleSha256')) {
