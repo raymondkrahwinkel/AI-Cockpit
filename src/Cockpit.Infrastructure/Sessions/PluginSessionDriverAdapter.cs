@@ -160,8 +160,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             ["TMPDIR"] = _scratch,
         };
         var scratchOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
-        scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
-            options?.GetValueOrDefault(WellKnownPluginSessionOptions.AppendSystemPrompt), SessionScratch.Instruction(_scratch)).TrimStart('\n');
+        scratchOptions[WellKnownPluginSessionOptions.AppendSystemPrompt] = SessionScratch.Instruction(_scratch);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, scratchOptions, mcpServers, environment, _hostToolset, cancellationToken).ConfigureAwait(false);
     }
 
