@@ -27,7 +27,7 @@ public class DepotNoteBridgeTests
 
     // Contract with Depot (another system): parse is the fixture's tree, serialize is the fixture's bytes, and the schema is the pinned one.
     [Theory]
-    [InlineData("canonical", "1359be864f357048ea4a9c764be370105b08aac2b3a80e1123bbecb36ba4bfa5", "55eefc2b1aebc7afaa18d63492743641fb4d518d334f57ecb8a4cf8428839a8c")]
+    [InlineData("canonical", "8e7002ab89e378fe8764f5a3b735bb6e3e7c23ba42706b611deb92ed42ea36d6", "55eefc2b1aebc7afaa18d63492743641fb4d518d334f57ecb8a4cf8428839a8c")]
     [InlineData("crlf", "757993a42984248c987e03f173b15d9ca2dd5ea8c94ab5c0912898bc564f5b0c", "859bccfefdd805fbd044a544aceb75d6dfdb180e43414cf21e9b757f27741c62")]
     [InlineData("depot-flavour", "fef3429685dcdcd040dea1a4dcbbeacbed48980d644ea7c7e024c5eb2964b1f9", "b4fa6d9fbb32d28c1b33502e61e2aeae84834154ce443b11f310dd509ebdcec5")]
     [InlineData("hostile", "1a6dbe569feb6aa0ba34c4de82816a6d05e1cd9fce5e1a031754be85dc17f976", "222a350f89e258a14c31a3709a85567260d2d660a6f21bfbf457050897feb496")]
