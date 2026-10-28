@@ -89,6 +89,15 @@ internal sealed class DepotInboxPanel : UserControl
         }
     }
 
+    public void SelectConnection(string connectionId)
+    {
+        var index = _connections.ToList().FindIndex(connection => connection.Id == connectionId);
+        if (index >= 0)
+        {
+            _connectionBox.SelectedIndex = index;
+        }
+    }
+
     // Only this connection's pages; another connection's push changes the badge, not this list.
     private void _OnChanged(DepotInboxPage page) => Dispatcher.UIThread.Post(() =>
     {

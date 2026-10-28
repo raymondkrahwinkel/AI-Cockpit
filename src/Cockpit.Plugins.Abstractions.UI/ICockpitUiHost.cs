@@ -161,6 +161,9 @@ public interface ICockpitUiHost
     {
     }
 
+    /// <summary>Sets status text with a semantic badge tone. UI SDK 3.21.0, host 0.142.0; older hosts keep their default colour.</summary>
+    void SetStatusText(string? text, SideMenuButtonBadgeTone tone) => SetStatusText(text);
+
     /// <summary>
     /// Contributes a tool to the companion window.
     /// </summary>

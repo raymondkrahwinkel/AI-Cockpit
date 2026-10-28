@@ -233,7 +233,7 @@ internal sealed class DepotInboxService : IAsyncDisposable
     private DepotInboxMessage? _Message(_Listed listed) =>
         _Absolute(listed.OpenUrl) is not { } openUrl ? null : new DepotInboxMessage(
             listed.Id, listed.Kind, listed.IsRead, listed.Handled, listed.CreatedAt, listed.Organization, listed.Summary ?? string.Empty, openUrl,
-            listed.Note is null ? null : listed.Note with { OpenUrl = _Absolute(listed.Note.OpenUrl) });
+            listed.Note is null ? null : listed.Note with { OpenUrl = _Absolute(listed.Note.OpenUrl) }, listed.Inviter);
 
     // Depot's links are root-relative; anything else (another host, a scheme) is not opened from here.
     private string? _Absolute(string? relative) =>
@@ -245,5 +245,5 @@ internal sealed class DepotInboxService : IAsyncDisposable
 
     private sealed record _Listed(
         string Id, string Kind, bool IsRead, bool Handled, DateTimeOffset CreatedAt, DepotInboxOrganization? Organization,
-        string? Summary, string? OpenUrl, DepotInboxNote? Note);
+        string? Summary, string? OpenUrl, DepotInboxNote? Note, string? Inviter = null);
 }

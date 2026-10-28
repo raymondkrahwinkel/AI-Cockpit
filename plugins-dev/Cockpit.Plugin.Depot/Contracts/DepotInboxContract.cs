@@ -45,7 +45,7 @@ internal sealed record DepotInboxNote(string State, string? Title, string? Path,
 // OpenUrl (and Note.OpenUrl) are absolute: the backend puts the connection's address in front of Depot's relative link.
 internal sealed record DepotInboxMessage(
     string Id, string Kind, bool IsRead, bool Handled, DateTimeOffset CreatedAt, DepotInboxOrganization? Organization,
-    string Summary, string OpenUrl, DepotInboxNote? Note = null);
+    string Summary, string OpenUrl, DepotInboxNote? Note = null, string? Inviter = null);
 
 // UpdatedAt is when Depot last answered; on Unreachable the messages are that answer's.
 internal sealed record DepotInboxPage(DepotInboxCount Count, IReadOnlyList<DepotInboxMessage> Messages, DateTimeOffset? UpdatedAt,

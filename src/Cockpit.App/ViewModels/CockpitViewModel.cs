@@ -309,7 +309,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public ObservableCollection<PluginStatusText> PluginStatusTexts { get; } = [];
 
     // Replaced in place, so a plugin's text keeps its spot; null or blank removes it. Long text is cut, not wrapped.
-    internal void SetPluginStatusText(string pluginId, string? text) => _OnUiThread(() =>
+    internal void SetPluginStatusText(string pluginId, string? text, SideMenuButtonBadgeTone? tone = null) => _OnUiThread(() =>
     {
         var existing = PluginStatusTexts.FirstOrDefault(entry => entry.PluginId == pluginId);
         var index = existing is null ? -1 : PluginStatusTexts.IndexOf(existing);
@@ -323,7 +323,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text);
+        var entry = new PluginStatusText(pluginId, text.Length > PluginStatusTextMaxLength ? text[..PluginStatusTextMaxLength] + "…" : text, tone);
         // AC-1764: the same line again is no change. A Replace builds a new item container that must be measured, so a
         // plugin repeating its text in a loop would otherwise keep the status bar in layout for as long as it repeats.
         if (entry == existing)

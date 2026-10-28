@@ -690,6 +690,9 @@ public sealed record DockPanelRegistration(string Id, string Title, MaterialIcon
     public bool CanFloat { get; init; }    // SDK 3.22.0, host 0.111.0
 }
 ```
+- `DockPanelBadge.Tone` — optional `SideMenuButtonBadgeTone`, default `Accent` (the current amber),
+  `Success` for a green live count, `Neutral` for a quiet count. Changing it raises `PropertyChanged`.
+  Available in UI SDK 3.21.0, host 0.142.0; set `minHostVersion` when relying on it.
 - `Id` — stable and namespaced. It is persisted as the open panel, and for a floating panel as its stand and
   the key of its window's bounds, so treat it as an API surface. The first registration of an id wins.
 - `CreateView` — builds the panel's view on the UI thread: each time the panel opens, or **once** with
@@ -716,6 +719,10 @@ await host.OpenDockPanelAsync("my-plugin.browser");
 ```
 
 ### `void SetStatusText(string? text)` {#void-setstatustextstring-text}
+
+UI SDK 3.21.0, host 0.142.0 also supports `SetStatusText(string? text, SideMenuButtonBadgeTone tone)`.
+`Success` is green, `Accent` amber and `Neutral` secondary text. The original overload keeps faint text;
+the additive overload falls back to that on an older host. Set `minHostVersion` when relying on the tone.
 Shows one line of **this plugin's** text in the status bar, at the right next to the supervised-activity counters,
 in the faint status colour. A new call replaces the plugin's line, keeping its spot; null or blank removes it. Text
 longer than 120 characters is cut. A server and an older host show nothing. SDK 3.27.0, host 0.116.0.

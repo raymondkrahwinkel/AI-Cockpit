@@ -42,6 +42,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   account show once per connection. Join opens the note in your browser until the native note editor is available.
 
 - added: **the New meeting note dialog.** The same choices as in Depot: project (only those where you are Editor, defaulting to the Depot project of the active Cockpit project), topic with the file name as it will be made, folder, template and attendees. Cockpit sends only those choices; Depot writes the note from its template and sends the invitations. "Open in Cockpit" opens the new note in your browser for now. The button that opens it comes with the Notes tab (Depot plugin 0.33.0).
+- added: **Notes in the Depot dock.** See live notes and their participants, join or watch, open a new meeting note,
+  and browse recent Markdown notes. Invitations label only the matching connection's live note; the Inbox link,
+  rail count and status text follow Depot's current list (Depot plugin 0.35.0, AC-1577).
+- added: **dock badges can use the same semantic tones as side-menu badges.** `DockPanelBadge.Tone` keeps amber
+  by default and supports green live counts and quiet counts; `SetStatusText(text, tone)` colours a plugin's status
+  text the same way, while the original overload stays faint (UI SDK 3.21.0, Cockpit 0.142.0, AC-1577).
+
 - added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
 
 - added: **a clearer notification center.** A notification can have a bold title with its text in grey underneath. Without
