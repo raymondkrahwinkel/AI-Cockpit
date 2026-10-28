@@ -638,7 +638,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             _context.SetCloseGuard(dirty || _saving ? _ConfirmCloseAsync : null);
         }
         _edit.IsVisible = _loaded && _canWrite && !_editing;
-        _save.IsVisible = _editing && live is null;
+        _save.IsVisible = _editing;
         _keepOpen.IsVisible = _context.IsPreview;
         _hintStrip.IsVisible = _context.IsPreview;
         _download.IsVisible = _loaded && !_editing && !_new;
