@@ -13,7 +13,6 @@ public static class LineMerge
     // Where both sides changed the same stretch, both stay, yours first.
     public static IReadOnlyList<string> Merge(IReadOnlyList<string> baseLines, IReadOnlyList<string> theirs, IReadOnlyList<string> mine)
     {
-        return [.. mine];
         var theirMatch = _Match(baseLines, theirs).ToDictionary(pair => pair.A, pair => pair.B);
         var mineMatch = _Match(baseLines, mine).ToDictionary(pair => pair.A, pair => pair.B);
         var merged = new List<string>();
