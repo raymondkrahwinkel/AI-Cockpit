@@ -19,6 +19,10 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
     private ISessionRegistry? _registry;
     private IDelegationService? _delegation;
     private bool _disposed;
+    private bool _watchersWanted;
+    private bool _watching;
+    private bool _workerRunning;
+    private readonly HashSet<string> _failedRoots = new(StringComparer.OrdinalIgnoreCase);
 
     public void Start(ISessionRegistry registry, IDelegationService? delegation = null)
     {
@@ -36,9 +40,9 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
             {
                 delegation.TasksChanged += _Refresh;
             }
-
-            _Refresh();
         }
+
+        _Refresh();
     }
 
     private void _OnRegistryChanged(object? sender, EventArgs e) => _Refresh();
@@ -94,44 +98,111 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
                 handle.LiveStateChanged += _OnLiveStateChanged;
             }
 
-            if (_SessionNames().Count == 0)
-            {
-                _StopWatchers();
-                return;
-            }
+            _watchersWanted = _SessionNames().Count > 0;
+            _ScheduleWorker();
+        }
+    }
 
-            if (_watchers.Count > 0)
-            {
-                return;
-            }
+    internal static bool ShouldWatchDrive(DriveType type) => type == DriveType.Fixed;
 
-            var roots = new List<string> { Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
-            if (OperatingSystem.IsWindows())
-            {
-                roots.AddRange(Directory.GetLogicalDrives());
-            }
+    private void _ScheduleWorker()
+    {
+        if (!_workerRunning && _watchersWanted != _watching)
+        {
+            _workerRunning = true;
+            _ = Task.Run(_UpdateWatchers);
+        }
+    }
 
-            foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+    private void _UpdateWatchers()
+    {
+        try
+        {
+            while (true)
             {
-                try
+                bool wanted;
+                List<FileSystemWatcher> retired;
+                lock (_gate)
                 {
-                    var watcher = new FileSystemWatcher(root)
+                    wanted = _watchersWanted;
+                    if (wanted == _watching)
                     {
-                        IncludeSubdirectories = false,
-                        NotifyFilter = NotifyFilters.DirectoryName,
-                    };
-                    watcher.Created += _OnCreated;
-                    watcher.Renamed += _OnCreated;
-                    watcher.Error += _OnError;
-                    _watchers.Add(watcher);
-                    watcher.EnableRaisingEvents = true;
+                        _workerRunning = false;
+                        return;
+                    }
+
+                    retired = _watchers.ToList();
+                    _watchers.Clear();
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+
+                foreach (var watcher in retired)
                 {
-                    logger.LogWarning(exception, "Could not watch directory {Path}.", root);
+                    watcher.Dispose();
+                }
+
+                var created = wanted ? _CreateWatchers() : [];
+                lock (_gate)
+                {
+                    _watchers.AddRange(created);
+                    _watching = wanted;
                 }
             }
         }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Could not update home folder watchers.");
+            lock (_gate)
+            {
+                _workerRunning = false;
+            }
+        }
+    }
+
+    private List<FileSystemWatcher> _CreateWatchers()
+    {
+        var roots = new List<string> { Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (ShouldWatchDrive(drive.DriveType))
+                {
+                    roots.Add(drive.Name);
+                }
+            }
+        }
+
+        var created = new List<FileSystemWatcher>();
+        foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (_failedRoots.Contains(root))
+            {
+                continue;
+            }
+
+            FileSystemWatcher? watcher = null;
+            try
+            {
+                watcher = new FileSystemWatcher(root)
+                {
+                    IncludeSubdirectories = false,
+                    NotifyFilter = NotifyFilters.DirectoryName,
+                };
+                watcher.Created += _OnCreated;
+                watcher.Renamed += _OnCreated;
+                watcher.Error += _OnError;
+                watcher.EnableRaisingEvents = true;
+                created.Add(watcher);
+            }
+            catch (Exception exception)
+            {
+                watcher?.Dispose();
+                _failedRoots.Add(root);
+                logger.LogWarning(exception, "Could not watch directory {Path}.", root);
+            }
+        }
+
+        return created;
     }
 
     private void _OnCreated(object sender, FileSystemEventArgs e) => ReportCreated(e.FullPath);
@@ -169,16 +240,6 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
     private void _OnError(object sender, ErrorEventArgs e) =>
         logger.LogWarning(e.GetException(), "Home folder watcher lost filesystem events.");
 
-    private void _StopWatchers()
-    {
-        foreach (var watcher in _watchers)
-        {
-            watcher.Dispose();
-        }
-
-        _watchers.Clear();
-    }
-
     public void Dispose()
     {
         lock (_gate)
@@ -194,7 +255,8 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
                 _delegation.TasksChanged -= _Refresh;
             }
 
-            _StopWatchers();
+            _watchersWanted = false;
+            _ScheduleWorker();
             foreach (var handle in _followed)
             {
                 handle.LiveStateChanged -= _OnLiveStateChanged;
