@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Core.Abstractions.Remote;
 
 namespace Cockpit.App.Files;
 
@@ -42,7 +43,7 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         catch (FileSourceException) { throw; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error) when (error is IOException or HttpRequestException or JsonException
-            or FormatException or InvalidOperationException or ArgumentException or OperationCanceledException or TimeoutException)
+            or FormatException or InvalidOperationException or ArgumentException or OperationCanceledException or TimeoutException or IRemoteCallFailure)
         {
             throw new FileSourceException(FileSourceErrorKind.Unavailable, "The file source could not complete this operation.");
         }
