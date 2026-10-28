@@ -32,7 +32,7 @@ internal sealed class DepotNotesPanel : UserControl
     private bool _attached;
 
     public DepotNotesPanel(ICockpitUiHost host, DepotNotesModel model, DepotInboxModel inbox,
-        IReadOnlyList<DepotConnectionRegistration> connections, Action openInbox)
+        IReadOnlyList<DepotConnectionRegistration> connections, Action<string> openInbox)
     {
         _host = host;
         _model = model;
@@ -122,7 +122,7 @@ internal sealed class DepotNotesPanel : UserControl
         }
     }
 
-    private readonly Action _OpenInbox;
+    private readonly Action<string> _OpenInbox;
     public Control Header { get; }
     private string? _Project => (_projectBox.SelectedItem as DepotBrowserProject)?.Project;
 
@@ -254,14 +254,24 @@ internal sealed class DepotNotesPanel : UserControl
             _body.Children.Add(new Border { Padding = new(12, 4), Child = _Text("No live notes.", 12.5, "CockpitTextSecondaryBrush") });
         }
         var inbox = new Button { Content = $"All in Inbox ({_model.InboxCount(page.ConnectionId)})", Classes = { "Ghost", "Compact" }, Margin = new(12, 0), HorizontalAlignment = HorizontalAlignment.Left };
-        inbox.Click += (_, _) => _OpenInbox();
+        inbox.Click += (_, _) => _OpenInbox(page.ConnectionId);
         _body.Children.Add(inbox);
         _body.Children.Add(_Section("RECENT NOTES"));
         foreach (var folder in _recent.GroupBy(node => Path.GetDirectoryName(node.Path)?.Replace('\\', '/') ?? string.Empty))
         {
             if (folder.Key.Length > 0)
             {
-                _body.Children.Add(new Border { Padding = new(16, 4), Child = _Text("▸ " + folder.Key, 12.5) });
+                var folderRow = new Grid { ColumnDefinitions = new("Auto,*,Auto"), ColumnSpacing = 7, Margin = new(16, 4, 12, 4) };
+                var folderIcon = new MaterialIcon { Kind = MaterialIconKind.Folder, Width = 14, Height = 14 };
+                _Bind(folderIcon, MaterialIcon.ForegroundProperty, "CockpitStatusWaitingBrush");
+                folderRow.Children.Add(folderIcon);
+                var folderName = _Text(folder.Key, 12.5);
+                Grid.SetColumn(folderName, 1);
+                folderRow.Children.Add(folderName);
+                var count = _Text(folder.Count().ToString(), 11, "CockpitTextFaintBrush", mono: true);
+                Grid.SetColumn(count, 2);
+                folderRow.Children.Add(count);
+                _body.Children.Add(folderRow);
             }
             foreach (var node in folder)
             {
@@ -274,6 +284,12 @@ internal sealed class DepotNotesPanel : UserControl
                     _Bind(badge, Border.BackgroundProperty, "CockpitStatusDoneChipTintBrush");
                     Grid.SetColumn(badge, 1);
                     row.Children.Add(badge);
+                }
+                else
+                {
+                    var size = _Text(node.Size < 1024 ? $"{node.Size} B" : $"{node.Size / 1024.0:0.#} KB", 11, "CockpitTextFaintBrush", mono: true);
+                    Grid.SetColumn(size, 1);
+                    row.Children.Add(size);
                 }
                 var open = new Button { Content = row, FontWeight = FontWeight.Normal, Classes = { "Ghost", "Compact" }, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Margin = new(16, 0, 8, 0) };
                 open.Click += async (_, _) => await _RunAsync(async () =>
@@ -308,13 +324,19 @@ internal sealed class DepotNotesPanel : UserControl
             Children = { _Text("●", 12.5, "CockpitStatusDoneBrush"), _Text(note.Title, 12.5, weight: FontWeight.SemiBold) },
         });
         var people = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-        foreach (var name in note.People.Take(4))
+        foreach (var person in note.People.Take(4))
         {
-            var letter = _Text(name.Length > 0 ? name[..1] : "?", 10, "CockpitStatusDoneBrush", FontWeight.SemiBold);
+            var letter = _Text(person.Name.Length > 0 ? person.Name[..1].ToUpperInvariant() : "?", 10, "CockpitTextSecondaryBrush", FontWeight.SemiBold);
             letter.HorizontalAlignment = HorizontalAlignment.Center;
             letter.VerticalAlignment = VerticalAlignment.Center;
             var avatar = new Border { Width = 22, Height = 22, BorderThickness = new(1), CornerRadius = _Radius("CockpitPillRadius"), Child = letter };
-            _Bind(avatar, Border.BorderBrushProperty, "CockpitStatusDoneBrush");
+            _Bind(avatar, Border.BorderBrushProperty, "CockpitTextSecondaryBrush");
+            if (person.Color is { Length: 7 } color && color[0] == '#' && Color.TryParse(color, out var parsed))
+            {
+                avatar.BorderBrush = new SolidColorBrush(parsed);
+                letter.Foreground = avatar.BorderBrush;
+            }
+            ToolTip.SetTip(avatar, person.Name);
             people.Children.Add(avatar);
         }
         Grid.SetColumn(people, 1);
@@ -325,7 +347,7 @@ internal sealed class DepotNotesPanel : UserControl
             content.Children.Add(_Text($"Invited by {inviter}", 11.5, "CockpitTextSecondaryBrush"));
         }
         var actions = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 8 };
-        var names = _Text(string.Join(", ", note.People), 11.5, "CockpitTextSecondaryBrush");
+        var names = _Text(string.Join(", ", note.People.Select(person => person.Name)), 11.5, "CockpitTextSecondaryBrush");
         names.VerticalAlignment = VerticalAlignment.Center;
         actions.Children.Add(names);
         var join = new Button { Content = note.Join ? "Join" : "Watch", Classes = { "Compact" } };

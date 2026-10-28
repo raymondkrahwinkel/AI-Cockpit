@@ -15,6 +15,7 @@ internal sealed class BadgeToneBrushConverter : IValueConverter
         var suffix = parameter as string ?? string.Empty;
         var key = value switch
         {
+            null => "CockpitTextFaintBrush",
             SideMenuButtonBadgeTone.Success => "CockpitStatusDone" + suffix + "Brush",
             SideMenuButtonBadgeTone.Neutral => suffix switch
             {

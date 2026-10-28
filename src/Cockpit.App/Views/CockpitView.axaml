@@ -2530,7 +2530,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="plugins:PluginStatusText">
                                 <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                           Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
                                            VerticalAlignment="Center"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

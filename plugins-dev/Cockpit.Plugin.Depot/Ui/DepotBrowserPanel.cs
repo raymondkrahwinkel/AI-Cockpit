@@ -92,10 +92,15 @@ internal sealed partial class DepotBrowserPanel : UserControl
         {
             DetachedFromVisualTree += (_, _) => notesModel.Dispose();
         }
-        var tabs = _Tabs(layout, new DepotInboxPanel(inboxModel, connections), new TextBlock(), openInbox);
+        var inboxPanel = new DepotInboxPanel(inboxModel, connections);
+        var tabs = _Tabs(layout, inboxPanel, new TextBlock(), openInbox);
         var inboxTab = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Inbox"));
         var notesTab = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Notes"));
-        var notesPanel = new DepotNotesPanel(host, notesModel, inboxModel, connections, () => tabs.SelectedItem = inboxTab);
+        var notesPanel = new DepotNotesPanel(host, notesModel, inboxModel, connections, connectionId =>
+        {
+            inboxPanel.SelectConnection(connectionId);
+            tabs.SelectedItem = inboxTab;
+        });
         notesTab.Content = notesPanel;
         notesPanel.Header.IsVisible = false;
         tabs.SelectionChanged += (_, _) => notesPanel.Header.IsVisible = tabs.SelectedItem == notesTab;

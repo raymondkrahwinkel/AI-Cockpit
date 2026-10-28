@@ -40,7 +40,7 @@ public class DepotNotesTests
         Assert.Equal("Depot", registered.Title);
         Assert.Equal(2, registered.Badge?.Count);
         Assert.Equal(SideMenuButtonBadgeTone.Success, registered.Badge?.Tone);
-        rig.Host.Received().SetStatusText("● 2 live notes · Depot");
+        rig.Host.Received().SetStatusText("● 2 live notes · Depot", SideMenuButtonBadgeTone.Success);
         var defaultBadge = new Cockpit.Plugins.Abstractions.Docking.DockPanelBadge();
         Assert.Equal(SideMenuButtonBadgeTone.Accent, defaultBadge.Tone);
         var changes = new List<string?>();
@@ -92,6 +92,7 @@ public class DepotNotesTests
             }
         }
         application.RequestedThemeVariant = ThemeVariant.Dark;
+        _AssertInboxNavigationUsesTheSelectedConnection();
     }
 
     // Layer 2, integration: the backend's real REST projection crosses the UI channel; invitations stay per connection.
@@ -103,12 +104,21 @@ public class DepotNotesTests
         var backendHost = Substitute.For<ICockpitHost>();
         IReadOnlyList<DepotLiveNote> listed = [_Live()];
         var refused = false;
+        var structuredPeople = false;
         backendHost.CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>()).Returns(_ => new DepotBrowserModelTests.StubHandler(request =>
         {
             Assert.Equal("/cockpit/notes/live", request.RequestUri?.AbsolutePath);
             return new HttpResponseMessage(refused ? HttpStatusCode.Unauthorized : HttpStatusCode.OK)
             {
-                Content = new StringContent(JsonSerializer.Serialize(new { count = listed.Count, notes = listed }, JsonSerializerOptions.Web)),
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    count = listed.Count,
+                    notes = listed.Select(note => new
+                    {
+                        note.Address, note.Project, note.Path, note.Title, note.Href, note.Join,
+                        people = structuredPeople ? (object)note.People : note.People.Select(person => person.Name).ToArray(),
+                    }),
+                }, JsonSerializerOptions.Web)),
             };
         }));
         await using var backend = new DepotNotes(backendHost,
@@ -128,6 +138,11 @@ public class DepotNotesTests
         Assert.Null(notes.InviterOf(first, note));
         Assert.Equal("Sanne", notes.InviterOf(second, note));
         Assert.Equal(2, notes.Total);
+        Assert.Equal("Sanne", note.People[0].Name);
+        Assert.Null(note.People[0].Color);
+        structuredPeople = true;
+        await notes.ListAsync(first);
+        Assert.Equal("#E0A33E", notes.PageOf(first)?.Notes[0].People[0].Color);
 
         rig.Answers["inbox-list"] = _Inbox(second, [_Invitation("Not the recognized summary")]);
         await inbox.ListAsync(second);
@@ -139,7 +154,7 @@ public class DepotNotesTests
         listed = [];
         await notes.ListAsync(first);
         Assert.Empty(Assert.IsType<UiAsm::Cockpit.Plugin.Depot.Contracts.DepotNotesPage>(notes.PageOf(first)).Notes);
-        listed = [_Live() with { Title = "Replacement", People = ["Jithran"] }];
+        listed = [_Live() with { Title = "Replacement", People = [new("Jithran")] }];
         await notes.ListAsync(first);
         Assert.Equal("Replacement", Assert.Single(Assert.IsType<UiAsm::Cockpit.Plugin.Depot.Contracts.DepotNotesPage>(notes.PageOf(first)).Notes).Title);
         refused = true;
@@ -175,14 +190,14 @@ public class DepotNotesTests
             },
             canShare = true,
         });
-        rig.Answers["notes-live"] = new DepotNotesPage("a", "ok", [_Live(), _Live() with { Title = "Daily standup", Path = "Meetings/2026-10-19 Daily standup.md", Href = "/n/daily", People = ["Sanne"] }]);
+        rig.Answers["notes-live"] = new DepotNotesPage("a", "ok", [_Live(), _Live() with { Title = "Daily standup", Path = "Meetings/2026-10-19 Daily standup.md", Href = "/n/daily", People = [new("Sanne", "#E0A33E")] }]);
         rig.Answers["inbox-list"] = _Inbox("a", [_Invitation()]);
         rig.Answers["inbox-unread"] = new[] { new { connectionId = "a", state = "ok", unread = 3, perOrganization = new Dictionary<string, int>() } };
         rig.Host.GetProjectMemoryRowsAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemoryRow>>([]));
         return rig;
     }
 
-    private static DepotLiveNote _Live() => new("krahwinkel-it/depot", "depot", "Meetings/2026-10-19 Sprint review.md", "Sprint review", "/n/token", true, ["Sanne", "Jithran"]);
+    private static DepotLiveNote _Live() => new("krahwinkel-it/depot", "depot", "Meetings/2026-10-19 Sprint review.md", "Sprint review", "/n/token", true, [new("Sanne", "#E0A33E"), new("Jithran", "#5AA576")]);
 
     private static object _Inbox(string id, object[] messages) => new
     {
@@ -197,6 +212,38 @@ public class DepotNotesTests
         summary, inviter, openUrl = "https://depot.example.com/mailbox?id=i1",
         note = new { state = "note", title = "Sprint review", path = "Meetings/2026-10-19 Sprint review.md", live = true, openUrl = "https://depot.example.com/n/token" },
     };
+
+    private static void _AssertInboxNavigationUsesTheSelectedConnection()
+    {
+        var rig = _SceneRig();
+        rig.Answer = (action, payload) => action switch
+        {
+            "notes-live" => new DepotNotesPage(payload.GetProperty("connectionId").GetString() ?? "a", "ok", [_Live()]),
+            "inbox-list" => _Inbox(payload.GetProperty("connectionId").GetString() ?? "a", [_Invitation()]),
+            _ => rig.Answers[action],
+        };
+        var panel = new DepotBrowserPanel(rig.Host, [new UiConnection("a", "Work", "https://depot.example.com"), new UiConnection("b", "Home", "https://home.example.com")]);
+        var tabs = Assert.Single(Assert.IsType<DockPanel>(panel.Content).Children.OfType<TabControl>());
+        var notesTab = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Notes"));
+        tabs.SelectedItem = notesTab;
+        var window = new Window { Width = 420, Height = 720, Content = panel };
+        try
+        {
+            window.Show();
+            var notesPanel = Assert.IsType<UiAsm::Cockpit.Plugin.Depot.UI.DepotNotesPanel>(notesTab.Content);
+            var selector = notesPanel.Header.GetVisualDescendants().OfType<ComboBox>().First();
+            selector.SelectedIndex = 1;
+            _Until(() => panel.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, "All in Inbox (3)")));
+            panel.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "All in Inbox (3)"))
+                .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            _Until(() => panel.GetVisualDescendants().OfType<ComboBox>().Any());
+            Assert.Equal(1, Assert.Single(panel.GetVisualDescendants().OfType<ComboBox>()).SelectedIndex);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     private static void _Until(Func<bool> condition)
     {

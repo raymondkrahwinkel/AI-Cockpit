@@ -46,7 +46,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   and browse recent Markdown notes. Invitations label only the matching connection's live note; the Inbox link,
   rail count and status text follow Depot's current list (Depot plugin 0.35.0, AC-1577).
 - added: **dock badges can use the same semantic tones as side-menu badges.** `DockPanelBadge.Tone` keeps amber
-  by default and supports green live counts and quiet counts (UI SDK 3.21.0, Cockpit 0.142.0, AC-1577).
+  by default and supports green live counts and quiet counts; `SetStatusText(text, tone)` colours a plugin's status
+  text the same way, while the original overload stays faint (UI SDK 3.21.0, Cockpit 0.142.0, AC-1577).
 
 - added: **clearer self-hosted model pricing.** A provider can state that a configured model runs on its own hardware, so model choice shows "self-hosted / own hardware" instead of inventing a token price (plugin SDK 3.42.0).
 
