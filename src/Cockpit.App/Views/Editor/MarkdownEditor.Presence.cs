@@ -22,12 +22,10 @@ public sealed partial class MarkdownEditor
         var next = new List<RemoteCursor>();
         foreach (var peer in peers)
         {
-            if (peer.You || peer.Caret is null)
+            if (peer.You || peer.Caret is null || !Color.TryParse(peer.Color, out var color))
             {
                 continue;
             }
-
-            var color = Color.FromRgb((byte)(peer.Name.GetHashCode() & 0xff), 0x80, 0x80);
 
             var selection = peer.Selection is { } range && range.End > range.Start
                 ? (document.CreateAnchor(_Clamp(range.Start)), document.CreateAnchor(_Clamp(range.End)))
