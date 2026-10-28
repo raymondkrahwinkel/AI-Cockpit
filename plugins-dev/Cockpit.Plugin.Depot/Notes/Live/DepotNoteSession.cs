@@ -126,6 +126,10 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             _logger?.LogError(exception, "The live note connection for {Connection} stopped unexpectedly.", _connection.Name);
             _Terminal(DepotNoteLiveState.Unavailable);
         }
+        finally
+        {
+            await _CloseHubAsync().ConfigureAwait(false);
+        }
     }
 
     // True when the Join went through and the connection is live; false when the attempt failed (the loop decides what next).
@@ -144,14 +148,20 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             }
 
             var user = await _userId(cancellationToken).ConfigureAwait(false);
-            _closed = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Each attempt waits on its own signal: a late Closed from the hub before it must not end this one.
+            var closed = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _closed = closed;
             lock (_gate)
             {
                 _documentId = null;
                 _early.Clear();
             }
 
-            var hub = _hubFactory(_connection, user, _OnClosedAsync);
+            var hub = _hubFactory(_connection, user, _ =>
+            {
+                closed.TrySetResult(null);
+                return Task.CompletedTask;
+            });
             _hub = hub;
 
             // Handlers first, then Join (section 3 step 1): events can arrive before the Join result does.
@@ -167,6 +177,13 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             }
 
             await _EnterAsync(hub, result, cancellationToken).ConfigureAwait(false);
+
+            // A refusal that came in during the Join already named the state; "live" must not cover it.
+            if (_terminal)
+            {
+                return false;
+            }
+
             _Status(DepotNoteLiveState.Live);
             return true;
         }
@@ -222,11 +239,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     {
         if (hubEvent.Kind == "refused")
         {
-            if (_StateFor(hubEvent.Args is [string code, ..] ? code : null) is { } state)
-            {
-                _Terminal(state);
-            }
-
+            // An unknown code still means the hub dropped us: say so instead of joining into the same refusal again.
+            _Terminal(_StateFor(hubEvent.Args is [string code, ..] ? code : null) ?? DepotNoteLiveState.Unavailable);
             return;
         }
 
@@ -271,7 +285,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
         {
             HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => DepotNoteLiveState.SignInNeeded,
             HttpRequestException { StatusCode: HttpStatusCode.Forbidden } => DepotNoteLiveState.Unavailable,
-            HubException hub => _StateFor(RefusedCode().Match(hub.Message) is { Success: true } match ? match.Groups[1].Value : null),
+            HubException hub => _StateFor(RefusedCode().Match(hub.Message) is { Success: true } match ? match.Groups[1].Value : null) ?? DepotNoteLiveState.Unavailable,
             _ => null,
         };
         if (state is null)
@@ -297,12 +311,6 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
     {
         _terminal = true;
         _Status(state);
-    }
-
-    private Task _OnClosedAsync(Exception? exception)
-    {
-        _closed.TrySetResult(exception);
-        return Task.CompletedTask;
     }
 
     private async Task _CloseHubAsync()
@@ -333,12 +341,16 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
 
     private void _Status(string state)
     {
-        if (_state == state)
+        lock (_gate)
         {
-            return;
+            if (_state == state)
+            {
+                return;
+            }
+
+            _state = state;
         }
 
-        _state = state;
         _publish(new DepotNoteLiveStatus(_connection.Id, _note.Organization, _note.Project, _note.Path, state, _MessageFor(state)));
     }
 

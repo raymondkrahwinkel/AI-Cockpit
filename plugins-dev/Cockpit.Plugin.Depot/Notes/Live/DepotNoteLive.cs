@@ -58,6 +58,25 @@ internal sealed class DepotNoteLive(
         }
     }
 
+    // The sign-in changed: whoever joins next may be someone else, so nothing of the old account's rooms stays open.
+    public async Task CloseConnectionAsync(string connectionId)
+    {
+        List<DepotNoteSession> closing;
+        lock (_lock)
+        {
+            closing = [.. _sessions.Values.Where(session => session.Connection.Id == connectionId)];
+            foreach (var session in closing)
+            {
+                _sessions.Remove(_Key(session.Note));
+            }
+        }
+
+        foreach (var session in closing)
+        {
+            await session.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         List<DepotNoteSession> sessions;

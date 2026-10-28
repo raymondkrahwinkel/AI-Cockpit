@@ -82,6 +82,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
+                _ = _CloseLiveNotesAsync(connection.Id);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -248,6 +249,18 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 ?? throw new ArgumentException("The request is empty.", nameof(payload));
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
+
+    private async Task _CloseLiveNotesAsync(string connectionId)
+    {
+        try
+        {
+            await (_noteLive?.CloseConnectionAsync(connectionId) ?? Task.CompletedTask).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Closing the live notes of a changed Depot account failed.");
+        }
+    }
 
     private void _HandleInbox(ICockpitHost host, string action, Func<DepotInboxRequest, CancellationToken, Task<DepotInboxPage>> handler) =>
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
