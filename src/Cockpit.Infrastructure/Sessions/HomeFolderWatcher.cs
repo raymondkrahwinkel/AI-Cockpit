@@ -121,6 +121,7 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
                         NotifyFilter = NotifyFilters.DirectoryName,
                     };
                     watcher.Created += _OnCreated;
+                    watcher.Renamed += _OnCreated;
                     watcher.Error += _OnError;
                     _watchers.Add(watcher);
                     watcher.EnableRaisingEvents = true;
