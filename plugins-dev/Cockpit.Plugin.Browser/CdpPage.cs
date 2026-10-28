@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Text.Json;
+using System.Collections.Concurrent;
 
 namespace Cockpit.Plugin.Browser;
 
@@ -12,6 +13,25 @@ internal sealed class CdpPage : IDisposable
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private int _nextId;
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
+
+    public async Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken)
+    {
+        var id = Interlocked.Increment(ref _nextId);
+        var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pending[id] = completion;
+        try
+        {
+            await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { } }), WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
+            }
+            finally { _sendGate.Release(); }
+            return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally { _pending.TryRemove(id, out _); }
+    }
 
     private CdpPage()
     {
@@ -69,6 +89,11 @@ internal sealed class CdpPage : IDisposable
 
                 using var document = JsonDocument.Parse(message.GetBuffer().AsMemory(0, (int)message.Length));
                 var root = document.RootElement;
+                if (root.TryGetProperty("id", out var answerId) && _pending.TryRemove(answerId.GetInt32(), out var completion))
+                {
+                    if (root.TryGetProperty("error", out _)) completion.TrySetException(new IOException("The browser command failed."));
+                    else completion.TrySetResult(root.GetProperty("result").Clone());
+                }
                 if (root.TryGetProperty("method", out var method) && method.GetString() is { } name)
                 {
                     onEvent(name, root.TryGetProperty("params", out var parameters) ? parameters : default);
@@ -78,6 +103,10 @@ internal sealed class CdpPage : IDisposable
         catch (Exception exception) when (exception is WebSocketException or OperationCanceledException or ObjectDisposedException or JsonException)
         {
             // The tab or the browser is gone: nothing more to read.
+        }
+        finally
+        {
+            foreach (var completion in _pending.Values) completion.TrySetException(new IOException("The tab connection closed."));
         }
     }
 }

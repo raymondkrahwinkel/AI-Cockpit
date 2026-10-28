@@ -16,6 +16,39 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     private readonly object _gate = new();
     private readonly Dictionary<string, Running> _running = new(StringComparer.Ordinal);
     private bool _disposed;
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+    private readonly Dictionary<string, long> _epochs = new(StringComparer.Ordinal);
+
+    public async Task<string?> GetOrCreateAsync(string paneId, CancellationToken cancellationToken = default)
+    {
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (SessionFor(paneId) is { } current)
+            {
+                return current.Endpoint;
+            }
+
+            lock (_gate)
+            {
+                if (_disposed || _running.ContainsKey(paneId)) return null;
+            }
+            return await StartCoreAsync(paneId, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _startGate.Release(); }
+    }
+
+    public sealed record Session(Guid Generation, string Endpoint, string Upstream, bool OperatorDrives);
+
+    public Session? SessionFor(string paneId)
+    {
+        lock (_gate)
+        {
+            return _running.TryGetValue(paneId, out var running) && running is { Stopped: false, Proxy: not null, Upstream: not null }
+                && !running.Exited
+                ? new Session(running.Generation, running.Proxy.Endpoint, running.Upstream, running.Proxy.OperatorDrives) : null;
+        }
+    }
 
     // The set of live agent browsers or who drives one changed (AC-1713).
     public event Action? Changed;
@@ -23,6 +56,13 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
     // Starts (or restarts, with a fresh empty profile) the browser of one session and returns its CDP endpoint,
     // or null when there is no browser to start or it did not come up.
     public async Task<string?> StartAsync(string paneId, CancellationToken cancellationToken = default)
+    {
+        await _startGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await StartCoreAsync(paneId, cancellationToken).ConfigureAwait(false); }
+        finally { _startGate.Release(); }
+    }
+
+    private async Task<string?> StartCoreAsync(string paneId, CancellationToken cancellationToken)
     {
         Stop(paneId);
         if (resolveExecutable() is not { } executable)
@@ -36,6 +76,12 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     private async Task<string?> StartAsync(string paneId, string executable, bool noSandbox, CancellationToken cancellationToken)
     {
+        long epoch;
+        lock (_gate)
+        {
+            if (_disposed) return null;
+            epoch = _epochs.GetValueOrDefault(paneId);
+        }
         var profile = Path.Combine(profilesRoot, Guid.NewGuid().ToString("N"));
         if (OperatingSystem.IsWindows())
         {
@@ -59,7 +105,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         var running = new Running(process, profile);
         lock (_gate)
         {
-            if (_disposed)
+            if (_disposed || _epochs.GetValueOrDefault(paneId) != epoch)
             {
                 running.Stop();
                 return null;
@@ -68,17 +114,24 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             _running[paneId] = running;
         }
 
-        var port = await ReadPortAsync(running, cancellationToken).ConfigureAwait(false);
+        int? port;
+        try { port = await ReadPortAsync(running, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { Stop(paneId); throw; }
         if (port is null)
         {
             // Said out loud: a browser that dies before it listens ("No usable sandbox!" on Ubuntu 23.10+) is otherwise
             // only a session without an endpoint.
-            var exited = running.Process.HasExited;
+            lock (_gate)
+            {
+                if (!_running.TryGetValue(paneId, out var current) || current != running) return null;
+            }
+            var exited = running.Exited;
             if (exited)
             {
                 // The async overload also waits for the redirected stderr to drain, so the reason is in `errors`.
                 using var drain = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                await running.Process.WaitForExitAsync(drain.Token).ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false);
+                try { await running.Process.WaitForExitAsync(drain.Token).ContinueWith(_ => { }, TaskScheduler.Default).ConfigureAwait(false); }
+                catch (InvalidOperationException) { }
             }
 
             Stop(paneId);
@@ -91,13 +144,17 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
                 return await StartAsync(paneId, executable, noSandbox: true, cancellationToken).ConfigureAwait(false);
             }
 
-            Report(LogLevel.Error, $"the agent browser '{executable}' did not come up ({(exited ? $"exit {running.Process.ExitCode}" : $"no port within {StartTimeout.TotalSeconds:0}s")}): {reason}");
+            Report(LogLevel.Error, $"the agent browser '{executable}' did not come up ({(exited ? "process exited" : $"no port within {StartTimeout.TotalSeconds:0}s")}): {reason}");
             return null;
         }
 
         // Playwright is given the proxy's endpoint (AC-1713); the browser's own stays with the host.
-        running.Upstream = $"http://127.0.0.1:{port}";
-        running.Proxy = AgentCdpProxy.Start(port.Value);
+        lock (_gate)
+        {
+            if (_disposed || !_running.TryGetValue(paneId, out var current) || current != running) return null;
+            running.Upstream = $"http://127.0.0.1:{port}";
+            running.Proxy = AgentCdpProxy.Start(port.Value);
+        }
         Changed?.Invoke();
         return running.Proxy.Endpoint;
     }
@@ -177,6 +234,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         lock (_gate)
         {
             _running.Remove(paneId, out running);
+            _epochs[paneId] = _epochs.GetValueOrDefault(paneId) + 1;
         }
 
         if (running is not null)
@@ -339,7 +397,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, cancellationToken);
         try
         {
-            while (!running.Process.HasExited)
+            while (!running.Exited)
             {
                 if (TryParsePort(file, out var port))
                 {
@@ -393,6 +451,15 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     private sealed class Running(Process process, string profile)
     {
+        public Guid Generation { get; } = Guid.NewGuid();
+        public bool Exited
+        {
+            get
+            {
+                try { return Process.HasExited; }
+                catch (InvalidOperationException) { return true; }
+            }
+        }
         public Process Process { get; } = process;
 
         public string Profile { get; } = profile;

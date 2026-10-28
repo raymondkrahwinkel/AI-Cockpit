@@ -10,7 +10,7 @@ public class TabShareTests
     // L2b (authorisation), criteria 1 and 2: a grant is exactly one session on one tab, a move to another site pauses
     // it, and Stop sharing, closing the tab and the session ending each refuse the very next read.
     [Fact]
-    public void AGrant_IsOneSessionOnOneTab_AndEndsAtOnceOnStopCloseOrSessionEnd()
+    public async Task SharedTab_GrantReadBoundaryAndLookAlongConsent()
     {
         var grants = new TabGrantRegistry();
         Assert.Null(grants.Authorize("pane-a", "tab-1"));
@@ -33,17 +33,16 @@ public class TabShareTests
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Watch);
         grants.SessionEnded("pane-a");
         Assert.Null(grants.Authorize("pane-a", "tab-1"));
+        TheReadScript_TouchesNoCookieOrStorage_AndAReadKeepsOnlyThePageText();
+        await ALookAlongRequest_ReadsNothingBeforeTheClick_AndReturnsTheImageAfterShare();
     }
 
     // L2b (boundary), criterion 3: the read script asks the page for its visible text and nothing else, and a result
     // carrying anything besides that text gives the agent the text alone.
-    [Fact]
-    public void TheReadScript_TouchesNoCookieOrStorage_AndAReadKeepsOnlyThePageText()
+    private static void TheReadScript_TouchesNoCookieOrStorage_AndAReadKeepsOnlyThePageText()
     {
-        foreach (var forbidden in new[] { "cookie", "Storage", "indexedDB", "caches", "credentials", "password" })
-        {
-            Assert.DoesNotContain(forbidden, TabReader.TextScript, StringComparison.OrdinalIgnoreCase);
-        }
+        Assert.All(new[] { "cookie", "Storage", "indexedDB", "caches", "credentials", "password" },
+            forbidden => Assert.DoesNotContain(forbidden, TabReader.TextScript, StringComparison.OrdinalIgnoreCase));
 
         var text = TabReader.Text("""{"result":{"type":"string","value":"Checks: build failing"},"cookie":"session=known-test-cookie"}""");
 
@@ -52,8 +51,7 @@ public class TabShareTests
 
     // L2b (authorisation), AC-1715 criteria 1 and 2: asking to look along reads nothing until the click, a No reads
     // nothing at all, and a Share returns the picture in the same call.
-    [Fact]
-    public async Task ALookAlongRequest_ReadsNothingBeforeTheClick_AndReturnsTheImageAfterShare()
+    private static async Task ALookAlongRequest_ReadsNothingBeforeTheClick_AndReturnsTheImageAfterShare()
     {
         var reads = new List<string>();
         var tabs = new[] { new LookAlongTab("t1", "PR 1416", "https://github.com/x/pull/1416"), new LookAlongTab("t2", "Lofi", "https://youtube.com") };
