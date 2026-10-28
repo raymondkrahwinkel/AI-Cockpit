@@ -256,6 +256,7 @@ internal sealed class DepotNotesPanel : UserControl
         var inbox = new Button { Content = $"All in Inbox ({_model.InboxCount(page.ConnectionId)})", Classes = { "Ghost", "Compact" }, Margin = new(12, 0), HorizontalAlignment = HorizontalAlignment.Left };
         inbox.Click += (_, _) => _OpenInbox();
         _body.Children.Add(inbox);
+        _body.Children.Add(_Section("INVITATIONS"));
         _body.Children.Add(_Section("RECENT NOTES"));
         foreach (var folder in _recent.GroupBy(node => Path.GetDirectoryName(node.Path)?.Replace('\\', '/') ?? string.Empty))
         {
