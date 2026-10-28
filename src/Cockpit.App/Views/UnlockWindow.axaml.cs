@@ -56,22 +56,21 @@ public partial class UnlockWindow : Window
             return;
         }
 
-        // Spelled out rather than softened: this is the one door out of a forgotten password, and it costs the
-        // credentials. Everything else the operator configured survives, which is the part that makes it usable
-        // rather than a euphemism for "start over".
-        var confirmation = new ConfirmationDialog
-        {
-            DataContext = new ConfirmationDialogViewModel(
-                "Start without your credentials",
-                "There is no way to decrypt your API keys and tokens without the password — that is what makes the "
-                + "encryption worth having. Continuing empties them and turns encryption off. Your profiles, "
-                + "sessions, layout and shortcuts are untouched; you will have to enter your tokens again.",
-                "Empty credentials"),
-        };
-
-        if (await confirmation.ShowDialog<bool>(this))
+        if (await ConfirmResetAsync(this))
         {
             await viewModel.ResetAsync();
         }
     }
+
+    internal static ConfirmationDialog CreateResetConfirmation() => new()
+    {
+        DataContext = new ConfirmationDialogViewModel(
+            "Start without your credentials",
+            "There is no way to decrypt your API keys and tokens without the password — that is what makes the "
+            + "encryption worth having. Continuing empties them and turns encryption off. Your profiles, "
+            + "sessions, layout and shortcuts are untouched; you will have to enter your tokens again.",
+            "Empty credentials"),
+    };
+
+    internal static Task<bool> ConfirmResetAsync(Window owner) => CreateResetConfirmation().ShowDialog<bool>(owner);
 }

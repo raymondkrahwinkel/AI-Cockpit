@@ -197,6 +197,7 @@ public partial class App : Application
         try
         {
             await startup.RunPendingAsync();
+            await Dispatcher.UIThread.InvokeAsync(() => _UnlockInSplashAsync(startup));
             await Dispatcher.UIThread.InvokeAsync(() => _BeginCockpit(desktop));
         }
         catch (Exception exception)
@@ -220,11 +221,23 @@ public partial class App : Application
         _splash = null;
     }
 
-    // The unlock window and the wizard are the operator's to answer, so the splash gives way at once.
-    private void _DismissSplash()
+    private async Task _UnlockInSplashAsync(StartupSequence startup)
     {
-        _splash?.Close();
-        _splash = null;
+        var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
+        if (_splash is not { } splash || _splashViewModel is not { } model || !_IsLockedAtStartup(protection))
+        {
+            return;
+        }
+
+        var unlock = new UnlockViewModel(protection);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        unlock.Unlocked += (_, _) => completed.TrySetResult();
+        startup.AddOperatorStep("Unlocking…", _ => completed.Task);
+        model.BeginUnlock(unlock);
+        splash.TakeFocus();
+        await startup.RunPendingAsync();
+        model.EndUnlock();
+        await _YieldToPaintAsync();
     }
 
     // The main window shows beneath the splash only once the steps are done and the minimum hold has passed.
@@ -380,6 +393,8 @@ public partial class App : Application
 
         // Avalonia auto-shows only the first MainWindow; after startup unlock, this replacement needs Show().
         window.Show();
+        _splash?.Close();
+        _splash = null;
     }
 
     // Use the settings-store retry for concurrent saves (review #9). An unreadable file falls through to normal
@@ -413,12 +428,6 @@ public partial class App : Application
         };
 
         desktop.MainWindow = window;
-
-        if (_splash is not null)
-        {
-            window.Show();
-            _DismissSplash();
-        }
     }
 
     // Locks only the running cockpit UI; the in-memory key and agents remain active (AC-5). The coordinator provides
@@ -493,10 +502,10 @@ public partial class App : Application
             return;
         }
 
-        _ = _LogIfFaultedAsync(started);
+        _ = _LogIfFaultedAsync(started, desktop);
     }
 
-    private static async Task _LogIfFaultedAsync(Task started)
+    private async Task _LogIfFaultedAsync(Task started, IClassicDesktopStyleApplicationLifetime desktop)
     {
         try
         {
@@ -505,6 +514,12 @@ public partial class App : Application
         catch (Exception exception)
         {
             Program.Services.GetRequiredService<ILogger<App>>().LogError(exception, "Starting the cockpit failed after the splash was up.");
+
+            if (_splash is not null)
+            {
+                _ReportStartFailed(desktop, exception);
+                return;
+            }
 
             // A skeleton that never clears would read as a hang; show what there is instead.
             if (Current is App { _mainWindow.DataContext: CockpitViewModel cockpit })
