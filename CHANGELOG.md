@@ -48,6 +48,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   and there is no Save. A green dot on the tab says the file is live; an amber dot says your changes are not
   shared yet (offline or signed out). Sources without live sharing work as before (plugin SDK 3.46.0).
 
+- added: **a live note's text and the room stay in step both ways.** The Depot plugin now reads and writes a live note with
+  Depot's own Markdown converter, so what Cockpit saves is byte for byte what the web saves. Typing changes only the block you
+  type in, and what others type comes back as small text changes that leave the rest of your text alone. Plugin Depot 0.36.1.
+  The editor that uses it follows.
+
 - added: Depot note invitations show a toast with **Join**, and a silent desktop notification while Cockpit is in
   the background. Closing means Later and keeps the invitation unread. Repeated invitations for the same note and
   account show once per connection. Join opens the note in your browser until the native note editor is available.
