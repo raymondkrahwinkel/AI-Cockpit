@@ -160,7 +160,7 @@ public sealed partial class NotificationCenterViewModel : ObservableObject
 
     private void _ClearRead(IReadOnlyList<NotificationItemViewModel> items)
     {
-        foreach (var item in items)
+        foreach (var item in items.Where(item => item.IsRead))
         {
             item.PropertyChanged -= _OnItemChanged;
             _items.Remove(item);
