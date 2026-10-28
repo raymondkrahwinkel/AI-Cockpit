@@ -33,9 +33,7 @@ public sealed class WorkspaceInstanceTests
     private static List<string?> _KeyedTabs(WorkspacesViewModel workspaces) =>
         [.. workspaces.Settings.Workspaces.Where(workspace => workspace.Type.Id == TypeId).Select(workspace => workspace.InstanceKey)];
 
-    // Layer 2, view.
-    [Fact]
-    public Task OpeningTheSameKeyAgain_FocusesItsTab_WhileAnotherKeyOfTheSameTypeGetsATabOfItsOwn() => HeadlessAvalonia.RunAsync(async () =>
+    private async Task _AssertSameKeyFocusAsync()
     {
         var workspaces = _Workspaces();
 
@@ -51,12 +49,13 @@ public sealed class WorkspaceInstanceTests
 
         Assert.Equal(["a.md", "b.md"], _KeyedTabs(workspaces));
         Assert.Equal("b.md", workspaces.Active?.InstanceKey);
-    });
+    }
 
     // Layer 2, view.
     [Fact]
     public Task ASecondPreview_ReplacesTheFirstInItsSlot_AndADoubleClickPinsIt_SoTheNextPreviewOpensBesideIt() => HeadlessAvalonia.RunAsync(async () =>
     {
+        await _AssertSameKeyFocusAsync();
         var workspaces = _Workspaces();
         await workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("kept.md", "kept.md"));
         await workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("one.md", "one.md", Preview: true));

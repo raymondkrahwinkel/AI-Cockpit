@@ -47,6 +47,11 @@ see the [plugin docs](#documentation).
 
 ## How it works
 
+File-source plugins can register `IFileSourceProvider` through `ICockpitHost.AddFileSource`
+(host 0.136.0, Abstractions 3.42.0). The host handles snapshot reads and conditional writes on the
+plugin's existing channel, including server-admin relays. The initial channel limits file content to
+1 MiB. See the [file source contract](docs/plugins/FILE-SOURCES.md) for ownership and conflict semantics.
+
 The cockpit does not talk to any model API of its own accord. A session is a driver: it spawns the provider's own
 client, or speaks to the provider's own endpoint, under your own login and your own credentials — which the
 cockpit never reads, stores or transmits.

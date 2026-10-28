@@ -2,6 +2,9 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.Files;
+using System.Text;
+using NSubstitute;
 
 namespace Cockpit.Backend.Tests.Plugins;
 
@@ -24,6 +27,68 @@ public class PluginChannelHubTests
         var afterReload = await hub.InvokeAsync("diagram", "list", JsonSerializer.SerializeToElement("boards"), CancellationToken.None);
 
         Assert.Equal(("listed boards", "reloaded"), (answer.GetString(), afterReload.GetString()));
+        await _FileSourceRoundtripAsync(hub);
+    }
+
+    private static async Task _FileSourceRoundtripAsync(PluginChannelHub hub)
+    {
+        var source = Substitute.For<IFileSource>();
+        source.Capabilities.Returns(new FileSourceCapabilities(true, FileSourceChannel.MaxContentBytes));
+        source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ =>
+            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes("# hello")), "v1")));
+        source.WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), "v1", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new FileWriteResult(FileWriteStatus.Conflict, "v2")));
+        var provider = Substitute.For<IFileSourceProvider>();
+        provider.Connections.Returns([new FileConnection("c1", "Fake", "memory", false)]);
+        provider.Open("c1").Returns(source);
+        using var files = Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), provider);
+        var file = new FileRef("c1", "opaque", "note.md");
+        var read = await hub.InvokeAsync("files", FileSourceChannel.Read,
+            JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
+        var content = read.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)
+            ?? throw new InvalidOperationException("The read answer was missing.");
+        Assert.NotNull(content.Data);
+        Assert.Equal("# hello", Encoding.UTF8.GetString(Convert.FromBase64String(content.Data.ContentBase64)));
+        Assert.Equal("v1", content.Data.Version);
+        var stale = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", "v1", false), FileSourceChannel.Json), default);
+        var staleResult = stale.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Data
+            ?? throw new InvalidOperationException("The write result was missing.");
+        Assert.Equal(FileWriteStatus.Conflict, staleResult.Status);
+        var invalid = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", null, false), FileSourceChannel.Json), default);
+        Assert.NotNull(invalid.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error);
+        var malformed = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "!", "v1", false), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.Unsupported, (malformed.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error
+            ?? throw new InvalidOperationException("The malformed request error was missing.")).Kind);
+        var oversized = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file,
+                Convert.ToBase64String(new byte[FileSourceChannel.MaxContentBytes + 1]), "v1", false), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.TooLarge, (oversized.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error
+            ?? throw new InvalidOperationException("The oversized request error was missing.")).Kind);
+        source.ReadAsync(Arg.Any<FileRef>(), Arg.Any<CancellationToken>()).Returns(_ => Task.FromResult(
+            new FileReadResult(new MemoryStream(new byte[FileSourceChannel.MaxContentBytes + 1]), "large")));
+        var tooLargeRead = await hub.InvokeAsync("files", FileSourceChannel.Read,
+            JsonSerializer.SerializeToElement(new FileSourceReadRequest(file), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.TooLarge, (tooLargeRead.Deserialize<FileSourceAnswer<FileSourceReadAnswer>>(FileSourceChannel.Json)?.Error
+            ?? throw new InvalidOperationException("The oversized read error was missing.")).Kind);
+        provider.Connections.Returns([new FileConnection("c1", "Fake", "memory", true)]);
+        var forbidden = await hub.InvokeAsync("files", FileSourceChannel.Write,
+            JsonSerializer.SerializeToElement(new FileSourceWriteRequest(file, "", "v1", false), FileSourceChannel.Json), default);
+        Assert.Equal(FileSourceErrorKind.Forbidden, (forbidden.Deserialize<FileSourceAnswer<FileWriteResult>>(FileSourceChannel.Json)?.Error
+            ?? throw new InvalidOperationException("The permission error was missing.")).Kind);
+        await source.Received(1).WriteAsync(Arg.Any<FileRef>(), Arg.Any<Stream>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        var changes = new List<PluginChannelEvent>();
+        using var subscription = hub.Subscribe("files", FileSourceChannel.Changed, changes.Add);
+        provider.ConnectionsChanged += Raise.Event<EventHandler>(provider, EventArgs.Empty);
+        Assert.Single(changes);
+        files.Dispose();
+        provider.ConnectionsChanged += Raise.Event<EventHandler>(provider, EventArgs.Empty);
+        Assert.Single(changes);
+        await Assert.ThrowsAsync<PluginChannelUnknownActionException>(() => hub.InvokeAsync("files", FileSourceChannel.Read, default, default));
+        using var reloaded = Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), provider);
+        await Assert.ThrowsAsync<PluginChannelUnknownActionException>(() => hub.InvokeAsync("other-plugin", FileSourceChannel.Read, default, default));
     }
 
     [Fact]
