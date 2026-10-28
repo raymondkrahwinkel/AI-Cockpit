@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Material.Icons;
 using Cockpit.Plugin.Depot.Contracts;
@@ -53,6 +54,9 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         host.AddToolbarAction(new ToolbarAction("Depot settings", MaterialIconKind.Database, () => host.ShowSettingsAsync()));
         // AC-1586: one inbox model for the plugin's lifetime, so the side-menu badge sums every connection's unread.
         var inbox = new DepotInboxModel(host);
+        var invitations = new DepotInvitationNotifications(host, () => settings.Connections,
+            message => DepotInboxModel.JoinAsync(message, _LaunchNoteAsync));
+        inbox.Changed += page => Dispatcher.UIThread.Post(() => invitations.Show(page));
         var badge = host.AddSideMenuButtonWithBadge("Depot inbox", () =>
         {
             // Side-menu callbacks are synchronous, so the wrapper observes and logs the detached dialog task.
@@ -74,6 +78,11 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         host.AddToolbarAction(new ToolbarAction("Depot files", MaterialIconKind.FolderNetworkOutline,
             () => host.ShowDialogAsync("Depot files", () => new DepotBrowserPanel(host, settings.Connections, inbox), "depot-browser", 1000, 680)));
     }
+
+    private static Task _LaunchNoteAsync(Uri uri) =>
+        Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window }
+            ? window.Launcher.LaunchUriAsync(uri)
+            : Task.FromException(new InvalidOperationException("The Cockpit window is unavailable."));
 
     // Started from a link click, which cannot await it: a host that cannot reach its UI thread is logged, not left unobserved.
     private static async Task _OpenBrowserAsync(ICockpitUiHost host)

@@ -109,11 +109,11 @@ internal sealed class DepotInboxService : IAsyncDisposable
             _signedInBefore = true;
             if (!await _EnsureHubAsync(unread.UserId, cancellationToken).ConfigureAwait(false))
             {
-                return new DepotInboxPage(count with { State = DepotInboxState.Unreachable }, messages, DateTimeOffset.UtcNow);
+                return new DepotInboxPage(count with { State = DepotInboxState.Unreachable }, messages, DateTimeOffset.UtcNow, unread.UserId);
             }
 
             _attempt = 0;
-            return new DepotInboxPage(count, messages, DateTimeOffset.UtcNow);
+            return new DepotInboxPage(count, messages, DateTimeOffset.UtcNow, unread.UserId);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException or NotSupportedException
             || (exception is TaskCanceledException && !cancellationToken.IsCancellationRequested))

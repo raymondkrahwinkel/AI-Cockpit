@@ -52,21 +52,6 @@ public class DepotInboxTests
         Assert.True(hub?.Disposed);
     }
 
-    // Acceptance 5: a title Depot no longer gives (the right was taken away) is not shown from an earlier answer.
-    [Fact]
-    public async Task ATitleDepotNoLongerGives_IsNotShown()
-    {
-        var depot = new _Depot("w1") { Title = "Sprint review" };
-        await using var service = new DepotInboxService(Work, depot, (_, _, onPush, _) => new _Hub(onPush), _ => { });
-        var before = await service.RefreshAsync(CancellationToken.None);
-
-        depot.Title = null;
-        var after = await service.RefreshAsync(CancellationToken.None);
-
-        Assert.Equal("Sprint review", before.Messages.Single().Note?.Title);
-        Assert.Null(after.Messages.Single().Note?.Title);
-    }
-
     private static async Task _Until(Func<bool> condition)
     {
         for (var attempt = 0; attempt < 200 && !condition(); attempt++)
@@ -78,7 +63,7 @@ public class DepotInboxTests
     }
 
     // One Depot's /cockpit/inbox, answering with the given message ids (every one a note invitation), or 401.
-    private sealed class _Depot(params string[] ids) : HttpMessageHandler
+    internal sealed class _Depot(params string[] ids) : HttpMessageHandler
     {
         private int _listFetches;
 
@@ -88,6 +73,8 @@ public class DepotInboxTests
 
         public string? Title { get; set; }
 
+        public string UserId { get; set; } = "u1";
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (Refuse)
@@ -96,7 +83,7 @@ public class DepotInboxTests
             }
 
             object body = request.RequestUri?.AbsolutePath.EndsWith("/unread", StringComparison.Ordinal) == true
-                ? new { userId = "u1", unread = ids.Length, perOrganization = new Dictionary<string, int>() }
+                ? new { userId = UserId, unread = ids.Length, perOrganization = new Dictionary<string, int>() }
                 : _List();
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent(body) });
         }
@@ -126,7 +113,7 @@ public class DepotInboxTests
             new(JsonSerializer.Serialize(body, JsonSerializerOptions.Web), System.Text.Encoding.UTF8, "application/json");
     }
 
-    private sealed class _Hub(Action<DepotInboxPush> onPush) : IDepotInboxHub
+    internal sealed class _Hub(Action<DepotInboxPush> onPush) : IDepotInboxHub
     {
         public bool Disposed { get; private set; }
 
