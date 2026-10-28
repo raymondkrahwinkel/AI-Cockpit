@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugins.Abstractions.Files;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Depot.UI;
 
@@ -44,8 +45,11 @@ internal sealed partial class DepotBrowserPanel
         {
             return;
         }
-        var open = _host.GetOpenWorkspaces(DepotMarkdownFiles.WorkspaceTypeId)
-            .Concat(_host.GetOpenWorkspaces(ArtifactWorkspace.WorkspaceTypeId)).ToDictionary(i => i.InstanceKey, StringComparer.Ordinal);
+        var open = new Dictionary<string, OpenWorkspaceInstance>(StringComparer.Ordinal);
+        foreach (var instance in _host.GetOpenWorkspaces(DepotMarkdownFiles.WorkspaceTypeId).Concat(_host.GetOpenWorkspaces(ArtifactWorkspace.WorkspaceTypeId)))
+        {
+            open.TryAdd(instance.InstanceKey, instance);
+        }
         foreach (var (path, badge) in _openBadges)
         {
             badge.Text = !open.TryGetValue($"depot:{model.Connection.Id}:{project}:{path}", out var instance) ? ""

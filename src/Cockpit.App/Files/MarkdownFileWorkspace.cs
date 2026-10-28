@@ -159,7 +159,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         {
             if (_loaded && !_canWrite)
             {
-                _error = $"Read-only: you are a Viewer in {_options.Location.Split(" / ")[^1]}";
+                _error = $"Read-only: you are a Viewer in {(_options.Location.Length == 0 ? _sourceName : _options.Location.Split(" / ")[^1])}";
                 _UpdateState();
                 return;
             }

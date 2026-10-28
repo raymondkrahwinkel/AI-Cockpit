@@ -116,6 +116,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         Content = _Tabs(_FilesLayout(refresh), new TextBlock { Text = "Inbox", Margin = new Thickness(12) }, false);
 
         var items = DepotTreeBuilder.Build(scene.Tree.Nodes);
+        _openBadges.Clear();
         _tree.ItemsSource = items.Select(item => _Row(item, scene.SelectedPath)).ToList();
         _openIn.Flyout = _OpenInMenu();
         foreach (var (path, text) in scene.Badges ?? new Dictionary<string, string>())
