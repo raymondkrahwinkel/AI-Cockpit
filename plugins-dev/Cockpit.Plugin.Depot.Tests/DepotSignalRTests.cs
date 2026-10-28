@@ -6,6 +6,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -27,16 +28,7 @@ public sealed class DepotSignalRTests
         builder.Logging.ClearProviders();
         builder.Services.AddSignalR();
         await using var app = builder.Build();
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Headers.Authorization != "Bearer test-host-only")
-            {
-                context.Response.StatusCode = 403;
-                return;
-            }
-
-            await next(context);
-        });
+        app.Use(_RequireBearerAsync);
         app.MapHub<AuthHub>("/hub");
         await app.StartAsync(deadline.Token);
         var origin = app.Urls.Single();
@@ -72,6 +64,17 @@ public sealed class DepotSignalRTests
     public sealed class AuthHub : Hub
     {
         public string Echo(string value) => value;
+    }
+
+    private static async Task _RequireBearerAsync(HttpContext context, RequestDelegate next)
+    {
+        if (context.Request.Headers.Authorization != "Bearer test-host-only")
+        {
+            context.Response.StatusCode = 403;
+            return;
+        }
+
+        await next(context);
     }
 
     private sealed class OwnProvider(string origin) : IPluginMcpProvider
