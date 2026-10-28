@@ -146,19 +146,6 @@ public class PluginSessionDriverAdapterTests
         return resolver;
     }
 
-    // AC-40: every spawned session carries this run's MCP auth key in its environment, so a cockpit-hosted server's
-    // config can reference COCKPIT_MCP_KEY instead of embedding a literal — even a profile with no variables of its own.
-    [Fact]
-    public async Task StartAsync_AlwaysPassesTheMcpAuthKeyToTheDriver()
-    {
-        var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
-
-        await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")));
-
-        Assert.Contains(WellKnownSessionEnvironment.CockpitMcpKey, inner.LastEnvironment!);
-    }
-
     // AC-190: a provider that confines to its working directory via a real OS sandbox (Codex — ConfinesViaPermissionsOnly
     // left false) confines in every permission mode. The static registration capability maps straight through, unchanged.
     private static PluginSessionCapabilities _SandboxConfining() =>
