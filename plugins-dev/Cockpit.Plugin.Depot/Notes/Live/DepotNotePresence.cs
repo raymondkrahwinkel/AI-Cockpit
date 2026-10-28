@@ -227,7 +227,7 @@ internal sealed class DepotNotePresence : IDisposable
             }
 
             var state = new Dictionary<string, object?> { ["activity"] = own.Activity, ["cursor"] = await _CursorAsync(own, cancellationToken).ConfigureAwait(false) };
-            var entry = new DepotAwarenessEntry(_clientId, Interlocked.Increment(ref _clock), JsonSerializer.Serialize(state));
+            var entry = new DepotAwarenessEntry(_clientId, Interlocked.Read(ref _clock), JsonSerializer.Serialize(state));
             await _send(DepotAwarenessCodec.Encode([entry]), cancellationToken).ConfigureAwait(false);
         }
         finally
