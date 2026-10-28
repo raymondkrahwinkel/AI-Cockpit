@@ -142,7 +142,7 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
         {
             lock (_gate)
             {
-                if (_disposed || Path.GetFileName(path).StartsWith('.') || !Directory.Exists(path))
+                if (_disposed || !Directory.Exists(path))
                 {
                     return;
                 }
