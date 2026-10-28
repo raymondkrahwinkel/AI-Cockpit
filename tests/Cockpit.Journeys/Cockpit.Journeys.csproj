@@ -14,6 +14,8 @@
     <Compile Include="..\Cockpit.Infrastructure.Tests\Worktrees\CleanupFixture.cs" Link="CleanupFixture.cs" />
     <!-- The view tests' own headless platform, so both run the app on the same one. -->
     <Compile Include="..\Cockpit.App.ViewTests\HeadlessAvalonia.cs" Link="HeadlessAvalonia.cs" />
+    <!-- AC-1880: the wheel through the assistant's transcript, as AssistantChatTranscriptScrollTests turns it. -->
+    <Compile Include="..\Cockpit.App.ViewTests\AssistantChatScrolling.cs" Link="AssistantChatScrolling.cs" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
     <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
     <PackageReference Include="coverlet.collector" Version="10.1.0" />
