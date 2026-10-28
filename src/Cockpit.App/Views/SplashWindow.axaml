@@ -14,6 +14,9 @@
         WindowStartupLocation="Manual">
 
     <Window.Styles>
+        <Style Selector="Button.unlockLink :is(TextBlock)">
+            <Setter Property="Foreground" Value="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </Style>
         <Style Selector="StackPanel.splashContent">
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
@@ -114,8 +117,8 @@
                                Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsUnlocking}"
                                 IsEnabled="{Binding !Unlock.IsBusy}">
-                        <Button Classes="Subtle" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Content="I forgot my password" Click="OnForgot"/>
-                        <Button Classes="Subtle" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Content="Quit" Click="OnQuit"/>
+                        <Button Classes="Subtle unlockLink" FontSize="11" Content="I forgot my password" Click="OnForgot"/>
+                        <Button Classes="Subtle unlockLink" FontSize="11" Content="Quit" Click="OnQuit"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -60,6 +61,9 @@ public class SecurityOptionsViewTests
         Assert.Equal("Checking the password", splashModel.Detail);
         unlock.IsBusy = false;
         var forgot = splash.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "I forgot my password"));
+        Assert.Equal(
+            Assert.IsType<SolidColorBrush>(splash.FindResource("CockpitTextSecondaryBrush")).Color,
+            Assert.IsType<SolidColorBrush>(forgot.GetVisualDescendants().OfType<TextBlock>().Single().Foreground).Color);
         forgot.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
         var confirmation = Assert.Single(splash.OwnedWindows);
         Assert.IsType<ConfirmationDialog>(confirmation);
