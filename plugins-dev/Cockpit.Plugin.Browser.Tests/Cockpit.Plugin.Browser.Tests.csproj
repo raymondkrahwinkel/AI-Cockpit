@@ -13,7 +13,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="SharpCompress" Version="0.50.7" />
     <!-- The UI part's own dependencies, which a HintPath reference does not bring along. -->
-    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
     <PackageReference Include="CefGlue.Next.Core" Version="154.8037.98" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />

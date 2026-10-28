@@ -30,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
+    <PackageReference Include="Avalonia" Version="12.1.2">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- MaterialIconKind for the "Run CI on this machine…" session-header action. The host ships the runtime copy. -->

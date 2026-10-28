@@ -14,8 +14,8 @@
     <!-- Substituting ICockpitHost and building the workspace body pull in their Avalonia- and DI-typed members,
          which the plugin itself references compile-only (ExcludeAssets=runtime, host-provided). The test host has
          no host to provide them, so it carries the runtime copies — as the other host-faking plugin test projects do. -->
-    <PackageReference Include="Avalonia" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Headless" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
     <PackageReference Include="coverlet.collector" Version="10.1.0" />

@@ -32,7 +32,7 @@ public class CodexModelIntelligenceTests
 
         var intelligence = await readTask;
 
-        Assert.Equal("gpt-5.6-terra", Assert.Single(intelligence.Models).PublicModelRef);
+        Assert.Equal("openai/gpt-5.6-terra", Assert.Single(intelligence.Models).PublicModelRef);
         Assert.Equal(new[]
         {
             new PluginRateLimitWindow("5h", 60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300),
@@ -49,14 +49,14 @@ public class CodexModelIntelligenceTests
         var fake = new FakeCliSubprocess();
         var loggedOutRead = CodexModelIntelligence.ReadAsync(() => fake, _DefaultConfig(), "codex", null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
-        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "model/list", """{"data":[{"id":"gpt-listed"}]}""");
         await _RespondErrorAsync(fake, "account/rateLimits/read");
 
         var loggedOut = await loggedOutRead;
 
         Assert.Empty(spawnFailure.Models);
         Assert.Empty(spawnFailure.Quota);
-        Assert.Empty(loggedOut.Models);
+        Assert.Equal(["gpt-listed"], loggedOut.Models.Select(model => model.Model));
         Assert.Empty(loggedOut.Quota);
     }
 

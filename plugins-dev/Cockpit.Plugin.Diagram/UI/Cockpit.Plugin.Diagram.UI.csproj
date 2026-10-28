@@ -43,16 +43,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1">
+    <PackageReference Include="Avalonia" Version="12.1.2">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Avalonia.Skia" Version="12.1.1">
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
     <!-- Measured (AC-809): ExcludeAssets on Avalonia above only suppresses assets Avalonia itself
          contributes, not those of its own dependency Avalonia.Remote.Protocol — that one still landed in the
          build output as a stray, unloaded DLL until excluded explicitly here too. -->
-    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.1">
+    <PackageReference Include="Avalonia.Remote.Protocol" Version="12.1.2">
       <ExcludeAssets>runtime;native</ExcludeAssets>
     </PackageReference>
     <!-- Measured (AC-809): must fall through, not ship — see the project-level comment above. -->

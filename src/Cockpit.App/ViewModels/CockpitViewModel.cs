@@ -1249,6 +1249,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             : SimpleStandDocksTheAssistant ? AssistantIndicatorCoordinator.DockPanelId : null
         : OpenDockPanelId is { } id && !IsDockPanelFloating(id) ? id : null; // AC-1710: floating is not open here
 
+    // AC-1862: a plugin panel has taken the rail from the assistant this stand docks there; the panel's header offers the
+    // way back. Not set while the assistant stands in the main column — the panel then opens beside it, replacing nothing.
+    public bool ShowBackToAssistant =>
+        SimpleStandDocksTheAssistant && EffectiveOpenDockPanelId is { } id && id != AssistantIndicatorCoordinator.DockPanelId;
+
+    // Closes the open Simple panel, which hands the rail back to the docked assistant — the same step as a second click on its tab.
+    [RelayCommand]
+    private Task BackToAssistant() => ToggleDockPanel(SimpleOpenDockPanelId ?? string.Empty);
+
     partial void OnAssistantChatChanged(AssistantChatViewModel? oldValue, AssistantChatViewModel? newValue)
     {
         if (oldValue is not null)

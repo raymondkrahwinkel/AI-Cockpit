@@ -1,7 +1,7 @@
 {
   "id": "proxmox",
   "name": "Proxmox VE",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "entryAssembly": "Cockpit.Plugin.Proxmox.dll",
   "entryType": "Cockpit.Plugin.Proxmox.ProxmoxPlugin",
   "uiAssembly": "Cockpit.Plugin.Proxmox.UI.dll",

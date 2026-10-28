@@ -15,9 +15,11 @@ public class ClaudeOptionChoicesTests
             Assert.Null(estimate.EstimatedInputUsdPerMillionTokens);
             Assert.Null(estimate.EstimatedOutputUsdPerMillionTokens);
         });
-        Assert.Equal("anthropic/claude-haiku-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "haiku").PublicModelRef);
-        Assert.Equal("anthropic/claude-sonnet-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "sonnet").PublicModelRef);
-        Assert.Equal("anthropic/claude-opus-5.5", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "opus").PublicModelRef);
+        Assert.Equal("~anthropic/claude-haiku-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "haiku").PublicModelRef);
+        Assert.Equal("~anthropic/claude-sonnet-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "sonnet").PublicModelRef);
+        Assert.Equal("~anthropic/claude-opus-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "opus").PublicModelRef);
+        Assert.Equal("~anthropic/claude-fable-latest", ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Single(estimate => estimate.Model == "fable").PublicModelRef);
+        Assert.Equal(ClaudeOptionChoices.ModelCostEstimatesCheapestFirst, new ClaudeModelIntelligence().Read().Models);
         Assert.Equal(
             ClaudeOptionChoices.ModelSuggestions.OrderBy(alias => alias, StringComparer.Ordinal),
             ClaudeOptionChoices.ModelCostEstimatesCheapestFirst.Select(estimate => estimate.Model).OrderBy(alias => alias, StringComparer.Ordinal));

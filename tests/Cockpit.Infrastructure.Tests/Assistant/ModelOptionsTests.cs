@@ -12,6 +12,7 @@ using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.ModelIntelligence;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using ModelContextProtocol.Server;
 using NSubstitute;
 using System.ComponentModel;
 
@@ -61,8 +62,9 @@ public sealed class ModelOptionsTests
         await _provider.DidNotReceive().ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    // AC-1855 merged two cases: the provider's price wins with its source, and a missing quota or index is unknown, never 0.
     [Fact]
-    public async Task ModelOptions_ProviderPrice_WinsOverThePublicOne_AndNamesItsSource()
+    public async Task ModelOptions_ProviderPriceWins_AndMissingQuotaAndIndex_AreUnknown_NeverZero()
     {
         var provider = new PluginModelCostEstimate("m1")
         {
@@ -73,31 +75,116 @@ public sealed class ModelOptionsTests
         _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence { Models = [provider] });
         McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        var result = JsonNode.Parse(await _Tools().ModelOptionsAsync())!;
+        var result = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding"))!;
+        var model = result["models"]![0]!;
 
-        var price = result["models"]![0]!["price"]!;
+        var price = model["price"]!;
         Assert.Equal(1m, (decimal)price["inputPerMTokens"]!);
         Assert.Equal("provider live read", (string)price["fact"]!["source"]!);
         Assert.Equal(30, (int)price["fact"]!["ageSeconds"]!);
         Assert.Contains("provider live read", result["attribution"]!.AsArray().Select(source => (string)source!));
+
+        Assert.StartsWith("unknown: OpenRouter carries no Artificial Analysis coding index", (string)model["quality"]!);
+        Assert.Equal("unknown", (string)model["quota"]!);
+
+        // AC-1813/AC-1855: the step stands in BEFORE A SPAWN, the tool in WHAT EXISTS, and it is preloaded, not deferred.
+        var startAgent = typeof(AssistantAgentMcpTools).GetMethod(nameof(AssistantAgentMcpTools.StartAgentAsync))!.GetCustomAttribute<DescriptionAttribute>()!.Description;
+        Assert.Contains("model_options", startAgent);
+        var prompt = AssistantSystemPrompt.Default;
+        var start = prompt.IndexOf("BEFORE A SPAWN, CHECK THESE", StringComparison.Ordinal);
+        var beforeSpawn = prompt[start..prompt.IndexOf("IN EVERY BRIEF, WHATEVER", start, StringComparison.Ordinal)];
+        Assert.Contains("a fixed step, unasked: before every `start_agent`, and before you give a subagent a model, call `model_options`", beforeSpawn);
+        Assert.Contains("never invent a figure", beforeSpawn);
+        Assert.Contains("- Model choice (AC-1855): `model_options`", prompt[prompt.IndexOf("WHAT EXISTS", StringComparison.Ordinal)..]);
+        var meta = typeof(AssistantReadMcpTools).GetMethod(nameof(AssistantReadMcpTools.ModelOptionsAsync))!.GetCustomAttributes<McpMetaAttribute>();
+        Assert.Contains(meta, attribute => attribute.Name == AssistantAgentMcpTools.AlwaysLoadMeta);
     }
 
     [Fact]
-    public async Task ModelOptions_MissingQuotaAndIndex_AreUnknown_NeverZero()
+    public async Task ModelOptions_JoinsProviderRefsToOpenRouterIds_WithPriceSourceAndIndex()
     {
-        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence { Models = [new PluginModelCostEstimate("m1")] });
-        McpRequestContext.Set(AssistantIdentity.PaneId);
+        // The real feed's shape: versioned canonical_slug, alias_target as an object, indices as numbers.
+        const string feed = """
+            {"data":[
+              {"id":"anthropic/claude-opus-5.5","canonical_slug":"anthropic/claude-opus-5.5-20260921","name":"Opus","context_length":1000000,
+               "pricing":{"prompt":"0.000004","completion":"0.00002"},"benchmarks":{"artificial_analysis":{"intelligence_index":57.6,"coding_index":null}}},
+              {"id":"~anthropic/claude-opus-latest","canonical_slug":"~anthropic/claude-opus-latest","alias_target":{"slug":"anthropic/claude-opus-5.5"},"pricing":{"prompt":"0.000004","completion":"0.00002"}},
+              {"id":"openai/gpt-6.1-sol","canonical_slug":"openai/gpt-6.1-sol-20260929","pricing":{"prompt":"0.000002","completion":"0.000012"},
+               "benchmarks":{"artificial_analysis":{"intelligence_index":76.7}}},
+              {"id":"other/gpt-6.1-sol","pricing":{"prompt":"0.000099"}},
+              {"id":"anthropic/claude-sonnet-5.5","canonical_slug":"anthropic/claude-sonnet-5.5-20260928",
+               "pricing":{"prompt":"0.000002","completion":"0.00001"},"benchmarks":{"artificial_analysis":{"intelligence_index":56}}},
+              {"id":"anthropic/claude-fable-5.1","pricing":{"prompt":"0.00001","completion":"0.00005"},
+               "benchmarks":{"artificial_analysis":{"intelligence_index":53.4}}},
+              {"id":"~anthropic/claude-fable-latest","alias_target":{"slug":"anthropic/claude-fable-5.1"}}]}
+            """;
+        var root = Path.Combine(Path.GetTempPath(), $"ac1855-{Guid.NewGuid():N}");
+        try
+        {
+            var publicData = new OpenRouterModelIntelligence(root, new FeedHandler(feed), new FakeClock(Now));
+            _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([
+                new SessionProfile("Prov", new PluginProviderConfig("claude", "{}")),
+                new SessionProfile("Codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"))]);
+            _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
+            {
+                Models = [
+                    new PluginModelCostEstimate("opus") { PublicModelRef = "~anthropic/claude-opus-latest" },
+                    new PluginModelCostEstimate("sonnet") { PublicModelRef = "anthropic/claude-sonnet-5.5" },
+                    new PluginModelCostEstimate("fable") { PublicModelRef = "~anthropic/claude-fable-latest" },
+                    new PluginModelCostEstimate("missing") { PublicModelRef = "anthropic/missing" }],
+            });
+            _provider.ReadAsync("Codex", Arg.Any<CancellationToken>()).Returns(new PluginModelIntelligence
+            {
+                Models = [new PluginModelCostEstimate("gpt-6.1-sol") { PublicModelRef = "openai/gpt-6.1-sol" }],
+            });
+            McpRequestContext.Set(AssistantIdentity.PaneId);
+            var tools = new AssistantReadMcpTools(
+                Substitute.For<IAssistantReadGateway>(), Substitute.For<IDelegationService>(), Substitute.For<INodeSessionsClient>(),
+                new NodeDiscoveryId(Path.Combine(root, "node-discovery-id.txt")), new ModelPictureReader(publicData, _provider, _profiles, new FakeClock(Now)));
 
-        var model = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding"))!["models"]![0]!;
+            var models = (JsonNode.Parse(await tools.ModelOptionsAsync()) ?? throw new InvalidOperationException("Missing result"))["models"]?.AsArray()
+                ?? throw new InvalidOperationException("Missing models");
 
-        Assert.Equal("unknown", (string)model["quality"]!);
-        Assert.Equal("unknown", (string)model["quota"]!);
+            var opus = models.Single(row => (string)row!["model"]! == "opus")!;
+            Assert.Equal(4m, (decimal)opus["price"]!["inputPerMTokens"]!);
+            Assert.Equal("OpenRouter /api/v1/models", (string)opus["price"]!["fact"]!["source"]!);
+            Assert.False((bool)opus["price"]!["fact"]!["stale"]!);
+            var sonnet = models.Single(row => row?["model"]?.GetValue<string>() == "sonnet")
+                ?? throw new InvalidOperationException("Missing Sonnet");
+            Assert.Equal("anthropic/claude-sonnet-5.5", sonnet["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(2m, sonnet["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(56m, sonnet["quality"]?["index"]?.GetValue<decimal>());
 
-        // AC-1813: the assistant is told to consult the tool where it chooses, and never to invent a figure.
-        var startAgent = typeof(AssistantAgentMcpTools).GetMethod(nameof(AssistantAgentMcpTools.StartAgentAsync))!.GetCustomAttribute<DescriptionAttribute>()!.Description;
-        Assert.Contains("model_options", startAgent);
-        Assert.Contains("model_options", AssistantSystemPrompt.Default);
-        Assert.Contains("never invent a figure", AssistantSystemPrompt.Default);
+            var codex = models.Single(row => row?["model"]?.GetValue<string>() == "gpt-6.1-sol")
+                ?? throw new InvalidOperationException("Missing Codex");
+            Assert.Equal("openai/gpt-6.1-sol", codex["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(2m, codex["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(76.7m, codex["quality"]?["index"]?.GetValue<decimal>());
+
+            var fable = models.Single(row => row?["model"]?.GetValue<string>() == "fable")
+                ?? throw new InvalidOperationException("Missing Fable");
+            Assert.Equal("~anthropic/claude-fable-latest", fable["publicModelRef"]?.GetValue<string>());
+            Assert.Equal(10m, fable["price"]?["inputPerMTokens"]?.GetValue<decimal>());
+            Assert.Equal(53.4m, fable["quality"]?["index"]?.GetValue<decimal>());
+
+            var missing = models.Single(row => row?["model"]?.GetValue<string>() == "missing")
+                ?? throw new InvalidOperationException("Missing unknown model");
+            Assert.Equal("unknown: no public match for anthropic/missing", missing["price"]?.GetValue<string>());
+            Assert.Equal("unknown: no public match for anthropic/missing", missing["quality"]?.GetValue<string>());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    private sealed class FeedHandler(string feed) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(feed) });
     }
 
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider

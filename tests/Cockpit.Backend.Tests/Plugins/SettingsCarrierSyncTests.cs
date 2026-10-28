@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Core.Configuration;
@@ -45,8 +46,8 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
         Assert.Empty(b.Sync.Conflicts);
         Assert.Equal((18, 18), (_Local(b)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote()["Terminal"]?["FontSize"]?.GetValue<int>()));
-        await _AssertProjectsWithDifferentIdsAndTheSameGitUrlMergeAsync();
-        await _AssertProjectsWithDifferentIdsAndTheSameSharedSourceKeyMergeAsync();
+        await _AssertProjectsStayLocalAsync("forward-a", "forward-b");
+        await _AssertProjectsStayLocalAsync("reverse-b", "reverse-a");
     }
 
     // Acceptance 4: a key the manifest manages (AC-1507), a leaf or a whole dictionary, is neither pushed nor taken over.
@@ -74,35 +75,59 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Empty(managed.Sync.Conflicts);
     }
 
-    // AC-1834: repository identity joins machine-local project ids without adding a no-folder duplicate.
-    private async Task _AssertProjectsWithDifferentIdsAndTheSameGitUrlMergeAsync()
-    {
-        var a = _Machine("merge-desktop", """{"Projects":[{"Id":"desktop","Name":"Cockpit","GitUrl":"https://github.com/krahwinkel-it/cockpit.git","SourceDirectory":"C:/src/Cockpit"}]}""");
-        var b = _Machine("merge-hub", """{"Projects":[{"Id":"hub","Name":"Cockpit","GitUrl":"git@github.com:krahwinkel-it/cockpit.git","SourceDirectory":"/srv/Cockpit"}]}""");
-
-        await a.Sync.RunOnceAsync();
-        await b.Sync.RunOnceAsync();
-        await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
-
-        var project = Assert.Single(_Local(b)["Projects"]!.AsArray());
-        Assert.Equal("hub", project?["Id"]?.GetValue<string>());
-        Assert.Equal("/srv/Cockpit", project?["SourceDirectory"]?.GetValue<string>());
-    }
-
-    // AC-1837: shared-source identity joins machine-local project ids when no repository identity is available.
-    private async Task _AssertProjectsWithDifferentIdsAndTheSameSharedSourceKeyMergeAsync()
+    // AC-1861: each direction uses separate state roots and exercises an older carrier and pending state.
+    private async Task _AssertProjectsStayLocalAsync(string ownerName, string receiverName)
     {
         var space = new _Space();
-        var a = _Machine("shared-source-desktop", """{"Projects":[{"Id":"desktop","Name":"Cockpit","SharedSourceKey":"depot:depot.example.com/krahwinkel-it/cockpit","SourceDirectory":"C:/src/Cockpit"}]}""", space);
-        var b = _Machine("shared-source-hub", """{"Projects":[{"Id":"hub","Name":"Cockpit","SharedSourceKey":"depot:depot.example.com/krahwinkel-it/cockpit","SourceDirectory":"/srv/Cockpit"}]}""", space);
+        var ownerConfig = """{"Projects":[{"Id":"owner","Name":"Owner","SourceDirectory":"C:/owner"}],"CategoryOrder":["Owner"],"Terminal":{"FontSize":17}}""";
+        var receiverConfig = """{"Projects":[{"Id":"copy","Name":"Existing copy","SourceDirectory":"C:/copy"}],"CategoryOrder":["Local"],"Terminal":{"FontSize":17}}""";
+        ownerConfig = JsonSerializer.Serialize(JsonSerializer.Deserialize<CockpitConfigFile>(ownerConfig, CockpitConfigFileAccess.SerializerOptions), CockpitConfigFileAccess.SerializerOptions);
+        receiverConfig = JsonSerializer.Serialize(JsonSerializer.Deserialize<CockpitConfigFile>(receiverConfig, CockpitConfigFileAccess.SerializerOptions), CockpitConfigFileAccess.SerializerOptions);
+        var owner = _Machine(ownerName, ownerConfig, space);
+        var receiver = _Machine(receiverName, receiverConfig, space);
+        await owner.Sync.RunOnceAsync();
+        var outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+        Assert.NotNull(outgoing);
+        Assert.False(outgoing.ContainsKey("Projects"));
+        Assert.False(outgoing.ContainsKey("CategoryOrder"));
 
-        await a.Sync.RunOnceAsync();
-        await b.Sync.RunOnceAsync();
-        await SettingsCarrierSync.ApplyIncomingAsync(b.ConfigPath, NullLogger.Instance);
+        // An older client still sends projects; even a pending deletion from the old sync must be ignored.
+        space.Blob = Encoding.UTF8.GetBytes(ownerConfig);
+        var statePath = Path.Combine(Path.GetDirectoryName(receiver.ConfigPath) ?? ".", "settings-sync.json");
+        File.WriteAllText(statePath, """
+            {"ProjectIds":{"owner":"copy"},"Base":{"Projects.owner":"{}","CategoryOrder":"[]"},
+             "Incoming":{"Projects.copy":{"Value":null,"Was":null,"Steps":[{"Name":"Projects","Element":"copy"}]},
+                         "CategoryOrder":{"Value":"[]","Was":null,"Steps":[{"Name":"CategoryOrder","Element":null}]}},
+             "Conflicts":{"Projects.owner":{"Mine":"{}","Theirs":null,"Steps":[{"Name":"Projects","Element":"owner"}]}}}
+            """);
+        await SettingsCarrierSync.ApplyIncomingAsync(receiver.ConfigPath, NullLogger.Instance);
+        await receiver.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(receiver.ConfigPath, NullLogger.Instance);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(receiverConfig)?["Projects"], _Local(receiver)["Projects"]));
+        Assert.Equal("Local", _Local(receiver)["CategoryOrder"]?[0]?.GetValue<string>());
+        Assert.Empty(receiver.Sync.Conflicts);
+        var saved = JsonNode.Parse(File.ReadAllText(statePath)) as JsonObject;
+        Assert.NotNull(saved);
+        Assert.False(saved.ContainsKey("ProjectIds"));
+        outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+        Assert.NotNull(outgoing);
+        Assert.False(outgoing.ContainsKey("Projects"));
+        Assert.False(outgoing.ContainsKey("CategoryOrder"));
 
-        var project = Assert.Single(_Local(b)["Projects"]!.AsArray());
-        Assert.Equal("hub", project?["Id"]?.GetValue<string>());
-        Assert.Equal("/srv/Cockpit", project?["SourceDirectory"]?.GetValue<string>());
+        // Removing a local duplicate cannot remove the owner's project.
+        _Write(receiver, """{"Projects":[],"Terminal":{"FontSize":18}}""");
+        await receiver.Sync.RunOnceAsync();
+        outgoing = JsonNode.Parse(space.Blob ?? []) as JsonObject;
+        Assert.NotNull(outgoing);
+        Assert.False(outgoing.ContainsKey("Projects"));
+        Assert.False(outgoing.ContainsKey("CategoryOrder"));
+        await owner.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(owner.ConfigPath, NullLogger.Instance);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(ownerConfig)?["Projects"], _Local(owner)["Projects"]));
+        Assert.Equal("Owner", _Local(owner)["CategoryOrder"]?[0]?.GetValue<string>());
+        Assert.Empty(owner.Sync.Conflicts);
+        owner.Sync.Dispose();
+        receiver.Sync.Dispose();
     }
 
     private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config, _Space? space = null)

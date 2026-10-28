@@ -642,6 +642,7 @@ public partial class App : Application
 
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
+        BeginStartupNotifications(cockpitViewModel);
         await _YieldToPaintAsync();
         InitializePlugins();
         await _YieldToPaintAsync();
@@ -1293,12 +1294,15 @@ public partial class App : Application
 
     private static readonly TimeSpan StartupNotificationWindow = TimeSpan.FromSeconds(10);
 
+    // AC-1803: opened before the plugins start, since restored sign-ins and a plugin's first tick already post then.
+    internal static void BeginStartupNotifications(CockpitViewModel cockpit) =>
+        cockpit.ToastHost.BeginStartupNotificationBundle(StartupNotificationWindow, () => _ = cockpit.ShowNotificationsAsync());
+
     // Load workspaces before restoring their AI-session panes (AC-410). InitializeAsync never throws, so a failed
     // load continues safely with the in-memory default and nothing to restore. AC-1343: waits for thresholdsLoaded
     // first — a restored pane reads CockpitViewModel.UsageThresholds once, at creation, null until then.
     internal static async Task RestoreCockpitAsync(CockpitViewModel cockpit, Task thresholdsLoaded, string? keptNotificationsPath = null)
     {
-        cockpit.ToastHost.BeginStartupNotificationBundle(StartupNotificationWindow, () => _ = cockpit.ShowNotificationsAsync());
         if (keptNotificationsPath is not null)
         {
             await cockpit.ToastHost.RestoreNotificationsAsync(keptNotificationsPath);

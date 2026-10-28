@@ -59,7 +59,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
-    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
   </ItemGroup>
 
 </Project>

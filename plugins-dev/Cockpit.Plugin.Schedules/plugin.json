@@ -1,7 +1,7 @@
 {
   "id": "schedules",
   "name": "Schedules",
-  "version": "0.6.4",
+  "version": "0.6.6",
   "entryAssembly": "Cockpit.Plugin.Schedules.dll",
   "entryType": "Cockpit.Plugin.Schedules.SchedulesPlugin",
   "uiAssembly": "Cockpit.Plugin.Schedules.UI.dll",

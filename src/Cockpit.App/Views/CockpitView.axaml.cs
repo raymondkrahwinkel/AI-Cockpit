@@ -441,7 +441,10 @@ public partial class CockpitView : UserControl
             : null;
 
         var open = cockpit.DockPanels.FirstOrDefault(panel => panel.Id == cockpit.EffectiveOpenDockPanelId);
-        DockPanelHeader.IsVisible = open is not null && cockpit.DockHost.OffersUndock(open);
+        var offersUndock = open is not null && cockpit.DockHost.OffersUndock(open);
+        DockPanelUndock.IsVisible = offersUndock;
+        DockPanelBack.IsVisible = cockpit.ShowBackToAssistant;
+        DockPanelHeader.IsVisible = offersUndock || cockpit.ShowBackToAssistant;
         DockPanelHeaderTitle.Text = open?.Title;
     }
 
