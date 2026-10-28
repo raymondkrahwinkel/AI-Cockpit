@@ -33,6 +33,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
     private Inbox.DepotInbox? _inbox;
     private Events.DepotEvents? _events;
+    private Notes.Live.DepotNoteLive? _noteLive;
     private ILogger? _logger;
     private Files.DepotFileSourceProvider? _fileSources;
 
@@ -81,6 +82,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
+                _ = _CloseLiveNotesAsync(connection.Id);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -149,6 +151,27 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             JsonSerializer.SerializeToElement(await inbox.UnreadAsync(cancellationToken).ConfigureAwait(false), DepotChannel.Json)));
         _HandleInbox(host, DepotInboxChannel.List, inbox.ListAsync);
         _HandleInbox(host, DepotInboxChannel.MarkRead, inbox.MarkReadAsync);
+
+        // AC-1897: live notes over /hubs/notes, with the same host-only token the events hub uses; a room's Y.Doc loads on the first note.
+        _noteLive = new Notes.Live.DepotNoteLive(
+            () => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName),
+            (connection, userId, onClosed) => new Notes.Live.SignalRDepotNotesHub(
+                connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onClosed),
+            clientId => new Notes.Live.JintNoteRoom(clientId),
+            status => host.Channel.Publish(DepotNoteLiveChannel.Status, JsonSerializer.SerializeToElement(status, DepotChannel.Json)),
+            _logger);
+        var noteLive = _noteLive;
+        _handlers.Add(host.Channel.Handle(DepotNoteLiveChannel.Open, (payload, _) =>
+        {
+            noteLive.Open(payload.Deserialize<DepotNoteLiveRequest>(DepotChannel.Json) ?? throw new ArgumentException("The request is empty.", nameof(payload)));
+            return Task.FromResult(JsonSerializer.SerializeToElement(true, DepotChannel.Json));
+        }));
+        _handlers.Add(host.Channel.Handle(DepotNoteLiveChannel.Close, async (payload, _) =>
+        {
+            await noteLive.CloseAsync(payload.Deserialize<DepotNoteLiveRequest>(DepotChannel.Json) ?? throw new ArgumentException("The request is empty.", nameof(payload))).ConfigureAwait(false);
+            return JsonSerializer.SerializeToElement(true, DepotChannel.Json);
+        }));
 
         _events = new Events.DepotEvents(
             () => settings.Connections,
@@ -234,6 +257,18 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 ?? throw new ArgumentException("The request is empty.", nameof(payload));
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
+
+    private async Task _CloseLiveNotesAsync(string connectionId)
+    {
+        try
+        {
+            await (_noteLive?.CloseConnectionAsync(connectionId) ?? Task.CompletedTask).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "Closing the live notes of a changed Depot account failed.");
+        }
+    }
 
     private void _HandleInbox(ICockpitHost host, string action, Func<DepotInboxRequest, CancellationToken, Task<DepotInboxPage>> handler) =>
         _handlers.Add(host.Channel.Handle(action, async (payload, cancellationToken) =>
@@ -552,6 +587,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         // thread never blocks on a socket. Each service cancels its own retries first, so nothing reopens one.
         _ = _inbox?.DisposeAsync().AsTask().ContinueWith(
             closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the Depot inbox failed."),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
+        _ = _noteLive?.DisposeAsync().AsTask().ContinueWith(
+            closing => _logger?.LogWarning(closing.Exception?.GetBaseException(), "Closing the live notes failed."),
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted,
             TaskScheduler.Default);

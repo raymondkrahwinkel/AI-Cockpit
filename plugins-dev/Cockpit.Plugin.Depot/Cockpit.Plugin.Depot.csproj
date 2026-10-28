@@ -52,6 +52,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1897: the live note's Y.Doc runs in Jint (BSD-2, pure managed), with Depot's own yjs in Notes/Live/Bundle (PIN.md). Jint is
+         loaded on the first live note and not before; it ships in the plugin folder, never in the host. -->
+    <PackageReference Include="Jint" Version="4.17.0" />
+    <EmbeddedResource Include="Notes/Live/Bundle/room.bundle.js" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Lets Cockpit.Plugin.Depot.Tests unit-test the registration without a host, same pattern as the
          YouTrack and GitHub Issues plugins' project fields. -->
     <InternalsVisibleTo Include="Cockpit.Plugin.Depot.Tests" />

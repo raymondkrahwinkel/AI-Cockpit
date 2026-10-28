@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **the Depot plugin can join a live note.** Its backend connects to a Depot note room with your Depot sign-in (the
+  token stays in Cockpit), keeps the room's document in step, and joins again with no lost text when Depot closes the
+  connection after a few minutes. The plugin reports whether the note is live, reconnecting, out of date, or needs you to sign
+  in again, and it asks for a sign-in only once instead of retrying. Plugin Depot 0.34.0. The editor that shows it follows.
+
 - added: Depot note invitations show a toast with **Join**, and a silent desktop notification while Cockpit is in
   the background. Closing means Later and keeps the invitation unread. Repeated invitations for the same note and
   account show once per connection. Join opens the note in your browser until the native note editor is available.
