@@ -87,6 +87,10 @@ public class DepotNotesTests
             var title = Assert.Single(text, block => block.Text == "Sprint review");
             Assert.Equal(12.5, title.FontSize);
             Assert.Equal(FontWeight.SemiBold, title.FontWeight);
+            Assert.Contains("Inter", title.FontFamily.Name, StringComparison.OrdinalIgnoreCase);
+            var recentName = Assert.Single(text, block => block.Text == "✎ 2026-10-12 Sprint review.md");
+            Assert.Equal(12.5, recentName.FontSize);
+            Assert.Equal(FontWeight.Normal, recentName.FontWeight);
             Assert.Equal(["#FFE0A33E", "#FF5AA576", "#FFE0A33E"], panel.GetVisualDescendants().OfType<Border>()
                 .Where(border => border.Width == 22 && border.Height == 22).Select(border => border.BorderBrush?.ToString()?.ToUpperInvariant()));
             Assert.Contains(text, block => block.Text == "1.1 KB");
