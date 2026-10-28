@@ -138,7 +138,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable
             }
 
             var updates = await _room.EditAsync(ops, cancellationToken).ConfigureAwait(false);
-            _Patch(ops);
+            _rev++;
             await _SendTypedAsync(updates, cancellationToken).ConfigureAwait(false);
             return new DepotNoteEditResult(true, _rev);
         }
