@@ -342,10 +342,10 @@ internal sealed class NewMeetingNoteDialog : UserControl
     private void _RebuildChips()
     {
         _chips.Children.Clear();
-        _chips.Children.Add(_Chip("You", "(you)", null));
+        _chips.Children.Add(_Chip("You", null));
         foreach (var person in _attendees)
         {
-            _chips.Children.Add(_Chip(person.Name, null, () =>
+            _chips.Children.Add(_Chip(person.Name, () =>
             {
                 _attendees.Remove(person);
                 _RebuildChips();
@@ -356,7 +356,7 @@ internal sealed class NewMeetingNoteDialog : UserControl
 
     private static readonly string[] _AvatarBrushes = ["CockpitAccentBrush", "CockpitStatusWaitingBrush", "CockpitStatusDoneBrush", "CockpitStatusBusyBrush"];
 
-    private Border _Chip(string name, string? suffix, Action? remove)
+    private Border _Chip(string name, Action? remove)
     {
         var avatar = new Border
         {
@@ -365,13 +365,6 @@ internal sealed class NewMeetingNoteDialog : UserControl
         };
         avatar.Bind(Border.BorderBrushProperty, this.GetResourceObservable(_AvatarBrushes[_chips.Children.Count % _AvatarBrushes.Length]));
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { avatar, new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center } } };
-        if (suffix is not null)
-        {
-            var hint = new TextBlock { Text = suffix, VerticalAlignment = VerticalAlignment.Center };
-            hint.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
-            row.Children.Add(hint);
-        }
-
         if (remove is not null)
         {
             var button = new Button { Content = "×", Classes = { "Subtle" }, Padding = new Thickness(2, 0) };
