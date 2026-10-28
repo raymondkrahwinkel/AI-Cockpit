@@ -427,7 +427,7 @@
          A plugin that implements ILiveFileSource sets minHostVersion 0.143.0. -->
     <!-- 0.144.0: presence in live files, other people's carets, selections and avatars (AC-1900, Abstractions 3.47.0).
          A plugin that implements ILivePresence sets minHostVersion 0.144.0. -->
-    <VersionPrefix>0.144.0</VersionPrefix>
+    <VersionPrefix>0.145.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

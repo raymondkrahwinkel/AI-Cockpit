@@ -51,6 +51,8 @@ internal sealed class LiveTextDocument : IDisposable
     public LiveFileStatus Status { get; private set; }
 
     public bool Failed => _failed;
+    public bool HasUnsentText => Status.UnsentSourceText is not null || _inflight is { Count: > 0 } || _queue.Any(item => item.Ops.Count > 0);
+    public string SourceText => Status.UnsentSourceText ?? _base.ToString();
 
     public event EventHandler? Changed;
 
@@ -74,6 +76,10 @@ internal sealed class LiveTextDocument : IDisposable
 
     public void Undo(bool redo)
     {
+        if (Status.State == LiveFileState.ReadOnly)
+        {
+            return;
+        }
         _queue.Add(new Outgoing([], redo));
         _Pump();
     }
@@ -83,11 +89,16 @@ internal sealed class LiveTextDocument : IDisposable
         _resync = true;
         _failed = false;
         _Pump();
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     // True once every local change has reached the source; false when sending failed and the text is only here.
     public Task<bool> FlushAsync()
     {
+        if (Status.State == LiveFileState.ReadOnly && HasUnsentText)
+        {
+            return Task.FromResult(false);
+        }
         if (_closed || _IsIdle)
         {
             return Task.FromResult(!_closed);
@@ -146,6 +157,7 @@ internal sealed class LiveTextDocument : IDisposable
         _queue[^1].Ops.Add(new TextOp(e.Offset, e.RemovalLength, e.InsertedText.Text));
         _failed = false;
         _Pump();
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void _OnState(JsonElement payload)
@@ -402,7 +414,13 @@ internal sealed class LiveTextDocument : IDisposable
         {
             return;
         }
-        if (_inflight is not null && _staleAt is null)
+        if (Status.State == LiveFileState.ReadOnly && !_resync)
+        {
+            _idle?.TrySetResult(!HasUnsentText);
+            _idle = null;
+            return;
+        }
+        if (_inflight is not null && _staleAt is null && Status.State != LiveFileState.ReadOnly)
         {
             // An edit whose answer failed goes again first, under its own id, so the source says whether it landed.
             _Send(_EditAsync);
@@ -479,6 +497,10 @@ internal sealed class LiveTextDocument : IDisposable
         {
             await _client.UndoLiveAsync(_id ?? "", redo, cancellationToken).ConfigureAwait(true);
         }
+        catch (FileSourceException error) when (error.Kind == FileSourceErrorKind.Forbidden)
+        {
+            _ReadOnly();
+        }
         catch (FileSourceException error)
         {
             _logger.LogWarning(error, "Undo in live file session {SessionId} failed.", _id);
@@ -494,7 +516,17 @@ internal sealed class LiveTextDocument : IDisposable
             _inflightBase = _rev;
         }
         var baseRev = _rev;
-        var result = await _client.EditLiveAsync(_id ?? "", _editId, baseRev, ops, cancellationToken).ConfigureAwait(true);
+        LiveEditResult result;
+        try
+        {
+            result = await _client.EditLiveAsync(_id ?? "", _editId, baseRev, ops, cancellationToken).ConfigureAwait(true);
+        }
+        catch (FileSourceException error) when (error.Kind == FileSourceErrorKind.Forbidden)
+        {
+            _Requeue();
+            _ReadOnly();
+            return;
+        }
         if (result.Status == LiveEditStatus.Applied && result.Rev == baseRev + 1 && _rev == baseRev)
         {
             foreach (var op in ops)
@@ -517,6 +549,16 @@ internal sealed class LiveTextDocument : IDisposable
             _Requeue();
             _resync = true;
         }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void _ReadOnly()
+    {
+        Status = new LiveFileStatus(LiveFileState.ReadOnly, "You can no longer edit this note.") { ReadOnlyReason = LiveReadOnlyReason.RoleLost };
+        _failed = HasUnsentText;
+        _idle?.TrySetResult(!HasUnsentText);
+        _idle = null;
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     // The whole text again, merged per line with what is typed here and not yet sent. Only reached on a gap, a broken

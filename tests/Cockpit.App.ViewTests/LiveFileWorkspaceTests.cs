@@ -68,7 +68,86 @@ public sealed class LiveFileWorkspaceTests
         }
 
         await _Undo_TakesBackOnlyTheOwnEdit_AndKeepsRemoteTextAsync();
+        await _ReadOnly_PreservesQueuedTextAsync();
+        await _ReadOnlyJoinAsync(LiveReadOnlyReason.SchemaMismatch, "Read only", true);
+        await _ReadOnlyJoinAsync(LiveReadOnlyReason.Viewer, "Viewer · read only", false);
     });
+
+    // Layer 2, view: read-only joins cannot enter editing, still receive remote patches and keep Download.
+    private static async Task _ReadOnlyJoinAsync(LiveReadOnlyReason reason, string chip, bool banner)
+    {
+        var status = new LiveFileStatus(LiveFileState.ReadOnly, "This note uses a newer Depot editor.") { ReadOnlyReason = reason };
+        var (source, body, marker, window) = await _OpenAsync(status);
+        try
+        {
+            Assert.True(body.Editor.IsReadOnly);
+            body.BeginEdit();
+            body.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "NO" });
+            body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Z, KeyModifiers = KeyModifiers.Control });
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(body.Editor.IsReadOnly);
+            Assert.False(body.Editor.ShowSource);
+            Assert.False(body.IsDirty);
+            Assert.Empty(source.Edits);
+            Assert.Equal(0, source.Writes);
+            Assert.Equal(chip, body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "FileStatus").Text);
+            Assert.Equal(banner, body.GetLogicalDescendants().OfType<Border>().Single(border => border.Name == "LiveReadOnlyBanner").IsVisible);
+            Assert.Contains(body.GetLogicalDescendants().OfType<Button>(), button => button.IsVisible && Equals(button.Content, "Download"));
+            Assert.DoesNotContain(body.GetLogicalDescendants().OfType<CheckBox>(), check => check.IsVisible && Equals(check.Content, "Markdown source"));
+            source.Remote(0, "WEB ");
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("WEB " + Lines, body.Editor.Text);
+            Assert.Empty(source.Edits);
+            source.Status = status with { UnsentSourceText = "Shared text before the offline edit" };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(body.IsDirty);
+            Assert.True(body.HasConflict);
+            Assert.Equal(WorkspaceMarker.Unsaved, marker());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view (data loss): a refused edit and text queued behind it stay dirty while remote text still arrives.
+    private static async Task _ReadOnly_PreservesQueuedTextAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync();
+        try
+        {
+            source.Refuse = true;
+            var hold = new TaskCompletionSource();
+            source.Hold = hold.Task;
+            body.Editor.TextEditor.Document.Insert(0, "MINE ");
+            body.Editor.TextEditor.Document.Insert(5, "QUEUED ");
+            hold.SetResult();
+            await source.Refused.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(body.Editor.IsReadOnly);
+            Assert.True(body.IsDirty);
+            Assert.Equal(WorkspaceMarker.Unsaved, marker());
+            Assert.StartsWith("MINE QUEUED ", body.Editor.Text);
+            Assert.True(body.HasConflict);
+            body.BeginEdit();
+            Assert.True(body.Editor.IsReadOnly);
+            source.Remote(Lines.Length, "\nWEB");
+            Dispatcher.UIThread.RunJobs();
+            Assert.StartsWith("MINE QUEUED ", body.Editor.Text);
+            Assert.EndsWith("\nWEB", body.Editor.Text);
+            Assert.True(body.IsDirty);
+            body.ToggleCompare();
+            Assert.Contains(body.GetLogicalDescendants().OfType<Button>(), button => button.IsVisible && Equals(button.Content, "Copy your text"));
+            await body.SaveAsync();
+            Assert.Equal(0, source.Writes);
+            Assert.Empty(source.Edits);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     // Layer 2, view (data loss): Ctrl+Z takes back only what was typed here; the remote text that came after stays.
     // Text still on its way when a remote delete removes the word around it survives on both sides, once.
@@ -113,9 +192,9 @@ public sealed class LiveFileWorkspaceTests
         }
     }
 
-    private static async Task<(LiveSource Source, MarkdownFileWorkspace Body, Func<WorkspaceMarker?> Marker, Window Window)> _OpenAsync()
+    private static async Task<(LiveSource Source, MarkdownFileWorkspace Body, Func<WorkspaceMarker?> Marker, Window Window)> _OpenAsync(LiveFileStatus? status = null)
     {
-        var source = new LiveSource(Lines);
+        var source = new LiveSource(Lines) { Status = status ?? new LiveFileStatus(LiveFileState.Live) };
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
         Cockpit.Infrastructure.Files.FileSourceChannel.Register(hub.For("files"), source);
         WorkspaceMarker? marker = null;
@@ -145,12 +224,16 @@ public sealed class LiveFileWorkspaceTests
         public List<(long BaseRev, TextOp[] Ops)> Edits { get; } = [];
         public int Writes { get; private set; }
         public Task? Hold { get; set; }
+        public bool Refuse { get; set; }
+        public TaskCompletionSource Refused { get; } = new();
+        public LiveFileStatus Status { get; set; } = new(LiveFileState.Live);
         public TaskCompletionSource Landed { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IReadOnlyList<FileConnection> Connections => [new("c1", "Fake", "memory", false)];
         public FileSourceCapabilities Capabilities => new(true, FileSourceChannel.MaxContentBytes);
         public event EventHandler? ConnectionsChanged { add { } remove { } }
         public event EventHandler<LiveFilePatch>? Patched;
-        public event EventHandler<LiveFileStatus>? StatusChanged { add { } remove { } }
+        public event EventHandler<LiveFileStatus>? StatusChanged;
+        public void PublishStatus() => StatusChanged?.Invoke(this, Status);
         public IFileSource Open(string connectionId) => this;
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
             Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(Text.ToString())), "v1") { CanWrite = true });
@@ -161,7 +244,7 @@ public sealed class LiveFileWorkspaceTests
         }
         public Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken) => Task.FromResult<ILiveFileSession>(this);
         public Task<LiveFileSnapshot> ReadAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, new LiveFileStatus(LiveFileState.Live)));
+            Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, Status));
         public async Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
         {
             if (Hold is { } hold)
@@ -171,6 +254,11 @@ public sealed class LiveFileWorkspaceTests
             if (baseRev != Rev)
             {
                 return new LiveEditResult(LiveEditStatus.Stale, Rev);
+            }
+            if (Refuse)
+            {
+                Refused.TrySetResult();
+                throw new FileSourceException(FileSourceErrorKind.Forbidden, "You can no longer edit this note.");
             }
             Edits.Add((baseRev, [.. ops]));
             foreach (var op in ops)
