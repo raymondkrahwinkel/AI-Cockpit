@@ -383,7 +383,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
             {
                 if (_PreviewMode)
                 {
-                    await OpenAsync(item.Node, preview: true).ConfigureAwait(true);
+                    await OpenAsync(item.Node, preview: false).ConfigureAwait(true);
                 }
             };
             row.DoubleTapped += async (_, _) => await OpenAsync(item.Node).ConfigureAwait(true);
