@@ -17,7 +17,7 @@ internal static class HealthzEndpoint
         {
             var sections = await services.GetRequiredService<PluginHealthSections>().ReadAsync().ConfigureAwait(false);
             // AC-1815: optional integrations remain diagnostic; only essential sections gate readiness.
-            var healthy = sections.Where(section => section.IsEssential).All(section => section.Report.Healthy);
+            var healthy = sections.All(section => section.Report.Healthy);
             var degraded = sections.Any(section => !section.Report.Healthy);
             return Results.Json(
                 new
