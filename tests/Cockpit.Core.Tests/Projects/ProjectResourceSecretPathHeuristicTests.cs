@@ -27,6 +27,7 @@ public class ProjectResourceSecretPathHeuristicTests
     // ~/.gnupg, ~/.aws, ~/.kube — whole directories, same reasoning as ~/.ssh.
     [InlineData("~/.gnupg/private-keys-v1.d/foo", true)]
     [InlineData("~/.aws", true)]
+    [InlineData("~/.aws/", true)]
     [InlineData("~/.aws/credentials", true)]
     [InlineData("~/.kube/config", true)]
     // ~/.config/gh — one directory under the shared ~/.config tree; the rest of ~/.config is not touched.
