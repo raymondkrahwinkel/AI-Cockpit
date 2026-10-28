@@ -70,7 +70,7 @@ public sealed partial class SyncOptionsViewModel(ISyncOptions? source = null, Ti
             return;
         }
 
-        var categories = Rows.Where(row => row.Servers.Any(tick => tick.IsTicked)).ToDictionary(
+        var categories = Rows.ToDictionary(
             row => row.Id,
             row => (IReadOnlyList<string>)[.. row.Servers.Where(tick => tick.IsTicked).Select(tick => tick.Server.Id)],
             StringComparer.Ordinal);
