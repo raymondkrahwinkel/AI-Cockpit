@@ -83,6 +83,9 @@ internal sealed class DepotInboxModel : IDisposable
     public static Task OpenAsync(DepotInboxMessage message, Func<Uri, Task> launch) =>
         Uri.TryCreate(PrimaryAction(message).Url, UriKind.Absolute, out var uri) ? launch(uri) : Task.CompletedTask;
 
+    // AC-1581 replaces this browser fallback with the native note join when the editor route is available.
+    public static Task JoinAsync(DepotInboxMessage message, Func<Uri, Task> launch) => OpenAsync(message, launch);
+
     public void Dispose() => _subscription.Dispose();
 
     private void _OnChanged(PluginChannelEvent channelEvent)
