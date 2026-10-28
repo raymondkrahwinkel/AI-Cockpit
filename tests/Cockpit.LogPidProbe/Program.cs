@@ -26,7 +26,9 @@ internal static class Program
             }
         }
 
-        var provider = new FileLoggerProvider(logPath);
+        var provider = label == "crash"
+            ? new FileLoggerProvider(logPath, () => new SlowCrashSink(logPath))
+            : new FileLoggerProvider(logPath);
         var logger = provider.CreateLogger("probe");
         if (label == "crash")
         {
@@ -58,4 +60,12 @@ internal static class Program
         }
     }
 
+    private sealed class SlowCrashSink(string path) : FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read)
+    {
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            Thread.Sleep(500);
+            base.Write(buffer, offset, count);
+        }
+    }
 }

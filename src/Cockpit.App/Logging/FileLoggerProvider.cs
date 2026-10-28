@@ -26,6 +26,8 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private long _dropped;
     private long _droppedWarnings;
     private long _stopDeadline;
+    private bool _crashing;
+    private long _crashDeadline;
     private bool _prepared;
 
     public FileLoggerProvider(string path) : this(path, null)
@@ -49,6 +51,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
     public void Dispose()
     {
+        var waitBudget = DrainBudget;
         lock (_queueGate)
         {
             if (!_stopping)
@@ -57,12 +60,18 @@ public sealed class FileLoggerProvider : ILoggerProvider
             }
 
             _stopping = true;
+            if (_crashing)
+            {
+                _stopDeadline = Math.Min(_stopDeadline, _crashDeadline);
+                waitBudget = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), _crashDeadline);
+            }
+
             Monitor.PulseAll(_queueGate);
         }
 
-        if (Thread.CurrentThread != _writer)
+        if (Thread.CurrentThread != _writer && waitBudget > TimeSpan.Zero)
         {
-            _writer.Join(DrainBudget);
+            _writer.Join(waitBudget);
         }
 
         AppDomain.CurrentDomain.ProcessExit -= _OnProcessExit;
@@ -79,6 +88,12 @@ public sealed class FileLoggerProvider : ILoggerProvider
             while ((_queue.Count > 0 || _writing) && Thread.CurrentThread != _writer)
             {
                 var remaining = DrainBudget - elapsed.Elapsed;
+                if (_crashing)
+                {
+                    var crashRemaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), _crashDeadline);
+                    remaining = remaining < crashRemaining ? remaining : crashRemaining;
+                }
+
                 if (remaining <= TimeSpan.Zero)
                 {
                     return;
@@ -92,7 +107,19 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private void _OnProcessExit(object? sender, EventArgs args) => Dispose();
 
     // FailFast and hard kills cannot run managed flush hooks; a wedged disk is bounded by DrainBudget.
-    private void _OnUnhandledException(object sender, UnhandledExceptionEventArgs args) => Flush();
+    private void _OnUnhandledException(object sender, UnhandledExceptionEventArgs args)
+    {
+        lock (_queueGate)
+        {
+            if (!_crashing)
+            {
+                _crashDeadline = Stopwatch.GetTimestamp() + (long)(DrainBudget.TotalSeconds * Stopwatch.Frequency);
+                _crashing = true;
+            }
+        }
+
+        Flush();
+    }
 
     internal static string RolloverPathFor(string logFilePath)
     {
@@ -136,6 +163,13 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
             _queue.AddLast(new LogEntry(level, line + Environment.NewLine));
             Monitor.PulseAll(_queueGate);
+        }
+
+        // Only fatal crash handling may wait for the writer, within one shared two-second budget.
+        // Ordinary log calls never wait for the sink; later crash handlers need no special flush calls.
+        if (Volatile.Read(ref _crashing))
+        {
+            Flush();
         }
     }
 
