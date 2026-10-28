@@ -89,27 +89,29 @@ exactly one.
 | Member | Contract |
 |---|---|
 | `ReadAsync` | The whole text, its revision and status, from one moment. Used on open and to resync. |
-| `EditAsync(baseRev, ops)` | Applies the host's ops only when `baseRev` is the current revision and answers `Applied` with `baseRev + 1`. Otherwise it applies nothing and answers `Stale` with the current revision; the host sends again after the patches it missed. The source never transforms an edit. |
+| `EditAsync(editId, baseRev, ops)` | Applies the host's ops only when `baseRev` is the current revision and answers `Applied` with `baseRev + 1`. Otherwise it applies nothing and answers `Stale` with the current revision; the host sends again after the patches it missed. The source never transforms an edit. The host repeats an edit whose answer it lost under the same id; if that id is the last one applied, answer `Applied` with its revision and apply nothing. Under `ReadOnly` throw `FileSourceException(Forbidden)`; in every other state accept the edit. |
 | `Patched` | Every change the host did not send, in revision order: `LiveFilePatch(Rev, Ops, Who)`, ops on the text at `Rev - 1`. The host's own edits are never echoed. |
-| `UndoAsync(redo)` | Undoes or redoes the host's own last edit, the way `Y.UndoManager` tracks one origin. The result arrives as a patch. |
+| `UndoAsync(redo)` | Undoes or redoes the host's own edits, the way `Y.UndoManager` tracks one origin; how edits are grouped is up to the source. The result arrives as a patch. With nothing to undo it does nothing. |
 | `StatusChanged` | `Connecting`, `Live`, `Offline`, `SignInNeeded`, `ReadOnly`, `NoSaver` or `Stale`, with an optional reason. |
 
-A `TextOp(Offset, Length, Text)` replaces `Length` UTF-16 characters at `Offset`; in a list each op applies to
-the text the previous one left. The host keeps one edit in flight. It shifts a patch past the ops the source has
-not applied yet, so the caret, the selection and those ops stay on their characters. Patches land through
-`TextDocument.Replace`, never by replacing the whole text. When a patch overlaps an unsent op, a revision is
-missing, the status is `Stale`, or the source cannot be reached, the host reads the whole text again. It then
-merges what was typed here per line, so no local text is lost.
+A `TextOp(Offset, Length, Text)` replaces `Length` UTF-16 code units at `Offset` (not UTF-8 bytes, which yrs
+uses by default); in a list each op applies to the text the previous one left. The host sends edits and undos in
+the order they happened, one call at a time. It shifts a patch past the ops the source has not applied yet, so the
+caret, the selection and those ops stay on their characters; text typed inside a range someone else deletes
+survives. Patches land through `TextDocument.Replace`, never by replacing the whole text. When a revision is
+missing, a patch does not fit, or the status is `Stale`, the host reads the whole text again and merges what was
+typed here per line. An edit whose answer was lost goes again under its own id first, so it never lands twice.
 
 Undo belongs to the source. AvaloniaEdit's own undo stack is off for a live file, because it would also take
 back other people's patches. Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z call `UndoAsync`.
 
 While live, the workspace has no Save button, Ctrl+S does nothing, and the footer leaves out "Ctrl+S save". The
 tab gets a green dot (`WorkspaceMarker.Live`) for `Live`, `ReadOnly` and `NoSaver`. It gets the amber
-unsaved dot for `Offline`, `SignInNeeded`, or when an edit could not be sent. Closing waits until every
-local edit has reached the source; if that fails, it asks before discarding.
+unsaved dot for `Offline`, `SignInNeeded`, or when an edit could not be sent. Closing waits up to five seconds
+until every local edit has reached the source; if that fails, it asks before discarding. A session that ends on
+the source side (a plugin reload) is not reopened: the text stays in the tab, marked as not sent.
 
-The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
+The host subscribes to the events before it opens the session, so no patch is lost in between. The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
 `files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
 text travels as base64 under the same 1 MiB cap as `files-read`. Op text is plain JSON and limited to the same
 size per edit. `FileSourceReadAnswer.Live` tells the host to open a session. Presence and cursors are not part

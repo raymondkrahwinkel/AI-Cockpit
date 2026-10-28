@@ -68,7 +68,7 @@ public sealed record FileSourceReadAnswer(string ContentBase64, string Version, 
     public bool Live { get; init; }
 }
 public sealed record FileSourceLiveRequest(string SessionId);
-public sealed record FileSourceLiveEditRequest(string SessionId, long BaseRev, TextOp[] Ops);
+public sealed record FileSourceLiveEditRequest(string SessionId, string EditId, long BaseRev, TextOp[] Ops);
 public sealed record FileSourceLiveUndoRequest(string SessionId, bool Redo);
 public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase64, long Rev, LiveFileStatus Status);
 public sealed record FileSourceLivePatch(string SessionId, long Rev, TextOp[] Ops, string? Who);

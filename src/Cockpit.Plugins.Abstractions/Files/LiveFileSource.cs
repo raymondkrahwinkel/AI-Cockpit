@@ -62,7 +62,8 @@ public interface ILiveFileSource
 /// <summary>
 /// A live session on one file. Every change, the host's or anyone else's, raises the revision by exactly one.
 /// The host's own edits are never sent back to it as patches; undo and redo are the source's, so they only touch
-/// the host's own edits and arrive as patches.
+/// the host's own edits and arrive as patches. Edits are accepted in every state but <see cref="LiveFileState.ReadOnly"/>,
+/// where the source throws a <see cref="FileSourceException"/> with <see cref="FileSourceErrorKind.Forbidden"/>.
 /// </summary>
 public interface ILiveFileSession : IAsyncDisposable
 {
@@ -77,10 +78,15 @@ public interface ILiveFileSession : IAsyncDisposable
 
     /// <summary>
     /// Applies the host's ops when <paramref name="baseRev"/> is the current revision; otherwise applies nothing
-    /// and answers <see cref="LiveEditStatus.Stale"/> with the current revision.
+    /// and answers <see cref="LiveEditStatus.Stale"/> with the current revision. The host sends one edit at a time
+    /// and repeats an edit whose answer it lost under the same <paramref name="editId"/>: when that id is the last
+    /// one applied, answer <see cref="LiveEditStatus.Applied"/> with the revision it got and apply nothing.
     /// </summary>
-    Task<LiveEditResult> EditAsync(long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken);
+    Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken);
 
-    /// <summary>Undoes (or with <paramref name="redo"/>, redoes) the host's own last edit; the result arrives as a patch.</summary>
+    /// <summary>
+    /// Undoes (or with <paramref name="redo"/>, redoes) the host's own edits, grouped as the source sees fit; the
+    /// result arrives as a patch. With nothing to undo it does nothing.
+    /// </summary>
     Task UndoAsync(bool redo, CancellationToken cancellationToken);
 }

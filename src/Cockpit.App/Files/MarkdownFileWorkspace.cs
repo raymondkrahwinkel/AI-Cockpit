@@ -318,22 +318,26 @@ internal sealed class MarkdownFileWorkspace : UserControl
     // A live source keeps the text itself; when it cannot open the session, the file is edited and saved as a snapshot.
     private async Task<bool> _OpenLiveAsync()
     {
+        var live = new LiveTextDocument(Editor.TextEditor.Document, _client, _logger);
         try
         {
             var (id, snapshot) = await _client.OpenLiveAsync(_options.File, _lifetime.Token).ConfigureAwait(true);
             if (_closed)
             {
+                live.Dispose();
                 await _client.CloseLiveAsync(id, CancellationToken.None).ConfigureAwait(true);
                 return false;
             }
             Editor.Text = snapshot.Text;
             _savedText = snapshot.Text;
-            _live = new LiveTextDocument(Editor.TextEditor.Document, _client, id, snapshot, _logger);
-            _live.Changed += (_, _) => _UpdateState();
+            live.Attach(id, snapshot);
+            live.Changed += (_, _) => _UpdateState();
+            _live = live;
             return true;
         }
         catch (FileSourceException error)
         {
+            live.Dispose();
             _logger.LogWarning(error, "Markdown workspace {WorkspaceId} could not open its file live; it saves snapshots instead.", _context.WorkspaceId);
             return false;
         }
@@ -541,8 +545,17 @@ internal sealed class MarkdownFileWorkspace : UserControl
         }
     }
 
-    private async Task<bool> _ConfirmLiveCloseAsync() =>
-        _live is not { } live || await live.FlushAsync().ConfigureAwait(true) || await _confirmDiscard().ConfigureAwait(true);
+    // Every local edit reaches the source before the tab goes; one that cannot within a few seconds asks first.
+    private async Task<bool> _ConfirmLiveCloseAsync()
+    {
+        if (_live is not { } live)
+        {
+            return true;
+        }
+        var flush = live.FlushAsync();
+        var flushed = await Task.WhenAny(flush, Task.Delay(TimeSpan.FromSeconds(5))).ConfigureAwait(true) == flush && await flush.ConfigureAwait(true);
+        return flushed || await _confirmDiscard().ConfigureAwait(true);
+    }
 
     private async Task<bool> _ConfirmCloseAsync()
     {
@@ -616,7 +629,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         {
             Editor.IsReadOnly = !_editing || live.State == LiveFileState.ReadOnly;
             _context.SetMarker(notSent || live.State is LiveFileState.Offline or LiveFileState.SignInNeeded ? WorkspaceMarker.Unsaved
-                : live.State is LiveFileState.Connecting or LiveFileState.Stale ? null : WorkspaceMarker.Live);
+                : live.State is LiveFileState.Live or LiveFileState.ReadOnly or LiveFileState.NoSaver ? WorkspaceMarker.Live : null);
             _context.SetCloseGuard(_ConfirmLiveCloseAsync);
         }
         else
@@ -642,7 +655,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 LiveFileState.ReadOnly => "Read only",
                 LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
                 LiveFileState.Stale => "Catching up…",
-                _ => "Live",
+                LiveFileState.Live => "Live",
+                _ => live.State.ToString(),
             }
             : !_loaded ? "Unavailable" : !_editing ? (_context.IsPreview ? "Preview · " : "") + (_canWrite ? "read-only" : "Viewer") : dirty ? "Unsaved" : "Saved";
         ToolTip.SetTip(_statusChip, live?.Reason);

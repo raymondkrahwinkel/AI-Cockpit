@@ -8,23 +8,25 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Files;
 
-// Keeps one TextDocument in step with a live source: local changes go out as ops, one edit in flight at a time;
-// patches are shifted past the ops the source has not applied yet; anything that does not fit is resynced.
+// Keeps one TextDocument in step with a live source: local changes and undos go out in order, one call at a time;
+// patches are shifted past the ops the source has not applied yet. A gap or a broken patch is resynced.
 // Undo is the source's, so AvaloniaEdit's own stack is off: it would also undo the patches of others.
 internal sealed class LiveTextDocument : IDisposable
 {
     private readonly TextDocument _document;
     private readonly FileSourceChannelClient _client;
-    private readonly string _id;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly List<TextOp> _buffer = [];
-    private readonly Queue<bool> _undos = new();
+    private readonly List<Outgoing> _queue = [];
     private readonly Dictionary<long, LiveFilePatch> _early = [];
-    private readonly StringBuilder _base;
+    private readonly List<JsonElement> _beforeOpen = [];
+    private readonly StringBuilder _base = new();
     private readonly IDisposable _patches;
     private readonly IDisposable _states;
+    private string? _id;
     private List<TextOp>? _inflight;
+    private string _editId = "";
+    private long _inflightBase;
     private long? _staleAt;
     private long _rev;
     private bool _sending;
@@ -35,36 +37,51 @@ internal sealed class LiveTextDocument : IDisposable
     private bool _closed;
     private TaskCompletionSource<bool>? _idle;
 
-    public LiveTextDocument(TextDocument document, FileSourceChannelClient client, string sessionId, LiveFileSnapshot snapshot, ILogger logger)
+    // Subscribes before the session is opened, so no patch published between the open and Attach is lost.
+    public LiveTextDocument(TextDocument document, FileSourceChannelClient client, ILogger logger)
     {
         _document = document;
         _client = client;
-        _id = sessionId;
         _logger = logger;
-        _rev = snapshot.Rev;
-        _base = new StringBuilder(snapshot.Text);
-        Status = snapshot.Status;
-        document.UndoStack.SizeLimit = 0;
-        document.Changed += _OnChanged;
+        Status = new LiveFileStatus(LiveFileState.Connecting);
         _patches = client.Subscribe(FileSourceChannel.LivePatch, evt => Dispatcher.UIThread.Post(() => _OnPatch(evt.Payload)));
         _states = client.Subscribe(FileSourceChannel.LiveState, evt => Dispatcher.UIThread.Post(() => _OnState(evt.Payload)));
     }
 
     public LiveFileStatus Status { get; private set; }
 
+    public bool Failed => _failed;
+
     public event EventHandler? Changed;
 
-    private bool _IsIdle => !_sending && _inflight is null && _buffer.Count == 0 && _undos.Count == 0 && !_resync;
+    private bool _IsIdle => !_sending && _inflight is null && _queue.Count == 0 && !_resync;
+
+    // The document already holds the snapshot's text.
+    public void Attach(string sessionId, LiveFileSnapshot snapshot)
+    {
+        _id = sessionId;
+        _rev = snapshot.Rev;
+        _base.Clear().Append(snapshot.Text);
+        Status = snapshot.Status;
+        _document.UndoStack.SizeLimit = 0;
+        _document.Changed += _OnChanged;
+        foreach (var payload in _beforeOpen)
+        {
+            _OnPatch(payload);
+        }
+        _beforeOpen.Clear();
+    }
 
     public void Undo(bool redo)
     {
-        _undos.Enqueue(redo);
+        _queue.Add(new Outgoing([], redo));
         _Pump();
     }
 
     public void Resync()
     {
         _resync = true;
+        _failed = false;
         _Pump();
     }
 
@@ -97,19 +114,22 @@ internal sealed class LiveTextDocument : IDisposable
         _states.Dispose();
         _lifetime.Cancel();
         _idle?.TrySetResult(false);
-        // Closing cannot be awaited by the workspace's close; a failure only leaves the source to time the session out.
-        _ = _CloseAsync();
+        if (_id is { } id)
+        {
+            // Closing cannot be awaited by the workspace's close; a failure only leaves the source to time the session out.
+            _ = _CloseAsync(id);
+        }
     }
 
-    private async Task _CloseAsync()
+    private async Task _CloseAsync(string id)
     {
         try
         {
-            await _client.CloseLiveAsync(_id, CancellationToken.None).ConfigureAwait(false);
+            await _client.CloseLiveAsync(id, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception error)
         {
-            _logger.LogWarning(error, "Closing live file session {SessionId} failed.", _id);
+            _logger.LogWarning(error, "Closing live file session {SessionId} failed.", id);
         }
     }
 
@@ -119,7 +139,11 @@ internal sealed class LiveTextDocument : IDisposable
         {
             return;
         }
-        _buffer.Add(new TextOp(e.Offset, e.RemovalLength, e.InsertedText.Text));
+        if (_queue.Count == 0 || _queue[^1].Redo is not null)
+        {
+            _queue.Add(new Outgoing([], null));
+        }
+        _queue[^1].Ops.Add(new TextOp(e.Offset, e.RemovalLength, e.InsertedText.Text));
         _failed = false;
         _Pump();
     }
@@ -128,7 +152,7 @@ internal sealed class LiveTextDocument : IDisposable
     {
         try
         {
-            if (_closed || payload.Deserialize<FileSourceLiveState>(FileSourceChannel.Json) is not { } state
+            if (_closed || _id is null || payload.Deserialize<FileSourceLiveState>(FileSourceChannel.Json) is not { } state
                 || state.SessionId != _id || state.Status is null)
             {
                 return;
@@ -147,35 +171,40 @@ internal sealed class LiveTextDocument : IDisposable
 
     private void _OnPatch(JsonElement payload)
     {
-        FileSourceLivePatch? patch;
+        if (_closed)
+        {
+            return;
+        }
+        if (_id is null)
+        {
+            _beforeOpen.Add(payload.Clone());
+            return;
+        }
         try
         {
-            patch = payload.Deserialize<FileSourceLivePatch>(FileSourceChannel.Json);
+            if (payload.Deserialize<FileSourceLivePatch>(FileSourceChannel.Json) is not { } patch || patch.SessionId != _id)
+            {
+                return;
+            }
+            if (patch.Ops is null || patch.Ops.Any(op => op?.Text is null))
+            {
+                throw new JsonException("A live patch without ops.");
+            }
+            if (patch.Rev > _rev)
+            {
+                _early[patch.Rev] = new LiveFilePatch(patch.Rev, patch.Ops, patch.Who);
+            }
+            _Drain();
         }
-        catch (JsonException error)
+        catch (Exception error)
         {
-            _logger.LogWarning(error, "A live patch for session {SessionId} could not be read; resyncing.", _id);
-            Resync();
-            return;
+            _logger.LogWarning(error, "A live patch for session {SessionId} could not be applied; resyncing.", _id);
+            _resync = true;
         }
-        if (_closed || patch is null || patch.SessionId != _id)
-        {
-            return;
-        }
-        if (patch.Ops is null || patch.Ops.Any(op => op?.Text is null))
-        {
-            Resync();
-            return;
-        }
-        if (patch.Rev > _rev)
-        {
-            _early[patch.Rev] = new LiveFilePatch(patch.Rev, patch.Ops, patch.Who);
-        }
-        _Drain();
         _Pump();
     }
 
-    // Applies the patches that follow on from _rev; a gap with nothing out to explain it is resynced.
+    // Applies the patches that follow on from _rev. Patches arrive in order, so a gap with no call out to explain it is resynced.
     private void _Drain()
     {
         if (_reading)
@@ -196,74 +225,147 @@ internal sealed class LiveTextDocument : IDisposable
         }
         if (_inflight is not null && !_sending && _staleAt is { } at && _rev >= at)
         {
-            _buffer.InsertRange(0, _inflight);
-            _inflight = null;
-            _staleAt = null;
+            _Requeue();
         }
-        _resync |= _early.Count > 0 && !_sending && _inflight is null;
+        _resync |= _early.Count > 0 && !_sending;
     }
 
     private bool _Apply(LiveFilePatch patch)
     {
-        var pending = new List<TextOp>([.. _inflight ?? [], .. _buffer]);
-        var local = new List<TextOp>();
-        int baseLength = _base.Length, docLength = _document.TextLength;
-        foreach (var op in patch.Ops)
+        var remote = _Primitives(patch.Ops);
+        if (!_Fits(remote, _base.Length))
         {
-            if (op.Offset < 0 || op.Length < 0 || op.Offset + op.Length > baseLength)
-            {
-                return false;
-            }
-            baseLength += op.Text.Length - op.Length;
-            var mapped = op;
-            for (var i = 0; i < pending.Count; i++)
-            {
-                var mine = pending[i];
-                if (!_Transform(ref mapped, ref mine))
-                {
-                    return false;
-                }
-                pending[i] = mine;
-            }
-            if (mapped.Offset + mapped.Length > docLength)
-            {
-                return false;
-            }
-            docLength += mapped.Text.Length - mapped.Length;
-            local.Add(mapped);
+            return false;
+        }
+        var inflight = _inflight is null ? null : _Primitives(_inflight);
+        if (inflight is not null)
+        {
+            (remote, inflight) = _Transform(remote, inflight);
+        }
+        var queued = new List<List<Prim>>();
+        foreach (var item in _queue)
+        {
+            (remote, var mine) = _Transform(remote, _Primitives(item.Ops));
+            queued.Add(mine);
+        }
+        if (!_Fits(remote, _document.TextLength))
+        {
+            return false;
         }
         foreach (var op in patch.Ops)
         {
             _base.Remove(op.Offset, op.Length).Insert(op.Offset, op.Text);
         }
-        _ApplyToDocument(local);
-        var sent = _inflight?.Count ?? 0;
-        if (_inflight is not null)
+        _ApplyToDocument(_TextOps(remote));
+        if (inflight is not null)
         {
-            _inflight = pending.GetRange(0, sent);
+            _inflight = _TextOps(inflight);
         }
-        _buffer.Clear();
-        _buffer.AddRange(pending.Skip(sent));
+        for (var i = 0; i < _queue.Count; i++)
+        {
+            _queue[i] = _queue[i] with { Ops = _TextOps(queued[i]) };
+        }
         _rev = patch.Rev;
         return true;
     }
 
-    // Moves a remote op past a local one the source has not seen, and the local one past it. An insert at the same
-    // spot goes before the local one. Overlapping ranges have no single answer: false, and the caller resyncs.
-    private static bool _Transform(ref TextOp remote, ref TextOp local)
+    // A replace as a delete then an insert at the same spot; the transforms below only meet these two kinds.
+    private readonly record struct Prim(int Offset, int Length, string Text);
+
+    private static List<Prim> _Primitives(IEnumerable<TextOp> ops)
     {
-        if (remote.Offset + remote.Length <= local.Offset)
+        var prims = new List<Prim>();
+        foreach (var op in ops)
         {
-            local = local with { Offset = local.Offset + remote.Text.Length - remote.Length };
-            return true;
+            if (op.Length > 0)
+            {
+                prims.Add(new Prim(op.Offset, op.Length, ""));
+            }
+            if (op.Text.Length > 0)
+            {
+                prims.Add(new Prim(op.Offset, 0, op.Text));
+            }
         }
-        if (local.Offset + local.Length <= remote.Offset)
-        {
-            remote = remote with { Offset = remote.Offset + local.Text.Length - local.Length };
-            return true;
-        }
-        return false;
+        return prims;
     }
+
+    private static List<TextOp> _TextOps(List<Prim> prims) => [.. prims.Select(p => new TextOp(p.Offset, p.Length, p.Text))];
+
+    private static bool _Fits(List<Prim> prims, int length)
+    {
+        foreach (var p in prims)
+        {
+            if (p.Offset < 0 || p.Length < 0 || p.Offset + p.Length > length)
+            {
+                return false;
+            }
+            length += p.Text.Length - p.Length;
+        }
+        return true;
+    }
+
+    // Both lists apply to the same text. Returns the remote list to apply after the local one, and the local list to
+    // apply after the remote one; both orders give the same text. Concurrent inserts survive a delete around them.
+    private static (List<Prim> Remote, List<Prim> Local) _Transform(List<Prim> remote, List<Prim> local)
+    {
+        if (remote.Count == 0 || local.Count == 0)
+        {
+            return (remote, local);
+        }
+        if (remote.Count > 1)
+        {
+            var (first, afterFirst) = _Transform([remote[0]], local);
+            var (rest, afterRest) = _Transform(remote.GetRange(1, remote.Count - 1), afterFirst);
+            return ([.. first, .. rest], afterRest);
+        }
+        if (local.Count > 1)
+        {
+            var (overFirst, first) = _Transform(remote, [local[0]]);
+            var (overRest, rest) = _Transform(overFirst, local.GetRange(1, local.Count - 1));
+            return (overRest, [.. first, .. rest]);
+        }
+        var (r, l) = (remote[0], local[0]);
+        if (r.Length == 0 && l.Length == 0)
+        {
+            // Two inserts at one spot: the remote one goes first.
+            return r.Offset <= l.Offset
+                ? ([r], [l with { Offset = l.Offset + r.Text.Length }])
+                : ([r with { Offset = r.Offset + l.Text.Length }], [l]);
+        }
+        if (r.Length == 0)
+        {
+            var (insert, delete) = _InsertOverDelete(r, l);
+            return (insert, delete);
+        }
+        if (l.Length == 0)
+        {
+            var (insert, delete) = _InsertOverDelete(l, r);
+            return (delete, insert);
+        }
+        var overlap = Math.Max(0, Math.Min(r.Offset + r.Length, l.Offset + l.Length) - Math.Max(r.Offset, l.Offset));
+        return (_Delete(_Map(r.Offset, l), r.Length - overlap), _Delete(_Map(l.Offset, r), l.Length - overlap));
+    }
+
+    // An insert against a concurrent delete: the insert lands where the deleted text was, and the delete skips it.
+    private static (List<Prim> Insert, List<Prim> Delete) _InsertOverDelete(Prim insert, Prim delete)
+    {
+        var end = delete.Offset + delete.Length;
+        if (insert.Offset <= delete.Offset)
+        {
+            return ([insert], [delete with { Offset = delete.Offset + insert.Text.Length }]);
+        }
+        if (insert.Offset >= end)
+        {
+            return ([insert with { Offset = insert.Offset - delete.Length }], [delete]);
+        }
+        return ([insert with { Offset = delete.Offset }],
+            [.. _Delete(delete.Offset, insert.Offset - delete.Offset), .. _Delete(delete.Offset + insert.Text.Length, end - insert.Offset)]);
+    }
+
+    private static int _Map(int offset, Prim delete) =>
+        offset <= delete.Offset ? offset : offset >= delete.Offset + delete.Length ? offset - delete.Length : delete.Offset;
+
+    private static List<Prim> _Delete(int offset, int length) => length > 0 ? [new Prim(offset, length, "")] : [];
 
     // Replace, not Text =: the caret and selection are anchored and stay on their characters.
     private void _ApplyToDocument(IReadOnlyList<TextOp> ops)
@@ -284,13 +386,28 @@ internal sealed class LiveTextDocument : IDisposable
         }
     }
 
+    private void _Requeue()
+    {
+        if (_inflight is { Count: > 0 } ops)
+        {
+            _queue.Insert(0, new Outgoing(ops, null));
+        }
+        _inflight = null;
+        _staleAt = null;
+    }
+
     private void _Pump()
     {
-        if (_sending || _closed || _failed)
+        if (_sending || _closed || _failed || _id is null)
         {
             return;
         }
-        if (_resync)
+        if (_inflight is not null && _staleAt is null)
+        {
+            // An edit whose answer failed goes again first, under its own id, so the source says whether it landed.
+            _Send(_EditAsync);
+        }
+        else if (_resync)
         {
             _resync = false;
             _Send(_ResyncAsync);
@@ -299,15 +416,19 @@ internal sealed class LiveTextDocument : IDisposable
         {
             // A stale edit waits for the patches it missed.
         }
-        else if (_buffer.Count > 0)
+        else if (_queue.Count > 0)
         {
-            _inflight = [.. _buffer];
-            _buffer.Clear();
-            _Send(_EditAsync);
-        }
-        else if (_undos.TryDequeue(out var redo))
-        {
-            _Send(ct => _client.UndoLiveAsync(_id, redo, ct));
+            var next = _queue[0];
+            _queue.RemoveAt(0);
+            if (next.Redo is { } redo)
+            {
+                _Send(ct => _UndoAsync(redo, ct));
+            }
+            else
+            {
+                _inflight = next.Ops;
+                _Send(_EditAsync);
+            }
         }
         else
         {
@@ -342,15 +463,8 @@ internal sealed class LiveTextDocument : IDisposable
         }
         catch (Exception error)
         {
-            // The edit may or may not have landed: keep the text here and resync, which merges it either way.
+            // The text stays here; the edit goes again on the next change, status or close, under its own id.
             _logger.LogWarning(error, "Live file session {SessionId} could not reach its source.", _id);
-            if (_inflight is not null)
-            {
-                _buffer.InsertRange(0, _inflight);
-                _inflight = null;
-                _staleAt = null;
-            }
-            _resync = true;
             _failed = true;
             _idle?.TrySetResult(false);
             _idle = null;
@@ -359,13 +473,28 @@ internal sealed class LiveTextDocument : IDisposable
         _Pump();
     }
 
-    public bool Failed => _failed;
+    private async Task _UndoAsync(bool redo, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _client.UndoLiveAsync(_id ?? "", redo, cancellationToken).ConfigureAwait(true);
+        }
+        catch (FileSourceException error)
+        {
+            _logger.LogWarning(error, "Undo in live file session {SessionId} failed.", _id);
+        }
+    }
 
     private async Task _EditAsync(CancellationToken cancellationToken)
     {
-        var baseRev = _rev;
         var ops = _inflight ?? [];
-        var result = await _client.EditLiveAsync(_id, baseRev, ops, cancellationToken).ConfigureAwait(true);
+        if (_editId.Length == 0 || _inflightBase != _rev)
+        {
+            _editId = Guid.NewGuid().ToString("n");
+            _inflightBase = _rev;
+        }
+        var baseRev = _rev;
+        var result = await _client.EditLiveAsync(_id ?? "", _editId, baseRev, ops, cancellationToken).ConfigureAwait(true);
         if (result.Status == LiveEditStatus.Applied && result.Rev == baseRev + 1 && _rev == baseRev)
         {
             foreach (var op in ops)
@@ -374,32 +503,35 @@ internal sealed class LiveTextDocument : IDisposable
             }
             _rev = result.Rev;
             _inflight = null;
+            _editId = "";
         }
         else if (result.Status == LiveEditStatus.Stale && result.Rev > baseRev)
         {
             _staleAt = result.Rev;
+            _editId = "";
         }
         else
         {
-            throw new InvalidOperationException($"The source answered edit {baseRev} with {result.Status} {result.Rev}.");
+            _logger.LogWarning("Live file session {SessionId} answered edit {Rev} with {Status} {Answer}; resyncing.", _id, baseRev, result.Status, result.Rev);
+            _editId = "";
+            _Requeue();
+            _resync = true;
         }
     }
 
-    // The whole text again, merged per line with what is typed here and not yet sent, so no local text is lost.
+    // The whole text again, merged per line with what is typed here and not yet sent. Only reached on a gap, a broken
+    // patch or a Stale status, never with an edit whose fate is unknown.
     private async Task _ResyncAsync(CancellationToken cancellationToken)
     {
         if (_inflight is not null)
         {
-            _buffer.InsertRange(0, _inflight);
-            _inflight = null;
-            _staleAt = null;
+            _Requeue();
         }
-        // Patches that arrive meanwhile wait in _early; the snapshot may already hold them.
         _reading = true;
         LiveFileSnapshot snapshot;
         try
         {
-            (_, snapshot) = await _client.ReadLiveAsync(_id, cancellationToken).ConfigureAwait(true);
+            (_, snapshot) = await _client.ReadLiveAsync(_id ?? "", cancellationToken).ConfigureAwait(true);
         }
         finally
         {
@@ -407,7 +539,8 @@ internal sealed class LiveTextDocument : IDisposable
         }
         var mine = _document.Text;
         var theirs = snapshot.Text;
-        var merged = _buffer.Count == 0 ? theirs
+        var unsent = _queue.Any(item => item.Ops.Count > 0);
+        var merged = !unsent ? theirs
             : string.Join('\n', LineMerge.Merge(_base.ToString().Split('\n'), theirs.Split('\n'), mine.Split('\n')));
         if (_Diff(mine, merged) is { } toDocument)
         {
@@ -415,11 +548,13 @@ internal sealed class LiveTextDocument : IDisposable
         }
         _base.Clear().Append(theirs);
         _rev = snapshot.Rev;
-        _buffer.Clear();
+        var undos = _queue.Where(item => item.Redo is not null).ToList();
+        _queue.Clear();
         if (_Diff(theirs, merged) is { } toSource)
         {
-            _buffer.Add(toSource);
+            _queue.Add(new Outgoing([toSource], null));
         }
+        _queue.AddRange(undos);
         if (Status != snapshot.Status)
         {
             Status = snapshot.Status;
@@ -443,4 +578,7 @@ internal sealed class LiveTextDocument : IDisposable
         return prefix == from.Length && prefix == to.Length ? null
             : new TextOp(prefix, from.Length - prefix - suffix, to[prefix..(to.Length - suffix)]);
     }
+
+    // An edit (Redo null) or an undo (Redo false) or redo (Redo true), sent in the order they happened.
+    private sealed record Outgoing(List<TextOp> Ops, bool? Redo);
 }

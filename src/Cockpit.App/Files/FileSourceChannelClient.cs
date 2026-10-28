@@ -39,9 +39,9 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         _RunAsync(async () => _Decode(await _CallAsync<FileSourceLiveSnapshot>(FileSourceChannel.LiveRead,
             new FileSourceLiveRequest(sessionId), cancellationToken).ConfigureAwait(false)), cancellationToken);
 
-    public Task<LiveEditResult> EditLiveAsync(string sessionId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken) =>
+    public Task<LiveEditResult> EditLiveAsync(string sessionId, string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken) =>
         _RunAsync(() => _CallAsync<LiveEditResult>(FileSourceChannel.LiveEdit,
-            new FileSourceLiveEditRequest(sessionId, baseRev, [.. ops]), cancellationToken), cancellationToken);
+            new FileSourceLiveEditRequest(sessionId, editId, baseRev, [.. ops]), cancellationToken), cancellationToken);
 
     public Task UndoLiveAsync(string sessionId, bool redo, CancellationToken cancellationToken) =>
         _RunAsync(() => _CallAsync<FileSourceLiveUndoRequest>(FileSourceChannel.LiveUndo,

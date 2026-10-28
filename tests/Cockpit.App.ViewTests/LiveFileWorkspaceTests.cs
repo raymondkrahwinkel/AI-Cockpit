@@ -68,6 +68,7 @@ public sealed class LiveFileWorkspaceTests
     });
 
     // Layer 2, view (data loss): Ctrl+Z takes back only what was typed here; the remote text that came after stays.
+    // Text still on its way when a remote delete removes the word around it survives on both sides, once.
     [Fact]
     public Task Undo_TakesBackOnlyTheOwnEdit_AndKeepsRemoteText() => HeadlessAvalonia.RunAsync(async () =>
     {
@@ -86,6 +87,24 @@ public sealed class LiveFileWorkspaceTests
 
             Assert.Equal("WEB " + Lines, body.Editor.Text);
             Assert.Equal(body.Editor.Text, source.Text.ToString());
+
+            var hold = new TaskCompletionSource();
+            source.Hold = hold.Task;
+            var word = body.Editor.Text.IndexOf("line 7", StringComparison.Ordinal);
+            body.Editor.TextEditor.CaretOffset = word + 2;
+            body.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "XY" });
+            Dispatcher.UIThread.RunJobs();
+            source.Remote(word, "line 7".Length, "");
+            Dispatcher.UIThread.RunJobs();
+            source.Hold = null;
+            hold.SetResult();
+            for (var turn = 0; turn < 100 && source.Text.ToString() != body.Editor.Text; turn++)
+            {
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(source.Text.ToString(), body.Editor.Text);
+            Assert.Contains("\nXY of the note\n", body.Editor.Text);
         }
         finally
         {
@@ -124,6 +143,7 @@ public sealed class LiveFileWorkspaceTests
         public long Rev { get; private set; } = 1;
         public List<(long BaseRev, TextOp[] Ops)> Edits { get; } = [];
         public int Writes { get; private set; }
+        public Task? Hold { get; set; }
         public IReadOnlyList<FileConnection> Connections => [new("c1", "Fake", "memory", false)];
         public FileSourceCapabilities Capabilities => new(true, FileSourceChannel.MaxContentBytes);
         public event EventHandler? ConnectionsChanged { add { } remove { } }
@@ -140,11 +160,15 @@ public sealed class LiveFileWorkspaceTests
         public Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken) => Task.FromResult<ILiveFileSession>(this);
         public Task<LiveFileSnapshot> ReadAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, new LiveFileStatus(LiveFileState.Live)));
-        public Task<LiveEditResult> EditAsync(long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
+        public async Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
         {
+            if (Hold is { } hold)
+            {
+                await hold;
+            }
             if (baseRev != Rev)
             {
-                return Task.FromResult(new LiveEditResult(LiveEditStatus.Stale, Rev));
+                return new LiveEditResult(LiveEditStatus.Stale, Rev);
             }
             Edits.Add((baseRev, [.. ops]));
             foreach (var op in ops)
@@ -152,7 +176,7 @@ public sealed class LiveFileWorkspaceTests
                 Text.Remove(op.Offset, op.Length).Insert(op.Offset, op.Text);
                 _own.Add((op.Offset, op.Text.Length));
             }
-            return Task.FromResult(new LiveEditResult(LiveEditStatus.Applied, ++Rev));
+            return new LiveEditResult(LiveEditStatus.Applied, ++Rev);
         }
         public Task UndoAsync(bool redo, CancellationToken cancellationToken)
         {
@@ -161,13 +185,14 @@ public sealed class LiveFileWorkspaceTests
             _Change(ops);
             return Task.CompletedTask;
         }
-        public void Remote(int offset, string inserted)
+        public void Remote(int offset, string inserted) => Remote(offset, 0, inserted);
+        public void Remote(int offset, int removed, string inserted)
         {
             for (var i = 0; i < _own.Count; i++)
             {
-                _own[i] = _own[i].Offset >= offset ? (_own[i].Offset + inserted.Length, _own[i].Length) : _own[i];
+                _own[i] = _own[i].Offset >= offset + removed ? (_own[i].Offset + inserted.Length - removed, _own[i].Length) : _own[i];
             }
-            _Change([new TextOp(offset, 0, inserted)]);
+            _Change([new TextOp(offset, removed, inserted)]);
         }
         private void _Change(TextOp[] ops)
         {

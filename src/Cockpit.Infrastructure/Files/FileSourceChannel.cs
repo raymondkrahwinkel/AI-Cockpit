@@ -3,15 +3,17 @@ using Cockpit.Plugins.Abstractions.Files;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wire = Cockpit.Plugins.Abstractions.Files.FileSourceChannel;
 
 namespace Cockpit.Infrastructure.Files;
 
 internal static class FileSourceChannel
 {
-    public static IDisposable Register(IPluginBackendChannel channel, IFileSourceProvider provider)
+    public static IDisposable Register(IPluginBackendChannel channel, IFileSourceProvider provider, ILogger? logger = null)
     {
-        var registration = new Registration(provider);
+        var registration = new Registration(provider, logger ?? NullLogger.Instance);
         try
         {
             registration.Handlers.Add(channel.Handle(Wire.Connections, (_, _) =>
@@ -113,12 +115,14 @@ internal static class FileSourceChannel
         registration.Handlers.Add(channel.Handle(Wire.LiveEdit, (payload, ct) => _RunAsync(() =>
         {
             var request = payload.Deserialize<FileSourceLiveEditRequest>(Wire.Json) ?? throw new JsonException();
-            if (request.Ops is null || request.Ops.Any(op => op is null || op.Text is null || op.Offset < 0 || op.Length < 0)
-                || request.Ops.Sum(op => (long)op.Text.Length) > Wire.MaxContentBytes)
+            var ops = request.Ops ?? [];
+            var valid = request.Ops is not null && ops.All(op => op?.Text is not null && op.Offset >= 0 && op.Length >= 0)
+                && ops.Sum(op => (long)op.Text.Length) <= Wire.MaxContentBytes;
+            if (!valid || string.IsNullOrWhiteSpace(request.EditId))
             {
                 throw new FileSourceException(FileSourceErrorKind.Unsupported, "The edit is invalid.");
             }
-            return _Live(registration, request.SessionId).EditAsync(request.BaseRev, request.Ops, ct);
+            return _Live(registration, request.SessionId).EditAsync(request.EditId, request.BaseRev, ops, ct);
         })));
         registration.Handlers.Add(channel.Handle(Wire.LiveUndo, (payload, ct) => _RunAsync(async () =>
         {
@@ -197,7 +201,7 @@ internal static class FileSourceChannel
         }
     }
 
-    private sealed class Registration(IFileSourceProvider provider) : IDisposable
+    private sealed class Registration(IFileSourceProvider provider, ILogger logger) : IDisposable
     {
         public List<IDisposable> Handlers { get; } = [];
         public EventHandler? Changed { get; set; }
@@ -210,13 +214,25 @@ internal static class FileSourceChannel
                 handler.Dispose();
             }
             Handlers.Clear();
-            foreach (var id in Sessions.Keys)
+            foreach (var id in Sessions.Keys.ToList())
             {
                 if (Sessions.TryRemove(id, out var session))
                 {
-                    // ponytail: dispose blocks the unregistering thread; a source whose close hangs holds the plugin unload.
-                    session.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    // Unloading cannot await; the close runs on and its failure is logged.
+                    _ = _CloseAsync(session);
                 }
+            }
+        }
+
+        private async Task _CloseAsync(LiveSession session)
+        {
+            try
+            {
+                await session.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                logger.LogWarning(error, "Closing a live file session failed while its file source was removed.");
             }
         }
     }
