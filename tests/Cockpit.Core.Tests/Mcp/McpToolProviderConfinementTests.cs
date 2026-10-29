@@ -1,9 +1,14 @@
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
+using NSubstitute;
 using System.Reflection;
 
 namespace Cockpit.Core.Tests.Mcp;
@@ -33,7 +38,7 @@ public class McpToolProviderConfinementTests
         new() { Name = "cockpit-autopilot-run", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-coding", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
-        new() { Name = "cockpit-elevated", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
+        new() { Name = "cockpit-elevated", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true, Internal = true },
     ];
 
     [Fact]
@@ -60,7 +65,7 @@ public class McpToolProviderConfinementTests
     }
 
     [Fact]
-    public void ConfinedServers_KeepsSafeCockpitEndpoints_WhileElevationRequiresExplicitSelection()
+    public async Task ConfinedServers_KeepsSafeCockpitEndpoints_WhileElevationRequiresExplicitSelection()
     {
         var names = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1").Select(server => server.Name).ToList();
         var endpoints = new ServiceCollection().AddInfrastructure()
@@ -78,6 +83,26 @@ public class McpToolProviderConfinementTests
             .Select(method => method.GetCustomAttribute<McpServerToolAttribute>()?.Name)
             .Where(name => name is not null)
             .ToList();
+        var visibleSelection = new HashSet<string>(["memory"], StringComparer.OrdinalIgnoreCase);
+        var profileSelection = new HashSet<string>(["cockpit-elevated"], StringComparer.OrdinalIgnoreCase);
+        var effectiveSelection = McpServerRegistryFilter.WithInternalProfileServers(visibleSelection, profileSelection, _FullEffectiveSet());
+        var worktreeRoot = Path.GetFullPath(Path.Combine("test-data", "worktree"));
+        var confinedSession = Substitute.For<ISessionHandle>();
+        confinedSession.WorkingDirectory.Returns(worktreeRoot);
+        confinedSession.WorktreeBranch.Returns("cockpit/test");
+        var sessions = Substitute.For<ISessionRegistry>();
+        sessions.Find("pane-1").Returns(confinedSession);
+        var outside = Path.GetFullPath(Path.Combine(worktreeRoot, "..", "operator-checkout"));
+        var runner = Substitute.For<ITrackedCommandRunner>();
+        var statusTools = new SessionStatusTools(
+            Substitute.For<ISessionLabelSink>(),
+            runner,
+            new RunTracker(),
+            Substitute.For<IWorkspaceAgentGateway>(),
+            Substitute.For<IWorkspaceAgentCoordinator>(),
+            Substitute.For<IAgentMessageInbox>(),
+            sessions: sessions);
+        var startRunReply = await statusTools.StartRunAsync(outside, "dotnet", session: "pane-1", kind: "light");
 
         Assert.Contains("memory", names);
         Assert.Contains("cockpit-autopilot-run", names);
@@ -88,6 +113,15 @@ public class McpToolProviderConfinementTests
         Assert.Equal(new[] { "run_elevated" }, elevatedTools);
         Assert.True(elevated.Internal);
         Assert.False(elevated.AlwaysMounted);
+        Assert.Contains("cockpit-elevated", effectiveSelection!);
+        Assert.Contains("outside your working directory", startRunReply);
+        _ = runner.DidNotReceive().RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

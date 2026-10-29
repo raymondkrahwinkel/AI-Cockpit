@@ -181,6 +181,12 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _systemPrompt;
 
+    [ObservableProperty]
+    private int _contextTokens = LocalModelContext.DefaultTokens;
+
+    [ObservableProperty]
+    private bool _loadModelWithContext;
+
     // AC-1489: a local provider's context-guard bounds have no field of their own; kept so a save does not drop them.
     private readonly JsonElement? _turnLimits;
 
@@ -456,7 +462,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             SessionProvider.ClaudeCli => !string.IsNullOrWhiteSpace(ConfigDir),
             SessionProvider.Plugin => PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out _),
-            _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model),
+            _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model) && ContextTokens > 0,
         };
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
@@ -655,6 +661,12 @@ public partial class EditableProfileViewModel : ViewModelBase
             LmStudioConfig lmStudio => (lmStudio.BaseUrl, lmStudio.Model, lmStudio.ApiKey ?? string.Empty, lmStudio.SystemPrompt ?? string.Empty),
             _ => (string.Empty, string.Empty, string.Empty, string.Empty),
         };
+        (_contextTokens, _loadModelWithContext) = profile.ProviderConfig switch
+        {
+            OllamaConfig ollama => (LocalModelContext.Normalize(ollama.ContextTokens), false),
+            LmStudioConfig lmStudio => (LocalModelContext.Normalize(lmStudio.ContextTokens), lmStudio.LoadModelWithContext),
+            _ => (LocalModelContext.DefaultTokens, false),
+        };
         _turnLimits = profile.ProviderConfig switch
         {
             OllamaConfig ollama => ollama.TurnLimits,
@@ -801,8 +813,8 @@ public partial class EditableProfileViewModel : ViewModelBase
 
         return SelectedProvider.Value switch
         {
-            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits),
-            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits),
+            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens)),
+            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext),
             _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }

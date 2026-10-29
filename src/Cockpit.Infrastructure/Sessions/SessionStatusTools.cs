@@ -31,7 +31,9 @@ internal sealed class SessionStatusTools(
     // AC-1535: null only in a test graph that never queues; without a queue every run starts at once.
     HeavyRunQueue? queue = null,
     // AC-1717: null only in a test graph that keeps no session timeline.
-    SessionTimelineRecorder? timeline = null)
+    SessionTimelineRecorder? timeline = null,
+    // AC-1911: null only in test graphs that have no live session registry.
+    ISessionRegistry? sessions = null)
 {
     private string? _ShellRefusal() => OrgPolicyCeilings.ShellForbidden(orgPolicy?.Current)
         ? _Error($"{orgPolicy?.Current?.By} does not allow agents to run commands on this machine.")
@@ -145,6 +147,11 @@ internal sealed class SessionStatusTools(
             return _Error("`command` and `workingDirectory` are both required.");
         }
 
+        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal))
+        {
+            return _Error(confinementRefusal);
+        }
+
         if (_ParseKind(kind) is not { } runKind)
         {
             return _Error("`kind` must be one of light, build, unit or journeys.");
@@ -171,6 +178,27 @@ internal sealed class SessionStatusTools(
         return slot.Admitted.IsCompletedSuccessfully
             ? JsonSerializer.Serialize(new { ok = true, runId, unreachable }, SerializerOptions)
             : JsonSerializer.Serialize(new { ok = true, runId, queued = true, reason = slot.WaitReason, unreachable }, SerializerOptions);
+    }
+
+    // A Cockpit worktree is always a confined session (AC-1911). start_run deliberately remains able to execute any
+    // command a build agent needs, but its process must start inside that worktree. This is a filesystem/work-directory
+    // boundary, not an OS process sandbox; the stronger process boundary belongs to AC-1908.
+    internal static bool TryResolveRunWorkingDirectory(
+        ISessionRegistry? sessions,
+        string caller,
+        string requested,
+        out string workingDirectory,
+        out string error)
+    {
+        var session = sessions?.Find(caller);
+        if (session?.WorktreeBranch is null)
+        {
+            workingDirectory = requested;
+            error = string.Empty;
+            return true;
+        }
+
+        return CodingTools.TryResolve(session.WorkingDirectory, requested, out workingDirectory, out error);
     }
 
     [McpServerTool(Name = "run_status", ReadOnly = true)]

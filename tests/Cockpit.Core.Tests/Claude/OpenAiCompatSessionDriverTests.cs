@@ -31,7 +31,10 @@ public class OpenAiCompatSessionDriverTests
                 Arg.Do<ChatOptions>(options => sentOptions = options),
                 Arg.Any<CancellationToken>())
             .Returns(_Stream("Hello ", "world."));
-        var driver = _CreateDriver(chatClient, _SelectionSensitiveProvider());
+        var contextManager = Substitute.For<ILocalModelContextManager>();
+        contextManager.PrepareAsync(Arg.Any<ProviderConfig>(), Arg.Any<CancellationToken>())
+            .Returns("LM Studio is geladen met 8192 tokens; het profiel vraagt 32768 tokens.");
+        var driver = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
         var profile = new SessionProfile("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen3-coder"))
         {
             EnabledMcpServerNames = ["test-server"],
@@ -51,6 +54,8 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
         Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
         Assert.Contains("relative paths resolve against this working directory", systemPrompt);
+        Assert.Contains(events.OfType<AssistantTextCompleted>(), completed => completed.Text.Contains("geladen met 8192", StringComparison.Ordinal));
+        await LocalModelContextContract.AssertAsync();
     }
 
     [Fact]
@@ -181,11 +186,11 @@ public class OpenAiCompatSessionDriverTests
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
         _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), tools);
 
-    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IMcpToolProvider toolProvider)
+    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IMcpToolProvider toolProvider, ILocalModelContextManager? contextManager)
     {
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
-        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, localModelContext: contextManager);
     }
 
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses, params AIFunction[] tools)
