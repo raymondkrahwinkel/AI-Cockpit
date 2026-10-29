@@ -39,6 +39,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   the note live. A second Join on the same note brings its tab to the front. Your own avatar uses the name and colour Depot gives you
   when it sends them. Depot plugin 0.40.0.
 
+- added: **Join in the Depot inbox, the Notes tab, the invitation toast and a `/n/…` link in a transcript all take the same route into a note.**
+  Depot says what your account may do: an editor gets the note to edit, a viewer gets it read-only, and an account without a
+  right gets a "Shared note" tab that shows neither the title nor the path, with a button to open the link in Depot. Not signed
+  in yet: you are asked to sign in first, and nothing opens by itself. A note you joined from the inbox is marked read, and its
+  card says "Joined" with a Show tab button, which brings the note's tab forward (Depot plugin 0.41.0).
+
 - added: **a live Markdown file says who saved it last.** The status chip reads "Saved by {name} · hh:mm" with a dot in their
   colour, or "Not saved to Depot yet" until someone has saved since you joined (plugin SDK 3.49.0, Cockpit 0.146.0). The
   Depot plugin 0.39.0 can now be the one that saves a live note: it fills an empty note from the file, saves your typing after

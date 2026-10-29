@@ -158,7 +158,7 @@ public sealed class DepotInboxModelTests
             Model = new DepotInboxModel(Browser.Host);
             var notifications = new DepotInvitationNotifications(Browser.Host,
                 () => [new DepotConnectionRegistration("a", "Work", "https://work.example.com"), new DepotConnectionRegistration("b", "Home", "https://home.example.com")],
-                message => DepotInboxModel.JoinAsync(message, uri =>
+                (_, message) => DepotInboxModel.OpenAsync(message, uri =>
                 {
                     Joined.Add(uri);
                     return Task.CompletedTask;

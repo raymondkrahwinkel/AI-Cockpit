@@ -8,7 +8,7 @@ namespace Cockpit.Plugin.Depot.UI;
 internal sealed class DepotInvitationNotifications(
     ICockpitUiHost host,
     Func<IReadOnlyList<DepotConnectionRegistration>> connections,
-    Func<DepotInboxMessage, Task> join)
+    Func<DepotConnectionRegistration, DepotInboxMessage, Task> join)
 {
     private readonly HashSet<(string Connection, string Recipient, string NoteLink)> _shown = [];
     private readonly HashSet<(string Connection, string Recipient)> _seeded = [];
@@ -37,7 +37,7 @@ internal sealed class DepotInvitationNotifications(
             }
 
             var (title, body) = Text(connection.Name, message);
-            Action onJoin = () => { _ = _JoinAsync(message); };
+            Action onJoin = () => { _ = _JoinAsync(connection, message); };
             host.ShowToast($"{title}\n{body}", actionLabel: "Join", onAction: onJoin);
             host.ShowSystemNotification(title, body, onJoin);
         }
@@ -66,11 +66,11 @@ internal sealed class DepotInvitationNotifications(
         return (title, string.Join(" · ", details));
     }
 
-    private async Task _JoinAsync(DepotInboxMessage message)
+    private async Task _JoinAsync(DepotConnectionRegistration connection, DepotInboxMessage message)
     {
         try
         {
-            await join(message).ConfigureAwait(true);
+            await join(connection, message).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
