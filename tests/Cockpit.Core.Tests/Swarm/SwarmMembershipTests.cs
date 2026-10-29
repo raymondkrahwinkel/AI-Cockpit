@@ -9,33 +9,33 @@ namespace Cockpit.Core.Tests.Swarm;
 /// </summary>
 public class SwarmMembershipTests
 {
+    // Per row, built from keys A, B and C: the changes the register accepts first, and last the forgery it must refuse.
+    public static TheoryData<Func<ECDsa[], SwarmRecord[]>, SwarmMembershipVerdict> Forgeries => new()
+    {
+        // Criterion 1: B signs its own record with a valid signature, but the register does not know B.
+        { k => [_Join(k[0], k[0], rank: 1, sequence: 1), _Join(k[1], k[1], rank: 2, sequence: 2)], SwarmMembershipVerdict.UnknownSigner },
+
+        // Criterion 2: A adds B, A removes B, then B adds C.
+        {
+            k => [_Join(k[0], k[0], rank: 1, sequence: 1), _Join(k[1], k[0], rank: 2, sequence: 2), _Remove(k[1], k[0], sequence: 3), _Join(k[2], k[1], rank: 3, sequence: 4)],
+            SwarmMembershipVerdict.RemovedSigner
+        },
+    };
+
     [Theory]
-    [InlineData("unknown-signer", SwarmMembershipVerdict.UnknownSigner)]
-    [InlineData("removed-signer", SwarmMembershipVerdict.RemovedSigner)]
-    public void Accept_RefusesAChangeNotSignedByACurrentMember(string forgery, SwarmMembershipVerdict expected)
+    [MemberData(nameof(Forgeries))]
+    public void Accept_RefusesAChangeNotSignedByACurrentMember(Func<ECDsa[], SwarmRecord[]> build, SwarmMembershipVerdict expected)
     {
         using var a = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var b = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var c = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        ECDsa[] keys = [a, b, c];
+        var changes = build(keys);
+        var forged = changes[^1];
         var membership = new SwarmMembership();
-        Assert.Equal(SwarmMembershipVerdict.Accepted, membership.Accept(_Join(a, a, rank: 1, sequence: 1)));
 
-        SwarmRecord forged;
-        if (forgery == "unknown-signer")
-        {
-            // Criterion 1: B signs its own record with a valid signature, but the register does not know B.
-            forged = _Join(b, b, rank: 2, sequence: 2);
-            Assert.True(forged.Verify(_ => b.ExportSubjectPublicKeyInfo()));
-        }
-        else
-        {
-            // Criterion 2: A adds B, A removes B, then B adds C.
-            Assert.Equal(SwarmMembershipVerdict.Accepted, membership.Accept(_Join(b, a, rank: 2, sequence: 2)));
-            var tombstone = new SwarmTombstone(_Id(b), _Id(a), DateTimeOffset.UnixEpoch, Sequence: 3);
-            Assert.Equal(SwarmMembershipVerdict.Accepted, membership.Accept(SwarmRecord.Sign(SwarmMembership.ToPayload(tombstone), a)));
-            forged = _Join(c, b, rank: 3, sequence: 4);
-        }
-
+        Assert.All(changes[..^1], change => Assert.Equal(SwarmMembershipVerdict.Accepted, membership.Accept(change)));
+        Assert.True(forged.Verify(id => keys.Select(key => key.ExportSubjectPublicKeyInfo()).FirstOrDefault(spki => SwarmMemberId.FromPublicKey(spki) == id)));
         Assert.Equal(expected, membership.Accept(forged));
         Assert.Equal([_Id(a)], membership.Members.Select(member => member.Id));
     }
@@ -46,6 +46,9 @@ public class SwarmMembershipTests
         var signed = SwarmRecord.Sign(SwarmMembership.ToPayload(record), adder);
         return member == adder ? signed : signed.CoSign(member);
     }
+
+    private static SwarmRecord _Remove(ECDsa member, ECDsa remover, long sequence) =>
+        SwarmRecord.Sign(SwarmMembership.ToPayload(new SwarmTombstone(_Id(member), _Id(remover), DateTimeOffset.UnixEpoch, sequence)), remover);
 
     private static SwarmMemberId _Id(ECDsa key) => SwarmMemberId.FromPublicKey(key.ExportSubjectPublicKeyInfo());
 }
