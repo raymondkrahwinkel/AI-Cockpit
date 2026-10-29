@@ -15,8 +15,12 @@ namespace Cockpit.Infrastructure.Mcp;
 public sealed class NodeInboxRelay(
     INodeSessionsClient nodes,
     IAgentMessageInbox inbox,
-    ILogger<NodeInboxRelay>? logger = null) : INodeInboxRelay, ISingletonService
+    INodeLinkGate gate,
+    ILogger<NodeInboxRelay>? logger = null,
+    TimeProvider? timeProvider = null) : INodeInboxRelay, ISingletonService
 {
+    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
     private readonly ILogger<NodeInboxRelay> _logger = logger ?? NullLogger<NodeInboxRelay>.Instance;
 
     // The last id delivered here per node, sent back as `afterMessageId` so the node drops it. Moves only once a
@@ -26,6 +30,12 @@ public sealed class NodeInboxRelay(
 
     public async Task PollAsync(string nodeName, CancellationToken cancellationToken = default)
     {
+        if (gate.RefusalFor(nodeName) is not null)
+        {
+            return;
+        }
+
+        _SettleIfQuiet(nodeName);
         _lastDelivered.TryGetValue(nodeName, out var after);
         var batch = await nodes.ReadInboxAsync(nodeName, after, cancellationToken).ConfigureAwait(false);
         if (batch.Error is { Length: > 0 } error)
@@ -56,14 +66,94 @@ public sealed class NodeInboxRelay(
         $"[From node {nodeName}" + (discoveryId is { Length: > 0 } ? $" ({discoveryId})" : "")
         + $", session {from}. Reply with send_message to that address; notify does not reach it.] ";
 
+    // AC-1943: three drops within ten minutes make a node "unstable"; it counts as stable again after five quiet minutes.
+    private static readonly TimeSpan FlapWindow = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan QuietPeriod = TimeSpan.FromMinutes(5);
+    private const int FlapDrops = 3;
+
+    private sealed class Flap
+    {
+        public readonly List<DateTimeOffset> Drops = [];
+        public bool Unstable;
+        public bool DropAnnounced;
+        public DateTimeOffset LastChange;
+        public bool Reachable = true;
+    }
+
+    private readonly ConcurrentDictionary<string, Flap> _flaps = new(StringComparer.Ordinal);
+
     // AC-1327 criterion 2: one message per reachable↔unreachable transition, never per poll — same Deliver path
     // as the mail relay above, so the controller's assistant hears about the node itself the way it hears from
     // the node's own agents.
+    // AC-1943: nothing for a held node; and a node that keeps flapping gets one "node-unstable" then one "node-back"
+    // once it has stayed up (`_SettleIfQuiet`, on the poll) instead of a pair of mails per flap. The first drop still
+    // wakes the assistant when sessions run there, since that is the one it can act on.
     public void NotifyTransition(string nodeName, bool reachable, int sessionCount, DateTimeOffset atUtc)
     {
-        var body = reachable
-            ? $"Node {nodeName} is reachable again as of {atUtc:u}, with {sessionCount} session(s) running there."
-            : $"Node {nodeName} stopped answering as of {atUtc:u}.";
-        inbox.Deliver(nodeName, AssistantIdentity.PaneId, reachable ? "node-back" : "node-dropped", body);
+        if (gate.RefusalFor(nodeName) is not null)
+        {
+            return;
+        }
+
+        var flap = _flaps.GetOrAdd(nodeName, _ => new Flap());
+        lock (flap)
+        {
+            flap.Reachable = reachable;
+            flap.LastChange = atUtc;
+            if (flap.Unstable)
+            {
+                return;
+            }
+
+            if (reachable)
+            {
+                if (flap.DropAnnounced)
+                {
+                    flap.DropAnnounced = false;
+                    inbox.Deliver(nodeName, AssistantIdentity.PaneId, "node-back", $"Node {nodeName} is reachable again as of {atUtc:u}, with {sessionCount} session(s) running there.");
+                }
+
+                return;
+            }
+
+            flap.Drops.RemoveAll(at => atUtc - at > FlapWindow);
+            flap.Drops.Add(atUtc);
+            if (flap.Drops.Count >= FlapDrops)
+            {
+                flap.Unstable = true;
+                inbox.Deliver(nodeName, AssistantIdentity.PaneId, "node-unstable", $"Node {nodeName} keeps dropping ({flap.Drops.Count} times since {flap.Drops[0]:u}). Further drops and returns are held back; one node-back follows when it has stayed up for {QuietPeriod.TotalMinutes:0} minutes.");
+                return;
+            }
+
+            if (nodes.TryGetLastSnapshot(nodeName)?.Snapshot.Sessions.Count > 0)
+            {
+                flap.DropAnnounced = true;
+                inbox.Deliver(nodeName, AssistantIdentity.PaneId, "node-dropped", $"Node {nodeName} stopped answering as of {atUtc:u}.");
+            }
+        }
+    }
+
+    // Called by the poll of a reachable node: the one "node-back" for an unstable node, once it has been up for the quiet period.
+    private void _SettleIfQuiet(string nodeName)
+    {
+        if (!_flaps.TryGetValue(nodeName, out var flap))
+        {
+            return;
+        }
+
+        lock (flap)
+        {
+            var now = _clock.GetUtcNow();
+            if (!flap.Unstable || !flap.Reachable || now - flap.LastChange < QuietPeriod)
+            {
+                return;
+            }
+
+            flap.Unstable = false;
+            flap.DropAnnounced = false;
+            flap.Drops.Clear();
+            var sessions = nodes.TryGetLastSnapshot(nodeName)?.Snapshot.Sessions.Count ?? 0;
+            inbox.Deliver(nodeName, AssistantIdentity.PaneId, "node-back", $"Node {nodeName} is stable again as of {now:u}, with {sessions} session(s) running there.");
+        }
     }
 }

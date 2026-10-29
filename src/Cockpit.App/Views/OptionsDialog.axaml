@@ -1768,6 +1768,9 @@
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"
                                                         IsVisible="{Binding !IsServerGroup}"/>
+                                                <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}"
+                                                        ToolTip.Tip="Stop polling and relaying for this node, keeping the pairing. Survives a restart."/>
+                                                <Button Content="Resume" Command="{Binding ResumeCommand}" IsVisible="{Binding IsPaused}"/>
                                                 <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
                                             </StackPanel>
 

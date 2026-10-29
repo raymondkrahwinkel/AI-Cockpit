@@ -77,7 +77,7 @@ public sealed class NodeSessionsClientRealNetworkTests
 
             var store = new _MutableStore(_RowFor("https://127.0.0.1:1/mcp", pinnedFingerprint: "", sharedSecret.Value!));
             var discovery = new _FoundAt($"127.0.0.1:{new Uri(host.Url).Port - NodeEndpointSettings.McpPortOffset}");
-            var client = new NodeSessionsClient(store, discovery, NullLogger<NodeSessionsClient>.Instance);
+            var client = new NodeSessionsClient(store, discovery, new NodeLinkGate(string.Empty), NullLogger<NodeSessionsClient>.Instance);
 
             var snapshot = await client.ReadAsync(NodeName);
 
@@ -117,7 +117,7 @@ public sealed class NodeSessionsClientRealNetworkTests
                 });
 
             var wrong = _RowFor(host.Url, new string('A', 64), "the-shared-secret");
-            var client = new NodeSessionsClient(new _SingleServerStore(wrong), new _NoNodesFound(), NullLogger<NodeSessionsClient>.Instance);
+            var client = new NodeSessionsClient(new _SingleServerStore(wrong), new _NoNodesFound(), new NodeLinkGate(string.Empty), NullLogger<NodeSessionsClient>.Instance);
 
             var refused = await Assert.ThrowsAnyAsync<Exception>(() => client.ProbeAsync(wrong));
             var mismatch = NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(refused);
@@ -184,6 +184,7 @@ public sealed class NodeSessionsClientRealNetworkTests
             // AC-1284's re-resolve asks discovery where a node that stopped answering went. Nothing here has moved,
             // so a finder that reports an empty segment keeps these tests about the transport and not about UDP.
             new _NoNodesFound(),
+            new NodeLinkGate(string.Empty),
             NullLogger<NodeSessionsClient>.Instance);
 
     private sealed class _NoNodesFound : INodeDiscoveryClient

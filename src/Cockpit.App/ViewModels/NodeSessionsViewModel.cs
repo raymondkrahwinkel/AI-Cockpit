@@ -20,7 +20,8 @@ public sealed partial class NodeSessionsViewModel(
     string nodeName,
     INodeInboxRelay? inboxRelay = null,
     NodePermissionRelay? permissionRelay = null,
-    IBehaviourMemorySync? behaviourSync = null) : ObservableObject, IDisposable
+    IBehaviourMemorySync? behaviourSync = null,
+    INodeLinkGate? linkGate = null) : ObservableObject, IDisposable
 {
     // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
     // it stays a handshake and three small calls rather than something the node's operator would notice.
@@ -66,7 +67,7 @@ public sealed partial class NodeSessionsViewModel(
     public Action<DateTimeOffset?>? DisconnectedChanged { get; init; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ConnectionLabel), nameof(IsConnected), nameof(IsReconnecting), nameof(IsKeyExpired), nameof(IsDisconnected), nameof(CanDisconnect))]
+    [NotifyPropertyChangedFor(nameof(ConnectionLabel), nameof(IsConnected), nameof(IsReconnecting), nameof(IsKeyExpired), nameof(IsDisconnected), nameof(CanDisconnect), nameof(IsPaused), nameof(CanPause))]
     private NodeConnectionState _connectionState;
 
     [ObservableProperty]
@@ -78,6 +79,7 @@ public sealed partial class NodeSessionsViewModel(
         NodeConnectionState.Reconnecting => "Reconnecting",
         NodeConnectionState.KeyExpired => "Key expired",
         NodeConnectionState.Disconnected => "Disconnected",
+        NodeConnectionState.Paused => "Paused",
         _ => "",
     };
 
@@ -88,6 +90,11 @@ public sealed partial class NodeSessionsViewModel(
     public bool IsKeyExpired => ConnectionState == NodeConnectionState.KeyExpired;
 
     public bool IsDisconnected => ConnectionState == NodeConnectionState.Disconnected;
+
+    public bool IsPaused => ConnectionState == NodeConnectionState.Paused;
+
+    // AC-1943: a card that follows a server group has no poll of its own to pause.
+    public bool CanPause => !IsServerGroup && ConnectionState is NodeConnectionState.Connected or NodeConnectionState.Reconnecting;
 
     public bool CanDisconnect => ConnectionState is NodeConnectionState.Connected or NodeConnectionState.Reconnecting;
 
@@ -135,7 +142,7 @@ public sealed partial class NodeSessionsViewModel(
     public async Task RefreshAsync()
     {
         // AC-1458: an operator's disconnect and a key past its expiry both mean no attempt at all.
-        if (ConnectionState == NodeConnectionState.Disconnected)
+        if (ConnectionState is NodeConnectionState.Disconnected or NodeConnectionState.Paused)
         {
             return;
         }
@@ -419,6 +426,7 @@ public sealed partial class NodeSessionsViewModel(
     // Also how a rebuilt card picks up a disconnect from before: no poll, and the time it happened.
     public void ShowDisconnected(DateTimeOffset at)
     {
+        linkGate?.SetDisconnected(NodeName, true);
         Dispose();
         _disconnectedAt = at;
         ConnectionState = NodeConnectionState.Disconnected;
@@ -435,6 +443,38 @@ public sealed partial class NodeSessionsViewModel(
         }
 
         DisconnectedChanged?.Invoke(null);
+        linkGate?.SetDisconnected(NodeName, false);
+        ConnectionState = NodeConnectionState.Unknown;
+        ConnectionDetail = "";
+        StartPolling();
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    // AC-1943: like Disconnect, but remembered across restarts and the pairing kept. The gate is shut first, so a
+    // refresh already out is refused when it goes on.
+    [RelayCommand]
+    private void Pause()
+    {
+        linkGate?.SetPaused(NodeName, true);
+        ShowPaused();
+    }
+
+    // Also how a rebuilt card picks up a pause from before a restart.
+    public void ShowPaused()
+    {
+        Dispose();
+        ConnectionState = NodeConnectionState.Paused;
+        _DescribeConnection();
+    }
+
+    // The first read after a resume is the one behaviour-sync edge, and not a "node-back".
+    [RelayCommand]
+    private async Task ResumeAsync()
+    {
+        linkGate?.SetPaused(NodeName, false);
+        _wasReachable = true;
+        _wasReachableForBehaviourSync = false;
+        _consecutiveMisses = 0;
         ConnectionState = NodeConnectionState.Unknown;
         ConnectionDetail = "";
         StartPolling();
@@ -485,6 +525,7 @@ public sealed partial class NodeSessionsViewModel(
         NodeConnectionState.KeyExpired when KeyExpiresAt is { } expiresAt =>
             $"on {expiresAt.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)} · reconnecting will not help",
         NodeConnectionState.Disconnected => $"by you at {_Clock(_disconnectedAt)}",
+        NodeConnectionState.Paused => "by you · the pairing is kept, nothing is polled or sent",
         _ => "",
     };
 
@@ -604,4 +645,5 @@ public enum NodeConnectionState
     Reconnecting,
     KeyExpired,
     Disconnected,
+    Paused,
 }

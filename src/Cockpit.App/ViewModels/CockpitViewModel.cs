@@ -3450,7 +3450,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IRegisteredBackupTargets? backupTargets = null,
         IOrgPolicy? orgPolicy = null,
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
-        IModelIntelligenceOptions? modelIntelligenceOptions = null)
+        IModelIntelligenceOptions? modelIntelligenceOptions = null,
+        // AC-1943: pauses and disconnects of the paired nodes; absent in the design-time/unit-test graph.
+        INodeLinkGate? nodeLinkGate = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3492,7 +3494,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
             behaviourSync,
             remoteServers,
-            orgPolicy);
+            orgPolicy,
+            nodeLinkGate);
         _ = Security.RefreshAsync();
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
