@@ -1113,7 +1113,8 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             return;
         }
 
-        _mine = mine && !_saveRefused && MayWrite;
+        // Roles arrive before the state turns Live again, so only the account decides here.
+        _mine = mine && !_saveRefused && !_Unverified();
         _saver.SetSaver(_mine);
         if (_mine && checksum is not null)
         {
