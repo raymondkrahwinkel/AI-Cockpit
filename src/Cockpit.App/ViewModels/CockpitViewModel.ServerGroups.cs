@@ -211,6 +211,7 @@ public partial class CockpitViewModel
             });
             Follow();
             group.State = server.State;
+            group.Sessions.CollectionChanged += (_, _) => _WatchWaitingRows();
             ServerGroups.Add(group);
             _ReconcileServerGroup(group);
         }

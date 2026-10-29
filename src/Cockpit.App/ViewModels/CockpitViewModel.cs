@@ -3232,6 +3232,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Workspaces = new WorkspacesViewModel(null, workspaceTypes: workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
+        _WireWaitingSessions();
 
         if (withSamples)
         {
@@ -3460,6 +3461,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
+        _WireWaitingSessions();
 
         // AC-951: the dock rail's tab strip reads `DockPanels` off the registry directly; the panel registered here is
         // host-internal, so — unlike the widget/workspace-type registries above — there is no late-arriving plugin to
@@ -5534,6 +5536,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         SidebarWidth = settings.SidebarWidth;
         SidebarCollapsed = settings.SidebarCollapsed;
+        ShowOnlyWaiting = settings.WaitingFilterOn;
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
@@ -5568,6 +5571,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
+        WaitingFilterOn = ShowOnlyWaiting,
         FocusRailWeight = GlobalFocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,

@@ -53,6 +53,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- The sidebar has a "Waiting for you" filter above the sessions: it counts every session that needs you, on this machine and on connected servers, and when switched on lists them flat with a machine badge per row. Its state is kept across restarts.
+
 - Live notes mark an outside agent's changed lines with their name for up to ten minutes, show their saved version and temporary presence, and send the launching profile name to MCP servers that opt in.
 
 - added: **a live Depot note opens in the editor as a tab.** Join in the Notes tab and Open in Cockpit in the new meeting note dialog now open the note

@@ -17,6 +17,8 @@ internal sealed class LayoutSettingsEntry
 
     public bool SidebarCollapsed { get; set; }
 
+    public bool WaitingFilterOn { get; set; }
+
     public double FocusRailWeight { get; set; } = LayoutSettings.DefaultFocusRailWeight;
 
     public double DockRailWidth { get; set; } = LayoutSettings.DefaultDockRailWidth;
@@ -48,6 +50,7 @@ internal sealed class LayoutSettingsEntry
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose,
         SidebarWidth = settings.SidebarWidth,
         SidebarCollapsed = settings.SidebarCollapsed,
+        WaitingFilterOn = settings.WaitingFilterOn,
         FocusRailWeight = settings.FocusRailWeight,
         DockRailWidth = settings.DockRailWidth,
         OpenDockPanelId = settings.OpenDockPanelId,
@@ -69,6 +72,7 @@ internal sealed class LayoutSettingsEntry
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
+        WaitingFilterOn = WaitingFilterOn,
         FocusRailWeight = FocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
