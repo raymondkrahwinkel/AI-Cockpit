@@ -35,7 +35,8 @@ internal static class SessionScratchCleanup
                 return;
             }
             var registered = worktrees is null ? [] : await worktrees.ListAsync().ConfigureAwait(false);
-            SessionScratch.Delete(path, paneId, registered.Select(record => record.Path));
+            SessionScratch.Delete(path, paneId, registered.Select(record => record.Path),
+                message => logger?.LogInformation("Scratch cleanup on dispose: {Message}", message));
         }
         catch (Exception exception)
         {

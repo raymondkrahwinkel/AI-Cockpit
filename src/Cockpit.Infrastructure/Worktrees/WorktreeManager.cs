@@ -1227,7 +1227,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService, IDi
                 {
                     if (SessionScratch.OwnerOf(directory) is { } owner && !liveSessionIds.Contains(owner))
                     {
-                        SessionScratch.Delete(directory, owner, records.Select(record => record.Path));
+                        SessionScratch.Delete(directory, owner, records.Select(record => record.Path),
+                            message => _logger?.LogInformation("Scratch cleanup in orphan sweep: {Message}", message));
                     }
                 }
                 catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
