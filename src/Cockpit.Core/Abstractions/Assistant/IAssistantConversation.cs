@@ -12,15 +12,27 @@ public interface IAssistantConversation
     bool RequestConversationClear();
 
     /// <summary>
-    /// Shows a structured question card in the assistant's own transcript; false when its session is not running.
+    /// Shows a structured question card in the assistant's own transcript and returns its id (AC-1937); null when
+    /// its session is not running.
     /// </summary>
-    Task<bool> ShowQuestionAsync(string question, string inputJson);
+    Task<string?> ShowQuestionAsync(string question, string inputJson);
 
     /// <summary>
     /// The same card, filed under <paramref name="projectIds"/> in the conversation's threads.
     /// </summary>
-    Task<bool> ShowQuestionAsync(string question, string inputJson, IReadOnlyList<string> projectIds) =>
+    Task<string?> ShowQuestionAsync(string question, string inputJson, IReadOnlyList<string> projectIds) =>
         ShowQuestionAsync(question, inputJson);
+
+    /// <summary>
+    /// The question cards still waiting on the operator (list_open_questions).
+    /// </summary>
+    Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync() => Task.FromResult<IReadOnlyList<AssistantOpenQuestion>>([]);
+
+    /// <summary>
+    /// Closes an open question card with a status and a note (resolve_structured_question).
+    /// </summary>
+    Task<AssistantThreadResult> ResolveQuestionAsync(string questionId, string status, string? note) =>
+        Task.FromResult(AssistantThreadResult.Unavailable);
 
     /// <summary>
     /// Files the rest of the current turn under <paramref name="projectIds"/> (set_thread); empty is General.

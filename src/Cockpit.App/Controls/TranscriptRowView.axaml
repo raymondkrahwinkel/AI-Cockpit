@@ -692,11 +692,25 @@
                                         <materialIcons:MaterialIcon Kind="DragVertical" Width="13" Height="13"/>
                                     </Button>
                                 </StackPanel>
-                                <Button Content="Send" Classes="Accent Compact" HorizontalAlignment="Right"
-                                        IsVisible="{Binding IsAwaitingAnswer}"
-                                        IsEnabled="{Binding CanSubmitAnswers}"
-                                        Command="{Binding Session.SubmitQuestionAnswersCommand}"
-                                        CommandParameter="{Binding}"/>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                                    <!-- AC-1937: the operator's way to close the assistant's card without picking anything. -->
+                                    <Button Classes="Subtle Compact" IsVisible="{Binding IsPendingBrokerAnswer}"
+                                            Command="{Binding Session.DismissQuestionCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="No longer relevant. Closes the card without an answer."
+                                            AutomationProperties.Name="No longer relevant">
+                                        <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13"/>
+                                    </Button>
+                                    <Button Content="Send" Classes="Accent Compact"
+                                            IsVisible="{Binding IsAwaitingAnswer}"
+                                            IsEnabled="{Binding CanSubmitAnswers}"
+                                            Command="{Binding Session.SubmitQuestionAnswersCommand}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                                <!-- AC-1937: how a card closed without its Send, with the assistant's note. -->
+                                <TextBlock Text="{Binding ResolutionText}" IsVisible="{Binding IsResolved}"
+                                           TextWrapping="Wrap" VerticalAlignment="Center" FontSize="11.5" Margin="6,0,0,0"
+                                           Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             </DockPanel>
                         </StackPanel>
                     </DockPanel>

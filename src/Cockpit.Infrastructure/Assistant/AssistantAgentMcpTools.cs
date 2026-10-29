@@ -1086,7 +1086,7 @@ internal sealed class AssistantAgentMcpTools(
 
     [McpServerTool(Name = "ask_structured_question", ReadOnly = false, Destructive = false)]
     [McpMeta(AlwaysLoadMeta, true)]
-    [Description("Puts a clarifying question to the operator as a card in the chat window, with its options beside it to tick or click, rather than in a sentence. USE IT WHEN AN INSTRUCTION IS GENUINELY AMBIGUOUS AND THE ANSWERS ARE A SHORT, CLOSED LIST — which desk, which profile, which of three tickets they meant, which of two ways to do a thing — where the difference is between guessing and knowing. NOT for a yes or no, not for something you could go and look up yourself, and never for something this conversation has already settled. RETURNS AT ONCE — IT DOES NOT WAIT FOR AN ANSWER: the card is shown, and that is the whole of what this call does. Their answer, if they click it, comes back as their own next message in this same conversation — an ordinary user turn, not a return value from this call — and they may just as well ignore the card entirely and answer you in words, or ask about something else altogether. So never say you are waiting on it, never treat the call's return as a decision made, and do not ask the same thing again in the meantime. SAY THE QUESTION AS WELL, IN ONE SHORT SENTENCE: the card is not read aloud and its options never are, so a listening operator hears nothing of it unless you say the question yourself, the way you would say it to someone standing next to you. ONLY YOU MAY CALL THIS — a session cannot: it has AskUserQuestion already, and that one works there.")]
+    [Description("Puts a clarifying question to the operator as a card in the chat window, with its options beside it to tick or click, rather than in a sentence. USE IT WHEN AN INSTRUCTION IS GENUINELY AMBIGUOUS AND THE ANSWERS ARE A SHORT, CLOSED LIST — which desk, which profile, which of three tickets they meant, which of two ways to do a thing — where the difference is between guessing and knowing. NOT for a yes or no, not for something you could go and look up yourself, and never for something this conversation has already settled. RETURNS AT ONCE — IT DOES NOT WAIT FOR AN ANSWER: the card is shown, and that is the whole of what this call does. Their answer, if they click it, comes back as their own next message in this same conversation — an ordinary user turn, not a return value from this call — and they may just as well ignore the card entirely and answer you in words, or ask about something else altogether. So never say you are waiting on it, never treat the call's return as a decision made, and do not ask the same thing again in the meantime. KEEP THE questionId IT RETURNS: a card stays open in Questions for you until it is clicked or closed, so when they settle it in words instead, or the conversation moves past it, close it with resolve_structured_question rather than leaving it waiting there. SAY THE QUESTION AS WELL, IN ONE SHORT SENTENCE: the card is not read aloud and its options never are, so a listening operator hears nothing of it unless you say the question yourself, the way you would say it to someone standing next to you. ONLY YOU MAY CALL THIS — a session cannot: it has AskUserQuestion already, and that one works there.")]
     public async Task<string> AskStructuredQuestionAsync(
         [Description("The question, in the operator's own language — the same one you would say out loud.")] string question,
         [Description("2 to 6 choices, each a short label (what comes back as the answer) and an optional one-line description.")] List<AskStructuredQuestionOptionArg> options,
@@ -1129,9 +1129,76 @@ internal sealed class AssistantAgentMcpTools(
                 {
                     ok = true,
                     shown = true,
+                    questionId = result.QuestionId,
                     note = "The card is in the chat window now. Their answer, if they click it, arrives as their own next message — this call does not wait for one.",
                 })
                 : _Serialize(new { ok = false, error = result.Error });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "list_open_questions", ReadOnly = true)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Lists your question cards (ask_structured_question) that are still waiting on the operator, oldest first: per card its questionId, the question, the threads and project ids it waits in, and when it was asked. THIS IS HOW YOU FIND YOUR OPEN CARDS AGAIN — after a long conversation, after a restart, or whenever you are no longer sure which ones you left standing; a restart keeps the cards and their ids, and this reads them back. READ IT BEFORE YOU ASK SOMETHING YOU MAY ALREADY HAVE ASKED, and before you resolve a card whose id you no longer have. A card that was clicked, closed with resolve_structured_question, or dismissed by the operator is not in this list any more. Only your own cards: an Allow/Deny row waiting on the operator is not a question of yours and is never listed here.")]
+    public async Task<string> ListOpenQuestionsAsync()
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var questions = await gateway.ListOpenQuestionsAsync().ConfigureAwait(false);
+            return _Serialize(new
+            {
+                ok = true,
+                questions = questions.Select(question => new
+                {
+                    questionId = question.QuestionId,
+                    question = question.Question,
+                    threads = question.Threads,
+                    projectIds = question.ProjectIds,
+                    askedAt = question.AskedAt,
+                }),
+            });
+        }
+        catch (Exception exception)
+        {
+            return _Serialize(new { ok = false, error = exception.Message });
+        }
+    }
+
+    [McpServerTool(Name = "resolve_structured_question", ReadOnly = false, Destructive = false)]
+    [McpMeta(AlwaysLoadMeta, true)]
+    [Description("Closes one of your own open question cards without an answer from it: it leaves Questions for you and the per-thread count, and stays where it was asked in the conversation, read-only, with the status and your note under it — so anyone reading back sees what became of the question and where it was decided. USE IT AS SOON AS A CARD NO LONGER NEEDS A CLICK: the operator answered in words instead (answered_in_chat), the conversation moved on or it was settled another way (obsolete), or you asked it by mistake or want to ask it differently (withdrawn). Do that in the same turn you notice it, without asking first and without announcing it; a card left open after its question is settled is a question the operator still thinks they owe you. Needs no approval: it changes nothing but the card. NOT FOR A CARD THEY CLICKED — that one closed itself with their answer. Refused, with the reason, for an id that is not one of your cards and for a card that is already closed (the reason says how). Take the id from what ask_structured_question returned, or from list_open_questions.")]
+    public async Task<string> ResolveStructuredQuestionAsync(
+        [Description("The card's id, as ask_structured_question returned it or list_open_questions reports it.")] string questionId,
+        [Description("answered_in_chat: the operator answered in words rather than on the card. obsolete: the question no longer matters, or was settled another way. withdrawn: you take the question back yourself.")] string status,
+        [Description("One line shown under the card, in the operator's language. For answered_in_chat the answer they gave, in a few words (\"Henk's desk, not the release desk\"); otherwise why (\"handled in AC-12 instead\"). Leave it out only when there is truly nothing to add.")] string? note = null)
+    {
+        try
+        {
+            if (_RefuseIfNotTheAssistant() is { } refusal)
+            {
+                return refusal;
+            }
+
+            var trimmed = status?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!AssistantQuestionResolution.ByTheAssistant.Contains(trimmed))
+            {
+                return _Serialize(new
+                {
+                    ok = false,
+                    error = $"status must be one of {string.Join(", ", AssistantQuestionResolution.ByTheAssistant)}; '{status}' is not. The card is still open.",
+                });
+            }
+
+            var result = await gateway.ResolveQuestionAsync(questionId?.Trim() ?? string.Empty, trimmed, note?.Trim() is { Length: > 0 } line ? line : null).ConfigureAwait(false);
+            return _Serialize(new { ok = result.Ok, note = result.Note });
         }
         catch (Exception exception)
         {

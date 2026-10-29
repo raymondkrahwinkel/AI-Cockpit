@@ -148,6 +148,46 @@ public sealed class AssistantJourney
         });
         Assert.False(HeadlessAvalonia.Run(() => card.IsAwaitingAnswer));
 
+        // AC-1937: a card the operator settled in words is closed by the assistant, by the id it was given; one the
+        // operator no longer cares about goes with their ✕. Both leave Questions for you and stay in the conversation.
+        var asked = await JourneyHost.CallAsync(assistant, "ask_structured_question", new()
+        {
+            ["question"] = "Which Depot branch?",
+            ["options"] = new[] { new { label = "main" }, new { label = "release" } },
+            ["projectIds"] = new[] { depot.Id },
+        });
+        await JourneyHost.CallAsync(assistant, "ask_structured_question", new()
+        {
+            ["question"] = "Tag the release?",
+            ["options"] = new[] { new { label = "Yes" }, new { label = "No" } },
+        });
+        var open = await JourneyHost.CallAsync(assistant, "list_open_questions", new());
+        var questionId = asked["questionId"]?.GetValue<string>();
+        Assert.Equal(
+            [(questionId, "Which Depot branch?"), (open["questions"]?[1]?["questionId"]?.GetValue<string>(), "Tag the release?")],
+            open["questions"]?.AsArray().Select(row => (row?["questionId"]?.GetValue<string>(), row?["question"]?.GetValue<string>())).ToList());
+        var resolved = await JourneyHost.CallAsync(assistant, "resolve_structured_question", new()
+        {
+            ["questionId"] = questionId,
+            ["status"] = "answered_in_chat",
+            ["note"] = "the hotfix branch",
+        });
+        var again = await JourneyHost.CallAsync(assistant, "resolve_structured_question", new() { ["questionId"] = questionId, ["status"] = "obsolete" });
+        Assert.True(resolved["ok"]?.GetValue<bool>());
+        Assert.False(again["ok"]?.GetValue<bool>());
+
+        var (afterResolve, depotWaiting, history) = HeadlessAvalonia.Run(() =>
+        {
+            chatSession.DismissQuestionCommand.Execute(chatSession.OpenQuestions.Single(row => row.Text == "Tag the release?"));
+            return (
+                chatSession.OpenQuestionCount,
+                chatSession.OpenQuestionCountIn(depot.Id),
+                transcript.Where(row => row.IsResolved).Select(row => row.ResolutionText).ToList());
+        });
+        Assert.Equal((0, 0), (afterResolve, depotWaiting));
+        Assert.Equal(["Answered in chat · the hotfix branch", "Dismissed"], history);
+        Assert.Empty((await JourneyHost.CallAsync(assistant, "list_open_questions", new()))["questions"]?.AsArray() ?? []);
+
         // WayMark's thread closed by the operator, and back by itself once WayMark has something new.
         var closed = HeadlessAvalonia.Run(() =>
         {

@@ -12,20 +12,18 @@ internal sealed class AssistantConversation(IAssistantSessionHost host) : IAssis
     public bool RequestConversationClear() => host.RequestConversationClear();
 
     // AC-955: the assistant's own session via the host, not the grid — the assistant sits outside it by design.
-    public Task<bool> ShowQuestionAsync(string question, string inputJson) => ShowQuestionAsync(question, inputJson, []);
+    public Task<string?> ShowQuestionAsync(string question, string inputJson) => ShowQuestionAsync(question, inputJson, []);
 
-    // Assistant threads (§ 9.4): a question about one or more projects waits in each of their threads.
-    public Task<bool> ShowQuestionAsync(string question, string inputJson, IReadOnlyList<string> projectIds) =>
-        UiThreadCall.RunAsync(() =>
-        {
-            if (host.View() is not { } session)
-            {
-                return false;
-            }
+    // Assistant threads (§ 9.4): a question about one or more projects waits in each of their threads. The row's own
+    // id is the card's id (AC-1937): it is already what the log keys the row on, so it survives a restart as is.
+    public Task<string?> ShowQuestionAsync(string question, string inputJson, IReadOnlyList<string> projectIds) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session ? session.AddQuestion(question, inputJson, projectIds).Id : null);
 
-            session.AddQuestion(question, inputJson, projectIds);
-            return true;
-        });
+    public Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync() =>
+        UiThreadCall.RunAsync<IReadOnlyList<AssistantOpenQuestion>>(() => host.View() is { } session ? session.ListOpenBrokerQuestions() : []);
+
+    public Task<AssistantThreadResult> ResolveQuestionAsync(string questionId, string status, string? note) =>
+        UiThreadCall.RunAsync(() => host.View() is { } session ? session.ResolveBrokerQuestion(questionId, status, note) : _NotRunning);
 
     public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds) =>
         UiThreadCall.RunAsync(() => host.View() is { } session ? session.SetTurnThreads(projectIds) : _NotRunning);

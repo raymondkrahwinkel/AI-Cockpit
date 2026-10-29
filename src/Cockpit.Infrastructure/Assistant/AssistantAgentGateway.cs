@@ -1195,9 +1195,7 @@ internal sealed class AssistantAgentGateway(
         CancellationToken cancellationToken = default)
     {
         var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
-        return await conversation.ShowQuestionAsync(question, inputJson).ConfigureAwait(false)
-            ? AskStructuredQuestionResult.Shown()
-            : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+        return _Shown(await conversation.ShowQuestionAsync(question, inputJson).ConfigureAwait(false));
     }
 
     public async Task<AskStructuredQuestionResult> AskStructuredQuestionAsync(
@@ -1210,10 +1208,18 @@ internal sealed class AssistantAgentGateway(
         CancellationToken cancellationToken = default)
     {
         var inputJson = _BuildAskStructuredQuestionInputJson(question, options, multiSelect, allowOther, header);
-        return await conversation.ShowQuestionAsync(question, inputJson, projectIds).ConfigureAwait(false)
-            ? AskStructuredQuestionResult.Shown()
-            : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+        return _Shown(await conversation.ShowQuestionAsync(question, inputJson, projectIds).ConfigureAwait(false));
     }
+
+    private static AskStructuredQuestionResult _Shown(string? questionId) => questionId is not null
+        ? AskStructuredQuestionResult.Shown(questionId)
+        : AskStructuredQuestionResult.Refused("My own session is not running, so there is nowhere to show this card.");
+
+    public Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync(CancellationToken cancellationToken = default) =>
+        conversation.ListOpenQuestionsAsync();
+
+    public Task<AssistantThreadResult> ResolveQuestionAsync(string questionId, string status, string? note, CancellationToken cancellationToken = default) =>
+        conversation.ResolveQuestionAsync(questionId, status, note);
 
     public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default) =>
         conversation.SetThreadAsync(projectIds);
