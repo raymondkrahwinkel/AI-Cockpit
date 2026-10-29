@@ -38,6 +38,7 @@ shift
 tar -C /source --exclude=.git --exclude=.superpowers --exclude=TestResults \
   --exclude='*/bin' --exclude='*/bin/*' --exclude='*/obj' --exclude='*/obj/*' -cf - . | tar -xf -
 
+mkdir -p "$HOME/.config"
 apt-get update --quiet
 apt-get install --yes --no-install-recommends --quiet libfontconfig1
 
