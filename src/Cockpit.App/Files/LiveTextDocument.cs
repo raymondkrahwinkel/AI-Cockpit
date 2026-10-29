@@ -632,11 +632,6 @@ internal sealed class LiveTextDocument : IDisposable
         {
             _reading = false;
         }
-        cancellationToken.ThrowIfCancellationRequested();
-        if (Status.RequiresRejoin)
-        {
-            return;
-        }
         var mine = _document.Text;
         var theirs = snapshot.Text;
         var unsent = _queue.Any(item => item.Ops.Count > 0);
