@@ -385,7 +385,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             hub.Subscribe(_OnEventAsync);
             await hub.StartAsync(cancellationToken).ConfigureAwait(false);
             var result = await hub.JoinAsync(
-                new DepotNoteJoinRequest(_note.Organization, _note.Project, _note.Path, Watch: false, _epoch, DepotNoteSchema.Version, Save: _saver is not null),
+                new DepotNoteJoinRequest(_note.Organization, _note.Project, _note.Path, Watch: false, _epoch, DepotNoteSchema.Version, Save: false),
                 cancellationToken).ConfigureAwait(false);
             if (result.Stale)
             {
