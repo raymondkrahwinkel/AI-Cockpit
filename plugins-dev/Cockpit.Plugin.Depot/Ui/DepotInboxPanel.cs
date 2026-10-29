@@ -89,6 +89,16 @@ internal sealed class DepotInboxPanel : UserControl
         }
     }
 
+    // For the screenshot scenes: the card of this message open, as a click on it leaves it.
+    internal void Expand(string messageId)
+    {
+        _expanded.Add(messageId);
+        if (_connection is { } connection && _model.PageOf(connection.Id) is { } page)
+        {
+            _Render(page);
+        }
+    }
+
     public void SelectConnection(string connectionId)
     {
         var index = _connections.ToList().FindIndex(connection => connection.Id == connectionId);
@@ -340,6 +350,27 @@ internal sealed class DepotInboxPanel : UserControl
         var open = new Button { Content = label, Classes = { "accent" }, IsEnabled = reachable };
         open.Click += async (_, _) => await DepotInboxModel.OpenAsync(message, _LaunchAsync).ConfigureAwait(true);
         var actions = new WrapPanel { Children = { open } };
+        if (_connection is { } owner && message.Kind == DepotInboxKind.NoteInvitation && message.Note?.State == "note" && _model.Join is { } join)
+        {
+            // AC-1581: Join opens the note in Cockpit; once it has, the card says so and brings the tab back (mockup 8b).
+            actions.Children.Clear();
+            if (_model.ShowTabOf(owner.Id, message.Id) is { } show)
+            {
+                var showTab = new Button { Content = "Show tab", IsEnabled = reachable };
+                showTab.Click += async (_, _) => await _GuardedAsync(show).ConfigureAwait(true);
+                actions.Children.Add(_JoinedPill());
+                actions.Children.Add(showTab);
+            }
+            else
+            {
+                var joinButton = new Button { Content = "Join", Classes = { "Accent" }, IsEnabled = reachable };
+                joinButton.Click += async (_, _) => await _GuardedAsync(() => join(owner, message)).ConfigureAwait(true);
+                open.Classes.Remove("accent");
+                actions.Children.Add(joinButton);
+                actions.Children.Add(open);
+            }
+        }
+
         if (!message.IsRead)
         {
             var markRead = new Button { Content = "Mark read", Margin = new Thickness(8, 0, 0, 0), IsEnabled = reachable };
@@ -354,6 +385,35 @@ internal sealed class DepotInboxPanel : UserControl
         }
 
         return actions;
+    }
+
+    // A click handler has nobody to catch for it: a route that throws is logged, and the card stays as it was.
+    private static async Task _GuardedAsync(Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"Depot: a note action in the inbox failed: {exception.Message}");
+        }
+    }
+
+    private static Control _JoinedPill()
+    {
+        var pill = new Border
+        {
+            Padding = new Thickness(8, 1),
+            Margin = new Thickness(0, 0, 8, 0),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = "● Joined", FontSize = 11, Foreground = _Brush("CockpitStatusDoneBrush") },
+        };
+        pill.Background = _Brush("CockpitStatusDoneChipTintBrush");
+        pill.BorderBrush = _Brush("CockpitStatusDoneRingTintBrush");
+        return pill;
     }
 
     private Control _SignInPrompt(DepotConnectionRegistration connection, string state)

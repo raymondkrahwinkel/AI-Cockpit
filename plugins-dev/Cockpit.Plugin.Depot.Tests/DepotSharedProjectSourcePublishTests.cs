@@ -25,22 +25,6 @@ public class DepotSharedProjectSourcePublishTests
             Resources: resources ?? []);
 
     [Fact]
-    public async Task PublishAsync_WritesWithNoBaseChecksum_ThisIsTheFirstWriteForThisProject()
-    {
-        var host = Substitute.For<ICockpitHost>();
-        host.Cache.Returns(new InMemoryPluginCache());
-        var scheme = _Scheme(host);
-        var handler = new _DefinitionHandler("new-project", definition: null);
-        using var http = new HttpClient(handler);
-
-        var result = await SourceFor(host, http).PublishAsync(
-            $"{scheme}:new-project", Definition(), CancellationToken.None);
-
-        Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
-        Assert.Equal("*", handler.IfNoneMatch);
-    }
-
-    [Fact]
     public async Task PublishAsync_WriteRejectedForRoleBelowEditor_ReturnsPermissionDenied()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -86,9 +70,10 @@ public class DepotSharedProjectSourcePublishTests
     }
 
     [Fact]
-    public async Task PublishAsync_SecretShapedResourceRow_NeverReachesTheWrittenDefinition()
+    public async Task PublishAsync_FirstWriteHasNoBaseChecksum_AndASecretShapedResourceRowNeverReachesTheWrittenDefinition()
     {
         var host = Substitute.For<ICockpitHost>();
+        host.Cache.Returns(new InMemoryPluginCache());
         var scheme = _Scheme(host);
         var handler = new _DefinitionHandler("new-project", definition: null);
         using var http = new HttpClient(handler);
@@ -102,6 +87,7 @@ public class DepotSharedProjectSourcePublishTests
             $"{scheme}:new-project", Definition(resources: resources), CancellationToken.None);
 
         Assert.Equal(SharedProjectPublishOutcome.Success, result.Outcome);
+        Assert.Equal("*", handler.IfNoneMatch);
         Assert.DoesNotContain("id_rsa", handler.WrittenContent, StringComparison.Ordinal);
         Assert.DoesNotContain("Deploy key", handler.WrittenContent, StringComparison.Ordinal);
         Assert.Contains("RUNBOOK.md", handler.WrittenContent, StringComparison.Ordinal);

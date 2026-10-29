@@ -56,45 +56,27 @@ public class DepotMemorySourceTests
         """{"projects":[{"slug":"cockpit","name":"Cockpit","kind":"Project"},{"slug":"olaf","name":"Olaf","kind":"Brain"}]}""";
 
     [Fact]
-    public async Task CheckReachability_SlugInTheList_ReturnsConfirmed_AndSlugNotInTheList_ReturnsNotFound()
+    public async Task CheckReachability_MapsEachAnswerToItsState_AndNeverThrows()
     {
-        var host = _HostReturning(_TwoProjectsJson);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
-        var check = pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check.");
-
-        var inTheList = await check("cockpit", CancellationToken.None);
-        var notInTheList = await check("no-such-project", CancellationToken.None);
-
-        Assert.Equal(ProjectMemorySourceReachability.Confirmed, inTheList.State);
-        Assert.Equal(ProjectMemorySourceReachability.NotFound, notInTheList.State);
-    }
-
-    [Fact]
-    public async Task CheckReachability_AuthorizationRequired_ReturnsNotSignedIn()
-    {
+        var listed = await _CheckAsync(_HostReturning(_TwoProjectsJson), "cockpit");
+        var missing = await _CheckAsync(_HostReturning(_TwoProjectsJson), "no-such-project");
         // The one case that actually means "go sign in" — the case Raymond's own live test found conflated with an
         // ordinary failed call before this ticket.
-        var host = _HostReturning(string.Empty, HttpStatusCode.Unauthorized);
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
+        var refused = await _CheckAsync(_HostReturning(string.Empty, HttpStatusCode.Unauthorized), "cockpit");
+        var garbled = await _CheckAsync(_HostReturning("not json"), "cockpit");
 
-        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
-
-        Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, result.State);
+        Assert.Equal(ProjectMemorySourceReachability.Confirmed, listed.State);
+        Assert.Equal(ProjectMemorySourceReachability.NotFound, missing.State);
+        Assert.Equal(ProjectMemorySourceReachability.NotSignedIn, refused.State);
         // Iron Law #8: NotSignedIn shows its own fixed sentence; nothing plugin-supplied is attached, unlike CheckFailed.
-        Assert.Null(result.Detail);
+        Assert.Null(refused.Detail);
+        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, garbled.State);
+        Assert.NotNull(garbled.Detail);
     }
 
-    [Fact]
-    public async Task CheckReachability_UnparsableResponse_ReturnsCheckFailed_NeverThrows()
-    {
-        var host = _HostReturning("not json");
-        var pairs = DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host);
-
-        var result = await (pairs.Single().Registration.CheckReachability ?? throw new InvalidOperationException("The registration has no reachability check."))("cockpit", CancellationToken.None);
-
-        Assert.Equal(ProjectMemorySourceReachability.CheckFailed, result.State);
-        Assert.NotNull(result.Detail);
-    }
+    private static Task<ProjectMemorySourceReachabilityResult> _CheckAsync(ICockpitHost host, string slug) =>
+        (DepotMemorySource.BuildRegistrationPairs([Connection("c1", "Acme")], host).Single().Registration.CheckReachability
+            ?? throw new InvalidOperationException("The registration has no reachability check."))(slug, CancellationToken.None);
 
     [Fact]
     public async Task CheckReachability_OnFailure_LeavesADiagnosticLogLine_WithoutAnyTokenMaterial()

@@ -189,6 +189,16 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         }));
         notes.Start();
 
+        // AC-1581: a /n/{token} link to its place and role (DEP-534); the UI part's one route function asks here.
+        var noteLinks = new Notes.DepotNoteLinks(() => settings.Connections,
+            connection => host.CreateAuthorizedHandler(connection.McpServerName, "depot.host"), _logger);
+        _handlers.Add(host.Channel.Handle(DepotNoteLinkChannel.Resolve, async (payload, cancellationToken) =>
+        {
+            var request = payload.Deserialize<DepotNoteLinkRequest>(DepotChannel.Json)
+                ?? throw new ArgumentException("The request is empty.", nameof(payload));
+            return JsonSerializer.SerializeToElement(await noteLinks.ResolveAsync(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
+        }));
+
         _events = new Events.DepotEvents(
             () => settings.Connections,
             connection => host.CreateAuthorizedHandler(connection.McpServerName),

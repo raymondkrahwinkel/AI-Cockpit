@@ -24,7 +24,7 @@ internal sealed class DepotNotesModel : IDisposable
 
     public event Action<DepotNotesPage>? Changed;
 
-    // AC-1579/AC-1581 replace the browser fallbacks on this shared model when their native UI is available.
+    // AC-1579/AC-1581 replace the browser fallbacks on this shared model; the plugin sets both to its native routes.
     public Func<DepotConnectionRegistration, string?, Task>? NewMeetingNote { get; set; }
     public Func<DepotConnectionRegistration, DepotLiveNote, Task>? JoinNote { get; set; }
 

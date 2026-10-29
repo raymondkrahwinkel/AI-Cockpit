@@ -11,15 +11,25 @@ namespace Cockpit.Plugin.Depot.UI;
 // side-menu badge can add them up while the tab shows one; every Depot call is the backend's, over the channel.
 internal sealed class DepotInboxModel : IDisposable
 {
-    private readonly ICockpitUiHost _host;
+    private readonly ICockpitUiHost? _host;
+    private readonly IPluginUiChannel _channel;
     private readonly Dictionary<string, DepotInboxPage> _pages = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Connection, string Message), Func<Task>> _joined = [];
     private readonly Lock _pagesLock = new();
     private readonly IDisposable _subscription;
 
     public DepotInboxModel(ICockpitUiHost host)
     {
         _host = host;
-        _subscription = host.Channel.Subscribe(DepotInboxChannel.Changed, _OnChanged);
+        _channel = host.Channel;
+        _subscription = _channel.Subscribe(DepotInboxChannel.Changed, _OnChanged);
+    }
+
+    // The screenshot scenes have a channel and no host; signing in is then never possible.
+    internal DepotInboxModel(IPluginUiChannel channel)
+    {
+        _channel = channel;
+        _subscription = channel.Subscribe(DepotInboxChannel.Changed, _OnChanged);
     }
 
     // Raised on whatever thread the backend published from.
@@ -50,7 +60,7 @@ internal sealed class DepotInboxModel : IDisposable
     {
         try
         {
-            var answer = await _host.Channel.InvokeAsync(DepotInboxChannel.Unread, JsonSerializer.SerializeToElement(new { }, DepotChannel.Json)).ConfigureAwait(true);
+            var answer = await _channel.InvokeAsync(DepotInboxChannel.Unread, JsonSerializer.SerializeToElement(new { }, DepotChannel.Json)).ConfigureAwait(true);
             foreach (var count in answer.Deserialize<IReadOnlyList<DepotInboxCount>>(DepotChannel.Json) ?? [])
             {
                 _Apply(PageOf(count.ConnectionId) is { } known ? known with { Count = count } : new DepotInboxPage(count, [], null));
@@ -71,7 +81,7 @@ internal sealed class DepotInboxModel : IDisposable
 
     // Only the operator's click gets here; nothing else opens a browser (AC-1517).
     public async Task<bool> SignInAsync(DepotConnectionRegistration connection) =>
-        await _host.SignInMcpServerAsync(connection.McpServerName).ConfigureAwait(true) == PluginMcpSignInOutcome.Authorized;
+        _host is not null && await _host.SignInMcpServerAsync(connection.McpServerName).ConfigureAwait(true) == PluginMcpSignInOutcome.Authorized;
 
     // The one action a message has in Cockpit: no editor yet (AC-1580), so a note invitation opens its note in Depot and
     // every other kind its message there, where accepting, granting and deciding happen.
@@ -83,8 +93,35 @@ internal sealed class DepotInboxModel : IDisposable
     public static Task OpenAsync(DepotInboxMessage message, Func<Uri, Task> launch) =>
         Uri.TryCreate(PrimaryAction(message).Url, UriKind.Absolute, out var uri) ? launch(uri) : Task.CompletedTask;
 
-    // AC-1581 replaces this browser fallback with the native note join when the editor route is available.
-    public static Task JoinAsync(DepotInboxMessage message, Func<Uri, Task> launch) => OpenAsync(message, launch);
+    // AC-1581: Join goes through the one note route, set by the plugin; null opens the note in Depot as before.
+    public Func<DepotConnectionRegistration, DepotInboxMessage, Task>? Join { get; set; }
+
+    // The messages whose note is open as a tab, with what brings that tab forward (mockup 8b: "Joined", "Show tab").
+    public Func<Task>? ShowTabOf(string connectionId, string messageId)
+    {
+        lock (_pagesLock)
+        {
+            return _joined.GetValueOrDefault((connectionId, messageId));
+        }
+    }
+
+    // After a note opened from a message: remember its tab, then mark the message read. The page is shown again either way.
+    public async Task JoinedAsync(string connectionId, string messageId, Func<Task>? show)
+    {
+        if (show is not null)
+        {
+            lock (_pagesLock)
+            {
+                _joined[(connectionId, messageId)] = show;
+            }
+        }
+
+        var page = await MarkReadAsync(connectionId, messageId).ConfigureAwait(true) ?? PageOf(connectionId);
+        if (page is not null)
+        {
+            _Apply(page);
+        }
+    }
 
     public void Dispose() => _subscription.Dispose();
 
@@ -110,7 +147,7 @@ internal sealed class DepotInboxModel : IDisposable
     {
         try
         {
-            var answer = await _host.Channel.InvokeAsync(action, JsonSerializer.SerializeToElement(request, DepotChannel.Json)).ConfigureAwait(true);
+            var answer = await _channel.InvokeAsync(action, JsonSerializer.SerializeToElement(request, DepotChannel.Json)).ConfigureAwait(true);
             if (answer.Deserialize<DepotInboxPage>(DepotChannel.Json) is not { } page)
             {
                 return null;

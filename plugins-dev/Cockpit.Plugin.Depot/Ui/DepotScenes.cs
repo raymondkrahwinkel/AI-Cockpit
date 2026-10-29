@@ -1,9 +1,14 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugins.Abstractions.Channels;
+using Cockpit.Plugins.Abstractions.UI;
+using Cockpit.Plugins.Abstractions.Workspaces;
+using Material.Icons;
 
 namespace Cockpit.Plugin.Depot.UI;
 
@@ -58,6 +63,7 @@ internal static class DepotScenes
         ["depot-settings-sync"] = _SettingsSyncScene,
         ["depot-new-meeting-note"] = () => DepotMeetingNoteScene.Dialog(created: false),
         ["depot-meeting-note-created"] = () => DepotMeetingNoteScene.Dialog(created: true),
+        ["depot-inbox-joined"] = DepotInboxScene.Joined,
         ["depot-new-markdown"] = () =>
         {
             var dialog = new NewMarkdownFileDialog("krahwinkel-it/cockpit", "Ideas", ["", "Ideas", "Plan"], _ => false, _ => Task.CompletedTask)
@@ -67,6 +73,15 @@ internal static class DepotScenes
             return dialog;
         },
     };
+
+    // Read by Cockpit's `--screenshot --scene plugin:<name>`: the tab of a note the account has no right to (mockup 3c).
+    public static IReadOnlyDictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>> Workspaces { get; } =
+        new Dictionary<string, Func<(WorkspaceTypeRegistration Registration, string? StatusText)>>
+        {
+            ["shared-note"] = () => (new WorkspaceTypeRegistration(DepotSharedNote.WorkspaceTypeId, DepotSharedNote.TabTitle,
+                _ => new DepotSharedNoteView(null, DepotSharedNote.Key("work", "7Kq3xP"), [new("work", "Work", "https://depot.example.com")]))
+                { IconKind = MaterialIconKind.LockOutline }, null),
+        };
 
     private static Control _Scene(DepotBrowserSceneModel model)
     {
@@ -134,6 +149,51 @@ internal sealed record DepotBrowserSceneModel(
     DepotDocumentExcerpt? Excerpt,
     IReadOnlyDictionary<string, string>? Badges = null,
     bool BelowTree = false);
+
+// AC-1581: the Inbox tab after a Join from the toast or the card (mockup 8b), on fixture data with nothing asked of Depot.
+internal sealed class DepotInboxScene : IPluginUiChannel
+{
+    private Action<PluginChannelEvent>? _changed;
+
+    public static Control Joined()
+    {
+        var channel = new DepotInboxScene();
+        var model = new DepotInboxModel(channel) { Join = (_, _) => Task.CompletedTask };
+        var connection = new DepotConnectionRegistration("work", "Work", "https://depot.example.com");
+        var panel = new DepotInboxPanel(model, [connection]);
+        channel._changed?.Invoke(new PluginChannelEvent(DepotInboxChannel.Changed, 1, JsonSerializer.SerializeToElement(_Page(read: false), DepotChannel.Json)));
+        model.JoinedAsync("work", "m1", () => Task.CompletedTask).GetAwaiter().GetResult();
+        panel.Expand("m1");
+        return new Border { Width = 360, HorizontalAlignment = HorizontalAlignment.Left, Child = panel };
+    }
+
+    public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
+        Task.FromResult(JsonSerializer.SerializeToElement(_Page(read: true), DepotChannel.Json));
+
+    public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler)
+    {
+        _changed = handler;
+        return new Nothing();
+    }
+
+    private static DepotInboxPage _Page(bool read) => new(
+        new("work", DepotInboxState.Ok, read ? 2 : 3, new Dictionary<string, int>()),
+        [
+            new("m1", DepotInboxKind.NoteInvitation, read, true, new DateTimeOffset(2026, 10, 28, 14, 2, 0, TimeSpan.Zero), null, "Sanne invites you to a note",
+                "https://depot.example.com/mailbox?id=m1",
+                new DepotInboxNote("note", "Weekly sync — 28 October", "Meetings/2026-10-28 Weekly sync.md", true, "https://depot.example.com/n/7Kq3xP", "krahwinkel-it/cockpit", ["Sanne", "Joris"])),
+            new("m2", "FileShared", true, true, new DateTimeOffset(2026, 10, 27, 9, 0, 0, TimeSpan.Zero), null, "Joris shared a file", "https://depot.example.com/mailbox?id=m2"),
+            new("m3", "Mention", true, true, new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero), null, "Sanne mentioned you", "https://depot.example.com/mailbox?id=m3"),
+        ],
+        new DateTimeOffset(2026, 10, 28, 14, 5, 0, TimeSpan.Zero), "raymond");
+
+    private sealed class Nothing : IDisposable
+    {
+        public void Dispose()
+        {
+        }
+    }
+}
 
 // AC-1579: the "New meeting note" dialog on fixture data (mockup 2a and 2b), with nothing asked of Depot.
 internal sealed class DepotMeetingNoteScene : IDepotMeetingNotes
