@@ -19,15 +19,38 @@ namespace Cockpit.Plugin.Depot.Tests;
 [Collection("avalonia")]
 public class DepotMeetingNoteTests
 {
-    // Acceptance 1: mockup 2a (the dialog) and 2b (the created state), each in Dark and Light. With DEPOT_MEETING_NOTE_SCENE_DIR
-    // set to a folder, the frames are written there as <scene>-<theme>.png (AC-1235 style).
-    [Theory]
-    [InlineData("2a", false)]
-    [InlineData("2b", true)]
-    public void Dialog_RendersTheMockupsScreen_InBothThemes(string scene, bool created)
+    // Acceptance 1: mockup 2a (the dialog), in Dark and Light. With DEPOT_MEETING_NOTE_SCENE_DIR set to a folder, the frames
+    // are written there as <scene>-<theme>.png (AC-1235 style).
+    [Fact]
+    public void Dialog_RendersMockup2a_InBothThemes()
+    {
+        Assert.All(_RenderInBothThemes("2a", created: false), rendered =>
+        {
+            Assert.True(rendered.Width > 0);
+            Assert.All(new[] { "Depot project", "Topic", "File", "Template", "Attendees", "2026-10-19 Sprint review.md" },
+                label => Assert.Contains(label, rendered.Texts));
+            Assert.True(rendered.Dialog.GetVisualDescendants().OfType<CheckBox>().Single().IsChecked);
+            Assert.True(rendered.Dialog.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "Create and open").IsEnabled);
+        });
+    }
+
+    // Acceptance 1: mockup 2b (the created state), in Dark and Light.
+    [Fact]
+    public void Dialog_RendersMockup2b_InBothThemes()
+    {
+        Assert.All(_RenderInBothThemes("2b", created: true), rendered =>
+        {
+            Assert.True(rendered.Width > 0);
+            Assert.Contains(rendered.Texts, text => text?.StartsWith("✓ Created in depot › Meetings.", StringComparison.Ordinal) == true && text.Contains("Sanne and Jithran got an invitation", StringComparison.Ordinal));
+            Assert.Contains(rendered.Dialog.GetVisualDescendants().OfType<Button>(), button => button.Content as string == "Open in Cockpit");
+        });
+    }
+
+    private static List<(int Width, List<string?> Texts, Control Dialog)> _RenderInBothThemes(string scene, bool created)
     {
         Avalonia.Threading.AvaloniaSynchronizationContext.InstallIfNeeded();
         var application = Application.Current ?? throw new InvalidOperationException("No application.");
+        var rendered = new List<(int Width, List<string?> Texts, Control Dialog)>();
         try
         {
             foreach (var theme in new[] { ThemeVariant.Dark, ThemeVariant.Light })
@@ -45,21 +68,7 @@ public class DepotMeetingNoteTests
                     frame.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
                 }
 
-                var texts = dialog.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text).ToList();
-                Assert.True(frame.PixelSize.Width > 0);
-                if (created)
-                {
-                    Assert.Contains(texts, text => text?.StartsWith("✓ Created in depot › Meetings.", StringComparison.Ordinal) == true && text.Contains("Sanne and Jithran got an invitation", StringComparison.Ordinal));
-                    Assert.Contains(dialog.GetVisualDescendants().OfType<Button>(), button => button.Content as string == "Open in Cockpit");
-                }
-                else
-                {
-                    Assert.All(new[] { "Depot project", "Topic", "File", "Template", "Attendees", "2026-10-19 Sprint review.md" },
-                        label => Assert.Contains(label, texts));
-                    Assert.True(dialog.GetVisualDescendants().OfType<CheckBox>().Single().IsChecked);
-                    Assert.True(dialog.GetVisualDescendants().OfType<Button>().Single(button => button.Content as string == "Create and open").IsEnabled);
-                }
-
+                rendered.Add((frame.PixelSize.Width, dialog.GetVisualDescendants().OfType<TextBlock>().Select(block => block.Text).ToList(), dialog));
                 window.Close();
             }
         }
@@ -67,6 +76,8 @@ public class DepotMeetingNoteTests
         {
             application.RequestedThemeVariant = ThemeVariant.Dark;
         }
+
+        return rendered;
     }
 
     // Acceptances 2 and 3: the list is what `options` answers (a project you only view is left out by Depot and counted),
