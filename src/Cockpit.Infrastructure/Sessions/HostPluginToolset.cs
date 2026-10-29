@@ -62,9 +62,10 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
         string? workingDirectory,
         Func<string?> sessionId,
         ILogger? logger,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? agentName = null)
     {
-        var toolSession = await toolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken).ConfigureAwait(false);
+        var toolSession = await toolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, agentName).ConfigureAwait(false);
 
         var selectionText = selection is null ? "(no restriction)" : $"[{string.Join(", ", selection)}]";
         if (toolSession.ConnectedServerNames.Count == 0 && selection is { Count: > 0 })

@@ -655,6 +655,9 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
     private async Task _UnloadAsync()
     {
+        _externalWriter = null;
+        _ambiguousExternalWriter = false;
+        _outsidePending = false;
         await _text.WaitAsync(_life.Token).ConfigureAwait(false);
         try
         {
@@ -780,6 +783,12 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
         switch (hubEvent)
         {
+            case { Kind: "outside", Args: [_, JsonElement outside, ..] }:
+                await _GuardAsync(() => _OutsideAsync(outside), "Reading an outside writer").ConfigureAwait(false);
+                break;
+            case { Kind: "merged", Args: [_, int[] blocks, ..] }:
+                await _GuardAsync(() => _MergedAsync(blocks), "Marking an outside write").ConfigureAwait(false);
+                break;
             case { Kind: "update", Args: [_, byte[] data, ..] }:
                 await _GuardAsync(() => _ApplyRemoteAsync(data, _life.Token), "Applying a live note update").ConfigureAwait(false);
                 break;
@@ -868,6 +877,9 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         // Without the socket the hub may already have named another saver (editor.ts does the same): the next Join asks again.
         _mine = false;
         _saver?.SetSaver(false);
+        _externalWriter = null;
+        _ambiguousExternalWriter = false;
+        _outsidePending = false;
         var hub = Interlocked.Exchange(ref _hub, null);
         if (hub is not null)
         {
@@ -951,7 +963,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             DepotNoteLiveState.Unavailable or DepotNoteLiveState.Disabled => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
             _ => new LiveFileStatus(LiveFileState.Connecting),
         };
-        return status with { UnsentSourceText = _unsentSourceText };
+            return status with { UnsentSourceText = _unsentSourceText, Saved = _saved ?? status.Saved };
     }
 
     // Fixed sentences: never text from an exception or a response, which could carry a header.
@@ -1063,15 +1075,14 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         _SetSaved(new LiveFileSave(self is { Name.Length: > 0 } ? self.Name : "you", self is { Color.Length: > 0 } ? self.Color : null, _time.GetUtcNow()));
     }
 
-    // The one place a save becomes the chip: DEP-536's `saved` event, or Cockpit's own save on a Depot that does not send it.
+    // A completed version becomes the chip: a live save, or the external MCP version named in outside (AC-1583).
     private void _SetSaved(LiveFileSave saved)
     {
         _saved = saved;
         _StatusChanged();
     }
 
-    // DEP-536: every save is announced to the room, the saver's own included, with the saver's server identity. A writer outside
-    // the room is never shown as the one who saved (AC-1583): only this event names someone else.
+    // DEP-536: the next live save replaces the external version's chip with the saver's server identity.
     private void _HubSaved(JsonElement save)
     {
         if (save.ValueKind != JsonValueKind.Object || !save.TryGetProperty("by", out var by) || by.ValueKind != JsonValueKind.Object)

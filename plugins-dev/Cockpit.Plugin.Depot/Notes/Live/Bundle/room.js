@@ -102,6 +102,9 @@ export function createRoom(clientId) {
   parseBody('');
 }
 export const current = () => doc;
+export function blockRanges(indicesJson) {
+  return JSON.stringify(JSON.parse(indicesJson).flatMap((index) => ranges[index] ? [{ start: ranges[index][0], end: ranges[index][1] }] : []));
+}
 const fragment = () => doc.getXmlFragment('default');
 const frontmatter = () => doc.getText('frontmatter');
 const eol = () => (doc.getMap('meta').get('eol') === '\r\n' ? '\r\n' : '\n');

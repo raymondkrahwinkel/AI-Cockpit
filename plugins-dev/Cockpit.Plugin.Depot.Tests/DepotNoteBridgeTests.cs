@@ -187,7 +187,9 @@ public class DepotNoteBridgeTests
         await using var web = new JintNoteRoom(2);
         var hub = new _Hub(await _SeedAsync(web, "structure.md"));
         var loaded = new TaskCompletionSource();
-        await using var bridge = _Session(hub, _ => loaded.TrySetResult(), user: new DepotNoteUser("user-1", "Raymond", "#2563eb"));
+        var patches = new List<LiveFilePatch>();
+        var statuses = new List<LiveFileStatus>();
+        await using var bridge = _Session(hub, patch => { patches.Add(patch); loaded.TrySetResult(); }, user: new DepotNoteUser("user-1", "Raymond", "#2563eb"), statusChanged: statuses.Add);
         bridge.Connect();
         await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
         await web.LoadAsync(string.Empty, CancellationToken.None);
@@ -225,6 +227,25 @@ public class DepotNoteBridgeTests
         Assert.Equal((first.ClientId, 1UL, 2UL), (last.ClientId, first.Clock, last.Clock));
         var head = JsonDocument.Parse(last.State).RootElement.GetProperty("cursor").GetProperty("head").GetRawText();
         Assert.Equal(item, await web.OffsetOfAsync(head, CancellationToken.None));
+
+        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Assistant", onBehalfOf = "Raymond", source = "agent", via = "Mcp", version = 2 })]));
+        Assert.Equal("Assistant", statuses[^1].Saved?.Name);
+        Assert.Equal("#a78bda", statuses[^1].Saved?.Color);
+        Assert.Equal("agent", bridge.Peers[^1].Source);
+        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
+        var external = patches[^1].ExternalEdit ?? throw new InvalidOperationException("The outside writer was not marked.");
+        Assert.Equal("Assistant · on behalf of Raymond", external.Who);
+        Assert.Equal(await bridge.Room.BlockRangesAsync([0], CancellationToken.None), external.Ranges);
+        var marked = patches.Count;
+        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Assistant", source = "agent" })]));
+        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Other", source = "agent" })]));
+        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
+        Assert.Equal(marked, patches.Count);
+        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Third", source = "agent" })]));
+        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
+        Assert.Equal(marked, patches.Count);
+        await hub.Push(new DepotNoteEvent("saved", ["doc-1", JsonSerializer.SerializeToElement(new { by = new { name = "Sanne", color = "#3fb8c4" }, at = "2026-10-28T14:12:00Z" })]));
+        Assert.Equal("Sanne", statuses[^1].Saved?.Name);
     }
 
     private static async Task _SameCharacterAsync(JintNoteRoom web, IDepotNoteRoom bridge, int offset)
@@ -310,9 +331,9 @@ public class DepotNoteBridgeTests
         Assert.Empty(hub.Calls);
     }
 
-    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched, Action<DepotNoteLiveStatus>? publish = null, DepotNoteUser? user = null) => new(
+    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched, Action<DepotNoteLiveStatus>? publish = null, DepotNoteUser? user = null, Action<LiveFileStatus>? statusChanged = null) => new(
         Connection, Note, _ => Task.FromResult(user ?? new DepotNoteUser("user-1")), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
-        publish ?? (_ => { }), [TimeSpan.Zero], patched: patched);
+        publish ?? (_ => { }), [TimeSpan.Zero], patched: patched, statusChanged: statusChanged);
 
     // The web's seed of a fixture (protocol §5.3), as the one row the hub holds.
     private static async Task<byte[]> _SeedAsync(JintNoteRoom web, string fixture)

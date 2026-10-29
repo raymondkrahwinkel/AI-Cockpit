@@ -71,7 +71,36 @@ public sealed class LiveFileWorkspaceTests
         await _ReadOnly_PreservesQueuedTextAsync();
         await _ReadOnlyJoinAsync(LiveReadOnlyReason.SchemaMismatch, "Read only", true);
         await _ReadOnlyJoinAsync(LiveReadOnlyReason.Viewer, "Viewer · read only", false);
+        await _OutsideMarks_KeepUntouchedLinesAsync();
     });
+
+    // Layer 2, view: attribution crosses the file channel and pending typing only clears the line it touches.
+    private static async Task _OutsideMarks_KeepUntouchedLinesAsync()
+    {
+        var (source, body, _, window) = await _OpenAsync();
+        var hold = new TaskCompletionSource();
+        source.Hold = hold.Task;
+        try
+        {
+            var document = body.Editor.TextEditor.Document;
+            document.Insert(1, "mine");
+            Dispatcher.UIThread.RunJobs();
+            source.MarkOutside(new ExternalTextEdit("Assistant", DateTimeOffset.UtcNow, [new LiveRange(0, source.Text.ToString().IndexOf("line 4", StringComparison.Ordinal) - 1)]));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(new[] { 2, 3 }, body.Editor.ExternalMarkedLines);
+            document.Insert(document.GetLineByNumber(2).Offset + 1, "typed");
+            Assert.Equal(new[] { 3 }, body.Editor.ExternalMarkedLines);
+            document.Insert(0, "preface\n");
+            Assert.Equal(new[] { 4 }, body.Editor.ExternalMarkedLines);
+            body.Editor.MarkExternalEdit(new ExternalTextEdit("Expired", DateTimeOffset.UtcNow.AddMinutes(-11), [new LiveRange(0, 4)]));
+            Assert.Equal(new[] { 4 }, body.Editor.ExternalMarkedLines);
+        }
+        finally
+        {
+            hold.TrySetResult();
+            window.Close();
+        }
+    }
 
     // Layer 2, view: read-only joins cannot enter editing, still receive remote patches and keep Download.
     private static async Task _ReadOnlyJoinAsync(LiveReadOnlyReason reason, string chip, bool banner)
@@ -232,6 +261,7 @@ public sealed class LiveFileWorkspaceTests
         public FileSourceCapabilities Capabilities => new(true, FileSourceChannel.MaxContentBytes);
         public event EventHandler? ConnectionsChanged { add { } remove { } }
         public event EventHandler<LiveFilePatch>? Patched;
+        public void MarkOutside(ExternalTextEdit edit) => Patched?.Invoke(this, new LiveFilePatch(++Rev, []) { ExternalEdit = edit });
         public event EventHandler<LiveFileStatus>? StatusChanged;
         public void PublishStatus() => StatusChanged?.Invoke(this, Status);
         public IFileSource Open(string connectionId) => this;

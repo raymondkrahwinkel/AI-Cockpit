@@ -66,7 +66,14 @@ public sealed record LiveFileSnapshot(string Text, long Rev, LiveFileStatus Stat
 /// A change the host did not type: another editor's, or the result of <see cref="ILiveFileSession.UndoAsync"/>.
 /// <see cref="Rev"/> is the revision after it; the ops apply to the text at <c>Rev - 1</c>.
 /// </summary>
-public sealed record LiveFilePatch(long Rev, IReadOnlyList<TextOp> Ops, string? Who = null);
+public sealed record LiveFilePatch(long Rev, IReadOnlyList<TextOp> Ops, string? Who = null)
+{
+    /// <summary>Ranges written outside this live connection, measured after the ops.</summary>
+    public ExternalTextEdit? ExternalEdit { get; init; }
+}
+
+/// <summary>Text written by a named outside writer, at the given time.</summary>
+public sealed record ExternalTextEdit(string Who, DateTimeOffset At, IReadOnlyList<LiveRange> Ranges);
 
 /// <summary>Whether <see cref="ILiveFileSession.EditAsync"/> applied the ops.</summary>
 public enum LiveEditStatus

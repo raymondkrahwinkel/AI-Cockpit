@@ -27,6 +27,9 @@ internal interface IDepotNoteRoom : IAsyncDisposable
 
     Task<string> ReadAsync(CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<LiveRange>> BlockRangesAsync(IReadOnlyList<int> blocks, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<LiveRange>>([]);
+
     // The host's ops, applied to the mirror and the doc as one local transaction; returns the v1 updates to send.
     Task<IReadOnlyList<byte[]>> EditAsync(IReadOnlyList<TextOp> ops, CancellationToken cancellationToken);
 
@@ -92,6 +95,9 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
         _Ops(await _CallAsync("load", cancellationToken, previous).ConfigureAwait(false));
 
     public Task<string> ReadAsync(CancellationToken cancellationToken) => _CallAsync("text", cancellationToken);
+
+    public async Task<IReadOnlyList<LiveRange>> BlockRangesAsync(IReadOnlyList<int> blocks, CancellationToken cancellationToken) =>
+        JsonSerializer.Deserialize<LiveRange[]>(await _CallAsync("blockRanges", cancellationToken, JsonSerializer.Serialize(blocks)).ConfigureAwait(false), Json) ?? [];
 
     public async Task<IReadOnlyList<byte[]>> EditAsync(IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
     {

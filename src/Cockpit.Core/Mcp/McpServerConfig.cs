@@ -70,6 +70,9 @@ public sealed record McpServerConfig
     // the app-lifetime auth key; never set for a user-added server, since that key must never reach a third party.
     public bool CockpitHosted { get; init; }
 
+    // AC-1583: opted in by the contributing plugin, applied on both session launch routes.
+    public bool IncludeAgentName { get; init; }
+
     // AC-204: whether this server is internal-only — kept out of every user-facing MCP selection and the
     // no-selection fan-out, but reachable when a launch names it explicitly (e.g. Autopilot CEO/step endpoints
     // that only a run's own agents scope to). Never set for a user-added server.

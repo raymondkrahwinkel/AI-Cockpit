@@ -56,6 +56,8 @@ internal sealed class LiveTextDocument : IDisposable
 
     public event EventHandler? Changed;
 
+    public event EventHandler<ExternalTextEdit>? ExternalEdited;
+
     private bool _IsIdle => !_sending && _inflight is null && _queue.Count == 0 && !_resync;
 
     // The document already holds the snapshot's text.
@@ -204,7 +206,7 @@ internal sealed class LiveTextDocument : IDisposable
             }
             if (patch.Rev > _rev)
             {
-                _early[patch.Rev] = new LiveFilePatch(patch.Rev, patch.Ops, patch.Who);
+                _early[patch.Rev] = new LiveFilePatch(patch.Rev, patch.Ops, patch.Who) { ExternalEdit = patch.ExternalEdit };
             }
             _Drain();
         }
@@ -278,7 +280,39 @@ internal sealed class LiveTextDocument : IDisposable
             _queue[i] = _queue[i] with { Ops = _TextOps(queued[i]) };
         }
         _rev = patch.Rev;
+        if (patch.ExternalEdit is { } external)
+        {
+            var ranges = _ExternalLines(external.Ranges);
+            foreach (var op in (_inflight ?? []).Concat(_queue.SelectMany(item => item.Ops)))
+            {
+                ranges = ranges.Where(range => op.Offset > range.End || op.Offset + op.Length < range.Start)
+                    .Select(range => op.Offset < range.Start ? new LiveRange(range.Start + op.Text.Length - op.Length, range.End + op.Text.Length - op.Length) : range).ToList();
+            }
+            ExternalEdited?.Invoke(this, external with { Ranges = ranges });
+        }
         return true;
+    }
+
+    private List<LiveRange> _ExternalLines(IReadOnlyList<LiveRange> ranges)
+    {
+        var text = _base.ToString();
+        var lines = new List<LiveRange>();
+        foreach (var range in ranges)
+        {
+            if (range.Start < 0 || range.End <= range.Start || range.End > text.Length)
+            {
+                continue;
+            }
+            var start = range.Start == 0 ? 0 : text.LastIndexOf('\n', range.Start - 1) + 1;
+            while (start < range.End)
+            {
+                var end = text.IndexOf('\n', start);
+                end = end < 0 ? text.Length : end;
+                lines.Add(new LiveRange(start, end));
+                start = end + 1;
+            }
+        }
+        return lines;
     }
 
     // A replace as a delete then an insert at the same spot; the transforms below only meet these two kinds.
@@ -554,7 +588,7 @@ internal sealed class LiveTextDocument : IDisposable
 
     private void _ReadOnly()
     {
-        Status = new LiveFileStatus(LiveFileState.ReadOnly, "You can no longer edit this note.") { ReadOnlyReason = LiveReadOnlyReason.RoleLost };
+        Status = Status with { State = LiveFileState.ReadOnly, Reason = "You can no longer edit this note.", ReadOnlyReason = LiveReadOnlyReason.RoleLost };
         _failed = HasUnsentText;
         _idle?.TrySetResult(!HasUnsentText);
         _idle = null;

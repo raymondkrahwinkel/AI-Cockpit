@@ -79,7 +79,11 @@ public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase
 }
 public sealed record FileSourceLivePresenceSet(string SessionId, LivePresenceState State);
 public sealed record FileSourceLivePresence(string SessionId, IReadOnlyList<LivePeer> Peers);
-public sealed record FileSourceLivePatch(string SessionId, long Rev, TextOp[] Ops, string? Who);
+public sealed record FileSourceLivePatch(string SessionId, long Rev, TextOp[] Ops, string? Who)
+{
+    /// <summary>Optional attribution of an outside write.</summary>
+    public ExternalTextEdit? ExternalEdit { get; init; }
+}
 public sealed record FileSourceLiveState(string SessionId, LiveFileStatus Status);
 public sealed record FileSourceError(FileSourceErrorKind Kind, string Message);
 public sealed record FileSourceAnswer<T>(T? Data, FileSourceError? Error) where T : class;

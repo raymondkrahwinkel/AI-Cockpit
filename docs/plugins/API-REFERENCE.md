@@ -2115,7 +2115,10 @@ public sealed record McpServerContribution(
     string Name,
     string Url,
     string? BearerToken = null,
-    McpContributionScope Scope = McpContributionScope.All);
+      McpContributionScope Scope = McpContributionScope.All)
+  {
+      public bool IncludeAgentName { get; init; }
+  }
 ```
 
 | Field | Meaning |
@@ -2127,6 +2130,7 @@ public sealed record McpServerContribution(
 | `OAuthAuthority`, `OAuthClientId` (init) | Set `OAuthAuthority` for an OAuth server; `OAuthClientId` names a client the server already knows, else the cockpit registers itself (RFC 7591). |
 | `OAuthScopes` (init, AC-1586, host 0.103.0) | The scopes the sign-in asks for, space-separated, instead of what the server advertises. |
 | `OAuthHostOnlyScopes` (init, AC-1586, host 0.103.0) | Scopes among `OAuthScopes` that only the cockpit may spend, through `CreateAuthorizedHandler(name, scope)`. No token a session is handed carries one. |
+  | `IncludeAgentName` (init, AC-1583, host 0.148.0) | Opts in to `X-Cockpit-Agent` with the launching profile's label, on SDK and TTY sessions. Defaults to false. |
 
 ### `McpContributionScope` {#mcpcontributionscope}
 

@@ -568,6 +568,7 @@ public class PluginBackendHost(
                 servers[existingIndex] = servers[existingIndex] with
                 {
                     Transport = refreshed.Transport,
+                    IncludeAgentName = refreshed.IncludeAgentName,
                     Url = refreshed.Url,
                     Auth = refreshed.Auth,
                     ApiKey = refreshed.ApiKey,

@@ -213,6 +213,7 @@ internal static partial class Screenshotter
         ["markdown-file-viewer"] = (width, height) => _MarkdownFileScene(width, height, "viewer"),
         // AC-1900 (mockup AC-1895 v2, screens 4 and 4p): others' carets and selections, the avatars in the header, and the list they open.
         ["markdown-file-presence"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-agent"] = (width, height) => _MarkdownFileScene(width, height, "presence-agent"),
         ["markdown-file-presence-popover"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
         ["markdown-file-presence-away"] = (width, height) => _MarkdownFileScene(width, height, "presence-away"),
         ["markdown-file-saver-saved"] = (width, height) => _MarkdownFileScene(width, height, "presence-saved"),
