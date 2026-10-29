@@ -47,6 +47,9 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
     private readonly Func<CancellationToken, Task<bool>>? _signIn;
     // Who this session opened as (AC-1582): a later attempt under another account joins nothing and sends nothing.
     private DepotNoteUser? _openedAs;
+    // Bumped by every account change; a session is unverified until a later /cockpit/me read names the account it opened as.
+    private int _accountChanges;
+    private int _accountChecked;
     private TaskCompletionSource _wake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _disposedOnce;
     private readonly CancellationTokenSource _life = new();
@@ -198,43 +201,31 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
         if (_signIn is not null && await _signIn(cancellationToken).ConfigureAwait(false))
         {
-            await AccountChangedAsync(cancellationToken).ConfigureAwait(false);
+            AccountChanged();
         }
     }
 
-    // The sign-in may have changed. A session that stopped for it tries again; one that is joined, or waiting to, stops as soon as
-    // Depot names another account, so nothing typed here is sent or saved under it.
-    public async Task AccountChangedAsync(CancellationToken cancellationToken)
+    // The sign-in may have changed. Fail closed: nothing is saved or sent, and the host stops writing, until a fresh connect has read
+    // whom Depot names now; the loop then joins again as the account this session opened with, or stops as OtherAccount.
+    public void AccountChanged()
     {
         string? state;
         lock (_gate)
         {
             state = _state;
+            _accountChanges++;
         }
 
-        if (state is DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount)
-        {
-            Connect();
-            return;
-        }
-
-        if (_openedAs is not { } opened)
+        if (state is null)
         {
             return;
         }
 
-        try
-        {
-            if ((await _userId(cancellationToken).ConfigureAwait(false)).Id != opened.Id)
-            {
-                _Terminal(DepotNoteLiveState.OtherAccount);
-                _closed.TrySetResult(null);
-            }
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _logger?.LogWarning(exception, "Checking the Depot account of the live note for {Connection} failed; the next attempt checks it again.", _connection.Name);
-        }
+        _saver?.SetSaver(false);
+        _Status(state == DepotNoteLiveState.OtherAccount ? state : DepotNoteLiveState.SignInNeeded);
+        _closed.TrySetResult(null);
+        _wake.TrySetResult();
+        Connect();
     }
 
     // The whole text, its revision and its status, from one moment, once the room has a text (or the session stopped without one).
@@ -379,11 +370,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         {
             while (!cancellationToken.IsCancellationRequested && !_terminal)
             {
-                // After a sign-in stop the state stays put until the account is known: Reconnecting would let the host save as anyone.
-                if (_state is not (DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount))
-                {
-                    _Status(_state is null ? DepotNoteLiveState.Connecting : DepotNoteLiveState.Reconnecting);
-                }
+                _Status(_state is null ? DepotNoteLiveState.Connecting : DepotNoteLiveState.Reconnecting);
 
                 if (await _ConnectOnceAsync(cancellationToken).ConfigureAwait(false))
                 {
@@ -402,10 +389,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
                     break;
                 }
 
-                if (_state is not (DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount))
-                {
-                    _Status(DepotNoteLiveState.Reconnecting);
-                }
+                _Status(DepotNoteLiveState.Reconnecting);
 
                 var wake = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 _wake = wake;
@@ -453,13 +437,20 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
                 }
             }
 
+            var changes = Volatile.Read(ref _accountChanges);
             var user = await _userId(cancellationToken).ConfigureAwait(false);
+            // ponytail: a note that never reached /cockpit/me takes the first account Depot names; nothing of it was joined before.
             _openedAs ??= user;
             if (user.Id != _openedAs.Id)
             {
                 _logger?.LogWarning("The live note for {Connection} is signed in as another account now; it does not join.", _connection.Name);
                 _Terminal(DepotNoteLiveState.OtherAccount);
                 return false;
+            }
+
+            lock (_gate)
+            {
+                _accountChecked = changes;
             }
 
             // Each attempt waits on its own signal: a late Closed from the hub before it must not end this one.
@@ -487,6 +478,12 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             if (result.Stale)
             {
                 _Terminal(DepotNoteLiveState.Stale);
+                return false;
+            }
+
+            if (_Unverified())
+            {
+                // The account changed during this Join: the next attempt reads it again before anything is entered.
                 return false;
             }
 
@@ -981,11 +978,22 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         }
     }
 
+    private bool _Unverified()
+    {
+        lock (_gate)
+        {
+            return _accountChanges != _accountChecked;
+        }
+    }
+
     private void _Status(string state)
     {
         lock (_gate)
         {
-            if (_state == state)
+            // A stop, a sign-in stop or an unchecked account is never covered by a state in which the host writes or sends.
+            var holds = _terminal || _accountChanges != _accountChecked || _state is DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount;
+            if (_state == state || holds && state is DepotNoteLiveState.Connecting or DepotNoteLiveState.Reconnecting
+                || (_terminal || _accountChanges != _accountChecked) && state == DepotNoteLiveState.Live)
             {
                 return;
             }

@@ -83,7 +83,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
-                _ = _RecheckLiveNotesAsync(connection.Id);
+                _RecheckLiveNotes(connection.Id);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -286,11 +286,11 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
 
-    private async Task _RecheckLiveNotesAsync(string connectionId)
+    private void _RecheckLiveNotes(string connectionId)
     {
         try
         {
-            await (_noteLive?.AccountChangedAsync(connectionId) ?? Task.CompletedTask).ConfigureAwait(false);
+            _noteLive?.AccountChanged(connectionId);
         }
         catch (Exception exception)
         {

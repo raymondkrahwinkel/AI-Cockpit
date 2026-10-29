@@ -15,6 +15,7 @@ internal sealed partial class MarkdownFileWorkspace
     private int _retrySeconds = 3;
     private bool _liveLightPending;
     private bool _wasLiveLight;
+    private bool _wasSignedOut;
     private bool _needsFileRefresh;
     private string? _lastLiveText;
     private string? _fallbackOrigin;
@@ -40,6 +41,13 @@ internal sealed partial class MarkdownFileWorkspace
         }
         _wasLiveLight = _loaded && _IsLiveLight;
         // Signed out counts as held too: nothing is written then, but the lines are marked and closing asks first (AC-1754).
+        // Back live after it, the rejoin carried the text, so it is no longer only here.
+        var state = _live?.Status.State;
+        if (_wasSignedOut && state == LiveFileState.Live)
+        {
+            _liveLightPending = false;
+        }
+        _wasSignedOut = state == LiveFileState.SignInNeeded || _wasSignedOut && state != LiveFileState.Live;
         _liveLightPending = Editor.Text != _savedText && (_liveLightPending || _IsHeld && _loaded);
         var local = new List<int>();
         if (_liveLightPending && _loaded)

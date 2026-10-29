@@ -79,7 +79,7 @@ internal sealed class DepotNoteLive(
 
     // The sign-in changed (AC-1665): each open note checks whom Depot names now, and joins or saves again only as the account it
     // opened with (AC-1582). Text typed here stays in the note's session either way.
-    public async Task AccountChangedAsync(string connectionId)
+    public void AccountChanged(string connectionId)
     {
         List<DepotNoteSession> open;
         lock (_lock)
@@ -89,7 +89,7 @@ internal sealed class DepotNoteLive(
 
         foreach (var session in open)
         {
-            await session.AccountChangedAsync(CancellationToken.None).ConfigureAwait(false);
+            session.AccountChanged();
         }
     }
 
