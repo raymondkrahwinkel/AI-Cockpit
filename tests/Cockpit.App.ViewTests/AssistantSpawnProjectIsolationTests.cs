@@ -49,24 +49,69 @@ public class AssistantSpawnProjectIsolationTests
     [Fact]
     public async Task SpawnWhoseDirectoryResolvesToAProject_InheritsIsolationPromptAndProjectId()
     {
-        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude")) { SystemPrompt = "You are Olaf." };
-        var project = Project.Create("Cockpit") with
+        foreach (var (server, accepted) in new (string?, bool)[]
         {
-            SourceDirectories = [new(Repository)],
-            IsolateInWorktreeByDefault = true,
-            BehaviorPrompt = "Work ticket by ticket.",
-        };
-        var worktrees = _WorktreeManagerThatIsolatesCleanly();
+            (null, true), ("", true), ("cockpit-coding", true), ("cockpit-session", true),
+            ("cockpit-elevated", false), ("cockpit-assistant", false), ("unknown", false),
+            ("other-project-server", false), ("off-server", false), ("oauth", false), ("project-server", true),
+        })
+        {
+            var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"))
+            {
+                SystemPrompt = "You are Olaf.",
+                EnabledMcpServerNames = ["profile-only"],
+            };
+            var project = Project.Create("Cockpit") with
+            {
+                SourceDirectories = [new(Repository)],
+                IsolateInWorktreeByDefault = true,
+                BehaviorPrompt = "Work ticket by ticket.",
+                McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["project-server"] },
+            };
+            var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
-        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+            var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
 
-        var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
+            var result = await gateway.SpawnAsync(_Request(workspaceId) with
+            {
+                WorkingDirectory = Repository,
+                ProjectId = project.Id,
+                McpServers = server is null ? null : server.Length == 0 ? [] : [server],
+            });
 
-        Assert.True(result.Ok, result.Error);
-        var launch = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single().LaunchResult)!;
-        Assert.True(launch.IsolateInWorktree);
-        Assert.Contains("Work ticket by ticket.", launch.SystemPrompt);
-        Assert.Equal(project.Id, launch.ProjectId);
+            if (!accepted)
+            {
+                Assert.False(result.Ok, $"MCP server '{server}' must be refused");
+                Assert.Contains(server!, result.Error);
+                Assert.Equal(result.Error, Assert.Single(trail.Entries).Refusal);
+                Assert.Empty(Dispatcher.UIThread.Invoke(() => cockpit.Sessions));
+                continue;
+            }
+
+            Assert.True(result.Ok, result.Error);
+            var launch = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single().LaunchResult)!;
+            Assert.True(launch.IsolateInWorktree);
+            Assert.Contains("Work ticket by ticket.", launch.SystemPrompt);
+            Assert.Equal(project.Id, launch.ProjectId);
+            if (server is not null)
+            {
+                Assert.Equal(server.Length == 0 ? [] : new[] { server }, launch.EnabledMcpServerNames);
+                Assert.IsType<ExactMcpServerSelection>(launch.EnabledMcpServerNames);
+                Assert.Equal(server.Length == 0 ? [] : new[] { server }, Assert.Single(trail.Entries).McpServers);
+            }
+            else
+            {
+                Assert.Equal(["project-server"], launch.EnabledMcpServerNames);
+                Assert.Null(Assert.Single(trail.Entries).McpServers);
+            }
+            if (server == "project-server")
+            {
+                var refused = await gateway.SpawnAsync(_Request(workspaceId) with { McpServers = [server] });
+                Assert.False(refused.Ok);
+                Assert.Contains("another project", refused.Error);
+                Assert.Contains("another project", trail.Entries.Last().Refusal);
+            }
+        }
     }
 
     [Fact]
@@ -452,10 +497,18 @@ public class AssistantSpawnProjectIsolationTests
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([profile]));
         var mcpCatalog = Substitute.For<IMcpServerCatalog>();
         CockpitViewModel? composingFor = null;
-        mcpCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        mcpCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(call =>
         {
             whileComposing?.Invoke(composingFor ?? throw new InvalidOperationException("Composed before the cockpit was built."));
-            return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
+            return Task.FromResult<IReadOnlyList<McpServerConfig>>([
+                new() { Name = "cockpit-coding" },
+                new() { Name = "cockpit-session", AlwaysMounted = true },
+                new() { Name = "cockpit-elevated", Internal = true },
+                new() { Name = "cockpit-assistant", Internal = true },
+                new() { Name = "off-server", Enabled = false },
+                new() { Name = "oauth", Auth = McpServerAuth.OAuth },
+                .. call.ArgAt<string?>(0) == project.Id ? new McpServerConfig[] { new() { Name = "project-server", ProjectLinked = true } } : [],
+            ]);
         });
         var quickStart = new ProjectQuickStart(profileStore, new SessionStartComposer(
             projectStore, mcpCatalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry(), worktreeManager));

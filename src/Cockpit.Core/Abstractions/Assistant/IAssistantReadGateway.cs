@@ -60,7 +60,12 @@ public sealed record AssistantProjectRow(
     string? DefaultProfileLabel,
     IReadOnlyDictionary<string, string> Links,
     string? GitUrl,
-    IReadOnlyList<AssistantProjectRepositoryRow> Repositories);
+    IReadOnlyList<AssistantProjectRepositoryRow> Repositories)
+{
+    public Cockpit.Core.Projects.ProjectMcpOverlay McpSelection { get; init; } = Cockpit.Core.Projects.ProjectMcpOverlay.None;
+    public IReadOnlyList<string> AvailableMcpServers { get; init; } = [];
+    public IReadOnlyList<string> AdditionalMcpServers { get; init; } = [];
+}
 
 // One repository a project declares: `Path` is the repository's folder, `Label` is what the operator called
 // it ("web", "android"), or null when they never named it.
@@ -108,4 +113,5 @@ public sealed record AssistantSessionRow(
     double CpuPercent = 0,
     long MemoryBytes = 0,
     int AbandonedProcessCount = 0,
-    string? ProjectId = null);
+    string? ProjectId = null,
+    IReadOnlyList<string>? McpServers = null);

@@ -68,7 +68,7 @@ public static class McpServerRegistryFilter
         IReadOnlyList<McpServerConfig> registry,
         IReadOnlyCollection<string> autoMountedServerNames)
     {
-        if (autoMountedServerNames.Count == 0)
+        if (selection is ExactMcpServerSelection || autoMountedServerNames.Count == 0)
         {
             return selection;
         }

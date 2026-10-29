@@ -231,7 +231,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         McpRequestContext.Set(AssistantIdentity.PaneId);
 
         var result = _Json(await _Tools().StartAgentAsync(
-            "ws-release", "Opus", prompt: "write the tests", workingDirectory: @"C:\repo", name: "AC-545 tests"));
+            "ws-release", "Opus", prompt: "write the tests", workingDirectory: @"C:\repo", name: "AC-545 tests", mcpServers: ["cockpit-coding"]));
 
         Assert.True((bool)result["ok"]!);
         Assert.Equal("pane-new", (string)result["paneId"]!);
@@ -244,6 +244,11 @@ public sealed class AssistantActMountRuleTests : IDisposable
         Assert.Equal("write the tests", request.Prompt);
         Assert.Equal(@"C:\repo", request.WorkingDirectory);
         Assert.Equal("AC-545 tests", request.SessionName);
+        Assert.Equal(["cockpit-coding"], request.McpServers);
+        var refused = _Json(await _Tools().StartAgentAsync(profile: "Opus", node: "node", mcpServers: []));
+        Assert.False((bool)refused["ok"]!);
+        Assert.Contains("mcpServers", (string)refused["error"]!);
+        Assert.Single(_gateway.Spawns);
     }
 
     // ── Criterion 3, first gate: read off the registration, never off a fixture ────────────────────────────────

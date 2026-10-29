@@ -50,6 +50,8 @@ public class AssistantProfileDialogTests
         Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
 
         Assert.Equal("Claude (assistant)", viewModel.Profile.Label);
+        Assert.True(viewModel.Profile.RestrictMcpServers);
+        Assert.DoesNotContain(viewModel.Profile.McpServers, server => server.IsEnabledForSession);
     }
 
     /// <summary>

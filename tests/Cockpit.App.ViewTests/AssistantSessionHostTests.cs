@@ -263,24 +263,23 @@ public class AssistantSessionHostTests
     // AC-869: the assistant always has cockpit-github-pull-requests, regardless of its working directory — the
     // git-repo rule other sessions get it through does not apply to the assistant at all.
     [Fact]
-    public void McpSelection_AlwaysNamesTheGitHubPullRequestsServer()
+    public void McpSelection_DoesNotDefaultToTheGitHubPullRequestsServer()
     {
         var selection = AssistantSessionHost.McpSelection(_Profile(), []);
 
-        Assert.Contains(GitHubPullRequestsMcp.ServerName, selection);
+        Assert.DoesNotContain(GitHubPullRequestsMcp.ServerName, selection);
+        Assert.DoesNotContain("cockpit-elevated", selection);
     }
 
     [Fact]
-    public void McpSelection_WithNoSavedSelection_StillCarriesTheOperatorsOrdinaryServers()
+    public void McpSelection_WithNoSavedSelection_LeavesOutOrdinaryServers()
     {
-        // Naming a selection overrides the profile's own, so the servers the assistant would otherwise have had —
-        // Depot, YouTrack — must be spelled back in, or the mount rule quietly costs the assistant everything else.
         var selection = AssistantSessionHost.McpSelection(_Profile(), [
             new McpServerConfig { Name = "depot", Enabled = true },
             new McpServerConfig { Name = "off-server", Enabled = false },
         ]);
 
-        Assert.Contains("depot", selection);
+        Assert.DoesNotContain("depot", selection);
         Assert.Contains(AssistantIdentity.McpServerName, selection);
         Assert.DoesNotContain("off-server", selection);
     }
@@ -289,13 +288,13 @@ public class AssistantSessionHostTests
     // (Depot, say) is not marked ProjectLinked there (no single project points at it in that call), and the
     // no-selection fan-out must carry it through anyway; ProjectLinked is not one of the things it checks.
     [Fact]
-    public void McpSelection_WithNoSavedSelection_IncludesAPluginServerNotTiedToAnyProject()
+    public void McpSelection_WithNoSavedSelection_LeavesOutAPluginServerNotTiedToAnyProject()
     {
         var selection = AssistantSessionHost.McpSelection(_Profile(), [
             new McpServerConfig { Name = "Depot: wispslate", Enabled = true, ProjectLinked = false },
         ]);
 
-        Assert.Contains("Depot: wispslate", selection);
+        Assert.DoesNotContain("Depot: wispslate", selection);
     }
 
     [Fact]
@@ -323,8 +322,6 @@ public class AssistantSessionHostTests
                 "depot",
                 AssistantIdentity.McpServerName,
                 AssistantIdentity.ActMcpServerName,
-                GitHubPullRequestsMcp.ServerName,
-                "cockpit-elevated",
             },
             selection);
     }
@@ -353,18 +350,17 @@ public class AssistantSessionHostTests
     [Fact]
     public void McpSelection_WithNoSavedSelection_LeavesOutTheServersTheAssistantIsNotGivenByDefault()
     {
-        var catalog = AssistantSessionHost.NotFannedOutToTheAssistant
+        var excluded = new[] { "cockpit-orchestrator", "cockpit-elevated", "youtrack" };
+        var catalog = excluded
             .Select(name => new McpServerConfig { Name = name, Enabled = true })
             .Append(new McpServerConfig { Name = "depot", Enabled = true })
             .ToList();
 
         var selection = AssistantSessionHost.McpSelection(_Profile(), catalog);
 
-        Assert.All(AssistantSessionHost.NotFannedOutToTheAssistant, name => Assert.DoesNotContain(name, selection));
+        Assert.All(excluded, name => Assert.DoesNotContain(name, selection));
 
-        // The other half: an ordinary information server still arrives, or this would be a test about a fan-out
-        // that gives the assistant nothing at all.
-        Assert.Contains("depot", selection);
+        Assert.DoesNotContain("depot", selection);
     }
 
     /// <summary>
@@ -374,7 +370,7 @@ public class AssistantSessionHostTests
     [Fact]
     public void McpSelection_WithASavedSelection_KeepsEvenAServerTheDefaultWouldLeaveOut()
     {
-        var excluded = AssistantSessionHost.NotFannedOutToTheAssistant.First();
+        var excluded = "cockpit-orchestrator";
         var profile = _Profile() with { EnabledMcpServerNames = [excluded] };
 
         var selection = AssistantSessionHost.McpSelection(profile, []);
@@ -519,6 +515,15 @@ public class AssistantSessionHostTests
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
         Assert.Contains(phrase, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        foreach (var guidance in new[]
+        {
+            "`mcpServers`", "For Claude/Codex omit cockpit-coding and cockpit-coding-shell",
+            "cockpit-orchestrator for delegation", "exact set overrides both", "project-bound names require",
+        })
+        {
+            Assert.Contains(guidance, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        }
+        Assert.DoesNotContain("cannot reach what lives behind another project's servers", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
     [Fact]

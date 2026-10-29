@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -40,7 +42,9 @@ internal sealed class AssistantAgentGateway(
     TimeSpan? modelIntelligenceBudget = null,
     IWorktreeManager? worktreeManager = null,
     IProjectFieldRegistry? projectFields = null,
-    ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
+    ILogger<AssistantAgentGateway>? logger = null,
+    IMcpServerCatalog? mcpServers = null,
+    IMcpOAuthTokenStore? oauthTokens = null) : IAssistantAgentGateway, ISingletonService
 {
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -163,12 +167,47 @@ internal sealed class AssistantAgentGateway(
                 cancellationToken).ConfigureAwait(false);
         }
 
+        if (request.McpServers is { } requestedServers)
+        {
+            if (mcpServers is null)
+            {
+                return await _RefuseSpawnAsync(request, workspace.Name, "The MCP catalog is unavailable.", cancellationToken).ConfigureAwait(false);
+            }
+
+            var catalog = await mcpServers.GetServersForProjectAsync(project?.Id, cancellationToken).ConfigureAwait(false);
+            var offered = McpServerRegistryFilter.OfferedToOperator(catalog);
+            foreach (var name in requestedServers)
+            {
+                var server = offered.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase))
+                    ?? catalog.FirstOrDefault(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase));
+                var reason = server is null ? "unknown or belongs to another project; use its projectId (its connections and credentials are project-bound)"
+                    : server.Internal ? "internal servers cannot be requested"
+                    : !server.Enabled ? "globally disabled"
+                    : null;
+                if (reason is not null)
+                {
+                    return await _RefuseSpawnAsync(request, workspace.Name, $"MCP server '{name}' refused: {reason}.", cancellationToken).ConfigureAwait(false);
+                }
+                if (server!.Auth == McpServerAuth.OAuth &&
+                    (oauthTokens is null || await oauthTokens.GetAsync(server.IdentityKey, cancellationToken).ConfigureAwait(false) is null))
+                {
+                    return await _RefuseSpawnAsync(request, workspace.Name,
+                        $"MCP server '{name}' needs OAuth authorization. Sign in before starting the session.", cancellationToken).ConfigureAwait(false);
+                }
+            }
+            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", requestedServers));
+        }
+
         var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
             workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
             launchOptions, request.IsolateInWorktree, project?.Id,
             // AC-1300: the relation is stamped on here, at the one moment the caller is known, rather than read
             // back out of the spawn trail later — a trail records what happened, not what is still true.
-            StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)).ConfigureAwait(false);
+            StartedByTheAssistant: request.Target.Caller == SpawnCaller.Assistant)
+        {
+            EnabledMcpServerNames = request.McpServers is null ? null : new ExactMcpServerSelection(request.McpServers),
+            McpServersOverride = request.McpServers,
+        }).ConfigureAwait(false);
 
         // AC-719: a spawn has no one to ask, so isolation that needs a person's choice is a refusal with the reason.
         if (started is { WorktreeDecision: { } decision })
@@ -197,7 +236,8 @@ internal sealed class AssistantAgentGateway(
             pane.PaneId,
             pane.Name,
             Refusal: null,
-            ProjectId: project?.Id), cancellationToken).ConfigureAwait(false);
+            ProjectId: project?.Id,
+            McpServers: request.McpServers), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Started(pane.PaneId, pane.Name, request.WorkingDirectory, pane.PromptDelivered, resolvedProfileLabel: profile.Label);
     }
@@ -492,6 +532,7 @@ internal sealed class AssistantAgentGateway(
                     models[index] ?? _ConfiguredModel(readings[index]))
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
+                    EnabledMcpServers = profile.EnabledMcpServerNames,
                 };
             }),
         ];
@@ -645,7 +686,8 @@ internal sealed class AssistantAgentGateway(
             PaneId: null,
             SessionName: null,
             reason,
-            ProjectId: request.ProjectId), cancellationToken).ConfigureAwait(false);
+            ProjectId: request.ProjectId,
+            McpServers: request.McpServers), cancellationToken).ConfigureAwait(false);
 
         return AgentSpawnResult.Refused(reason);
     }

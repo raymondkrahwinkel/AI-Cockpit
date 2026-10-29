@@ -41,7 +41,8 @@ internal sealed class AssistantAgentMcpTools(
         [Description("The route: tty for the provider terminal or sdk for chat. Omitted, uses the profile route. Refused on nodes.")] string? kind = null,
         [Description("Overrides only named keys from the profile's Options in list_profiles. Unknown keys/values, permission-mode, sandbox and approval-policy are refused. Omitted keys retain profile values. Refused on nodes.")] Dictionary<string, string>? options = null,
         [Description("true requests a git worktree; omitted inherits project isolation, otherwise unisolated. false is always refused. Refused on nodes.")] bool? isolate = null,
-        [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt and name.")] string? node = null)
+        [Description("An exact paired-node name from list_sessions, or local to select this machine explicitly. Omitted means local unless projectId is ambiguous with a cached node project. Nodes accept only profile, projectId, prompt and name.")] string? node = null,
+        [Description("Exact MCP server names for this session, overriding project and profile selection. Omitted preserves defaults; [] keeps only always-mounted servers. Internal, unknown or unavailable names are refused. Global switches still apply. Refused on nodes.")] string[]? mcpServers = null)
     {
         try
         {
@@ -54,7 +55,7 @@ internal sealed class AssistantAgentMcpTools(
             {
                 if (!string.Equals(node, "local", StringComparison.Ordinal))
                 {
-                    return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate).ConfigureAwait(false);
+                    return await _StartOnNodeAsync(node, workspaceId, profile, projectId, prompt, workingDirectory, name, kind, options, isolate, mcpServers).ConfigureAwait(false);
                 }
             }
             else if (projectId is { Length: > 0 } && await _ProjectAlsoOnANodeAsync(projectId).ConfigureAwait(false) is { } elsewhere)
@@ -87,7 +88,8 @@ internal sealed class AssistantAgentMcpTools(
                 name,
                 kind,
                 options,
-                isolate)).ConfigureAwait(false);
+                isolate,
+                mcpServers)).ConfigureAwait(false);
 
             return result.Ok
                 ? _Serialize(new
@@ -145,7 +147,7 @@ internal sealed class AssistantAgentMcpTools(
     // wrong lesson from a session that came up without the folder or the options it asked for.
     private async Task<string> _StartOnNodeAsync(
         string node, string? workspaceId, string? profile, string? projectId, string? prompt,
-        string? workingDirectory, string? name, string? kind, Dictionary<string, string>? options, bool? isolate)
+        string? workingDirectory, string? name, string? kind, Dictionary<string, string>? options, bool? isolate, string[]? mcpServers)
     {
         if (nodes is null)
         {
@@ -159,6 +161,7 @@ internal sealed class AssistantAgentMcpTools(
             (!string.IsNullOrWhiteSpace(kind), "kind"),
             (options is { Count: > 0 }, "options"),
             (isolate is not null, "isolate"),
+            (mcpServers is not null, "mcpServers"),
         }.Where(argument => argument.Given).Select(argument => argument.Name).ToList();
         if (notOnANode.Count > 0)
         {
@@ -308,6 +311,7 @@ internal sealed class AssistantAgentMcpTools(
                 profile.Provider,
                 profile.Model,
                 profile.Options,
+                profile.EnabledMcpServers,
                 machine = new { name = Environment.MachineName, local = true },
             });
 

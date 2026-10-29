@@ -267,7 +267,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     }
 
     private EditableProfileViewModel _Editable(SessionProfile profile) => new(
-        profile,
+        profile with { EnabledMcpServerNames = profile.EnabledMcpServerNames ?? [] },
         _loginChecker?.IsLoggedIn(profile) ?? true,
         // Unlike the profile list, where a provider is fixed after creation so credentials can never describe a backend
         // the profile no longer talks to (AC-543).
