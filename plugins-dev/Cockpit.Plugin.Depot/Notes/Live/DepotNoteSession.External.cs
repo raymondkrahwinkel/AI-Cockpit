@@ -36,7 +36,7 @@ internal sealed partial class DepotNoteSession
             _externalWriter = null;
             _outsidePending = false;
             var ambiguous = _ambiguousExternalWriter;
-            _ambiguousExternalWriter = false;
+            // Merges can be coalesced: without correlation, ambiguity ends only at the next Join.
             if (writer is null || ambiguous || !_loaded)
             {
                 return;

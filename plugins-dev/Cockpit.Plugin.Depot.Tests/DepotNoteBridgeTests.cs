@@ -241,6 +241,9 @@ public class DepotNoteBridgeTests
         await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Other", source = "agent" })]));
         await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
         Assert.Equal(marked, patches.Count);
+        await hub.Push(new DepotNoteEvent("outside", ["doc-1", JsonSerializer.SerializeToElement(new { name = "Third", source = "agent" })]));
+        await hub.Push(new DepotNoteEvent("merged", ["doc-1", new[] { 0 }, 0]));
+        Assert.Equal(marked, patches.Count);
         await hub.Push(new DepotNoteEvent("saved", ["doc-1", JsonSerializer.SerializeToElement(new { by = new { name = "Sanne", color = "#3fb8c4" }, at = "2026-10-28T14:12:00Z" })]));
         Assert.Equal("Sanne", statuses[^1].Saved?.Name);
     }

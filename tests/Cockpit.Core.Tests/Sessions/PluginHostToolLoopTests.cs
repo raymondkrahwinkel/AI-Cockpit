@@ -66,6 +66,7 @@ public class PluginHostToolLoopTests
         string? pane = null;
         string? confine = null;
         string? project = null;
+        string? agent = null;
         var toolProvider = _ToolProvider([], new Dictionary<string, ToolPermissionClass>());
 
         // Discarded rather than awaited: this is NSubstitute recording what to capture, not a call to make.
@@ -75,10 +76,12 @@ public class PluginHostToolLoopTests
             Arg.Do<string?>(value => confine = value),
             Arg.Do<string?>(value => project = value),
             Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>(),
+            Arg.Do<string?>(value => agent = value));
 
         var driver = _Adapter(new StubPluginDriver(), PluginHostToolLoop.ToolsAndSearch, toolProvider);
         await driver.StartAsync(
+            profile: new Cockpit.Core.Profiles.SessionProfile("Assistant", new Cockpit.Core.Profiles.PluginProviderConfig("test", "{}")),
             workingDirectory: "/tmp/worktree",
             launchOptions: new Dictionary<string, string>
             {
@@ -92,6 +95,7 @@ public class PluginHostToolLoopTests
         Assert.Equal("pane-7", pane);
         Assert.Equal("/tmp/worktree", confine);
         Assert.Equal("project-3", project);
+        Assert.Equal("Assistant", agent);
     }
 
     private static async Task<string> _WithinFiveSecondsAsync(Task<string> call)
@@ -113,7 +117,7 @@ public class PluginHostToolLoopTests
         toolSession.ToolClasses.Returns(toolClasses);
 
         var toolProvider = Substitute.For<IMcpToolProvider>();
-        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>()).Returns(toolSession);
         return toolProvider;
     }
 

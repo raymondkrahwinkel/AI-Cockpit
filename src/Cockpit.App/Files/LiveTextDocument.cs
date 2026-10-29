@@ -588,7 +588,7 @@ internal sealed class LiveTextDocument : IDisposable
 
     private void _ReadOnly()
     {
-        Status = new LiveFileStatus(LiveFileState.ReadOnly, "You can no longer edit this note.") { ReadOnlyReason = LiveReadOnlyReason.RoleLost };
+        Status = Status with { State = LiveFileState.ReadOnly, Reason = "You can no longer edit this note.", ReadOnlyReason = LiveReadOnlyReason.RoleLost };
         _failed = HasUnsentText;
         _idle?.TrySetResult(!HasUnsentText);
         _idle = null;
