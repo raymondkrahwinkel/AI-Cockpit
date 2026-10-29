@@ -69,7 +69,7 @@ public class DepotNoteLiveTests
         var refused = await Assert.ThrowsAsync<FileSourceException>(() => source.OpenLiveAsync(DepotFileRefs.Create("work", "acme/roadmap", "notes/other.md"), CancellationToken.None));
         Assert.Equal(FileSourceErrorKind.Unsupported, refused.Kind);
         await session.DisposeAsync();
-        Assert.False(notes.IsOpen(Note));
+        Assert.NotSame(session, notes.Open(Note));
     }
 
     private sealed class _Hub(Func<_Hub, Task<DepotNoteJoinResult>> join) : IDepotNotesHub
