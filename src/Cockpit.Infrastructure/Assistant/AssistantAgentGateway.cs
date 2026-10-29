@@ -13,6 +13,7 @@ using Cockpit.Core.Worktrees;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -35,6 +36,8 @@ internal sealed class AssistantAgentGateway(
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
+    IProviderModelIntelligence providerIntelligence,
+    TimeSpan? modelIntelligenceBudget = null,
     IWorktreeManager? worktreeManager = null,
     IProjectFieldRegistry? projectFields = null,
     ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
@@ -467,9 +470,14 @@ internal sealed class AssistantAgentGateway(
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var models = known.Select(_ModelConfiguredOnProfile).ToArray();
+        var readings = await Task.WhenAll(known.Select((profile, index) =>
+            models[index] is null && profile.ProviderConfig is PluginProviderConfig
+                ? _ReadConfiguredModelAsync(profile.Label, cancellationToken)
+                : Task.FromResult<PluginModelIntelligence?>(null))).ConfigureAwait(false);
         return
         [
-            .. known.Select(profile =>
+            .. known.Select((profile, index) =>
             {
                 var registration = profile.ProviderConfig is PluginProviderConfig plugin
                     ? pluginProviders.Resolve(plugin.ProviderId)
@@ -481,12 +489,35 @@ internal sealed class AssistantAgentGateway(
                     // profile reads as the same provider otherwise, and this is the field the tool tells the assistant
                     // to resolve "a Claude one" by.
                     registration?.DisplayName ?? profile.Provider.ToString(),
-                    ProfileModel.Of(profile))
+                    models[index] ?? _ConfiguredModel(readings[index]))
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
                 };
             }),
         ];
+    }
+
+    private static string? _ConfiguredModel(PluginModelIntelligence? reading)
+    {
+        var models = reading?.Models.Select(model => model.Model).Distinct(StringComparer.Ordinal).ToArray() ?? [];
+        return models.Length == 1 ? models[0] : null;
+    }
+
+    private static string? _ModelConfiguredOnProfile(SessionProfile profile) =>
+        ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+
+    private async Task<PluginModelIntelligence?> _ReadConfiguredModelAsync(string profileLabel, CancellationToken cancellationToken)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(modelIntelligenceBudget ?? TimeSpan.FromSeconds(2));
+        try
+        {
+            return await providerIntelligence.ReadAsync(profileLabel, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     public async Task<AssistantWorkspaceRow?> CreateWorkspaceAsync(string name, CancellationToken cancellationToken = default)

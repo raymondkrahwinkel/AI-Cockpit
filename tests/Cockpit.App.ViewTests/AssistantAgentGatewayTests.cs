@@ -58,7 +58,7 @@ public class AssistantAgentGatewayTests
     }
 
     [Fact]
-    public async Task ListProfiles_NamesAPluginProfilesOwnProvider_AndWhatItIsConfiguredToRunAt()
+    public async Task ListProfiles_UsesSavedAndProviderModels_WithoutFailingOnAProviderRead()
     {
         // AC-647. Both halves were unreadable before: every plugin-backed profile reported the provider as the bare
         // enum value "Plugin" — Claude and Codex indistinguishable — and what it ran at lived only in cockpit.json,
@@ -67,21 +67,36 @@ public class AssistantAgentGatewayTests
         registry.Resolve("claude").Returns(_ProviderRegistration("claude", "Claude", new PluginSessionOptionDescriptor(
             "effort", "Effort", [new PluginSessionOptionValue("high", "High")], "medium")));
 
+        var intelligence = Substitute.For<IProviderModelIntelligence>();
+        intelligence.ReadAsync("work", Arg.Any<CancellationToken>()).Returns(Task.FromException<PluginModelIntelligence?>(new InvalidOperationException()));
+        intelligence.ReadAsync("Hetzner", Arg.Any<CancellationToken>()).Returns(Task.FromResult<PluginModelIntelligence?>(new PluginModelIntelligence
+        {
+            Models = [new PluginModelCostEstimate("Qwen3.8-27B")],
+        }));
+        intelligence.ReadAsync("Broken", Arg.Any<CancellationToken>()).Returns(Task.FromException<PluginModelIntelligence?>(new InvalidOperationException()));
+        intelligence.ReadAsync("Delayed", Arg.Any<CancellationToken>()).Returns(_DelayedModelReading());
+        registry.Resolve("openrouter").Returns(_ProviderRegistration("openrouter", "OpenRouter"));
         var gateway = Dispatcher.UIThread.Invoke(() => _GatewayOverProfiles(
             registry,
+            intelligence,
+            TimeSpan.FromMilliseconds(10),
             new SessionProfile("work", new PluginProviderConfig("claude", "{}"))
             {
                 Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: false)
                 {
-                    OptionDefaults = new Dictionary<string, string> { ["effort"] = "high" },
+                    OptionDefaults = new Dictionary<string, string> { ["effort"] = "high", [WellKnownPluginSessionOptions.Model] = "claude-sonnet-4.5" },
                 },
             },
-            new SessionProfile("local", new LmStudioConfig("http://localhost:1234", "qwen2.5"))));
+            new SessionProfile("local", new LmStudioConfig("http://localhost:1234", "qwen2.5")),
+            new SessionProfile("Hetzner", new PluginProviderConfig("openrouter", "{}")),
+            new SessionProfile("Broken", new PluginProviderConfig("openrouter", "{}")),
+            new SessionProfile("Delayed", new PluginProviderConfig("openrouter", "{}"))));
 
         var profiles = await gateway.ListProfilesAsync();
 
         var claude = profiles.Single(profile => profile.Label == "work");
         Assert.Equal("Claude", claude.Provider);
+        Assert.Equal("claude-sonnet-4.5", claude.Model);
         var effort = Assert.Single(claude.Options);
         Assert.Equal(("effort", "Effort", "high", "High", true),
             (effort.Key, effort.Label, effort.Value, effort.ValueLabel, effort.SetOnProfile));
@@ -91,6 +106,16 @@ public class AssistantAgentGatewayTests
         Assert.Equal("LmStudio", local.Provider);
         Assert.Equal("qwen2.5", local.Model);
         Assert.Empty(local.Options);
+        Assert.Equal("Qwen3.8-27B", profiles.Single(profile => profile.Label == "Hetzner").Model);
+        Assert.Null(profiles.Single(profile => profile.Label == "Broken").Model);
+        Assert.Null(profiles.Single(profile => profile.Label == "Delayed").Model);
+        await intelligence.DidNotReceive().ReadAsync("work", Arg.Any<CancellationToken>());
+
+        static async Task<PluginModelIntelligence?> _DelayedModelReading()
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            return new PluginModelIntelligence { Models = [new PluginModelCostEstimate("too-late")] };
+        }
     }
 
     public static TheoryData<string> EveryWorkspaceTypeThatCannotHostASession()
@@ -1078,7 +1103,10 @@ public class AssistantAgentGatewayTests
     }
 
     private static AssistantAgentGateway _GatewayOverProfiles(
-        IPluginProviderRegistry pluginProviders, params SessionProfile[] known)
+        IPluginProviderRegistry pluginProviders,
+        IProviderModelIntelligence? providerIntelligence,
+        TimeSpan? modelIntelligenceBudget,
+        params SessionProfile[] known)
     {
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(known));
@@ -1093,7 +1121,9 @@ public class AssistantAgentGatewayTests
             Substitute.For<IAgentNotifyAuditLog>(),
             pluginProviders,
             new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
-            Substitute.For<IAssistantSessionHost>());
+            Substitute.For<IAssistantSessionHost>(),
+            providerIntelligence: providerIntelligence,
+            modelIntelligenceBudget: modelIntelligenceBudget);
     }
 
     // A plugin-backed profile under the test's own label, with whatever start defaults the caller wants on it —

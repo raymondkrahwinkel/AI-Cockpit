@@ -64,7 +64,7 @@ public sealed class ModelOptionsTests
 
     // AC-1855 merged two cases: the provider's price wins with its source, and a missing quota or index is unknown, never 0.
     [Fact]
-    public async Task ModelOptions_ProviderPriceWins_AndMissingQuotaAndIndex_AreUnknown_NeverZero()
+    public async Task ModelOptions_ProviderPriceWins_AndMissingValuesAndUnmatchedSelfHostedQuality_AreUnknown_NeverZero()
     {
         var provider = new PluginModelCostEstimate("m1")
         {
@@ -98,6 +98,20 @@ public sealed class ModelOptionsTests
         Assert.Contains("- Model choice (AC-1855): `model_options`", prompt[prompt.IndexOf("WHAT EXISTS", StringComparison.Ordinal)..]);
         var meta = typeof(AssistantReadMcpTools).GetMethod(nameof(AssistantReadMcpTools.ModelOptionsAsync))!.GetCustomAttributes<McpMetaAttribute>();
         Assert.Contains(meta, attribute => attribute.Name == AssistantAgentMcpTools.AlwaysLoadMeta);
+
+        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence
+        {
+            IsSelfHosted = true,
+            Models = [new PluginModelCostEstimate("Qwen3.8-27B") { PublicModelRef = "Qwen3.8-27B" }],
+        });
+        McpRequestContext.Set(AssistantIdentity.PaneId);
+
+        var selfHostedResult = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding"))!;
+        var selfHostedModel = selfHostedResult["models"]![0]!;
+
+        Assert.Equal("Qwen3.8-27B", (string)selfHostedModel["model"]!);
+        Assert.Equal("self-hosted / own endpoint", (string)selfHostedModel["price"]!);
+        Assert.StartsWith("unknown:", (string)selfHostedModel["quality"]!);
     }
 
     public static TheoryData<string, string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
@@ -110,7 +124,7 @@ public sealed class ModelOptionsTests
         { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
         { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding missing → intelligence", _Basis },
         { "agentic-only", "agentic", "example/agentic-only", "agentic missing → coding", _Basis },
-        { "onbekend-model", "coding", "onbekend-model", "unknown: no match for onbekend-model; closest: qwen/qwen3.8-27b", _Quality },
+        { "onbekend-model", "coding", "onbekend-model", "unknown: no match for onbekend-model; closest approximation: qwen/qwen3.8-27b", _Quality },
     };
 
     [Theory]

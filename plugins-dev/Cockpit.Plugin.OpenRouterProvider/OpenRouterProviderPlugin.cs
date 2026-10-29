@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -39,7 +40,27 @@ public sealed class OpenRouterProviderPlugin : ICockpitPlugin
             // AC-1484: a key on the profile, or the provider variable in session.env, is what signs a profile in.
             IsLoggedIn = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.OpenRouter) != PluginCredentialKind.Unknown,
             CredentialKind = configJson => OpenAiCompatConfig.CredentialKindOf(configJson, OpenAiCompatConfig.ApiKeyEnvVar, OpenAiCompatDefaultBaseUrls.OpenRouter),
+            ReadModelIntelligenceAsync = (configJson, _) => Task.FromResult(_ReadModelIntelligence(configJson)),
         });
+    }
+
+    private static PluginModelIntelligence _ReadModelIntelligence(string configJson)
+    {
+        try
+        {
+            var config = JsonSerializer.Deserialize<OpenAiCompatConfig>(configJson, OpenAiCompatConfig.JsonOptions);
+            return config is null || string.IsNullOrWhiteSpace(config.Model)
+                ? new PluginModelIntelligence()
+                : new PluginModelIntelligence
+                {
+                    IsSelfHosted = !OpenAiCompatConfig.UsesDefaultHost(config.BaseUrl, OpenAiCompatDefaultBaseUrls.OpenRouter),
+                    Models = [new PluginModelCostEstimate(config.Model) { PublicModelRef = config.Model }],
+                };
+        }
+        catch (JsonException)
+        {
+            return new PluginModelIntelligence();
+        }
     }
 
     public void Dispose()
