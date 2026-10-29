@@ -49,10 +49,11 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
     /// <summary>
     /// The same race across processes, which is the one Raymond actually hits: a development build starts beside
     /// the cockpit he already has open, and nothing has ever stopped the two writing over each other. Simulated
-    /// by holding the lock file the way another process would.
+    /// by holding the lock file the way another process would. A reader waits too, instead of extending the stream
+    /// of handles that blocks that writer's swap (merged into this test under AC-1892, to stay within the ceiling).
     /// </summary>
     [Fact]
-    public async Task UpdateAsync_WhileAnotherProcessHoldsTheGate_WaitsRatherThanWritingOverIt()
+    public async Task WhileAnotherProcessHoldsTheGate_NeitherAWriteNorAReadGoesThrough()
     {
         Directory.CreateDirectory(_directory);
         var access = new CockpitConfigFileAccess(ConfigPath);
@@ -61,34 +62,19 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         var foreignHold = new FileStream(ConfigPath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         var write = Task.Run(async () =>
             await access.UpdateAsync(file => file.Plugins!["added"] = new PluginRegistrationEntry { PinnedSha256 = "added" }, CancellationToken.None));
+        var read = access.ReadAsync(CancellationToken.None);
 
-        // It must not have gone through while the gate is held elsewhere.
+        // Neither may have gone through while the gate is held elsewhere.
         await Task.Delay(150);
         Assert.False(write.IsCompleted, "the gate is held by another writer");
+        Assert.False(read.IsCompleted, "the reader waits for the writer's lock");
 
         foreignHold.Dispose();
         await write;
 
+        Assert.Contains("kept", (await read)!.Plugins!.Keys);
         var written = await access.ReadAsync(CancellationToken.None);
         Assert.Equivalent(new[] { "kept", "added" }, written!.Plugins!.Keys);
-    }
-
-    /// <summary>A reader waits for a pending writer instead of extending the stream of handles that blocks its swap.</summary>
-    [Fact]
-    public async Task ReadAsync_WhileTheGateIsHeld_WaitsForTheWriterToFinish()
-    {
-        Directory.CreateDirectory(_directory);
-        var access = new CockpitConfigFileAccess(ConfigPath);
-        await access.UpdateAsync(file => (file.Plugins ??= [])["there"] = new PluginRegistrationEntry(), CancellationToken.None);
-
-        var foreignHold = new FileStream(ConfigPath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-
-        var read = access.ReadAsync(CancellationToken.None);
-        await Task.Delay(150);
-        Assert.False(read.IsCompleted, "the reader waits for the writer's lock");
-
-        foreignHold.Dispose();
-        Assert.Contains("there", (await read)!.Plugins!.Keys);
     }
 
     /// <summary>

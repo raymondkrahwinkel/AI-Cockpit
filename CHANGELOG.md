@@ -611,6 +611,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- changed: **the cockpit reads its settings file once instead of on every lookup.** It was read, parsed and
+  decrypted again by every setting it served, 193 times before the main window showed; now once, and again only
+  after a save or an edit to the file from outside.
+
 - changed: **the Projects page is a list with a detail pane.** A toolbar across the top holds the search field,
   Refresh, the category chips, the Comfortable/Compact switch and + New project. Projects sit in one section per
   organisation and server — the heading always names the Depot server, so two servers with an organisation of the

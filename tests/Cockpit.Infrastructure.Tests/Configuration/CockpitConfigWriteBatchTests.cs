@@ -23,13 +23,27 @@ public sealed class CockpitConfigWriteBatchTests : IDisposable
     /// <summary>
     /// <c>PluginStorage.Set</c> fires its write as <c>_ = store.SaveDataAsync(...)</c>, never awaited by the
     /// caller — which is how a write could still be in flight when an Apply "finished" and the dialog closed
-    /// (AC-1085). Disposing the scope must still wait it out.
+    /// (AC-1085). Disposing the scope must still wait it out. Outside a scope (AC-1343) FlushAsync is what a plugin
+    /// store's DisposeAsync calls instead, and it must wait for a write still in flight, not just a finished one.
     /// </summary>
     [Fact]
-    public async Task DisposeAsync_WaitsOutAnUpdateAsyncCallTheCallerNeverAwaited()
+    public async Task AnUpdateAsyncCallTheCallerNeverAwaited_IsWaitedOutByFlushAsyncAndByDisposingTheScope()
     {
         Directory.CreateDirectory(_directory);
         var access = new CockpitConfigFileAccess(ConfigPath);
+        var release = new TaskCompletionSource();
+
+        // Fired the way PluginRegistrationStore.SaveDataAsync's caller does: `_ =`, never awaited.
+        _ = access.UpdateAsync(file =>
+        {
+            release.Task.GetAwaiter().GetResult();
+            (file.Plugins ??= [])["held"] = new PluginRegistrationEntry();
+        }, CancellationToken.None);
+
+        var flush = access.FlushAsync();
+        Assert.False(flush.IsCompleted);
+        release.SetResult();
+        await flush;
 
         await using (CockpitConfigWriteBatch.Begin())
         {
@@ -37,7 +51,7 @@ public sealed class CockpitConfigWriteBatchTests : IDisposable
         }
 
         var written = await access.ReadAsync(CancellationToken.None);
-        Assert.Contains("fire-and-forget", written!.Plugins!.Keys);
+        Assert.Equivalent(new[] { "held", "fire-and-forget" }, written!.Plugins!.Keys);
     }
 
     /// <summary>
