@@ -18,6 +18,16 @@ public class DepotNoteSaverTests
     [Fact]
     public async Task AloneInANewNote_CockpitSeedsAndSaves_AndEach409KindKeepsTheFile_SoTextFromOutsideIsMergedNotOverwritten()
     {
+        Task<string>? posted = null;
+        var answer = await DepotNoteLive.PostAsync(Connection, new DepotBrowserModelTests.StubHandler(request =>
+        {
+            posted = request.Content?.ReadAsStringAsync();
+            return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"checksum\":\"saved\",\"version\":2}") };
+        }), Note, "# Plan", "base", "session", "user-1", CancellationToken.None);
+        Assert.Equal(200, answer.Status);
+        Assert.NotNull(posted);
+        Assert.Contains("expectedUser=user-1", await posted, StringComparison.Ordinal);
+
         var depot = new _Depot("# Plan\n\nFirst line\n");
         var hub = new _Hub(depot);
         var live = new TaskCompletionSource();
@@ -124,8 +134,9 @@ public class DepotNoteSaverTests
 
         public async Task<(string Content, string Base)> NextPostAsync() => await _posts.Reader.ReadAsync().AsTask().WaitAsync(Wait);
 
-        public async Task<DepotNoteSaveAnswer> PostAsync(string content, string baseChecksum, string session, CancellationToken cancellationToken)
+        public async Task<DepotNoteSaveAnswer> PostAsync(string content, string baseChecksum, string session, string expectedUser, CancellationToken cancellationToken)
         {
+            Assert.Equal("user-1", expectedUser);
             bool lost;
             int version;
             lock (_gate)

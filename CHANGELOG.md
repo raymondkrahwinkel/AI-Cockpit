@@ -30,6 +30,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ## [Unreleased]
 
+### Fixed
+
+- Depot 0.45.2 sends the note's opening account with saves and shows its email in the sign-in banner, falling back to its name on older servers (DEP-539).
+
 ### Added
 
 - Live notes mark an outside agent's changed lines with their name for up to ten minutes, show their saved version and temporary presence, and send the launching profile name to MCP servers that opt in.

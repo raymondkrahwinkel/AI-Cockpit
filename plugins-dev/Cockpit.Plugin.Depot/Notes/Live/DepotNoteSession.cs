@@ -21,7 +21,9 @@ internal static class DepotNoteSchema
 }
 
 // Who this Cockpit is in Depot: the id the hub's gate compares, and the name and colour /cockpit/me gives once Depot says them.
-internal sealed record DepotNoteUser(string Id, string? Name = null, string? Color = null);
+internal sealed record DepotNoteUser(string Id, string? Name = null, string? Color = null, string? Email = null);
+
+internal delegate Task<DepotNoteSaveAnswer> DepotNoteSessionPost(string content, string baseChecksum, string session, string expectedUser, CancellationToken cancellationToken);
 
 // One note's connection to /hubs/notes: Join (protocol section 3), the room's Y.Doc, and a new Join when the hub closes it; a `reset`
 // swaps the room. The host's text goes through the room's mirror on ILiveFileSession's terms (AC-1898). With a post it joins with
@@ -110,7 +112,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         Action<DepotNoteLiveStatus> publish,
         IReadOnlyList<TimeSpan>? backoff = null,
         ILogger? logger = null,
-        DepotNotePost? post = null,
+        DepotNoteSessionPost? post = null,
         Action<LiveFileStatus>? statusChanged = null,
         TimeProvider? time = null,
         TimeSpan? quiet = null,
@@ -133,7 +135,10 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         _room = roomFactory(_NewClientId());
         if (post is not null)
         {
-            _saver = new DepotNoteSaver(_SerializedAsync, post, _SessionGoneAsync, _SaveRefused, _MergeOutside, _Saved, _time, quiet, retry, logger);
+            _saver = new DepotNoteSaver(_SerializedAsync,
+                (content, checksum, session, cancellationToken) => post(content, checksum, session,
+                    _openedAs?.Id ?? throw new InvalidOperationException("The note has no opening account."), cancellationToken),
+                _SessionGoneAsync, _SaveRefused, _MergeOutside, _Saved, _time, quiet, retry, logger);
         }
     }
 
@@ -1061,8 +1066,8 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             DepotNoteLiveState.Live => new LiveFileStatus(LiveFileState.Live) { Saved = _saved ?? (_mine ? LiveFileSave.NotYet : null) },
             DepotNoteLiveState.Reconnecting => new LiveFileStatus(LiveFileState.Offline),
             // The host words the expiry itself; a reason replaces that sentence.
-            DepotNoteLiveState.SignInNeeded => new LiveFileStatus(LiveFileState.SignInNeeded) { Account = _openedAs?.Name },
-            DepotNoteLiveState.OtherAccount => new LiveFileStatus(LiveFileState.SignInNeeded, _MessageFor(state)) { Account = _openedAs?.Name },
+            DepotNoteLiveState.SignInNeeded => new LiveFileStatus(LiveFileState.SignInNeeded) { Account = string.IsNullOrWhiteSpace(_openedAs?.Email) ? _openedAs?.Name : _openedAs.Email },
+            DepotNoteLiveState.OtherAccount => new LiveFileStatus(LiveFileState.SignInNeeded, _MessageFor(state)) { Account = string.IsNullOrWhiteSpace(_openedAs?.Email) ? _openedAs?.Name : _openedAs.Email },
             DepotNoteLiveState.Stale => new LiveFileStatus(LiveFileState.Stale, _MessageFor(state)) { RequiresRejoin = true },
             DepotNoteLiveState.Unavailable or DepotNoteLiveState.Disabled => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
             _ => new LiveFileStatus(LiveFileState.Connecting),

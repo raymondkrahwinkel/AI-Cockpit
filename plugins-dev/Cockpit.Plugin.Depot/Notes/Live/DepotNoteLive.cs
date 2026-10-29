@@ -42,8 +42,8 @@ internal sealed class DepotNoteLive(
                 session = new DepotNoteSession(
                     connection, request, cancellationToken => ReadUserAsync(connection, handlerFor(connection), cancellationToken),
                     hubFactory, roomFactory, publish, logger: logger, disposed: _Forget,
-                    post: (content, baseChecksum, session, cancellationToken) =>
-                        PostAsync(connection, handlerFor(connection), request, content, baseChecksum, session, cancellationToken),
+                    post: (content, baseChecksum, session, expectedUser, cancellationToken) =>
+                        PostAsync(connection, handlerFor(connection), request, content, baseChecksum, session, expectedUser, cancellationToken),
                     signIn: signIn is null ? null : cancellationToken => signIn(connection, cancellationToken));
                 _sessions[key] = session;
             }
@@ -127,7 +127,7 @@ internal sealed class DepotNoteLive(
         var me = await response.Content.ReadFromJsonAsync<Me>(DepotChannel.Json, cancellationToken).ConfigureAwait(false);
         return string.IsNullOrWhiteSpace(me?.UserId)
             ? throw new HttpRequestException("Depot did not identify the user.", null, HttpStatusCode.Unauthorized)
-            : new DepotNoteUser(me.UserId, me.Name, me.Color);
+            : new DepotNoteUser(me.UserId, me.Name, me.Color, me.Email);
     }
 
     private void _Forget(DepotNoteSession session)
@@ -144,12 +144,12 @@ internal sealed class DepotNoteLive(
 
     // Protocol section 6 duty 3, the bearer door (DEP-528): URL-encoded, so a file keeps its own line endings, with no antiforgery.
     internal static async Task<DepotNoteSaveAnswer> PostAsync(
-        DepotConnectionRegistration connection, HttpMessageHandler handler, DepotNoteLiveRequest note, string content, string baseChecksum, string session,
+        DepotConnectionRegistration connection, HttpMessageHandler handler, DepotNoteLiveRequest note, string content, string baseChecksum, string session, string expectedUser,
         CancellationToken cancellationToken)
     {
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         using var form = new FormUrlEncodedContent([
-            new("path", note.Path), new("baseChecksum", baseChecksum), new("content", content), new("session", session)]);
+            new("path", note.Path), new("baseChecksum", baseChecksum), new("content", content), new("session", session), new("expectedUser", expectedUser)]);
         var url = $"{connection.Url.TrimEnd('/')}/cockpit/projects/{Uri.EscapeDataString(note.Organization)}/{Uri.EscapeDataString(note.Project)}/note-save";
         using var response = await http.PostAsync(url, form, cancellationToken).ConfigureAwait(false);
         // A 403 or a 400 may carry no JSON at all; the status alone decides then.
@@ -160,7 +160,7 @@ internal sealed class DepotNoteLive(
 
     private static string _Key(DepotNoteLiveRequest request) => $"{request.ConnectionId}|{request.Organization}/{request.Project}/{request.Path}";
 
-    private sealed record Me(string? UserId, string? Name = null, string? Color = null);
+    private sealed record Me(string? UserId, string? Name = null, string? Color = null, string? Email = null);
 
     private sealed record SaveResponse(string? Checksum, int? Version, bool? Own);
 }
