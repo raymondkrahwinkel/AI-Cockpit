@@ -78,6 +78,7 @@ public sealed class AssistantActMountRuleTests : IDisposable
         // the start stays local. The refusal tests above still fill it, since they never get that far.
         parameter.Name == "node" ? null
             : parameter.Name == "scope" ? "behaviour"
+            : parameter.Name == "status" ? "obsolete"
             : parameter.ParameterType == typeof(string) ? Whatever
             : parameter.ParameterType == typeof(List<AskStructuredQuestionOptionArg>)
                 // ask_structured_question genuinely requires 2-6 real options — unlike every other list/dict
@@ -480,6 +481,19 @@ public sealed class AssistantActMountRuleTests : IDisposable
         {
             Calls.Add($"AskStructuredQuestionAsync({question})");
             return Task.FromResult(AskStructuredQuestionResult.Shown());
+        }
+
+        public Task<IReadOnlyList<AssistantOpenQuestion>> ListOpenQuestionsAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("ListOpenQuestionsAsync()");
+            return Task.FromResult<IReadOnlyList<AssistantOpenQuestion>>([]);
+        }
+
+        public Task<AssistantThreadResult> ResolveQuestionAsync(
+            string questionId, string status, string? note, CancellationToken cancellationToken = default)
+        {
+            Calls.Add($"ResolveQuestionAsync({questionId})");
+            return Task.FromResult(new AssistantThreadResult(true, null));
         }
 
         public Task<AssistantThreadResult> SetThreadAsync(IReadOnlyList<string> projectIds, CancellationToken cancellationToken = default)

@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Assistant question-card resolution now reaches its gateway in the acting assistant's pane.
+
 - Browser-using agent sessions on a headless server now say that the agent browser is unavailable instead of silently providing no endpoint.
 
 - Local-provider coding sessions keep their shell tool directly available when large tool sets use tool search.
