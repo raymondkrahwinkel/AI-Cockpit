@@ -168,7 +168,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         public byte[] Json => json;
 
         public bool Matches(long currentGeneration, FileInfo file, ISecretProtector? currentProtector, SecretFields currentFields) =>
-            generation == currentGeneration
+            false && generation == currentGeneration
             && lastWriteUtc == file.LastWriteTimeUtc
             && length == file.Length
             && ReferenceEquals(protector, currentProtector)
