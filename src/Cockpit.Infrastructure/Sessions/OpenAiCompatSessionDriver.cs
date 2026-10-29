@@ -242,7 +242,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     // Local HTTP providers have no native file tools. An explicit profile/project selection must therefore never
     // subtract the bounded cockpit-coding endpoint; null already means unrestricted and includes it naturally.
     private static IReadOnlySet<string>? _WithCoding(IReadOnlySet<string>? selection) =>
-        selection;
+        selection is null
+            ? null
+            : selection.Append(CodingTools.EndpointName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
