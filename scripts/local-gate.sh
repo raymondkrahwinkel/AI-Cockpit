@@ -3,6 +3,58 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+if [[ ${1:-} == "--linux" ]]; then
+  if [[ $# -lt 2 ]]; then
+    echo "usage: scripts/local-gate.sh --linux <test-project.csproj> [dotnet test arguments]" >&2
+    exit 2
+  fi
+
+  test_project=${2#./}
+  case "$test_project" in
+    /*|../*|*/../*)
+      echo "The Linux test project must be a path inside this repository." >&2
+      exit 2
+      ;;
+  esac
+  if [[ $test_project != *.csproj || ! -f $test_project ]]; then
+    echo "Test project not found: $test_project" >&2
+    exit 2
+  fi
+
+  shift 2
+  MSYS_NO_PATHCONV=1 docker run --rm --interactive \
+    --volume "$PWD:/work" \
+    --workdir /work \
+    --env DOTNET_CLI_HOME=/tmp/dotnet-home \
+    mcr.microsoft.com/dotnet/sdk:10.0 \
+    bash -s -- "$test_project" "$@" <<'LINUX_GATE'
+set -euo pipefail
+
+test_project=$1
+shift
+
+dotnet build "$test_project" --configuration Release -warnaserror
+
+dotnet test "$test_project" \
+  --configuration Release \
+  --no-build \
+  --logger trx \
+  --logger "console;verbosity=minimal" \
+  --results-directory /tmp/TestResults \
+  --collect:"XPlat Code Coverage" \
+  --blame-hang \
+  --blame-hang-timeout 5m \
+  --blame-hang-dump-type none \
+  "$@"
+LINUX_GATE
+  exit
+fi
+
+if [[ $# -ne 0 ]]; then
+  echo "usage: scripts/local-gate.sh [--linux <test-project.csproj> [dotnet test arguments]]" >&2
+  exit 2
+fi
+
 gate_output=$(mktemp)
 trap 'rm -f "$gate_output"' EXIT
 
