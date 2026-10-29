@@ -197,6 +197,11 @@ internal sealed class AssistantAgentGateway(
             }
         }
 
+        if (request.McpServers is { } names)
+        {
+            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", names));
+        }
+
         var started = await launcher.StartSessionAsync(new SessionLaunchRequest(
             workspace.Id, profile, request.Prompt, request.WorkingDirectory, request.SessionName, requestedKind,
             launchOptions, request.IsolateInWorktree, project?.Id,

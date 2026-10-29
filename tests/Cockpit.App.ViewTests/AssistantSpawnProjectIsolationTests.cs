@@ -70,6 +70,7 @@ public class AssistantSpawnProjectIsolationTests
             SourceDirectories = [new(Repository)],
             IsolateInWorktreeByDefault = true,
             BehaviorPrompt = "Work ticket by ticket.",
+            McpOverlay = new ProjectMcpOverlay { EnabledServerNames = ["project-server"] },
         };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
@@ -101,6 +102,11 @@ public class AssistantSpawnProjectIsolationTests
             Assert.Equal(server.Length == 0 ? [] : new[] { server }, launch.EnabledMcpServerNames);
             Assert.IsType<ExactMcpServerSelection>(launch.EnabledMcpServerNames);
             Assert.Equal(server.Length == 0 ? [] : new[] { server }, Assert.Single(trail.Entries).McpServers);
+        }
+        else
+        {
+            Assert.Equal(["project-server"], launch.EnabledMcpServerNames);
+            Assert.Null(Assert.Single(trail.Entries).McpServers);
         }
         if (server == "project-server")
         {
