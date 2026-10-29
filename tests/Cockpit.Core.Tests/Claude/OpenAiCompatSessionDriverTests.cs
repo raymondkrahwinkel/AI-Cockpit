@@ -48,6 +48,7 @@ public class OpenAiCompatSessionDriverTests
         Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
         Assert.Single(events, evt => evt is SessionInitialized);
         Assert.Contains(sentOptions!.Tools!, tool => tool.Name == "read_file");
+        Assert.Contains(sentOptions.Tools!, tool => tool.Name == "shell");
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == CockpitToolSearch.SearchToolName);
         Assert.DoesNotContain(sentOptions.Tools!, tool => tool.Name == "background_0");
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
@@ -214,10 +215,11 @@ public class OpenAiCompatSessionDriverTests
         coding.Tools.Returns(
         [
             new McpSessionTool(AIFunctionFactory.Create((string path) => path, "read_file"), "cockpit-coding", AlwaysMounted: false),
+            new McpSessionTool(AIFunctionFactory.Create((string command) => command, "shell"), "cockpit-coding-shell", AlwaysMounted: false),
             .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold)
                 .Select(index => new McpSessionTool(AIFunctionFactory.Create((string value) => value, $"background_{index}"), "test-server", AlwaysMounted: false)),
         ]);
-        coding.ConnectedServerNames.Returns(["cockpit-coding", "test-server"]);
+        coding.ConnectedServerNames.Returns(["cockpit-coding", "cockpit-coding-shell", "test-server"]);
         coding.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
 
         var empty = Substitute.For<IMcpToolSession>();

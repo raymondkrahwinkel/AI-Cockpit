@@ -67,7 +67,15 @@ public class PluginHostToolLoopTests
         string? confine = null;
         string? project = null;
         string? agent = null;
-        var toolProvider = _ToolProvider([], new Dictionary<string, ToolPermissionClass>());
+        var toolProvider = _ToolProvider(
+            [],
+            new Dictionary<string, ToolPermissionClass>(),
+            [
+                new McpSessionTool(AIFunctionFactory.Create((string path) => path, "read"), CodingTools.EndpointName, AlwaysMounted: false),
+                new McpSessionTool(AIFunctionFactory.Create((string command) => command, "shell"), CodingTools.ShellEndpointName, AlwaysMounted: false),
+                .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold)
+                    .Select(index => new McpSessionTool(AIFunctionFactory.Create((string value) => value, $"background_{index}"), "test-server", AlwaysMounted: false)),
+            ]);
 
         // Discarded rather than awaited: this is NSubstitute recording what to capture, not a call to make.
         _ = toolProvider.ConnectAsync(
@@ -79,7 +87,8 @@ public class PluginHostToolLoopTests
             Arg.Any<CancellationToken>(),
             Arg.Do<string?>(value => agent = value));
 
-        var driver = _Adapter(new StubPluginDriver(), PluginHostToolLoop.ToolsAndSearch, toolProvider);
+        var inner = new StubPluginDriver();
+        var driver = _Adapter(inner, PluginHostToolLoop.ToolsAndSearch, toolProvider);
         await driver.StartAsync(
             profile: new Cockpit.Core.Profiles.SessionProfile("Assistant", new Cockpit.Core.Profiles.PluginProviderConfig("test", "{}")),
             workingDirectory: "/tmp/worktree",
@@ -96,6 +105,9 @@ public class PluginHostToolLoopTests
         Assert.Equal("/tmp/worktree", confine);
         Assert.Equal("project-3", project);
         Assert.Equal("Assistant", agent);
+        Assert.Contains(inner.Toolset!.Tools, tool => tool.Name == "read");
+        Assert.Contains(inner.Toolset.Tools, tool => tool.Name == "shell");
+        Assert.DoesNotContain(inner.Toolset.Tools, tool => tool.Name == "background_0");
     }
 
     private static async Task<string> _WithinFiveSecondsAsync(Task<string> call)
@@ -108,11 +120,11 @@ public class PluginHostToolLoopTests
         return await call;
     }
 
-    private static IMcpToolProvider _ToolProvider(AIFunction[] tools, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses)
+    private static IMcpToolProvider _ToolProvider(AIFunction[] tools, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses, IReadOnlyList<McpSessionTool>? mountedTools = null)
     {
         var toolSession = Substitute.For<IMcpToolSession>();
-        toolSession.Tools.Returns([.. tools.Select(tool => new McpSessionTool(tool, "test-server", AlwaysMounted: false))]);
-        toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? [] : new[] { "test-server" });
+        toolSession.Tools.Returns(mountedTools ?? [.. tools.Select(tool => new McpSessionTool(tool, "test-server", AlwaysMounted: false))]);
+        toolSession.ConnectedServerNames.Returns(mountedTools is { Count: > 0 } ? [CodingTools.EndpointName, CodingTools.ShellEndpointName, "test-server"] : tools.Length == 0 ? [] : ["test-server"]);
         toolSession.ServersNeedingSignIn.Returns([]);
         toolSession.ToolClasses.Returns(toolClasses);
 

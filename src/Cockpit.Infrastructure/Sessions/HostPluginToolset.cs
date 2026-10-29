@@ -116,7 +116,7 @@ internal sealed class HostPluginToolset : IPluginToolset, IAsyncDisposable
             return [.. gatedTools.Select(tool => tool.Function)];
         }
 
-        var preloaded = gatedTools.Where(tool => tool.AlwaysMounted).ToList();
+        var preloaded = gatedTools.Where(tool => tool.AlwaysMounted || CodingTools.StaysNative(tool.ServerName)).ToList();
         var searchable = gatedTools.Except(preloaded).ToList();
         logger?.LogInformation(
             "Tool search mode: {Preloaded} always-mounted tool(s) preloaded, {Searchable} behind {SearchTool} — about {Tokens} tokens of schema kept out of every request.",

@@ -226,7 +226,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         }
 
         var preloaded = _gatedTools
-            .Where(tool => tool.AlwaysMounted || string.Equals(tool.ServerName, CodingTools.EndpointName, StringComparison.OrdinalIgnoreCase))
+            .Where(tool => tool.AlwaysMounted || CodingTools.StaysNative(tool.ServerName))
             .ToList();
         var searchable = _gatedTools.Except(preloaded).ToList();
         _logger.LogInformation(
