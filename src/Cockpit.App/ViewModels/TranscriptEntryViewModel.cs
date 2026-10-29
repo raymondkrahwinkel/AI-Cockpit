@@ -4,6 +4,7 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Sessions;
 using Material.Icons;
 
@@ -479,6 +480,39 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     {
         OnPropertyChanged(nameof(IsAwaitingAnswer));
         OnPropertyChanged(nameof(CanSubmitAnswers));
+    }
+
+    // AC-1937: how a broker card closed without its Send — resolved by the assistant or dismissed by the operator —
+    // and the one-line note with it. Recorded inside InputJson, next to the saved answers (TranscriptSnapshot).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsResolved))]
+    [NotifyPropertyChangedFor(nameof(ResolutionText))]
+    private AssistantQuestionResolution? _resolution;
+
+    public bool IsResolved => Resolution is not null;
+
+    public string ResolutionText => Resolution is not { } resolution
+        ? string.Empty
+        : (resolution.Status switch
+        {
+            AssistantQuestionResolution.AnsweredInChat => "Answered in chat",
+            AssistantQuestionResolution.Obsolete => "No longer relevant",
+            AssistantQuestionResolution.Withdrawn => "Withdrawn by the assistant",
+            AssistantQuestionResolution.Dismissed => "Dismissed",
+            _ => resolution.Status,
+        }) + (resolution.Note is { Length: > 0 } note ? $" · {note}" : string.Empty);
+
+    // The resolution first, so the record the pending flag's change writes already carries it; the options freeze
+    // the way an answered card's do.
+    internal void Resolve(AssistantQuestionResolution resolution)
+    {
+        Resolution = resolution;
+        foreach (var prompt in QuestionPrompts ?? [])
+        {
+            prompt.IsAnswered = true;
+        }
+
+        IsPendingBrokerAnswer = false;
     }
 
     // --- Error severity (AC-720) ------------------------------------------------------------------------------

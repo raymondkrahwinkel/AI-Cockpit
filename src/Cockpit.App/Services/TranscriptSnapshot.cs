@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.Services;
@@ -140,6 +141,10 @@ internal static class TranscriptSnapshot
         {
             entry.QuestionPrompts = prompts;
             _ApplySavedAnswers(prompts, record.InputJson);
+            if (_SavedResolution(record.InputJson) is { } resolution)
+            {
+                entry.Resolve(resolution);
+            }
         }
 
         return entry;
@@ -157,15 +162,26 @@ internal static class TranscriptSnapshot
             return entry.InputJson;
         }
 
-        var answered = prompts.Where(prompt => prompt.IsAnswered).ToList();
-        if (answered.Count == 0)
+        // A resolved card froze its options without an answer (AC-1937): what it carries is its resolution instead.
+        var answered = entry.Resolution is null ? prompts.Where(prompt => prompt.IsAnswered).ToList() : [];
+        if (answered.Count == 0 && entry.Resolution is null)
         {
             return entry.InputJson;
         }
 
         try
         {
-            var root = JsonNode.Parse(entry.InputJson)!.AsObject();
+            if (JsonNode.Parse(entry.InputJson) is not JsonObject root)
+            {
+                return entry.InputJson;
+            }
+
+            if (entry.Resolution is { } resolution)
+            {
+                root["resolution"] = new JsonObject { ["status"] = resolution.Status, ["note"] = resolution.Note };
+                return root.ToJsonString();
+            }
+
             var answers = new JsonObject();
             foreach (var prompt in answered)
             {
@@ -189,6 +205,24 @@ internal static class TranscriptSnapshot
         catch (JsonException)
         {
             return entry.InputJson;
+        }
+    }
+
+    // AC-1937: the resolution _QuestionInputJsonWithAnswers merged in; null for a card that was never resolved.
+    private static AssistantQuestionResolution? _SavedResolution(string? inputJson)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(inputJson)
+                || JsonNode.Parse(inputJson) is not JsonObject root
+                || root["resolution"] is not JsonObject resolution
+                || resolution["status"]?.GetValue<string>() is not { Length: > 0 } status
+                ? null
+                : new AssistantQuestionResolution(status, resolution["note"]?.GetValue<string>());
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
+        {
+            return null;
         }
     }
 

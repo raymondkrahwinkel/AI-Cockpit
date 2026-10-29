@@ -54,7 +54,7 @@ internal sealed class HostAssistantConversation(IAssistantSessionHost host) : IA
 {
     public bool RequestConversationClear() => host.RequestConversationClear();
 
-    public Task<bool> ShowQuestionAsync(string question, string inputJson) => Task.FromResult(false);
+    public Task<string?> ShowQuestionAsync(string question, string inputJson) => Task.FromResult<string?>(null);
 }
 
 // A shared project composes without a dialog (AC-1514), as on the desktop. "New project" is the dialog's own, and there

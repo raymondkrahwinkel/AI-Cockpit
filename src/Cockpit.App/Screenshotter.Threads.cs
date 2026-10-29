@@ -168,8 +168,9 @@ internal static partial class Screenshotter
         session.Transcript.Add(_Prompt("Waarom synct Strava niet meer?", "waymark"));
         session.Transcript.Add(new TranscriptEntryViewModel(
             TranscriptEntryKind.AssistantText, "Het token van Strava is verlopen sinds zaterdag. Opnieuw koppelen lost het op."));
+        // AC-1937: settled in words, so the assistant closed the card with what was said.
         var answered = _Question("Zal ik een ticket maken voor de misleidende melding bij een 401?", ["Ja, maak het ticket", "Nee, laat maar"], "waymark");
-        answered.IsPendingBrokerAnswer = false;
+        answered.Resolve(new(Cockpit.Core.Abstractions.Assistant.AssistantQuestionResolution.AnsweredInChat, "ja, WM-88 is aangemaakt"));
         session.Transcript.Add(answered);
 
         session.Transcript.Add(_Message(TranscriptEntryKind.Status, "AC-1593 org policy", "done", "local gate green (89/92, 3 known)", "cockpit"));
