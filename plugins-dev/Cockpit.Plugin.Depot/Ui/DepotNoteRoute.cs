@@ -52,7 +52,7 @@ internal sealed class DepotNoteRoute(
     Func<DepotConnectionRegistration, string, Func<Task>?, Task> joined,
     Func<Uri, Task> launch)
 {
-    // NTC-4 (AC-1580) sets this to open the live tab; it returns what brings that tab forward again.
+    // The plugin sets this to open the live tab (AC-1580); it returns what brings that tab forward again.
     public Func<DepotConnectionRegistration, DepotNoteTarget, Task<Func<Task>>>? OpenLive { get; set; }
 
     public static DepotNoteStand StandOf(string? role) => role == DepotNoteRole.Editor ? DepotNoteStand.Edit : DepotNoteStand.ViewOnly;
