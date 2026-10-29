@@ -91,9 +91,7 @@ public sealed class SessionLauncher(
 
             var instructed = request with
             {
-                LaunchOptions = SessionStartComposer.WithWorktreeConfinement(
-                    SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null),
-                    admitted.WorktreeBranch is not null),
+                LaunchOptions = SessionStartComposer.WithInstructions(request.LaunchOptions, request.SystemPrompt, request.ProjectJobId is not null),
             };
             await hosted.StartAsync(instructed, admitted.WorkingDirectory).ConfigureAwait(false);
 
