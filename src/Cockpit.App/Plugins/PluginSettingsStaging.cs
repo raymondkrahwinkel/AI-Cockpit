@@ -29,7 +29,7 @@ internal sealed class PluginSettingsStaging
     // Runs every staged write, in the order it was staged, empties the batch, and reports the ones that threw.
     // AC-479: a throwing plugin used to take the whole Apply with it, including its neighbours' writes and the
     // host's own save. Its failure is returned rather than swallowed — the caller shows it where a refusal shows.
-    public IReadOnlyList<(string Tag, string Reason)> Commit()
+    public IReadOnlyList<(string Tag, string Reason)> Commit(Action<string>? onCommitted = null)
     {
         // Copied first: a plugin's own write can reach back into the host (re-registering an MCP server, say),
         // and iterating the live list would then throw on whatever it caused to be staged next.
@@ -46,6 +46,8 @@ internal sealed class PluginSettingsStaging
             {
                 failures.Add((tag, $"failed while saving: {exception.Message}"));
             }
+
+            onCommitted?.Invoke(tag);
         }
 
         return failures;

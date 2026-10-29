@@ -137,7 +137,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly SessionRestorePlanner? _sessionRestorePlanner;
     private readonly IWorktreeReconcileGate? _worktreeReconcileGate;
     private readonly ILogger<CockpitViewModel>? _logger;
-    private OptionsOpenMeasurement? _optionsOpenMeasurement;
+    private OptionsMeasurement? _optionsOpenMeasurement;
+    private OptionsMeasurement? _optionsCloseMeasurement;
 
     // Composes what a session started from a project opens with (AC-164).
     private readonly ProjectQuickStart? _projectQuickStart;
@@ -7025,7 +7026,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        _optionsOpenMeasurement = new OptionsOpenMeasurement();
+        _optionsOpenMeasurement = new OptionsMeasurement("open");
         await _RefreshAudioDevicesAsync();
         _MarkOptionsOpen("audio");
         await Plugins.LoadAsync();
@@ -7065,6 +7066,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     private void _MarkOptionsOpen(string phase) => _optionsOpenMeasurement?.Mark(phase);
+
+    internal void OptionsCloseStarted() => _optionsCloseMeasurement = new OptionsMeasurement("close");
+
+    internal void OptionsCloseDiscarded() => _optionsCloseMeasurement?.Mark("discard");
+
+    internal void OptionsClosed()
+    {
+        _optionsCloseMeasurement?.Mark("closed");
+        if (_optionsCloseMeasurement?.Finish() is { } line)
+        {
+            _logger?.LogWarning("{Message}", line);
+        }
+
+        _optionsCloseMeasurement = null;
+    }
 
     // Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the action
     // button on a plugin-update toast, so the operator lands straight on the updates list instead of
@@ -7438,6 +7454,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private async Task _ApplyOptionsAsync(bool endEdit)
     {
+        var measurement = new OptionsMeasurement("apply");
         OptionsApplyBlocked = false;
         OptionsSectionErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         OptionsApplyBlockedCategoryTag = null;
@@ -7471,10 +7488,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             failures.Add(("Profiles", Profiles.StatusMessage, _ProfilesCategoryTag));
         }
 
+        measurement.Mark("profiles");
+
         if (McpServers is not null && !await McpServers.PersistAsync())
         {
             failures.Add(("MCP Servers", McpServers.StatusMessage, "mcp-servers"));
         }
+
+        measurement.Mark("mcp");
 
         // AC-1286: before the failures are gathered rather than after the dialog has stopped staging, so a write
         // that could not happen holds Apply open on its own tab instead of closing over an unsaved choice. It does
@@ -7485,13 +7506,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             failures.Add(("Security", securityError, Security.PersistErrorCategoryTag ?? "security"));
         }
 
+        measurement.Mark("security");
+
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
         await using (_settingsWriteBatch?.Begin())
         {
             // AC-479: reported after the batch has run rather than before it, so a plugin that throws on its own
             // write lands on the same list as one that refused — the others' writes have happened by then.
-            foreach (var (categoryTag, reason) in pluginStaging.Commit())
+            foreach (var (categoryTag, reason) in pluginStaging.Commit(tag => measurement.Mark(tag.Replace("plugin:", "plugin-", StringComparison.Ordinal))))
             {
                 // TryGetValue, not the indexer: this runs while handling a plugin that already threw, and a
                 // staged write from outside the loop above would turn that into an unhandled one.
@@ -7523,19 +7546,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
 
             await SaveAllSettingsAsync();
+            measurement.Mark("core");
         }
+
+        measurement.Mark("config");
 
         // Not blocked, so this Apply is committing: on the closing path the flag is already down and this changes
         // nothing, and a blocked Apply still writes no update settings, exactly as before.
         _SaveUpdateSettings(flushStaged: !OptionsApplyBlocked);
+        measurement.Mark("updates");
 
         if (_delegationMcpToggle is { } toggle)
         {
             await toggle.SetMcpEnabledAsync(OrchestratorMcpEnabled);
         }
 
+        measurement.Mark("delegation");
+
         await AssistantOptions.SaveStagedAsync();
+        measurement.Mark("assistant");
         await ModelIntelligence.SaveStagedAsync();
+        measurement.Mark("models");
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
         if (UsageThresholdSettings is { } thresholds)
@@ -7543,6 +7574,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await thresholds.SaveAsync();
             UsageThresholds = await thresholds.ReloadAsync();
         }
+
+        measurement.Mark("usage");
 
         _RebaselineFingerprintAfterBlockedApply(failures);
 
@@ -7555,6 +7588,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 (_startupChoiceMade, _channelChoiceMade, _chosenChannel, CheckForUpdatesOnStartup, IncludeNightlyBuilds);
             _optionsFingerprintAtOpen = OptionsStaging.Fingerprint(this);
             RefreshPendingOptionChanges();
+        }
+
+        if (measurement.Finish() is { } line)
+        {
+            _logger?.LogWarning("{Message}", line);
         }
     }
 
