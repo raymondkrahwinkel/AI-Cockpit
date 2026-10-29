@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
@@ -51,12 +52,12 @@ public class DepotNoteSaverTests
         Assert.Same(LiveFileSave.NotYet, session.Status.Saved);
         Assert.Equal(depot.File, (await session.ReadAsync(CancellationToken.None)).Text);
 
-        // Typing is saved over the file it was written against, and the chip names who saved (mockup 4).
+        // Typing is saved over the file it was written against, and the chip names who saved as Depot announces it (mockup 4).
         await _TypeAsync(session, "First line", " one");
         var first = await depot.NextPostAsync();
         Assert.Equal(("# Plan\n\nFirst line one\n", _Depot.Sha("# Plan\n\nFirst line\n")), (first.Content, first.Base));
         var saved = await saves.Reader.ReadAsync().AsTask().WaitAsync(Wait);
-        Assert.Equal(("you", null), (saved.Name, saved.Color));
+        Assert.Equal(("Raymond", "#3b82f6"), (saved.Name, saved.Color));
         Assert.NotNull(saved.At);
 
         // A lost answer: the save landed, the retry gets a 409 whose checksum is its own text, and that becomes the base.
@@ -102,7 +103,7 @@ public class DepotNoteSaverTests
     }
 
     // Depot's note-save and Text as NoteSaveEndpoints and NoteSessions answer them: a base that is not the file is a 409, `own` when
-    // the file is this session's last save; every stored text is a version Text can hand back.
+    // the file is this session's last save, a stored save is announced as `saved` (DEP-536), and Text hands back every version.
     private sealed class _Depot(string file)
     {
         private readonly Lock _gate = new();
@@ -117,31 +118,35 @@ public class DepotNoteSaverTests
 
         public int Posts { get; private set; }
 
+        public Func<DepotNoteEvent, Task>? Announce { get; set; }
+
         public static string Sha(string text) => DepotNoteSaver.Sha256(text);
 
         public async Task<(string Content, string Base)> NextPostAsync() => await _posts.Reader.ReadAsync().AsTask().WaitAsync(Wait);
 
-        public Task<DepotNoteSaveAnswer> PostAsync(string content, string baseChecksum, string session, CancellationToken cancellationToken)
+        public async Task<DepotNoteSaveAnswer> PostAsync(string content, string baseChecksum, string session, CancellationToken cancellationToken)
         {
+            bool lost;
+            int version;
             lock (_gate)
             {
                 Posts++;
                 _posts.Writer.TryWrite((content, baseChecksum));
                 if (baseChecksum != Sha(File))
                 {
-                    return Task.FromResult(new DepotNoteSaveAnswer(409, Sha(File), Own: Sha(File) == _own));
+                    return new DepotNoteSaveAnswer(409, Sha(File), Own: Sha(File) == _own);
                 }
 
                 _Store(content);
                 _own = Sha(content);
-                if (LoseNextAnswer)
-                {
-                    LoseNextAnswer = false;
-                    throw new HttpRequestException("The answer got lost.");
-                }
-
-                return Task.FromResult(new DepotNoteSaveAnswer(200, Sha(content), ++_version));
+                version = ++_version;
+                lost = LoseNextAnswer;
+                LoseNextAnswer = false;
             }
+
+            var by = new { id = "user-1", name = "Raymond", color = "#3b82f6" };
+            await (Announce?.Invoke(new DepotNoteEvent("saved", ["doc-1", JsonSerializer.SerializeToElement(new { by, version, at = DateTimeOffset.UtcNow })])) ?? Task.CompletedTask);
+            return lost ? throw new HttpRequestException("The answer got lost.") : new DepotNoteSaveAnswer(200, Sha(content), version);
         }
 
         public void SaveOwn(string content)
@@ -195,9 +200,7 @@ public class DepotNoteSaverTests
             return this;
         }
 
-        public void Subscribe(Func<DepotNoteEvent, Task> onEvent)
-        {
-        }
+        public void Subscribe(Func<DepotNoteEvent, Task> onEvent) => depot.Announce = onEvent;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

@@ -49,6 +49,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
     private volatile bool _saveRefused;
     private string? _joinedSession;
     private LiveFileSave? _saved;
+    private volatile bool _savedByHub;
     private int _merging;
     private volatile bool _mergeAgain;
     private DateTimeOffset _mergeFrom;
@@ -786,8 +787,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             case { Kind: "finished", Args: [_, _, var next, ..] }:
                 _saver?.SetSession(next as string);
                 break;
-            case { Kind: "outside", Args: [_, JsonElement write, ..] }:
-                _Outside(write);
+            case { Kind: "saved", Args: [_, JsonElement save, ..] }:
+                _HubSaved(save);
                 break;
             case { Kind: "reset" }:
                 // Edits stop at once (stale until the new fill), so nothing typed goes to the rows that are gone. The loop closes the hub
@@ -1007,7 +1008,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 
     private void _Saved(DepotNoteSaveState state, int? version)
     {
-        if (state != DepotNoteSaveState.Saved)
+        // A Depot that announces saves (DEP-536) names this one too, with the server's own name and colour.
+        if (state != DepotNoteSaveState.Saved || _savedByHub)
         {
             return;
         }
@@ -1017,23 +1019,27 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         _SetSaved(new LiveFileSave(self is { Name.Length: > 0 } ? self.Name : "you", self is { Color.Length: > 0 } ? self.Color : null, _time.GetUtcNow()));
     }
 
-    // The one place a save becomes the chip: Cockpit's own, an outside writer's, and DEP-536's `saved` event once Depot sends it.
+    // The one place a save becomes the chip: DEP-536's `saved` event, or Cockpit's own save on a Depot that does not send it.
     private void _SetSaved(LiveFileSave saved)
     {
         _saved = saved;
         _StatusChanged();
     }
 
-    // editor.ts draws every writer outside the room in this violet.
-    private const string OutsideColor = "#a78bda";
-
-    // Screen 6: a writer outside the room left a version (the agent through MCP, a sync, an upload), so it saved last.
-    private void _Outside(JsonElement write)
+    // DEP-536: every save is announced to the room, the saver's own included, with the saver's server identity. A writer outside
+    // the room is never shown as the one who saved (AC-1583): only this event names someone else.
+    private void _HubSaved(JsonElement save)
     {
-        if (write.ValueKind == JsonValueKind.Object && write.TryGetProperty("name", out var name) && name.GetString() is { Length: > 0 } who)
+        if (save.ValueKind != JsonValueKind.Object || !save.TryGetProperty("by", out var by) || by.ValueKind != JsonValueKind.Object)
         {
-            _SetSaved(new LiveFileSave(who, OutsideColor, _time.GetUtcNow()));
+            return;
         }
+
+        _savedByHub = true;
+        var name = by.TryGetProperty("name", out var named) && named.ValueKind == JsonValueKind.String && named.GetString() is { Length: > 0 } text ? text : "someone";
+        var color = by.TryGetProperty("color", out var colored) && colored.ValueKind == JsonValueKind.String ? colored.GetString() : null;
+        var at = save.TryGetProperty("at", out var stamp) && stamp.ValueKind == JsonValueKind.String && stamp.TryGetDateTimeOffset(out var when) ? when : _time.GetUtcNow();
+        _SetSaved(new LiveFileSave(name, color, at));
     }
 
     // Section 6 duty 4, as editor.ts' mergeOutside: one merge at a time, the saver held until it is in; one that comes in meanwhile follows.

@@ -84,6 +84,7 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
         ("external", [typeof(string), typeof(string), typeof(string)]),
         ("outside", [typeof(string), typeof(JsonElement)]),
         ("merged", [typeof(string), typeof(int[]), typeof(int)]),
+        ("saved", [typeof(string), typeof(JsonElement)]),
         ("reset", [typeof(string)]),
         ("refused", [typeof(string)]),
     ];
