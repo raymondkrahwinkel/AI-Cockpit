@@ -121,10 +121,10 @@ without typing. A conflict reads the file again and uses `LineMerge`; separate e
 wait for the existing conflict actions. File durability is tracked independently of operations accepted by the live session, including
 after a sign-in or permission change. Lines only held here have a 2 px waiting-colour gutter bar and a count before the shortcuts.
 
-`LiveFileStatus.RequiresRejoin` (SDK 3.50.0, host 0.147.0) fences an obsolete room, such as a stale epoch. The host stops sending to it,
+`LiveFileStatus.RequiresRejoin` (SDK 3.52.0, host 0.149.0) fences an obsolete room, such as a stale epoch. The host stops sending to it,
 keeps local text, and saves that text through the file source before awaiting Close and opening a fresh session. Its editor then takes
 the fresh room's snapshot. Typing during that Open is kept and saved before replacing the editor. Late reads or patches from the old
-session cannot touch the new document. Set `minHostVersion` to 0.147.0 when supplying this flag; carry all other status fields with `with`.
+session cannot touch the new document. Set `minHostVersion` to 0.149.0 when supplying this flag; carry all other status fields with `with`.
 
 The host subscribes to the events before it opens the session, so no patch is lost in between. The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
 `files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
