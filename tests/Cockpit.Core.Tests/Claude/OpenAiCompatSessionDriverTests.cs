@@ -55,6 +55,7 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
         Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
         Assert.Contains("relative paths resolve against this working directory", systemPrompt);
+        Assert.Contains("verify the requested result", systemPrompt);
         Assert.Contains(events.OfType<AssistantTextCompleted>(), completed => completed.Text.Contains("geladen met 8192", StringComparison.Ordinal));
         await LocalModelContextContract.AssertAsync();
     }

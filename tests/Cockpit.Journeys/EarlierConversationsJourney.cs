@@ -160,6 +160,8 @@ public sealed class EarlierConversationsJourney
             await sheet.ContinueCommand.ExecuteAsync(own);
             Assert.Equal((assistant, false), (app.SimpleSelectedSession, sheet.IsOpen));
         });
+
+        await SessionJourney.AssertClosedConversationReopensAfterRestartAsync();
     }
 
     private static (CockpitViewModel App, Window Window) _OnHome(JourneyHost cockpit)

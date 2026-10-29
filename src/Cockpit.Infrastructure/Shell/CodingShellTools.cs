@@ -21,6 +21,13 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
         [Description("How long to wait, in milliseconds. Default 120000, at most 600000.")] int? timeout = null,
         [Description("The directory to run in, relative to your working directory. Default: the working directory itself.")] string? workdir = null)
     {
+        var inputError = ShellToolValidation.FragmentError(command, "command")
+            ?? (workdir is null ? null : ShellToolValidation.FragmentError(workdir, "workdir"));
+        if (inputError is not null)
+        {
+            return inputError;
+        }
+
         if (!CodingTools.TryResolve(CodingTools.RootFor(sessions), workdir ?? ".", out var directory, out var error))
         {
             return error;

@@ -27,6 +27,15 @@ internal sealed class ShellMcpTools(IShellCommandRunner runner)
         [Description("The command's arguments, one per array entry — never re-parsed by a shell.")] IReadOnlyList<string>? arguments = null,
         [Description("How long to wait, in seconds. Default 30, capped at 600.")] int timeoutSeconds = DefaultTimeoutSeconds)
     {
+        var inputError = ShellToolValidation.FragmentError(session, "session")
+            ?? ShellToolValidation.FragmentError(directory, "directory")
+            ?? ShellToolValidation.FragmentError(command, "command")
+            ?? (arguments ?? []).Select((argument, index) => ShellToolValidation.FragmentError(argument, $"arguments[{index}]")).FirstOrDefault(error => error is not null);
+        if (inputError is not null)
+        {
+            return _Serialize(new { ok = false, error = inputError });
+        }
+
         if (!Directory.Exists(directory))
         {
             return _Serialize(new { ok = false, error = $"No such directory: {directory}" });
@@ -51,4 +60,14 @@ internal sealed class ShellMcpTools(IShellCommandRunner runner)
     }
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
+}
+
+internal static class ShellToolValidation
+{
+    private static readonly string[] ToolCallFragments = ["<parameter=", "<function=", "</tool_call>"];
+
+    public static string? FragmentError(string value, string name) =>
+        ToolCallFragments.Any(fragment => value.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+            ? $"Malformed tool-call fragment in {name}. Resend the call with only that argument's value."
+            : null;
 }

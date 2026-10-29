@@ -30,6 +30,7 @@ internal static class ChatTurnLoop
     // instead of the driver guessing from the wording whether an answer was a result or an announcement.
     internal const string CompletionConvention =
         "When a task needs tools, keep calling them until the task is done: if you announce a next step, make that tool call in the same reply. "
+        + "Before ending a task after using tools, verify the requested result with relevant tools (for Git, check status, log -1, and the current branch). "
         + "End your final reply of the turn — the task done, or a question you need answered — with the line " + CompletionMarker + ".";
 
     // A user message rather than a system one: several chat templates (Qwen among them) reject a system message
