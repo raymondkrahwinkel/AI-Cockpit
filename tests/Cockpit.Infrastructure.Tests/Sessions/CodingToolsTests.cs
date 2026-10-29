@@ -26,8 +26,10 @@ public class CodingToolsTests
         var sessions = Substitute.For<ISessionRegistry>();
         sessions.Find(Arg.Any<string>()).Returns(call => call.Arg<string>() == "pane-1" ? session : null);
         var runner = Substitute.For<IShellCommandRunner>();
+        runner.RunAsync(root, "echo", Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>())
+            .Returns(Task.FromResult(new ShellCommandResult(0, "ok", "", TimeSpan.Zero, false)));
         var tools = new CodingTools(sessions, runner);
-        var shell = new ShellMcpTools(runner, sessions);
+        var shell = new ShellMcpTools(runner);
         var codingShell = new CodingShellTools(sessions, runner);
 
         McpRequestContext.Set("pane-1");
@@ -48,13 +50,16 @@ public class CodingToolsTests
             Assert.DoesNotContain("secret", tools.Read(outside));
 
             Assert.Contains("malformed tool-call fragment", await shell.RunCommand("pane-1", root, "echo", ["<parameter=directory>"], 1), StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("Invalid session", await shell.RunCommand("other-pane", root, "echo", timeoutSeconds: 1));
+            var staleSession = await shell.RunCommand("other-pane", root, "echo", timeoutSeconds: 1);
+            Assert.Contains("\"ok\":true", staleSession);
+            Assert.Contains("\"session\":\"pane-1\"", staleSession);
             Assert.Contains("malformed tool-call fragment", await codingShell.Shell("echo <function=run_command>"), StringComparison.OrdinalIgnoreCase);
             Assert.Contains("malformed tool-call fragment", await codingShell.Shell("echo ok", workdir: "</tool_call>"), StringComparison.OrdinalIgnoreCase);
 
             McpRequestContext.Set(null);
-            Assert.Contains("Unknown session", await shell.RunCommand("other-pane", root, "echo", timeoutSeconds: 1));
-            await runner.DidNotReceive().RunAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>());
+            var unverified = await shell.RunCommand("other-pane", root, "echo", timeoutSeconds: 1);
+            Assert.Contains("\"session\":\"other-pane\"", unverified);
+            await runner.Received(2).RunAsync(root, "echo", Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>());
         }
         finally
         {
