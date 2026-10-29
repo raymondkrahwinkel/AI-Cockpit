@@ -492,11 +492,6 @@ public class AssistantSessionHostTests
     [Theory]
     // AC-639
     [InlineData("YOU DO NOT IMPLEMENT")]
-    [InlineData("`mcpServers`")]
-    [InlineData("For Claude/Codex omit cockpit-coding and cockpit-coding-shell")]
-    [InlineData("cockpit-orchestrator for delegation")]
-    [InlineData("exact set overrides both")]
-    [InlineData("project-bound names require")]
     [InlineData("on its own worktree")]
     // AC-647
     [InlineData("`list_profiles` carries an `Options` list")]
@@ -520,6 +515,14 @@ public class AssistantSessionHostTests
         var options = AssistantSessionHost._LaunchOptions(_Profile(), replacesStandingInstruction: false, memory: null);
 
         Assert.Contains(phrase, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        foreach (var guidance in new[]
+        {
+            "`mcpServers`", "For Claude/Codex omit cockpit-coding and cockpit-coding-shell",
+            "cockpit-orchestrator for delegation", "exact set overrides both", "project-bound names require",
+        })
+        {
+            Assert.Contains(guidance, options[WellKnownPluginSessionOptions.AppendSystemPrompt], StringComparison.Ordinal);
+        }
         Assert.DoesNotContain("cannot reach what lives behind another project's servers", options[WellKnownPluginSessionOptions.AppendSystemPrompt]);
     }
 
