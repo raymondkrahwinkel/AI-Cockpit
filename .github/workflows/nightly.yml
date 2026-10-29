@@ -147,6 +147,7 @@ jobs:
               "cockpit.backend.tests": os.environ["BACKEND_TEST_OUTCOME"],
               "cockpit.app.viewtests": os.environ["VIEW_TEST_OUTCOME"],
               "cockpit.journeys": os.environ["JOURNEYS_OUTCOME"],
+              "cockpit.pluginendpointannotations.tests": os.environ["PLUGIN_TEST_OUTCOME"],
           }
           outcomes.update({
               name.casefold(): os.environ["PLUGIN_TEST_OUTCOME"]
