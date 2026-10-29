@@ -114,7 +114,7 @@ internal sealed class PluginTtySessionProviderAdapter(
                     return null;
                 }
 
-                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
+                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl, agentName) is { } mapped)
                 {
                     return mapped;
                 }
