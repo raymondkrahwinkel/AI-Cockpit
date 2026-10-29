@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using ModelContextProtocol.Client;
 using Cockpit.Core.Mcp;
+using ConnectCallback = System.Func<System.Net.Http.SocketsHttpConnectionContext, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<System.IO.Stream>>;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -12,10 +13,10 @@ internal static class NodeCertificatePin
 {
     // Accepts any server certificate and hands its fingerprint back through `observed`. Only for the pairing
     // handshake, where there is nothing to compare against yet and a human closes the gap.
-    public static HttpMessageHandler Observe(Action<string> observed) =>
-        new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+    // AC-1916: `connect` replaces the handler's own resolve-and-dial, as the swarm's `SwarmNetworkPolicy.ConnectAsync`.
+    public static HttpMessageHandler Observe(Action<string> observed, ConnectCallback? connect = null) =>
+        _Handler(
+            certificate =>
             {
                 if (certificate is not null)
                 {
@@ -24,17 +25,16 @@ internal static class NodeCertificatePin
 
                 return true;
             },
-        };
+            connect);
 
     // Accepts only the pinned certificate. Throws rather than returning false so the caller gets a reason it can
     // tell from every other transport failure — see `NodeCertificatePinMismatchException`.
-    public static HttpMessageHandler Require(string expectedFingerprint)
+    public static HttpMessageHandler Require(string expectedFingerprint, ConnectCallback? connect = null)
     {
         var expected = NodePairingCode.Normalize(expectedFingerprint);
 
-        return new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = (_, certificate, _, _) =>
+        return _Handler(
+            certificate =>
             {
                 var presented = certificate is null ? null : FingerprintOf(certificate);
                 if (presented is not null && CryptographicOperations.FixedTimeEquals(
@@ -46,8 +46,16 @@ internal static class NodeCertificatePin
 
                 throw new NodeCertificatePinMismatchException(expected, presented);
             },
-        };
+            connect);
     }
+
+    // A null `connect` leaves the handler's own resolve-and-dial in place.
+    private static SocketsHttpHandler _Handler(Func<X509Certificate?, bool> validate, ConnectCallback? connect) =>
+        new()
+        {
+            SslOptions = { RemoteCertificateValidationCallback = (_, certificate, _, _) => validate(certificate) },
+            ConnectCallback = connect,
+        };
 
     // SHA-256 over the DER encoding, uppercase hex — the same string `NodeSelfSignedCertificate.Fingerprint`
     // produces, so the node and the controller are always comparing like with like.

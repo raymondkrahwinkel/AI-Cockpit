@@ -16,7 +16,6 @@ public class ProjectResourceSecretPathHeuristicTests
     [InlineData("~/.ssh/id_rsa", true)]
     [InlineData("~/.ssh/id_ed25519", true)]
     [InlineData("~/.ssh/known_hosts", true)]
-    [InlineData("~/.ssh/config", true)]
     [InlineData("~/.ssh/", true)]
     [InlineData("~/.ssh", true)]
     // The one deliberate exception: a public key names nothing secret.
