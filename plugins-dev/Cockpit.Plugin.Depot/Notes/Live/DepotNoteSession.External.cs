@@ -17,7 +17,7 @@ internal sealed partial class DepotNoteSession
         _outsidePending = true;
         _outsideAt = DateTimeOffset.UtcNow;
         _externalWriter = writer is { Source: "agent", Name.Length: > 0 } ? writer : null;
-        if (_externalWriter is { Via: "Mcp", Version: > 0 } saved)
+        if (_externalWriter is { Via: "Mcp", Version: < 0 } saved)
         {
             _SetSaved(new LiveFileSave(saved.Name, saved.Color ?? DepotNotePresence.OutsideAgentColor, _time.GetUtcNow()));
         }
