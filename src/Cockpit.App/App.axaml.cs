@@ -259,6 +259,8 @@ public partial class App : Application
         finally
         {
             _mainWindow?.Show();
+            Program.Services.GetRequiredService<ILogger<App>>().LogInformation(
+                "config parses during startup: {Parses}", Cockpit.Infrastructure.Configuration.CockpitConfigReads.Parses);
             _StartPlanners();
             _splash = null;
             if (splash is not null)
