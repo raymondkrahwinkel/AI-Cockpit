@@ -24,7 +24,7 @@ public class DepotNoteSaverTests
         var saves = Channel.CreateUnbounded<LiveFileSave>();
         LiveFileSave? seen = null;
         await using var session = new DepotNoteSession(
-            Connection, Note, _ => Task.FromResult("user-1"), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
+            Connection, Note, _ => Task.FromResult(new DepotNoteUser("user-1")), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
             _ => { }, [TimeSpan.Zero], post: depot.PostAsync,
             statusChanged: status =>
             {
