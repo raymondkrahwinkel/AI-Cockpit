@@ -1,10 +1,14 @@
 using System.Net;
 using System.Text.Json;
 using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugin.Depot.Files;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Notes.Live;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Files;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Depot.Tests;
 
@@ -30,16 +34,17 @@ public class DepotNoteLiveTests
         var factoryCalls = 0;
         var statuses = new List<DepotNoteLiveStatus>();
         var logger = new _Log();
-        await using var session = new DepotNoteSession(
-            Connection, Note, _ => Task.FromResult("user-1"),
+        await using var notes = new DepotNoteLive(
+            () => [Connection],
+            _ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"userId\":\"user-1\"}") }),
             (_, _, onClosed) =>
             {
                 factoryCalls++;
                 return new _Hub(_ => throw failure).With(onClosed);
             },
-            clientId => new JintNoteRoom(clientId), statuses.Add, [TimeSpan.Zero], logger);
+            clientId => new JintNoteRoom(clientId), statuses.Add, logger);
 
-        session.Connect();
+        var session = notes.Open(Note);
         await session.Completion.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(1, factoryCalls);
@@ -51,9 +56,20 @@ public class DepotNoteLiveTests
         Assert.All(logger.Lines, line => Assert.DoesNotContain(Secret, line));
 
         // Signing in again is what starts the next attempt, and nothing else.
-        session.Connect();
+        var seen = new List<LiveFileStatus>();
+        session.StatusChanged += (_, status) => seen.Add(status);
+        Assert.Same(session, notes.Open(Note));
         await session.Completion.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(2, factoryCalls);
+        Assert.Equal(LiveFileState.SignInNeeded, seen[^1].State);
+
+        // AC-1580: the editor tab takes over the session that is open for its note, and any other file is a snapshot.
+        var source = (ILiveFileSource)new DepotFileSourceProvider(Substitute.For<ICockpitHost>(), () => [Connection], () => notes).Open("work");
+        Assert.Same(session, await source.OpenLiveAsync(DepotFileRefs.Create("work", "acme/roadmap", "notes/plan.md"), CancellationToken.None));
+        var refused = await Assert.ThrowsAsync<FileSourceException>(() => source.OpenLiveAsync(DepotFileRefs.Create("work", "acme/roadmap", "notes/other.md"), CancellationToken.None));
+        Assert.Equal(FileSourceErrorKind.Unsupported, refused.Kind);
+        await session.DisposeAsync();
+        Assert.False(notes.IsOpen(Note));
     }
 
     private sealed class _Hub(Func<_Hub, Task<DepotNoteJoinResult>> join) : IDepotNotesHub

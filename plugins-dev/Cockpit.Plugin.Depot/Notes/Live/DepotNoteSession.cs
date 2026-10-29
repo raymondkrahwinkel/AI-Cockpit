@@ -20,17 +20,20 @@ internal static class DepotNoteSchema
         ?? throw new InvalidOperationException("The build left out the schema version.");
 }
 
+// Who this Cockpit is in Depot: the id the hub's gate compares, and the name and colour /cockpit/me gives once Depot says them.
+internal sealed record DepotNoteUser(string Id, string? Name = null, string? Color = null);
+
 // One note's connection to /hubs/notes: Join (protocol section 3), the room's Y.Doc, and a new Join when the hub closes it; a `reset`
 // swaps the room. The host's text goes through the room's mirror on ILiveFileSession's terms (AC-1898). With a post it joins with
 // save=true and does the saver's duties when the hub names it (section 6, AC-1901): seed, save, merge what was written outside.
-internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
+internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 {
     // Protocol §7: an Update or a Compact is no larger.
     private const int MaxSnapshotBytes = 4 * 1024 * 1024;
 
     private readonly DepotConnectionRegistration _connection;
     private readonly DepotNoteLiveRequest _note;
-    private readonly Func<CancellationToken, Task<string>> _userId;
+    private readonly Func<CancellationToken, Task<DepotNoteUser>> _userId;
     private readonly DepotNotesHubFactory _hubFactory;
     private readonly DepotNoteRoomFactory _roomFactory;
     private readonly Action<DepotNoteLiveStatus> _publish;
@@ -40,6 +43,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
     private readonly Action<LiveFileStatus>? _statusChanged;
     private readonly TimeProvider _time;
     private readonly DepotNoteSaver? _saver;
+    private readonly Action<DepotNoteSession>? _disposed;
+    private int _disposedOnce;
     private readonly CancellationTokenSource _life = new();
 
     // The saver side (section 6): who the hub names saver, whether that is this connection, and the last save this session knows of.
@@ -74,6 +79,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
     private bool _roleLost;
     private IDepotNoteRoom? _sharedReadOnlyRoom;
     private string? _unsentSourceText;
+    private LiveFileStatus? _announced;
 
     // Set once the room has a text or the session has stopped: a read before that would hand the host an empty note.
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -92,7 +98,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
     public DepotNoteSession(
         DepotConnectionRegistration connection,
         DepotNoteLiveRequest note,
-        Func<CancellationToken, Task<string>> userId,
+        Func<CancellationToken, Task<DepotNoteUser>> userId,
         DepotNotesHubFactory hubFactory,
         DepotNoteRoomFactory roomFactory,
         Action<DepotNoteLiveStatus> publish,
@@ -103,7 +109,8 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         Action<LiveFileStatus>? statusChanged = null,
         TimeProvider? time = null,
         TimeSpan? quiet = null,
-        IReadOnlyList<TimeSpan>? retry = null)
+        IReadOnlyList<TimeSpan>? retry = null,
+        Action<DepotNoteSession>? disposed = null)
     {
         _connection = connection;
         _note = note;
@@ -116,6 +123,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         _patched = patched;
         _statusChanged = statusChanged;
         _time = time ?? TimeProvider.System;
+        _disposed = disposed;
         _room = roomFactory(_NewClientId());
         if (post is not null)
         {
@@ -128,6 +136,10 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
     public DepotNoteLiveRequest Note => _note;
 
     public IDepotNoteRoom Room => _room;
+
+    public event EventHandler<LiveFilePatch>? Patched;
+
+    public event EventHandler<LiveFileStatus>? StatusChanged;
 
     public event EventHandler<IReadOnlyList<LivePeer>>? PeersChanged;
 
@@ -267,6 +279,13 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposedOnce, 1) == 1)
+        {
+            return;
+        }
+
+        // Off the list first: a Join that comes while this one winds down must start a session of its own.
+        _disposed?.Invoke(this);
         // What is owed goes to the file before the room is let go of, as a closing web tab flushes; at most five seconds.
         if (_saver is { } saver)
         {
@@ -375,7 +394,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
                 _early.Clear();
             }
 
-            var hub = _hubFactory(_connection, user, _ =>
+            var hub = _hubFactory(_connection, user.Id, _ =>
             {
                 closed.TrySetResult(null);
                 return Task.CompletedTask;
@@ -420,7 +439,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 
     // One presence for the session: the hub gives a connection one client id and ignores any other, so each connection brings a new id,
     // and the people stay in the list, dimmed, until they are heard again. A first send that fails does not fail the Join.
-    private async Task _StartPresenceAsync(IDepotNotesHub hub, DepotNoteJoinResult result, string userId, CancellationToken cancellationToken)
+    private async Task _StartPresenceAsync(IDepotNotesHub hub, DepotNoteJoinResult result, DepotNoteUser user, CancellationToken cancellationToken)
     {
         var documentId = result.DocumentId;
         Task Send(byte[] bytes, CancellationToken ct) => hub.PresenceAsync(documentId, bytes, ct);
@@ -437,7 +456,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
                 await presence.ReconnectAsync(_NewClientId(), Send, cancellationToken).ConfigureAwait(false);
             }
 
-            await presence.SetSelfAsync(DepotPresenceSelf.For(userId, result.Role), cancellationToken).ConfigureAwait(false);
+            await presence.SetSelfAsync(DepotPresenceSelf.For(user.Id, result.Role, user.Name, user.Color), cancellationToken).ConfigureAwait(false);
             await presence.SetOwnAsync(_wanted, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -482,6 +501,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             known.AddRange(early);
             _epoch = result.Epoch ?? _epoch;
             _roleLost = result.Role != "editor" && (_role == "editor" || _roleLost);
+            _RaiseStatusIfChanged();
             _role = result.Role;
             _schemaMismatch = result.SchemaMismatch;
             _editor = result.Role == "editor" && !result.SchemaMismatch;
@@ -496,12 +516,14 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             {
                 _editor = false;
                 _roleLost = true;
+                _RaiseStatusIfChanged();
             }
             if (_sharedReadOnlyRoom is { } previous)
             {
                 await previous.DisposeAsync().ConfigureAwait(false);
                 _sharedReadOnlyRoom = null;
                 _unsentSourceText = null;
+                _RaiseStatusIfChanged();
             }
             if (!_editor && _typedAway)
             {
@@ -512,6 +534,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
                 }
                 await _sharedReadOnlyRoom.LoadAsync(string.Empty, cancellationToken).ConfigureAwait(false);
                 _unsentSourceText = await _sharedReadOnlyRoom.ReadAsync(cancellationToken).ConfigureAwait(false);
+                _RaiseStatusIfChanged();
             }
 
             await _LoadIfReadyAsync(cancellationToken).ConfigureAwait(false);
@@ -617,6 +640,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
             {
                 await shared.ApplyAsync(update, cancellationToken).ConfigureAwait(false);
                 _unsentSourceText = await shared.ReadAsync(cancellationToken).ConfigureAwait(false);
+                _RaiseStatusIfChanged();
             }
             await _ApplyAsync(update, cancellationToken).ConfigureAwait(false);
             await _LoadIfReadyAsync(cancellationToken).ConfigureAwait(false);
@@ -655,7 +679,9 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         }
 
         _rev++;
-        _patched?.Invoke(new LiveFilePatch(_rev, ops));
+        var patch = new LiveFilePatch(_rev, ops);
+        _patched?.Invoke(patch);
+        Patched?.Invoke(this, patch);
     }
 
     private async Task _RestoreSharedAsync(byte[] snapshot, CancellationToken cancellationToken)
@@ -705,6 +731,7 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         {
             _editor = false;
             _roleLost = true;
+            _RaiseStatusIfChanged();
             throw new FileSourceException(FileSourceErrorKind.Forbidden, "You can no longer edit this note.");
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -879,6 +906,23 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
 
         _StatusChanged();
         _publish(new DepotNoteLiveStatus(_connection.Id, _note.Organization, _note.Project, _note.Path, state, _MessageFor(state)));
+    }
+
+    // The host hears a status only when it differs from the last one it heard: read-only and unsent text change without the state moving.
+    private void _RaiseStatusIfChanged()
+    {
+        var status = _LiveStatus();
+        lock (_gate)
+        {
+            if (status == _announced)
+            {
+                return;
+            }
+
+            _announced = status;
+        }
+
+        StatusChanged?.Invoke(this, status);
     }
 
     // The session's state in the host's words (AC-1898). A viewer, or a Cockpit with another schema, may watch but not edit.
@@ -1154,7 +1198,11 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         await hub.MergedAsync(documentId, theirs.Checksum, merged.Blocks, merged.Conflicts, cancellationToken).ConfigureAwait(false);
     }
 
-    private void _StatusChanged() => _statusChanged?.Invoke(_LiveStatus());
+    private void _StatusChanged()
+    {
+        _statusChanged?.Invoke(_LiveStatus());
+        _RaiseStatusIfChanged();
+    }
 
     private static uint _NewClientId() => (uint)Random.Shared.NextInt64(1, uint.MaxValue);
 

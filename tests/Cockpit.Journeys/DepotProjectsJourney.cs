@@ -16,6 +16,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Projects;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Projects;
+using Cockpit.App.Files;
 using Cockpit.App.ViewModels;
 using Cockpit.App.ViewTests;
 using Cockpit.Plugins.Abstractions.Projects;
@@ -74,6 +75,8 @@ public sealed class DepotProjectsJourney
         await FileWorkspaceSteps.PreviewReplacedUntilKeptAsync(cockpit, (path, preview) => fileHost.OpenFileWorkspaceAsync("depot.markdown",
             new FileWorkspaceOpenOptions(new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", path }), path),
                 $"depot:journey:acme/cockpit:{path}", Path.GetFileName(path), "Depot / Journey / acme/cockpit", Preview: preview)));
+
+        await _LiveNoteAsync(cockpit, fileHost, depot);
 
         var memory = cockpit.Services.GetRequiredService<IProjectMemorySourceRegistry>().Sources.Single(source => source.Scheme == "depot");
         var shared = cockpit.Services.GetRequiredService<ISharedProjectSourceRegistry>().Sources.Single(source => source.Key == "depot");
@@ -223,12 +226,42 @@ public sealed class DepotProjectsJourney
         public static string Ping() => "pong";
     }
 
+    // AC-1580: a joined note opens as a live tab, typing reaches Depot's hub, and a second Join keeps one tab.
+    private static async Task _LiveNoteAsync(JourneyHost cockpit, Cockpit.Plugins.Abstractions.UI.ICockpitUiHost host, _FakeDepot depot)
+    {
+        const string path = "notes/editor.md";
+        const string key = "depot:journey:acme/cockpit:" + path;
+        async Task Join()
+        {
+            await host.Channel.InvokeAsync("note-live-open", JsonSerializer.SerializeToElement(
+                new { connectionId = "journey", organization = "acme", project = "cockpit", path }));
+            await host.OpenFileWorkspaceAsync("depot.markdown", new FileWorkspaceOpenOptions(
+                new FileRef("journey", JsonSerializer.Serialize(new[] { "acme/cockpit", path }), path), key, "Weekly sync.md",
+                "Depot / Journey / acme/cockpit", Edit: true));
+        }
+        await HeadlessAvalonia.RunAsync(async () =>
+        {
+            var workspaces = cockpit.Cockpit.Workspaces;
+            await Join();
+            await Join();
+            Assert.Equal(1, workspaces.Settings.Workspaces.Count(workspace => workspace.InstanceKey == key));
+            var body = workspaces.ActivePluginBody as MarkdownFileWorkspace
+                ?? throw new InvalidOperationException("The native file editor is missing.");
+            await body.Ready;
+            Assert.True(body.Editor.Text.StartsWith("# Weekly sync", StringComparison.Ordinal), body.Editor.Text);
+            body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "Typed in Cockpit.");
+            await depot.NoteEdited.WaitAsync(Until.Ceiling);
+            await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaces.Active?.Id ?? throw new InvalidOperationException("The note tab is gone."));
+        });
+    }
+
     private sealed class _FakeDepot(WebApplication app, string baseUrl, _DefinitionState state) : IAsyncDisposable
     {
         public string BaseUrl { get; } = baseUrl;
         public string DefinitionName => state.Name;
         public string Inbox => state.Inbox;
         public string? EditorText => state.EditorText;
+        public Task NoteEdited => app.Services.GetRequiredService<_NoteCalls>().Edited.Task;
 
         public void ChangeEditorFromOutside(string text) => state.ChangeEditorFromOutside(text);
 
@@ -250,6 +283,7 @@ public sealed class DepotProjectsJourney
             builder.Services.AddMcpServer().WithHttpTransport().WithTools<_NoListProjectsTools>();
             builder.Services.AddSignalR();
             builder.Services.AddSingleton<_ProjectEvents>();
+            builder.Services.AddSingleton<_NoteCalls>();
             builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
             var app = builder.Build();
             var state = new _DefinitionState(org, orgName, name);
@@ -280,6 +314,7 @@ public sealed class DepotProjectsJourney
             app.MapGet("/blob/download", state.DownloadAsync);
             app.MapGet("/cockpit/me", () => new { userId = "journey-user" });
             app.MapHub<_ProjectsHub>("/hubs/cockpit");
+            app.MapHub<_NotesHub>("/hubs/notes");
             app.MapMcp("/mcp");
             await app.StartAsync();
 
@@ -468,6 +503,40 @@ public sealed class DepotProjectsJourney
     private sealed class _ProjectEvents
     {
         public TaskCompletionSource Subscribed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class _NoteCalls
+    {
+        public TaskCompletionSource Edited { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    // The part of Depot's notes hub a typing editor meets: it seeds the room from the Markdown and takes the updates.
+    private sealed class _NotesHub(_NoteCalls calls) : Hub
+    {
+        public object Join(JsonElement request)
+        {
+            return new
+            {
+                documentId = "doc-1", role = "editor", updates = Array.Empty<object>(), seed = true, awaitingSeed = false,
+                epoch = "epoch-1", stale = false, schemaMismatch = false, markdown = "# Weekly sync\n\n",
+            };
+        }
+
+        public void Update(string documentId, byte[] update)
+        {
+        }
+
+        public void Edited(string documentId) => calls.Edited.TrySetResult();
+
+        public void Compact(string documentId, byte[] snapshot)
+        {
+        }
+
+        public bool Refill(string documentId) => false;
+
+        public void Presence(string documentId, byte[] awareness)
+        {
+        }
     }
 
     private sealed class _ProjectsHub(_ProjectEvents events) : Hub

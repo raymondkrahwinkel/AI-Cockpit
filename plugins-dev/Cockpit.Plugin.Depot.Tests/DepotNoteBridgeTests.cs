@@ -187,7 +187,7 @@ public class DepotNoteBridgeTests
         await using var web = new JintNoteRoom(2);
         var hub = new _Hub(await _SeedAsync(web, "structure.md"));
         var loaded = new TaskCompletionSource();
-        await using var bridge = _Session(hub, _ => loaded.TrySetResult());
+        await using var bridge = _Session(hub, _ => loaded.TrySetResult(), user: new DepotNoteUser("user-1", "Raymond", "#2563eb"));
         bridge.Connect();
         await loaded.Task.WaitAsync(TimeSpan.FromSeconds(60));
         await web.LoadAsync(string.Empty, CancellationToken.None);
@@ -213,7 +213,9 @@ public class DepotNoteBridgeTests
         await hub.Push(new DepotNoteEvent("presence", ["doc-1", "conn-9", DepotAwarenessCodec.Encode([new DepotAwarenessEntry(2113437100, 1, state)])]));
         var you = bridge.Peers[0];
         var sanne = bridge.Peers[1];
-        Assert.Equal(("", "", true, "Cockpit"), (you.Name, you.Color, you.You, you.Source));
+        // AC-1580: the own entry carries the name and colour /cockpit/me gave; an older Depot gives none and the host shows "You".
+        Assert.Equal(("Raymond", "#2563eb", true, "Cockpit"), (you.Name, you.Color, you.You, you.Source));
+        Assert.Null(DepotPresenceSelf.For("user-1", "editor").Name);
         Assert.Equal(("Sanne de Vries", "#3fb8c4", "web", "selecting"), (sanne.Name, sanne.Color, sanne.Source, sanne.Activity));
         Assert.Equal((heading, new LiveRange(heading, paragraph)), (sanne.Caret, sanne.Selection));
 
@@ -308,8 +310,8 @@ public class DepotNoteBridgeTests
         Assert.Empty(hub.Calls);
     }
 
-    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched, Action<DepotNoteLiveStatus>? publish = null) => new(
-        Connection, Note, _ => Task.FromResult("user-1"), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
+    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched, Action<DepotNoteLiveStatus>? publish = null, DepotNoteUser? user = null) => new(
+        Connection, Note, _ => Task.FromResult(user ?? new DepotNoteUser("user-1")), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
         publish ?? (_ => { }), [TimeSpan.Zero], patched: patched);
 
     // The web's seed of a fixture (protocol §5.3), as the one row the hub holds.

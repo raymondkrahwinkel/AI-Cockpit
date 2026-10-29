@@ -20,7 +20,8 @@ internal sealed class DepotNoteLive(
     private readonly Dictionary<string, DepotNoteSession> _sessions = new(StringComparer.Ordinal);
     private readonly Lock _lock = new();
 
-    public void Open(DepotNoteLiveRequest request)
+    // The note's session, started if it was not open yet; the host's tab disposes it, which takes it off the list again.
+    public DepotNoteSession Open(DepotNoteLiveRequest request)
     {
         var connection = connections().FirstOrDefault(candidate => candidate.Id == request.ConnectionId)
             ?? throw new ArgumentException("That Depot connection is no longer configured.", nameof(request));
@@ -36,7 +37,7 @@ internal sealed class DepotNoteLive(
             {
                 session = new DepotNoteSession(
                     connection, request, cancellationToken => ReadUserAsync(connection, handlerFor(connection), cancellationToken),
-                    hubFactory, roomFactory, publish, logger: logger,
+                    hubFactory, roomFactory, publish, logger: logger, disposed: _Forget,
                     post: (content, baseChecksum, session, cancellationToken) =>
                         PostAsync(connection, handlerFor(connection), request, content, baseChecksum, session, cancellationToken));
                 _sessions[key] = session;
@@ -45,6 +46,15 @@ internal sealed class DepotNoteLive(
 
         // A session that stopped on SignInNeeded starts again here, once the user has signed in; one that is running ignores it.
         session.Connect();
+        return session;
+    }
+
+    public bool IsOpen(DepotNoteLiveRequest request)
+    {
+        lock (_lock)
+        {
+            return _sessions.ContainsKey(_Key(request));
+        }
     }
 
     public async Task CloseAsync(DepotNoteLiveRequest request)
@@ -96,7 +106,7 @@ internal sealed class DepotNoteLive(
     }
 
     // The subject the hub's gate compares expectedUser with (AC-1607); a 401 here is a sign-in the user has to redo.
-    internal static async Task<string> ReadUserAsync(DepotConnectionRegistration connection, HttpMessageHandler handler, CancellationToken cancellationToken)
+    internal static async Task<DepotNoteUser> ReadUserAsync(DepotConnectionRegistration connection, HttpMessageHandler handler, CancellationToken cancellationToken)
     {
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         using var response = await http.GetAsync($"{connection.Url.TrimEnd('/')}/cockpit/me", cancellationToken).ConfigureAwait(false);
@@ -104,7 +114,19 @@ internal sealed class DepotNoteLive(
         var me = await response.Content.ReadFromJsonAsync<Me>(DepotChannel.Json, cancellationToken).ConfigureAwait(false);
         return string.IsNullOrWhiteSpace(me?.UserId)
             ? throw new HttpRequestException("Depot did not identify the user.", null, HttpStatusCode.Unauthorized)
-            : me.UserId;
+            : new DepotNoteUser(me.UserId, me.Name, me.Color);
+    }
+
+    private void _Forget(DepotNoteSession session)
+    {
+        lock (_lock)
+        {
+            var key = _Key(session.Note);
+            if (_sessions.TryGetValue(key, out var open) && open == session)
+            {
+                _sessions.Remove(key);
+            }
+        }
     }
 
     // Protocol section 6 duty 3, the bearer door (DEP-528): URL-encoded, so a file keeps its own line endings, with no antiforgery.
@@ -125,7 +147,7 @@ internal sealed class DepotNoteLive(
 
     private static string _Key(DepotNoteLiveRequest request) => $"{request.ConnectionId}|{request.Organization}/{request.Project}/{request.Path}";
 
-    private sealed record Me(string? UserId);
+    private sealed record Me(string? UserId, string? Name = null, string? Color = null);
 
     private sealed record SaveResponse(string? Checksum, int? Version, bool? Own);
 }

@@ -60,6 +60,7 @@ public sealed class DepotUi : ICockpitPluginUi, IFirstStartPluginUi
         var notes = new DepotNotesModel(host, inbox)
         {
             NewMeetingNote = (connection, _) => DepotMeetingNotes.ShowAsync(host, [connection]),
+            JoinNote = (connection, note) => DepotMarkdownFiles.OpenNoteAsync(host, connection, note.Address, note.Path, edit: note.Join),
         };
         var badge = host.AddSideMenuButtonWithBadge("Depot inbox", () =>
         {

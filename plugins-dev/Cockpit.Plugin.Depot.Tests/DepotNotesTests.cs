@@ -13,6 +13,7 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Notes;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using NSubstitute;
 using DepotBrowserPanel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserPanel;
 using DepotInboxModel = UiAsm::Cockpit.Plugin.Depot.UI.DepotInboxModel;
@@ -194,6 +195,16 @@ public class DepotNotesTests
         await notes.JoinAsync(connection, note, Launch);
         await notes.NewAsync(connection, "krahwinkel-it/depot", Launch);
         Assert.Equal([new Uri("https://depot.example.com/n/token"), new Uri("https://depot.example.com/projects/krahwinkel-it/depot")], launched);
+
+        // AC-1580: with the editor hook, Join starts the note's session and opens the note's own tab; a second Join asks for the same key.
+        rig.Answers["note-live-open"] = true;
+        notes.JoinNote = (joined, joinedNote) => UiAsm::Cockpit.Plugin.Depot.UI.DepotMarkdownFiles.OpenNoteAsync(rig.Host, joined, joinedNote.Address, joinedNote.Path, joinedNote.Join);
+        await notes.JoinAsync(connection, note, Launch);
+        await notes.JoinAsync(connection, note, Launch);
+        Assert.Equal(2, launched.Count);
+        Assert.Equal(2, rig.Invokes.Count(call => call.Action == "note-live-open"));
+        _ = rig.Host.Received(2).OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options =>
+            options.InstanceKey == "depot:a:krahwinkel-it/depot:Meetings/2026-10-19 Sprint review.md" && options.Edit));
     }
 
     private static DepotBrowserModelTests.Rig _SceneRig()

@@ -32,6 +32,11 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- added: **a live Depot note opens in the editor as a tab.** Join in the Notes tab and Open in Cockpit in the new meeting note dialog now open the note
+  in Cockpit's own Markdown editor instead of the browser, joined live: others' text and carets arrive as you type, and Pop out keeps
+  the note live. A second Join on the same note brings its tab to the front. Your own avatar uses the name and colour Depot gives you
+  when it sends them. Depot plugin 0.40.0.
+
 - added: **a live Markdown file says who saved it last.** The status chip reads "Saved by {name} · hh:mm" with a dot in their
   colour, or "Not saved to Depot yet" until someone has saved since you joined (plugin SDK 3.49.0, Cockpit 0.146.0). The
   Depot plugin 0.39.0 can now be the one that saves a live note: it fills an empty note from the file, saves your typing after

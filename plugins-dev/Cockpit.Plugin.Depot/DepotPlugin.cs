@@ -114,7 +114,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
 
         // AC-1568: the file browser's Depot calls, one handler per action.
         var browser = new Browser.DepotBrowserService(host, () => settings.Connections);
-        _fileSources = new Files.DepotFileSourceProvider(host, () => settings.Connections);
+        _fileSources = new Files.DepotFileSourceProvider(host, () => settings.Connections, () => _noteLive, () => _notes);
         _handlers.Add(host.AddFileSource(_fileSources));
         _HandleBrowser(host, DepotBrowserChannel.Projects, browser.ProjectsAsync);
         _HandleBrowser(host, DepotBrowserChannel.Tree, browser.TreeAsync);
