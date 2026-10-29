@@ -13,6 +13,7 @@ using Cockpit.Core.Worktrees;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -35,6 +36,7 @@ internal sealed class AssistantAgentGateway(
     IAgentMessageInbox inbox,
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
+    IProviderModelIntelligence providerIntelligence,
     IWorktreeManager? worktreeManager = null,
     IProjectFieldRegistry? projectFields = null,
     ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
@@ -467,9 +469,13 @@ internal sealed class AssistantAgentGateway(
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var readings = await Task.WhenAll(known.Select(profile =>
+            profile.ProviderConfig is PluginProviderConfig
+                ? providerIntelligence.ReadAsync(profile.Label, cancellationToken)
+                : Task.FromResult<PluginModelIntelligence?>(null))).ConfigureAwait(false);
         return
         [
-            .. known.Select(profile =>
+            .. known.Select((profile, index) =>
             {
                 var registration = profile.ProviderConfig is PluginProviderConfig plugin
                     ? pluginProviders.Resolve(plugin.ProviderId)
@@ -481,12 +487,18 @@ internal sealed class AssistantAgentGateway(
                     // profile reads as the same provider otherwise, and this is the field the tool tells the assistant
                     // to resolve "a Claude one" by.
                     registration?.DisplayName ?? profile.Provider.ToString(),
-                    ProfileModel.Of(profile))
+                    ProfileModel.Of(profile) ?? _ConfiguredModel(readings[index]))
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
                 };
             }),
         ];
+    }
+
+    private static string? _ConfiguredModel(PluginModelIntelligence? reading)
+    {
+        var models = reading?.Models.Select(model => model.Model).Distinct(StringComparer.Ordinal).ToArray() ?? [];
+        return models.Length == 1 ? models[0] : null;
     }
 
     public async Task<AssistantWorkspaceRow?> CreateWorkspaceAsync(string name, CancellationToken cancellationToken = default)

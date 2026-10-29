@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 
@@ -8,7 +10,7 @@ namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 public class OpenAiCompatConfigTests
 {
     [Fact]
-    public void ToString_RedactsTheApiKey()
+    public async Task ToString_RedactsTheApiKey_AndThePluginReportsItsConfiguredOwnEndpointModel()
     {
         var config = new OpenAiCompatConfig("sk-or-v1-super-secret-key", "anthropic/claude-sonnet-4.5", "https://openrouter.ai/api/v1");
 
@@ -18,6 +20,22 @@ public class OpenAiCompatConfigTests
         Assert.Contains("***", text);
         Assert.Contains("anthropic/claude-sonnet-4.5", text);
         Assert.Contains("https://openrouter.ai/api/v1", text);
+
+        var host = Substitute.For<ICockpitHost>();
+        SessionProviderRegistration? registration = null;
+        host.When(value => value.AddSessionProvider(Arg.Any<SessionProviderRegistration>()))
+            .Do(call => registration = call.Arg<SessionProviderRegistration>());
+        new OpenRouterProviderPlugin().Initialize(host);
+
+        Assert.NotNull(registration);
+        Assert.NotNull(registration.ReadModelIntelligenceAsync);
+        var ownEndpoint = JsonSerializer.Serialize(new OpenAiCompatConfig("key", "Qwen3.8-27B", "https://hetzner.example/v1"));
+        var reading = await registration.ReadModelIntelligenceAsync!(ownEndpoint, CancellationToken.None);
+
+        Assert.True(reading.IsSelfHosted);
+        var model = Assert.Single(reading.Models);
+        Assert.Equal("Qwen3.8-27B", model.Model);
+        Assert.Equal("Qwen3.8-27B", model.PublicModelRef);
     }
 
     [Fact]

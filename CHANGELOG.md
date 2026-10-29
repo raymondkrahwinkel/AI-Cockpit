@@ -33,6 +33,7 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Fixed
 
 - Local-provider coding sessions keep their shell tool directly available when large tool sets use tool search.
+- OpenRouter profiles now show their configured model and identify custom endpoints as self-hosted.
 
 - Depot 0.45.5 includes checksums when opening files in the Depot browser.
 
