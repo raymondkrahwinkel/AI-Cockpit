@@ -27,10 +27,13 @@ internal static partial class Screenshotter
     // The note of the AC-1895 v2 mockup, with its people: Sanne selects a phrase, Joris has his caret after "Linux".
     private const string PresenceNote = "# Weekly sync — 28 October\n\n**Date:** Wednesday 28 October 2026, 14:00 · **Present:** Raymond, Sanne, Joris\n\n## Notes\n- Notes taker: the native editor replaces the webview; the mockups are in review\n- Live bridge spike passed G3: byte-equal on all six fixtures\n- Release 0.141 stays on Friday\n\n## Decisions\n- Jint runs `markdown.ts` in the Depot plugin, not in the host\n\n## Action items\n- [x] Sanne: send the fixtures diff to the team\n- [ ] Joris: measure Jint start-up on Linux\n- [ ] Raymond: review mockups 4, 5 and 6\n";
 
-    private static IReadOnlyList<LivePeer> _PresencePeers(bool away, bool agent = false)
+    private const string LocalNoteLines = "\n- Sanne asks for a dry run of the inbox on Thursday\n- Joris has the Linux numbers by Friday";
+
+    private static IReadOnlyList<LivePeer> _PresencePeers(bool away, bool agent = false, string? note = null)
     {
-        var sanne = PresenceNote.IndexOf("not in the host", StringComparison.Ordinal);
-        var joris = PresenceNote.IndexOf("on Linux", StringComparison.Ordinal) + "on Linux".Length;
+        var body = note ?? PresenceNote;
+        var sanne = body.IndexOf("not in the host", StringComparison.Ordinal);
+        var joris = body.IndexOf("on Linux", StringComparison.Ordinal) + "on Linux".Length;
         return
         [
             new("raymond", "Raymond Krahwinkel", "#3b82f6", "Cockpit", "Editor", "editing", You: true),
@@ -81,7 +84,7 @@ internal static partial class Screenshotter
         if (state.StartsWith("live-light"))
         {
             var offset = body.Editor.Text.IndexOf("\n\n## Decisions", StringComparison.Ordinal);
-            body.Editor.TextEditor.Document.Insert(offset, "\n- Sanne asks for a dry run of the inbox on Thursday\n- Joris has the Linux numbers by Friday");
+            body.Editor.TextEditor.Document.Insert(offset, LocalNoteLines);
             body.Editor.EditLine(10, atEnd: true);
             if (state == "live-light-saved")
             {
@@ -150,7 +153,8 @@ internal static partial class Screenshotter
             _liveState?.Invoke(new PluginChannelEvent(FileSourceChannel.LiveState, 1,
                 JsonSerializer.SerializeToElement(new FileSourceLiveState("scene", (status ?? new LiveFileStatus(LiveFileState.Live)) with { State = LiveFileState.Live, Saved = saved }), FileSourceChannel.Json)));
             _livePresence?.Invoke(new PluginChannelEvent(FileSourceChannel.LivePresence, 1,
-                JsonSerializer.SerializeToElement(new FileSourceLivePresence("scene", _PresencePeers(false)), FileSourceChannel.Json)));
+                JsonSerializer.SerializeToElement(new FileSourceLivePresence("scene", _PresencePeers(false, note:
+                    text.Insert(text.IndexOf("\n\n## Decisions", StringComparison.Ordinal), LocalNoteLines))), FileSourceChannel.Json)));
         }
 
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch

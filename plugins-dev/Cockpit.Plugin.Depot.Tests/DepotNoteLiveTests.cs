@@ -43,7 +43,7 @@ public class DepotNoteLiveTests
             return answer.Task;
         }) { RefuseUpdates = true };
         var hubs = new Queue<_Hub>([first, second]);
-        await using var session = new DepotNoteSession(Connection, Note, _ => Task.FromResult("user-1"),
+        await using var session = new DepotNoteSession(Connection, Note, _ => Task.FromResult(new DepotNoteUser("user-1")),
             (_, _, closed) => hubs.Dequeue().With(closed), clientId => new JintNoteRoom(clientId), _ => { }, [TimeSpan.Zero]);
         session.Connect();
         var snapshot = await session.ReadAsync(CancellationToken.None);
