@@ -43,7 +43,22 @@ internal sealed class AssistantReadMcpTools(
         "This tool is the cockpit assistant's own. It is not available to an agent session.";
 
     [McpServerTool(Name = "list_sessions", ReadOnly = true)]
-    [Description("Lists AI sessions across workspaces and paired nodes. Node-addressed pane IDs work with supported session tools. Nodes report reachability, error, unreachableSince and sessionCount; set includeNodeCatalog to return allowed profiles and projects for start_agent.")]
+    [Description("Lists AI sessions across workspaces and paired nodes. "
+        + "paneId is the session address, never its name; node addresses use \"<node> · <paneId>\" for supported session tools. "
+        + "name is the display label; profile identifies the configured profile. "
+        + "workspaceId and workspaceName identify the local desk; projectId identifies its project, or null for none. "
+        + "machine gives name, stable discoveryId and local; pane ids alone may collide across machines. "
+        + "statusline is the session's own convention, not a work record; a missing ticket there does not prove nobody works on it. hasStatusline says whether it is set. "
+        + "status reports activity; Failed means the last turn crashed, with no question waiting. "
+        + "needsYou means an unanswered permission (status == NeedsAttention); always report it and name the session. "
+        + "ready distinguishes an Idle session able to accept a prompt from one that never came up. "
+        + "hasOutstandingWork means its own work still runs, so it is not finished even at Idle or Done. "
+        + "processCount, cpuPercent and memoryBytes cover the session and its spawned processes; Busy at about 0% CPU means waiting or stuck. "
+        + "abandonedProcessCount counts processes whose parent is gone; report any value above zero and name the session. "
+        + "All four process figures are zero for HTTP sessions: not measurable here, not idle. "
+        + "Node sessions omit workspace, readiness and process figures. Delegated tasks have no pane and never appear. "
+        + "nodes reports reachability, error, unreachableSince and sessionCount; unreachable does not mean idle, and only allowed sessions are visible. "
+        + "includeNodeCatalog adds allowed profiles and projects for start_agent; otherwise use list_profiles/list_projects.")]
     public async Task<string> ListSessionsAsync(
         [Description("Include each node's allowed profiles and projects for start_agent. Defaults to false.")] bool includeNodeCatalog = false)
     {
@@ -629,4 +644,3 @@ internal sealed class AssistantReadMcpTools(
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
 }
-
