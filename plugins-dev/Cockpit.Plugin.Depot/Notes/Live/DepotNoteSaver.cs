@@ -414,7 +414,7 @@ internal sealed partial class DepotNoteSaver : IDisposable
 
                 _state(DepotNoteSaveState.Saved, version);
                 return;
-            case { Status: 409, Own: true, Checksum: { } current }:
+            case { Status: 409, Checksum: { } current }:
                 // A save of this session landed first (a closing flush, the saver before this one): this text already holds it.
                 lock (_gate)
                 {
