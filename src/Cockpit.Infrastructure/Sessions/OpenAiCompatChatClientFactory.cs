@@ -20,10 +20,7 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
             _ => throw new NotSupportedException($"Provider {config.Provider} is not OpenAI-compatible."),
         };
 
-        var client = CreateForEndpoint(baseUrl, model, apiKey);
-        return config is OllamaConfig ollamaConfig
-            ? new OllamaContextChatClient(client, LocalModelContext.Normalize(ollamaConfig.ContextTokens))
-            : client;
+        return ApplyProviderRequestPolicy(config, CreateForEndpoint(baseUrl, model, apiKey));
     }
 
     public IChatClient CreateForEndpoint(string baseUrl, string model, string? apiKey = null)
@@ -32,39 +29,8 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
         var credential = new ApiKeyCredential(string.IsNullOrEmpty(apiKey) ? "not-needed" : apiKey);
         return new OpenAIClient(credential, options).GetChatClient(model).AsIChatClient();
     }
-}
 
-// Ollama's OpenAI-compatible endpoint accepts its native request options alongside the OpenAI fields. Injecting
-// num_ctx through the SDK's raw representation hook keeps the full Microsoft.Extensions.AI tool/streaming stack and
-// applies the profile value to every request, including follow-up tool rounds.
-internal sealed class OllamaContextChatClient(IChatClient inner, int contextTokens) : DelegatingChatClient(inner)
-{
-    public override Task<ChatResponse> GetResponseAsync(
-        IEnumerable<ChatMessage> messages,
-        ChatOptions? options = null,
-        CancellationToken cancellationToken = default) =>
-        base.GetResponseAsync(messages, _WithContext(options), cancellationToken);
-
-    public override IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
-        IEnumerable<ChatMessage> messages,
-        ChatOptions? options = null,
-        CancellationToken cancellationToken = default) =>
-        base.GetStreamingResponseAsync(messages, _WithContext(options), cancellationToken);
-
-    private ChatOptions _WithContext(ChatOptions? options)
-    {
-        var effective = options?.Clone() ?? new ChatOptions();
-        var previousFactory = effective.RawRepresentationFactory;
-        effective.RawRepresentationFactory = client => _Patched(previousFactory?.Invoke(client));
-        return effective;
-    }
-
-    private object _Patched(object? existing)
-    {
-        var raw = existing as OpenAI.Chat.ChatCompletionOptions ?? new OpenAI.Chat.ChatCompletionOptions();
-#pragma warning disable SCME0001 // OpenAI's supported extra-request-field hook; required for Ollama's options.num_ctx.
-        raw.Patch.Set("$.options.num_ctx"u8, LocalModelContext.Normalize(contextTokens));
-#pragma warning restore SCME0001
-        return raw;
-    }
+    // Ollama's OpenAI-compatible /v1 route supports tools, but not its native options.num_ctx. Keep the request
+    // unmodified; LocalModelContextManager explains the two server-side context settings at session start.
+    internal static IChatClient ApplyProviderRequestPolicy(ProviderConfig _, IChatClient client) => client;
 }
