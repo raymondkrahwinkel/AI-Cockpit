@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Headless;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -324,7 +323,6 @@ public sealed class TranscriptStreamFlickerTests
         for (var frame = 0; frame < frames; frame++)
         {
             Dispatcher.UIThread.RunJobs();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
             sample?.Invoke();
         }
