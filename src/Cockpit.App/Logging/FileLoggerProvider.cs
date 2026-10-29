@@ -338,7 +338,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
             Directory.CreateDirectory(directory);
         }
 
-        return new FileStream(_path + WriterLockSuffix, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        return new FileStream(_path + WriterLockSuffix, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
     }
 
     private static void _Close(ref Stream? stream, ref FileStream? writerLock)
