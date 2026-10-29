@@ -126,7 +126,7 @@ internal sealed partial class MarkdownFileWorkspace
         if (state == LiveFileState.Offline)
         {
             var next = _liveLightTimer.IsEnabled ? $" Next try in {Math.Max(1, (int)Math.Ceiling((_nextTry - DateTime.Now).TotalSeconds))} s." : "";
-            _liveText.Inlines?.Add(new Run("The live connection to the server dropped") { FontWeight = FontWeight.SemiBold });
+            _liveText.Inlines?.Add(new Run($"The live connection to {_sourceName} dropped") { FontWeight = FontWeight.SemiBold });
             _liveText.Inlines?.Add(new Run($" at {at}. Keep writing: your text stays in this Cockpit and is merged into the note when {_sourceName} is back.{next}"));
         }
         else if (state == LiveFileState.SignInNeeded && live?.Reason is { Length: > 0 } reason)
