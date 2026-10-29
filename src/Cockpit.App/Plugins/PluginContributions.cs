@@ -23,7 +23,7 @@ public sealed record PluginSideButton(
 public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
 
 // AC-1711: the one line of text a plugin shows in the status bar (`ICockpitUiHost.SetStatusText`), keyed by plugin.
-public sealed record PluginStatusText(string PluginId, string Text);
+public sealed record PluginStatusText(string PluginId, string Text, SideMenuButtonBadgeTone? Tone = null);
 
 // A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);

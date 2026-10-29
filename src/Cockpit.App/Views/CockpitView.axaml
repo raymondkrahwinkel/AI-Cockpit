@@ -1199,6 +1199,9 @@
                                         <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
                                                  Fill="{DynamicResource CockpitStatusWaitingBrush}"
                                                  IsVisible="{Binding HasMarker}" ToolTip.Tip="Unsaved changes"/>
+                                        <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                 Fill="{DynamicResource CockpitStatusDoneBrush}"
+                                                 IsVisible="{Binding IsLive}" ToolTip.Tip="Live: changes are shared as you type"/>
                                         <Border DockPanel.Dock="Right" Margin="7,0,0,0" Padding="6,0" CornerRadius="8" VerticalAlignment="Center"
                                                 BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                                 IsVisible="{Binding IsPreview}"
@@ -2181,8 +2184,11 @@
                                             HorizontalAlignment="Right" VerticalAlignment="Top"
                                             IsVisible="{Binding Badge.HasCount, FallbackValue=False}"
                                             Click="OnDockTabBadgeClick" ToolTip.Tip="Open what waits for you">
-                                        <Border Classes="waitingCount" Padding="3,0" MinWidth="13">
-                                            <TextBlock Text="{Binding Badge.Count, FallbackValue=0}" FontSize="9"/>
+                                        <Border Classes="waitingCount" Padding="3,0" MinWidth="13"
+                                                Background="{Binding Badge.Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}, ConverterParameter=ChipTint}"
+                                                BorderBrush="{Binding Badge.Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}, ConverterParameter=RingTint}">
+                                            <TextBlock Text="{Binding Badge.Count, FallbackValue=0}" FontSize="9"
+                                                       Foreground="{Binding Badge.Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"/>
                                         </Border>
                                     </Button>
                                 </Grid>
@@ -2527,7 +2533,7 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="plugins:PluginStatusText">
                                 <TextBlock Text="{Binding Text}" FontSize="11" Margin="0,0,12,0"
-                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                           Foreground="{Binding Tone, Converter={x:Static conv:BadgeToneBrushConverter.Instance}}"
                                            VerticalAlignment="Center"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

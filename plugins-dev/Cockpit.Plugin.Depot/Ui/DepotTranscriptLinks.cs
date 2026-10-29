@@ -16,11 +16,15 @@ public static class DepotTranscriptLinks
 
         var matches = Uri.TryCreate(link, UriKind.Absolute, out var uri)
             && uri.Scheme is "http" or "https"
-            && uri.AbsolutePath.StartsWith("/artifact/", StringComparison.Ordinal)
+            && (uri.AbsolutePath.StartsWith("/artifact/", StringComparison.Ordinal) || IsNoteLink(link))
             && connectionUrls.Any(connection => Uri.TryCreate(connection, UriKind.Absolute, out var configured)
                 && string.Equals(configured.Host, uri.Host, StringComparison.OrdinalIgnoreCase));
         start = 0;
         length = matches ? link.Length : 0;
         return matches;
     }
+
+    // AC-1581: a /n/{token} link, which opens as a note in Cockpit instead of the file browser.
+    public static bool IsNoteLink(string link) =>
+        Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && DepotNoteRef.FromHref(uri.AbsolutePath) is not null;
 }

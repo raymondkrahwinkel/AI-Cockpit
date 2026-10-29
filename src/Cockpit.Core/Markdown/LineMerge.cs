@@ -12,7 +12,11 @@ public static class LineMerge
 
     // Where both sides changed the same stretch, both stay, yours first.
     public static IReadOnlyList<string> Merge(IReadOnlyList<string> baseLines, IReadOnlyList<string> theirs, IReadOnlyList<string> mine)
+        => Merge(baseLines, theirs, mine, out _);
+
+    public static IReadOnlyList<string> Merge(IReadOnlyList<string> baseLines, IReadOnlyList<string> theirs, IReadOnlyList<string> mine, out bool overlap)
     {
+        overlap = false;
         var theirMatch = _Match(baseLines, theirs).ToDictionary(pair => pair.A, pair => pair.B);
         var mineMatch = _Match(baseLines, mine).ToDictionary(pair => pair.A, pair => pair.B);
         var merged = new List<string>();
@@ -26,7 +30,8 @@ public static class LineMerge
             }
             var theirEnd = stable ? theirMatch[line] : theirs.Count;
             var mineEnd = stable ? mineMatch[line] : mine.Count;
-            var region = _Resolve(_Slice(baseLines, baseAt, line), _Slice(theirs, theirAt, theirEnd), _Slice(mine, mineAt, mineEnd));
+            var region = _Resolve(_Slice(baseLines, baseAt, line), _Slice(theirs, theirAt, theirEnd), _Slice(mine, mineAt, mineEnd), out var regionOverlap);
+            overlap |= regionOverlap;
             merged.AddRange(region);
             if (stable)
             {
@@ -57,8 +62,9 @@ public static class LineMerge
         return result;
     }
 
-    private static string[] _Resolve(string[] baseRegion, string[] theirs, string[] mine)
+    private static string[] _Resolve(string[] baseRegion, string[] theirs, string[] mine, out bool overlap)
     {
+        overlap = false;
         if (theirs.SequenceEqual(baseRegion) || theirs.SequenceEqual(mine))
         {
             return mine;
@@ -66,6 +72,11 @@ public static class LineMerge
         if (mine.SequenceEqual(baseRegion))
         {
             return theirs;
+        }
+        if (baseRegion.Length == 0)
+        {
+            overlap = true;
+            return [.. mine, .. theirs];
         }
         // One side only added lines next to the stretch the other changed: keep the change and the addition.
         if (theirs.Take(baseRegion.Length).SequenceEqual(baseRegion))
@@ -80,9 +91,64 @@ public static class LineMerge
         {
             return [.. theirs, .. mine.Skip(baseRegion.Length)];
         }
-        return mine.TakeLast(baseRegion.Length).SequenceEqual(baseRegion)
-            ? [.. mine.SkipLast(baseRegion.Length), .. theirs]
-            : [.. mine, .. theirs];
+        if (mine.TakeLast(baseRegion.Length).SequenceEqual(baseRegion))
+        {
+            return [.. mine.SkipLast(baseRegion.Length), .. theirs];
+        }
+        if (_Disjoint(baseRegion, theirs, mine) is { } disjoint)
+        {
+            return disjoint;
+        }
+        overlap = true;
+        return [.. mine, .. theirs];
+    }
+
+    private readonly record struct Edit(int Start, int End, string[] Lines);
+
+    private static string[]? _Disjoint(string[] baseline, string[] theirs, string[] mine)
+    {
+        var theirEdits = _Edits(baseline, theirs);
+        var mineEdits = _Edits(baseline, mine);
+        foreach (var their in theirEdits)
+        {
+            foreach (var own in mineEdits)
+            {
+                var overlap = their.Start == their.End && own.Start == own.End ? their.Start == own.Start
+                    : their.Start == their.End ? their.Start > own.Start && their.Start < own.End
+                    : own.Start == own.End ? own.Start > their.Start && own.Start < their.End
+                    : their.Start < own.End && own.Start < their.End;
+                if (overlap)
+                {
+                    return null;
+                }
+            }
+        }
+        var result = new List<string>();
+        var at = 0;
+        foreach (var edit in theirEdits.Concat(mineEdits).OrderBy(edit => edit.Start).ThenBy(edit => edit.End))
+        {
+            result.AddRange(_Slice(baseline, at, edit.Start));
+            result.AddRange(edit.Lines);
+            at = edit.End;
+        }
+        result.AddRange(_Slice(baseline, at, baseline.Length));
+        return result.ToArray();
+    }
+
+    private static List<Edit> _Edits(string[] baseline, string[] changed)
+    {
+        var result = new List<Edit>();
+        int baseAt = 0, changedAt = 0;
+        foreach (var (baseIndex, changedIndex) in _Match(baseline, changed).Append((baseline.Length, changed.Length)))
+        {
+            if (baseIndex > baseAt || changedIndex > changedAt)
+            {
+                result.Add(new Edit(baseAt, baseIndex, _Slice(changed, changedAt, changedIndex)));
+            }
+            baseAt = baseIndex + 1;
+            changedAt = changedIndex + 1;
+        }
+        return result;
     }
 
     private static string[] _Slice(IReadOnlyList<string> lines, int from, int to) =>

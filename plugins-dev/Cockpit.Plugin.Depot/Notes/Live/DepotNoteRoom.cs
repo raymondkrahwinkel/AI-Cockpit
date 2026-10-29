@@ -1,0 +1,201 @@
+using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Files;
+using Jint;
+using Jint.Native;
+
+namespace Cockpit.Plugin.Depot.Notes.Live;
+
+// The room's Y.Doc and the bridge to the host's Markdown (the mirror), behind one actor: every call is queued behind the one before
+// it. Two transactions at once lost updates silently in AC-1576, and a Jint engine is single-threaded anyway.
+internal interface IDepotNoteRoom : IAsyncDisposable
+{
+    // A row or an update from the hub; once the mirror is loaded, what it changed in the host's text.
+    Task<IReadOnlyList<TextOp>> ApplyAsync(byte[] update, CancellationToken cancellationToken);
+
+    // What the hub lacks: this doc beyond the state of `known` (rows and early updates), or null when that is nothing.
+    Task<byte[]?> MissingAsync(IReadOnlyList<byte[]> known, CancellationToken cancellationToken);
+
+    Task<bool> IsEmptyAsync(CancellationToken cancellationToken);
+
+    Task SeedAsync(string markdown, CancellationToken cancellationToken);
+
+    // Protocol §5.3: the rows draw nothing while the file has text, so the room needs a Refill.
+    Task<bool> NeedsRefillAsync(string markdown, CancellationToken cancellationToken);
+
+    // Builds the mirror from the doc and returns the ops that turn `previous`, the host's text so far, into it.
+    Task<IReadOnlyList<TextOp>> LoadAsync(string previous, CancellationToken cancellationToken);
+
+    Task<string> ReadAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<LiveRange>> BlockRangesAsync(IReadOnlyList<int> blocks, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<LiveRange>>([]);
+
+    // The host's ops, applied to the mirror and the doc as one local transaction; returns the v1 updates to send.
+    Task<IReadOnlyList<byte[]>> EditAsync(IReadOnlyList<TextOp> ops, CancellationToken cancellationToken);
+
+    // The whole doc as one v1 update, for Compact.
+    Task<byte[]> SnapshotAsync(CancellationToken cancellationToken);
+
+    // Undoes (or redoes) the host's own edits: the ops for the host's text and the v1 updates to send.
+    Task<DepotNoteUndo> UndoAsync(bool redo, CancellationToken cancellationToken);
+
+    // Cursors: a Markdown offset in the host's text as relativePositionToJSON, or null where no block holds it; and back, or null when the
+    // position is not in the text any more.
+    Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken);
+
+    Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken);
+
+    // Protocol §6 duty 1: the note as the saver writes it, Depot's serializeNote of the doc.
+    Task<string> SerializeAsync(CancellationToken cancellationToken);
+
+    // Protocol §6 duty 4: an outside write (theirs) merged into the doc against `base` (null when that version is gone), with merge.ts;
+    // blocks others changed in the 5 s before `from`, when the merge was asked for, are guarded.
+    Task<DepotNoteMerge> MergeAsync(string? @base, string theirs, DateTimeOffset from, CancellationToken cancellationToken);
+}
+
+internal sealed record DepotNoteUndo(IReadOnlyList<TextOp> Ops, IReadOnlyList<byte[]> Updates);
+
+internal sealed record DepotNoteMerge(IReadOnlyList<TextOp> Ops, IReadOnlyList<byte[]> Updates, int[] Blocks, int Conflicts);
+
+internal delegate IDepotNoteRoom DepotNoteRoomFactory(uint clientId);
+
+// One engine per room, loaded on the first call: the engine and the bundle take about half a second, and none of it belongs in
+// plugin load or in Cockpit's start.
+internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
+{
+    private const string Bundle = "Cockpit.Plugin.Depot.Notes.Live.Bundle.room.bundle.js";
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    // ponytail: one engine per room (about 25 MiB each); one shared engine with several docs when many rooms are open at once.
+    private readonly SemaphoreSlim _actor = new(1, 1);
+    private Engine? _engine;
+    private JsValue? _room;
+
+    public async Task<IReadOnlyList<TextOp>> ApplyAsync(byte[] update, CancellationToken cancellationToken) =>
+        _Ops(await _CallAsync("apply", cancellationToken, Convert.ToBase64String(update)).ConfigureAwait(false));
+
+    public async Task<byte[]?> MissingAsync(IReadOnlyList<byte[]> known, CancellationToken cancellationToken)
+    {
+        var json = JsonSerializer.Serialize(known.Select(Convert.ToBase64String));
+        var diff = Convert.FromBase64String(await _CallAsync("missing", cancellationToken, json).ConfigureAwait(false));
+
+        // An update with no structs and no deletes is two bytes (0, 0).
+        return diff.Length <= 2 ? null : diff;
+    }
+
+    public async Task<bool> IsEmptyAsync(CancellationToken cancellationToken) =>
+        await _CallAsync("isEmpty", cancellationToken).ConfigureAwait(false) == "true";
+
+    public Task SeedAsync(string markdown, CancellationToken cancellationToken) => _CallAsync("seed", cancellationToken, markdown);
+
+    public async Task<bool> NeedsRefillAsync(string markdown, CancellationToken cancellationToken) =>
+        await _CallAsync("needsRefill", cancellationToken, markdown).ConfigureAwait(false) == "true";
+
+    public async Task<IReadOnlyList<TextOp>> LoadAsync(string previous, CancellationToken cancellationToken) =>
+        _Ops(await _CallAsync("load", cancellationToken, previous).ConfigureAwait(false));
+
+    public Task<string> ReadAsync(CancellationToken cancellationToken) => _CallAsync("text", cancellationToken);
+
+    public async Task<IReadOnlyList<LiveRange>> BlockRangesAsync(IReadOnlyList<int> blocks, CancellationToken cancellationToken) =>
+        JsonSerializer.Deserialize<LiveRange[]>(await _CallAsync("blockRanges", cancellationToken, JsonSerializer.Serialize(blocks)).ConfigureAwait(false), Json) ?? [];
+
+    public async Task<IReadOnlyList<byte[]>> EditAsync(IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
+    {
+        var updates = await _CallAsync("edit", cancellationToken, JsonSerializer.Serialize(ops, Json)).ConfigureAwait(false);
+        return [.. (JsonSerializer.Deserialize<string[]>(updates) ?? []).Select(Convert.FromBase64String)];
+    }
+
+    public async Task<byte[]> SnapshotAsync(CancellationToken cancellationToken) =>
+        Convert.FromBase64String(await _CallAsync("snapshot", cancellationToken).ConfigureAwait(false));
+
+    public async Task<DepotNoteUndo> UndoAsync(bool redo, CancellationToken cancellationToken)
+    {
+        using var undo = JsonDocument.Parse(await _CallAsync("undo", cancellationToken, redo).ConfigureAwait(false));
+        return new DepotNoteUndo(
+            undo.RootElement.GetProperty("ops").Deserialize<TextOp[]>(Json) ?? [],
+            [.. undo.RootElement.GetProperty("updates").EnumerateArray().Select(update => update.GetBytesFromBase64())]);
+    }
+
+
+    public async Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken)
+    {
+        var json = await _CallAsync("relativeAtOffset", cancellationToken, offset).ConfigureAwait(false);
+        return json is { Length: > 0 } && json != "null" ? json : null;
+    }
+
+    public async Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken)
+    {
+        var offset = int.Parse(await _CallAsync("offsetOfRelative", cancellationToken, relativeJson).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
+        return offset >= 0 ? offset : null;
+    }
+
+    public Task<string> SerializeAsync(CancellationToken cancellationToken) => _CallAsync("serialized", cancellationToken);
+
+    public async Task<DepotNoteMerge> MergeAsync(string? @base, string theirs, DateTimeOffset from, CancellationToken cancellationToken)
+    {
+        var at = (double)from.ToUnixTimeMilliseconds();
+        var arguments = @base is null ? new object[] { JsValue.Null, theirs, at } : [@base, theirs, at];
+        using var merged = JsonDocument.Parse(await _CallAsync("merge", cancellationToken, arguments).ConfigureAwait(false));
+        var root = merged.RootElement;
+        return new DepotNoteMerge(
+            root.GetProperty("ops").Deserialize<TextOp[]>(Json) ?? [],
+            [.. root.GetProperty("updates").EnumerateArray().Select(update => update.GetBytesFromBase64())],
+            root.GetProperty("blocks").Deserialize<int[]>(Json) ?? [],
+            root.GetProperty("conflicts").GetInt32());
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _engine?.Dispose();
+        _actor.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    // A script in the room's engine, where the bundle is `DepotRoom`: how the tests reach the converter and the doc (DepotRoom.current()).
+    internal Task<string> EvaluateAsync(string script, CancellationToken cancellationToken) =>
+        _InActorAsync((engine, _) => engine.Evaluate(script).ToString(), cancellationToken);
+
+    private Task<string> _CallAsync(string function, CancellationToken cancellationToken, params object[] arguments) =>
+        _InActorAsync((engine, room) => engine.Invoke(room.AsObject().Get(function), arguments).ToString(), cancellationToken);
+
+    private async Task<string> _InActorAsync(Func<Engine, JsValue, string> call, CancellationToken cancellationToken)
+    {
+        await _actor.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                var (engine, room) = _Room();
+                return call(engine, room);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _actor.Release();
+        }
+    }
+
+    private static IReadOnlyList<TextOp> _Ops(string json) => JsonSerializer.Deserialize<TextOp[]>(json, Json) ?? [];
+
+    private (Engine Engine, JsValue Room) _Room()
+    {
+        if (_engine is { } loaded && _room is { } ready)
+        {
+            return (loaded, ready);
+        }
+
+        using var stream = typeof(JintNoteRoom).Assembly.GetManifestResourceStream(Bundle)
+            ?? throw new InvalidOperationException("The room bundle is not part of this plugin.");
+        using var reader = new StreamReader(stream);
+        var engine = new Engine();
+
+        // lib0 (under yjs) reads crypto.getRandomValues at load; Jint has no Web Crypto. Only ids use it, and the client id is set below.
+        engine.Execute("globalThis.crypto = { subtle: {}, getRandomValues: (a) => { for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 4294967296); return a; } };");
+        engine.Execute(reader.ReadToEnd());
+        var room = engine.GetValue("DepotRoom");
+        engine.Invoke(room.AsObject().Get("createRoom"), (double)clientId);
+        _engine = engine;
+        _room = room;
+        return (engine, room);
+    }
+}

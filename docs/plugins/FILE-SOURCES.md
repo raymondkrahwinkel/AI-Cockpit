@@ -73,3 +73,110 @@ Successful writes publish `FileSourceChannel.Saved` (`files-saved`) with the `Fi
 plugin channel. The Depot browser refreshes that project after a local save. The current remote channel
 supports invocations only, so use its Refresh action to see an updated listing. Conflicts retain local
 text and the original version; comparison and resolution belong to AC-1755.
+
+## Live file sources (AC-1898)
+
+Requires host 0.143.0 and `Cockpit.Plugins.Abstractions` 3.46.0. A plugin that implements it sets
+`minHostVersion` 0.143.0; an older host never asks for a live session and keeps saving snapshots.
+
+A source that shares a file live also implements `ILiveFileSource`. The host then opens a session with
+`OpenLiveAsync(file, ct)` when the Markdown workspace loads the file, and disposes it when the workspace
+closes. Without it, or when opening fails, the workspace reads and saves snapshots as above.
+
+`ILiveFileSession` keeps one revision counter. Every change, the host's or anyone else's, raises it by
+exactly one.
+
+| Member | Contract |
+|---|---|
+| `ReadAsync` | The whole text, its revision and status, from one moment. Used on open and to resync. |
+| `EditAsync(editId, baseRev, ops)` | Applies the host's ops only when `baseRev` is the current revision and answers `Applied` with `baseRev + 1`. Otherwise it applies nothing and answers `Stale` with the current revision; the host sends again after the patches it missed. The source never transforms an edit. The host repeats an edit whose answer it lost under the same id; if that id is the last one applied, answer `Applied` with its revision and apply nothing. Under `ReadOnly` throw `FileSourceException(Forbidden)`; in every other state accept the edit. |
+| `Patched` | Every change the host did not send, in revision order: `LiveFilePatch(Rev, Ops, Who)`, ops on the text at `Rev - 1`. The host's own edits are never echoed. |
+| `UndoAsync(redo)` | Undoes or redoes the host's own edits, the way `Y.UndoManager` tracks one origin; how edits are grouped is up to the source. The result arrives as a patch. With nothing to undo it does nothing. |
+| `StatusChanged` | `Connecting`, `Live`, `Offline`, `SignInNeeded`, `ReadOnly`, `NoSaver` or `Stale`, with an optional reason. |
+
+A `TextOp(Offset, Length, Text)` replaces `Length` UTF-16 code units at `Offset` (not UTF-8 bytes, which yrs
+uses by default); in a list each op applies to the text the previous one left. The host sends edits and undos in
+the order they happened, one call at a time. It shifts a patch past the ops the source has not applied yet, so the
+caret, the selection and those ops stay on their characters; text typed inside a range someone else deletes
+survives. Patches land through `TextDocument.Replace`, never by replacing the whole text. When a revision is
+missing, a patch does not fit, or the status is `Stale`, the host reads the whole text again and merges what was
+typed here per line. An edit whose answer was lost goes again under its own id first, so it never lands twice.
+
+Undo belongs to the source. AvaloniaEdit's own undo stack is off for a live file, because it would also take
+back other people's patches. Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z call `UndoAsync`.
+
+While live, the workspace has no Save button, Ctrl+S does nothing, and the footer leaves out "Ctrl+S save". The
+tab gets a green dot (`WorkspaceMarker.Live`) for `Live`, `ReadOnly` and `NoSaver`. It gets the amber
+unsaved dot for `Offline`, `SignInNeeded`, or when an edit could not be sent. Closing waits up to five seconds
+until every local edit has reached the source; if that fails, it asks before discarding. A session that ends on
+the source side (a plugin reload) is not reopened: the text stays in the tab, marked as not sent.
+
+`LiveFileStatus.Saved` (SDK 3.49.0, host 0.146.0) says who last saved the shared text to the file. Under `Live`
+the status chip shows "Saved by {Name} · hh:mm" with a 7 px dot in `Color`; `LiveFileSave.NotYet` shows "Not
+saved to {source} yet" in the waiting tints; null, for a source that does not track saves, keeps "Live". A
+plugin that sets `Saved` sets minHostVersion 0.146.0.
+
+In `Offline`, `NoSaver` and `Stale`, the host saves through the ordinary `IFileSource.WriteAsync(ifVersion)` after three seconds
+without typing. A conflict reads the file again and uses `LineMerge`; separate edits save automatically, while overlapping edits
+wait for the existing conflict actions. File durability is tracked independently of operations accepted by the live session, including
+after a sign-in or permission change. Lines only held here have a 2 px waiting-colour gutter bar and a count before the shortcuts.
+
+`LiveFileStatus.RequiresRejoin` (SDK 3.52.0, host 0.149.0) fences an obsolete room, such as a stale epoch. The host stops sending to it,
+keeps local text, and saves that text through the file source before awaiting Close and opening a fresh session. Its editor then takes
+the fresh room's snapshot. Typing during that Open is kept and saved before replacing the editor. Late reads or patches from the old
+session cannot touch the new document. Set `minHostVersion` to 0.149.0 when supplying this flag; carry all other status fields with `with`.
+
+In `Offline` and `SignInNeeded` the host shows one banner in the conflict banner's composition: the connection dropped (with
+the next save try and Retry, which calls `ILiveFileSession.ReconnectAsync(false)`), or the sign-in expired (with Sign in again,
+`ReconnectAsync(true)`). For `SignInNeeded`, `LiveFileStatus.Account` names whom to sign in again as, and a `Reason` replaces the
+host's sentence. A source joins again only as the account it opened with. Text typed while signed out is marked like live-light text
+and the tab asks before it closes; nothing is written. Back `Live`, a done bar counts the merged lines. Both members need host 0.150.0
+(SDK 3.53.0); the channel action is `files-live-reconnect`.
+
+The host subscribes to the events before it opens the session, so no patch is lost in between. The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
+`files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
+text travels as base64 under the same 1 MiB cap as `files-read`. Op text is plain JSON and limited to the same
+size per edit. `FileSourceReadAnswer.Live` tells the host to open a session. Presence is the next section.
+
+## Presence in live files (AC-1900)
+
+Requires host 0.144.0 and `Cockpit.Plugins.Abstractions` 3.47.0. A plugin that implements `ILivePresence` sets
+`minHostVersion` 0.144.0. An older host shows nobody.
+
+A live session that also implements `ILivePresence` shows who else is in the file. `Peers` holds everyone, this host included, and
+`PeersChanged` fires with the whole list whenever it changes. The source owns the list, its rhythm and every field.
+
+| `LivePeer` | Meaning |
+|---|---|
+| `Who`, `Name` | A stable person id, and the name to show. The caret flag shows the first word of `Name`. |
+| `Color` | `#rrggbb`, fixed per person. The host draws it as given and never works one out; a peer without a valid colour has no caret and a neutral avatar ring. |
+| `Source`, `Role`, `Activity` | `Cockpit`, `web` or `agent`; for example `Editor`; `editing`, `selecting`, `reading` or `watching`. A Viewer is `watching`. |
+| `You` | This host's own entry. It is listed ("(you)") but not drawn as a remote caret. |
+| `Away` | The source lost them (offline). The avatar, caret and selection fade to 35%. |
+| `Caret`, `Selection` | UTF-16 offsets in the current text, or null. `Selection` is `LiveRange(Start, End)` with `Start <= End` and is set only when something is selected. |
+
+`SetPresenceAsync(LivePresenceState(Activity, Caret, Selection))` is the other way: the host tells the source where its own cursor is,
+about 150 ms after the caret or selection settles. A source that cannot send it ignores the call. The host draws what it received on
+the text it has now: offsets follow later edits, so a peer's caret stays on its character until the next list arrives.
+
+The channel adds the action `files-live-presence-set` and the event `files-live-presence`, keyed by the session id like the live
+events. `FileSourceLiveSnapshot.Peers` carries the first list; null means the source has no presence, and the host sends nothing.
+`FileSourceLiveSnapshot.OpenUrl` is an optional `http(s)` address; with it the avatar popover offers "Open in {source} ↗".
+
+In the header, left of the status chip, the avatars (22 px, a ring in the person's colour, an agent as a rounded square) open the
+list "IN THIS NOTE · N": name, `Role · activity`, and the source as a pill. Its foot shows "Saved by {name} · {hh:mm}" when the
+read told who saved last, and the link.
+
+The Depot plugin keeps its awareness codec (y-protocols v1) and presence state in `Notes/Live`: a beat every five seconds with a clock
+that only goes up (the hub ignores an update that does not), someone gone on `left` or after fifteen seconds of silence, and the hub's
+own colour passed on. The note session implements `ILivePresence`: it starts a presence for every connection (the hub gives a connection
+one client id), reads the hub's `presence` and `left` events, sends its own cursor with `Presence`, and keeps the people in the list,
+dimmed, while it reconnects. A Markdown offset and a Yjs RelativePosition map to each other through the room's mirror, block by block
+(`relativeAtOffset` and `offsetOfRelative` in the bundle). The hub does not send an identity back to its sender and `/cockpit/me` names
+only the user id on an older Depot, so on that Depot this Cockpit's own entry has no name or colour: the host shows "You" with a neutral ring. A Depot
+that sends `name` and `color` from `/cockpit/me` fills the entry in.
+
+The Depot file source offers `OpenLiveAsync` for a note: one that Join in the Notes tab or Open in Cockpit in the new-meeting-note dialog
+started (`note-live-open`), or that Depot's live list shows with a room. Any other Depot file refuses it with `Unsupported`, so it stays a
+snapshot. The tab is opened with `InstanceKey = depot:<connectionId>:<project>:<path>`, so a second Join brings the open tab to the front.
+Disposing the session when the tab closes also drops the note's session in the plugin.

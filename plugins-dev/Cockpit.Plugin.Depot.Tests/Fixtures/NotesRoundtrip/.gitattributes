@@ -1,0 +1,2 @@
+# AC-1899: copies of AI-Depot scripts/notes-roundtrip-fixtures, byte for byte (crlf.md keeps its CRLF); the tests hash them.
+* -text

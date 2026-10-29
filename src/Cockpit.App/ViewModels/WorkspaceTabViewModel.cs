@@ -23,9 +23,13 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
     // AC-1750: the mark the body put on its tab, drawn as a dot.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMarker))]
+    [NotifyPropertyChangedFor(nameof(IsLive))]
     private WorkspaceMarker? _marker;
 
-    public bool HasMarker => Marker is not null;
+    // Unsaved draws amber; Live draws green.
+    public bool HasMarker => Marker is WorkspaceMarker.Unsaved;
+
+    public bool IsLive => Marker is WorkspaceMarker.Live;
 
     // The icon that tells the workspace kinds apart at a glance in the strip: a plugin type's own registered icon
     // when it has one, else the host icon for a built-in workspace, and a neutral plugin mark for a plugin type

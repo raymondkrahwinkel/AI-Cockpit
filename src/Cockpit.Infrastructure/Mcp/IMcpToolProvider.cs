@@ -14,7 +14,7 @@ internal interface IMcpToolProvider
     /// (AC-174) re-roots file-capable servers there for an isolated Autopilot step's worktree. <paramref name="projectId"/>
     /// (AC-218) scopes the registry read; <paramref name="workingDirectory"/> (AC-869) only gates cockpit-github-pull-requests' git-repo mount rule.
     /// </summary>
-    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default);
+    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null);
 
     /// <summary>
     /// Connects a single named catalog server on its own, to read its tool list for the pre-flight token estimate

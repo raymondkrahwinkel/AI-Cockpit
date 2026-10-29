@@ -3,22 +3,26 @@ using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Files;
 using Cockpit.Plugin.Depot.Browser;
 using Cockpit.Plugin.Depot.Contracts;
+using Cockpit.Plugin.Depot.Notes;
+using Cockpit.Plugin.Depot.Notes.Live;
 using System.Text;
 using System.Text.Json;
 
 namespace Cockpit.Plugin.Depot.Files;
 
 internal sealed class DepotFileSourceProvider(ICockpitHost host,
-    Func<IReadOnlyList<DepotConnectionRegistration>> connections) : IFileSourceProvider
+    Func<IReadOnlyList<DepotConnectionRegistration>> connections,
+    Func<DepotNoteLive?>? noteLive = null, Func<DepotNotes?>? notes = null) : IFileSourceProvider
 {
     public IReadOnlyList<FileConnection> Connections =>
         [.. connections().Select(c => new FileConnection(c.Id, c.Name, "depot", false))];
     public event EventHandler? ConnectionsChanged;
     public void NotifyChanged() => ConnectionsChanged?.Invoke(this, EventArgs.Empty);
-    public IFileSource Open(string connectionId) => new DepotFileSource(host, connections, connectionId);
+    public IFileSource Open(string connectionId) => new DepotFileSource(host, connections, connectionId, noteLive, notes);
 
     private sealed class DepotFileSource(ICockpitHost host,
-        Func<IReadOnlyList<DepotConnectionRegistration>> connections, string connectionId) : IFileSource
+        Func<IReadOnlyList<DepotConnectionRegistration>> connections, string connectionId,
+        Func<DepotNoteLive?>? noteLive, Func<DepotNotes?>? notes) : IFileSource, ILiveFileSource
     {
         public FileSourceCapabilities Capabilities { get; } = new(true, FileSourceChannel.MaxContentBytes);
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
@@ -64,6 +68,12 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 FileSourceChannel.ValidateWrite(ifVersion, mustNotExist);
                 var (project, path) = DepotFileRefs.Parse(file, connectionId);
                 var connection = _Connection();
+                var address = project.Split('/');
+                if (address.Length == 2 && noteLive?.Invoke() is { } live && !live.MayWrite(new DepotNoteLiveRequest(connectionId, address[0], address[1], path)))
+                {
+                    throw new FileSourceException(FileSourceErrorKind.SignIn, "Sign in to Depot again as the account this note was opened with.");
+                }
+
                 await _AuthorizeAsync(connection, project, true, cancellationToken).ConfigureAwait(false);
                 var bytes = await FileSourceChannel.ReadContentAsync(content, Capabilities.MaxWriteBytes, cancellationToken).ConfigureAwait(false);
                 var text = new UTF8Encoding(false, true).GetString(bytes);
@@ -81,6 +91,21 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                     _ => throw new FileSourceException(FileSourceErrorKind.Unavailable, "Depot did not confirm the saved file."),
                 };
             }, cancellationToken);
+
+        // A note joins live when Join or Open in Cockpit asked for it, or Depot lists a live room for it; any other file is saved as a snapshot.
+        public Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken)
+        {
+            var (project, path) = DepotFileRefs.Parse(file, connectionId);
+            _Connection();
+            var address = project.Split('/');
+            var request = new DepotNoteLiveRequest(connectionId, address[0], address[1], path);
+            if (noteLive?.Invoke() is not { } live || !(live.IsOpen(request) || notes?.Invoke()?.IsLive(connectionId, project, path) == true))
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unsupported, "This file is not a live note.");
+            }
+
+            return Task.FromResult<ILiveFileSession>(live.Open(request));
+        }
 
         private DepotConnectionRegistration _Connection() => connections().FirstOrDefault(c => c.Id == connectionId)
             ?? throw new FileSourceException(FileSourceErrorKind.NotFound, "This Depot connection is no longer configured.");

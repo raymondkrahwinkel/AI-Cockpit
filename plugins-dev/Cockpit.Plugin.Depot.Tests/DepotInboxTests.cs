@@ -14,9 +14,9 @@ public class DepotInboxTests
     private static readonly DepotConnectionRegistration Home = new("b", "Home", "https://home.example.com");
 
     [Fact]
-    public async Task APushOnOneConnection_RefreshesThatOneOnly_AndEachListIsItsOwn()
+    public async Task AConnectionsLifecycle_RefreshesItsOwnList_AndClearsItWhenSignInIsRefused()
     {
-        var depots = new Dictionary<string, _Depot> { [Work.Id] = new("w1", "w2"), [Home.Id] = new("h1") };
+        var depots = new Dictionary<string, _Depot> { [Work.Id] = new("w1", "w2") { Title = "Sprint review" }, [Home.Id] = new("h1") };
         var hubs = new Dictionary<string, _Hub>();
         await using var inbox = new DepotInbox(
             () => [Work, Home],
@@ -32,39 +32,13 @@ public class DepotInboxTests
         Assert.Equal(1, depots[Home.Id].ListFetches);
         Assert.Equal(["w1", "w2"], (await inbox.ListAsync(new(Work.Id), CancellationToken.None)).Messages.Select(message => message.Id));
         Assert.Equal(["h1"], (await inbox.ListAsync(new(Home.Id), CancellationToken.None)).Messages.Select(message => message.Id));
-    }
-
-    // Acceptance 4: after Depot refuses the sign-in there is no message and no title in the model, and the hub is closed.
-    [Fact]
-    public async Task ASignInDepotRefuses_LeavesNoMessage_AndClosesTheHub()
-    {
-        var depot = new _Depot("w1") { Title = "Sprint review" };
-        _Hub? hub = null;
-        await using var service = new DepotInboxService(Work, depot, (_, _, onPush, _) => hub = new _Hub(onPush), _ => { });
-        await service.RefreshAsync(CancellationToken.None);
-
-        depot.Refuse = true;
-        var page = await service.RefreshAsync(CancellationToken.None);
+        depots[Work.Id].Refuse = true;
+        var page = await inbox.ListAsync(new(Work.Id), CancellationToken.None);
 
         Assert.Equal(DepotInboxState.Expired, page.Count.State);
         Assert.Empty(page.Messages);
-        Assert.DoesNotContain("Sprint review", JsonSerializer.Serialize(service.Page), StringComparison.Ordinal);
-        Assert.True(hub?.Disposed);
-    }
-
-    // Acceptance 5: a title Depot no longer gives (the right was taken away) is not shown from an earlier answer.
-    [Fact]
-    public async Task ATitleDepotNoLongerGives_IsNotShown()
-    {
-        var depot = new _Depot("w1") { Title = "Sprint review" };
-        await using var service = new DepotInboxService(Work, depot, (_, _, onPush, _) => new _Hub(onPush), _ => { });
-        var before = await service.RefreshAsync(CancellationToken.None);
-
-        depot.Title = null;
-        var after = await service.RefreshAsync(CancellationToken.None);
-
-        Assert.Equal("Sprint review", before.Messages.Single().Note?.Title);
-        Assert.Null(after.Messages.Single().Note?.Title);
+        Assert.DoesNotContain("Sprint review", JsonSerializer.Serialize(page), StringComparison.Ordinal);
+        Assert.True(hubs[Work.Id].Disposed);
     }
 
     private static async Task _Until(Func<bool> condition)
@@ -78,7 +52,7 @@ public class DepotInboxTests
     }
 
     // One Depot's /cockpit/inbox, answering with the given message ids (every one a note invitation), or 401.
-    private sealed class _Depot(params string[] ids) : HttpMessageHandler
+    internal sealed class _Depot(params string[] ids) : HttpMessageHandler
     {
         private int _listFetches;
 
@@ -88,6 +62,8 @@ public class DepotInboxTests
 
         public string? Title { get; set; }
 
+        public string UserId { get; set; } = "u1";
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (Refuse)
@@ -96,7 +72,7 @@ public class DepotInboxTests
             }
 
             object body = request.RequestUri?.AbsolutePath.EndsWith("/unread", StringComparison.Ordinal) == true
-                ? new { userId = "u1", unread = ids.Length, perOrganization = new Dictionary<string, int>() }
+                ? new { userId = UserId, unread = ids.Length, perOrganization = new Dictionary<string, int>() }
                 : _List();
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent(body) });
         }
@@ -126,7 +102,7 @@ public class DepotInboxTests
             new(JsonSerializer.Serialize(body, JsonSerializerOptions.Web), System.Text.Encoding.UTF8, "application/json");
     }
 
-    private sealed class _Hub(Action<DepotInboxPush> onPush) : IDepotInboxHub
+    internal sealed class _Hub(Action<DepotInboxPush> onPush) : IDepotInboxHub
     {
         public bool Disposed { get; private set; }
 

@@ -208,6 +208,20 @@ internal static partial class Screenshotter
         ["markdown-file-conflict"] = (width, height) => _MarkdownFileScene(width, height, "conflict"),
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
+        ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
+        ["markdown-file-live-light"] = (width, height) => _MarkdownFileScene(width, height, "live-light"),
+        ["markdown-file-live-light-saved"] = (width, height) => _MarkdownFileScene(width, height, "live-light-saved"),
+        ["markdown-file-sign-in-expired"] = (width, height) => _MarkdownFileScene(width, height, "sign-in-expired"),
+        ["markdown-file-schema-mismatch"] = (width, height) => _MarkdownFileScene(width, height, "schema-mismatch"),
+        ["markdown-file-viewer"] = (width, height) => _MarkdownFileScene(width, height, "viewer"),
+        // AC-1900 (mockup AC-1895 v2, screens 4 and 4p): others' carets and selections, the avatars in the header, and the list they open.
+        ["markdown-file-presence"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-agent"] = (width, height) => _MarkdownFileScene(width, height, "presence-agent"),
+        ["markdown-file-presence-popover"] = (width, height) => _MarkdownFileScene(width, height, "presence"),
+        ["markdown-file-presence-away"] = (width, height) => _MarkdownFileScene(width, height, "presence-away"),
+        ["markdown-file-saver-saved"] = (width, height) => _MarkdownFileScene(width, height, "presence-saved"),
+        ["markdown-file-saver-not-yet"] = (width, height) => _MarkdownFileScene(width, height, "presence-not-yet"),
+        ["markdown-file-saver-agent"] = (width, height) => _MarkdownFileScene(width, height, "presence-agent"),
         ["preview-tab"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         ["markdown-file-floating"] = (width, height) => _MarkdownFileScene(width, height, "floating"),
         ["markdown-file-discard"] = (_, _) => new ConfirmationDialog
@@ -250,6 +264,7 @@ internal static partial class Screenshotter
         ["session-tree"] = (width, height) => _MainWindowWithSessionTree(width, height),
         // AC-1503: what the first start after a restore says about the sign-ins that came back empty.
         ["restore-signins"] = (width, height) => _MainWindowAfterARestore(width, height),
+        ["depot-invitation"] = (width, height) => _MainWindowWithDepotInvitation(width, height),
         // AC-1000: Voice and Assistant are now separate top-level categories rather than Carousel sub-pages of one
         // Voice tab — own scenes rather than reusing "options", since neither category renders on the category that
         // scene opens on (Notifications) and a layout change to a page nothing captures is a layout change nobody
@@ -408,6 +423,7 @@ internal static partial class Screenshotter
         // "Uncategorized" always last (and shown even though nothing is left in it here) and every card's origin
         // badge — "● This machine" and "◆ Depot — Work" — now that the old "On this machine" heading is gone.
         ["plugin-store"] = (_, _) => _PluginStore(),
+        ["plugin-store-installed"] = (_, _) => _PluginStoreInstalled(),
         // AC-553: the eleven bundled plugins' real logo tiles — its own scene, not added to `_SampleStorePlugins`,
         // whose row count PluginStoreBusyGateTests asserts on. Height raised past the dialog's own 820: twelve
         // rows do not fit at rest.
@@ -1248,6 +1264,11 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["markdown-file-presence-popover"] = window =>
+        {
+            window.GetVisualDescendants().OfType<Files.LivePresenceBar>().First().IsOpen = true;
+            Dispatcher.UIThread.RunJobs();
+        },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
@@ -2132,6 +2153,14 @@ internal static partial class Screenshotter
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
+    private static MainWindow _MainWindowWithDepotInvitation(int width, int height)
+    {
+        var cockpit = new ViewModels.CockpitViewModel();
+        cockpit.ToastHost.Add("Sanne invited you to Sprint review\nWork · cockpit · Sanne, Alex", ToastSeverity.Information,
+            [new ToastAction("Join", () => { })], sticky: false, source: "Depot");
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
     private static MainWindow _MainWindowAfterARestore(int width, int height)
     {
         var cockpit = new ViewModels.CockpitViewModel();
@@ -2898,6 +2927,24 @@ internal static partial class Screenshotter
 
     // Seed the plugin store directly so its full layout can be rendered headlessly without network access (#62).
     private static PluginStoreDialog _PluginStore() => new() { DataContext = _PluginStoreViewModel() };
+
+    // AC-1588: the Installed list with one plugin allowed and one muted, so a row shows both labels of the toggle.
+    private static PluginStoreDialog _PluginStoreInstalled()
+    {
+        static PluginRowViewModel Row(string id, string name, bool muted) => new(new InstalledPlugin(
+            new DiscoveredPlugin(Path.Combine("plugins", id), id, new PluginManifest(id, name, "0.12.1", null, 3, null, null, $"The {name} plugin.", "Cockpit"), $"{id}-hash", PluginLoadDecision.Load),
+            new PluginRegistration(true, $"{id}-hash", NotificationsMuted: muted),
+            null,
+            null,
+            null));
+
+        var viewModel = _PluginStoreViewModel();
+        viewModel.Manager.Plugins.Add(Row("depot", "Depot", muted: false));
+        viewModel.Manager.Plugins.Add(Row("github-pull-requests", "GitHub Pull Requests", muted: true));
+        viewModel.Manager.HasPlugins = true;
+        viewModel.SelectedSidebarItem = viewModel.SecondarySidebarItems.First(item => item.Filter == PluginStoreFilter.Installed);
+        return new PluginStoreDialog { DataContext = viewModel };
+    }
 
     // NeedsRestart is on in both because that is the state that was reported — "Update all" raises it after the first
     // plugin of the batch, so the footer offers a restart while the rest are still downloading (AC-420).

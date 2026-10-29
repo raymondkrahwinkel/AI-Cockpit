@@ -421,7 +421,18 @@
          the opposite case — a plugin declaring 1.0.0-or-later while the host is still 0.x, which is the legacy
          fantasy-value manifests, not a general exemption. So every "sets minHostVersion x.y.z" sentence above is a
          gate that actually bites today, which is exactly why the entries have to stay honest. -->
-    <VersionPrefix>0.140.0</VersionPrefix>
+    <!-- 0.141.0: silent plugin system notifications (AC-1588, UI SDK 3.20.0).
+         A plugin that calls ShowSystemNotification sets minHostVersion 0.141.0. -->
+    <!-- 0.143.0: live file sources in the Markdown workspace and the green Live tab dot (AC-1898, Abstractions 3.46.0).
+         A plugin that implements ILiveFileSource sets minHostVersion 0.143.0. -->
+    <!-- 0.144.0: presence in live files, other people's carets, selections and avatars (AC-1900, Abstractions 3.47.0).
+         A plugin that implements ILivePresence sets minHostVersion 0.144.0. -->
+    <!-- 0.146.0: the live file's saver chip, "Saved by {name} · hh:mm" with their colour (AC-1901, Abstractions 3.49.0).
+         A plugin that sets LiveFileStatus.Saved sets minHostVersion 0.146.0. -->
+    <!-- 0.148.0: outside text attribution and opted-in MCP agent headers (AC-1583, SDK 3.51.0). -->
+    <!-- 0.149.0: live-light saves and safe recovery from an expired room epoch (AC-1903, Abstractions 3.52.0). -->
+    <!-- 0.150.0: live-file recovery banners, Retry and Sign in again (AC-1582, Abstractions 3.53.0). -->
+    <VersionPrefix>0.150.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

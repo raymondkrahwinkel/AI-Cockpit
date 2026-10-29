@@ -45,6 +45,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- AC-1899: AI-Depot's golden notes fixtures, the contract the live-note bridge is tested against. -->
+    <None Include="Fixtures/NotesRoundtrip/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- AC-1394: the UI part as the backend project's build leaves it in its bin/, not as a project reference of
          its own, so the backend project dropping the build of UI/ fails this project rather than going unseen —
          see Cockpit.Plugin.GitStatus.Tests.csproj's identical note.
@@ -65,6 +70,7 @@
          ProjectResourceScopeParityTests can pin the host's ProjectResourcePathPortability.ClassifyScope and this
          plugin's own ProjectResourcePortabilityClassifier.Classify against the same shared table. -->
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
+    <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

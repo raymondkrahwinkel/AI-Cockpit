@@ -99,7 +99,7 @@ public class PluginBackendHost(
     public IPluginBackendChannel Channel => services.GetRequiredService<PluginChannelHub>().For(pluginId);
 
     public IDisposable AddFileSource(Cockpit.Plugins.Abstractions.Files.IFileSourceProvider provider) =>
-        Files.FileSourceChannel.Register(Channel, provider);
+        Files.FileSourceChannel.Register(Channel, provider, _Logger());
 
     public ICockpitSessionObserver Sessions => sessions;
 
@@ -568,6 +568,7 @@ public class PluginBackendHost(
                 servers[existingIndex] = servers[existingIndex] with
                 {
                     Transport = refreshed.Transport,
+                    IncludeAgentName = refreshed.IncludeAgentName,
                     Url = refreshed.Url,
                     Auth = refreshed.Auth,
                     ApiKey = refreshed.ApiKey,

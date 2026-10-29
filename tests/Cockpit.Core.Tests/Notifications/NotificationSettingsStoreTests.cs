@@ -1,12 +1,13 @@
+using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Notifications;
+using Cockpit.Infrastructure.Plugins;
+using NSubstitute;
 
 namespace Cockpit.Core.Tests.Notifications;
 
-/// <summary>
-/// Load/save round-trip for the notification section of <c>cockpit.json</c>, plus the key invariant
-/// that saving one section leaves the other section (profiles) intact — both stores share the file.
-/// </summary>
+// Layer 2, persistence/notification contract: saved settings and plugin mute preferences govern silent delivery.
 public class NotificationSettingsStoreTests : IDisposable
 {
     private readonly string _tempDir;
@@ -20,7 +21,7 @@ public class NotificationSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_ThenLoadAsync_RoundTripsSettings()
+    public async Task PluginNotifications_RespectPersistedSettingsAndMutePreference()
     {
         var store = new NotificationSettingsStore(_configFilePath);
         var settings = new NotificationSettings
@@ -44,6 +45,30 @@ public class NotificationSettingsStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         Assert.Equivalent(settings, loaded);
+
+        await using var registrations = new PluginRegistrationStore(_configFilePath);
+        await registrations.SaveAsync("depot", new PluginRegistration(Enabled: true, PinnedSha256: "the-consented-hash"));
+        var toast = new ClickedToast();
+        var webhook = Substitute.For<IWebhookNotifier>();
+        var notifier = new AttentionNotifier(store, Substitute.For<IPresenceDetector>(), toast, webhook, registrations);
+        var notification = new AttentionNotification("Depot", "New invitation");
+
+        Assert.False(await notifier.NotifyForPluginAsync("depot", notification));
+        Assert.Empty(toast.Silent);
+
+        await store.SaveAsync(settings with { LocalEnabled = true });
+        Assert.True(await notifier.NotifyForPluginAsync("depot", notification));
+        Assert.Equal(notification, Assert.Single(toast.Silent));
+        Assert.Equal(0, toast.Loud);
+
+        await registrations.SaveNotificationsMutedAsync("depot", muted: true);
+        var registration = (await registrations.LoadAllAsync())["depot"];
+        Assert.True(registration.NotificationsMuted);
+        Assert.Equal("the-consented-hash", registration.PinnedSha256);
+        Assert.False(await notifier.NotifyForPluginAsync("depot", notification));
+        Assert.Single(toast.Silent);
+        Assert.Equivalent(settings with { LocalEnabled = true }, await store.LoadAsync());
+        await webhook.DidNotReceiveWithAnyArgs().NotifyAsync(Arg.Any<string>(), Arg.Any<AttentionNotification>());
     }
 
     public void Dispose()
@@ -51,6 +76,25 @@ public class NotificationSettingsStoreTests : IDisposable
         if (Directory.Exists(_tempDir))
         {
             Directory.Delete(_tempDir, recursive: true);
+        }
+    }
+
+    private sealed class ClickedToast : IToastNotifier
+    {
+        public List<AttentionNotification> Silent { get; } = [];
+
+        public int Loud { get; private set; }
+
+        public Task NotifyAsync(AttentionNotification notification, CancellationToken cancellationToken = default)
+        {
+            Loud++;
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> NotifySilentlyAsync(AttentionNotification notification, CancellationToken cancellationToken = default)
+        {
+            Silent.Add(notification);
+            return Task.FromResult(true);
         }
     }
 }

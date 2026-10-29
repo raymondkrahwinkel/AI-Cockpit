@@ -16,8 +16,10 @@ public class CockpitProjectSensitiveFieldFilterTests
         Assert.False(string.IsNullOrWhiteSpace(dropped.Reason));
     }
 
+    // AC-607 review finding 9 at the end: the AAD binding the ciphertext relies on. Encrypted at one field's path, the same data key
+    // cannot decrypt it back at a different field's path.
     [Fact]
-    public void Apply_WithDataKey_SecretRowIsEncryptedAndRecoverableWithTheRightKeyOnly()
+    public void Apply_WithDataKey_SecretRowIsEncryptedAndRecoverableWithTheRightKeyAtItsOwnPathOnly()
     {
         var (envelope, dataKey, _) = CockpitProjectPasswordEnvelopeFactory.Create("project-password");
 
@@ -37,20 +39,8 @@ public class CockpitProjectSensitiveFieldFilterTests
         var recovered = new Cockpit.Plugin.Depot.Secrets.ProjectSecretProtector(rightKey)
             .Unprotect($"SensitiveFields.{entry.Label}", entry.Value);
         Assert.Equal("s3cr3t-value", recovered);
-    }
-
-    // AC-607 review finding 9: pins the AAD binding a sensitive field's ciphertext actually relies on — encrypted
-    // at one field's path, the same data key cannot decrypt it back at a different field's path. Verified manually
-    // by the reviewer before this; not previously pinned by any test in the suite.
-    [Fact]
-    public void Apply_CiphertextEncryptedForOneFieldsPath_CannotBeDecryptedAtAnotherFieldsPathWithTheSameKey()
-    {
-        var (_, dataKey, _) = CockpitProjectPasswordEnvelopeFactory.Create("project-password");
-        var result = CockpitProjectSensitiveFieldFilter.Apply([("Deploy token", "s3cr3t-value", true)], dataKey);
-        var entry = Assert.Single(result.Encrypted);
 
         var protector = new Cockpit.Plugin.Depot.Secrets.ProjectSecretProtector(dataKey);
-
         Assert.Throws<Cockpit.Plugin.Depot.Secrets.ProjectSecretProtectionException>(
             () => protector.Unprotect("SensitiveFields.A different label", entry.Value));
     }

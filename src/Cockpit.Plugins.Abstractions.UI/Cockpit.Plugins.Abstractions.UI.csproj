@@ -49,7 +49,10 @@
     <!-- 3.18.0 (AC-1781): FileWorkspaceOpenOptions.Preview, ICockpitUiHost.GetOpenWorkspaces and OpenWorkspacesChanged. A plugin that relies on them sets minHostVersion 0.138.0. -->
     <!-- 3.19.0 (AC-1749): merges the Markdown-editor epic above with main's 3.13.0. A plugin that relies on an AC-1749 member
          sets minHostVersion 0.140.0. Additive; still v3. -->
-    <Version>3.19.0</Version>
+    <!-- 3.20.0 (AC-1588): ICockpitUiHost.ShowSystemNotification, a silent OS notification with a click callback.
+         A plugin that calls it sets minHostVersion 0.141.0. Additive; still v3. -->
+    <!-- 3.21.0 (AC-1577): DockPanelBadge.Tone and SetStatusText(text, tone) use the side-menu badge tones; requires host 0.142.0. -->
+    <Version>3.21.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

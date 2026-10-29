@@ -633,7 +633,20 @@
          AC-1754: file snapshot write hints and asynchronous workspace close guards.
          AC-1755: FileReadResult.ModifiedBy, who last changed a file, when the source knows. -->
     <!-- 3.45.0 (AC-1749): merges the Markdown-editor epic above with main's 3.41.0 and 3.42.0. Additive; still v3. -->
-    <Version>3.45.0</Version>
+    <!-- 3.46.0 (AC-1898): ILiveFileSource and ILiveFileSession, the live-file wire records, FileSourceReadAnswer.Live and
+         WorkspaceMarker.Live. A plugin that implements ILiveFileSource sets minHostVersion 0.143.0. Additive; still v3. -->
+    <!-- 3.47.0 (AC-1900): ILivePresence, LivePeer, LiveRange and LivePresenceState, the files-live-presence event and the
+         files-live-presence-set action. A plugin that implements ILivePresence sets minHostVersion 0.144.0. Additive; still v3. -->
+    <!-- 3.48.0 (AC-1902): LiveReadOnlyReason and LiveFileStatus.UnsentSourceText preserve edits on read-only transitions.
+         A plugin that supplies these members sets minHostVersion 0.145.0. Additive; still v3. -->
+    <!-- 3.49.0 (AC-1901): LiveFileStatus.Saved and LiveFileSave, who last saved a live file. A plugin that sets Saved sets
+         minHostVersion 0.146.0. Additive; still v3. -->
+    <!-- 3.51.0: McpServerContribution.IncludeAgentName and LiveFilePatch.ExternalEdit (AC-1583); requires host 0.148.0. -->
+    <!-- 3.52.0 (AC-1903): LiveFileStatus.RequiresRejoin fences an old room until local text is saved to the file.
+         A plugin that supplies this flag sets minHostVersion 0.149.0. Additive; still v3. -->
+    <!-- 3.53.0 (AC-1582): LiveFileStatus.Account and ILiveFileSession.ReconnectAsync, with the files-live-reconnect action.
+         A plugin that uses them sets minHostVersion 0.150.0. Additive; still v3. -->
+    <Version>3.53.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -389,7 +389,9 @@ public interface ICockpitHost
     /// that never reached the server; offer <see cref="SignInMcpServerAsync"/>. A 401 from the server renews the
     /// credential the way the server's MCP connection does, and a request without a body is sent once more. It
     /// serves as an <see cref="HttpClient"/>'s handler and from SignalR's
-    /// <c>HttpConnectionOptions.HttpMessageHandlerFactory</c>, WebSockets included. The default, for a host that
+    /// <c>HttpConnectionOptions.HttpMessageHandlerFactory</c> for HTTP transports. For WebSockets, set
+    /// <c>WebSocketFactory</c> to connect with <c>ClientWebSocket.ConnectAsync(uri, invoker, cancellationToken)</c>,
+    /// using an <c>HttpMessageInvoker</c> over this handler; SignalR's HTTP/1.1 default bypasses it. The default, for a host that
     /// predates this member, is a handler that throws <see cref="HttpRequestException"/> on every request.
     /// </remarks>
     HttpMessageHandler CreateAuthorizedHandler(string name) => new Mcp.UnavailableAuthorizedHandler();

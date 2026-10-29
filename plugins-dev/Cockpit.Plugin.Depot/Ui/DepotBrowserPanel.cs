@@ -44,7 +44,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
 
     // AC-1586: `inbox` is the plugin's shared inbox model (the badge's), or null for a panel that keeps its own;
     // `openInbox` starts on the Inbox tab, as the side-menu button does.
-    public DepotBrowserPanel(ICockpitUiHost host, IReadOnlyList<DepotConnectionRegistration> connections, DepotInboxModel? inbox = null, bool openInbox = false)
+    public DepotBrowserPanel(ICockpitUiHost host, IReadOnlyList<DepotConnectionRegistration> connections, DepotInboxModel? inbox = null, bool openInbox = false, DepotNotesModel? notes = null)
     {
         _host = host;
         _settings = new DepotSettings(host.Storage);
@@ -86,7 +86,29 @@ internal sealed partial class DepotBrowserPanel : UserControl
             DetachedFromVisualTree += (_, _) => inboxModel.Dispose();
         }
 
-        Content = _Tabs(layout, new DepotInboxPanel(inboxModel, connections), openInbox);
+        var ownsNotes = notes is null;
+        var notesModel = notes ?? new DepotNotesModel(host, inboxModel);
+        if (ownsNotes)
+        {
+            DetachedFromVisualTree += (_, _) => notesModel.Dispose();
+        }
+        var inboxPanel = new DepotInboxPanel(inboxModel, connections);
+        var tabs = _Tabs(layout, inboxPanel, new TextBlock(), openInbox);
+        var inboxTab = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Inbox"));
+        var notesTab = tabs.Items.OfType<TabItem>().Single(tab => Equals(tab.Header, "Notes"));
+        var notesPanel = new DepotNotesPanel(host, notesModel, inboxModel, connections, connectionId =>
+        {
+            inboxPanel.SelectConnection(connectionId);
+            tabs.SelectedItem = inboxTab;
+        });
+        notesTab.Content = notesPanel;
+        notesPanel.Header.IsVisible = false;
+        tabs.SelectionChanged += (_, _) => notesPanel.Header.IsVisible = tabs.SelectedItem == notesTab;
+        var tabLayout = new DockPanel();
+        DockPanel.SetDock(notesPanel.Header, Dock.Top);
+        tabLayout.Children.Add(notesPanel.Header);
+        tabLayout.Children.Add(tabs);
+        Content = tabLayout;
 
         if (connections.Count == 0)
         {
@@ -114,7 +136,7 @@ internal sealed partial class DepotBrowserPanel : UserControl
         _upload.IsVisible = scene.Tree.CanShare;
         _newMarkdown.IsVisible = scene.Tree.CanShare;
         _publishFolder.IsVisible = scene.Tree.CanShare;
-        Content = _Tabs(_FilesLayout(refresh), new TextBlock { Text = "Inbox", Margin = new Thickness(12) }, false);
+        Content = _Tabs(_FilesLayout(refresh), new TextBlock { Text = "Inbox", Margin = new Thickness(12) }, new TextBlock { Text = "Notes" }, false);
 
         var items = DepotTreeBuilder.Build(scene.Tree.Nodes);
         _openBadges.Clear();
@@ -211,12 +233,13 @@ internal sealed partial class DepotBrowserPanel : UserControl
         }
     }
 
-    private static TabControl _Tabs(Control files, Control inbox, bool openInbox)
+    private static TabControl _Tabs(Control files, Control inbox, Control notes, bool openInbox)
     {
         var inboxTab = new TabItem { Header = "Inbox", Content = inbox };
         return new TabControl
         {
-            Items = { new TabItem { Header = "Files", Content = files }, inboxTab },
+            Padding = new Thickness(0),
+            Items = { new TabItem { Header = "Files", Content = files }, new TabItem { Header = "Notes", Content = notes }, inboxTab },
             SelectedItem = openInbox ? inboxTab : null,
         };
     }

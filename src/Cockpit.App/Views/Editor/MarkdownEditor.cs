@@ -60,6 +60,8 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
         _collapser = new BlockCollapser(_editor.TextArea.TextView);
         var textView = _editor.TextArea.TextView;
         textView.BackgroundRenderers.Add(new LineBackgrounds(this));
+        textView.BackgroundRenderers.Add(new RemoteCursors(this, AvaloniaEdit.Rendering.KnownLayer.Selection));
+        textView.BackgroundRenderers.Add(new RemoteCursors(this, AvaloniaEdit.Rendering.KnownLayer.Caret));
         textView.LineTransformers.Add(new Colorizer(this));
         textView.ElementGenerators.Add(new Elements(this));
         _editor.TextArea.LeftMargins.Add(new Gutter(this));
@@ -67,6 +69,10 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
 
         _editor.TextArea.Caret.PositionChanged += (_, _) => _OnCaretMoved();
         _editor.Document.Changed += (_, e) => _OnDocumentChanged(e);
+        _editor.Document.Changing += (_, e) => _ExternalChanging(e);
+        _externalClock.Tick += (_, _) => _ExpireExternalLines();
+        DetachedFromVisualTree += (_, _) => _externalClock.Stop();
+        AttachedToVisualTree += (_, _) => _ExpireExternalLines();
         _editor.TextArea.AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
         _editor.TextArea.AddHandler(TextInputEvent, _OnTextInput, RoutingStrategies.Tunnel);
         _editor.TextArea.AddHandler(PointerPressedEvent, _OnPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);

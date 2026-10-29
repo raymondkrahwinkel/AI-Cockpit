@@ -41,7 +41,7 @@ internal sealed class SignalRDepotEventHub : IDepotEventHub
         _connection = new HubConnectionBuilder()
             .WithUrl(
                 $"{connection.Url.TrimEnd('/')}/hubs/cockpit?expectedUser={Uri.EscapeDataString(userId)}",
-                options => options.HttpMessageHandlerFactory = _ => handler())
+                options => DepotSignalR.Configure(options, handler))
             .WithAutomaticReconnect(DepotEventReconnect.Backoff)
             .Build();
         _connection.On<JsonElement>("event", payload =>

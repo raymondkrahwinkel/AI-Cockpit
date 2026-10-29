@@ -27,6 +27,24 @@ public sealed partial class MarkdownEditor
     private static IBrush CompareTheirsBar => ThemeBrush.Resolve("CockpitStatusErrorBrush", "#d64545");
     private static IBrush CompareMineBar => ThemeBrush.Resolve("CockpitStatusDoneBrush", "#5aa576");
     private static IBrush CaretLineEdge => ThemeBrush.Resolve("CockpitAccentRingTintBrush", "#402563eb");
+    private static IBrush LocalLineEdge => ThemeBrush.Resolve("CockpitStatusWaitingBrush", "#d99a37");
+    private readonly HashSet<int> _localLines = [];
+
+    internal void SetLocalLines(IEnumerable<int> lines)
+    {
+        var next = lines.ToHashSet();
+        if (_localLines.SetEquals(next))
+        {
+            return;
+        }
+        _localLines.Clear();
+        _localLines.UnionWith(next);
+        _editor.TextArea.TextView.InvalidateLayer(KnownLayer.Background);
+        foreach (var margin in _editor.TextArea.LeftMargins)
+        {
+            margin.InvalidateVisual();
+        }
+    }
 
     // A table and front matter show their Markdown while the caret is anywhere inside them, not just on its line.
     internal bool IsRaw(int lineNumber, MarkdownLine line)
@@ -477,6 +495,11 @@ public sealed partial class MarkdownEditor
                 _PaintCompare(owner, drawingContext, number, row, gutter);
                 if (owner.ShowSource)
                 {
+                    owner._PaintExternal(drawingContext, number, row, gutter);
+                    if (gutter && owner._localLines.Contains(number))
+                    {
+                        drawingContext.FillRectangle(LocalLineEdge, row.WithWidth(2));
+                    }
                     continue;
                 }
 
@@ -496,13 +519,14 @@ public sealed partial class MarkdownEditor
 
                 if (gutter)
                 {
-                    var bar = number == owner.MarkedLine ? TextFaint
+                    var bar = owner._localLines.Contains(number) ? LocalLineEdge
+                        : number == owner.MarkedLine ? TextFaint
                         : number == owner.CaretLine ? CaretLineEdge
                         : kind.Kind == MarkdownLineKind.Quote || kind.IsKeptAsText ? Hairline
                         : null;
                     if (bar is not null)
                     {
-                        drawingContext.FillRectangle(bar, row.WithWidth(kind.Kind == MarkdownLineKind.Quote ? 3 : 2));
+                        drawingContext.FillRectangle(bar, row.WithWidth(!owner._localLines.Contains(number) && kind.Kind == MarkdownLineKind.Quote ? 3 : 2));
                     }
                 }
                 else if (kind.Kind == MarkdownLineKind.Rule && !owner.IsRaw(number, kind))
@@ -512,6 +536,10 @@ public sealed partial class MarkdownEditor
                 else if (owner.KeptAsTextLabel(number) is { } label)
                 {
                     _Badge(drawingContext, visual, row, label);
+                }
+                if (!gutter || !owner._localLines.Contains(number))
+                {
+                    owner._PaintExternal(drawingContext, number, row, gutter);
                 }
             }
         }
