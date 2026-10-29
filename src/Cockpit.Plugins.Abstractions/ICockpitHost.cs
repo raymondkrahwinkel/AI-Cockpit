@@ -28,6 +28,11 @@ public interface ICockpitHost
     IPluginStorage Storage { get; }
 
     /// <summary>
+    /// Whether the host has no desktop UI for capabilities that require one.
+    /// </summary>
+    bool IsHeadless => false;
+
+    /// <summary>
     /// The operator's own time entries. Needs <c>"capabilities": ["time.entries"]</c> in
     /// <c>plugin.json</c>; without it the host throws <see cref="UnauthorizedAccessException"/> naming the capability.
     /// </summary>

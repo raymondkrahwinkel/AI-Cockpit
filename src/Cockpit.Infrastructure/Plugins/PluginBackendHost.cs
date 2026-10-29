@@ -80,6 +80,8 @@ public class PluginBackendHost(
 
     public IPluginStorage Storage => storage;
 
+    public virtual bool IsHeadless => true;
+
     // AC-1730: the operator's own time is handed only to a plugin whose consented manifest asks for it; any other
     // plugin gets a refusal that names the missing capability, never an empty log.
     public ICockpitTimeEntries TimeEntries => (capabilities ?? []).Contains(CapabilityCatalog.TimeEntries)
