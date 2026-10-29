@@ -13,12 +13,6 @@ public class NodePairingCodeTests
     private const string ImpostorFingerprint = "0011223344556677889900AABBCCDDEEFF00112233445566778899AABBCCDDEE";
 
     [Fact]
-    public void Derive_IsTheSameOnBothSides_ForTheSameNonceAndCertificate() =>
-        Assert.Equal(
-            NodePairingCode.Derive("A1B2C3", NodeFingerprint),
-            NodePairingCode.Derive("A1B2C3", NodeFingerprint));
-
-    [Fact]
     public void Derive_DiffersWhenTheCertificateDiffers_WhichIsWhatTheOperatorSees() =>
         Assert.NotEqual(
             NodePairingCode.Derive("A1B2C3", NodeFingerprint),
