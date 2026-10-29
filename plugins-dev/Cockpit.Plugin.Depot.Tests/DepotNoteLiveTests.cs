@@ -27,6 +27,35 @@ public class DepotNoteLiveTests
     {
         await _SignInNeededOnceAsync(new HttpRequestException($"401 Authorization: Bearer {Secret}", null, HttpStatusCode.Unauthorized));
         await _SignInNeededOnceAsync(new HubException($"auth.session_expired: refused (Bearer {Secret})"));
+        await _StaleEpochDoesNotSendTheOfflineRoomAsync();
+    }
+
+    // AC-1903, layer 2: a stale epoch fences the old Jint room before its missing diff reaches the hub.
+    private static async Task _StaleEpochDoesNotSendTheOfflineRoomAsync()
+    {
+        var reconnecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answer = new TaskCompletionSource<DepotNoteJoinResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var joined = new DepotNoteJoinResult("doc-1", "editor", [], true, false, "epoch-old", false, false, Markdown: "# Original\n");
+        var first = new _Hub(_ => Task.FromResult(joined));
+        var second = new _Hub(_ =>
+        {
+            reconnecting.TrySetResult();
+            return answer.Task;
+        }) { RefuseUpdates = true };
+        var hubs = new Queue<_Hub>([first, second]);
+        await using var session = new DepotNoteSession(Connection, Note, _ => Task.FromResult("user-1"),
+            (_, _, closed) => hubs.Dequeue().With(closed), clientId => new JintNoteRoom(clientId), _ => { }, [TimeSpan.Zero]);
+        session.Connect();
+        var snapshot = await session.ReadAsync(CancellationToken.None);
+        await first.DropAsync();
+        await reconnecting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await session.EditAsync("offline", snapshot.Rev, [new(0, 0, "MINE\n")], CancellationToken.None);
+        answer.SetResult(joined with { Epoch = "epoch-new", Stale = true });
+        await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Empty(second.Updates);
+        Assert.Equal("epoch-old", Assert.Single(second.Joins).Epoch);
+        Assert.True(session.Status.RequiresRejoin);
+        Assert.StartsWith("MINE\n", (await session.ReadAsync(CancellationToken.None)).Text);
     }
 
     private static async Task _SignInNeededOnceAsync(Exception failure)
@@ -75,6 +104,10 @@ public class DepotNoteLiveTests
     private sealed class _Hub(Func<_Hub, Task<DepotNoteJoinResult>> join) : IDepotNotesHub
     {
         private Func<Exception?, Task>? _closed;
+        public List<byte[]> Updates { get; } = [];
+        public List<DepotNoteJoinRequest> Joins { get; } = [];
+        public bool RefuseUpdates { get; init; }
+        public Task DropAsync() => _closed?.Invoke(null) ?? Task.CompletedTask;
 
         public _Hub With(Func<Exception?, Task> onClosed)
         {
@@ -88,9 +121,21 @@ public class DepotNoteLiveTests
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task<DepotNoteJoinResult> JoinAsync(DepotNoteJoinRequest request, CancellationToken cancellationToken) => join(this);
+        public Task<DepotNoteJoinResult> JoinAsync(DepotNoteJoinRequest request, CancellationToken cancellationToken)
+        {
+            Joins.Add(request);
+            return join(this);
+        }
 
-        public Task UpdateAsync(string documentId, byte[] update, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task UpdateAsync(string documentId, byte[] update, CancellationToken cancellationToken)
+        {
+            Updates.Add(update);
+            if (RefuseUpdates)
+            {
+                throw new HubException("notes.unavailable: refused");
+            }
+            return Task.CompletedTask;
+        }
 
         public Task EditedAsync(string documentId, CancellationToken cancellationToken) => Task.CompletedTask;
 

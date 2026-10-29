@@ -959,7 +959,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             DepotNoteLiveState.Live => new LiveFileStatus(LiveFileState.Live) { Saved = _saved ?? (_mine ? LiveFileSave.NotYet : null) },
             DepotNoteLiveState.Reconnecting => new LiveFileStatus(LiveFileState.Offline),
             DepotNoteLiveState.SignInNeeded => new LiveFileStatus(LiveFileState.SignInNeeded, _MessageFor(state)),
-            DepotNoteLiveState.Stale => new LiveFileStatus(LiveFileState.Stale, _MessageFor(state)),
+            DepotNoteLiveState.Stale => new LiveFileStatus(LiveFileState.Stale, _MessageFor(state)) { RequiresRejoin = true },
             DepotNoteLiveState.Unavailable or DepotNoteLiveState.Disabled => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
             _ => new LiveFileStatus(LiveFileState.Connecting),
         };

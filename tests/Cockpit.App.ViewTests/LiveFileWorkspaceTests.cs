@@ -72,6 +72,13 @@ public sealed class LiveFileWorkspaceTests
         await _ReadOnlyJoinAsync(LiveReadOnlyReason.SchemaMismatch, "Read only", true);
         await _ReadOnlyJoinAsync(LiveReadOnlyReason.Viewer, "Viewer · read only", false);
         await _OutsideMarks_KeepUntouchedLinesAsync();
+        await _Offline_MergesSeparateLinesAsync();
+        await _Offline_BlocksOverlappingLinesAsync();
+        await _Offline_RevertingToTheInitialTextStillSavesAsync();
+        await _Offline_FailedSaveStaysDirtyAfterSignInExpiresAsync();
+        await _Offline_NewerFileKeepsAnExplicitReversionAsync();
+        await _StaleRoomIsReopenedOnlyAfterSavingAsync();
+        await _TypingDuringFreshJoinIsSavedBeforeReplacingTheEditorAsync();
     });
 
     // Layer 2, view: attribution crosses the file channel and pending typing only clears the line it touches.
@@ -98,6 +105,206 @@ public sealed class LiveFileWorkspaceTests
         finally
         {
             hold.TrySetResult();
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: stale host operations go to the file, then a fresh session rebuilds the editor.
+    private static async Task _StaleRoomIsReopenedOnlyAfterSavingAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Offline));
+        try
+        {
+            body.Editor.TextEditor.Document.Insert(0, "MINE\n");
+            var oldRead = new TaskCompletionSource<LiveFileSnapshot>();
+            source.ReadReply = oldRead;
+            source.PatchGap = 1;
+            source.Remote(0, "OLD READ\n");
+            Dispatcher.UIThread.RunJobs();
+            await source.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var oldSnapshot = new LiveFileSnapshot(source.Text.ToString(), source.Rev, new LiveFileStatus(LiveFileState.Live));
+            source.ReadReply = null;
+            source.PatchGap = 0;
+            source.Status = source.Status with { State = LiveFileState.Stale, RequiresRejoin = true };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            body.Editor.TextEditor.Document.Insert(0, "AFTER STALE\n");
+            source.FileText += "\nTHEIRS";
+            source.FileVersion = "external";
+            await body.SaveAsync();
+            Assert.Single(source.Edits);
+            Assert.Equal(2, source.OpenCount);
+            Assert.Equal(1, source.DisposeCount);
+            Assert.Equal("AFTER STALE\nMINE\n" + Lines + "\nTHEIRS", source.FileText);
+            Assert.Equal(source.FileText, body.Editor.Text);
+            Assert.Equal(LiveFileState.Live, body.LiveStatus?.State);
+            Assert.False(body.IsDirty);
+            // The in-process channel completes inline on the UI thread, so SetResult runs the old continuation before returning.
+            oldRead.SetResult(oldSnapshot);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(source.FileText, body.Editor.Text);
+            Assert.Equal(LiveFileState.Live, body.LiveStatus?.State);
+            Assert.Single(source.Edits);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: typing while OpenLive is awaiting its answer cannot be replaced by that answer.
+    private static async Task _TypingDuringFreshJoinIsSavedBeforeReplacingTheEditorAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Stale) { RequiresRejoin = true });
+        try
+        {
+            body.Editor.TextEditor.Document.Insert(0, "MINE\n");
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            source.HoldReopen = release.Task;
+            var save = body.SaveAsync();
+            await source.ReopenStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            body.Editor.TextEditor.Document.Insert(0, "DURING JOIN\n");
+            release.SetResult();
+            await save;
+            Assert.True(body.IsDirty);
+            Assert.StartsWith("DURING JOIN\nMINE\n", body.Editor.Text);
+            source.HoldReopen = null;
+            await body.SaveAsync();
+            Assert.Equal("DURING JOIN\nMINE\n" + Lines, source.FileText);
+            Assert.Equal(source.FileText, body.Editor.Text);
+            Assert.Equal(LiveFileState.Live, body.LiveStatus?.State);
+            Assert.Empty(source.Edits);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: a newer file cannot turn a deliberate reversion into "unchanged" text.
+    private static async Task _Offline_NewerFileKeepsAnExplicitReversionAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync();
+        try
+        {
+            source.Remote(0, "line 1".Length, "WEB");
+            Dispatcher.UIThread.RunJobs();
+            source.Status = source.Status with { State = LiveFileState.Offline };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            source.FileText = "LATEST" + Lines["line 1".Length..];
+            source.FileVersion = "external";
+            body.Editor.TextEditor.Document.Text = Lines;
+            await body.SaveAsync();
+            Assert.True(body.HasConflict);
+            Assert.True(body.IsDirty);
+            Assert.Empty(source.WriteVersions);
+            Assert.Equal(Lines, body.Editor.Text);
+            body.MergeSourceChanges();
+            await body.SaveAsync();
+            Assert.Contains("line 1 of the note", source.FileText);
+            Assert.Contains("LATEST of the note", source.FileText);
+            Assert.False(body.IsDirty);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: a previously saved live revision is the fallback base, even when typing restores the initial text.
+    private static async Task _Offline_RevertingToTheInitialTextStillSavesAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync();
+        try
+        {
+            source.Remote(0, "WEB\n");
+            Dispatcher.UIThread.RunJobs();
+            source.FileText = "WEB\n" + Lines;
+            source.FileVersion = "external";
+            source.Status = source.Status with { State = LiveFileState.Offline };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            body.Editor.TextEditor.Document.Text = Lines;
+            Assert.True(body.IsDirty);
+            await body.SaveAsync();
+            Assert.Equal(Lines, source.FileText);
+            Assert.Equal(new[] { "external" }, source.WriteVersions);
+            Assert.False(body.IsDirty);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: a plugin acknowledgement and a later sign-in failure cannot acknowledge a failed file save.
+    private static async Task _Offline_FailedSaveStaysDirtyAfterSignInExpiresAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Offline));
+        try
+        {
+            body.Editor.TextEditor.Document.Insert(0, "MINE\n");
+            source.FailWrites = true;
+            await body.SaveAsync();
+            source.Status = source.Status with { State = LiveFileState.SignInNeeded };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(body.IsDirty);
+            Assert.StartsWith("MINE\n", body.Editor.Text);
+            Assert.Equal(Lines, source.FileText);
+            Assert.Equal(WorkspaceMarker.Unsaved, marker());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: fallback uses the file version, retaining another writer's separate line.
+    private static async Task _Offline_MergesSeparateLinesAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Offline));
+        try
+        {
+            body.Editor.TextEditor.Document.Insert(0, "MINE\n");
+            Dispatcher.UIThread.RunJobs();
+            source.FileText += "\nTHEIRS";
+            source.FileVersion = "external";
+            Assert.True(body.IsDirty);
+            Assert.Equal("1 lines only in this Cockpit", body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LocalLineCount").Text);
+            await source.Saved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal("MINE\n" + Lines + "\nTHEIRS", source.FileText);
+            Assert.Equal(source.FileText, body.Editor.Text);
+            Assert.False(body.HasConflict);
+            Assert.False(body.IsDirty);
+            Assert.Equal(new[] { "v1", "external" }, source.WriteVersions);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Layer 2, view: changing the same line writes nothing until the operator resolves the banner.
+    private static async Task _Offline_BlocksOverlappingLinesAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync(new LiveFileStatus(LiveFileState.Offline));
+        try
+        {
+            body.Editor.TextEditor.Document.Replace(0, "line 1".Length, "MINE");
+            Dispatcher.UIThread.RunJobs();
+            source.FileText = "THEIRS" + Lines["line 1".Length..];
+            source.FileVersion = "external";
+            await body.SaveAsync();
+            Assert.True(body.HasConflict);
+            Assert.True(body.IsDirty);
+            Assert.StartsWith("MINE", body.Editor.Text);
+            Assert.StartsWith("THEIRS", source.FileText);
+            Assert.Equal(new[] { "v1" }, source.WriteVersions);
+        }
+        finally
+        {
             window.Close();
         }
     }
@@ -252,9 +459,21 @@ public sealed class LiveFileWorkspaceTests
         public long Rev { get; private set; } = 1;
         public List<(long BaseRev, TextOp[] Ops)> Edits { get; } = [];
         public int Writes { get; private set; }
+        public string FileText { get; set; } = text;
+        public string FileVersion { get; set; } = "v1";
+        public List<string?> WriteVersions { get; } = [];
+        public TaskCompletionSource Saved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool FailWrites { get; set; }
+        public int OpenCount { get; private set; }
+        public int DisposeCount { get; private set; }
+        public Task? HoldReopen { get; set; }
+        public TaskCompletionSource ReopenStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<LiveFileSnapshot>? ReadReply { get; set; }
+        public TaskCompletionSource ReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int PatchGap { get; set; }
         public Task? Hold { get; set; }
         public bool Refuse { get; set; }
-        public TaskCompletionSource Refused { get; } = new();
+        public TaskCompletionSource Refused { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public LiveFileStatus Status { get; set; } = new(LiveFileState.Live);
         public TaskCompletionSource Landed { get; private set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public IReadOnlyList<FileConnection> Connections => [new("c1", "Fake", "memory", false)];
@@ -266,15 +485,49 @@ public sealed class LiveFileWorkspaceTests
         public void PublishStatus() => StatusChanged?.Invoke(this, Status);
         public IFileSource Open(string connectionId) => this;
         public Task<FileReadResult> ReadAsync(FileRef file, CancellationToken cancellationToken) =>
-            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(Text.ToString())), "v1") { CanWrite = true });
+            Task.FromResult(new FileReadResult(new MemoryStream(Encoding.UTF8.GetBytes(FileText)), FileVersion) { CanWrite = true });
         public Task<FileWriteResult> WriteAsync(FileRef target, Stream content, string? ifVersion, bool mustNotExist, CancellationToken cancellationToken)
         {
             Writes++;
+            WriteVersions.Add(ifVersion);
+            if (FailWrites)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The fake file source is offline.");
+            }
+            if (ifVersion != FileVersion)
+            {
+                return Task.FromResult(new FileWriteResult(FileWriteStatus.Conflict, FileVersion));
+            }
+            using var reader = new StreamReader(content, leaveOpen: true);
+            FileText = reader.ReadToEnd();
+            FileVersion = "v2";
+            Saved.TrySetResult();
             return Task.FromResult(new FileWriteResult(FileWriteStatus.Written, "v2"));
         }
-        public Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken) => Task.FromResult<ILiveFileSession>(this);
-        public Task<LiveFileSnapshot> ReadAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, Status));
+        public async Task<ILiveFileSession> OpenLiveAsync(FileRef file, CancellationToken cancellationToken)
+        {
+            OpenCount++;
+            if (OpenCount > 1)
+            {
+                ReopenStarted.TrySetResult();
+                if (HoldReopen is { } hold)
+                {
+                    await hold;
+                }
+                Text.Clear().Append(FileText);
+                Status = Status with { State = LiveFileState.Live, RequiresRejoin = false };
+            }
+            return this;
+        }
+        public Task<LiveFileSnapshot> ReadAsync(CancellationToken cancellationToken)
+        {
+            if (ReadReply is { } reply)
+            {
+                ReadStarted.TrySetResult();
+                return reply.Task;
+            }
+            return Task.FromResult(new LiveFileSnapshot(Text.ToString(), Rev, Status));
+        }
         public async Task<LiveEditResult> EditAsync(string editId, long baseRev, IReadOnlyList<TextOp> ops, CancellationToken cancellationToken)
         {
             if (Hold is { } hold)
@@ -323,9 +576,13 @@ public sealed class LiveFileWorkspaceTests
             {
                 Text.Remove(op.Offset, op.Length).Insert(op.Offset, op.Text);
             }
-            Patched?.Invoke(this, new LiveFilePatch(++Rev, ops, "web"));
+            Patched?.Invoke(this, new LiveFilePatch(Rev += 1 + PatchGap, ops, "web"));
         }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class NoStorage : IPluginStorage

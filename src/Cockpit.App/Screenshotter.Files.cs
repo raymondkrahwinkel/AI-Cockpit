@@ -42,11 +42,12 @@ internal static partial class Screenshotter
 
     private static Window _MarkdownFileScene(int width, int height, string state)
     {
-        var presence = state.StartsWith("presence") || state is "viewer" or "schema-mismatch";
+        var presence = state.StartsWith("presence") || state is "viewer" or "schema-mismatch" || state.StartsWith("live-light");
         var readOnly = state switch
         {
             "viewer" => new LiveFileStatus(LiveFileState.ReadOnly) { ReadOnlyReason = LiveReadOnlyReason.Viewer },
             "schema-mismatch" => new LiveFileStatus(LiveFileState.ReadOnly, "This note uses a newer Depot editor. You can watch it live; editing comes back once Cockpit's Depot plugin is updated.") { ReadOnlyReason = LiveReadOnlyReason.SchemaMismatch },
+            "live-light" or "live-light-saved" => new LiveFileStatus(LiveFileState.Offline),
             _ => null,
         };
         var text = presence ? PresenceNote : "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
@@ -59,8 +60,9 @@ internal static partial class Screenshotter
             "idea", presence ? "2026-10-28 Weekly sync.md" : "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
             Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        var sceneChannel = new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent");
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent")),
+            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(sceneChannel),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
@@ -75,6 +77,19 @@ internal static partial class Screenshotter
         if (state == "presence-agent")
         {
             body.Editor.MarkExternalEdit(new ExternalTextEdit("Assistant · on behalf of Raymond", DateTimeOffset.UtcNow, [new(PresenceNote.Length, text.Length)]));
+        }
+        if (state.StartsWith("live-light"))
+        {
+            var offset = body.Editor.Text.IndexOf("\n\n## Decisions", StringComparison.Ordinal);
+            body.Editor.TextEditor.Document.Insert(offset, "\n- Sanne asks for a dry run of the inbox on Thursday\n- Joris has the Linux numbers by Friday");
+            body.Editor.EditLine(10, atEnd: true);
+            if (state == "live-light-saved")
+            {
+                // This scene's channel completes synchronously in memory; no network or live session is started.
+                body.SaveAsync().GetAwaiter().GetResult();
+                sceneChannel.ShowLive();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            }
         }
         if (state.StartsWith("conflict"))
         {
@@ -125,9 +140,22 @@ internal static partial class Screenshotter
     {
         private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
         private bool _read;
+        private long _rev = 1;
+        private Action<PluginChannelEvent>? _liveState;
+        private Action<PluginChannelEvent>? _livePresence;
+
+        public void ShowLive()
+        {
+            var saved = new LiveFileSave("Sanne", "#3fb8c4", new DateTimeOffset(2026, 10, 28, 14, 9, 0, TimeZoneInfo.Local.GetUtcOffset(new DateTime(2026, 10, 28))));
+            _liveState?.Invoke(new PluginChannelEvent(FileSourceChannel.LiveState, 1,
+                JsonSerializer.SerializeToElement(new FileSourceLiveState("scene", (status ?? new LiveFileStatus(LiveFileState.Live)) with { State = LiveFileState.Live, Saved = saved }), FileSourceChannel.Json)));
+            _livePresence?.Invoke(new PluginChannelEvent(FileSourceChannel.LivePresence, 1,
+                JsonSerializer.SerializeToElement(new FileSourceLivePresence("scene", _PresencePeers(false)), FileSourceChannel.Json)));
+        }
 
         public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) => Task.FromResult(action switch
         {
+            FileSourceChannel.Write when !conflict => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Written, "e7a1b6ca"), null), FileSourceChannel.Json),
             FileSourceChannel.Write => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileWriteResult>(new(FileWriteStatus.Conflict, "f00dcafe"), null), FileSourceChannel.Json),
             FileSourceChannel.Read when conflict && _read => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceReadAnswer>(
                 new(Convert.ToBase64String(Encoding.UTF8.GetBytes(Changed)), "f00dcafe", Encoding.UTF8.GetByteCount(Changed), new DateTimeOffset(2026, 10, 28, 15, 2, 0, TimeSpan.Zero), "text/markdown")
@@ -139,15 +167,29 @@ internal static partial class Screenshotter
                     { CanWrite = writable, Live = live, ModifiedBy = presence ? "Sanne" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LiveOpen when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveSnapshot>(
                 new("scene", Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), 1, status ?? new(LiveFileState.Live))
-                    { Peers = presence ? _PresencePeers(away, agent) : null, OpenUrl = presence ? "https://depot.example/projects/krahwinkel-it/cockpit" : null }, null), FileSourceChannel.Json),
+                    { Peers = presence ? status?.State == LiveFileState.Offline
+                        ? _PresencePeers(true, agent).Select(peer => peer.You ? peer : peer with { Caret = null, Selection = null }).ToArray()
+                        : _PresencePeers(away, agent) : null, OpenUrl = presence ? "https://depot.example/projects/krahwinkel-it/cockpit" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LivePresenceSet when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLivePresenceSet>(
                 JsonSerializer.Deserialize<FileSourceLivePresenceSet>(payload, FileSourceChannel.Json), null), FileSourceChannel.Json),
+            FileSourceChannel.LiveEdit when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<LiveEditResult>(new(LiveEditStatus.Applied, ++_rev), null), FileSourceChannel.Json),
             FileSourceChannel.LiveClose when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveRequest>(new("scene"), null), FileSourceChannel.Json),
             _ => throw new InvalidOperationException("This scene only reads its in-memory source."),
         });
         private bool _MarkRead() => _read = true;
 
-        public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new FileSceneSubscription();
+        public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler)
+        {
+            if (name == FileSourceChannel.LiveState)
+            {
+                _liveState = handler;
+            }
+            if (name == FileSourceChannel.LivePresence)
+            {
+                _livePresence = handler;
+            }
+            return new FileSceneSubscription();
+        }
         private sealed class FileSceneSubscription : IDisposable { public void Dispose() { } }
     }
 }

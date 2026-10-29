@@ -24,7 +24,7 @@ using Material.Icons.Avalonia;
 namespace Cockpit.App.Files;
 
 // One document stays in this body while the workspace moves between a tab and a window.
-internal sealed class MarkdownFileWorkspace : UserControl
+internal sealed partial class MarkdownFileWorkspace : UserControl
 {
     private readonly IWorkspaceContext _context;
     private readonly FileWorkspaceOpenOptions _options;
@@ -125,6 +125,9 @@ internal sealed class MarkdownFileWorkspace : UserControl
         var foot = new DockPanel { LastChildFill = true };
         DockPanel.SetDock(_shortcuts, Dock.Right);
         foot.Children.Add(_shortcuts);
+        DockPanel.SetDock(_localLines, Dock.Right);
+        _localLines.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitStatusWaitingBrush"));
+        foot.Children.Add(_localLines);
         foot.Children.Add(_footer);
         var footer = _Strip(foot, new Thickness(14, 5));
         footer.BorderThickness = new Thickness(0, 1, 0, 0);
@@ -189,7 +192,16 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 _UpdateState();
             }
         };
-        Editor.TextChanged += (_, _) => _UpdateState();
+        Editor.TextChanged += (_, _) =>
+        {
+            _liveLightTimer.Stop();
+            _UpdateState();
+        };
+        _liveLightTimer.Tick += async (_, _) =>
+        {
+            _liveLightTimer.Stop();
+            await _SaveFromUiAsync().ConfigureAwait(true);
+        };
         Editor.EditRequested += (line, text) =>
         {
             if (_live?.Status.State == LiveFileState.ReadOnly)
@@ -230,7 +242,8 @@ internal sealed class MarkdownFileWorkspace : UserControl
     internal MarkdownEditor Editor { get; }
     internal Task Ready { get; }
     internal bool HasConflict => _theirs is not null;
-    internal bool IsDirty => _live is { } live ? live.HasUnsentText : _loaded && _editing && (_new || Editor.Text != _savedText);
+    internal bool IsDirty => _needsFileRefresh || _HasPendingFileText || (_IsLiveLight ? _loaded && Editor.Text != _savedText
+        : _live is { } live ? live.HasUnsentText : _loaded && _editing && (_new || Editor.Text != _savedText));
     internal LiveFileStatus? LiveStatus => _live?.Status;
 
     // A read-only body follows its file: a save from another tab or window, or a click on an already-open file, reloads it quietly.
@@ -367,7 +380,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
                 return false;
             }
             Editor.Text = snapshot.Text;
-            _savedText = snapshot.Text;
+            _savedText = read.Text;
             live.Attach(id, snapshot);
             live.Changed += (_, _) => _UpdateState();
             live.ExternalEdited += (_, edit) => Editor.MarkExternalEdit(edit);
@@ -424,6 +437,10 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     private void _ClearConflict()
     {
+        _conflictMine = null;
+        _conflictMerged = null;
+        _needsFileRefresh = false;
+        _fallbackOrigin = null;
         _conflict = false;
         _theirs = null;
         _comparing = false;
@@ -453,8 +470,13 @@ internal sealed class MarkdownFileWorkspace : UserControl
 
     private async Task _SaveCoreAsync()
     {
-        if (!IsDirty || !_canWrite || _closed || _live is not null)
+        if (!IsDirty && _live?.Status.RequiresRejoin != true || !_canWrite || _closed || _live is not null && !_IsLiveLight)
         {
+            return;
+        }
+        if (_IsLiveLight)
+        {
+            await _SaveLiveLightAsync().ConfigureAwait(true);
             return;
         }
         var submitted = Editor.Text;
@@ -538,7 +560,9 @@ internal sealed class MarkdownFileWorkspace : UserControl
         {
             return;
         }
-        var merged = LineMerge.Merge(_savedText.Split('\n'), theirs.Text.Split('\n'), Editor.Text.Split('\n'));
+        var merged = _conflictMine is { } before && _conflictMerged is { } draft
+            ? LineMerge.Merge(before.Split('\n'), draft.Split('\n'), Editor.Text.Split('\n'))
+            : LineMerge.Merge(_savedText.Split('\n'), theirs.Text.Split('\n'), Editor.Text.Split('\n'));
         _ClearConflict();
         _new = false;
         _hasBom = theirs.HasBom;
@@ -679,6 +703,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _context.Closed -= _OnClosed;
         _context.Pinned -= _OnPinned;
         _savedSubscription?.Dispose();
+        _liveLightTimer.Stop();
         _presence?.Dispose();
         _live?.Dispose();
         // Cancelled, not disposed: a save still in flight reads _lifetime.Token, which throws once the source is disposed.
@@ -710,7 +735,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             }
             _context.SetMarker(dirty || notSent || live.State is LiveFileState.Offline or LiveFileState.SignInNeeded ? WorkspaceMarker.Unsaved
                 : live.State is LiveFileState.Live or LiveFileState.ReadOnly or LiveFileState.NoSaver ? WorkspaceMarker.Live : null);
-            _context.SetCloseGuard(_ConfirmLiveCloseAsync);
+            _context.SetCloseGuard(_IsLiveLight || _needsFileRefresh || _HasPendingFileText ? _ConfirmCloseAsync : _ConfirmLiveCloseAsync);
         }
         else
         {
@@ -755,7 +780,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         }
         _updates.IsVisible = live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch;
         _copy.IsVisible = readOnly && dirty;
-        _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null;
+        _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null || _IsLiveLight;
         var saverColor = live is { State: LiveFileState.Live, Saved.Name: not null } && Color.TryParse(live.Saved.Color, out var parsed) ? parsed : (Color?)null;
         _saverDot.Fill = saverColor is { } color ? new SolidColorBrush(color) : null;
         _saverDot.IsVisible = saverColor is not null && !_loading && !_saving && !_conflict && !notSent;
@@ -787,6 +812,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
         _message.IsVisible = _error is not null;
         var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
+        _UpdateLiveLight();
         _shortcuts.Text = live?.State == LiveFileState.ReadOnly ? "Read-only"
             : _editing ? (live is null ? "Ctrl+S save · " : "") + "Ctrl+/ source · Ctrl+B / I / K"
             : _loaded ? (_canWrite ? (_context.IsPreview ? "Type to edit · Double-click tab to keep" : "Edit or start typing") : "Read-only") : "";

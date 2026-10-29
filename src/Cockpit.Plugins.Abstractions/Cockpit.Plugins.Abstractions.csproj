@@ -642,7 +642,9 @@
     <!-- 3.49.0 (AC-1901): LiveFileStatus.Saved and LiveFileSave, who last saved a live file. A plugin that sets Saved sets
          minHostVersion 0.146.0. Additive; still v3. -->
     <!-- 3.51.0: McpServerContribution.IncludeAgentName and LiveFilePatch.ExternalEdit (AC-1583); requires host 0.148.0. -->
-    <Version>3.51.0</Version>
+    <!-- 3.52.0 (AC-1903): LiveFileStatus.RequiresRejoin fences an old room until local text is saved to the file.
+         A plugin that supplies this flag sets minHostVersion 0.149.0. Additive; still v3. -->
+    <Version>3.52.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
