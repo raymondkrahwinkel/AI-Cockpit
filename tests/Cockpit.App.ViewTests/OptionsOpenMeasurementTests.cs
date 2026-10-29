@@ -12,8 +12,8 @@ public class OptionsOpenMeasurementTests
         var logger = new ProbeLogger();
         var vm = new Cockpit.App.ViewModels.CockpitViewModel();
         typeof(Cockpit.App.ViewModels.CockpitViewModel).GetField("_logger", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?.SetValue(vm, logger);
-        var view = new ProbeView();
-        ((Cockpit.App.Plugins.IPluginContributionSink)vm).AddPluginSettings("probe", "Probe", () => view);
+        var delay = 0;
+        ((Cockpit.App.Plugins.IPluginContributionSink)vm).AddPluginSettings("probe", "Probe", () => new ProbeView(() => delay));
         vm.BeginOptionsEdit();
         vm.PluginOptionsRows.Single().EnsureContent();
         var dialog = new Cockpit.App.Views.OptionsDialog { DataContext = vm };
@@ -40,7 +40,7 @@ public class OptionsOpenMeasurementTests
         logger.Lines.Clear();
         vm.BeginOptionsEdit();
         vm.PluginOptionsRows.Single().EnsureContent();
-        view.Delay = 950;
+        delay = 950;
         await vm.ApplyOptionsAndStayCommand.ExecuteAsync(null);
         Assert.Single(logger.Lines);
         Assert.Contains("plugin-probe:", logger.Lines.Single());
@@ -55,12 +55,11 @@ public class OptionsOpenMeasurementTests
 
     private static int ExpectedNormalCount => int.Parse(Environment.GetEnvironmentVariable("AC1906_EXPECT_NORMAL") ?? "0");
 
-    private sealed class ProbeView : Avalonia.Controls.TextBlock, Cockpit.Plugins.Abstractions.IPluginSettingsView
+    private sealed class ProbeView(Func<int> delay) : Avalonia.Controls.TextBlock, Cockpit.Plugins.Abstractions.IPluginSettingsView
     {
-        public int Delay { get; set; }
         public bool TryStage(out Action? commit, out string? error)
         {
-            commit = () => Thread.Sleep(Delay);
+            commit = () => Thread.Sleep(delay());
             error = null;
             return true;
         }
