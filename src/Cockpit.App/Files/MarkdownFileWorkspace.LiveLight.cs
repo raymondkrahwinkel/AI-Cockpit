@@ -206,7 +206,7 @@ internal sealed partial class MarkdownFileWorkspace
         {
             merged = LineMerge.Merge(origin.Split('\n'), shared, mine.Split('\n'), out localOverlap);
         }
-        if (sharedOverlap || localOverlap)
+        if ((sharedOverlap || localOverlap) && _closed)
         {
             _theirs = theirs;
             _conflict = true;
