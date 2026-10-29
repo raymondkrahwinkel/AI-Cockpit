@@ -407,7 +407,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             var result = await hub.JoinAsync(
                 new DepotNoteJoinRequest(_note.Organization, _note.Project, _note.Path, Watch: false, _epoch, DepotNoteSchema.Version, Save: _saver is not null),
                 cancellationToken).ConfigureAwait(false);
-            if (result.Stale && result.Epoch is null)
+            if (result.Stale)
             {
                 _Terminal(DepotNoteLiveState.Stale);
                 return false;
