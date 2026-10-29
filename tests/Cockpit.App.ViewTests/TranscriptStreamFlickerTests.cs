@@ -323,10 +323,10 @@ public sealed class TranscriptStreamFlickerTests
     {
         for (var frame = 0; frame < frames; frame++)
         {
-            sample?.Invoke();
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
+            sample?.Invoke();
         }
     }
 }

@@ -163,7 +163,7 @@ public class NodeDiscoveryTests : IAsyncLifetime
         {
             // No bound socket is the boundary that makes answering impossible. Probing a released ephemeral port
             // instead made Windows report ICMP NetworkUnreachable and tested an unrelated port.
-            Assert.NotNull(responder.BoundPort);
+            Assert.Null(responder.BoundPort);
         }
         finally
         {

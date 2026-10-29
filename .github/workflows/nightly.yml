@@ -198,7 +198,7 @@ jobs:
 
           reported = {row[0].casefold() for row in rows}
           for missing in sorted(expected.keys() - reported):
-              reason = "no test result"
+              reason = "overgeslagen na eerdere fout" if outcomes.get(missing) == "skipped" else "no test result"
               errors.append(f"{expected[missing]}: {reason}")
           if not rows:
               errors.append("No test results found")
