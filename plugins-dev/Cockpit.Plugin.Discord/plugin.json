@@ -1,13 +1,13 @@
 {
   "id": "discord",
   "name": "Discord",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "entryAssembly": "Cockpit.Plugin.Discord.dll",
   "entryType": "Cockpit.Plugin.Discord.DiscordChannelPlugin",
   "uiAssembly": "Cockpit.Plugin.Discord.UI.dll",
   "uiEntryType": "Cockpit.Plugin.Discord.UI.DiscordUi",
   "abstractionsVersion": 3,
-  "minHostVersion": "0.106.0",
+  "minHostVersion": "0.151.0",
   "description": "Talk to your assistant from Discord in direct messages with your linked account — a second door onto the same conversation the chat window shows. Adds a flow step that DMs you, and lets other plugins such as Schedules reach you there, with buttons to answer.",
   "author": "Cockpit",
   "secretKeys": ["assistantChannel.botToken"]

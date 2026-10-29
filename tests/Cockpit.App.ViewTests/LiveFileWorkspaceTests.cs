@@ -5,7 +5,6 @@ using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
-using Avalonia.Threading;
 using AvaloniaEdit.Editing;
 using Cockpit.App.Files;
 using Cockpit.App.Plugins;
@@ -46,13 +45,13 @@ public sealed class LiveFileWorkspaceTests
 
             var line12 = document.GetLineByNumber(12);
             document.Insert(line12.EndOffset, "!");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             var edit = Assert.Single(source.Edits);
             Assert.Equal(1, edit.BaseRev);
             Assert.Equal(new[] { new TextOp(line12.EndOffset - 1, 0, "!") }, edit.Ops);
 
             source.Remote(document.GetLineByNumber(3).Offset, "REMOTE\n");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
 
             Assert.Equal(source.Text.ToString(), body.Editor.Text);
             Assert.Equal(caretContext, document.GetText(body.Editor.TextEditor.CaretOffset - 4, 8));
@@ -61,7 +60,7 @@ public sealed class LiveFileWorkspaceTests
             Assert.Equal(WorkspaceMarker.Live, marker());
             Assert.DoesNotContain(body.GetLogicalDescendants().OfType<Button>(), button => button.IsVisible && Equals(button.Content, "Save"));
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal(0, source.Writes);
             Assert.DoesNotContain(body.GetLogicalDescendants().OfType<TextBlock>(), block => block.Text?.Contains("Ctrl+S") == true);
         }
@@ -95,9 +94,9 @@ public sealed class LiveFileWorkspaceTests
         {
             var document = body.Editor.TextEditor.Document;
             document.Insert(1, "mine");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.MarkOutside(new ExternalTextEdit("Assistant", DateTimeOffset.UtcNow, [new LiveRange(0, source.Text.ToString().IndexOf("line 4", StringComparison.Ordinal) - 1)]));
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal(new[] { 2, 3 }, body.Editor.ExternalMarkedLines);
             document.Insert(document.GetLineByNumber(2).Offset + 1, "typed");
             Assert.Equal(new[] { 3 }, body.Editor.ExternalMarkedLines);
@@ -124,18 +123,19 @@ public sealed class LiveFileWorkspaceTests
             source.ReadReply = oldRead;
             source.PatchGap = 1;
             source.Remote(0, "OLD READ\n");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             await source.ReadStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
             var oldSnapshot = new LiveFileSnapshot(source.Text.ToString(), source.Rev, new LiveFileStatus(LiveFileState.Live));
             source.ReadReply = null;
             source.PatchGap = 0;
             source.Status = source.Status with { State = LiveFileState.Stale, RequiresRejoin = true };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             body.Editor.TextEditor.Document.Insert(0, "AFTER STALE\n");
             source.FileText += "\nTHEIRS";
             source.FileVersion = "external";
             await body.SaveAsync();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Single(source.Edits);
             Assert.Equal(2, source.OpenCount);
             Assert.Equal(1, source.DisposeCount);
@@ -143,9 +143,9 @@ public sealed class LiveFileWorkspaceTests
             Assert.Equal(source.FileText, body.Editor.Text);
             Assert.Equal(LiveFileState.Live, body.LiveStatus?.State);
             Assert.False(body.IsDirty);
-            // The in-process channel completes inline on the UI thread, so SetResult runs the old continuation before returning.
+            // AC-1891: the hub answers on the pool, so the old read's continuation runs during the settle below.
             oldRead.SetResult(oldSnapshot);
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal(source.FileText, body.Editor.Text);
             Assert.Equal(LiveFileState.Live, body.LiveStatus?.State);
             Assert.Single(source.Edits);
@@ -192,10 +192,10 @@ public sealed class LiveFileWorkspaceTests
         try
         {
             source.Remote(0, "line 1".Length, "WEB");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.Status = source.Status with { State = LiveFileState.Offline };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.FileText = "LATEST" + Lines["line 1".Length..];
             source.FileVersion = "external";
             body.Editor.TextEditor.Document.Text = Lines;
@@ -223,12 +223,12 @@ public sealed class LiveFileWorkspaceTests
         try
         {
             source.Remote(0, "WEB\n");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.FileText = "WEB\n" + Lines;
             source.FileVersion = "external";
             source.Status = source.Status with { State = LiveFileState.Offline };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             body.Editor.TextEditor.Document.Text = Lines;
             Assert.True(body.IsDirty);
             await body.SaveAsync();
@@ -253,7 +253,7 @@ public sealed class LiveFileWorkspaceTests
             await body.SaveAsync();
             source.Status = source.Status with { State = LiveFileState.SignInNeeded };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.StartsWith("MINE\n", body.Editor.Text);
             Assert.Equal(Lines, source.FileText);
@@ -264,7 +264,7 @@ public sealed class LiveFileWorkspaceTests
                 + ". Nothing was lost; your text is still here. Sign in again to rejoin the note.", _BannerText(body));
             body.GetLogicalDescendants().OfType<Button>().Single(button => button.IsVisible && Equals(button.Content, "Sign in again"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal(new[] { true }, source.Reconnects);
             Assert.Equal(Lines, source.FileText);
         }
@@ -281,10 +281,10 @@ public sealed class LiveFileWorkspaceTests
         try
         {
             body.Editor.TextEditor.Document.Insert(0, "MINE\n");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.Status = source.Status with { State = LiveFileState.SignInNeeded };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.Equal("1 lines only in this Cockpit", body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LocalLineCount").Text);
             Assert.Equal(0, source.Writes);
@@ -305,7 +305,7 @@ public sealed class LiveFileWorkspaceTests
         try
         {
             body.Editor.TextEditor.Document.Insert(0, "MINE\n");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.FileText += "\nTHEIRS";
             source.FileVersion = "external";
             Assert.True(body.IsDirty);
@@ -313,6 +313,7 @@ public sealed class LiveFileWorkspaceTests
             // AC-1582, 5a: the banner names Depot, the time it dropped and the next try.
             Assert.Matches(@"^The live connection to Depot dropped at \d\d:\d\d\. Keep writing: your text stays in this Cockpit and is merged into the note when Depot is back\. Next try in \d+ s\.$", _BannerText(body));
             await source.Saved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal("MINE\n" + Lines + "\nTHEIRS", source.FileText);
             Assert.Equal(source.FileText, body.Editor.Text);
             Assert.False(body.HasConflict);
@@ -321,7 +322,7 @@ public sealed class LiveFileWorkspaceTests
             // 5b: back live, the done bar counts what was merged.
             source.Status = source.Status with { State = LiveFileState.Live };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal("Back live. Your 1 offline line was merged into the note; nothing overlapped.", _BannerText(body));
         }
         finally
@@ -337,7 +338,7 @@ public sealed class LiveFileWorkspaceTests
         try
         {
             body.Editor.TextEditor.Document.Replace(0, "line 1".Length, "MINE");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.FileText = "THEIRS" + Lines["line 1".Length..];
             source.FileVersion = "external";
             await body.SaveAsync();
@@ -364,7 +365,7 @@ public sealed class LiveFileWorkspaceTests
             body.BeginEdit();
             body.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "NO" });
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Z, KeyModifiers = KeyModifiers.Control });
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.True(body.Editor.IsReadOnly);
             Assert.False(body.Editor.ShowSource);
             Assert.False(body.IsDirty);
@@ -375,12 +376,12 @@ public sealed class LiveFileWorkspaceTests
             Assert.Contains(body.GetLogicalDescendants().OfType<Button>(), button => button.IsVisible && Equals(button.Content, "Download"));
             Assert.DoesNotContain(body.GetLogicalDescendants().OfType<CheckBox>(), check => check.IsVisible && Equals(check.Content, "Markdown source"));
             source.Remote(0, "WEB ");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal("WEB " + Lines, body.Editor.Text);
             Assert.Empty(source.Edits);
             source.Status = status with { UnsentSourceText = "Shared text before the offline edit" };
             source.PublishStatus();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.True(body.IsDirty);
             Assert.True(body.HasConflict);
             Assert.Equal(WorkspaceMarker.Unsaved, marker());
@@ -408,7 +409,7 @@ public sealed class LiveFileWorkspaceTests
             hold.SetResult();
             await source.Refused.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await readOnlyApplied.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.True(body.Editor.IsReadOnly);
             Assert.True(body.IsDirty);
             Assert.Equal(WorkspaceMarker.Unsaved, marker());
@@ -417,7 +418,7 @@ public sealed class LiveFileWorkspaceTests
             body.BeginEdit();
             Assert.True(body.Editor.IsReadOnly);
             source.Remote(Lines.Length, "\nWEB");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.StartsWith("MINE QUEUED ", body.Editor.Text);
             Assert.EndsWith("\nWEB", body.Editor.Text);
             Assert.True(body.IsDirty);
@@ -442,13 +443,13 @@ public sealed class LiveFileWorkspaceTests
         {
             body.Editor.TextEditor.CaretOffset = body.Editor.TextEditor.Document.GetLineByNumber(5).EndOffset;
             body.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "abc" });
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.Remote(0, "WEB ");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Contains("line 5 of the noteabc", body.Editor.Text);
 
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Z, KeyModifiers = KeyModifiers.Control });
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
 
             Assert.Equal("WEB " + Lines, body.Editor.Text);
             Assert.Equal(body.Editor.Text, source.Text.ToString());
@@ -458,14 +459,14 @@ public sealed class LiveFileWorkspaceTests
             var word = body.Editor.Text.IndexOf("line 7", StringComparison.Ordinal);
             body.Editor.TextEditor.CaretOffset = word + 2;
             body.Editor.TextEditor.TextArea.RaiseEvent(new TextInputEventArgs { RoutedEvent = InputElement.TextInputEvent, Text = "XY" });
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             source.Remote(word, "line 7".Length, "");
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             var landed = source.Landed.Task;
             source.Hold = null;
             hold.SetResult();
             await landed.WaitAsync(TimeSpan.FromSeconds(10));
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
 
             Assert.Equal(source.Text.ToString(), body.Editor.Text);
             Assert.Contains("\nXY of the note\n", body.Editor.Text);
@@ -488,7 +489,7 @@ public sealed class LiveFileWorkspaceTests
         var window = new Window { Content = body, Width = 900, Height = 700 };
         window.Show();
         await body.Ready;
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
         return (source, body, () => marker, window);
     }
 

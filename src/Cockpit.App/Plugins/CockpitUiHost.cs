@@ -64,6 +64,9 @@ internal sealed partial class CockpitUiHost(
     public Task ShowSettingsAsync() => contributionSink.OpenPluginSettingsAsync(pluginId);
 
     public void OnSettingsSaved(Action callback) =>
+        contributionSink.AddSettingsSavedHandler(pluginId, () => { callback(); return Task.CompletedTask; });
+
+    public void OnSettingsSaved(Func<Task> callback) =>
         contributionSink.AddSettingsSavedHandler(pluginId, callback);
 
     public void AddServerSettings(Func<IPluginUiChannel, Control> createView) =>

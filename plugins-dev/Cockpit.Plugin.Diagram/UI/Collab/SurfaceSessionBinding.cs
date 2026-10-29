@@ -19,12 +19,13 @@ internal sealed class SurfaceSessionBinding
 
     // AC-1400: that the session ended arrives as the backend's session.closed event on the plugin's channel. No
     // channel (an older host) means the end is never announced, the same as a surface with no registry.
+    // AC-1891: not live until BindAsync has asked the backend, which the surface does once it is built.
     public SurfaceSessionBinding(ICockpitUiHost host, IPluginUiChannel? channel, string? initialPaneId, Action onChanged)
     {
         _host = host;
         _channel = channel;
         _onChanged = onChanged;
-        _bound = _Bind(initialPaneId);
+        _bound = new _BindResult(initialPaneId ?? "", null, false);
         _closed = channel?.Subscribe(DiagramChannelContract.SessionClosed, channelEvent => _OnClosed(DiagramChannelContract.ReadString(channelEvent.Payload, 0)));
     }
 
@@ -45,16 +46,17 @@ internal sealed class SurfaceSessionBinding
 
     public Task SendAsync(string text) => _host.SendToSessionAsync(_bound.PaneId, text);
 
+    // Binds the pane the surface was opened with. Does not call onChanged: the surface reads the binding itself.
+    public async Task BindAsync() => _bound = await _BindAsync(_bound.PaneId);
+
     // No channel (an older host) means no registry either, the same "nothing to ask" state SurfaceWindowOpener's
     // callers already draw — a fresh bind then reads as "no session", never an exception.
-    private _BindResult _Bind(string? paneId)
+    private async Task<_BindResult> _BindAsync(string paneId)
     {
-        var pane = paneId ?? "";
         var bound = _channel is null
-            ? new _BindResult(pane, null, false)
-            : _channel.InvokeAsync(DiagramChannelContract.SessionBind, JsonSerializer.SerializeToElement(new object?[] { pane }, DiagramChannelContract.Json))
-                .GetAwaiter().GetResult()
-                .Deserialize<_BindResult>(DiagramChannelContract.Json) ?? new _BindResult(pane, null, false);
+            ? new _BindResult(paneId, null, false)
+            : (await _channel.InvokeAsync(DiagramChannelContract.SessionBind, JsonSerializer.SerializeToElement(new object?[] { paneId }, DiagramChannelContract.Json)))
+                .Deserialize<_BindResult>(DiagramChannelContract.Json) ?? new _BindResult(paneId, null, false);
         BoundSessionName = bound.SessionName ?? (bound.IsLive ? bound.PaneId : null);
         return bound;
     }
@@ -76,18 +78,18 @@ internal sealed class SurfaceSessionBinding
     // Couples to another running session — the way out of "surface open, no agent", after the bound session ended
     // or the operator disconnected. Returns the refusal message when `couple` throws (the surface is already
     // coupled to a different agent); null once it landed and this binding points at the new session.
-    public string? Recouple(string paneId, Action<string> couple)
+    public async Task<string?> RecoupleAsync(string paneId, Func<string, Task> couple)
     {
         try
         {
-            couple(paneId);
+            await couple(paneId);
         }
         catch (InvalidOperationException exception)
         {
             return exception.Message;
         }
 
-        _bound = _Bind(paneId);
+        _bound = await _BindAsync(paneId);
         EndedSessionName = null;
         _onChanged();
         return null;
@@ -97,11 +99,11 @@ internal sealed class SurfaceSessionBinding
 
     // The open sessions by name (AC-833), so recoupling names a session instead of guessing one. No running
     // session is a state worth reading, not an empty menu.
-    public void ShowSessionPicker(Control anchor, Action<string> recouple)
+    public async Task ShowSessionPickerAsync(Control anchor, Action<string> recouple)
     {
         var open = _channel is null
             ? []
-            : _channel.InvokeAsync(DiagramChannelContract.SessionList, default).GetAwaiter().GetResult().Deserialize<List<OpenCockpitSession>>(DiagramChannelContract.Json) ?? [];
+            : (await _channel.InvokeAsync(DiagramChannelContract.SessionList, default)).Deserialize<List<OpenCockpitSession>>(DiagramChannelContract.Json) ?? [];
         var flyout = new MenuFlyout();
         if (open.Count == 0)
         {

@@ -84,6 +84,23 @@ public sealed class HeadlessAvalonia : IDisposable
     /// </summary>
     public static Task RunAsync(Func<Task> body) => Dispatcher.UIThread.InvokeAsync(body);
 
+    /// <summary>
+    /// RunJobs for a body that went over a plugin channel (AC-1891): the hub answers on the pool and the answer
+    /// comes back through the dispatcher, so this runs both until neither has had work for ten ticks in a row.
+    /// </summary>
+    public static async Task SettleAsync()
+    {
+        var quiet = 0;
+        for (var tick = 0; tick < 2000 && quiet < 10; tick++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            quiet = ThreadPool.PendingWorkItemCount == 0 ? quiet + 1 : 0;
+            await Task.Delay(1);
+        }
+
+        Dispatcher.UIThread.RunJobs();
+    }
+
     public void Dispose() => _stop?.Cancel();
 }
 

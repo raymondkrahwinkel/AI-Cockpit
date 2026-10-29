@@ -56,6 +56,13 @@ public interface ICockpitUiHost
     void OnSettingsSaved(Action callback);
 
     /// <summary>
+    /// Awaits <paramref name="callback"/> after the operator saved this plugin's settings, before the host counts the
+    /// save as done (AC-1891). For a callback that calls the plugin's own channel. The default body, for an
+    /// implementation that predates it, runs the callback without waiting for it.
+    /// </summary>
+    void OnSettingsSaved(Func<Task> callback) => OnSettingsSaved(() => { _ = callback(); });
+
+    /// <summary>
     /// Registers the view an admin opens from Admin → Plugins → Settings for a server this plugin is installed on
     /// (AC-1511). <paramref name="createView"/> gets a channel to this plugin's backend part on that server, not the
     /// one in this window's own process; it carries invokes only. Default no-op, so existing hosts keep compiling.

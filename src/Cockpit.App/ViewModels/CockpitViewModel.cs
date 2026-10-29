@@ -434,7 +434,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // Settings-saved callbacks (#52) keyed by plugin folder id, registered via `ICockpitHost.OnSettingsSaved` and run
     // once the host has performed that plugin's staged write (AC-1004).
-    private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
+    private readonly Dictionary<string, List<Func<Task>>> _settingsSavedHandlers = [];
 
     // The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins.
     public PluginManagerViewModel Plugins { get; }
@@ -805,7 +805,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Unlike the three contributions above, registration here touches only this private dictionary — never a bound
     // ObservableCollection — and both members are reached exclusively from Avalonia UI-thread callbacks in practice (a
     // contribution's own constructor, and the settings dialog's Save click), so no dispatcher hop is needed.
-    void IPluginContributionSink.AddSettingsSavedHandler(string pluginId, Action callback)
+    void IPluginContributionSink.AddSettingsSavedHandler(string pluginId, Func<Task> callback)
     {
         if (!_settingsSavedHandlers.TryGetValue(pluginId, out var handlers))
         {
@@ -816,7 +816,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         handlers.Add(callback);
     }
 
-    void IPluginContributionSink.NotifySettingsSaved(string pluginId)
+    async Task IPluginContributionSink.NotifySettingsSavedAsync(string pluginId)
     {
         if (!_settingsSavedHandlers.TryGetValue(pluginId, out var handlers))
         {
@@ -827,7 +827,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the list while iterating it).
         foreach (var handler in handlers.ToArray())
         {
-            handler();
+            await handler();
         }
     }
 
@@ -7467,14 +7467,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var pluginLabels = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var row in PluginOptionsRows)
         {
-            if (row.RawView is not IPluginSettingsView settingsView)
+            if (row.RawView is not { } settingsView || !PluginSettingsStaging.IsSettingsView(settingsView))
             {
                 continue;
             }
 
             var categoryTag = $"plugin:{row.PluginId}";
             pluginLabels[categoryTag] = row.DisplayName;
-            if (!pluginStaging.TryStage(settingsView, categoryTag, () => ((IPluginContributionSink)this).NotifySettingsSaved(row.PluginId), out var error))
+            if (!pluginStaging.TryStage(settingsView, categoryTag, () => ((IPluginContributionSink)this).NotifySettingsSavedAsync(row.PluginId), out var error))
             {
                 failures.Add((row.DisplayName, error, categoryTag));
             }
@@ -7514,7 +7514,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // AC-479: reported after the batch has run rather than before it, so a plugin that throws on its own
             // write lands on the same list as one that refused — the others' writes have happened by then.
-            foreach (var (categoryTag, reason) in pluginStaging.Commit(tag => measurement.Mark(tag.Replace("plugin:", "plugin-", StringComparison.Ordinal))))
+            foreach (var (categoryTag, reason) in await pluginStaging.CommitAsync(tag => measurement.Mark(tag.Replace("plugin:", "plugin-", StringComparison.Ordinal))))
             {
                 // TryGetValue, not the indexer: this runs while handling a plugin that already threw, and a
                 // staged write from outside the loop above would turn that into an unhandled one.

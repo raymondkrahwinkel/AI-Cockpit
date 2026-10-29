@@ -39,9 +39,15 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
             _handlers.TryGetValue((pluginId, action), out handler);
         }
 
-        return handler is null
-            ? Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action))
-            : handler(_Own(payload), cancellationToken);
+        // AC-1891: never inline. A UI control calling in would otherwise run the backend's I/O on the UI thread
+        // up to the handler's first real await, and that await would capture the UI context.
+        if (handler is null)
+        {
+            return Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action));
+        }
+
+        var owned = _Own(payload);
+        return Task.Run(() => handler(owned, cancellationToken), cancellationToken);
     }
 
     public void Publish(string pluginId, string name, JsonElement payload)

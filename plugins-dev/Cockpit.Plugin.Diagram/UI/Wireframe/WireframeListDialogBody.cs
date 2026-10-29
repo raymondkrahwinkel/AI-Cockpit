@@ -56,10 +56,13 @@ internal sealed class WireframeListDialogBody : UserControl
         _ = _LoadAsync();
     }
 
+    // AC-1891: listed and read off the UI thread, as in DiagramListDialogBody._LoadAsync.
     private async Task _LoadAsync()
     {
+        _list.Children.Clear();
+        _list.Children.Add(new TextBlock { Text = "Loading…", FontSize = 12, Margin = new Thickness(12), Foreground = _Brush("CockpitTextSecondaryBrush") });
         var rows = await _host.GetProjectMemoryRowsAsync();
-        var entries = WireframeCatalog.List(rows);
+        var entries = await Task.Run(() => WireframeCatalog.List(rows));
         _Render(entries, rows.Count);
     }
 

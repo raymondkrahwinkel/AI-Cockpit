@@ -327,8 +327,9 @@ public class DiagramMcpToolsTests
 
     // ---- open_diagram (AC-835, direct path since AC-891): the agent asks for a window of its own ----
 
+    // AC-948 DoD as well: a fresh install (SkipDiagramConsent off) keeps asking every time.
     [Fact]
-    public async Task OpenDiagram_WhenApproved_AsksTheOperator_ThenOpensTheWindowDirectly()
+    public async Task OpenDiagram_WhenApproved_WithTheDefaultSettings_AsksTheOperator_ThenOpensTheWindowDirectly()
     {
         var (tools, _, host, asked) = _Build(ConsentOutcome.Approved);
 
@@ -376,18 +377,5 @@ public class DiagramMcpToolsTests
 
         Assert.True(json!["ok"]!.GetValue<bool>());
         await host.DidNotReceive().RequestConsentAsync(Arg.Any<ConsentRequest>());
-    }
-
-    [Fact]
-    public async Task OpenDiagram_WithSkipDiagramConsentOff_StillAsks()
-    {
-        // AC-948 DoD: a fresh install (flag off) keeps asking every time — nothing about today's behaviour changes.
-        var (tools, _, _, asked) = _Build(ConsentOutcome.Approved);
-
-        var json = JsonNode.Parse(await tools.OpenDiagram(Session, "Onboarding flow", Source));
-        Dispatcher.UIThread.RunJobs();
-
-        Assert.True(json!["ok"]!.GetValue<bool>());
-        Assert.Single(asked);
     }
 }

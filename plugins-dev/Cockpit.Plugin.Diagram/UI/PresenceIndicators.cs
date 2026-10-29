@@ -20,7 +20,8 @@ internal sealed class PresenceIndicators : Border
     private readonly string _surfaceId;
     private readonly ISurfaceActivityJournal _journal;
     private readonly ISurfaceCouplingSource _coupling;
-    private readonly int _baselineCount;
+    private int? _baselineCount;
+    private int _historyCount;
     private readonly Ellipse _agentPip = new() { Width = 8, Height = 8 };
     private readonly Ellipse _operatorPip = new() { Width = 8, Height = 8 };
     private readonly TextBlock _liveLine = new() { FontSize = 11 };
@@ -38,10 +39,6 @@ internal sealed class PresenceIndicators : Border
         _surfaceId = surfaceId;
         _journal = journal;
         _coupling = coupling;
-
-        // A window-session tally, not a lifetime one: whatever landed before this control existed is the baseline,
-        // not part of "changed since I've been watching".
-        _baselineCount = _journal.History(_surfaceId).Count;
 
         ToolTip.SetTip(_agentPip, "Agent");
         ToolTip.SetTip(_operatorPip, "You");
@@ -65,6 +62,16 @@ internal sealed class PresenceIndicators : Border
             _journal.HistoryChanged -= _OnHistoryChanged;
         };
 
+        _Refresh();
+        _ = _LoadBaselineAsync();
+    }
+
+    // A window-session tally, not a lifetime one: whatever landed before this control existed is the baseline,
+    // not part of "changed since I've been watching". Read over the channel (AC-1891), so it lands a moment later.
+    private async Task _LoadBaselineAsync()
+    {
+        _historyCount = (await _journal.HistoryAsync(_surfaceId)).Count;
+        _baselineCount ??= _historyCount;
         _Refresh();
     }
 
@@ -108,9 +115,11 @@ internal sealed class PresenceIndicators : Border
             return;
         }
 
-        Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(async () =>
         {
-            var last = _LastEntry(_journal.History(_surfaceId));
+            var history = await _journal.HistoryAsync(_surfaceId);
+            _historyCount = history.Count;
+            var last = _LastEntry(history);
 
             if (last is { Origin: not "operator", Reverted: false } entry)
             {
@@ -169,8 +178,7 @@ internal sealed class PresenceIndicators : Border
                 ? $"{name}: {_lastSummary}{both}"
                 : $"{name} is reading along{both}";
 
-        var total = _journal.History(_surfaceId).Count;
-        var delta = Math.Max(0, total - _baselineCount);
+        var delta = Math.Max(0, _historyCount - (_baselineCount ?? _historyCount));
         _counterLine.Text = delta switch
         {
             0 => "0 changes",

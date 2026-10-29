@@ -53,12 +53,13 @@ internal sealed class WireframeActivityJournal(WireframeChannelClient? registry)
 
     // Every wireframe edit can be taken back (no WhiteboardHistoryKind.Erase-style gap on this surface, AC-871),
     // so CanRevert is always true — same as DiagramActivityJournal's.
-    public IReadOnlyList<SurfaceActivityEntry> History(string surfaceId) =>
-        (registry?.History(surfaceId) ?? [])
+    public async Task<IReadOnlyList<SurfaceActivityEntry>> HistoryAsync(string surfaceId) =>
+        (registry is null ? [] : await registry.HistoryAsync(surfaceId))
             .Select(entry => new SurfaceActivityEntry(entry.Id, entry.Origin, entry.Summary, _ObjectKey(entry.ComponentKey), entry.When, entry.Reverted, CanRevert: true))
             .ToList();
 
-    public string? Revert(string surfaceId, string entryId) => registry?.Revert(surfaceId, entryId);
+    public Task<string?> RevertAsync(string surfaceId, string entryId) =>
+        registry?.RevertAsync(surfaceId, entryId) ?? Task.FromResult<string?>(null);
 
     // A Replace (WriteCoupled) journals an empty component key — there is no single component to jump to for a
     // whole-source rewrite, so the strip's row renders as unclickable rather than jumping nowhere.

@@ -27,7 +27,7 @@ public class DepotSettingsControlTests
 {
     // What the host does on a Save click (AC-1003): stage, then run the write the view handed back. False means
     // the view refused and nothing was written.
-    private static bool _Save(IPluginSettingsView view)
+    private static async Task<bool> _SaveAsync(IAsyncPluginSettingsView view)
     {
         if (!view.TryStage(out var commit, out _))
         {
@@ -35,7 +35,7 @@ public class DepotSettingsControlTests
         }
 
         Assert.NotNull(commit);
-        commit();
+        await commit();
         return true;
     }
 
@@ -54,7 +54,7 @@ public class DepotSettingsControlTests
     // Normalize strips a trailing /mcp and slash (AC-499) — two rows pasting the documented endpoint and the bare
     // origin for the same instance must collide too, not just a byte-identical pair of URLs.
     [InlineData("Work", "https://depot.example.com/mcp", "Work (personal)", "https://depot.example.com/")]
-    public void Save_TwoRowsThatWouldCollide_RefusesTheWholeSave_AndWritesNothing(
+    public async Task Save_TwoRowsThatWouldCollide_RefusesTheWholeSave_AndWritesNothing(
         string firstName, string firstUrl, string secondName, string secondUrl)
     {
         var host = Substitute.For<ICockpitUiHost>();
@@ -65,7 +65,7 @@ public class DepotSettingsControlTests
         _SetRowFields(view, index: 0, name: firstName, url: firstUrl);
         _SetRowFields(view, index: 1, name: secondName, url: secondUrl);
 
-        var saved = _Save(view);
+        var saved = await _SaveAsync(view);
 
         Assert.False(saved);
         Assert.Empty(settings.Connections);

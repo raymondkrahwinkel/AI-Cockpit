@@ -27,8 +27,8 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
     private readonly ICockpitUiHost _host;
     private readonly IPluginUiChannel? _channel;
-    private readonly WhiteboardChannelClient? _registry;
-    private readonly DiagramChannelClient? _diagrams;
+    private readonly WhiteboardChannelClient? _client;
+    private readonly DiagramChannelClient? _diagramsClient;
     private readonly IWhiteboardSnapshotRenderer _renderer = new WhiteboardSnapshotRenderer();
     private readonly WhiteboardControl _control;
     private readonly string _surfaceId;
@@ -58,14 +58,22 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private string? _filePath;
     private string _savedText;
     private string? _fileAsLastSeen;
+    private bool _served;
+    private bool _diagramsServed;
+    private bool _detached;
+
+    // AC-1891: null until the backend said it serves each registry — "not (yet) connected" reads as "older host".
+    private WhiteboardChannelClient? _registry => _served ? _client : null;
+
+    private DiagramChannelClient? _diagrams => _diagramsServed ? _diagramsClient : null;
 
     // AC-1400: both registries through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
     public WhiteboardWorkspaceBody(ICockpitUiHost host, IPluginUiChannel? channel, WhiteboardDocument document, string? sessionPaneId)
     {
         _host = host;
         _channel = channel;
-        _registry = WhiteboardChannelClient.Connect(channel);
-        _diagrams = DiagramChannelClient.Connect(channel);
+        _client = channel is null ? null : new WhiteboardChannelClient(channel);
+        _diagramsClient = channel is null ? null : new DiagramChannelClient(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -85,7 +93,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         (_saveBar, _saveButton, _saveStatus, _askButton) = _BuildSaveBar();
         (_couplingBar, _couplingLabel, _readChip, _editChip, _pip, _coupleButton, _disconnectButton, _inviteButton) = _BuildCouplingBar();
         (var convertBar, _convertButton, _convertStatus) = _BuildConvertBar();
-        var whiteboardJournal = new WhiteboardActivityJournal(_registry, _control.Canvas.Edits);
+        var whiteboardJournal = new WhiteboardActivityJournal(_client, _control.Canvas.Edits);
         _activityStrip = new ActivityStrip(host, _surfaceId, whiteboardJournal, key =>
         {
             if (Guid.TryParse(key, out var id))
@@ -116,65 +124,97 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         // Bound before the first _RefreshAskButton: that reads _sessionBinding.IsLive for the ask button. The same
         // callback that refreshes the coupling bar on a change refreshes that button too.
         _sessionBinding = new SurfaceSessionBinding(host, channel, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshAskButton(); });
-        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
-        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
         _RefreshAskButton();
 
-        if (_registry is not null)
+        if (_client is not null)
         {
             // Subscribed before the surface is registered: a board an agent asked for (AC-835) arrives already
             // coupled, and that change is announced from inside SurfaceOpened.
-            _registry.CouplingChanged += _OnCouplingChanged;
-            _registry.ObjectPlaced += _OnObjectPlaced;
-            _registry.ObjectErased += _OnObjectErased;
-            _registry.HistoryChanged += _OnHistoryChanged;
-            _registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
-
-            // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
-            if (_sessionBinding.IsLive)
-            {
-                _registry.Couple(_sessionBinding.PaneId, _surfaceId);
-            }
+            _client.CouplingChanged += _OnCouplingChanged;
+            _client.ObjectPlaced += _OnObjectPlaced;
+            _client.ObjectErased += _OnObjectErased;
+            _client.HistoryChanged += _OnHistoryChanged;
         }
 
         // AC-845: the statusregel does not take the agent's word for it — it counts proposals as they reach the
         // poort, so "1 omzetting voorgesteld" means one really landed there.
-        if (_diagrams is not null)
+        if (_diagramsClient is not null)
         {
-            _diagrams.ProposalChanged += _OnProposalChanged;
+            _diagramsClient.ProposalChanged += _OnProposalChanged;
         }
 
-        // No registry (an older host) means coupling cannot be shown or offered at all (AC-834's precedent).
-        _couplingBar.IsVisible = _registry is not null;
+        // No registry (an older host, or not connected yet) means coupling cannot be shown or offered at all.
+        _couplingBar.IsVisible = false;
         _RefreshCouplingBar();
 
         DetachedFromVisualTree += (_, _) =>
         {
+            _detached = true;
             _sessionBinding.Dispose();
-            if (_diagrams is not null)
+            if (_diagramsClient is not null)
             {
-                _diagrams.ProposalChanged -= _OnProposalChanged;
-                _diagrams.Dispose();
+                _diagramsClient.ProposalChanged -= _OnProposalChanged;
+                _diagramsClient.Dispose();
             }
 
-            if (_registry is null)
+            if (_client is null)
             {
                 return;
             }
 
-            _registry.CouplingChanged -= _OnCouplingChanged;
-            _registry.ObjectPlaced -= _OnObjectPlaced;
-            _registry.ObjectErased -= _OnObjectErased;
-            _registry.HistoryChanged -= _OnHistoryChanged;
-            _registry.SurfaceClosed(_surfaceId);
-            _registry.Dispose();
+            _client.CouplingChanged -= _OnCouplingChanged;
+            _client.ObjectPlaced -= _OnObjectPlaced;
+            _client.ObjectErased -= _OnObjectErased;
+            _client.HistoryChanged -= _OnHistoryChanged;
+            _registry?.SurfaceClosed(_surfaceId);
+            _client.Dispose();
         };
+
+        _ = _ConnectAsync();
+    }
+
+    // AC-1891: as DiagramWorkspaceBody._ConnectAsync — drawn first, connected right after over the channel.
+    private async Task _ConnectAsync()
+    {
+        var served = _client is not null && await WhiteboardChannelClient.ServesAsync(_client.Channel);
+        var diagramsServed = _diagramsClient is not null && await DiagramChannelClient.ServesAsync(_diagramsClient.Channel);
+        await _sessionBinding.BindAsync();
+        if (_detached)
+        {
+            return;
+        }
+
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _served = served;
+        _diagramsServed = diagramsServed;
+        if (_registry is { } registry)
+        {
+            registry.SurfaceOpened(_surfaceId, _documentTitle, _Snapshot());
+
+            // A plain Couple — zero capabilities. The invite button (and read_whiteboard) still ask their own Grant.
+            if (_sessionBinding.IsLive)
+            {
+                try
+                {
+                    await registry.CoupleAsync(_sessionBinding.PaneId, _surfaceId);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+                }
+            }
+        }
+
+        _couplingBar.IsVisible = _registry is not null;
+        _RefreshCouplingBar();
+        _RefreshAskButton();
     }
 
     // The way out of "window open, no agent" — after the bound session ended or the operator disconnected.
-    private void _Recouple(string paneId)
+    private async void _Recouple(string paneId)
     {
-        if (_sessionBinding.Recouple(paneId, p => _registry?.Couple(p, _surfaceId)) is { } reason)
+        if (await _sessionBinding.RecoupleAsync(paneId, p => _registry?.CoupleAsync(p, _surfaceId) ?? Task.CompletedTask) is { } reason)
         {
             _host.ShowToast(reason, PluginToastSeverity.Error);
             return;
@@ -204,8 +244,11 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
         try
         {
-            _registry?.Couple(paneId, _surfaceId);
-            _registry?.Grant(paneId, _surfaceId);
+            if (_registry is { } registry)
+            {
+                await registry.CoupleAsync(paneId, _surfaceId);
+                await registry.GrantAsync(paneId, _surfaceId);
+            }
         }
         catch (InvalidOperationException exception)
         {
@@ -229,7 +272,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
     private (Border Bar, Button Convert, TextBlock Status) _BuildConvertBar()
     {
         var convert = new Button { Content = "Convert to diagram", Classes = { "Compact" } };
-        convert.Click += (_, _) => _ShowConvertMenu(convert);
+        convert.Click += (_, _) => _ = _ShowConvertMenuAsync(convert);
         var status = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -249,7 +292,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
 
     // Two answers (AC-845): convert — to a diagram that is already open, or to a new window — or just write it
     // down. Where it goes is asked, never guessed (AC-812's rule).
-    private void _ShowConvertMenu(Control anchor)
+    private async Task _ShowConvertMenuAsync(Control anchor)
     {
         var flyout = new MenuFlyout();
         var fresh = new MenuItem { Header = "Convert to a new diagram" };
@@ -257,7 +300,19 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         flyout.Items.Add(fresh);
 
         // A diagram another agent is already holding would be a dead-end choice: edit_diagram refuses there.
-        foreach (var surface in _diagrams?.ListSurfaces(_sessionBinding.PaneId).Where(s => !_diagrams.IsCoupledByAnother(_sessionBinding.PaneId, s.SurfaceId)) ?? [])
+        var targets = new List<DiagramSurfaceView>();
+        if (_diagrams is { } diagrams)
+        {
+            foreach (var surface in await diagrams.ListSurfacesAsync(_sessionBinding.PaneId))
+            {
+                if (!await diagrams.IsCoupledByAnotherAsync(_sessionBinding.PaneId, surface.SurfaceId))
+                {
+                    targets.Add(surface);
+                }
+            }
+        }
+
+        foreach (var surface in targets)
         {
             var item = new MenuItem { Header = $"Convert to \"{surface.Name}\"" };
             item.Click += (_, _) => _Convert(surface.SurfaceId, surface.Name);
@@ -538,9 +593,9 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
             return;
         }
 
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
-            var last = _registry?.History(_surfaceId).LastOrDefault();
+            var last = _registry is { } registry ? (await registry.HistoryAsync(_surfaceId)).LastOrDefault() : null;
             if (last is { Origin: not "operator", Reverted: false } entry && Guid.TryParse(entry.ObjectId, out var id))
             {
                 _control.Canvas.SelectObject(id);
@@ -573,7 +628,7 @@ internal sealed class WhiteboardWorkspaceBody : UserControl
         return (parts.Bar, parts.Label, parts.ReadChip, parts.EditChip, parts.Pip, parts.Couple, parts.Disconnect, invite);
     }
 
-    private void _ShowSessionPicker(Control anchor) => _sessionBinding.ShowSessionPicker(anchor, _Recouple);
+    private void _ShowSessionPicker(Control anchor) => _ = _sessionBinding.ShowSessionPickerAsync(anchor, _Recouple);
 
     private void _RefreshCouplingBar()
     {

@@ -45,7 +45,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     private readonly ICockpitUiHost _host;
     private readonly string _id;
     private readonly DepotSettings _settings;
-    private readonly Func<DepotSaveResult> _saveAll;
+    private readonly Func<Task<DepotSaveResult>> _saveAll;
     private string? _storedName;
     private string? _storedUrl;
     private readonly TextBox _name;
@@ -64,7 +64,7 @@ internal sealed class DepotConnectionRowControl : UserControl
     public event Action? RemoveRequested;
     public event Action<DepotConnectionRowControl>? SynchroniseSettingsSelected;
 
-    public DepotConnectionRowControl(ICockpitUiHost host, DepotConnectionRegistration? existing, DepotSettings settings, Func<DepotSaveResult> saveAll)
+    public DepotConnectionRowControl(ICockpitUiHost host, DepotConnectionRegistration? existing, DepotSettings settings, Func<Task<DepotSaveResult>> saveAll)
     {
         _host = host;
         _id = existing?.Id ?? Guid.NewGuid().ToString("n");
@@ -246,7 +246,7 @@ internal sealed class DepotConnectionRowControl : UserControl
         _authStatus.Text = "Saving…";
         try
         {
-            var (saved, failureReason) = _saveAll();
+            var (saved, failureReason) = await _saveAll().ConfigureAwait(true);
             if (!saved)
             {
                 // Reachable since the fix that made Save() refuse the whole batch on a name or URL collision instead
@@ -325,7 +325,7 @@ internal sealed class DepotConnectionRowControl : UserControl
         _token.Text = string.Empty;
         try
         {
-            var (saved, failureReason) = _saveAll();
+            var (saved, failureReason) = await _saveAll().ConfigureAwait(true);
             if (!saved)
             {
                 _authStatus.Text = failureReason is { } reason

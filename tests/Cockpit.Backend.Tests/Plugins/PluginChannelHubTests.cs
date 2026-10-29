@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Cockpit.Infrastructure.Plugins;
@@ -13,15 +14,23 @@ namespace Cockpit.Backend.Tests.Plugins;
 public class PluginChannelHubTests
 {
     // Also the handle: after a reload the plugin removes its handler and registers the action again, which throws
-    // while the first registration is still in place.
+    // while the first registration is still in place. Another plugin asking for the same action is refused and never
+    // runs this plugin's handler.
     [Fact]
-    public async Task InvokeAsync_ReachesTheSamePluginsHandler_AndReturnsItsAnswer_UntilItIsRemovedAndRegisteredAgain()
+    public async Task InvokeAsync_ReachesOnlyThatPluginsHandler_AndReturnsItsAnswer_UntilItIsRemovedAndRegisteredAgain()
     {
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+        var calls = 0;
         var registration = hub.For("diagram").Handle("list", (payload, _) =>
-            Task.FromResult(JsonSerializer.SerializeToElement($"listed {payload.GetString()}")));
+        {
+            calls++;
+            return Task.FromResult(JsonSerializer.SerializeToElement($"listed {payload.GetString()}"));
+        });
 
+        var refused = await Assert.ThrowsAsync<PluginChannelUnknownActionException>(
+            () => hub.InvokeAsync("youtrack", "list", default, CancellationToken.None));
         var answer = await hub.InvokeAsync("diagram", "list", JsonSerializer.SerializeToElement("boards"), CancellationToken.None);
+        Assert.Equal(("youtrack", "list", 1), (refused.PluginId, refused.Action, calls));
         registration.Dispose();
         using var reloaded = hub.For("diagram").Handle("list", (_, _) => Task.FromResult(JsonSerializer.SerializeToElement("reloaded")));
         var afterReload = await hub.InvokeAsync("diagram", "list", JsonSerializer.SerializeToElement("boards"), CancellationToken.None);
@@ -110,22 +119,26 @@ public class PluginChannelHubTests
         await Assert.ThrowsAsync<PluginChannelUnknownActionException>(() => hub.InvokeAsync("other-plugin", FileSourceChannel.Read, default, default));
     }
 
+    // AC-1891 (layer 2, plugin channel): a handler that blocks before its first await, as a backend's synchronous
+    // I/O does, must not hold its caller — a UI control's call returns at once. Inline, it would return after 2 s.
     [Fact]
-    public async Task InvokeAsync_OnAnActionOnlyAnotherPluginHandles_IsAnUnknownAction_AndNeverRunsTheirHandler()
+    public async Task InvokeAsync_NeverRunsTheHandlerOnTheCallersThread_SoABlockingHandlerDoesNotHoldTheCaller()
     {
         var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
-        var othersHandlerRan = false;
-        hub.For("diagram").Handle("list", (payload, _) =>
+        using var release = new ManualResetEventSlim();
+        using var registration = hub.For("git").Handle("status", (payload, _) =>
         {
-            othersHandlerRan = true;
+            release.Wait(TimeSpan.FromSeconds(2));
             return Task.FromResult(payload);
         });
 
-        var refused = await Assert.ThrowsAsync<PluginChannelUnknownActionException>(
-            () => hub.InvokeAsync("youtrack", "list", default, CancellationToken.None));
+        var clock = Stopwatch.StartNew();
+        var call = hub.InvokeAsync("git", "status", JsonSerializer.SerializeToElement("clean"), CancellationToken.None);
+        var heldFor = clock.Elapsed;
+        release.Set();
 
-        Assert.Equal(("youtrack", "list"), (refused.PluginId, refused.Action));
-        Assert.False(othersHandlerRan);
+        Assert.Equal("clean", (await call).GetString());
+        Assert.True(heldFor < TimeSpan.FromSeconds(1), $"the caller was held for {heldFor}");
     }
 
     // A subscriber that throws, subscribed first, costs the one after it nothing and never reaches the publisher.

@@ -162,7 +162,12 @@ internal sealed class DepotInboxScene : IPluginUiChannel
         var connection = new DepotConnectionRegistration("work", "Work", "https://depot.example.com");
         var panel = new DepotInboxPanel(model, [connection]);
         channel._changed?.Invoke(new PluginChannelEvent(DepotInboxChannel.Changed, 1, JsonSerializer.SerializeToElement(_Page(read: false), DepotChannel.Json)));
-        model.JoinedAsync("work", "m1", () => Task.CompletedTask).GetAwaiter().GetResult();
+        // AC-1891: never waits — the fixture channel answers synchronously, so the join has already happened.
+        if (!model.JoinedAsync("work", "m1", () => Task.CompletedTask).IsCompletedSuccessfully)
+        {
+            throw new InvalidOperationException("The inbox scene's fixture channel must answer synchronously.");
+        }
+
         panel.Expand("m1");
         return new Border { Width = 360, HorizontalAlignment = HorizontalAlignment.Left, Child = panel };
     }
