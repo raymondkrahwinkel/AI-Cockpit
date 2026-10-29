@@ -149,8 +149,7 @@ public sealed class SessionJourney
 
     // J4: a closed conversation is still in the index after a restart, and reopens as one pane resuming it with its rows;
     // reopened again while open, it is selected rather than started twice (AC-1531).
-    [Fact]
-    public async Task AClosedConversation_IsInTheIndexAfterARestart_AndReopensResumedInOnePane()
+    internal static async Task AssertClosedConversationReopensAfterRestartAsync()
     {
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"journey-conversation-{Guid.NewGuid():N}")).FullName;
         try

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Infrastructure.Mcp;
 
@@ -9,7 +10,7 @@ namespace Cockpit.Infrastructure.Shell;
 // The `cockpit-shell` MCP tool (AC-1066): the shell a session with none of its own otherwise lacks. No command
 // allow-list on purpose — `dotnet`/`python3`/`npx` all run arbitrary code, so one would only look like a boundary.
 // `run_command` is annotated Destructive instead; the existing AC-79 ceiling machinery decides each call.
-internal sealed class ShellMcpTools(IShellCommandRunner runner)
+internal sealed class ShellMcpTools(IShellCommandRunner runner, ISessionRegistry? sessions = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -27,6 +28,26 @@ internal sealed class ShellMcpTools(IShellCommandRunner runner)
         [Description("The command's arguments, one per array entry — never re-parsed by a shell.")] IReadOnlyList<string>? arguments = null,
         [Description("How long to wait, in seconds. Default 30, capped at 600.")] int timeoutSeconds = DefaultTimeoutSeconds)
     {
+        var inputError = ShellToolValidation.FragmentError(session, "session")
+            ?? ShellToolValidation.FragmentError(directory, "directory")
+            ?? ShellToolValidation.FragmentError(command, "command")
+            ?? (arguments ?? []).Select((argument, index) => ShellToolValidation.FragmentError(argument, $"arguments[{index}]")).FirstOrDefault(error => error is not null);
+        if (inputError is not null)
+        {
+            return _Serialize(new { ok = false, error = inputError });
+        }
+
+        var caller = McpRequestContext.CurrentPaneId;
+        if (caller is not null && !string.Equals(session, caller, StringComparison.Ordinal))
+        {
+            return _Serialize(new { ok = false, error = $"Invalid session value. Resend this call with session '{caller}'." });
+        }
+
+        if (caller is null && (string.IsNullOrWhiteSpace(session) || sessions?.Find(session) is null))
+        {
+            return _Serialize(new { ok = false, error = "Unknown session value. Resend with your current Cockpit session id." });
+        }
+
         if (!Directory.Exists(directory))
         {
             return _Serialize(new { ok = false, error = $"No such directory: {directory}" });
@@ -35,7 +56,6 @@ internal sealed class ShellMcpTools(IShellCommandRunner runner)
         // Same fallback as every other cockpit tool (AC-89): a transport-verified pane wins, `session` only
         // stands in when there is none — the in-process host tool loop that runs the non-Claude providers this
         // tool exists for.
-        var caller = McpRequestContext.CurrentPaneId ?? session;
         var timeout = TimeSpan.FromSeconds(Math.Clamp(timeoutSeconds, 1, MaxTimeoutSeconds));
         var result = await runner.RunAsync(directory, command, arguments ?? [], timeout).ConfigureAwait(false);
         return _Serialize(new
@@ -51,4 +71,14 @@ internal sealed class ShellMcpTools(IShellCommandRunner runner)
     }
 
     private static string _Serialize(object value) => JsonSerializer.Serialize(value, SerializerOptions);
+}
+
+internal static class ShellToolValidation
+{
+    private static readonly string[] ToolCallFragments = ["<parameter=", "<function=", "</tool_call>"];
+
+    public static string? FragmentError(string value, string name) =>
+        ToolCallFragments.Any(fragment => value.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+            ? $"Malformed tool-call fragment in {name}. Resend the call with only that argument's value."
+            : null;
 }
