@@ -9,13 +9,13 @@ namespace Cockpit.Infrastructure.Shell;
 // The `cockpit-coding-shell` MCP tool (AC-1489): opencode's synchronous shell for a model on an HTTP provider, so it
 // runs a build or a test and reads the outcome in one call instead of polling start_run. Named `shell`, not `bash`:
 // on Windows it is PowerShell, and under the name bash a model writes bash syntax that fails there.
-internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandRunner runner)
+internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandRunner runner, Func<string, bool>? executableExists = null)
 {
     private const int DefaultTimeoutMs = 120_000;
     private const int MaxTimeoutMs = 600_000;
 
     [McpServerTool(Name = "shell", ReadOnly = false, Destructive = true)]
-    [Description("Runs one command line and waits for it to finish. On Windows the shell is PowerShell (pwsh), elsewhere bash: write the command in that syntax. Runs in your working directory or `workdir` inside it. Returns the exit code and the end of the output (at most 50 KiB or 2000 lines). A run past `timeout` is stopped with everything it started.")]
+    [Description("Runs one command line and waits for it to finish. On Windows the shell is PowerShell (pwsh when installed, otherwise powershell.exe), elsewhere bash: write the command in that syntax. Runs in your working directory or `workdir` inside it. Returns the exit code and the end of the output (at most 50 KiB or 2000 lines). A run past `timeout` is stopped with everything it started.")]
     public async Task<string> Shell(
         [Description("The command line to run.")] string command,
         [Description("How long to wait, in milliseconds. Default 120000, at most 600000.")] int? timeout = null,
@@ -32,7 +32,7 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
         }
 
         var (shell, arguments) = OperatingSystem.IsWindows()
-            ? ("pwsh", new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command })
+            ? ((executableExists?.Invoke("pwsh") ?? _ExecutableExists("pwsh")) ? "pwsh" : "powershell.exe", new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command })
             : ("/bin/bash", new[] { "-lc", command });
         ShellCommandResult result;
         try
@@ -47,6 +47,13 @@ internal sealed class CodingShellTools(ISessionRegistry sessions, IShellCommandR
         var output = string.IsNullOrEmpty(result.StandardError) ? result.StandardOutput : $"{result.StandardOutput}\n[stderr]\n{result.StandardError}";
         var status = result.TimedOut ? $"Timed out after {result.Duration.TotalSeconds:0.#}s and was stopped." : $"Exit code {result.ExitCode}.";
         return $"{status}\n{_Tail(output)}";
+    }
+
+    private static bool _ExecutableExists(string executable)
+    {
+        return Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(directory => directory.Trim('"'))
+            .Any(directory => File.Exists(Path.Combine(directory, $"{executable}.exe"))) == true;
     }
 
     // The end of the output, where a build or test run puts its verdict, within opencode's 50 KiB / 2000-line cap.

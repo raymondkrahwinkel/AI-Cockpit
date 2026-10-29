@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Shell;
 using Cockpit.Infrastructure.Sessions;
 using NSubstitute;
 
@@ -12,7 +13,7 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 public class CodingToolsTests
 {
     [Fact]
-    public void Read_PagesALargeFileWithoutOverlapOrGap_AndRefusesPathsOutsideTheWorkingDirectory()
+    public async Task Read_PagesALargeFileWithoutOverlapOrGap_AndRefusesPathsOutsideTheWorkingDirectory_AndSelectsTheAvailableShell()
     {
         var parent = Directory.CreateTempSubdirectory("ac1489-");
         var root = Directory.CreateDirectory(Path.Combine(parent.FullName, "worktree")).FullName;
@@ -25,6 +26,15 @@ public class CodingToolsTests
         var sessions = Substitute.For<ISessionRegistry>();
         sessions.Find("pane-1").Returns(session);
         var tools = new CodingTools(sessions, Substitute.For<IShellCommandRunner>());
+        var runner = Substitute.For<IShellCommandRunner>();
+        var invocations = new List<(string Shell, IReadOnlyList<string> Arguments)>();
+        runner.RunAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                invocations.Add((call.ArgAt<string>(1), call.ArgAt<IReadOnlyList<string>>(2)));
+                return new ShellCommandResult(0, "ok", "", TimeSpan.Zero, false);
+            });
+        var codingShell = new CodingShellTools(sessions, runner, executable => executable == "pwsh");
 
         McpRequestContext.Set("pane-1");
         try
@@ -42,6 +52,19 @@ public class CodingToolsTests
             Assert.StartsWith("Error:", tools.Read(Path.Combine("..", "outside.txt")));
             Assert.StartsWith("Error:", tools.Read(outside));
             Assert.DoesNotContain("secret", tools.Read(outside));
+
+            await codingShell.Shell("echo ok");
+            if (OperatingSystem.IsWindows())
+            {
+                await new CodingShellTools(sessions, runner, _ => false).Shell("echo ok");
+                Assert.Equal(["pwsh", "powershell.exe"], invocations.Select(invocation => invocation.Shell));
+                Assert.All(invocations, invocation => Assert.Equal(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "echo ok"], invocation.Arguments));
+            }
+            else
+            {
+                Assert.Equal("/bin/bash", invocations.Single().Shell);
+                Assert.Equal(["-lc", "echo ok"], invocations.Single().Arguments);
+            }
         }
         finally
         {
