@@ -56,7 +56,7 @@ internal sealed partial class MarkdownFileWorkspace
                 }
             }
         }
-        Editor.SetLocalLines([]);
+        Editor.SetLocalLines(local);
         _localLines.Text = $"{local.Count} lines only in this Cockpit";
         _localLines.IsVisible = local.Count > 0;
         if (_IsLiveLight && (IsDirty || _live?.Status.RequiresRejoin == true) && !_saving && !_conflict && _canWrite && !_closed)
@@ -199,8 +199,7 @@ internal sealed partial class MarkdownFileWorkspace
     {
         var mine = Editor.Text;
         var beforeOffline = origin ?? mine;
-        IReadOnlyList<string> shared = beforeOffline.Split('\n');
-        var sharedOverlap = false;
+        var shared = LineMerge.Merge(_savedText.Split('\n'), theirs.Text.Split('\n'), beforeOffline.Split('\n'), out var sharedOverlap);
         var merged = shared;
         var localOverlap = false;
         if (origin is not null)
