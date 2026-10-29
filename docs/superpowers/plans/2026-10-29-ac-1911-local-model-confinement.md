@@ -32,4 +32,3 @@
 - Run the targeted methods on Windows and in one `mcr.microsoft.com/dotnet/sdk:10.0` Linux container with the nightly command shape.
 - Commit green work, then make and commit mutations for missing local coding, missing worktree confinement, and the missing confined `start_run` directory check; demonstrate each targeted test fails; revert each mutation with `git revert`; return to green.
 - Rebase on `origin/main`, inspect `git diff origin/main...HEAD --stat`, push, open the PR, and notify `cockpit-assistant`. Do not merge or run real models before approval.
-
