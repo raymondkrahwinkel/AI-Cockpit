@@ -1128,6 +1128,12 @@ internal sealed partial class DepotNoteSession : IAsyncDisposable, ILivePresence
         }
 
         var before = await hub.TextAsync(documentId, @base, cancellationToken).ConfigureAwait(false);
+        saver.Rebase(theirs.Checksum);
+        if (theirs.Checksum.Length > 0)
+        {
+            return;
+        }
+
         DepotNoteMerge merged;
         await _text.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
