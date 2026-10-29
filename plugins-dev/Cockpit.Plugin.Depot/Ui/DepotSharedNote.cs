@@ -26,9 +26,9 @@ internal static class DepotSharedNote
         };
 
     // Opens or focuses the tab; the returned action brings it forward again.
-    public static async Task<Func<Task>> OpenAsync(ICockpitUiHost host, DepotConnectionRegistration connection, string token, string? title = null)
+    public static async Task<Func<Task>> OpenAsync(ICockpitUiHost host, DepotConnectionRegistration connection, string token)
     {
-        var options = new WorkspaceOpenOptions(InstanceKey: Key(connection.Id, token), Title: title ?? TabTitle);
+        var options = new WorkspaceOpenOptions(InstanceKey: Key(connection.Id, token), Title: TabTitle);
         await host.OpenWorkspaceAsync(WorkspaceTypeId, options).ConfigureAwait(true);
         return () => host.OpenWorkspaceAsync(WorkspaceTypeId, options);
     }

@@ -7,7 +7,7 @@ using Cockpit.Plugins.Abstractions.UI;
 namespace Cockpit.Plugin.Depot.UI;
 
 // What an entry knows about the note it opens: Depot's opaque token, and the inbox message it came from, if any.
-internal sealed record DepotNoteRef(string Token, string? InboxMessageId = null, string? Title = null)
+internal sealed record DepotNoteRef(string Token, string? InboxMessageId = null)
 {
     // A /n/{token} link, relative or absolute; null for anything else.
     public static DepotNoteRef? FromHref(string? href, string? inboxMessageId = null)
@@ -58,7 +58,7 @@ internal sealed class DepotNoteRoute(
     public static DepotNoteStand StandOf(string? role) => role == DepotNoteRole.Editor ? DepotNoteStand.Edit : DepotNoteStand.ViewOnly;
 
     public Task<DepotNoteJoinResult> JoinInvitationAsync(DepotConnectionRegistration connection, DepotInboxMessage message) =>
-        DepotNoteRef.FromHref(message.Note?.OpenUrl, message.Id) is { } note ? JoinAsync(connection, note with { Title = message.Note?.Title }) : _NoNote();
+        DepotNoteRef.FromHref(message.Note?.OpenUrl, message.Id) is { } note ? JoinAsync(connection, note) : _NoNote();
 
     public Task<DepotNoteJoinResult> JoinLiveAsync(DepotConnectionRegistration connection, DepotLiveNote live) =>
         DepotNoteRef.FromHref(live.Href) is { } note ? JoinAsync(connection, note) : _NoNote();
@@ -88,7 +88,7 @@ internal sealed class DepotNoteRoute(
             case DepotNoteLinkState.Ok when answer.Organization is { } organization && answer.Project is { } project && answer.Path is { } path:
                 return await _OpenAsync(connection, note, new(organization, project, path, answer.Title ?? System.IO.Path.GetFileName(path), StandOf(answer.Role))).ConfigureAwait(true);
             case DepotNoteLinkState.Unavailable:
-                return new(DepotNoteJoinOutcome.Unavailable, await DepotSharedNote.OpenAsync(host, connection, note.Token, note.Title).ConfigureAwait(true));
+                return new(DepotNoteJoinOutcome.Unavailable, await DepotSharedNote.OpenAsync(host, connection, note.Token).ConfigureAwait(true));
             default:
                 host.ShowToast($"{connection.Name} did not answer. Try again in a moment.", PluginToastSeverity.Warning);
                 return new(DepotNoteJoinOutcome.Unreachable);
