@@ -60,7 +60,7 @@ internal sealed partial class CockpitUiHost
             context.Storage.Set("file", options with { Edit = false, CreateNew = false, InitialText = "" });
             return new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileWorkspaceChannel(() => _fileWorkspaceChannels[id])), () =>
                 ConfirmAsync("Discard unsaved changes?", $"Close {options.Title} without saving? Your changes will be lost.", "Discard changes"),
-                services.GetService<ILogger<MarkdownFileWorkspace>>(),
+                _Service<ILogger<MarkdownFileWorkspace>>(),
                 () => services.GetRequiredService<CockpitViewModel>().OpenPluginStoreUpdatesAsync());
         }) { CanFloat = true, IconKind = MaterialIconKind.FileDocumentOutline };
         if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, Storage, host.Sessions))
@@ -90,7 +90,7 @@ internal sealed partial class CockpitUiHost
         {
             throw new ArgumentException("The file workspace needs a key and a file path.", nameof(options));
         }
-        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces)
+        if (_Service<CockpitViewModel>()?.Workspaces is not { } workspaces)
         {
             return;
         }
@@ -126,7 +126,7 @@ internal sealed partial class CockpitUiHost
     public IReadOnlyList<OpenWorkspaceInstance> GetOpenWorkspaces(string workspaceTypeId)
     {
         var instances = new List<OpenWorkspaceInstance>();
-        if (services.GetService<CockpitViewModel>()?.Workspaces is { } workspaces)
+        if (_Service<CockpitViewModel>()?.Workspaces is { } workspaces)
         {
             foreach (var workspace in workspaces.Settings.Workspaces)
             {
@@ -144,7 +144,7 @@ internal sealed partial class CockpitUiHost
         add
         {
             _openWorkspacesChanged += value;
-            if (!_openWorkspacesHooked && services.GetService<CockpitViewModel>()?.Workspaces is { } workspaces)
+            if (!_openWorkspacesHooked && _Service<CockpitViewModel>()?.Workspaces is { } workspaces)
             {
                 _openWorkspacesHooked = true;
                 workspaces.PropertyChanged += (_, e) =>
