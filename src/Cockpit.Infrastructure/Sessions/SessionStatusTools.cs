@@ -147,7 +147,7 @@ internal sealed class SessionStatusTools(
             return _Error("`command` and `workingDirectory` are both required.");
         }
 
-        if (!TryResolveRunWorkingDirectory(null, caller, workingDirectory, out workingDirectory, out var confinementRefusal))
+        if (!TryResolveRunWorkingDirectory(sessions, caller, workingDirectory, out workingDirectory, out var confinementRefusal))
         {
             return _Error(confinementRefusal);
         }
