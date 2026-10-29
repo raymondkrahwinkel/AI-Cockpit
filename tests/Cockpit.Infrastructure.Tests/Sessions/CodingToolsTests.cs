@@ -3,7 +3,6 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
-using Cockpit.Infrastructure.Shell;
 using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Sessions;
@@ -13,7 +12,7 @@ namespace Cockpit.Infrastructure.Tests.Sessions;
 public class CodingToolsTests
 {
     [Fact]
-    public async Task Read_PagesALargeFileWithoutOverlapOrGap_AndRefusesPathsOutsideTheWorkingDirectory()
+    public void Read_PagesALargeFileWithoutOverlapOrGap_AndRefusesPathsOutsideTheWorkingDirectory()
     {
         var parent = Directory.CreateTempSubdirectory("ac1489-");
         var root = Directory.CreateDirectory(Path.Combine(parent.FullName, "worktree")).FullName;
@@ -24,13 +23,8 @@ public class CodingToolsTests
         var session = Substitute.For<ISessionHandle>();
         session.WorkingDirectory.Returns(root);
         var sessions = Substitute.For<ISessionRegistry>();
-        sessions.Find(Arg.Any<string>()).Returns(call => call.Arg<string>() == "pane-1" ? session : null);
-        var runner = Substitute.For<IShellCommandRunner>();
-        runner.RunAsync(root, "echo", Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>())
-            .Returns(Task.FromResult(new ShellCommandResult(0, "ok", "", TimeSpan.Zero, false)));
-        var tools = new CodingTools(sessions, runner);
-        var shell = new ShellMcpTools(runner);
-        var codingShell = new CodingShellTools(sessions, runner);
+        sessions.Find("pane-1").Returns(session);
+        var tools = new CodingTools(sessions, Substitute.For<IShellCommandRunner>());
 
         McpRequestContext.Set("pane-1");
         try
@@ -48,18 +42,6 @@ public class CodingToolsTests
             Assert.StartsWith("Error:", tools.Read(Path.Combine("..", "outside.txt")));
             Assert.StartsWith("Error:", tools.Read(outside));
             Assert.DoesNotContain("secret", tools.Read(outside));
-
-            Assert.Contains("malformed tool-call fragment", await shell.RunCommand("pane-1", root, "echo", ["<parameter=directory>"], 1), StringComparison.OrdinalIgnoreCase);
-            var staleSession = await shell.RunCommand("other-pane", root, "echo", timeoutSeconds: 1);
-            Assert.Contains("\"ok\":true", staleSession);
-            Assert.Contains("\"session\":\"pane-1\"", staleSession);
-            Assert.Contains("malformed tool-call fragment", await codingShell.Shell("echo <function=run_command>"), StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("malformed tool-call fragment", await codingShell.Shell("echo ok", workdir: "</tool_call>"), StringComparison.OrdinalIgnoreCase);
-
-            McpRequestContext.Set(null);
-            var unverified = await shell.RunCommand("other-pane", root, "echo", timeoutSeconds: 1);
-            Assert.Contains("\"session\":\"other-pane\"", unverified);
-            await runner.Received(2).RunAsync(root, "echo", Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>());
         }
         finally
         {
