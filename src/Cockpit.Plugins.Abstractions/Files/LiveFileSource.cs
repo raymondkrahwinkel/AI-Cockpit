@@ -39,6 +39,11 @@ public sealed record LiveFileStatus(LiveFileState State, string? Reason = null)
     /// <see cref="LiveFileSave.NotYet"/> when nobody has saved since the host joined.
     /// </summary>
     public LiveFileSave? Saved { get; init; }
+    /// <summary>
+    /// The account the operator joined as, for <see cref="LiveFileState.SignInNeeded"/>: whom to sign in again as. Null when
+    /// the source does not say. Requires host 0.150.0.
+    /// </summary>
+    public string? Account { get; init; }
 }
 
 /// <summary>Why editing a live file is unavailable.</summary>
@@ -129,4 +134,11 @@ public interface ILiveFileSession : IAsyncDisposable
     /// result arrives as a patch. With nothing to undo it does nothing.
     /// </summary>
     Task UndoAsync(bool redo, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Tries the connection again now instead of at the next retry. With <paramref name="signIn"/>, after
+    /// <see cref="LiveFileState.SignInNeeded"/>, it first lets the operator sign in again; the source joins again only as the
+    /// account it was opened with. Default: nothing. Requires host 0.150.0.
+    /// </summary>
+    Task ReconnectAsync(bool signIn, CancellationToken cancellationToken) => Task.CompletedTask;
 }

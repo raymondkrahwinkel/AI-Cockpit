@@ -163,7 +163,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _readOnlyText.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextPrimaryBrush"));
         DockPanel.SetDock(_readOnlyBanner, Dock.Top);
         DockPanel.SetDock(_compareBar, Dock.Top);
-        Content = new DockPanel { Children = { head, _readOnlyBanner, _hintStrip, message, _banner, _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
+        Content = new DockPanel { Children = { head, _readOnlyBanner, _hintStrip, message, _banner, _BuildLiveBanner(), _compareBar, footer, new Grid { Children = { Editor, _compare } } } };
         this.Bind(BackgroundProperty, this.GetResourceObservable("CockpitSecondaryBgBrush"));
 
         _people.OpenRequested += async (_, _) => await _OpenInSourceAsync().ConfigureAwait(true);
@@ -704,6 +704,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         _context.Pinned -= _OnPinned;
         _savedSubscription?.Dispose();
         _liveLightTimer.Stop();
+        _countdown.Stop();
         _presence?.Dispose();
         _live?.Dispose();
         // Cancelled, not disposed: a save still in flight reads _lifetime.Token, which throws once the source is disposed.
@@ -756,7 +757,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
             {
                 LiveFileState.Connecting => "Connecting…",
                 LiveFileState.Offline => $"Offline · not saved to {_sourceName}",
-                LiveFileState.SignInNeeded => $"Sign in to {_sourceName} again",
+                LiveFileState.SignInNeeded => $"Not saved to {_sourceName} yet",
                 LiveFileState.ReadOnly => live.ReadOnlyReason == LiveReadOnlyReason.Viewer ? "Viewer · read only" : "Read only",
                 LiveFileState.NoSaver => $"Not saved to {_sourceName} yet",
                 LiveFileState.Stale => "Catching up…",
@@ -813,6 +814,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         var version = _version is null ? "New file" : $"Source version {_version[..Math.Min(8, _version.Length)]}";
         _footer.Text = $"{(Editor.ShowSource ? "Markdown source" : "Live")} · {_WordCount(text)} words · {version}";
         _UpdateLiveLight();
+        _UpdateLiveBanner();
         _shortcuts.Text = live?.State == LiveFileState.ReadOnly ? "Read-only"
             : _editing ? (live is null ? "Ctrl+S save · " : "") + "Ctrl+/ source · Ctrl+B / I / K"
             : _loaded ? (_canWrite ? (_context.IsPreview ? "Type to edit · Double-click tab to keep" : "Edit or start typing") : "Read-only") : "";

@@ -126,6 +126,13 @@ keeps local text, and saves that text through the file source before awaiting Cl
 the fresh room's snapshot. Typing during that Open is kept and saved before replacing the editor. Late reads or patches from the old
 session cannot touch the new document. Set `minHostVersion` to 0.149.0 when supplying this flag; carry all other status fields with `with`.
 
+In `Offline` and `SignInNeeded` the host shows one banner in the conflict banner's composition: the connection dropped (with
+the next save try and Retry, which calls `ILiveFileSession.ReconnectAsync(false)`), or the sign-in expired (with Sign in again,
+`ReconnectAsync(true)`). For `SignInNeeded`, `LiveFileStatus.Account` names whom to sign in again as, and a `Reason` replaces the
+host's sentence. A source joins again only as the account it opened with. Text typed while signed out is marked like live-light text
+and the tab asks before it closes; nothing is written. Back `Live`, a done bar counts the merged lines. Both members need host 0.150.0
+(SDK 3.53.0); the channel action is `files-live-reconnect`.
+
 The host subscribes to the events before it opens the session, so no patch is lost in between. The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
 `files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
 text travels as base64 under the same 1 MiB cap as `files-read`. Op text is plain JSON and limited to the same

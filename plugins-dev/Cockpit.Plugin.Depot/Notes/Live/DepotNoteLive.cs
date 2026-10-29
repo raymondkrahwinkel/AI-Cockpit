@@ -15,7 +15,8 @@ internal sealed class DepotNoteLive(
     DepotNotesHubFactory hubFactory,
     DepotNoteRoomFactory roomFactory,
     Action<DepotNoteLiveStatus> publish,
-    ILogger? logger = null) : IAsyncDisposable
+    ILogger? logger = null,
+    Func<DepotConnectionRegistration, CancellationToken, Task<bool>>? signIn = null) : IAsyncDisposable
 {
     private readonly Dictionary<string, DepotNoteSession> _sessions = new(StringComparer.Ordinal);
     // Notes asked for live until the plugin closes them: a tab that closes and opens again gets a new session without asking twice.
@@ -42,7 +43,8 @@ internal sealed class DepotNoteLive(
                     connection, request, cancellationToken => ReadUserAsync(connection, handlerFor(connection), cancellationToken),
                     hubFactory, roomFactory, publish, logger: logger, disposed: _Forget,
                     post: (content, baseChecksum, session, cancellationToken) =>
-                        PostAsync(connection, handlerFor(connection), request, content, baseChecksum, session, cancellationToken));
+                        PostAsync(connection, handlerFor(connection), request, content, baseChecksum, session, cancellationToken),
+                    signIn: signIn is null ? null : cancellationToken => signIn(connection, cancellationToken));
                 _sessions[key] = session;
             }
         }
@@ -57,6 +59,15 @@ internal sealed class DepotNoteLive(
         lock (_lock)
         {
             return _wanted.Contains(_Key(request));
+        }
+    }
+
+    // The host's own save of the note's file goes out only while its open live session, if any, is sure of the account.
+    public bool MayWrite(DepotNoteLiveRequest request)
+    {
+        lock (_lock)
+        {
+            return !_sessions.TryGetValue(_Key(request), out var session) || session.MayWrite;
         }
     }
 
@@ -75,24 +86,19 @@ internal sealed class DepotNoteLive(
         }
     }
 
-    // The sign-in changed: whoever joins next may be someone else, so nothing of the old account's rooms stays open.
-    public async Task CloseConnectionAsync(string connectionId)
+    // The sign-in changed (AC-1665): each open note checks whom Depot names now, and joins or saves again only as the account it
+    // opened with (AC-1582). Text typed here stays in the note's session either way.
+    public void AccountChanged(string connectionId)
     {
-        List<DepotNoteSession> closing;
+        List<DepotNoteSession> open;
         lock (_lock)
         {
-            closing = [.. _sessions.Values.Where(session => session.Connection.Id == connectionId)];
-            _wanted.RemoveWhere(key => key.StartsWith(connectionId + "|", StringComparison.Ordinal));
-            foreach (var session in closing)
-            {
-                _wanted.Remove(_Key(session.Note));
-                _sessions.Remove(_Key(session.Note));
-            }
+            open = [.. _sessions.Values.Where(session => session.Connection.Id == connectionId)];
         }
 
-        foreach (var session in closing)
+        foreach (var session in open)
         {
-            await session.DisposeAsync().ConfigureAwait(false);
+            session.AccountChanged();
         }
     }
 

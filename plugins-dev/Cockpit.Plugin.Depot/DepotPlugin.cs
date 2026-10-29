@@ -83,7 +83,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             foreach (var connection in settings.Connections.Where(candidate => candidate.McpServerName == serverName))
             {
                 DepotProjectListingSource.Forget(host, connection);
-                _ = _CloseLiveNotesAsync(connection.Id);
+                _RecheckLiveNotes(connection.Id);
             }
 
             // The Projects page keeps what the last read said, "sign in" included, until something tells it to read again.
@@ -166,7 +166,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
                 connection, userId, () => host.CreateAuthorizedHandler(connection.McpServerName), onClosed),
             clientId => new Notes.Live.JintNoteRoom(clientId),
             status => host.Channel.Publish(DepotNoteLiveChannel.Status, JsonSerializer.SerializeToElement(status, DepotChannel.Json)),
-            _logger);
+            _logger,
+            async (connection, cancellationToken) =>
+                await host.SignInMcpServerAsync(connection.McpServerName, cancellationToken).ConfigureAwait(false) == PluginMcpSignInOutcome.Authorized);
         var noteLive = _noteLive;
         _handlers.Add(host.Channel.Handle(DepotNoteLiveChannel.Open, (payload, _) =>
         {
@@ -284,15 +286,15 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             return JsonSerializer.SerializeToElement(await handler(request, cancellationToken).ConfigureAwait(false), DepotChannel.Json);
         }));
 
-    private async Task _CloseLiveNotesAsync(string connectionId)
+    private void _RecheckLiveNotes(string connectionId)
     {
         try
         {
-            await (_noteLive?.CloseConnectionAsync(connectionId) ?? Task.CompletedTask).ConfigureAwait(false);
+            _noteLive?.AccountChanged(connectionId);
         }
         catch (Exception exception)
         {
-            _logger?.LogWarning(exception, "Closing the live notes of a changed Depot account failed.");
+            _logger?.LogWarning(exception, "Checking the live notes of a changed Depot account failed.");
         }
     }
 
