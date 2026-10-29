@@ -87,16 +87,20 @@ jobs:
           done
 
       - name: Core tests
+        id: core_tests
         run: dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Core --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       # Stop ordinary test work after the first failure; diagnostics below still run.
       - name: Infrastructure tests
+        id: infrastructure_tests
         run: dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Infrastructure --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       - name: Backend tests
+        id: backend_tests
         run: dotnet test tests/Cockpit.Backend.Tests/Cockpit.Backend.Tests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Backend --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       - name: View tests
+        id: view_tests
         run: dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/View --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       # The agent Chromium (AC-1712) needs user namespaces for its sandbox; Ubuntu 24.04's AppArmor denies them by default.
@@ -105,14 +109,23 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Journeys
+        id: journeys
         run: dotnet test tests/Cockpit.Journeys/Cockpit.Journeys.csproj --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Journeys --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 2m --blame-hang-dump-type none
 
       - name: Plugin tests
+        id: plugin_tests
         run: dotnet test PluginTests.slnx --configuration Release --no-build --logger trx --logger "console;verbosity=minimal" --results-directory TestResults/Plugins --collect:"XPlat Code Coverage" --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type none
 
       - name: Test and coverage summary
         if: ${{ !cancelled() }}
         shell: bash
+        env:
+          CORE_TEST_OUTCOME: ${{ steps.core_tests.outcome }}
+          INFRASTRUCTURE_TEST_OUTCOME: ${{ steps.infrastructure_tests.outcome }}
+          BACKEND_TEST_OUTCOME: ${{ steps.backend_tests.outcome }}
+          VIEW_TEST_OUTCOME: ${{ steps.view_tests.outcome }}
+          JOURNEYS_OUTCOME: ${{ steps.journeys.outcome }}
+          PLUGIN_TEST_OUTCOME: ${{ steps.plugin_tests.outcome }}
         run: |
           python3 - <<'PY'
           import pathlib
@@ -128,6 +141,18 @@ jobs:
           expected_names.update(path.stem for path in pathlib.Path("tests").glob("Cockpit.Journeys/*.csproj"))
           expected_names.update(path.stem for path in pathlib.Path("plugins-dev").glob("Cockpit.Plugin.*.Tests/*.csproj"))
           expected = {name.casefold(): name for name in expected_names}
+          outcomes = {
+              "cockpit.core.tests": os.environ["CORE_TEST_OUTCOME"],
+              "cockpit.infrastructure.tests": os.environ["INFRASTRUCTURE_TEST_OUTCOME"],
+              "cockpit.backend.tests": os.environ["BACKEND_TEST_OUTCOME"],
+              "cockpit.app.viewtests": os.environ["VIEW_TEST_OUTCOME"],
+              "cockpit.journeys": os.environ["JOURNEYS_OUTCOME"],
+          }
+          outcomes.update({
+              name.casefold(): os.environ["PLUGIN_TEST_OUTCOME"]
+              for name in expected_names
+              if name.startswith("Cockpit.Plugin.")
+          })
           production = {
               path.stem.casefold()
               for root in ("src", "plugins-dev")
@@ -173,7 +198,8 @@ jobs:
 
           reported = {row[0].casefold() for row in rows}
           for missing in sorted(expected.keys() - reported):
-              errors.append(f"{expected[missing]}: no test result")
+              reason = "overgeslagen na eerdere fout" if outcomes.get(missing) == "skipped" else "no test result"
+              errors.append(f"{expected[missing]}: {reason}")
           if not rows:
               errors.append("No test results found")
 
