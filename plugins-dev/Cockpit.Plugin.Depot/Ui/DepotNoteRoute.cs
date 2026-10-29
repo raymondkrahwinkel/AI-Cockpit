@@ -55,7 +55,7 @@ internal sealed class DepotNoteRoute(
     // The plugin sets this to open the live tab (AC-1580); it returns what brings that tab forward again.
     public Func<DepotConnectionRegistration, DepotNoteTarget, Task<Func<Task>>>? OpenLive { get; set; }
 
-    public static DepotNoteStand StandOf(string? role) => role == DepotNoteRole.Editor ? DepotNoteStand.Edit : DepotNoteStand.ViewOnly;
+    public static DepotNoteStand StandOf(string? role) => DepotNoteStand.Edit;
 
     public Task<DepotNoteJoinResult> JoinInvitationAsync(DepotConnectionRegistration connection, DepotInboxMessage message) =>
         DepotNoteRef.FromHref(message.Note?.OpenUrl, message.Id) is { } note ? JoinAsync(connection, note) : _NoNote();
