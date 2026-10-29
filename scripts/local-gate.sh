@@ -3,6 +3,11 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# --full names the existing no-argument gate for callers that want to be explicit.
+if [[ ${1:-} == "--full" && $# -eq 1 ]]; then
+  shift
+fi
+
 if [[ ${1:-} == "--linux" ]]; then
   if [[ $# -lt 2 ]]; then
     echo "usage: scripts/local-gate.sh --linux <test-project.csproj> [dotnet test arguments]" >&2
@@ -60,7 +65,7 @@ LINUX_GATE
 fi
 
 if [[ $# -ne 0 ]]; then
-  echo "usage: scripts/local-gate.sh [--linux <test-project.csproj> [dotnet test arguments]]" >&2
+  echo "usage: scripts/local-gate.sh [--full|--linux <test-project.csproj> [dotnet test arguments]]" >&2
   exit 2
 fi
 

@@ -115,11 +115,15 @@ public sealed class TranscriptStreamFlickerTests
 
     private static void _AssertNoFlicker(Run run)
     {
+        // Judged together, so a variant trading one fault for another cannot report only the half that got worse.
+        // The thumb is Offset over Extent - Viewport (Avalonia's ScrollBarMaximum), not Offset: when the extent
+        // estimate shrinks along with it, the thumb does not move at all.
         var worstThumb = _WorstBackwardJump(run.Thumbs) * run.Viewport;
         var worstJump = _WorstBackwardJump(run.Painted);
         var worstSlide = _WorstSlide(run.Gaps);
         var faults = new List<string>();
 
+        // Claim 1 — the scrollbar, as the operator sees it: where the thumb sits on its track.
         if (worstThumb > VisibleJumpPx)
         {
             faults.Add(
@@ -128,6 +132,8 @@ public sealed class TranscriptStreamFlickerTests
                 + "ever moves towards the newest row");
         }
 
+        // Claim 2 — the text. Only half of the fault: with the newest row unrealised its slide is unmeasurable
+        // rather than zero, which is what claim 3 counts.
         if (worstSlide > VisibleJumpPx)
         {
             faults.Add(
@@ -136,6 +142,9 @@ public sealed class TranscriptStreamFlickerTests
                 + "reading visibly slid away while the reply was still arriving");
         }
 
+        // Claim 3 — the answer vanishing. On frames with no end of the reply on screen, not on frames missing only
+        // the newest row: that one is always a frame below the fold before the follow reaches it, so a claim on the
+        // raw count would measure physics rather than a defect. It stays as a reading beside this one.
         var blindFrames = run.Gaps.Count(gap => gap is null);
         var replyNowhere = run.TailNowhere.Count(x => x);
         if (replyNowhere > 0)
