@@ -25,6 +25,8 @@ public sealed record AssistantSettings
     // anything until the operator actually opens Options and turns it off.
     public bool AlwaysOnTop { get; init; } = true;
 
+    public double ContextCompactionPercent { get; init; } = 80;
+
     // The reading level (AC-138) the assistant chat window renders replies at — the same `Sessions.ReadingLevel`
     // and the same default as an SDK session's "View" dropdown, so nobody's existing view shifts. Set only
     // here: the chat window is a display, not a control panel, and deliberately carries no picker of its own.

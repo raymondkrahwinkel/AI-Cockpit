@@ -34,6 +34,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
     private readonly ILogger<AssistantSessionHost> _logger;
+    private double _contextCompactionPercent = RestartAboveContextPercent;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -362,6 +363,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+        _contextCompactionPercent = _ContextCompactionPercent(settings);
 
         // AC-1013: Re-applies everything the start path applies from these settings, so a save reaches the running
         // assistant. Reuses the start path's own call rather than hand-picking fields — hand-picking is what
@@ -433,6 +435,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         bool startFresh, CancellationToken cancellationToken, string? startFreshBecause = null)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+        _contextCompactionPercent = _ContextCompactionPercent(settings);
         if (!settings.IsEnabled)
         {
             // Criterion 1: with the feature off the hotkey does nothing — and says why, rather than being a key
@@ -672,14 +675,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A fill that came back under the line re-arms the ask: this is the only place that can tell a compaction
         // that worked from one that did not, and the next crossing is a new episode rather than a repeat of this one.
-        if (reading.ContextUsedPercent < RestartAboveContextPercent)
+        if (reading.ContextUsedPercent < _contextCompactionPercent)
         {
             _askedTheProviderToCompact = false;
             return false;
         }
 
         // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
-        return reading.CanTakeAPrompt && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator);
+        return reading.CanTakeAPrompt && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator, _contextCompactionPercent);
     }
 
     // Whether the provider has already been asked to compact this fill. Without it, every property change above the
@@ -741,8 +744,12 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // The rule itself, as a pure function so it can be asserted directly — the same shape as ActivityFor above.
     // A null fill is a provider that reported nothing this turn, which says nothing about how full the context is:
     // reading it as zero would postpone the hand-over indefinitely on a provider that only reports sometimes.
-    internal static bool ShouldHandOver(double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator) =>
-        contextUsedPercent >= RestartAboveContextPercent && !isBusy && !isWaitingOnOperator;
+    internal static bool ShouldHandOver(
+        double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator, double contextCompactionPercent = RestartAboveContextPercent) =>
+        contextUsedPercent >= contextCompactionPercent && !isBusy && !isWaitingOnOperator;
+
+    private static double _ContextCompactionPercent(AssistantSettings settings) =>
+        settings.ContextCompactionPercent is >= 10 and <= 95 ? settings.ContextCompactionPercent : RestartAboveContextPercent;
 
     // AC-1013: Maps the session's own status onto the chip. Only moves between Thinking and Ready — it never
     // overwrites Unavailable (a feature fact) or Listening (a key held right now). Written as the "working" set

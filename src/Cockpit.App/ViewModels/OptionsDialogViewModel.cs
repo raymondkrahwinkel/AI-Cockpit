@@ -44,6 +44,9 @@ public sealed partial class AssistantOptionsViewModel(
     [ObservableProperty]
     private bool _alwaysOnTop = true;
 
+    [ObservableProperty]
+    private double _contextCompactionPercent = 80;
+
     // The three reading levels the chat window can render at (AC-138) — the same list an SDK session's own header dropdown offers.
     public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
 
@@ -92,6 +95,7 @@ public sealed partial class AssistantOptionsViewModel(
                 SpeakReplies = _lastLoadedSettings.SpeakReplies;
                 PushToTalkKeyName = _lastLoadedSettings.PushToTalkKeyName;
                 AlwaysOnTop = _lastLoadedSettings.AlwaysOnTop;
+                ContextCompactionPercent = _lastLoadedSettings.ContextCompactionPercent;
                 SelectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(_lastLoadedSettings.ReadingLevel);
                 ConsentBypassAll = _lastLoadedSettings.ConsentBypassAll;
                 await _RebuildConsentBypassRowsAsync(cancellationToken).ConfigureAwait(true);
@@ -184,6 +188,8 @@ public sealed partial class AssistantOptionsViewModel(
 
     partial void OnAlwaysOnTopChanged(bool value) => _SaveSettings();
 
+    partial void OnContextCompactionPercentChanged(double value) => _SaveSettings();
+
     partial void OnSelectedReadingLevelChanged(ReadingLevelOption value) => _SaveSettings();
 
     // The key and the on/off flag are read when the hotkey is armed and when the assistant is asked for, so without
@@ -217,6 +223,7 @@ public sealed partial class AssistantOptionsViewModel(
         SpeakReplies = defaults.SpeakReplies;
         PushToTalkKeyName = defaults.PushToTalkKeyName;
         AlwaysOnTop = defaults.AlwaysOnTop;
+        ContextCompactionPercent = defaults.ContextCompactionPercent;
         SelectedReadingLevel = SessionOptionCatalog.ReadingLevels.FirstOrDefault(level => level.Value == defaults.ReadingLevel)
                                ?? SessionOptionCatalog.DefaultReadingLevel;
         ConsentBypassAll = defaults.ConsentBypassAll;
@@ -252,6 +259,7 @@ public sealed partial class AssistantOptionsViewModel(
             SpeakReplies = SpeakReplies,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
             AlwaysOnTop = AlwaysOnTop,
+            ContextCompactionPercent = ContextCompactionPercent is >= 10 and <= 95 ? ContextCompactionPercent : 80,
             ReadingLevel = SelectedReadingLevel.Value,
             // Written from the rows rather than merged into what was loaded: the rows already carry every stored
             // key (see _RebuildConsentBypassRowsAsync), so this is a full replacement and unticking a box actually

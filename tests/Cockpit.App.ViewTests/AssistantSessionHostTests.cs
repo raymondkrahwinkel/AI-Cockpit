@@ -692,9 +692,9 @@ public class AssistantSessionHostTests
     [Fact]
     public void AFullContext_OnAProviderThatCanCompactItself_IsCompacted_RatherThanRestartedOnAFreshConversation()
     {
-        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider());
+        var (host, first, driver) = _StartedAssistantOn(_CompactingProvider(), contextCompactionPercent: 30);
 
-        _ReportAFullContext(first, driver, fill: 90);
+        _ReportAFullContext(first, driver, fill: 30);
 
         // The same conversation, and the ask that keeps it: a hand-over would have swapped the instance for one whose
         // transcript is empty.
@@ -1023,7 +1023,8 @@ public class AssistantSessionHostTests
     }
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
-        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, ISessionTranscriptStore? transcript = null)
+        SessionCapabilities capabilities, ISessionStateStore? sessionState = null, ISessionTranscriptStore? transcript = null,
+        double contextCompactionPercent = 80)
     {
         // AC-1090: the transcript layer hangs off the pane now, not off the host — the host only asks the pane it
         // just made to replay it or roll it aside. Passed in here the way the container passes it in production.
@@ -1037,7 +1038,8 @@ public class AssistantSessionHostTests
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
             () => TestSessions.Pane(new SessionManager(factory), transcriptStore: transcript)));
         var host = Dispatcher.UIThread.Invoke(() => _Host(
-            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState));
+            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState,
+            contextCompactionPercent: contextCompactionPercent));
 
         var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.NotNull(session);
@@ -1443,11 +1445,18 @@ public class AssistantSessionHostTests
         bool speakReplies = true,
         CockpitViewModel? cockpit = null,
         IAssistantMemory? memory = null,
-        NodeControllerPresence? presence = null)
+        NodeControllerPresence? presence = null,
+        double contextCompactionPercent = 80)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns(new AssistantSettings { IsEnabled = enabled, ReadingLevel = readingLevel, SpeakReplies = speakReplies });
+            .Returns(new AssistantSettings
+            {
+                IsEnabled = enabled,
+                ReadingLevel = readingLevel,
+                SpeakReplies = speakReplies,
+                ContextCompactionPercent = contextCompactionPercent,
+            });
 
         if (profiles is null)
         {
