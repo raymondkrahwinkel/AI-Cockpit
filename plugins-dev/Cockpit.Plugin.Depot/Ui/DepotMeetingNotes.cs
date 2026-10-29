@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.UI;
 
 namespace Cockpit.Plugin.Depot.UI;
@@ -19,9 +18,8 @@ internal static class DepotMeetingNotes
             }
 
             var notes = new DepotMeetingNoteModel(host, connection.Id);
-            NewMeetingNoteDialog? dialog = null;
-            await host.ShowDialogAsync("New meeting note", () => dialog = new NewMeetingNoteDialog(
-                notes, (project, path) => OpenAsync(notes, dialog, project, path), DateOnly.FromDateTime(DateTime.Now), defaultProject: () => DefaultProjectAsync(host)), "depot-new-meeting-note", 560, 700).ConfigureAwait(true);
+            await host.ShowDialogAsync("New meeting note", () => new NewMeetingNoteDialog(
+                notes, (project, path) => DepotMarkdownFiles.OpenNoteAsync(host, connection, project, path, edit: true), DateOnly.FromDateTime(DateTime.Now), defaultProject: () => DefaultProjectAsync(host)), "depot-new-meeting-note", 560, 700).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -35,16 +33,5 @@ internal static class DepotMeetingNotes
         var rows = await host.GetProjectMemoryRowsAsync(host.ActivePaneId).ConfigureAwait(true);
         var reference = rows.Select(row => row.Reference).FirstOrDefault(value => value.StartsWith("depot", StringComparison.OrdinalIgnoreCase));
         return reference is null ? null : reference[(reference.IndexOf(':') + 1)..];
-    }
-
-    // Until the editor tab (AC-1580) joins the live note, "Open in Cockpit" opens Depot's own link to it in the browser.
-    private static async Task OpenAsync(IDepotMeetingNotes notes, Control? owner, string project, string path)
-    {
-        var link = await notes.LinkAsync(project, path).ConfigureAwait(true);
-        if (!Uri.TryCreate(link.Data, UriKind.Absolute, out var uri) || owner is null || TopLevel.GetTopLevel(owner) is not { } top
-            || !await top.Launcher.LaunchUriAsync(uri).ConfigureAwait(true))
-        {
-            throw new InvalidOperationException(link.Message ?? "The note could not be opened.");
-        }
     }
 }

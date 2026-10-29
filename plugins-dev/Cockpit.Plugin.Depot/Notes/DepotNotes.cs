@@ -18,6 +18,7 @@ internal sealed class DepotNotes(
     private readonly Dictionary<string, string> _inboxStates = new(StringComparer.Ordinal);
     private readonly Lock _statesLock = new();
     private readonly HashSet<string> _known = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DepotNotesPage> _latest = new(StringComparer.Ordinal);
     private Task? _polling;
 
     public void Start() => _polling ??= _PollAsync();
@@ -32,6 +33,7 @@ internal sealed class DepotNotes(
                 ? new DepotNotesPage(request.ConnectionId, DepotInboxState.SignIn, [])
                 : await _FetchAsync(connection, cancellationToken).ConfigureAwait(false);
             _known.Add(request.ConnectionId);
+            _latest[request.ConnectionId] = page;
             publish(page);
             return page;
         }
@@ -57,6 +59,10 @@ internal sealed class DepotNotes(
             Refresh();
         }
     }
+
+    // Whether the last poll listed a live room for this note; false until the first poll is through.
+    public bool IsLive(string connectionId, string address, string path) =>
+        _latest.TryGetValue(connectionId, out var page) && page.Notes.Any(note => note.Address == address && note.Path == path);
 
     public void Refresh() => _ = _RefreshQuietlyAsync();
 
@@ -106,6 +112,7 @@ internal sealed class DepotNotes(
                 foreach (var id in _known.Where(id => !current.Any(connection => connection.Id == id)).ToList())
                 {
                     _known.Remove(id);
+                    _latest.TryRemove(id, out _);
                     publish(new(id, DepotInboxState.SignIn, []));
                 }
             }

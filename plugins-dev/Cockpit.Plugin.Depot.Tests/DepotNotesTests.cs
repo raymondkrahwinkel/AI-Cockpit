@@ -13,6 +13,7 @@ using Cockpit.Plugin.Depot.Contracts;
 using Cockpit.Plugin.Depot.Model;
 using Cockpit.Plugin.Depot.Notes;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.UI.Files;
 using NSubstitute;
 using DepotBrowserPanel = UiAsm::Cockpit.Plugin.Depot.UI.DepotBrowserPanel;
 using DepotInboxModel = UiAsm::Cockpit.Plugin.Depot.UI.DepotInboxModel;
@@ -194,6 +195,24 @@ public class DepotNotesTests
         await notes.JoinAsync(connection, note, Launch);
         await notes.NewAsync(connection, "krahwinkel-it/depot", Launch);
         Assert.Equal([new Uri("https://depot.example.com/n/token"), new Uri("https://depot.example.com/projects/krahwinkel-it/depot")], launched);
+
+        // AC-1580: with the editor hook, Join starts the note's session and opens the note's own tab; a second Join asks for the same key.
+        rig.Answers["note-live-open"] = true;
+        notes.JoinNote = (joined, joinedNote) => UiAsm::Cockpit.Plugin.Depot.UI.DepotMarkdownFiles.OpenNoteAsync(rig.Host, joined, joinedNote.Address, joinedNote.Path, joinedNote.Join);
+        rig.Answers["note-live-close"] = true;
+        await notes.JoinAsync(connection, note, Launch);
+        Assert.Equal(["note-live-open"], rig.Invokes.Select(call => call.Action).Where(action => action.StartsWith("note-live", StringComparison.Ordinal)));
+        rig.Host.GetOpenWorkspaces("depot.markdown").Returns([new Cockpit.Plugins.Abstractions.Workspaces.OpenWorkspaceInstance("depot:a:krahwinkel-it/depot:Meetings/2026-10-19 Sprint review.md", false, false)]);
+        await notes.JoinAsync(connection, note, Launch);
+        Assert.Equal(2, launched.Count);
+        Assert.Single(rig.Invokes, call => call.Action == "note-live-open");
+        Assert.DoesNotContain(rig.Invokes, call => call.Action == "note-live-close");
+        rig.Host.GetOpenWorkspaces("depot.markdown").Returns([]);
+        rig.Host.OpenFileWorkspaceAsync("depot.markdown", Arg.Any<FileWorkspaceOpenOptions>()).Returns(Task.FromException(new InvalidOperationException("no tab")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => notes.JoinAsync(connection, note, Launch));
+        Assert.Single(rig.Invokes, call => call.Action == "note-live-close");
+        _ = rig.Host.Received(3).OpenFileWorkspaceAsync("depot.markdown", Arg.Is<FileWorkspaceOpenOptions>(options =>
+            options.InstanceKey == "depot:a:krahwinkel-it/depot:Meetings/2026-10-19 Sprint review.md" && options.Edit));
     }
 
     private static DepotBrowserModelTests.Rig _SceneRig()
