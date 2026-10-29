@@ -12,6 +12,9 @@ public sealed record McpServerConfig
     // `IdentityKey` to key on either way.
     public string Id { get; init; } = string.Empty;
 
+    // Connection wiring managed by the Servers page, never by the MCP server editor.
+    public bool IsNodeConnection { get; init; }
+
     // The key to file this server's credentials under: `Id` when there is one, otherwise `LegacyIdFor(Name)` —
     // preserving the old name-keyed behaviour so a config without an id doesn't collide on the empty string.
     public string IdentityKey => string.IsNullOrEmpty(Id) ? McpServerIdentity.LegacyIdFor(Name) : Id;

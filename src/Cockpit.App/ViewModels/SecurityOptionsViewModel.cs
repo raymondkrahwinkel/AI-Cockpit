@@ -1124,6 +1124,7 @@ public sealed partial class SecurityOptionsViewModel(
         {
             Id = McpServerIdentity.NewId(),
             Name = NodeServerName.For(nodeName, serverName),
+            IsNodeConnection = true,
             Transport = McpTransport.Http,
             // Only the in-process tool loop builds its own HTTP transport (`McpToolProvider`), so only it can be
             // told which certificate to trust.

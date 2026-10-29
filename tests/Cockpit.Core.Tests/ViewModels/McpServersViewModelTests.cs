@@ -1,6 +1,7 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Core.Tests.ViewModels;
 
@@ -12,25 +13,45 @@ namespace Cockpit.Core.Tests.ViewModels;
 public class McpServersViewModelTests
 {
     [Fact]
-    public void ToConfig_CarriesAPairedNodesCertificatePinThroughAnUnrelatedEdit()
+    public async Task RemovingAnEditableServer_PreservesManagedNodeConnections()
     {
-        var paired = new McpServerConfig
+        var directory = Path.Combine(Path.GetTempPath(), "cockpit-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
         {
-            Name = "laptop · cockpit-agents",
-            Transport = McpTransport.Http,
-            Url = "https://192.168.1.20:7331/mcp",
-            Auth = McpServerAuth.ApiKey,
-            ApiKey = "granted-by-pairing",
-            PinnedCertificateFingerprint = "AABBCCDD",
-        };
+            var path = Path.Combine(directory, "cockpit.json");
+            await File.WriteAllTextAsync(path, """
+                { "McpServers": [
+                  { "Name": "Server · cockpit-node", "Transport": "Http", "Url": "https://node.example/mcp", "Auth": "ApiKey", "ApiKey": "paired-key", "PinnedCertificateFingerprint": "AABBCCDD" },
+                  { "Name": "Managed endpoint", "IsNodeConnection": true, "Transport": "Http", "Url": "https://other.example/mcp" },
+                  { "Name": "mine", "Command": "npx" }
+                ] }
+                """);
+            var store = new McpServerStore(path);
+            var editor = new McpServersViewModel(store, []);
+            await editor.LoadAsync();
 
-        var row = new EditableMcpServerViewModel(paired);
-        row.Name = "laptop · agents";
+            // L2 data loss: removing through the MCP editor must leave server connection wiring intact.
+            Assert.Equal("mine", Assert.Single(editor.Servers).Name);
+            editor.RemoveServerCommand.Execute(null);
+            Assert.True(await editor.PersistAsync());
 
-        // AC-792: there is no control for the pin — it is agreed during a pairing — but this dialog saves every
-        // row it holds. Dropping it here would silently unpin a paired node the next time the operator renamed
-        // any server, and that node's TLS would then fail outright.
-        Assert.Equal("AABBCCDD", row.ToConfig().PinnedCertificateFingerprint);
+            var remaining = await store.LoadAsync();
+            Assert.Equal(2, remaining.Count);
+            var node = Assert.Single(remaining, server => server.Name == "Server · cockpit-node");
+            Assert.Equal(McpTransport.Http, node.Transport);
+            Assert.Equal("https://node.example/mcp", node.Url);
+            Assert.Equal("paired-key", node.ApiKey);
+            Assert.Equal("AABBCCDD", node.PinnedCertificateFingerprint);
+            using var saved = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(path));
+            Assert.True(saved.RootElement.GetProperty("McpServers")[0].GetProperty("IsNodeConnection").GetBoolean());
+            await editor.LoadAsync();
+            Assert.Empty(editor.Servers);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]

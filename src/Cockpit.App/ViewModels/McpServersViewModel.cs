@@ -27,6 +27,8 @@ public partial class McpServersViewModel : ViewModelBase
     // The ids this editor has seen, so a save can tell a row it removed from a row written elsewhere since (AC-1494).
     private HashSet<string> _seenIds = new(StringComparer.Ordinal);
 
+    private bool _hasNodeConnections;
+
     public event Action? CloseRequested;
 
     public ObservableCollection<EditableMcpServerViewModel> Servers { get; } = [];
@@ -71,8 +73,9 @@ public partial class McpServersViewModel : ViewModelBase
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var servers = await _store.LoadAsync();
+        _hasNodeConnections = servers.Any(server => server.IsNodeConnection);
         _seenIds = [.. servers.Select(server => server.Id)];
-        var hidden = servers.Where(server => internalNames.Contains(server.Name.Trim())).ToList();
+        var hidden = servers.Where(server => !server.IsNodeConnection && internalNames.Contains(server.Name.Trim())).ToList();
 
         foreach (var existing in Servers)
         {
@@ -80,7 +83,7 @@ public partial class McpServersViewModel : ViewModelBase
         }
 
         Servers.Clear();
-        foreach (var server in servers.Where(server => !internalNames.Contains(server.Name.Trim())))
+        foreach (var server in servers.Where(server => !server.IsNodeConnection && !internalNames.Contains(server.Name.Trim())))
         {
             var row = new EditableMcpServerViewModel(
                 server, _oauthCoordinator, saveAllForSignIn: _SaveAllForSignInAsync,
@@ -227,7 +230,7 @@ public partial class McpServersViewModel : ViewModelBase
     }
 
     // A connect or pairing from another tab writes its rows while this list is open; saving only what is on screen
-    // would delete them (AC-1494). Rows removed elsewhere stay removed; a store that cannot be read saves the screen.
+    // would delete them (AC-1494). Keep node wiring under the Servers page's ownership, including updated keys.
     private async Task<List<McpServerConfig>> _MergedWithStoreAsync(IMcpServerStore store, List<McpServerConfig> edited)
     {
         IReadOnlyList<McpServerConfig> current;
@@ -235,7 +238,7 @@ public partial class McpServersViewModel : ViewModelBase
         {
             current = await store.LoadAsync();
         }
-        catch (IOException)
+        catch (IOException) when (!_hasNodeConnections)
         {
             return edited;
         }
@@ -245,7 +248,7 @@ public partial class McpServersViewModel : ViewModelBase
         return
         [
             .. edited.Where(server => !_seenIds.Contains(server.Id) || currentIds.Contains(server.Id)),
-            .. current.Where(server => !_seenIds.Contains(server.Id) && !editedIds.Contains(server.Id)),
+            .. current.Where(server => (server.IsNodeConnection || !_seenIds.Contains(server.Id)) && !editedIds.Contains(server.Id)),
         ];
     }
 
