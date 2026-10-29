@@ -82,6 +82,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // The configs `McpServers` was last built from (AC-736), kept because a row carries only a name while the project's pre-selection is answered per config.
     private IReadOnlyList<McpServerConfig> _offeredServers = [];
 
+    // The complete registry behind `_offeredServers`, including internal endpoints a profile may explicitly carry.
+    private IReadOnlyList<McpServerConfig> _mcpRegistry = [];
+
     // True while the checklist is being rebuilt for a newly chosen project — Start waits for it (`CanStart`).
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStart))]
@@ -664,6 +667,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private async Task _RebuildMcpServersAsync()
     {
         var registry = await _mcpServerCatalog!.GetServersForProjectAsync(SelectedProject?.Id);
+        _mcpRegistry = registry;
 
         // Without this their own edits are gone — every fresh row starts ticked — while _mcpSelectionTouched keeps the
         // profile's saved selection from being re-applied, so switching project after one manual untick turned
@@ -1342,6 +1346,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IReadOnlySet<string>? enabledMcpServerNames = HasMcpServers || SelectedProject is not null
             ? McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name).ToHashSet()
             : null;
+        enabledMcpServerNames = McpServerRegistryFilter.WithInternalProfileServers(
+            enabledMcpServerNames,
+            SelectedProfile.EnabledMcpServerNames?.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            _mcpRegistry);
         var workingDirectory = string.IsNullOrWhiteSpace(WorkingDirectory) ? null : WorkingDirectory.Trim();
 
         // Remember a used directory so next time it is a click away. Fire-and-forget: closing the dialog must

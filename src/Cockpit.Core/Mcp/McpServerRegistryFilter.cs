@@ -31,6 +31,35 @@ public static class McpServerRegistryFilter
             ? new HashSet<string>(profileSelection, StringComparer.OrdinalIgnoreCase)
             : null);
 
+    // A launcher checklist deliberately hides internal endpoints, but an explicitly configured management profile
+    // must not lose one merely because the operator could not see a row for it. Only internal names already present
+    // in the profile are carried; visible names remain governed by the launcher's checkboxes.
+    public static IReadOnlySet<string>? WithInternalProfileServers(
+        IReadOnlySet<string>? sessionSelection,
+        IReadOnlySet<string>? profileSelection,
+        IReadOnlyList<McpServerConfig> registry)
+    {
+        if (profileSelection is null)
+        {
+            return sessionSelection;
+        }
+
+        var internalNames = registry
+            .Where(server => server.Internal && profileSelection.Contains(server.Name))
+            .Select(server => server.Name)
+            .ToList();
+        if (internalNames.Count == 0)
+        {
+            return sessionSelection;
+        }
+
+        var result = sessionSelection is null
+            ? new HashSet<string>(OfferedToOperator(registry).Select(server => server.Name), StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(sessionSelection, StringComparer.OrdinalIgnoreCase);
+        result.UnionWith(internalNames);
+        return result;
+    }
+
     // AC-869: folds auto-mount names into `selection` before ApplySessionSelection narrows the registry. A
     // null selection is materialized into the no-selection fan-out (OfferedToOperator) plus those names —
     // the same trick AssistantSessionHost.McpSelection uses for its own two servers.

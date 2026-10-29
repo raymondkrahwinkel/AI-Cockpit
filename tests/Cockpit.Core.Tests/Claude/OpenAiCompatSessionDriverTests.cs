@@ -21,25 +21,41 @@ public class OpenAiCompatSessionDriverTests
         new("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
     [Fact]
-    public async Task SendUserMessage_StreamsAssistantDeltas_WithTheWorkingDirectoryInTheSystemPrompt()
+    public async Task LmStudio_OffersCodingNatively_WithTheWorkingDirectoryInTheSystemPrompt()
     {
         List<ChatMessage>? sent = null;
+        ChatOptions? sentOptions = null;
         var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(Arg.Do<IEnumerable<ChatMessage>>(messages => sent = [.. messages]), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+        chatClient.GetStreamingResponseAsync(
+                Arg.Do<IEnumerable<ChatMessage>>(messages => sent = [.. messages]),
+                Arg.Do<ChatOptions>(options => sentOptions = options),
+                Arg.Any<CancellationToken>())
             .Returns(_Stream("Hello ", "world."));
-        var driver = _CreateDriver(chatClient);
+        var contextManager = Substitute.For<ILocalModelContextManager>();
+        contextManager.PrepareAsync(Arg.Any<ProviderConfig>(), Arg.Any<CancellationToken>())
+            .Returns("LM Studio is geladen met 8192 tokens; het profiel vraagt 32768 tokens.");
+        var driver = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
+        var profile = new SessionProfile("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen3-coder"))
+        {
+            EnabledMcpServerNames = ["test-server"],
+        };
 
-        await driver.StartAsync(LocalProfile, workingDirectory: @"C:\\work\\AC-1838");
+        await driver.StartAsync(profile, workingDirectory: @"C:\\work\\AC-1911");
         await driver.SendUserMessageAsync("hi");
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         Assert.Equal("Hello world.", string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<TurnCompleted>()).IsError);
         Assert.Single(events, evt => evt is SessionInitialized);
+        Assert.Contains(sentOptions!.Tools!, tool => tool.Name == "read_file");
+        Assert.Contains(sentOptions.Tools!, tool => tool.Name == CockpitToolSearch.SearchToolName);
+        Assert.DoesNotContain(sentOptions.Tools!, tool => tool.Name == "background_0");
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
-        Assert.Contains(@"C:\\work\\AC-1838", systemPrompt);
+        Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
         Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
         Assert.Contains("relative paths resolve against this working directory", systemPrompt);
+        Assert.Contains(events.OfType<AssistantTextCompleted>(), completed => completed.Text.Contains("geladen met 8192", StringComparison.Ordinal));
+        await LocalModelContextContract.AssertAsync();
     }
 
     [Fact]
@@ -170,6 +186,13 @@ public class OpenAiCompatSessionDriverTests
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
         _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), tools);
 
+    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IMcpToolProvider toolProvider, ILocalModelContextManager? contextManager)
+    {
+        var factory = Substitute.For<IChatClientFactory>();
+        factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
+        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, localModelContext: contextManager);
+    }
+
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses, params AIFunction[] tools)
     {
         var factory = Substitute.For<IChatClientFactory>();
@@ -183,6 +206,36 @@ public class OpenAiCompatSessionDriverTests
         toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>()).Returns(toolSession);
 
         return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+    }
+
+    private static IMcpToolProvider _SelectionSensitiveProvider()
+    {
+        var coding = Substitute.For<IMcpToolSession>();
+        coding.Tools.Returns(
+        [
+            new McpSessionTool(AIFunctionFactory.Create((string path) => path, "read_file"), "cockpit-coding", AlwaysMounted: false),
+            .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold)
+                .Select(index => new McpSessionTool(AIFunctionFactory.Create((string value) => value, $"background_{index}"), "test-server", AlwaysMounted: false)),
+        ]);
+        coding.ConnectedServerNames.Returns(["cockpit-coding", "test-server"]);
+        coding.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
+
+        var empty = Substitute.For<IMcpToolSession>();
+        empty.Tools.Returns([]);
+        empty.ConnectedServerNames.Returns([]);
+        empty.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
+
+        var provider = Substitute.For<IMcpToolProvider>();
+        provider.ConnectAsync(
+                Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(empty);
+        provider.ConnectAsync(
+                Arg.Is<IReadOnlySet<string>?>(selection => selection != null && selection.Contains("cockpit-coding")),
+                Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(coding);
+        return provider;
     }
 
     private static async IAsyncEnumerable<ChatResponseUpdate> _Stream(params string[] chunks)

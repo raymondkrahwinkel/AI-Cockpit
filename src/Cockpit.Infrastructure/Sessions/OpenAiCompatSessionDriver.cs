@@ -1,6 +1,5 @@
 using System.ClientModel;
 using System.Globalization;
-using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -25,6 +24,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private readonly IMcpToolProvider _mcpToolProvider;
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;
     private readonly SessionMcpMounts? _mcpMounts;
+    private readonly ILocalModelContextManager? _localModelContext;
 
     private readonly Channel<SessionEvent> _events = Channel.CreateUnbounded<SessionEvent>();
     private readonly List<ChatMessage> _history = [];
@@ -53,12 +53,18 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     // visible even if it ends with no assistant text, so the no-response vangnet must not fire for it (AC-132).
     private readonly SessionToolApprovalGate _gate;
 
-    public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger, SessionMcpMounts? mcpMounts = null)
+    public OpenAiCompatSessionDriver(
+        IChatClientFactory chatClientFactory,
+        IMcpToolProvider mcpToolProvider,
+        ILogger<OpenAiCompatSessionDriver> logger,
+        SessionMcpMounts? mcpMounts = null,
+        ILocalModelContextManager? localModelContext = null)
     {
         _chatClientFactory = chatClientFactory;
         _mcpToolProvider = mcpToolProvider;
         _logger = logger;
         _mcpMounts = mcpMounts;
+        _localModelContext = localModelContext;
         _gate = new SessionToolApprovalGate(
             (toolUseId, toolName, inputJson) =>
             {
@@ -98,6 +104,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         Profile = profile;
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         _sessionId = Guid.NewGuid().ToString();
+        var contextWarning = _localModelContext is null
+            ? null
+            : await _localModelContext.PrepareAsync(config, cancellationToken).ConfigureAwait(false);
 
         // AC-192: .Use* registration order = outer→inner: UseFunctionInvocation (outer) → HermesToolCallChatClient →
         // the context guard (AC-1489) → model client (inner). The Hermes shim turns local-model text tool-calls into
@@ -105,7 +114,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
             .UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop)
             .Use(inner => new HermesToolCallChatClient(inner))
-            .Use(inner => new ContextGuardChatClient(inner, ChatTurnLimits.From(_TurnLimitsFrom(config), _logger), _logger))
+            .Use(inner => new ContextGuardChatClient(inner, TurnLimitsFrom(config, _logger), _logger))
             .Build();
         // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
         // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
@@ -125,7 +134,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) carries no dialog-built
         // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
         // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
-        var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
+        var selection = _WithCoding(McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames));
         _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, profile?.Label).ConfigureAwait(false);
 
         // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
@@ -196,6 +205,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             Cwd = string.Empty,
             Tools = [.. _gatedTools.Select(tool => tool.Function.Name), .. _turnTools.Select(tool => tool.Name).Where(name => name is CockpitToolSearch.SearchToolName or CockpitToolSearch.CallToolName)],
         });
+        if (!string.IsNullOrWhiteSpace(contextWarning))
+        {
+            _events.Writer.TryWrite(new AssistantTextCompleted
+            {
+                SessionId = _sessionId,
+                Text = $"⚠️ Cockpit: {contextWarning}",
+            });
+        }
     }
 
     // What rides along in `ChatOptions.Tools` every turn (AC-963). Above the threshold the schemas are the problem,
@@ -208,7 +225,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             return [.. _gatedTools.Select(tool => (AITool)tool.Function)];
         }
 
-        var preloaded = _gatedTools.Where(tool => tool.AlwaysMounted).ToList();
+        var preloaded = _gatedTools
+            .Where(tool => tool.AlwaysMounted || string.Equals(tool.ServerName, CodingTools.EndpointName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var searchable = _gatedTools.Except(preloaded).ToList();
         _logger.LogInformation(
             "Tool search mode: {Preloaded} always-mounted tool(s) preloaded, {Searchable} behind {SearchTool} — about {Tokens} tokens of schema kept out of every request.",
@@ -219,6 +238,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_gatedTools)];
     }
+
+    // Local HTTP providers have no native file tools. An explicit profile/project selection must therefore never
+    // subtract the bounded cockpit-coding endpoint; null already means unrestricted and includes it naturally.
+    private static IReadOnlySet<string>? _WithCoding(IReadOnlySet<string>? selection) =>
+        selection is null
+            ? null
+            : selection.Append(CodingTools.EndpointName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
@@ -524,12 +550,22 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _ => null,
     };
 
-    private static JsonElement? _TurnLimitsFrom(ProviderConfig config) => config switch
+    internal static ChatTurnLimits TurnLimitsFrom(ProviderConfig config, ILogger? logger = null)
     {
-        OllamaConfig ollama => ollama.TurnLimits,
-        LmStudioConfig lmStudio => lmStudio.TurnLimits,
-        _ => null,
-    };
+        var json = config switch
+        {
+            OllamaConfig ollama => ollama.TurnLimits,
+            LmStudioConfig lmStudio => lmStudio.TurnLimits,
+            _ => null,
+        };
+        var contextTokens = config switch
+        {
+            OllamaConfig ollama => ollama.ContextTokens,
+            LmStudioConfig lmStudio => lmStudio.ContextTokens,
+            _ => LocalModelContext.DefaultTokens,
+        };
+        return ChatTurnLimits.From(json, logger) with { ContextWindowTokens = LocalModelContext.Normalize(contextTokens) };
+    }
 
     private static string? _SystemPromptFrom(ProviderConfig config) => config switch
     {

@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -304,11 +305,13 @@ internal sealed class McpToolProvider(
         return [.. byName.Values];
     }
 
-    // Endpoints a confined session keeps: the pane-scoped Autopilot controls (named as literals to keep Infrastructure
-    // free of the plugin; in sync with AutopilotRunTools/AutopilotCeoTools.EndpointName) and cockpit-coding, confined
-    // to the working directory by construction (AC-1489). Never cockpit-coding-shell: a shell is an escape route.
+    // AC-174: keep pane-safe controls and worktree-confined cockpit-coding (AC-1489). cockpit-agents is pane-scoped
+    // messaging without filesystem access. Shell and elevated controls remain escape routes.
     private static readonly HashSet<string> ConfinedControlEndpoints =
-        new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-coding" };
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-session", "cockpit-agents", CodingTools.EndpointName,
+        };
 
     // AC-174: the confined effective set for a session pinned to <paramref name="root"/> — filesystem preset
     // re-rooted at the worktree, the in-memory knowledge server, and the Autopilot endpoint if already present.

@@ -10,6 +10,7 @@ using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Journeys;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Backend.Tests.EndToEnd;
 
@@ -47,7 +48,7 @@ public sealed class SessionLauncherWorktreeResumeTests : IDisposable
     }
 
     [Fact]
-    public async Task AnIsolatedSession_RunsInItsOwnWorktree_AndStoppingItRemovesTheWorktreeAndItsBranch()
+    public async Task AnIsolatedSession_RunsConfinedInItsOwnWorktree_AndStoppingItRemovesTheWorktreeAndItsBranch()
     {
         var driver = new EchoDriver();
         await using var services = _Build(driver);
@@ -60,6 +61,7 @@ public sealed class SessionLauncherWorktreeResumeTests : IDisposable
         await launcher.StopSessionAsync(worktree.SessionId);
 
         Assert.Equal(worktree.Path, driver.WorkingDirectory);
+        Assert.Equal("true", driver.LaunchOptions?[WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory]);
         Assert.NotEqual(Path.GetFullPath(repository), Path.GetFullPath(worktree.Path));
         Assert.NotEmpty(branchWhileRunning);
         Assert.False(Directory.Exists(worktree.Path));

@@ -30,9 +30,7 @@ public class SessionStatusToolsTests
         IWorkspaceAgentGateway? workspaces = null,
         IWorkspaceAgentCoordinator? coordinator = null,
         IAgentMessageInbox? inbox = null,
-        IProjectJobHistory? jobHistory = null,
-        IConsentBroker? consent = null,
-        IElevatedCommandRunner? elevated = null) =>
+        IProjectJobHistory? jobHistory = null) =>
         new(
             labels ?? _Labels(),
             runner ?? Substitute.For<ITrackedCommandRunner>(),
@@ -40,9 +38,7 @@ public class SessionStatusToolsTests
             workspaces ?? Substitute.For<IWorkspaceAgentGateway>(),
             coordinator ?? Substitute.For<IWorkspaceAgentCoordinator>(),
             inbox ?? Substitute.For<IAgentMessageInbox>(),
-            jobHistory,
-            consent,
-            elevated);
+            jobHistory);
 
     [Fact]
     public async Task SetStatus_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
@@ -115,7 +111,7 @@ public class SessionStatusToolsTests
             broker.Respond(prompt.Id, answer, remember: false);
         };
 
-        var tools = _Tools(consent: broker, elevated: elevated);
+        var tools = new ElevatedSessionTools(broker, elevated);
         McpRequestContext.Set("caller-pane");
         string reply;
         try

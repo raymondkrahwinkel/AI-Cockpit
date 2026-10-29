@@ -190,6 +190,18 @@
                         </StackPanel>
 
                         <StackPanel Spacing="4">
+                            <TextBlock Text="Context (tokens)" FontSize="11"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <NumericUpDown Value="{Binding ContextTokens}" Minimum="1024" Maximum="1048576"
+                                           Increment="1024" FormatString="0"/>
+                        </StackPanel>
+
+                        <CheckBox Content="Model zelf laden met deze context"
+                                  IsChecked="{Binding LoadModelWithContext}"
+                                  IsVisible="{Binding IsLmStudioProvider}"
+                                  ToolTip.Tip="Herlaadt een te klein geladen LM Studio-model bij de start van de sessie"/>
+
+                        <StackPanel Spacing="4">
                             <TextBlock Text="Base system prompt (optional)" FontSize="11"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                             <TextBox Text="{Binding SystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
