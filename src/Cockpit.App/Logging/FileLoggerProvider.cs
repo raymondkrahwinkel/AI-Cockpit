@@ -12,7 +12,10 @@ public sealed class FileLoggerProvider : ILoggerProvider
     internal const long MaxSizeBytes = 8 * 1024 * 1024;
     internal const int QueueCapacity = 4096;
     private static readonly TimeSpan DrainBudget = TimeSpan.FromSeconds(2);
-    private static readonly FileShare WriterShare = OperatingSystem.IsWindows() ? FileShare.Read : FileShare.None;
+    // On Unix .NET maps FileShare.None to an exclusive advisory flock that denies tail readers,
+    // so the log stream uses the shared read lock on every platform (a log must stay readable
+    // while Cockpit runs).
+    private static readonly FileShare WriterShare = FileShare.Read;
 
     private readonly string _path;
     private readonly int _queueCapacity;
