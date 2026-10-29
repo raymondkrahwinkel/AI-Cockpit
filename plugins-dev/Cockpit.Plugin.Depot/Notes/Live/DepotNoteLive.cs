@@ -62,6 +62,15 @@ internal sealed class DepotNoteLive(
         }
     }
 
+    // The host's own save of the note's file goes out only while its open live session, if any, is sure of the account.
+    public bool MayWrite(DepotNoteLiveRequest request)
+    {
+        lock (_lock)
+        {
+            return !_sessions.TryGetValue(_Key(request), out var session) || session.MayWrite;
+        }
+    }
+
     public async Task CloseAsync(DepotNoteLiveRequest request)
     {
         DepotNoteSession? session;

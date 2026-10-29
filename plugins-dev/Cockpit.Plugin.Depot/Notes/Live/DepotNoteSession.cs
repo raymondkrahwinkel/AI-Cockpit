@@ -171,6 +171,18 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
     public LiveFileStatus Status => _LiveStatus();
 
+    // False while the note waits for a sign-in or for Depot to name the account again: no save may go out then, the host's either.
+    public bool MayWrite
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _accountChanges == _accountChecked && _state is not (DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount);
+            }
+        }
+    }
+
     // Ends when the session stops trying: signed out, refused, stale, or disposed.
     public Task Completion => _loop;
 
@@ -475,15 +487,15 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             var result = await hub.JoinAsync(
                 new DepotNoteJoinRequest(_note.Organization, _note.Project, _note.Path, Watch: false, _epoch, DepotNoteSchema.Version, Save: _saver is not null),
                 cancellationToken).ConfigureAwait(false);
-            if (result.Stale)
-            {
-                _Terminal(DepotNoteLiveState.Stale);
-                return false;
-            }
-
             if (_Unverified())
             {
                 // The account changed during this Join: the next attempt reads it again before anything is entered.
+                return false;
+            }
+
+            if (result.Stale)
+            {
+                _Terminal(DepotNoteLiveState.Stale);
                 return false;
             }
 
@@ -991,9 +1003,11 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         lock (_gate)
         {
             // A stop, a sign-in stop or an unchecked account is never covered by a state in which the host writes or sends.
-            var holds = _terminal || _accountChanges != _accountChecked || _state is DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount;
+            var unverified = _accountChanges != _accountChecked;
+            var holds = _terminal || unverified || _state is DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount;
             if (_state == state || holds && state is DepotNoteLiveState.Connecting or DepotNoteLiveState.Reconnecting
-                || (_terminal || _accountChanges != _accountChecked) && state == DepotNoteLiveState.Live)
+                || _terminal && state == DepotNoteLiveState.Live
+                || unverified && state is not (DepotNoteLiveState.SignInNeeded or DepotNoteLiveState.OtherAccount))
             {
                 return;
             }
@@ -1099,7 +1113,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             return;
         }
 
-        _mine = mine && !_saveRefused;
+        _mine = mine && !_saveRefused && MayWrite;
         _saver.SetSaver(_mine);
         if (_mine && checksum is not null)
         {

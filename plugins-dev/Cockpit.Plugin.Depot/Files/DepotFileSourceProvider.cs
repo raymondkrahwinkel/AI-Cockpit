@@ -68,6 +68,12 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 FileSourceChannel.ValidateWrite(ifVersion, mustNotExist);
                 var (project, path) = DepotFileRefs.Parse(file, connectionId);
                 var connection = _Connection();
+                var address = project.Split('/');
+                if (address.Length == 2 && noteLive?.Invoke() is { } live && !live.MayWrite(new DepotNoteLiveRequest(connectionId, address[0], address[1], path)))
+                {
+                    throw new FileSourceException(FileSourceErrorKind.SignIn, "Sign in to Depot again as the account this note was opened with.");
+                }
+
                 await _AuthorizeAsync(connection, project, true, cancellationToken).ConfigureAwait(false);
                 var bytes = await FileSourceChannel.ReadContentAsync(content, Capabilities.MaxWriteBytes, cancellationToken).ConfigureAwait(false);
                 var text = new UTF8Encoding(false, true).GetString(bytes);
