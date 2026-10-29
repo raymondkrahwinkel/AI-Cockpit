@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Sessions;
@@ -321,6 +322,8 @@ public sealed class TranscriptStreamFlickerTests
     {
         for (var frame = 0; frame < frames; frame++)
         {
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
             sample?.Invoke();
         }
     }
