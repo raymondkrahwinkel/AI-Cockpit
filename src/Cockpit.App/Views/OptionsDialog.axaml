@@ -1372,7 +1372,7 @@
                                                Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                 </StackPanel>
 
-                                <ListBox ItemsSource="{Binding McpServers.Servers}" SelectedItem="{Binding McpServers.SelectedServer}"
+                                <ListBox Classes="subnav" ItemsSource="{Binding McpServers.Servers}" SelectedItem="{Binding McpServers.SelectedServer}"
                                          Background="Transparent" Padding="0" Margin="0,0,12,0">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:EditableMcpServerViewModel">
