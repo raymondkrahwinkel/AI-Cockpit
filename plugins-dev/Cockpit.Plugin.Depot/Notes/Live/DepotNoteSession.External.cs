@@ -17,9 +17,13 @@ internal sealed partial class DepotNoteSession
         _outsidePending = true;
         _outsideAt = DateTimeOffset.UtcNow;
         _externalWriter = writer is { Source: "agent", Name.Length: > 0 } ? writer : null;
+        if (_externalWriter is { Via: "Mcp", Version: > 0 } saved)
+        {
+            _SetSaved(new LiveFileSave(saved.Name, saved.Color ?? DepotNotePresence.OutsideAgentColor, _time.GetUtcNow()));
+        }
         if (_externalWriter is { } agent && _presence is { } presence)
         {
-            await presence.OutsideAsync(agent.Label, _life.Token).ConfigureAwait(false);
+            await presence.OutsideAsync(agent.Label, _life.Token, agent.Color).ConfigureAwait(false);
         }
     }
 
@@ -53,7 +57,7 @@ internal sealed partial class DepotNoteSession
         }
     }
 
-    private sealed record ExternalWriter(string Name, string? OnBehalfOf, string Source)
+    private sealed record ExternalWriter(string Name, string? OnBehalfOf, string Source, string? Color = null, string? Via = null, int? Version = null)
     {
         public string Label => string.IsNullOrWhiteSpace(OnBehalfOf) ? Name : $"{Name} · on behalf of {OnBehalfOf}";
     }

@@ -963,7 +963,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
             DepotNoteLiveState.Unavailable or DepotNoteLiveState.Disabled => new LiveFileStatus(LiveFileState.ReadOnly, _MessageFor(state)),
             _ => new LiveFileStatus(LiveFileState.Connecting),
         };
-        return status with { UnsentSourceText = _unsentSourceText };
+            return status with { UnsentSourceText = _unsentSourceText, Saved = _saved ?? status.Saved };
     }
 
     // Fixed sentences: never text from an exception or a response, which could carry a header.
@@ -1075,15 +1075,14 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         _SetSaved(new LiveFileSave(self is { Name.Length: > 0 } ? self.Name : "you", self is { Color.Length: > 0 } ? self.Color : null, _time.GetUtcNow()));
     }
 
-    // The one place a save becomes the chip: DEP-536's `saved` event, or Cockpit's own save on a Depot that does not send it.
+    // A completed version becomes the chip: a live save, or the external MCP version named in outside (AC-1583).
     private void _SetSaved(LiveFileSave saved)
     {
         _saved = saved;
         _StatusChanged();
     }
 
-    // DEP-536: every save is announced to the room, the saver's own included, with the saver's server identity. A writer outside
-    // the room is never shown as the one who saved (AC-1583): only this event names someone else.
+    // DEP-536: the next live save replaces the external version's chip with the saver's server identity.
     private void _HubSaved(JsonElement save)
     {
         if (save.ValueKind != JsonValueKind.Object || !save.TryGetProperty("by", out var by) || by.ValueKind != JsonValueKind.Object)

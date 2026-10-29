@@ -36,6 +36,8 @@ internal sealed class DepotNotePresence : IDisposable
 {
     public static readonly TimeSpan Beat = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan Silence = TimeSpan.FromSeconds(15);
+    // Same outside-writer product colour as Depot's editor.ts onOutside; an explicit server colour takes precedence.
+    internal const string OutsideAgentColor = "#a78bda";
 
     private readonly IDepotCursorMap _map;
     private readonly Action<IReadOnlyList<LivePeer>> _changed;
@@ -56,11 +58,11 @@ internal sealed class DepotNotePresence : IDisposable
     private bool _away;
     private (LivePeer Peer, DateTimeOffset Until)? _outside;
 
-    public Task OutsideAsync(string name, CancellationToken cancellationToken)
+    public Task OutsideAsync(string name, CancellationToken cancellationToken, string? color = null)
     {
         lock (_gate)
         {
-            _outside = (new LivePeer("outside:" + name, name, "", "agent", "Editor", "editing"), _time.GetUtcNow().AddSeconds(30));
+            _outside = (new LivePeer("outside:" + name, name, color ?? OutsideAgentColor, "agent", "Editor", "editing"), _time.GetUtcNow().AddSeconds(30));
         }
         return _RaiseAsync(cancellationToken);
     }

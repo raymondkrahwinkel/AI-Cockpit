@@ -36,7 +36,7 @@ internal static partial class Screenshotter
             new("raymond", "Raymond Krahwinkel", "#3b82f6", "Cockpit", "Editor", "editing", You: true),
             new("sanne", "Sanne de Vries", "#3fb8c4", "web", "Editor", "selecting", Away: away, Caret: sanne + 15, Selection: new LiveRange(sanne, sanne + 15)),
             new("joris", "Joris Bakker", "#d9a441", "Cockpit", "Editor", "editing", Away: away, Caret: joris),
-            .. agent ? new[] { new LivePeer("assistant", "Assistant · on behalf of Raymond", "", "agent", "Editor", "editing") } : [],
+            .. agent ? new[] { new LivePeer("assistant", "Assistant · on behalf of Raymond", "#a78bda", "agent", "Editor", "editing") } : [],
         ];
     }
 

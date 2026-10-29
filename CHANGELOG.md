@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- Live notes mark an outside agent's changed lines with their name for up to ten minutes, show their saved version and temporary presence, and send the launching profile name to MCP servers that opt in.
+
 - added: **a live Depot note opens in the editor as a tab.** Join in the Notes tab and Open in Cockpit in the new meeting note dialog now open the note
   in Cockpit's own Markdown editor instead of the browser, joined live: others' text and carets arrive as you type, and Pop out keeps
   the note live. A second Join on the same note brings its tab to the front. Your own avatar uses the name and colour Depot gives you
