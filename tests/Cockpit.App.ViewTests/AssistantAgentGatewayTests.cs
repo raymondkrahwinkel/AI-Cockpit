@@ -79,6 +79,7 @@ public class AssistantAgentGatewayTests
         var gateway = Dispatcher.UIThread.Invoke(() => _GatewayOverProfiles(
             registry,
             intelligence,
+            TimeSpan.FromMilliseconds(10),
             new SessionProfile("work", new PluginProviderConfig("claude", "{}"))
             {
                 Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: false)
@@ -91,17 +92,7 @@ public class AssistantAgentGatewayTests
             new SessionProfile("Broken", new PluginProviderConfig("openrouter", "{}")),
             new SessionProfile("Delayed", new PluginProviderConfig("openrouter", "{}"))));
 
-        var previousBudget = AssistantAgentGateway.ModelIntelligenceBudget;
-        AssistantAgentGateway.ModelIntelligenceBudget = TimeSpan.FromMilliseconds(10);
-        IReadOnlyList<AssistantProfileRow> profiles;
-        try
-        {
-            profiles = await gateway.ListProfilesAsync();
-        }
-        finally
-        {
-            AssistantAgentGateway.ModelIntelligenceBudget = previousBudget;
-        }
+        var profiles = await gateway.ListProfilesAsync();
 
         var claude = profiles.Single(profile => profile.Label == "work");
         Assert.Equal("Claude", claude.Provider);
@@ -1114,6 +1105,7 @@ public class AssistantAgentGatewayTests
     private static AssistantAgentGateway _GatewayOverProfiles(
         IPluginProviderRegistry pluginProviders,
         IProviderModelIntelligence? providerIntelligence,
+        TimeSpan? modelIntelligenceBudget,
         params SessionProfile[] known)
     {
         var profiles = Substitute.For<ISessionProfileStore>();
@@ -1130,7 +1122,8 @@ public class AssistantAgentGatewayTests
             pluginProviders,
             new SessionWatcher(Substitute.For<IAgentMessageInbox>()),
             Substitute.For<IAssistantSessionHost>(),
-            providerIntelligence: providerIntelligence);
+            providerIntelligence: providerIntelligence,
+            modelIntelligenceBudget: modelIntelligenceBudget);
     }
 
     // A plugin-backed profile under the test's own label, with whatever start defaults the caller wants on it —

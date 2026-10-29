@@ -34,7 +34,8 @@ internal static class AssistantAgentGatewayGraph
         IMcpServerCatalog? mcpServerCatalog = null,
         IProjectFieldRegistry? projectFields = null,
         ProjectCatalog? projects = null,
-        IProviderModelIntelligence? providerIntelligence = null) =>
+        IProviderModelIntelligence? providerIntelligence = null,
+        TimeSpan? modelIntelligenceBudget = null) =>
         new(
             sessions,
             DesktopLauncher.Over(cockpit, sessions, worktreeManager, mcpServerCatalog),
@@ -50,6 +51,7 @@ internal static class AssistantAgentGatewayGraph
             notifyAudit,
             pluginProviders,
             providerIntelligence ?? Substitute.For<IProviderModelIntelligence>(),
+            modelIntelligenceBudget,
             worktreeManager,
             projectFields);
 }

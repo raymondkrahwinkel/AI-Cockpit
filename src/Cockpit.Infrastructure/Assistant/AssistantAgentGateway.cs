@@ -37,12 +37,11 @@ internal sealed class AssistantAgentGateway(
     IAgentNotifyAuditLog notifyAudit,
     IPluginProviderRegistry pluginProviders,
     IProviderModelIntelligence providerIntelligence,
+    TimeSpan? modelIntelligenceBudget = null,
     IWorktreeManager? worktreeManager = null,
     IProjectFieldRegistry? projectFields = null,
     ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
 {
-    internal static TimeSpan ModelIntelligenceBudget = TimeSpan.FromSeconds(2);
-
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -510,7 +509,7 @@ internal sealed class AssistantAgentGateway(
     private async Task<PluginModelIntelligence?> _ReadConfiguredModelAsync(string profileLabel, CancellationToken cancellationToken)
     {
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        budget.CancelAfter(ModelIntelligenceBudget);
+        budget.CancelAfter(modelIntelligenceBudget ?? TimeSpan.FromSeconds(2));
         try
         {
             return await providerIntelligence.ReadAsync(profileLabel, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);

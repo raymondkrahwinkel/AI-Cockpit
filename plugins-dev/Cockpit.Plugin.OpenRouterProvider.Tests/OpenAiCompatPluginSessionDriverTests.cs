@@ -12,29 +12,28 @@ namespace Cockpit.Plugin.OpenRouterProvider.Tests;
 // by OpenAiCompatPluginSessionDriverToolLoopTests in the Gemini provider's tests (AC-964, one shared driver).
 public class OpenAiCompatPluginSessionDriverTests
 {
-    [Fact]
-    public async Task SendUserMessage_ReportsAnIdleStreamOrCompletesASteadyOne()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SendUserMessage_ReportsAnIdleStreamOrCompletesASteadyOne(bool stalls)
     {
-        foreach (var stalls in new[] { true, false })
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(stalls ? _StalledStream() : _SlowSteadyStream());
+        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: TimeSpan.FromMilliseconds(50));
+
+        await driver.StartAsync();
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        Assert.Equal(stalls ? "Hello" : "Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
+        Assert.Equal(stalls, Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
+        if (stalls)
         {
-            var chatClient = Substitute.For<IChatClient>();
-            chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
-                .Returns(stalls ? _StalledStream() : _SlowSteadyStream());
-            var driver = new OpenAiCompatPluginSessionDriver(chatClient, "anthropic/claude-sonnet-4.5", streamIdleTimeout: TimeSpan.FromMilliseconds(50));
-
-            await driver.StartAsync();
-            await driver.SendUserMessageAsync("hi");
-            var events = await _CollectUntilTurnCompletedAsync(driver);
-
-            Assert.Equal(stalls ? "Hello" : "Hello world.", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
-            Assert.Equal(stalls, Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
-            if (stalls)
-            {
-                Assert.Contains("did not send an update", Assert.Single(events.OfType<PluginSessionError>()).Message);
-            }
-
-            Assert.Single(events, evt => evt is PluginSessionInitialized);
+            Assert.Contains("did not send an update", Assert.Single(events.OfType<PluginSessionError>()).Message);
         }
+
+        Assert.Single(events, evt => evt is PluginSessionInitialized);
     }
 
     private static async IAsyncEnumerable<ChatResponseUpdate> _StalledStream([EnumeratorCancellation] CancellationToken cancellationToken = default)
