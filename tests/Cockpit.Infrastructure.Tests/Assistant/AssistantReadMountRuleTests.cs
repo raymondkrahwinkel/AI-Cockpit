@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
@@ -34,8 +35,8 @@ public sealed class AssistantReadMountRuleTests : IDisposable
 
     private readonly IDelegationService _delegation = Substitute.For<IDelegationService>();
 
-    private AssistantReadMcpTools _Tools() =>
-        new(_gateway, _delegation, Substitute.For<INodeSessionsClient>(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), ModelOptionsTests.PictureReader());
+    private AssistantReadMcpTools _Tools(INodeSessionsClient? nodes = null) =>
+        new(_gateway, _delegation, nodes ?? Substitute.For<INodeSessionsClient>(), new NodeDiscoveryId(Path.Combine(Path.GetTempPath(), $"node-discovery-id-{Guid.NewGuid():N}.txt")), ModelOptionsTests.PictureReader());
 
     private static JsonNode _Json(string result) => JsonNode.Parse(result)!;
 
@@ -83,15 +84,27 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         // feature that does nothing.
         _gateway.ListSessionsAsync().Returns(Task.FromResult<IReadOnlyList<AssistantSessionRow>>(
             [new AssistantSessionRow("pane-1", "AC-223", "Opus", "AC-223 — writing tests", "ws-2", "Cockpit")]));
+        var nodes = Substitute.For<INodeSessionsClient>();
+        nodes.ListNodesAsync().Returns(Task.FromResult<IReadOnlyList<string>>(["node-a"]));
+        nodes.ReadAsync("node-a", Arg.Any<CancellationToken>()).Returns(Task.FromResult(
+            new NodeSessionsSnapshot("node-a", [], [new NodeScopedProfileSummary("Node profile", SessionProvider.ClaudeCli, null)], [new NodeProjectRow("node-project", "Node project")])));
         McpRequestContext.Set(AssistantIdentity.PaneId);
 
-        var result = _Json(await _Tools().ListSessionsAsync());
+        var result = _Json(await _Tools(nodes).ListSessionsAsync());
 
         Assert.True((bool)result["ok"]!);
         var session = result["sessions"]!.AsArray()[0]!;
         Assert.Equal("AC-223 — writing tests", (string)session["statusline"]!);
         Assert.Equal("Cockpit", (string)session["workspaceName"]!);
         Assert.True((bool)session["hasStatusline"]!);
+        var node = result["nodes"]!.AsArray()[0]!;
+        Assert.False(node.AsObject().ContainsKey("profiles"));
+        Assert.False(node.AsObject().ContainsKey("projects"));
+
+        var withCatalog = _Json(await _Tools(nodes).ListSessionsAsync(includeNodeCatalog: true));
+        var catalogNode = withCatalog["nodes"]!.AsArray()[0]!;
+        Assert.Equal("Node profile", (string)catalogNode["profiles"]!.AsArray()[0]!);
+        Assert.Equal("node-project", (string)catalogNode["projects"]!.AsArray()[0]!["id"]!);
     }
 
     /// <summary>
