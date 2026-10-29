@@ -88,6 +88,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             return null;
         }
 
+        CockpitConfigReads.NoteParse();
         try
         {
             // AC-1152: with nothing to decrypt there is nothing to walk, so the file goes straight into the DTO
