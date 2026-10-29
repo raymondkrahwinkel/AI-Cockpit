@@ -93,6 +93,7 @@ public partial class OptionsDialog : Window
             _UnwireSearch();
             _ClearSearchVisibilityOverrides();
             (DataContext as CockpitViewModel)?.StopMicTest();
+            (DataContext as CockpitViewModel)?.OptionsClosed();
         };
         Closing += OnClosingDialog;
     }
@@ -220,6 +221,7 @@ public partial class OptionsDialog : Window
         }
 
         _closeSettled = true;
+        cockpit.OptionsCloseStarted();
         Close();
     }
 
@@ -706,7 +708,9 @@ public partial class OptionsDialog : Window
             }
         }
 
+        cockpit.OptionsCloseStarted();
         await cockpit.CancelOptionsCommand.ExecuteAsync(null);
+        cockpit.OptionsCloseDiscarded();
         _closeSettled = true;
         Close();
     }
