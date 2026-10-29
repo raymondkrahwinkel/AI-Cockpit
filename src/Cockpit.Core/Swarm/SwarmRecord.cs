@@ -20,6 +20,9 @@ public sealed record SwarmRecord(JsonElement Payload, IReadOnlyList<SwarmSignatu
         return new SwarmRecord(payload.Clone(), [new SwarmSignature(memberId, signature)]);
     }
 
+    // AC-1917: adds `key`'s signature over the same payload, e.g. a joining member countersigning its own record.
+    public SwarmRecord CoSign(ECDsa key) => this with { Signatures = [.. Signatures, .. Sign(Payload, key).Signatures] };
+
     // True when there is at least one signature and every one checks out against the key `publicKeyOf` knows for
     // its member. That key must hash to the member id, so a key handed over with a record cannot vouch for an id
     // it does not belong to.
