@@ -166,11 +166,10 @@ public class OrgPolicyCeilingTests
         if (which is "start-run" or "run-elevated")
         {
             var runner = Substitute.For<ITrackedCommandRunner>();
-            var tools = new SessionStatusTools(Substitute.For<ISessionLabelSink>(), runner, new RunTracker(), Substitute.For<IWorkspaceAgentGateway>(),
-                Substitute.For<IWorkspaceAgentCoordinator>(), Substitute.For<IAgentMessageInbox>(), orgPolicy: org);
             var reply = which == "start-run"
-                ? await tools.StartRunAsync(".", "dotnet", session: "pane")
-                : await tools.RunElevatedAsync("Get-Date", ".", "test", session: "pane");
+                ? await new SessionStatusTools(Substitute.For<ISessionLabelSink>(), runner, new RunTracker(), Substitute.For<IWorkspaceAgentGateway>(),
+                    Substitute.For<IWorkspaceAgentCoordinator>(), Substitute.For<IAgentMessageInbox>(), orgPolicy: org).StartRunAsync(".", "dotnet", session: "pane")
+                : await new ElevatedSessionTools(orgPolicy: org).RunElevatedAsync("Get-Date", ".", "test", session: "pane");
 
             Assert.Contains("Acme does not allow agents to run commands", reply);
             return;

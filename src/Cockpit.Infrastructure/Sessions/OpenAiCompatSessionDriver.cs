@@ -125,7 +125,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) carries no dialog-built
         // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
         // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
-        var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
+        var selection = _WithCoding(McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames));
         _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, projectId, workingDirectory, cancellationToken, profile?.Label).ConfigureAwait(false);
 
         // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
@@ -208,7 +208,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             return [.. _gatedTools.Select(tool => (AITool)tool.Function)];
         }
 
-        var preloaded = _gatedTools.Where(tool => tool.AlwaysMounted).ToList();
+        var preloaded = _gatedTools
+            .Where(tool => tool.AlwaysMounted || string.Equals(tool.ServerName, CodingTools.EndpointName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
         var searchable = _gatedTools.Except(preloaded).ToList();
         _logger.LogInformation(
             "Tool search mode: {Preloaded} always-mounted tool(s) preloaded, {Searchable} behind {SearchTool} — about {Tokens} tokens of schema kept out of every request.",
@@ -219,6 +221,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         return [.. preloaded.Select(tool => (AITool)tool.Function), .. CockpitToolSearch.Build(_gatedTools)];
     }
+
+    // Local HTTP providers have no native file tools. An explicit profile/project selection must therefore never
+    // subtract the bounded cockpit-coding endpoint; null already means unrestricted and includes it naturally.
+    private static IReadOnlySet<string>? _WithCoding(IReadOnlySet<string>? selection) =>
+        selection is null
+            ? null
+            : selection.Append(CodingTools.EndpointName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {

@@ -60,6 +60,8 @@ public sealed class EchoDriver : ISessionDriver
 
     public SessionResume? Resume { get; private set; }
 
+    public IReadOnlyDictionary<string, string>? LaunchOptions { get; private set; }
+
     // Where a plugin driver's adapter reports the conversation id; this driver sits below that adapter, so it reports itself.
     public ISessionConversationSink? Conversations { get; set; }
 
@@ -73,6 +75,7 @@ public sealed class EchoDriver : ISessionDriver
         WorkingDirectory = workingDirectory;
         PermissionMode = permissionMode;
         Resume = resume;
+        LaunchOptions = launchOptions;
         _paneId = launchOptions?.GetValueOrDefault(WellKnownPluginSessionOptions.PaneId);
         if (_wedged)
         {
