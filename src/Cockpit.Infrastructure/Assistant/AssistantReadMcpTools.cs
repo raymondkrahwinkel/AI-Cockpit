@@ -319,11 +319,11 @@ internal sealed class AssistantReadMcpTools(
             (decimal? Value, string? Basis) Index(ModelPictureRow row) => row.Indices is null ? (null, null) : kind switch
             {
                 "coding" when row.Indices.Coding is { } value => (value, "coding"),
-                "coding" when row.Indices.Agentic is { } value => (value, "coding missing â†’ agentic"),
-                "coding" when row.Indices.Intelligence is { } value => (value, "coding missing â†’ intelligence"),
+                "coding" when row.Indices.Agentic is { } value => (value, "coding missing → agentic"),
+                "coding" when row.Indices.Intelligence is { } value => (value, "coding missing → intelligence"),
                 "agentic" when row.Indices.Agentic is { } value => (value, "agentic"),
-                "agentic" when row.Indices.Coding is { } value => (value, "agentic missing â†’ coding"),
-                "agentic" when row.Indices.Intelligence is { } value => (value, "agentic missing â†’ intelligence"),
+                "agentic" when row.Indices.Coding is { } value => (value, "agentic missing → coding"),
+                "agentic" when row.Indices.Intelligence is { } value => (value, "agentic missing → intelligence"),
                 _ when row.Indices.Intelligence is { } value => (value, "intelligence"),
                 _ => (null, null),
             };

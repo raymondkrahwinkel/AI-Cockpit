@@ -89,7 +89,8 @@ public sealed class ModelOptionsTests
 
         // AC-1813/AC-1855: the step stands in BEFORE A SPAWN, the tool in WHAT EXISTS, and it is preloaded, not deferred.
         var startAgent = typeof(AssistantAgentMcpTools).GetMethod(nameof(AssistantAgentMcpTools.StartAgentAsync))!.GetCustomAttribute<DescriptionAttribute>()!.Description;
-        Assert.Contains("model_options", startAgent);
+        Assert.Contains("promptDelivered:false", startAgent);
+        Assert.Contains("never retry the start or resend that prompt", startAgent);
         var prompt = AssistantSystemPrompt.Default;
         var start = prompt.IndexOf("BEFORE A SPAWN, CHECK THESE", StringComparison.Ordinal);
         var beforeSpawn = prompt[start..prompt.IndexOf("IN EVERY BRIEF, WHATEVER", start, StringComparison.Ordinal)];
