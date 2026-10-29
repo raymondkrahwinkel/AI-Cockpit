@@ -24,11 +24,19 @@ public static class SessionScratch
         var marker = Path.Combine(path, MarkerName);
         if (Directory.Exists(path))
         {
-            if (OwnerOf(path) != paneId)
+            if (OwnerOf(path) == paneId)
+            {
+                return path;
+            }
+            if (!_HasNoValidMarker(path))
             {
                 throw new IOException($"Scratch directory '{path}' is not owned by this session.");
             }
-            return path;
+
+            // AC-1942: a directory nobody owns would block this pane id forever; set it aside, contents intact.
+            var orphan = $"{path}-orphan-{DateTime.Now:yyyyMMddHHmmss}";
+            Directory.Move(path, orphan);
+            log?.Invoke($"Scratch directory '{path}' had no valid owner marker; moved to '{orphan}'.");
         }
 
         if (OperatingSystem.IsWindows())
@@ -88,12 +96,36 @@ public static class SessionScratch
             ? parts[1] : null;
     }
 
-    public static void Delete(string path, string paneId, IEnumerable<string> registeredWorktrees)
+    // AC-1942: true only for "belongs to nobody"; a link, or another session's valid marker, is never orphaned.
+    private static bool _HasNoValidMarker(string path)
+    {
+        if (_IsLink(path) || _IsLink(Path.GetDirectoryName(Path.GetFullPath(path)) ?? path))
+        {
+            return false;
+        }
+        var marker = Path.Combine(path, MarkerName);
+        if (!File.Exists(marker) || (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0)
+        {
+            return true;
+        }
+        try
+        {
+            var parts = File.ReadAllText(marker).Split('\n');
+            return parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    public static void Delete(string path, string paneId, IEnumerable<string> registeredWorktrees, Action<string>? log = null)
     {
         if (OwnerOf(path) != paneId || registeredWorktrees.Any(worktree => IsInside(worktree, path)))
         {
             return;
         }
+        log?.Invoke($"Removing scratch directory '{path}' of pane '{paneId}'.");
         _DeleteContents(path);
         File.Delete(Path.Combine(path, MarkerName));
         Directory.Delete(path);
