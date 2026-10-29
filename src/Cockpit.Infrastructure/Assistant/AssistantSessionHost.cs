@@ -34,7 +34,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
     private readonly ILogger<AssistantSessionHost> _logger;
-    private double _contextCompactionPercent = RestartAboveContextPercent;
+    private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -259,11 +259,6 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             startFresh: true,
             cancellationToken,
             startFreshBecause: "The earlier conversation was cleared — this conversation starts here");
-
-    // AC-1013: How full the context may get before the assistant hands itself over and restarts (AC-596) — a
-    // percentage, not a token count, since the provider reports fill and knows the window.
-    // ponytail: one number for every provider, add per-provider tuning if that measurably matters.
-    internal const double RestartAboveContextPercent = 80;
 
     // AC-1013: `replaceALiveInstance` — whether a healthy instance is torn down too (false =
     // `EnsureStartedAsync`'s idempotent lazy start, true = `RestartAsync`); one body so both take the
@@ -745,11 +740,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // A null fill is a provider that reported nothing this turn, which says nothing about how full the context is:
     // reading it as zero would postpone the hand-over indefinitely on a provider that only reports sometimes.
     internal static bool ShouldHandOver(
-        double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator, double contextCompactionPercent = RestartAboveContextPercent) =>
+        double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator, double contextCompactionPercent = AssistantSettings.DefaultCompactionPercent) =>
         contextUsedPercent >= contextCompactionPercent && !isBusy && !isWaitingOnOperator;
 
     private static double _ContextCompactionPercent(AssistantSettings settings) =>
-        settings.ContextCompactionPercent is >= 10 and <= 95 ? settings.ContextCompactionPercent : RestartAboveContextPercent;
+        AssistantSettings.NormalizeCompactionPercent(settings.ContextCompactionPercent);
 
     // AC-1013: Maps the session's own status onto the chip. Only moves between Thinking and Ready — it never
     // overwrites Unavailable (a feature fact) or Listening (a key held right now). Written as the "working" set

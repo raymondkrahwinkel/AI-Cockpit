@@ -53,7 +53,7 @@ internal sealed class AssistantSettingsEntry
         PushToTalkKeyName = PushToTalkKeyName,
         AlwaysOnCostAcknowledged = AlwaysOnCostAcknowledged,
         AlwaysOnTop = AlwaysOnTop,
-        ContextCompactionPercent = ContextCompactionPercent is >= 10 and <= 95 ? ContextCompactionPercent.Value : 80,
+        ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
         // A value written by an older build, or a hand-edited config, that does not name one of the three levels
         // falls back to the app default (Developer) rather than throwing.
         ReadingLevel = Enum.TryParse<Cockpit.Core.Sessions.ReadingLevel>(ReadingLevel, out var readingLevel)

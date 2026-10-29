@@ -45,7 +45,7 @@ public sealed partial class AssistantOptionsViewModel(
     private bool _alwaysOnTop = true;
 
     [ObservableProperty]
-    private double _contextCompactionPercent = 80;
+    private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
 
     // The three reading levels the chat window can render at (AC-138) — the same list an SDK session's own header dropdown offers.
     public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
@@ -259,7 +259,7 @@ public sealed partial class AssistantOptionsViewModel(
             SpeakReplies = SpeakReplies,
             PushToTalkKeyName = string.IsNullOrWhiteSpace(PushToTalkKeyName) ? "F10" : PushToTalkKeyName.Trim(),
             AlwaysOnTop = AlwaysOnTop,
-            ContextCompactionPercent = ContextCompactionPercent is >= 10 and <= 95 ? ContextCompactionPercent : 80,
+            ContextCompactionPercent = AssistantSettings.NormalizeCompactionPercent(ContextCompactionPercent),
             ReadingLevel = SelectedReadingLevel.Value,
             // Written from the rows rather than merged into what was loaded: the rows already carry every stored
             // key (see _RebuildConsentBypassRowsAsync), so this is a full replacement and unticking a box actually

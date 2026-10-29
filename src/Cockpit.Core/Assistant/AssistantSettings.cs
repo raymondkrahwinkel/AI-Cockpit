@@ -7,6 +7,13 @@ namespace Cockpit.Core.Assistant;
 // profile lives behind `AssistantProfileSlot`; the listening mode is computed, not stored, from `VoiceSettings.OpenMicEnabled`.
 public sealed record AssistantSettings
 {
+    public const double MinimumCompactionPercent = 10;
+    public const double MaximumCompactionPercent = 95;
+    public const double DefaultCompactionPercent = 80;
+
+    public static double NormalizeCompactionPercent(double? value) =>
+        value is >= MinimumCompactionPercent and <= MaximumCompactionPercent ? value.Value : DefaultCompactionPercent;
+
     // Whether the assistant exists at all (decision 7, criterion 1). *Off by default.* Off means: no
     // instance, no model in memory, no session costing anything, no chip in the sidebar, and the assistant
     // hotkey does nothing — while saying why, rather than being a key that silently is not there.
@@ -25,7 +32,7 @@ public sealed record AssistantSettings
     // anything until the operator actually opens Options and turns it off.
     public bool AlwaysOnTop { get; init; } = true;
 
-    public double ContextCompactionPercent { get; init; } = 80;
+    public double ContextCompactionPercent { get; init; } = DefaultCompactionPercent;
 
     // The reading level (AC-138) the assistant chat window renders replies at — the same `Sessions.ReadingLevel`
     // and the same default as an SDK session's "View" dropdown, so nobody's existing view shifts. Set only
