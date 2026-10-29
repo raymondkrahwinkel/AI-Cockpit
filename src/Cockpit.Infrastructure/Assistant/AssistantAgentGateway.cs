@@ -41,6 +41,8 @@ internal sealed class AssistantAgentGateway(
     IProjectFieldRegistry? projectFields = null,
     ILogger<AssistantAgentGateway>? logger = null) : IAssistantAgentGateway, ISingletonService
 {
+    internal static TimeSpan ModelIntelligenceBudget = TimeSpan.FromSeconds(2);
+
     private static readonly StringComparison _PathComparison =
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -469,9 +471,10 @@ internal sealed class AssistantAgentGateway(
     public async Task<IReadOnlyList<AssistantProfileRow>> ListProfilesAsync(CancellationToken cancellationToken = default)
     {
         var known = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var readings = await Task.WhenAll(known.Select(profile =>
-            profile.ProviderConfig is PluginProviderConfig
-                ? providerIntelligence.ReadAsync(profile.Label, cancellationToken)
+        var models = known.Select(_ModelConfiguredOnProfile).ToArray();
+        var readings = await Task.WhenAll(known.Select((profile, index) =>
+            models[index] is null && profile.ProviderConfig is PluginProviderConfig
+                ? _ReadConfiguredModelAsync(profile.Label, cancellationToken)
                 : Task.FromResult<PluginModelIntelligence?>(null))).ConfigureAwait(false);
         return
         [
@@ -487,7 +490,7 @@ internal sealed class AssistantAgentGateway(
                     // profile reads as the same provider otherwise, and this is the field the tool tells the assistant
                     // to resolve "a Claude one" by.
                     registration?.DisplayName ?? profile.Provider.ToString(),
-                    ProfileModel.Of(profile) ?? _ConfiguredModel(readings[index]))
+                    models[index] ?? _ConfiguredModel(readings[index]))
                 {
                     Options = ProfileOptionReport.For(registration?.Capabilities, profile.Defaults?.OptionDefaults),
                 };
@@ -499,6 +502,23 @@ internal sealed class AssistantAgentGateway(
     {
         var models = reading?.Models.Select(model => model.Model).Distinct(StringComparer.Ordinal).ToArray() ?? [];
         return models.Length == 1 ? models[0] : null;
+    }
+
+    private static string? _ModelConfiguredOnProfile(SessionProfile profile) =>
+        ProfileModel.Of(profile) ?? profile.Defaults?.OptionDefaults?.GetValueOrDefault(WellKnownPluginSessionOptions.Model);
+
+    private async Task<PluginModelIntelligence?> _ReadConfiguredModelAsync(string profileLabel, CancellationToken cancellationToken)
+    {
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(ModelIntelligenceBudget);
+        try
+        {
+            return await providerIntelligence.ReadAsync(profileLabel, budget.Token).WaitAsync(budget.Token).ConfigureAwait(false);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
     }
 
     public async Task<AssistantWorkspaceRow?> CreateWorkspaceAsync(string name, CancellationToken cancellationToken = default)
