@@ -71,7 +71,7 @@ public static class DependencyInjection
         // shell also stays behind the shell-access master switch, so this route cannot open what the operator closed.
         services.AddSingleton(new CockpitMcpEndpoint(CodingTools.EndpointName, typeof(CodingTools)));
         services.AddSingleton(provider => new CockpitMcpEndpoint(
-            "cockpit-coding-shell",
+            CodingTools.ShellEndpointName,
             typeof(Shell.CodingShellTools),
             () => provider.GetRequiredService<Shell.ShellAccessState>().Enabled));
 
