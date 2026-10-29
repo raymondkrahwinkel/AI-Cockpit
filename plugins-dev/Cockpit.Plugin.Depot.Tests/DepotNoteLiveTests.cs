@@ -46,9 +46,13 @@ public class DepotNoteLiveTests
             return Task.FromResult(joined);
         });
         var hubs = new Queue<_Hub>([first, new _Hub(_ => throw new HubException("auth.session_expired: refused")), later]);
-        await using var session = new DepotNoteSession(Connection, Note, _ => Task.FromResult(new DepotNoteUser(user, "Raymond")),
+        await using var session = new DepotNoteSession(Connection, Note, cancellationToken => DepotNoteLive.ReadUserAsync(Connection,
+            new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new { userId = user, name = "Raymond", email = "raymond@example.com" })),
+            }), cancellationToken),
             (_, _, closed) => hubs.Dequeue().With(closed), clientId => new JintNoteRoom(clientId), _ => { }, [TimeSpan.Zero],
-            post: (_, _, _, _) =>
+            post: (_, _, _, _, _) =>
             {
                 posts++;
                 return Task.FromResult(new DepotNoteSaveAnswer(200));
@@ -59,7 +63,7 @@ public class DepotNoteLiveTests
         await first.DropAsync();
         await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(LiveFileState.SignInNeeded, session.Status.State);
-        Assert.Equal("Raymond", session.Status.Account);
+        Assert.Equal("raymond@example.com", session.Status.Account);
         await session.EditAsync("signed-out", snapshot.Rev, [new(0, 0, "MINE\n")], CancellationToken.None);
 
         user = "user-2";
@@ -71,6 +75,7 @@ public class DepotNoteLiveTests
         Assert.Equal(0, posts);
         Assert.Equal(LiveFileState.SignInNeeded, session.Status.State);
         Assert.Equal("Signed in as another account. Your changes were not saved.", session.Status.Reason);
+        Assert.Equal("raymond@example.com", session.Status.Account);
         Assert.StartsWith("MINE\n", (await session.ReadAsync(CancellationToken.None)).Text);
     }
 
@@ -109,7 +114,7 @@ public class DepotNoteLiveTests
         var logger = new _Log();
         await using var notes = new DepotNoteLive(
             () => [Connection],
-            _ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"userId\":\"user-1\"}") }),
+            _ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"userId\":\"user-1\",\"name\":\"Raymond\"}") }),
             (_, _, onClosed) =>
             {
                 factoryCalls++;
@@ -122,6 +127,7 @@ public class DepotNoteLiveTests
 
         Assert.Equal(1, factoryCalls);
         Assert.Equal([DepotNoteLiveState.Connecting, DepotNoteLiveState.SignInNeeded], statuses.Select(status => status.State));
+        Assert.Equal("Raymond", session.Status.Account);
         var published = JsonSerializer.Serialize(statuses, DepotChannel.Json);
         Assert.DoesNotContain(Secret, published);
         Assert.DoesNotContain("bearer", published, StringComparison.OrdinalIgnoreCase);
