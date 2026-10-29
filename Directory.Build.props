@@ -432,7 +432,9 @@
     <!-- 0.148.0: outside text attribution and opted-in MCP agent headers (AC-1583, SDK 3.51.0). -->
     <!-- 0.149.0: live-light saves and safe recovery from an expired room epoch (AC-1903, Abstractions 3.52.0). -->
     <!-- 0.150.0: live-file recovery banners, Retry and Sign in again (AC-1582, Abstractions 3.53.0). -->
-    <VersionPrefix>0.150.0</VersionPrefix>
+    <!-- 0.151.0: awaited plugin settings writes, IAsyncPluginSettingsView and OnSettingsSaved(Func<Task>) (AC-1891,
+         Abstractions 3.54.0, Abstractions.UI 3.22.0). A plugin that uses either sets minHostVersion 0.151.0. -->
+    <VersionPrefix>0.151.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

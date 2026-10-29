@@ -65,16 +65,16 @@ internal sealed class WhiteboardActivityJournal(WhiteboardChannelClient? registr
         }
     }
 
-    public IReadOnlyList<SurfaceActivityEntry> History(string surfaceId) =>
-        [.. (registry?.History(surfaceId) ?? [])
+    public async Task<IReadOnlyList<SurfaceActivityEntry>> HistoryAsync(string surfaceId) =>
+        [.. (registry is null ? [] : await registry.HistoryAsync(surfaceId))
             .Select(entry => new SurfaceActivityEntry(entry.Id, entry.Origin, entry.Summary, entry.ObjectId, entry.When, entry.Reverted, CanRevert: entry.Kind == WhiteboardHistoryKind.Place))
             .Concat((edits?.Entries ?? []).Select(entry => new SurfaceActivityEntry(entry.Id, "operator", entry.Summary, entry.ObjectId.ToString(), entry.When, entry.Reverted, CanRevert: true)))
             .OrderBy(entry => entry.When)];
 
     // An operator row's inverse lives in the plugin (it works on WhiteboardDocument), the agent's in the registry;
     // the entry id says which, so the strip needs no second button and no journal of its own.
-    public string? Revert(string surfaceId, string entryId) =>
+    public Task<string?> RevertAsync(string surfaceId, string entryId) =>
         edits is not null && edits.Entries.Any(entry => entry.Id == entryId)
-            ? edits.Undo(entryId)
-            : registry?.Revert(surfaceId, entryId);
+            ? Task.FromResult(edits.Undo(entryId))
+            : registry?.RevertAsync(surfaceId, entryId) ?? Task.FromResult<string?>(null);
 }

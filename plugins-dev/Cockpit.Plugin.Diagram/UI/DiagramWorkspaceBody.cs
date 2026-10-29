@@ -39,7 +39,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private static readonly Cursor _PanningCursor = new(StandardCursorType.SizeAll);
 
     private readonly ICockpitUiHost _host;
-    private readonly DiagramChannelClient? _registry;
+    private readonly DiagramChannelClient? _client;
     private readonly string _surfaceId;
     private readonly string _documentTitle;
     private readonly Avalonia.Svg.Skia.Svg _svg;
@@ -101,13 +101,19 @@ internal sealed class DiagramWorkspaceBody : UserControl
     private bool _glowActive;
     private int _glowGeneration;
     private bool _following;
+    private bool _served;
+    private bool _detached;
+
+    // AC-1891: null until the backend said it serves the registry, so every `_registry is null` branch below reads
+    // "not (yet) connected" exactly as it read "older host" before the check became asynchronous.
+    private DiagramChannelClient? _registry => _served ? _client : null;
 
     // AC-1400: the registry is reached through the plugin's channel; no channel, or a backend without the registry,
     // is the "older host" state a missing registry was, and every `_registry is null` branch below still means that.
     public DiagramWorkspaceBody(ICockpitUiHost host, IPluginUiChannel? channel, DiagramDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = DiagramChannelClient.Connect(channel);
+        _client = channel is null ? null : new DiagramChannelClient(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -141,7 +147,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         _proposalPanel = _BuildProposalPanel();
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _connectButton, _renameButton, _deleteButton, _attributesButton, _shapeButton, _askButton, _handHint, _followToggle, _hintSeparator) = _BuildToolbar();
-        var diagramJournal = new DiagramActivityJournal(_registry);
+        var diagramJournal = new DiagramActivityJournal(_client);
         _activityStrip = new ActivityStrip(host, _surfaceId, diagramJournal, key => _ = _FlashObjectAsync(key));
         _askStrip = new AskStrip(key => _ = _FlashObjectAsync(key));
         _presence = new PresenceIndicators(_surfaceId, diagramJournal, diagramJournal);
@@ -164,63 +170,94 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // reads _sessionBinding.IsLive for the ask button, refreshed by the same coupling-change callback.
         _sessionBinding = new SurfaceSessionBinding(host, channel, sessionPaneId, () => { _RefreshCouplingBar(); _RefreshHandEditBar(); });
         _RenderInto(document.MermaidText);
-        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
-        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
 
-        if (_registry is not null)
+        if (_client is not null)
         {
             // Subscribed before the surface is registered: a window an agent asked for (AC-835) arrives already
             // coupled, and that change is announced from inside SurfaceOpened.
-            _registry.CouplingChanged += _OnCouplingChanged;
-            _registry.TextChanged += _OnTextChanged;
-            _registry.ProposalChanged += _OnProposalChanged;
-            _registry.HistoryChanged += _OnHistoryChanged;
-            _registry.SurfaceOpened(_surfaceId, document.Title, document.MermaidText);
-
-            // AC-899: which hand-edit controls belong on this diagram is the registry's answer about the surface,
-            // so it can only be asked once the surface is registered — the first _RenderInto ran before that.
-            _RefreshEditSupport();
-
-            // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
-            if (_sessionBinding.IsLive)
-            {
-                _registry.Couple(_sessionBinding.PaneId, _surfaceId);
-            }
+            _client.CouplingChanged += _OnCouplingChanged;
+            _client.TextChanged += _OnTextChanged;
+            _client.ProposalChanged += _OnProposalChanged;
+            _client.HistoryChanged += _OnHistoryChanged;
         }
 
-        // No registry (an older host) means coupling cannot be shown or offered at all, so the bar goes rather
-        // than standing there with a Couple… button that could do nothing.
-        _couplingBar.IsVisible = _registry is not null;
+        // No registry (an older host, or not connected yet) means coupling cannot be shown or offered at all, so
+        // the bar goes rather than standing there with a Couple… button that could do nothing.
+        _couplingBar.IsVisible = false;
         _RefreshCouplingBar();
 
         DetachedFromVisualTree += (_, _) =>
         {
+            _detached = true;
             _sessionBinding.Dispose();
-            if (_registry is null)
+            if (_client is null)
             {
                 return;
             }
 
-            if (_selected is { } stillHeld)
+            if (_registry is not null && _selected is { } stillHeld)
             {
                 _registry.ReleaseObject(_surfaceId, stillHeld.HoldKey);
             }
 
-            _registry.CouplingChanged -= _OnCouplingChanged;
-            _registry.TextChanged -= _OnTextChanged;
-            _registry.ProposalChanged -= _OnProposalChanged;
-            _registry.HistoryChanged -= _OnHistoryChanged;
-            _registry.SurfaceClosed(_surfaceId);
-            _registry.Dispose();
+            _client.CouplingChanged -= _OnCouplingChanged;
+            _client.TextChanged -= _OnTextChanged;
+            _client.ProposalChanged -= _OnProposalChanged;
+            _client.HistoryChanged -= _OnHistoryChanged;
+            _registry?.SurfaceClosed(_surfaceId);
+            _client.Dispose();
         };
+
+        _ = _ConnectAsync(document);
+    }
+
+    // AC-1891: whether the backend serves the registry, and the bound session, are both channel answers now, so
+    // the surface is drawn first and connected right after. Its calls queue behind each other in the client.
+    private async Task _ConnectAsync(DiagramDocument document)
+    {
+        var served = _client is not null && await DiagramChannelClient.ServesAsync(_client.Channel);
+        await _sessionBinding.BindAsync();
+        if (_detached)
+        {
+            return;
+        }
+
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _served = served;
+        if (_registry is { } registry)
+        {
+            registry.SurfaceOpened(_surfaceId, document.Title, _sourceBox.Text ?? document.MermaidText);
+
+            // AC-899: which hand-edit controls belong on this diagram is the registry's answer about the surface,
+            // so it can only be asked once the surface is registered — the first _RenderInto ran before that.
+            _ = _RefreshEditSupportAsync();
+
+            // A plain Couple — zero capabilities. read_diagram/edit_diagram still ask their own consent (AC-810).
+            if (_sessionBinding.IsLive)
+            {
+                try
+                {
+                    await registry.CoupleAsync(_sessionBinding.PaneId, _surfaceId);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+                }
+            }
+        }
+
+        _couplingBar.IsVisible = _registry is not null;
+        _RefreshCouplingBar();
+        _RefreshHandEditBar();
     }
 
     // Couples this diagram to another running session — the way out of "window open, no agent", after the bound
     // session ended or the operator disconnected. Exclusivity is the registry's (IsCoupledByAnother): a surface a
     // different agent already holds refuses, and the operator is told rather than shown an exception.
-    private void _Recouple(string paneId)
+    private async void _Recouple(string paneId)
     {
-        if (_sessionBinding.Recouple(paneId, p => _registry?.Couple(p, _surfaceId)) is { } reason)
+        if (await _sessionBinding.RecoupleAsync(paneId, p => _registry?.CoupleAsync(p, _surfaceId) ?? Task.CompletedTask) is { } reason)
         {
             _host.ShowToast(reason, PluginToastSeverity.Error);
             return;
@@ -268,9 +305,9 @@ internal sealed class DiagramWorkspaceBody : UserControl
             return;
         }
 
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
-            var last = _registry?.History(_surfaceId).LastOrDefault();
+            var last = _registry is { } registry ? (await registry.HistoryAsync(_surfaceId)).LastOrDefault() : null;
             if (last is not { Origin: not "operator", Reverted: false } entry)
             {
                 return;
@@ -427,7 +464,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         // without a registry, and an object-less diagram still needs its hint on an older host.
         _UpdateEmptyState();
         _RefreshOverlay();
-        _RefreshEditSupport();
+        _ = _RefreshEditSupportAsync();
 
         if (_isFitMode)
         {
@@ -969,7 +1006,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
     // one in — the same call covers adding and changing, so typing an existing name overwrites that attribute.
     private void _EditAttributes(Control anchor)
     {
-        if (_registry is null || _selected is not { Kind: DiagramObjectAt.Node } entity)
+        if (_registry is not { } registry || _selected is not { Kind: DiagramObjectAt.Node } entity)
         {
             return;
         }
@@ -977,11 +1014,13 @@ internal sealed class DiagramWorkspaceBody : UserControl
         var body = new StackPanel { Spacing = 8, Margin = new Thickness(12), MinWidth = 300 };
         var flyout = new Flyout { Content = body };
 
-        void Rebuild()
+        // The edit and the re-read queue behind each other in the client, so the list read is the edited one.
+        async void Rebuild()
         {
+            var attributes = await registry.EntityAttributesAsync(_surfaceId, entity.Id);
             body.Children.Clear();
             body.Children.Add(new TextBlock { Text = $"Attributes of {entity.Id}", FontWeight = FontWeight.SemiBold });
-            foreach (var attribute in _registry.EntityAttributes(_surfaceId, entity.Id))
+            foreach (var attribute in attributes)
             {
                 var remove = new Button { Content = "×", Classes = { "Compact" }, MinWidth = 24 };
                 remove.Click += (_, _) =>
@@ -1276,14 +1315,14 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
     // One handling is one change towards the registry (AC-838's write path, under the same lock as the agent's), and
     // the re-render comes back through TextChanged — never a half state written here and repaired afterwards.
-    private void _Apply(DiagramHandEdit edit)
+    private async void _Apply(DiagramHandEdit edit)
     {
-        if (_registry is null)
+        if (_registry is not { } registry)
         {
             return;
         }
 
-        if (_registry.ApplyHandEdit(_surfaceId, edit) is { } refusal)
+        if (await registry.ApplyHandEditAsync(_surfaceId, edit) is { } refusal)
         {
             _host.ShowToast(refusal, PluginToastSeverity.Warning);
         }
@@ -1397,9 +1436,11 @@ internal sealed class DiagramWorkspaceBody : UserControl
 
     // AC-899: the surface decides which dialect's controls stand here, so the bar is refreshed with every render
     // rather than once at construction — an agent's edit_diagram can replace a flowchart with an ER diagram.
-    private void _RefreshEditSupport()
+    private async Task _RefreshEditSupportAsync()
     {
-        _support = _registry?.EditSupport(_surfaceId) ?? new DiagramEditSupport(DiagramEditDialect.Flowchart, null);
+        _support = _registry is { } registry
+            ? await registry.EditSupportAsync(_surfaceId)
+            : new DiagramEditSupport(DiagramEditDialect.Flowchart, null);
         _RefreshHandEditBar();
     }
 
@@ -1844,7 +1885,7 @@ internal sealed class DiagramWorkspaceBody : UserControl
         return (parts.Bar, parts.Label, parts.ReadChip, parts.EditChip, parts.Couple, parts.Disconnect);
     }
 
-    private void _ShowSessionPicker(Control anchor) => _sessionBinding.ShowSessionPicker(anchor, _Recouple);
+    private void _ShowSessionPicker(Control anchor) => _ = _sessionBinding.ShowSessionPickerAsync(anchor, _Recouple);
 
     private void _RefreshCouplingBar()
     {

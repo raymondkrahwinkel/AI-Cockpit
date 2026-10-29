@@ -57,10 +57,13 @@ internal sealed class WhiteboardListDialogBody : UserControl
         _ = _LoadAsync();
     }
 
+    // AC-1891: listed and read off the UI thread, as in DiagramListDialogBody._LoadAsync.
     private async Task _LoadAsync()
     {
+        _list.Children.Clear();
+        _list.Children.Add(new TextBlock { Text = "Loading…", FontSize = 12, Margin = new Thickness(12), Foreground = _Brush("CockpitTextSecondaryBrush") });
         var rows = await _host.GetProjectMemoryRowsAsync();
-        _Render(WhiteboardCatalog.List(rows), rows.Count);
+        _Render(await Task.Run(() => WhiteboardCatalog.List(rows)), rows.Count);
     }
 
     // W-2/AC-843/AC-896: DiagramListDialogBody._QuickStartAsync's counterpart — an unsaved board starts empty,
@@ -114,7 +117,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
         }
 
         var open = new Button { Content = "Open", Classes = { "Compact" } };
-        open.Click += (_, _) =>
+        open.Click += async (_, _) =>
         {
             if (_host.ActivePaneId is not { } paneId)
             {
@@ -125,7 +128,7 @@ internal sealed class WhiteboardListDialogBody : UserControl
             WhiteboardDocument document;
             try
             {
-                document = WhiteboardCatalog.Load(entry.FilePath);
+                document = await Task.Run(() => WhiteboardCatalog.Load(entry.FilePath));
             }
             catch (Exception exception)
             {

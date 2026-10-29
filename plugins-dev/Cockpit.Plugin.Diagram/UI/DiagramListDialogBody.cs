@@ -57,10 +57,14 @@ internal sealed class DiagramListDialogBody : UserControl
         _ = _LoadAsync();
     }
 
+    // AC-1891: every memory folder is listed and every file read off the UI thread; a folder on a slow drive
+    // shows as loading rather than as a frozen window.
     private async Task _LoadAsync()
     {
+        _list.Children.Clear();
+        _list.Children.Add(new TextBlock { Text = "Loading…", FontSize = 12, Margin = new Thickness(12), Foreground = _Brush("CockpitTextSecondaryBrush") });
         var rows = await _host.GetProjectMemoryRowsAsync();
-        var entries = DiagramCatalog.List(rows);
+        var entries = await Task.Run(() => DiagramCatalog.List(rows));
         _Render(entries, rows.Count);
     }
 

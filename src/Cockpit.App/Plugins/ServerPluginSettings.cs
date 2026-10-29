@@ -147,7 +147,7 @@ internal sealed class ServerPluginSettings
 
             foreach (var saved in _host.SettingsSaved)
             {
-                saved();
+                await saved();
             }
 
             return null;

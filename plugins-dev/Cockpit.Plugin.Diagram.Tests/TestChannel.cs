@@ -46,7 +46,9 @@ internal static class TestChannel
         uiHost.ShowDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<string>(), Arg.Any<double>(), Arg.Any<double>())
             .Returns(call => host.ShowDialogAsync(
                 call.ArgAt<string>(0), call.ArgAt<Func<Control>>(1), call.ArgAt<string>(2), call.ArgAt<double>(3), call.ArgAt<double>(4)));
-        _ = new SurfaceWindowOpener(uiHost, ui);
+        // Attached before the tools run, as the desktop is long before an agent asks. The hub answers on the
+        // pool, so this thread waits on nothing it would itself have to run.
+        new SurfaceWindowOpener(uiHost, ui).Attached.GetAwaiter().GetResult();
         return backend;
     }
 

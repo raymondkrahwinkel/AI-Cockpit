@@ -646,7 +646,9 @@
          A plugin that supplies this flag sets minHostVersion 0.149.0. Additive; still v3. -->
     <!-- 3.53.0 (AC-1582): LiveFileStatus.Account and ILiveFileSession.ReconnectAsync, with the files-live-reconnect action.
          A plugin that uses them sets minHostVersion 0.150.0. Additive; still v3. -->
-    <Version>3.53.0</Version>
+    <!-- 3.54.0 (AC-1891): IAsyncPluginSettingsView, a settings view whose commit the host awaits. A plugin that
+         implements it sets minHostVersion 0.151.0. Additive; still v3. -->
+    <Version>3.54.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

@@ -18,9 +18,8 @@ public sealed class DockerUi : ICockpitPluginUi
         host.AddToolbarAction(new ToolbarAction("Docker settings", MaterialIconKind.Docker, () => host.ShowSettingsAsync()));
 
         // A saved endpoint may have moved; tell the backend part to drop its cached daemon client (DockerEngine)
-        // so the next call rebuilds against it. ponytail: OnSettingsSaved's callback is a synchronous Action, so
-        // it cannot await; blocking is safe today (the channel answers in-process with no thread hop).
+        // so the next call rebuilds against it. The host awaits it (AC-1891).
         host.OnSettingsSaved(() =>
-            host.Channel.InvokeAsync(DockerChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, DockerChannel.Json)).GetAwaiter().GetResult());
+            host.Channel.InvokeAsync(DockerChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, DockerChannel.Json)));
     }
 }

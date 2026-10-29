@@ -83,13 +83,11 @@ internal sealed class RecordingUiSurfaces : IPluginContributionSink, IPluginDial
 
     public Task OpenPluginSettingsAsync(string pluginId) => Task.CompletedTask;
 
-    public void AddSettingsSavedHandler(string pluginId, Action callback)
+    public void AddSettingsSavedHandler(string pluginId, Func<Task> callback)
     {
     }
 
-    public void NotifySettingsSaved(string pluginId)
-    {
-    }
+    public Task NotifySettingsSavedAsync(string pluginId) => Task.CompletedTask;
 
     public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu)
     {

@@ -41,7 +41,7 @@ internal static class ProductivityScenes
             {
                 var controller = new OverviewController(new SceneChannel(), new FixedTime());
                 // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
-                controller.RefreshAsync().GetAwaiter().GetResult();
+                _Done(controller.RefreshAsync());
                 return (new WorkspaceTypeRegistration(ProductivityUi.OverviewWorkspaceTypeId, "Overzicht", _ => new OverviewWorkspaceBody(controller, () => { }, () => { }, () => RefreshPolicy.Interval(RefreshPolicy.DefaultSeconds))) { IconKind = MaterialIconKind.ViewDashboardOutline }, null);
             },
         };
@@ -53,8 +53,17 @@ internal static class ProductivityScenes
         var controller = new ProductivityController(host.Channel, new FixedTime());
         controller.UpdateProjectFallback(Cockpit);
         // A scene is built synchronously and rendered at once; the stub channel answers without awaiting.
-        controller.ShowWeekAsync(week).GetAwaiter().GetResult();
+        _Done(controller.ShowWeekAsync(week));
         return (new WorkspaceTypeRegistration(ProductivityUi.WorkspaceTypeId, "Uren", _ => new HoursWorkspaceBody(controller, host, () => { })) { IconKind = MaterialIconKind.ClockOutline }, null);
+    }
+
+    // AC-1891: never waits. The stub channel has already answered, so a task still running is a broken scene.
+    private static void _Done(Task task)
+    {
+        if (!task.IsCompletedSuccessfully)
+        {
+            throw new InvalidOperationException("A scene's stub channel must answer synchronously and without fault.", task.Exception);
+        }
     }
 
     private static IReadOnlyList<OpenCockpitSession> _Open() =>

@@ -52,7 +52,7 @@ public class WhiteboardCollabWindowTests
         _Show(content);
 
         host.EndSession("pane-a");
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Null(host.Registry.ListSurfaces("pane-a").Single().Coupling);
         Assert.Contains("Werksessie", _CouplingText(content));
@@ -70,13 +70,13 @@ public class WhiteboardCollabWindowTests
         _Show(content);
 
         _ClickInvite(content);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.False(host.Registry.CouplingOf("pane-a", host.Registry.ListSurfaces("pane-a").Single().SurfaceId)!.CanRead);
 
         host.ConsentOutcome = ConsentOutcome.Approved;
         _ClickInvite(content);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.True(host.Registry.CouplingOf("pane-a", host.Registry.ListSurfaces("pane-a").Single().SurfaceId)!.CanRead);
         Assert.Equal(2, host.ConsentRequests.Count);
@@ -107,11 +107,11 @@ public class WhiteboardCollabWindowTests
         _Show(content);
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
         host.Registry.Grant("pane-a", surfaceId);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Disconnect"))
             .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Null(host.Registry.CouplingOf("pane-a", surfaceId));
     });
@@ -222,10 +222,13 @@ public class WhiteboardCollabWindowTests
             // way a document window's content already has to be for its own button lookups to find anything.
             var listWindow = new Window { Content = _listDialogContent };
             listWindow.Show();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "New whiteboard"))
                 .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             listWindow.Close();
+
+            // AC-1891: the window connects to its registry over the channel right after it is built.
+            await HeadlessAvalonia.SettleAsync();
         }
 
         public void EndSession(string paneId)

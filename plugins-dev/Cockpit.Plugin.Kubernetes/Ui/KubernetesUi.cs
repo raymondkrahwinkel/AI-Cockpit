@@ -15,9 +15,9 @@ public sealed class KubernetesUi : ICockpitPluginUi
     {
         host.AddSettings(() => new KubernetesSettingsControl(host));
 
-        // The callback is synchronous, so it blocks on the in-process channel.
+        // The host awaits it (AC-1891).
         host.OnSettingsSaved(() =>
-            host.Channel.InvokeAsync(KubernetesChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, KubernetesChannel.Json)).GetAwaiter().GetResult());
+            host.Channel.InvokeAsync(KubernetesChannel.SettingsSaved, JsonSerializer.SerializeToElement(true, KubernetesChannel.Json)));
         host.AddToolbarAction(new ToolbarAction("Kubernetes settings", MaterialIconKind.Kubernetes, () => host.ShowSettingsAsync()));
     }
 }

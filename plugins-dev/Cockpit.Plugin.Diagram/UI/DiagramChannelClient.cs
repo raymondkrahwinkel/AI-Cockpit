@@ -23,6 +23,9 @@ internal abstract class SurfaceChannelClient(IPluginUiChannel channel) : IDispos
     private readonly List<IDisposable> _subscriptions = [];
     private readonly Dictionary<(string Name, string SurfaceId), long> _lastSeq = [];
     private readonly Lock _gate = new();
+    private Task _tail = Task.CompletedTask;
+
+    public IPluginUiChannel Channel => channel;
 
     public void Dispose()
     {
@@ -33,11 +36,16 @@ internal abstract class SurfaceChannelClient(IPluginUiChannel channel) : IDispos
     }
 
     // Whether the backend has the registry behind `prefix`; without it a window is in the "older host" state.
-    protected static bool Serves(IPluginUiChannel channel, string prefix)
+    protected static async Task<bool> ServesAsync(IPluginUiChannel? channel, string prefix)
     {
+        if (channel is null)
+        {
+            return false;
+        }
+
         try
         {
-            channel.InvokeAsync(prefix + Served, default).GetAwaiter().GetResult();
+            await channel.InvokeAsync(prefix + Served, default).ConfigureAwait(false);
             return true;
         }
         catch (PluginChannelUnknownActionException)
@@ -46,29 +54,58 @@ internal abstract class SurfaceChannelClient(IPluginUiChannel channel) : IDispos
         }
     }
 
-    // ponytail: waits for the backend's answer. In-process the handler runs inline and the task is already complete,
-    // so nothing blocks; a remote backend (F5/F6) needs these callers made async first. A backend that went away
+    // AC-1891: one call at a time, in the order they were made. The hub runs every handler on its own pool thread,
+    // so two quick sends (UpdateText, UpdateText) would otherwise race to the registry. A backend that went away
     // (the plugin disabled under an open window) leaves the window inert, as without a registry, never a crash.
-    protected T? Invoke<T>(string action, params object?[] args)
+    protected Task<T?> InvokeAsync<T>(string action, params object?[] args)
     {
-        try
+        var payload = JsonSerializer.SerializeToElement(args, Json);
+        lock (_gate)
         {
-            return channel.InvokeAsync(action, JsonSerializer.SerializeToElement(args, Json)).GetAwaiter().GetResult().Deserialize<T>(Json);
-        }
-        catch (PluginChannelUnknownActionException)
-        {
-            return default;
+            var call = _AfterAsync(_tail, action, payload);
+            _tail = call;
+            return _ReadAsync<T>(call);
         }
     }
 
-    protected void Send(string action, params object?[] args) => Invoke<JsonElement>(action, args);
+    // Fire and forget, still in order. A failed send has no caller left to tell; the next read shows the state.
+    protected void Send(string action, params object?[] args) => _ = _SwallowAsync(InvokeAsync<JsonElement>(action, args));
 
     // For the calls a registry refuses by throwing (see DiagramChannel._Refusal): the refusal is thrown again here.
-    protected void InvokeOrRefuse(string action, params object?[] args)
+    protected async Task InvokeOrRefuseAsync(string action, params object?[] args)
     {
-        if (Invoke<string>(action, args) is { } refusal)
+        if (await InvokeAsync<string>(action, args).ConfigureAwait(false) is { } refusal)
         {
             throw new InvalidOperationException(refusal);
+        }
+    }
+
+    // Waits for the call before it, whatever became of that one: its own caller hears about its failure.
+    private async Task<JsonElement?> _AfterAsync(Task previous, string action, JsonElement payload)
+    {
+        await previous.ContinueWith(static _ => { }, TaskScheduler.Default).ConfigureAwait(false);
+        try
+        {
+            return await channel.InvokeAsync(action, payload).ConfigureAwait(false);
+        }
+        catch (PluginChannelUnknownActionException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<T?> _ReadAsync<T>(Task<JsonElement?> call) =>
+        await call.ConfigureAwait(false) is { } answer ? answer.Deserialize<T>(Json) : default;
+
+    private static async Task _SwallowAsync(Task call)
+    {
+        try
+        {
+            await call.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // See Send.
         }
     }
 
@@ -104,8 +141,7 @@ internal sealed class DiagramChannelClient : SurfaceChannelClient
 {
     private const string P = DiagramPrefix;
 
-    public static DiagramChannelClient? Connect(IPluginUiChannel? channel) =>
-        channel is not null && Serves(channel, P) ? new DiagramChannelClient(channel) : null;
+    public static Task<bool> ServesAsync(IPluginUiChannel? channel) => ServesAsync(channel, P);
 
     public DiagramChannelClient(IPluginUiChannel channel)
         : base(channel)
@@ -132,41 +168,40 @@ internal sealed class DiagramChannelClient : SurfaceChannelClient
 
     public void Disconnect(string surfaceId) => Send(P + nameof(D.Disconnect), surfaceId);
 
-    public IReadOnlyList<DiagramSurfaceView> ListSurfaces(string sessionId) =>
-        Invoke<List<DiagramSurfaceView>>(P + nameof(D.ListSurfaces), sessionId) ?? [];
+    public async Task<IReadOnlyList<DiagramSurfaceView>> ListSurfacesAsync(string sessionId) =>
+        await InvokeAsync<List<DiagramSurfaceView>>(P + nameof(D.ListSurfaces), sessionId) ?? [];
 
-    public bool IsCoupledByAnother(string sessionId, string surfaceId) => Invoke<bool>(P + nameof(D.IsCoupledByAnother), sessionId, surfaceId);
+    public Task<bool> IsCoupledByAnotherAsync(string sessionId, string surfaceId) => InvokeAsync<bool>(P + nameof(D.IsCoupledByAnother), sessionId, surfaceId);
 
-    public void Couple(string sessionId, string surfaceId) => InvokeOrRefuse(P + nameof(D.Couple), sessionId, surfaceId);
+    public Task CoupleAsync(string sessionId, string surfaceId) => InvokeOrRefuseAsync(P + nameof(D.Couple), sessionId, surfaceId);
 
-    public string? ApplyHandEdit(string surfaceId, DiagramHandEdit edit) => Invoke<string>(P + nameof(D.ApplyHandEdit), surfaceId, edit);
+    public Task<string?> ApplyHandEditAsync(string surfaceId, DiagramHandEdit edit) => InvokeAsync<string>(P + nameof(D.ApplyHandEdit), surfaceId, edit);
 
-    public DiagramEditSupport EditSupport(string surfaceId) =>
-        Invoke<DiagramEditSupport>(P + nameof(D.EditSupport), surfaceId) ?? new DiagramEditSupport(DiagramEditDialect.Unsupported, null);
+    public async Task<DiagramEditSupport> EditSupportAsync(string surfaceId) =>
+        await InvokeAsync<DiagramEditSupport>(P + nameof(D.EditSupport), surfaceId) ?? new DiagramEditSupport(DiagramEditDialect.Unsupported, null);
 
-    public IReadOnlyList<DiagramErAttribute> EntityAttributes(string surfaceId, string entity) =>
-        Invoke<List<DiagramErAttribute>>(P + nameof(D.EntityAttributes), surfaceId, entity) ?? [];
+    public async Task<IReadOnlyList<DiagramErAttribute>> EntityAttributesAsync(string surfaceId, string entity) =>
+        await InvokeAsync<List<DiagramErAttribute>>(P + nameof(D.EntityAttributes), surfaceId, entity) ?? [];
 
-    public IReadOnlyList<DiagramHistoryEntry> History(string surfaceId) =>
-        Invoke<List<DiagramHistoryEntry>>(P + nameof(D.History), surfaceId) ?? [];
+    public async Task<IReadOnlyList<DiagramHistoryEntry>> HistoryAsync(string surfaceId) =>
+        await InvokeAsync<List<DiagramHistoryEntry>>(P + nameof(D.History), surfaceId) ?? [];
 
-    public string? Revert(string surfaceId, string entryId) => Invoke<string>(P + nameof(D.Revert), surfaceId, entryId);
+    public Task<string?> RevertAsync(string surfaceId, string entryId) => InvokeAsync<string>(P + nameof(D.Revert), surfaceId, entryId);
 
     public void HoldObject(string surfaceId, string objectId) => Send(P + nameof(D.HoldObject), surfaceId, objectId);
 
     public void ReleaseObject(string surfaceId, string objectId) => Send(P + nameof(D.ReleaseObject), surfaceId, objectId);
 
-    public bool ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks) => Invoke<bool>(P + nameof(D.ResolveProposal), surfaceId, acceptedBlocks);
+    public void ResolveProposal(string surfaceId, IReadOnlySet<int> acceptedBlocks) => Send(P + nameof(D.ResolveProposal), surfaceId, acceptedBlocks);
 
-    public bool DiscardProposal(string surfaceId) => Invoke<bool>(P + nameof(D.DiscardProposal), surfaceId);
+    public void DiscardProposal(string surfaceId) => Send(P + nameof(D.DiscardProposal), surfaceId);
 }
 
 internal sealed class WhiteboardChannelClient : SurfaceChannelClient
 {
     private const string P = WhiteboardPrefix;
 
-    public static WhiteboardChannelClient? Connect(IPluginUiChannel? channel) =>
-        channel is not null && Serves(channel, P) ? new WhiteboardChannelClient(channel) : null;
+    public static Task<bool> ServesAsync(IPluginUiChannel? channel) => ServesAsync(channel, P);
 
     public WhiteboardChannelClient(IPluginUiChannel channel)
         : base(channel)
@@ -193,23 +228,22 @@ internal sealed class WhiteboardChannelClient : SurfaceChannelClient
 
     public void Disconnect(string surfaceId) => Send(P + nameof(W.Disconnect), surfaceId);
 
-    public void Couple(string sessionId, string surfaceId) => InvokeOrRefuse(P + nameof(W.Couple), sessionId, surfaceId);
+    public Task CoupleAsync(string sessionId, string surfaceId) => InvokeOrRefuseAsync(P + nameof(W.Couple), sessionId, surfaceId);
 
-    public void Grant(string sessionId, string surfaceId, WhiteboardCapability capability = WhiteboardCapability.Read) =>
-        InvokeOrRefuse(P + nameof(W.Grant), sessionId, surfaceId, capability);
+    public Task GrantAsync(string sessionId, string surfaceId, WhiteboardCapability capability = WhiteboardCapability.Read) =>
+        InvokeOrRefuseAsync(P + nameof(W.Grant), sessionId, surfaceId, capability);
 
-    public IReadOnlyList<WhiteboardHistoryEntry> History(string surfaceId) =>
-        Invoke<List<WhiteboardHistoryEntry>>(P + nameof(W.History), surfaceId) ?? [];
+    public async Task<IReadOnlyList<WhiteboardHistoryEntry>> HistoryAsync(string surfaceId) =>
+        await InvokeAsync<List<WhiteboardHistoryEntry>>(P + nameof(W.History), surfaceId) ?? [];
 
-    public string? Revert(string surfaceId, string entryId) => Invoke<string>(P + nameof(W.Revert), surfaceId, entryId);
+    public Task<string?> RevertAsync(string surfaceId, string entryId) => InvokeAsync<string>(P + nameof(W.Revert), surfaceId, entryId);
 }
 
 internal sealed class WireframeChannelClient : SurfaceChannelClient
 {
     private const string P = WireframePrefix;
 
-    public static WireframeChannelClient? Connect(IPluginUiChannel? channel) =>
-        channel is not null && Serves(channel, P) ? new WireframeChannelClient(channel) : null;
+    public static Task<bool> ServesAsync(IPluginUiChannel? channel) => ServesAsync(channel, P);
 
     public WireframeChannelClient(IPluginUiChannel channel)
         : base(channel)
@@ -231,22 +265,22 @@ internal sealed class WireframeChannelClient : SurfaceChannelClient
 
     public void Disconnect(string surfaceId) => Send(P + nameof(F.Disconnect), surfaceId);
 
-    public void Couple(string sessionId, string surfaceId) => InvokeOrRefuse(P + nameof(F.Couple), sessionId, surfaceId);
+    public Task CoupleAsync(string sessionId, string surfaceId) => InvokeOrRefuseAsync(P + nameof(F.Couple), sessionId, surfaceId);
 
-    public string? ApplyHandEdit(string surfaceId, WireframeComponentEdit edit) => Invoke<string>(P + nameof(F.ApplyHandEdit), surfaceId, edit);
+    public Task<string?> ApplyHandEditAsync(string surfaceId, WireframeComponentEdit edit) => InvokeAsync<string>(P + nameof(F.ApplyHandEdit), surfaceId, edit);
 
-    public IReadOnlyList<WireframeHistoryEntry> History(string surfaceId) =>
-        Invoke<List<WireframeHistoryEntry>>(P + nameof(F.History), surfaceId) ?? [];
+    public async Task<IReadOnlyList<WireframeHistoryEntry>> HistoryAsync(string surfaceId) =>
+        await InvokeAsync<List<WireframeHistoryEntry>>(P + nameof(F.History), surfaceId) ?? [];
 
-    public string? Revert(string surfaceId, string entryId) => Invoke<string>(P + nameof(F.Revert), surfaceId, entryId);
+    public Task<string?> RevertAsync(string surfaceId, string entryId) => InvokeAsync<string>(P + nameof(F.Revert), surfaceId, entryId);
 
-    public string? EnsureComponentId(string surfaceId, int line) => Invoke<string>(P + nameof(F.EnsureComponentId), surfaceId, line);
+    public Task<string?> EnsureComponentIdAsync(string surfaceId, int line) => InvokeAsync<string>(P + nameof(F.EnsureComponentId), surfaceId, line);
 
     public void HoldComponent(string surfaceId, string componentId) => Send(P + nameof(F.HoldComponent), surfaceId, componentId);
 
     public void ReleaseComponent(string surfaceId, string componentId) => Send(P + nameof(F.ReleaseComponent), surfaceId, componentId);
 
-    public string? PeekText(string surfaceId) => Invoke<string>(P + nameof(F.PeekText), surfaceId);
+    public Task<string?> PeekTextAsync(string surfaceId) => InvokeAsync<string>(P + nameof(F.PeekText), surfaceId);
 }
 
 // The UI part's end of an agent's open_* tool: the backend asked the operator's consent, this opens the window.
@@ -260,15 +294,24 @@ internal sealed class SurfaceWindowOpener : IDisposable
     {
         _channel = channel;
         _subscription = channel.Subscribe(OpenSurface, channelEvent => _Open(host, channel, channelEvent.Payload));
-        channel.InvokeAsync(AttachUi, default).GetAwaiter().GetResult();
+        Attached = _TellAsync(AttachUi);
     }
 
+    // Done once the backend knows a UI part listens; until then an open_* tool still answers opened: false.
+    public Task Attached { get; }
+
+    // After the attach, never before it, so a quick dispose cannot leave the backend believing a UI part listens.
     public void Dispose()
     {
         _subscription.Dispose();
+        _ = Attached.ContinueWith(_ => _TellAsync(DetachUi), TaskScheduler.Default).Unwrap();
+    }
+
+    private async Task _TellAsync(string action)
+    {
         try
         {
-            _channel.InvokeAsync(DetachUi, default).GetAwaiter().GetResult();
+            await _channel.InvokeAsync(action, default).ConfigureAwait(false);
         }
         catch (PluginChannelUnknownActionException)
         {

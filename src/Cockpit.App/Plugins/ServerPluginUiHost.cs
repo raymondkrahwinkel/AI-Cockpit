@@ -30,14 +30,14 @@ internal sealed class ServerPluginUiHost(
     ServerManagedClis managedClis,
     string sourceKey = "server") : ICockpitUiHost
 {
-    private readonly List<Action> _saved = [];
+    private readonly List<Func<Task>> _saved = [];
     private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
 
     public IReadOnlyDictionary<string, Func<string?, IPluginProviderConfigView>> ProviderConfigViews => _providerViews;
 
     public Func<Control>? CreateSettingsView { get; private set; }
 
-    public IReadOnlyList<Action> SettingsSaved => _saved;
+    public IReadOnlyList<Func<Task>> SettingsSaved => _saved;
 
     public IPluginUiChannel Channel => channel;
 
@@ -51,7 +51,9 @@ internal sealed class ServerPluginUiHost(
 
     public Task ShowSettingsAsync() => Task.CompletedTask;
 
-    public void OnSettingsSaved(Action callback) => _saved.Add(callback);
+    public void OnSettingsSaved(Action callback) => _saved.Add(() => { callback(); return Task.CompletedTask; });
+
+    public void OnSettingsSaved(Func<Task> callback) => _saved.Add(callback);
 
     public void AddServerSettings(Func<IPluginUiChannel, Control> createView)
     {

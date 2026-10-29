@@ -52,7 +52,9 @@
     <!-- 3.20.0 (AC-1588): ICockpitUiHost.ShowSystemNotification, a silent OS notification with a click callback.
          A plugin that calls it sets minHostVersion 0.141.0. Additive; still v3. -->
     <!-- 3.21.0 (AC-1577): DockPanelBadge.Tone and SetStatusText(text, tone) use the side-menu badge tones; requires host 0.142.0. -->
-    <Version>3.21.0</Version>
+    <!-- 3.22.0 (AC-1891): ICockpitUiHost.OnSettingsSaved(Func<Task>), a settings-saved callback the host awaits. A plugin
+         that calls it sets minHostVersion 0.151.0. Additive; still v3. -->
+    <Version>3.22.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions.UI</PackageId>
     <Title>Cockpit Plugin SDK — UI</Title>

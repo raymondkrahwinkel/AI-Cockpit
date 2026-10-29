@@ -30,7 +30,7 @@ public class PluginSettingsStagingTests
     }
 
     [Fact]
-    public void StagingWritesNothingUntilCommit()
+    public async Task StagingWritesNothingUntilCommit()
     {
         var staging = new PluginSettingsStaging();
         var view = new FakeSettingsView();
@@ -40,21 +40,21 @@ public class PluginSettingsStagingTests
         Assert.Equal(0, view.Committed);
         Assert.True(staging.HasStagedChanges);
 
-        staging.Commit();
+        await staging.CommitAsync();
 
         Assert.Equal(1, view.Committed);
         Assert.False(staging.HasStagedChanges);
     }
 
     [Fact]
-    public void RevertDropsTheStagedWrite_SoCommitAfterwardsWritesNothing()
+    public async Task RevertDropsTheStagedWrite_SoCommitAfterwardsWritesNothing()
     {
         var staging = new PluginSettingsStaging();
         var view = new FakeSettingsView();
         staging.TryStage(view, tag: "view", onSaved: null, out _);
 
         staging.Revert();
-        staging.Commit();
+        await staging.CommitAsync();
 
         Assert.Equal(0, view.Committed);
         Assert.False(staging.HasStagedChanges);
@@ -82,14 +82,14 @@ public class PluginSettingsStagingTests
     }
 
     [Fact]
-    public void EveryStagedViewIsCommitted_InTheOrderItWasStaged()
+    public async Task EveryStagedViewIsCommitted_InTheOrderItWasStaged()
     {
         var staging = new PluginSettingsStaging();
         var order = new List<string>();
         staging.TryStage(new OrderedView("first", order), tag: "view", onSaved: null, out _);
         staging.TryStage(new OrderedView("second", order), tag: "view", onSaved: null, out _);
 
-        staging.Commit();
+        await staging.CommitAsync();
 
         Assert.Equal(["first", "second"], order);
     }
@@ -98,7 +98,7 @@ public class PluginSettingsStagingTests
     // does for a profile's provider config) — what this pins is that the refusal itself stages nothing, so a
     // later Commit cannot write half a batch the operator was told was refused.
     [Fact]
-    public void ARefusalLeavesTheRestOfTheBatchIntact()
+    public async Task ARefusalLeavesTheRestOfTheBatchIntact()
     {
         var staging = new PluginSettingsStaging();
         var accepted = new FakeSettingsView();
@@ -106,7 +106,7 @@ public class PluginSettingsStagingTests
 
         Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: null, out _));
 
-        staging.Commit();
+        await staging.CommitAsync();
         Assert.Equal(1, accepted.Committed);
     }
 
@@ -115,55 +115,55 @@ public class PluginSettingsStagingTests
     // values are merely staged would have each rebuild against the settings the operator just replaced — and in
     // Options, where staging and committing are minutes and a Cancel apart, that is not a theoretical gap.
     [Fact]
-    public void TheSettingsSavedSignalWaitsForTheCommit_AndFollowsTheWrite()
+    public async Task TheSettingsSavedSignalWaitsForTheCommit_AndFollowsTheWrite()
     {
         var staging = new PluginSettingsStaging();
         var order = new List<string>();
-        staging.TryStage(new OrderedView("write", order), tag: "view", onSaved: () => order.Add("notified"), out _);
+        staging.TryStage(new OrderedView("write", order), tag: "view", onSaved: () => { order.Add("notified"); return Task.CompletedTask; }, out _);
 
         Assert.Empty(order);
 
-        staging.Commit();
+        await staging.CommitAsync();
 
         Assert.Equal(["write", "notified"], order);
     }
 
     [Fact]
-    public void ARevertedBatchNeverNotifies_BecauseNothingWasWritten()
+    public async Task ARevertedBatchNeverNotifies_BecauseNothingWasWritten()
     {
         var staging = new PluginSettingsStaging();
         var notified = 0;
-        staging.TryStage(new FakeSettingsView(), tag: "view", onSaved: () => notified++, out _);
+        staging.TryStage(new FakeSettingsView(), tag: "view", onSaved: () => { notified++; return Task.CompletedTask; }, out _);
 
         staging.Revert();
-        staging.Commit();
+        await staging.CommitAsync();
 
         Assert.Equal(0, notified);
     }
 
     [Fact]
-    public void ARefusedViewNotifiesNothing()
+    public async Task ARefusedViewNotifiesNothing()
     {
         var staging = new PluginSettingsStaging();
         var notified = 0;
 
-        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: () => notified++, out _));
+        Assert.False(staging.TryStage(new FakeSettingsView(refusal: "no"), tag: "view", onSaved: () => { notified++; return Task.CompletedTask; }, out _));
 
-        staging.Commit();
+        await staging.CommitAsync();
         Assert.Equal(0, notified);
     }
 
     // One plugin's view refusing must not leave another plugin's subscribers told its settings were saved — the
     // batch Options commits is per view, and so is the signal that follows each write.
     [Fact]
-    public void EachViewsSignalRidesWithItsOwnWrite()
+    public async Task EachViewsSignalRidesWithItsOwnWrite()
     {
         var staging = new PluginSettingsStaging();
         var order = new List<string>();
-        staging.TryStage(new OrderedView("first write", order), tag: "view", onSaved: () => order.Add("first notified"), out _);
-        staging.TryStage(new OrderedView("second write", order), tag: "view", onSaved: () => order.Add("second notified"), out _);
+        staging.TryStage(new OrderedView("first write", order), tag: "view", onSaved: () => { order.Add("first notified"); return Task.CompletedTask; }, out _);
+        staging.TryStage(new OrderedView("second write", order), tag: "view", onSaved: () => { order.Add("second notified"); return Task.CompletedTask; }, out _);
 
-        staging.Commit();
+        await staging.CommitAsync();
 
         Assert.Equal(["first write", "first notified", "second write", "second notified"], order);
     }
@@ -171,14 +171,14 @@ public class PluginSettingsStagingTests
     // AC-479: a plugin that throws instead of refusing used to abort the whole Apply, so whichever plugins were
     // staged behind it silently kept their old settings. The neighbour's write is the assertion that matters.
     [Fact]
-    public void AThrowingWriteLeavesTheOtherPluginsSettingsWritten_AndIsReportedAgainstItsOwnTag()
+    public async Task AThrowingWriteLeavesTheOtherPluginsSettingsWritten_AndIsReportedAgainstItsOwnTag()
     {
         var staging = new PluginSettingsStaging();
         var neighbour = new FakeSettingsView();
         staging.TryStage(new ThrowingView(onCommit: true), tag: "plugin:broken", onSaved: null, out _);
         staging.TryStage(neighbour, tag: "plugin:neighbour", onSaved: null, out _);
 
-        var failures = staging.Commit();
+        var failures = await staging.CommitAsync();
 
         Assert.Equal(1, neighbour.Committed);
         var failure = Assert.Single(failures);
@@ -189,7 +189,7 @@ public class PluginSettingsStagingTests
     // The same fault one step earlier: throwing out of TryStage is answered as a refusal, so the rows behind it
     // are still asked rather than never reached.
     [Fact]
-    public void AThrowingStageReadsAsARefusal_AndTheNextViewIsStillStaged()
+    public async Task AThrowingStageReadsAsARefusal_AndTheNextViewIsStillStaged()
     {
         var staging = new PluginSettingsStaging();
         var neighbour = new FakeSettingsView();
@@ -198,7 +198,7 @@ public class PluginSettingsStagingTests
         Assert.Contains("disk full", error);
         Assert.True(staging.TryStage(neighbour, tag: "plugin:neighbour", onSaved: null, out _));
 
-        Assert.Empty(staging.Commit());
+        Assert.Empty(await staging.CommitAsync());
         Assert.Equal(1, neighbour.Committed);
     }
 

@@ -259,6 +259,7 @@ public interface ICockpitHost
     void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                      // re-run after your settings are saved
+    void OnSettingsSaved(Func<Task> callback);                  // the same, awaited by the host (host 0.151.0)
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView); // a control in every session's header
     void AddSupervisedActivityProvider(ISupervisedActivitySource source);      // a status-bar counter + operator-only Kill panel
     void AddConversationPicker(ConversationPickerRegistration picker);          // browse history for the New-session dialog
@@ -305,6 +306,13 @@ public interface IPluginSettingsView
 {
     // Validate and hand over the write; the host performs it. False keeps the screen open and shows `error`.
     bool TryStage(out Action? commit, out string? error);
+}
+
+// The same contract with a write the host awaits — for a view that saves over its channel (host 0.151.0).
+// Implement this one instead of IPluginSettingsView; never block on the channel from a UI control.
+public interface IAsyncPluginSettingsView
+{
+    bool TryStage(out Func<Task>? commit, out string? error);
 }
 
 // Version is filled in by the host from your plugin.json — leave it unset.

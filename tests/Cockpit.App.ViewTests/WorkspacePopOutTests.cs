@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
-using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Docking;
 using Cockpit.App.Plugins;
@@ -74,7 +73,7 @@ public sealed class WorkspacePopOutTests
         Assert.True(workspaces.CanPopOutActive);
 
         await workspaces.PopOutAsync(popped.Id);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var window = host.WindowFor(popped.Id);
         Assert.NotNull(window);
@@ -88,7 +87,7 @@ public sealed class WorkspacePopOutTests
         Assert.DoesNotContain(workspaces.Tabs, tab => tab.Id == popped.Id);
 
         await host.DockBackAsync(popped.Id);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Null(host.WindowFor(popped.Id));
         Assert.Equal(slot, workspaces.Tabs.ToList().FindIndex(tab => tab.Id == popped.Id && tab.IsActive));
@@ -139,6 +138,7 @@ public sealed class WorkspacePopOutTests
             var undo = document.UndoStack;
             Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal("# Draft\n\ntyped", source.Text);
             Assert.Null(workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
             var writeReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -153,15 +153,16 @@ public sealed class WorkspacePopOutTests
             source.PendingWrite = Task.CompletedTask;
             channel.Failure = new NotSupportedException("Unexpected save failure.");
             body.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.S, KeyModifiers = KeyModifiers.Control });
+            await HeadlessAvalonia.SettleAsync();
             Assert.Equal("# Draft\n\ntyped queued during save", body.Editor.Text);
             Assert.Equal(WorkspaceMarker.Unsaved, workspaces.Tabs.Single(tab => tab.Id == workspace.Id).Marker);
             channel.Failure = null;
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, " while floating");
             await workspaces.PopOutAsync(workspace.Id);
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.NotNull(host.WindowFor(workspace.Id));
             await host.DockBackAsync(workspace.Id);
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.Same(body, workspaces.ActivePluginBody);
             Assert.Same(document, body.Editor.TextEditor.Document);
             Assert.Same(undo, body.Editor.TextEditor.Document.UndoStack);
@@ -175,7 +176,7 @@ public sealed class WorkspacePopOutTests
             await workspaces.PopOutAsync(workspace.Id);
             var floating = host.WindowFor(workspace.Id) ?? throw new InvalidOperationException("The file window is missing.");
             floating.Close();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             Assert.NotNull(host.WindowFor(workspace.Id));
             discard = true;
             await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspace.Id);

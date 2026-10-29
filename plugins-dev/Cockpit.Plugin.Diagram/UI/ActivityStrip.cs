@@ -60,7 +60,7 @@ internal sealed class ActivityStrip : Border
         _journal.HistoryChanged += _OnHistoryChanged;
         DetachedFromVisualTree += (_, _) => _journal.HistoryChanged -= _OnHistoryChanged;
 
-        _Refresh();
+        _ = _RefreshAsync();
     }
 
     // The surface always knows which pane it is coupled to (its own SurfaceSessionBinding) — kept in step so an
@@ -69,7 +69,7 @@ internal sealed class ActivityStrip : Border
     {
         _paneId = paneId;
         _origin = name;
-        _Refresh();
+        _ = _RefreshAsync();
     }
 
     private void _OnHistoryChanged(string surfaceId)
@@ -79,12 +79,13 @@ internal sealed class ActivityStrip : Border
             return;
         }
 
-        Dispatcher.UIThread.Post(_Refresh);
+        Dispatcher.UIThread.Post(() => _ = _RefreshAsync());
     }
 
-    private void _Refresh()
+    // AC-1891: the journal is read over the channel. Two refreshes in flight both draw; the later read wins.
+    private async Task _RefreshAsync()
     {
-        var rows = _journal.History(_surfaceId).Select(_EntryRow).ToList();
+        var rows = (await _journal.HistoryAsync(_surfaceId)).Select(_EntryRow).ToList();
 
         _emptyLabel.IsVisible = rows.Count == 0;
         _rows.IsVisible = rows.Count > 0;
@@ -103,12 +104,12 @@ internal sealed class ActivityStrip : Border
             entry.ObjectKey,
             entry.Reverted,
             entry.CanRevert,
-            () => _journal.Revert(_surfaceId, entry.Id));
+            () => _journal.RevertAsync(_surfaceId, entry.Id));
 
     // One row, diagram or whiteboard alike, now that both sides feed the same shape of entry (AC-853): a "Revert"
     // that actually calls the registry, disabled once reverted or when this kind cannot be (yet) — see
     // WhiteboardHistoryKind.Erase's documented gap — with the reason surfaced as a toast rather than silently ignored.
-    private Control _Row(DateTime when, string origin, string summary, string? objectKey, bool reverted, bool canRevert, Func<string?> revert)
+    private Control _Row(DateTime when, string origin, string summary, string? objectKey, bool reverted, bool canRevert, Func<Task<string?>> revert)
     {
         var revertButton = new Button { Content = "Revert", Classes = { "Compact", "Subtle" }, FontSize = 10, IsEnabled = !reverted && canRevert };
         ToolTip.SetTip(
@@ -117,9 +118,9 @@ internal sealed class ActivityStrip : Border
             : !canRevert ? "Restoring a deleted object cannot be reverted yet."
             : "Revert this handling.");
         revertButton.PointerPressed += (_, e) => e.Handled = true;
-        revertButton.Click += (_, _) =>
+        revertButton.Click += async (_, _) =>
         {
-            if (revert() is { } reason)
+            if (await revert() is { } reason)
             {
                 _host.ShowToast(reason, PluginToastSeverity.Error);
             }

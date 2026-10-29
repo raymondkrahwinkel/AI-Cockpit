@@ -64,7 +64,7 @@ public class DiagramCollabWindowTests
 
         var window = _Show(host.Windows[0].Content);
         window.Close();
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // The window's binding is a peephole — closing it lets go of the surface (F2.13/AC-1401: read fresh over
         // DiagramChannel.SessionBind each time, so there is no separate disposable object to assert on any more),
@@ -91,7 +91,7 @@ public class DiagramCollabWindowTests
         var kept = host.Windows[1].Key["diagram.document.".Length..];
 
         first.Close();
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.True(second.IsVisible);
 
@@ -115,7 +115,7 @@ public class DiagramCollabWindowTests
         var window = _Show(content);
 
         host.EndSession("pane-a");
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Null(host.Registry.ListSurfaces("pane-a").Single().Coupling);
         Assert.True(window.IsVisible);
@@ -141,12 +141,12 @@ public class DiagramCollabWindowTests
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
 
         host.Registry.UpdateText(surfaceId, "flowchart TD\n    A[\"Alleen\"]");
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var node = _ViewportCentre(content, window);
         window.MouseDown(node, MouseButton.Left);
         window.MouseUp(node, MouseButton.Left);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // The click landed on the node the source calls A: it is now the operator's, and the agent's edit naming it
         // is refused while it is (AC-852's hold).
@@ -156,7 +156,7 @@ public class DiagramCollabWindowTests
         var delete = content.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Delete"));
         Assert.True(delete.IsEnabled);
         delete.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // One change, straight into the registry — and the source box it went past is still read-only (AC-811).
         Assert.DoesNotContain("A[", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
@@ -173,14 +173,14 @@ public class DiagramCollabWindowTests
 
         _ClickCentre(content, window);
         _Button(content, "Rename").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // The rename box sits on the node itself — the one editable text box on this window; the source box below is
         // still read-only (AC-811).
         var box = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
         box.Text = "Hernoemd";
         box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Contains("A[\"Hernoemd\"]", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
 
@@ -200,14 +200,14 @@ public class DiagramCollabWindowTests
         _Button(content, "Connect").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ClickCentre(content, window);
         _ClickCentre(content, window);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // AC-909: the second click no longer applies the connection straight away — a label box appears on it
         // first, same shape as the rename box. Enter with nothing typed connects with no label, exactly as the
         // direct-apply this test used to check for.
         var label = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
         label.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Contains("A --> A", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
 
@@ -225,12 +225,12 @@ public class DiagramCollabWindowTests
         _Button(content, "Connect").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         _ClickCentre(content, window);
         _ClickCentre(content, window);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var label = content.GetVisualDescendants().OfType<TextBox>().Single(candidate => !candidate.IsReadOnly);
         label.Text = "loopt terug";
         label.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Contains("A -->|\"loopt terug\"| A", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
 
@@ -249,14 +249,14 @@ public class DiagramCollabWindowTests
         var shape = _Button(content, "Shape…");
         Assert.True(shape.IsEnabled);
         shape.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var flyout = Assert.IsType<Flyout>(shape.Flyout);
         var grid = Assert.IsType<WrapPanel>(Assert.IsType<StackPanel>(flyout.Content).Children.Single());
         var diamond = grid.Children.OfType<Button>()
             .Single(button => ((StackPanel)button.Content!).Children.OfType<TextBlock>().Any(text => text.Text == "Diamond"));
         diamond.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.Contains("A{\"Alleen\"}", host.Registry.PeekText(surfaceId)!, StringComparison.Ordinal);
 
@@ -282,14 +282,14 @@ public class DiagramCollabWindowTests
             var edit = DiagramObjectEdit.RenameNode(current, "A", "Hernoemd");
             return (edit.Text, edit.Summary);
         });
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // Fresh: the tag carrying the session's name is filled — the glow.
         var tag = content.GetVisualDescendants().OfType<Border>().Single(b => b.Child is TextBlock t && t.Text == "Werksessie");
         Assert.NotNull(tag.Background);
 
         await Task.Delay(TimeSpan.FromMilliseconds(3300));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         // Settled: same tag, no longer filled — an observably different mark, not a silent no-op.
         var settled = content.GetVisualDescendants().OfType<Border>().Single(b => b.Child is TextBlock t && t.Text == "Werksessie");
@@ -309,11 +309,11 @@ public class DiagramCollabWindowTests
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
 
         host.Registry.UpdateText(surfaceId, "flowchart LR\n    A[\"Begin\"] --> B[\"Ver weg\"]");
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var surfacePanel = content.GetVisualDescendants().OfType<Panel>().Single(p => p.RenderTransform is MatrixTransform);
         var before = ((MatrixTransform)surfacePanel.RenderTransform!).Matrix;
@@ -324,7 +324,7 @@ public class DiagramCollabWindowTests
             var edit = DiagramObjectEdit.RenameNode(current, "B", "Doel");
             return (edit.Text, edit.Summary);
         });
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var after = ((MatrixTransform)surfacePanel.RenderTransform!).Matrix;
 
@@ -344,11 +344,11 @@ public class DiagramCollabWindowTests
 
         var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
         Assert.True(follow.IsChecked);
 
         window.MouseWheel(_ViewportCentre(content, window), new Vector(0, 1));
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.False(follow.IsChecked);
 
@@ -363,12 +363,12 @@ public class DiagramCollabWindowTests
 
         var follow = content.GetVisualDescendants().OfType<ToggleButton>().Single(t => Equals(t.Content, "Follow"));
         follow.IsChecked = true;
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         var start = _ViewportCentre(content, window);
         window.MouseDown(start, MouseButton.Left);
         window.MouseMove(start + new Vector(30, 30), RawInputModifiers.LeftMouseButton);
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
 
         Assert.False(follow.IsChecked);
 
@@ -386,7 +386,7 @@ public class DiagramCollabWindowTests
         var surfaceId = host.Registry.ListSurfaces("pane-a").Single().SurfaceId;
 
         host.Registry.UpdateText(surfaceId, "flowchart TD\n    A[\"Alleen\"]");
-        Dispatcher.UIThread.RunJobs();
+        await HeadlessAvalonia.SettleAsync();
         return (plugin, host, content, window, surfaceId);
     }
 
@@ -526,10 +526,13 @@ public class DiagramCollabWindowTests
             // way a document window's content already has to be for its own button lookups to find anything.
             var listWindow = new Window { Content = _listDialogContent };
             listWindow.Show();
-            Dispatcher.UIThread.RunJobs();
+            await HeadlessAvalonia.SettleAsync();
             _listDialogContent!.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "New diagram"))
                 .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             listWindow.Close();
+
+            // AC-1891: the window connects to its registry over the channel right after it is built.
+            await HeadlessAvalonia.SettleAsync();
         }
 
         // What the cockpit does when a session closes: it releases that session's couplings (CockpitViewModel's

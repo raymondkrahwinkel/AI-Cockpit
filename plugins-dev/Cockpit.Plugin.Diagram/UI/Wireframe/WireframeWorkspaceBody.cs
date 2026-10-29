@@ -48,7 +48,10 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private static readonly Cursor _NoDropCursor = new(StandardCursorType.No);
 
     private readonly ICockpitUiHost _host;
-    private readonly WireframeChannelClient? _registry;
+    private readonly WireframeChannelClient? _client;
+    private bool _served;
+    private bool _detached;
+    private int _selectGeneration;
     private readonly string _surfaceId;
     private readonly string _documentTitle;
     private readonly Panel _surface;
@@ -122,11 +125,14 @@ internal sealed class WireframeWorkspaceBody : UserControl
     private string _savedText;
     private string? _fileAsLastSeen;
 
+    // AC-1891: null until the backend said it serves the registry — "not (yet) connected" reads as "older host".
+    private WireframeChannelClient? _registry => _served ? _client : null;
+
     // AC-1400: the registry through the plugin's channel, as in DiagramWorkspaceBody (null: "older host").
     public WireframeWorkspaceBody(ICockpitUiHost host, IPluginUiChannel? channel, WireframeDocument document, string? sessionPaneId)
     {
         _host = host;
-        _registry = WireframeChannelClient.Connect(channel);
+        _client = channel is null ? null : new WireframeChannelClient(channel);
         _surfaceId = document.Id;
         _documentTitle = document.Title;
         _filePath = document.FilePath;
@@ -169,7 +175,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         (_sourceToggle, _sourceBox) = _BuildSourceToggle();
         (var toolbar, _zoomLabel, _saveButton, _saveStatus, _addButton, _textButton, _deleteButton,
             _upButton, _downButton, _moveButton, _addScreenButton, _stateStrip, _overviewButton, _viewportButton, _askButton, _notesToggle, _handHint, _hintSeparator) = _BuildToolbar();
-        var journal = new WireframeActivityJournal(_registry);
+        var journal = new WireframeActivityJournal(_client);
         _activityStrip = new ActivityStrip(host, _surfaceId, journal, onJumpToObject: null);
         _askStrip = new AskStrip(_JumpToComponent);
         _presence = new PresenceIndicators(_surfaceId, journal, journal);
@@ -207,52 +213,82 @@ internal sealed class WireframeWorkspaceBody : UserControl
         _sessionBinding = new SurfaceSessionBinding(host, channel, sessionPaneId, _RefreshCouplingBar);
         _RenderInto(document.Text);
         _RefreshHandEditBar();
-        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
-        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
 
-        if (_registry is not null)
+        if (_client is not null)
         {
             // Subscribed before the surface is registered: a wireframe an agent asked for (open_wireframe) arrives
             // already coupled, and that change is announced from inside SurfaceOpened.
-            _registry.CouplingChanged += _OnCouplingChanged;
-            _registry.TextChanged += _OnTextChanged;
-            _registry.SurfaceOpened(_surfaceId, _documentTitle, document.Text);
-
-            // A plain Couple — zero capabilities. read_wireframe/edit_wireframe still ask their own consent.
-            if (_sessionBinding.IsLive)
-            {
-                _registry.Couple(_sessionBinding.PaneId, _surfaceId);
-            }
+            _client.CouplingChanged += _OnCouplingChanged;
+            _client.TextChanged += _OnTextChanged;
         }
 
-        // No registry (an older host) means coupling cannot be shown or offered at all (AC-834's precedent).
-        _couplingBar.IsVisible = _registry is not null;
+        // No registry (an older host, or not connected yet) means coupling cannot be shown or offered at all.
+        _couplingBar.IsVisible = false;
         _RefreshCouplingBar();
 
         DetachedFromVisualTree += (_, _) =>
         {
+            _detached = true;
             _sessionBinding.Dispose();
-            if (_registry is null)
+            if (_client is null)
             {
                 return;
             }
 
-            if (_selectedId is { } stillHeld)
+            if (_registry is not null && _selectedId is { } stillHeld)
             {
                 _registry.ReleaseComponent(_surfaceId, stillHeld);
             }
 
-            _registry.CouplingChanged -= _OnCouplingChanged;
-            _registry.TextChanged -= _OnTextChanged;
-            _registry.SurfaceClosed(_surfaceId);
-            _registry.Dispose();
+            _client.CouplingChanged -= _OnCouplingChanged;
+            _client.TextChanged -= _OnTextChanged;
+            _registry?.SurfaceClosed(_surfaceId);
+            _client.Dispose();
         };
+
+        _ = _ConnectAsync(document);
+    }
+
+    // AC-1891: as DiagramWorkspaceBody._ConnectAsync — drawn first, connected right after over the channel.
+    private async Task _ConnectAsync(WireframeDocument document)
+    {
+        var served = _client is not null && await WireframeChannelClient.ServesAsync(_client.Channel);
+        await _sessionBinding.BindAsync();
+        if (_detached)
+        {
+            return;
+        }
+
+        _activityStrip.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _presence.SetSession(_sessionBinding.LivePaneId, _sessionBinding.BoundSessionName);
+        _served = served;
+        if (_registry is { } registry)
+        {
+            registry.SurfaceOpened(_surfaceId, _documentTitle, _sourceBox.Text ?? document.Text);
+
+            // A plain Couple — zero capabilities. read_wireframe/edit_wireframe still ask their own consent.
+            if (_sessionBinding.IsLive)
+            {
+                try
+                {
+                    await registry.CoupleAsync(_sessionBinding.PaneId, _surfaceId);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    _host.ShowToast(exception.Message, PluginToastSeverity.Error);
+                }
+            }
+        }
+
+        _couplingBar.IsVisible = _registry is not null;
+        _RefreshCouplingBar();
+        _RefreshHandEditBar();
     }
 
     // The way out of "window open, no agent" — after the bound session ended or the operator disconnected.
-    private void _Recouple(string paneId)
+    private async void _Recouple(string paneId)
     {
-        if (_sessionBinding.Recouple(paneId, p => _registry?.Couple(p, _surfaceId)) is { } reason)
+        if (await _sessionBinding.RecoupleAsync(paneId, p => _registry?.CoupleAsync(p, _surfaceId) ?? Task.CompletedTask) is { } reason)
         {
             _host.ShowToast(reason, PluginToastSeverity.Error);
             return;
@@ -533,14 +569,8 @@ internal sealed class WireframeWorkspaceBody : UserControl
                 return;
             }
 
-            if (!ReferenceEquals(hit, _Selected))
-            {
-                _Select(hit);
-            }
-
-            viewport.ContextMenu = _BuildObjectContextMenu();
-            viewport.ContextMenu.Open(viewport);
             args.Handled = true;
+            _ = _OpenObjectMenuAsync(viewport, hit);
         };
         return viewport;
     }
@@ -918,17 +948,41 @@ internal sealed class WireframeWorkspaceBody : UserControl
             ? new Rect(origin, control.Bounds.Size)
             : null;
 
+    // Selected first, so the menu's items are enabled for what the operator right-clicked.
+    private async Task _OpenObjectMenuAsync(Control viewport, WireframeNode hit)
+    {
+        if (!ReferenceEquals(hit, _Selected))
+        {
+            await _SelectAsync(hit);
+        }
+
+        viewport.ContextMenu = _BuildObjectContextMenu();
+        viewport.ContextMenu.Open(viewport);
+    }
+
+    private void _Select(WireframeNode? node) => _ = _SelectAsync(node);
+
     // Selecting is holding: while the operator has a component under their hand an agent's edit naming it is refused
     // with a reason (AC-872's hold), and every other component stays open to it. Taking one under their hand is also
     // what mints its id (AC-906) — until something names a component, the source stays free of ids.
-    private void _Select(WireframeNode? node)
+    private async Task _SelectAsync(WireframeNode? node)
     {
+        var generation = ++_selectGeneration;
         if (_selectedId is { } previous)
         {
             _registry?.ReleaseComponent(_surfaceId, previous);
+            _selectedId = null;
         }
 
-        _selectedId = node is null ? null : _registry?.EnsureComponentId(_surfaceId, node.Line);
+        var minted = node is not null && _registry is { } registry ? await registry.EnsureComponentIdAsync(_surfaceId, node.Line) : null;
+
+        // A newer click won while this id was minted; that one holds, this one never did.
+        if (generation != _selectGeneration)
+        {
+            return;
+        }
+
+        _selectedId = minted;
         if (_selectedId is { } held)
         {
             _registry?.HoldComponent(_surfaceId, held);
@@ -1199,7 +1253,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // Changing the wording happens where the component is: a box over the component itself, Enter to keep it, Escape
     // to leave it as it was — the diagram's rename, one folder over.
-    private void _StartTextEdit(WireframeNode? node)
+    private async void _StartTextEdit(WireframeNode? node)
     {
         if (node is null || _registry is null)
         {
@@ -1223,7 +1277,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
             return;
         }
 
-        _Select(node);
+        await _SelectAsync(node);
         if (_selectedId is not { } id)
         {
             return;
@@ -1260,9 +1314,9 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // AC-914: the state chip's own rename, a small Flyout anchored on the chip rather than the canvas overlay
     // _StartTextEdit uses for everything else — same Enter/Escape commit, no coordinate math needed.
-    private void _RenameStateViaFlyout(WireframeNode state, Control anchor)
+    private async void _RenameStateViaFlyout(WireframeNode state, Control anchor)
     {
-        _Select(state);
+        await _SelectAsync(state);
         if (_selectedId is not { } id)
         {
             return;
@@ -1430,21 +1484,21 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return node;
     }
 
-    private void _DeleteSelected()
+    private async void _DeleteSelected()
     {
-        if (_selectedId is { } id && _Apply(WireframeComponentEdit.Remove(id)))
+        if (_selectedId is { } id && await _ApplyAsync(WireframeComponentEdit.Remove(id)))
         {
-            _Select(null);
+            await _SelectAsync(null);
         }
     }
 
     // AC-901: a screen of its own beside the ones already there, added straight after the one being looked at. The
     // overview comes up with it, so the new board is where the operator can see it rather than off behind the one
     // they were in.
-    private void _AddScreen()
+    private async void _AddScreen()
     {
         var at = _ZoomedScreen is { } screen ? _screens.IndexOf(screen) + 1 : (int?)null;
-        if (_Apply(WireframeComponentEdit.AddScreen(NewScreenTitle, at)))
+        if (await _ApplyAsync(WireframeComponentEdit.AddScreen(NewScreenTitle, at)))
         {
             _ShowOverview();
         }
@@ -1487,16 +1541,18 @@ internal sealed class WireframeWorkspaceBody : UserControl
 
     // One handling is one change towards the registry, under the same lock as the agent's — never a half state
     // written here and repaired afterwards. The re-render comes back through TextChanged.
-    private bool _Apply(WireframeComponentEdit edit)
+    private void _Apply(WireframeComponentEdit edit) => _ = _ApplyAsync(edit);
+
+    private async Task<bool> _ApplyAsync(WireframeComponentEdit edit)
     {
-        if (_registry is null)
+        if (_registry is not { } registry)
         {
             return false;
         }
 
         // The per-component grammar words its refusals for the agent that normally calls it; the buttons above turn
         // the reachable ones off beforehand, so what gets through here is genuinely exceptional and worth showing raw.
-        if (_registry.ApplyHandEdit(_surfaceId, edit) is not { } refusal)
+        if (await registry.ApplyHandEditAsync(_surfaceId, edit) is not { } refusal)
         {
             return true;
         }
@@ -1583,11 +1639,12 @@ internal sealed class WireframeWorkspaceBody : UserControl
     // AC-914 criterion 6: switching which state is open also selects it, so Delete/«Text…» apply like any component.
     // AC-972: a first-clicked state has no id yet; EnsureComponentId stamps the registry's copy, so rendering must
     // pull that (not the stale _sourceBox.Text) or _RenderInto's "forgotten" guard erases it right back.
-    private void _SelectState(WireframeNode? state)
+    private async void _SelectState(WireframeNode? state)
     {
-        _stateId = state is null ? null : _registry?.EnsureComponentId(_surfaceId, state.Line) ?? state.Id;
-        _RenderInto(_registry?.PeekText(_surfaceId) ?? _sourceBox.Text ?? "");
-        _Select(state);
+        var registry = _registry;
+        _stateId = state is null ? null : (registry is null ? null : await registry.EnsureComponentIdAsync(_surfaceId, state.Line)) ?? state.Id;
+        _RenderInto((registry is null ? null : await registry.PeekTextAsync(_surfaceId)) ?? _sourceBox.Text ?? "");
+        await _SelectAsync(state);
     }
 
     // AC-914 criterion 7: a container within this screen, not the screen itself and not another state — the same
@@ -2307,7 +2364,7 @@ internal sealed class WireframeWorkspaceBody : UserControl
         return (parts.Bar, parts.Label, parts.ReadChip, parts.EditChip, parts.Couple, parts.Disconnect);
     }
 
-    private void _ShowSessionPicker(Control anchor) => _sessionBinding.ShowSessionPicker(anchor, _Recouple);
+    private void _ShowSessionPicker(Control anchor) => _ = _sessionBinding.ShowSessionPickerAsync(anchor, _Recouple);
 
     private void _RefreshCouplingBar()
     {

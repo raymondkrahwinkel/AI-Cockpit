@@ -13,12 +13,8 @@ public sealed class DiscordUi : ICockpitPluginUi
         var settings = new DiscordChannelSettings(host.Storage);
         host.AddSettings(() => new DiscordChannelSettingsControl(host, settings), "Assistant Plugins");
 
-        // ponytail: OnSettingsSaved's callback is a synchronous Action (IPluginSettingsView predates the plugin
-        // split), so it cannot await the channel call that tells the backend part to reconnect. Blocking is safe
-        // today (the channel answers in-process with no thread hop); a fire-and-forget InvokeAsync would silently
-        // swallow a failed reconnect. Upgrade path: a Task-returning ICockpitUiHost.OnSettingsSaved, tracked for
-        // every plugin, not just this one.
+        // Awaited by the host (AC-1891), so a failed reconnect is not swallowed.
         host.OnSettingsSaved(() => host.Channel.InvokeAsync(
-            DiscordChannel.SettingsSaved, JsonSerializer.SerializeToElement<object?>(null, DiscordChannel.Json)).GetAwaiter().GetResult());
+            DiscordChannel.SettingsSaved, JsonSerializer.SerializeToElement<object?>(null, DiscordChannel.Json)));
     }
 }

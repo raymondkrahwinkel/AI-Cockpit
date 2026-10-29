@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using NSubstitute;
+using Cockpit.Core.Abstractions.Diagrams;
 using Cockpit.Core.Abstractions.Whiteboard;
 using Cockpit.Infrastructure.Diagrams;
 using Cockpit.Plugins.Abstractions;
@@ -40,18 +41,42 @@ public class DiagramChannelTests
     }
 
     [Fact]
-    public void CouplingASurfaceAnotherAgentHolds_IsRefusedInTheWindow_AndTheHolderKeepsIt()
+    public async Task CouplingASurfaceAnotherAgentHolds_IsRefusedInTheWindow_AndTheHolderKeepsIt()
     {
         var registry = new DiagramAccessRegistry();
         registry.SurfaceOpened("d1", "Flow", Flow);
         registry.Couple("pane-a", "d1");
         var client = new DiagramChannelClient(TestChannel.For(diagrams: registry));
 
-        var refusal = Assert.Throws<InvalidOperationException>(() => client.Couple("pane-b", "d1"));
+        var refusal = await Assert.ThrowsAsync<InvalidOperationException>(() => client.CoupleAsync("pane-b", "d1"));
 
         Assert.False(string.IsNullOrWhiteSpace(refusal.Message));
         Assert.NotNull(registry.CouplingOf("pane-a", "d1"));
         Assert.Null(registry.CouplingOf("pane-b", "d1"));
+    }
+
+    // AC-1891 (layer 2, plugin channel): the hub runs each call on its own pool thread, so two quick sends from a
+    // window would race to the registry; the client queues them. The first one is held long enough to be overtaken.
+    [Fact]
+    public async Task TwoQuickTextUpdates_ReachTheRegistryInTheOrderTheWindowSentThem()
+    {
+        var registry = Substitute.For<IDiagramAccessRegistry>();
+        var arrived = new List<string>();
+        registry.When(r => r.UpdateText("d1", Arg.Any<string>())).Do(call =>
+        {
+            Thread.Sleep(call.ArgAt<string>(1) == "first" ? 500 : 0);
+            lock (arrived)
+            {
+                arrived.Add(call.ArgAt<string>(1));
+            }
+        });
+        var client = new DiagramChannelClient(TestChannel.For(diagrams: registry));
+
+        client.UpdateText("d1", "first");
+        client.UpdateText("d1", "second");
+        await client.IsCoupledByAnotherAsync("pane-a", "d1");
+
+        Assert.Equal(["first", "second"], arrived);
     }
 
     [Fact]
