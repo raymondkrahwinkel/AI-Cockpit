@@ -19,7 +19,7 @@ internal static class DepotMarkdownFiles
         var payload = JsonSerializer.SerializeToElement(
             new DepotNoteLiveRequest(connection.Id, address[0], address.ElementAtOrDefault(1) ?? string.Empty, path), DepotChannel.Json);
         var key = InstanceKey(connection, project, path);
-        var open = host.GetOpenWorkspaces(WorkspaceTypeId).Any(instance => instance.InstanceKey == key);
+        var open = false;
         if (!open)
         {
             await host.Channel.InvokeAsync(DepotNoteLiveChannel.Open, payload).ConfigureAwait(true);
