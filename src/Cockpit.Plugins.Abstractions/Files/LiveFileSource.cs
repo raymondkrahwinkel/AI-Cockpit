@@ -32,6 +32,11 @@ public sealed record LiveFileStatus(LiveFileState State, string? Reason = null)
     public LiveReadOnlyReason ReadOnlyReason { get; init; }
     /// <summary>The shared text when the source holds local edits it can no longer send; null when none are held.</summary>
     public string? UnsentSourceText { get; init; }
+    /// <summary>
+    /// Who last saved the shared text to the file, for a source that knows; null when it does not track saves, and
+    /// <see cref="LiveFileSave.NotYet"/> when nobody has saved since the host joined.
+    /// </summary>
+    public LiveFileSave? Saved { get; init; }
 }
 
 /// <summary>Why editing a live file is unavailable.</summary>
@@ -45,6 +50,13 @@ public enum LiveReadOnlyReason
     Viewer,
     /// <summary>The operator lost permission after joining as an editor.</summary>
     RoleLost,
+}
+
+/// <summary>A save of the shared text: by <see cref="Name"/>, drawn in <see cref="Color"/> (#rrggbb, when known), at <see cref="At"/>.</summary>
+public sealed record LiveFileSave(string? Name, string? Color = null, DateTimeOffset? At = null)
+{
+    /// <summary>Nobody has saved since the host joined.</summary>
+    public static LiveFileSave NotYet { get; } = new(Name: null);
 }
 
 /// <summary>The whole text at revision <see cref="Rev"/>.</summary>

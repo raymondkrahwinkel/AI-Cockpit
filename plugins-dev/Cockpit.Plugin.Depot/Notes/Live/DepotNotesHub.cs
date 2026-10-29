@@ -15,7 +15,19 @@ internal sealed record DepotNoteJoinResult(
 {
     // Protocol §7, for a hub that leaves the field out.
     public const int DefaultCompactAfter = 200;
+
+    // Protocol §3, Editor only: the file's checksum now, the one a save writes over (older when typing is unsaved), the session.
+    public string? Checksum { get; init; }
+
+    public string? Base { get; init; }
+
+    public string? SessionId { get; init; }
+
+    public bool Dirty { get; init; }
 }
+
+// Protocol §6 duty 4: the file now, or a stored version of it.
+internal sealed record DepotNoteText(string Checksum, string Markdown);
 
 // Args are the event's arguments as the hub sends them (§4); `update` is (documentId, byte[]), `refused` is (code) alone.
 internal sealed record DepotNoteEvent(string Kind, object?[] Args)
@@ -25,6 +37,9 @@ internal sealed record DepotNoteEvent(string Kind, object?[] Args)
 
 internal interface IDepotNotesHub : IAsyncDisposable
 {
+    // The connection's id once started: the Join result and the `saver` event name the saver by it.
+    string? ConnectionId { get; }
+
     // Before StartAsync and Join: the hub can send events before the Join result is back (§3 step 1).
     void Subscribe(Func<DepotNoteEvent, Task> onEvent);
 
@@ -44,6 +59,12 @@ internal interface IDepotNotesHub : IAsyncDisposable
 
     // A y-protocols awareness update (protocol §5.4); the hub stamps it and relays it as `presence`.
     Task PresenceAsync(string documentId, byte[] awareness, CancellationToken cancellationToken);
+
+    // The file now (`checksum` null), or the stored version with that checksum; null when there is none.
+    Task<DepotNoteText?> TextAsync(string documentId, string? checksum, CancellationToken cancellationToken);
+
+    // The saver merged the outside write: the room holds the file with `checksum`, and the others mark `blocks`.
+    Task MergedAsync(string documentId, string checksum, int[] blocks, int conflicts, CancellationToken cancellationToken);
 }
 
 internal delegate IDepotNotesHub DepotNotesHubFactory(DepotConnectionRegistration connection, string userId, Func<Exception?, Task> onClosed);
@@ -63,6 +84,7 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
         ("external", [typeof(string), typeof(string), typeof(string)]),
         ("outside", [typeof(string), typeof(JsonElement)]),
         ("merged", [typeof(string), typeof(int[]), typeof(int)]),
+        ("saved", [typeof(string), typeof(JsonElement)]),
         ("reset", [typeof(string)]),
         ("refused", [typeof(string)]),
     ];
@@ -108,8 +130,24 @@ internal sealed class SignalRDepotNotesHub : IDepotNotesHub
         return new DepotNoteJoinResult(
             Text("documentId") ?? string.Empty, Text("role") ?? "viewer", rows, Flag("seed"), Flag("awaitingSeed"), Text("epoch"), Flag("stale"),
             Flag("schemaMismatch"), Text("saver"), Text("markdown") ?? string.Empty,
-            answer.TryGetProperty("compactAfter", out var compactAfter) && compactAfter.TryGetInt32(out var after) ? after : DepotNoteJoinResult.DefaultCompactAfter);
+            answer.TryGetProperty("compactAfter", out var compactAfter) && compactAfter.TryGetInt32(out var after) ? after : DepotNoteJoinResult.DefaultCompactAfter)
+        {
+            Checksum = Text("checksum"), Base = Text("base"), SessionId = Text("sessionId"), Dirty = Flag("dirty"),
+        };
     }
+
+    public string? ConnectionId => _connection.ConnectionId;
+
+    public async Task<DepotNoteText?> TextAsync(string documentId, string? checksum, CancellationToken cancellationToken)
+    {
+        var answer = await _connection.InvokeAsync<JsonElement>("Text", documentId, checksum, cancellationToken).ConfigureAwait(false);
+        return answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("checksum", out var sum) && answer.TryGetProperty("markdown", out var markdown)
+            ? new DepotNoteText(sum.GetString() ?? string.Empty, markdown.GetString() ?? string.Empty)
+            : null;
+    }
+
+    public Task MergedAsync(string documentId, string checksum, int[] blocks, int conflicts, CancellationToken cancellationToken) =>
+        _connection.InvokeAsync("Merged", documentId, checksum, blocks, conflicts, cancellationToken);
 
     public Task UpdateAsync(string documentId, byte[] update, CancellationToken cancellationToken) =>
         _connection.InvokeAsync("Update", documentId, update, cancellationToken);

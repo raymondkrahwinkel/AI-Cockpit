@@ -41,9 +41,18 @@ internal interface IDepotNoteRoom : IAsyncDisposable
     Task<string?> RelativeAtAsync(int offset, CancellationToken cancellationToken);
 
     Task<int?> OffsetOfAsync(string relativeJson, CancellationToken cancellationToken);
+
+    // Protocol §6 duty 1: the note as the saver writes it, Depot's serializeNote of the doc.
+    Task<string> SerializeAsync(CancellationToken cancellationToken);
+
+    // Protocol §6 duty 4: an outside write (theirs) merged into the doc against `base` (null when that version is gone), with merge.ts;
+    // blocks others changed in the 5 s before `from`, when the merge was asked for, are guarded.
+    Task<DepotNoteMerge> MergeAsync(string? @base, string theirs, DateTimeOffset from, CancellationToken cancellationToken);
 }
 
 internal sealed record DepotNoteUndo(IReadOnlyList<TextOp> Ops, IReadOnlyList<byte[]> Updates);
+
+internal sealed record DepotNoteMerge(IReadOnlyList<TextOp> Ops, IReadOnlyList<byte[]> Updates, int[] Blocks, int Conflicts);
 
 internal delegate IDepotNoteRoom DepotNoteRoomFactory(uint clientId);
 
@@ -112,6 +121,21 @@ internal sealed class JintNoteRoom(uint clientId) : IDepotNoteRoom
     {
         var offset = int.Parse(await _CallAsync("offsetOfRelative", cancellationToken, relativeJson).ConfigureAwait(false), System.Globalization.CultureInfo.InvariantCulture);
         return offset >= 0 ? offset : null;
+    }
+
+    public Task<string> SerializeAsync(CancellationToken cancellationToken) => _CallAsync("serialized", cancellationToken);
+
+    public async Task<DepotNoteMerge> MergeAsync(string? @base, string theirs, DateTimeOffset from, CancellationToken cancellationToken)
+    {
+        var at = (double)from.ToUnixTimeMilliseconds();
+        var arguments = @base is null ? new object[] { JsValue.Null, theirs, at } : [@base, theirs, at];
+        using var merged = JsonDocument.Parse(await _CallAsync("merge", cancellationToken, arguments).ConfigureAwait(false));
+        var root = merged.RootElement;
+        return new DepotNoteMerge(
+            root.GetProperty("ops").Deserialize<TextOp[]>(Json) ?? [],
+            [.. root.GetProperty("updates").EnumerateArray().Select(update => update.GetBytesFromBase64())],
+            root.GetProperty("blocks").Deserialize<int[]>(Json) ?? [],
+            root.GetProperty("conflicts").GetInt32());
     }
 
     public ValueTask DisposeAsync()

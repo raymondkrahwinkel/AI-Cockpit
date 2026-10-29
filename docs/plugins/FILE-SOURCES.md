@@ -111,6 +111,11 @@ unsaved dot for `Offline`, `SignInNeeded`, or when an edit could not be sent. Cl
 until every local edit has reached the source; if that fails, it asks before discarding. A session that ends on
 the source side (a plugin reload) is not reopened: the text stays in the tab, marked as not sent.
 
+`LiveFileStatus.Saved` (SDK 3.49.0, host 0.146.0) says who last saved the shared text to the file. Under `Live`
+the status chip shows "Saved by {Name} · hh:mm" with a 7 px dot in `Color`; `LiveFileSave.NotYet` shows "Not
+saved to {source} yet" in the waiting tints; null, for a source that does not track saves, keeps "Live". A
+plugin that sets `Saved` sets minHostVersion 0.146.0.
+
 The host subscribes to the events before it opens the session, so no patch is lost in between. The channel adds the actions `files-live-open`, `files-live-read`, `files-live-edit`, `files-live-undo` and
 `files-live-close`, and the events `files-live-patch` and `files-live-state`, keyed by a session id. The whole
 text travels as base64 under the same 1 MiB cap as `files-read`. Op text is plain JSON and limited to the same
