@@ -13,8 +13,14 @@ public sealed partial class MarkdownEditor
     private readonly List<ExternalLine> _externalLines = [];
     private readonly DispatcherTimer _externalClock = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    internal IReadOnlyList<int> ExternalMarkedLines => [.. _externalLines.Where(mark => !mark.Start.IsDeleted && !mark.End.IsDeleted).Select(mark => mark.Start.Line)];
+
     internal void MarkExternalEdit(ExternalTextEdit edit)
     {
+        if (DateTimeOffset.UtcNow - edit.At >= TimeSpan.FromMinutes(10))
+        {
+            return;
+        }
         var document = _editor.Document;
         foreach (var range in edit.Ranges)
         {
