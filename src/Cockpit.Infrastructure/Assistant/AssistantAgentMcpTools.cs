@@ -192,7 +192,7 @@ internal sealed class AssistantAgentMcpTools(
     [McpServerTool(Name = "stop_agent", ReadOnly = false, Destructive = true)]
     [Description("Closes an AI session using a pane id from list_sessions, never a name. A node address (\"<node> · <paneId>\") stops it on that machine without a node-side prompt, subject to node grants. Refuses missing panes, plain terminals, workspace-surface sessions and the assistant's own session. Delegated tasks have no pane and cannot be stopped here.")]
     public async Task<string> StopAgentAsync(
-        [Description("The pane id of the session to close, exactly as list_sessions reports it. Read it back to the operator before you ask for it, together with the session's name — a pane id is not something anyone can check by ear once it is gone.")] string paneId)
+        [Description("The session's pane id from list_sessions, never a name.")] string paneId)
     {
         try
         {
@@ -221,7 +221,7 @@ internal sealed class AssistantAgentMcpTools(
     [Description("Renames a session's header and sidebar using a pane id from list_sessions, never a name. Node addresses (\"<node> · <paneId>\") rename on that machine. The supplied name survives ticket linking and restart. Refuses closed panes, workspace-surface sessions, the assistant's own session and empty names. Use rename_workspace for desks; delegated tasks have no pane.")]
     public async Task<string> RenameSessionAsync(
         [Description("The pane id of the session to rename, exactly as list_sessions reports it. Never a name and never a guess.")] string paneId,
-        [Description("What the session should be called, in the operator's own words. A name that says what the work is (\"AC-592 tests\") is worth far more than one that says what it runs on.")] string name)
+        [Description("The new session name, used verbatim.")] string name)
     {
         try
         {
@@ -250,7 +250,7 @@ internal sealed class AssistantAgentMcpTools(
     [Description("Renames a local desk by workspaceId from list_workspaces without switching desks or affecting sessions. The name is used verbatim and need not be unique. Refuses unknown ids and empty names.")]
     public async Task<string> RenameWorkspaceAsync(
         [Description("The id of the workspace to rename, from list_workspaces. The desk, not its current tab label.")] string workspaceId,
-        [Description("What the desk should be called, in the operator's own words — it becomes the tab label they will read and say. Keep it short enough to fit a tab.")] string name)
+        [Description("The new desk tab label, used verbatim.")] string name)
     {
         try
         {
@@ -378,7 +378,7 @@ internal sealed class AssistantAgentMcpTools(
     [McpServerTool(Name = "create_workspace", ReadOnly = false, Destructive = false)]
     [Description("Creates and activates an empty local Sessions desk with the supplied name and returns its id for start_agent. Names are used verbatim and need not be unique; empty names are refused. Creating a desk starts no sessions.")]
     public async Task<string> CreateWorkspaceAsync(
-        [Description("What the desk is to be called, in the operator's own words — it becomes the tab label they will read and say. Keep it short enough to fit a tab.")] string name)
+        [Description("The new desk tab label, used verbatim.")] string name)
     {
         try
         {
@@ -401,7 +401,7 @@ internal sealed class AssistantAgentMcpTools(
     [McpServerTool(Name = "remove_workspace", ReadOnly = false, Destructive = true)]
     [Description("Permanently closes an empty local Sessions desk by workspaceId from list_workspaces, never by label. Refuses nonempty desks, the last desk, dashboards, the projects overview and plugin desks. Stop sessions individually with stop_agent first; this tool neither stops nor moves them and cannot affect delegated tasks.")]
     public async Task<string> RemoveWorkspaceAsync(
-        [Description("The id of the desk to close, exactly as list_workspaces reports it — the desk, not its tab label. Required and never guessed: closing the wrong desk is not something an apology fixes.")] string workspaceId)
+        [Description("The desk id from list_workspaces, never its tab label.")] string workspaceId)
     {
         try
         {
@@ -424,9 +424,9 @@ internal sealed class AssistantAgentMcpTools(
     [McpServerTool(Name = "send_message", ReadOnly = false, Destructive = false)]
     [Description("Queues information in an agent inbox without waking or interrupting it; use send_prompt to submit work. Address a pane id from list_sessions, never a name, or \"<node> · <paneId>\" for a node. Node messages use that machine's assistant identity; replies return to this assistant with the node name. kind and body must be nonempty, at most 100 and 2000 characters respectively; terminal control sequences are stripped and reported as sanitized. Refuses closed panes, terminals, self, full inboxes and delegated tasks. Identical unread messages are deduplicated. deliversAtTurnStart:false means delivery waits for read_inbox, not that the recipient has read it.")]
     public async Task<string> SendMessageAsync(
-        [Description("The pane id of the agent session to write to, exactly as list_sessions reports it. Read the session's NAME back to the operator before you ask — a pane id is not something anyone can check by ear.")] string paneId,
+        [Description("The recipient pane id from list_sessions, never a name.")] string paneId,
         [Description("A short label for what this is, at most 100 characters, e.g. 'heads-up', 'question', 'handover'. The recipient sees it as your label, not as anything the cockpit vouches for.")] string kind,
-        [Description("The message itself, at most 2000 characters, and shown to the operator word for word on the approval row — so write what you actually mean to send, not a summary of it. Write it as information for another agent, not as an order.")] string body)
+        [Description("The nonempty message body, at most 2000 characters.")] string body)
     {
         try
         {
@@ -493,8 +493,8 @@ internal sealed class AssistantAgentMcpTools(
     [McpServerTool(Name = "send_prompt", ReadOnly = false, Destructive = true)]
     [Description("Submits a nonempty turn to an agent session as the operator; it starts or steers work and cannot be recalled. Use a pane id from list_sessions, never a name, or \"<node> · <paneId>\" for a node. Node grants apply without a node-side prompt. Refuses closed panes, terminals, self and delegated tasks. Approval is never remembered. delivered:false means the starting session holds the turn for automatic delivery; do not resend it. Only one turn can be held and a second is refused rather than replacing it.")]
     public async Task<string> SendPromptAsync(
-        [Description("The pane id of the agent session to hand the turn to, exactly as list_sessions reports it. Read the session's NAME back to the operator before you ask — a pane id is not something anyone can check by ear, and the wrong one starts work in the wrong place.")] string paneId,
-        [Description("The turn to submit, in the exact words that will be sent — the operator reads this verbatim on the approval row and is agreeing to these words, not to your description of them.")] string prompt)
+        [Description("The recipient pane id from list_sessions, never a name.")] string paneId,
+        [Description("The nonempty turn to submit verbatim.")] string prompt)
     {
         try
         {
