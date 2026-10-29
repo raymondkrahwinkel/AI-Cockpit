@@ -82,12 +82,8 @@ public sealed class NodeInboxRelay(
 
     private readonly ConcurrentDictionary<string, Flap> _flaps = new(StringComparer.Ordinal);
 
-    // AC-1327 criterion 2: one message per reachable↔unreachable transition, never per poll — same Deliver path
-    // as the mail relay above, so the controller's assistant hears about the node itself the way it hears from
-    // the node's own agents.
-    // AC-1943: nothing for a held node; and a node that keeps flapping gets one "node-unstable" then one "node-back"
-    // once it has stayed up (`_SettleIfQuiet`, on the poll) instead of a pair of mails per flap. The first drop still
-    // wakes the assistant when sessions run there, since that is the one it can act on.
+    // AC-1327/AC-1943: held nodes stay silent; flapping emits one unstable and one back notice after `_SettleIfQuiet`,
+    // avoiding per-flap mail while the first actionable drop still wakes the assistant.
     public void NotifyTransition(string nodeName, bool reachable, int sessionCount, DateTimeOffset atUtc)
     {
         if (gate.RefusalFor(nodeName) is not null)
