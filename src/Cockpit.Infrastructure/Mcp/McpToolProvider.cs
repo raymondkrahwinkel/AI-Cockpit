@@ -305,10 +305,8 @@ internal sealed class McpToolProvider(
         return [.. byName.Values];
     }
 
-    // Endpoints a confined session keeps: the pane-scoped Autopilot controls (named as literals to keep Infrastructure
-    // free of the plugin; in sync with AutopilotRunTools/AutopilotCeoTools.EndpointName), cockpit-session's pane-safe
-    // status/run controls, and cockpit-coding, confined to the working directory by construction (AC-1489). Never
-    // cockpit-coding-shell or cockpit-elevated: either would be an escape route.
+    // AC-174: keep pane-safe controls and worktree-confined cockpit-coding (AC-1489). Autopilot names stay literal
+    // to avoid an Infrastructure dependency; shell and elevated controls remain escape routes.
     private static readonly HashSet<string> ConfinedControlEndpoints =
         new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-session", CodingTools.EndpointName };
 
