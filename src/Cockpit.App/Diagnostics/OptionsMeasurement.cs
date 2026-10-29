@@ -13,7 +13,7 @@ internal sealed class OptionsMeasurement(string operation, Func<long>? timestamp
     public string? Finish()
     {
         var elapsed = Stopwatch.GetElapsedTime(_startedAt, _timestamp());
-        return elapsed < TimeSpan.FromMilliseconds(0)
+        return elapsed < TimeSpan.FromMilliseconds(850)
             ? null
             : $"options {operation} slow total={elapsed.TotalMilliseconds:0}ms phases={string.Join(',', _phases.Select(phase => $"{phase.Phase}:{phase.Elapsed.TotalMilliseconds:0}"))}";
     }
