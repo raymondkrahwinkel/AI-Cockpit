@@ -49,10 +49,11 @@ public static class SecretJsonWalker
                 {
                     var here = path.Length == 0 ? key : $"{path}.{key}";
 
-                    if (fields.IsSecret(key) && value is JsonValue)
+                    if (fields.IsSecret(key)
+                        && value is JsonValue secretValue
+                        && secretValue.TryGetValue<string>(out var current))
                     {
-                        if (value.GetValue<object>()?.ToString() is { Length: > 0 } current
-                            && transform(here, current) is { } replacement)
+                        if (current.Length > 0 && transform(here, current) is { } replacement)
                         {
                             json[key] = replacement;
                             rewritten.Add(here);

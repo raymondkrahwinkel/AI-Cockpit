@@ -20,6 +20,16 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
 {
     public async Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default)
     {
+        if (config is OllamaConfig ollama)
+        {
+            var ollamaRequested = LocalModelContext.Normalize(ollama.ContextTokens);
+            logger.LogWarning(
+                "Ollama profile {Model} requests {RequestedContext} context tokens, but the OpenAI-compatible endpoint cannot set num_ctx per request.",
+                ollama.Model,
+                ollamaRequested);
+            return $"Het Ollama-profiel vraagt {ollamaRequested} contexttokens, maar de OpenAI-compatibele /v1-route kan dit niet per aanvraag instellen. Stel OLLAMA_CONTEXT_LENGTH in op de Ollama-server of gebruik een model met PARAMETER num_ctx.";
+        }
+
         if (config is not LmStudioConfig lmStudio)
         {
             return null;

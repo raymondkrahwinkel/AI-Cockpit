@@ -1,9 +1,10 @@
 using System.Net;
 using System.Text;
-using Microsoft.Extensions.AI;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Sessions;
 
@@ -14,7 +15,7 @@ internal static class LocalModelContextContract
     internal static async Task AssertAsync()
     {
         _ProfileContextRoundTripsAndDrivesTheTurnGuard();
-        await _OllamaSendsNumCtxOnEveryRequest();
+        await _OllamaDoesNotFakeNumCtxPerRequest();
         await _LmStudioLoadsAnUnloadedModel();
         await _LmStudioReloadsASmallerContextWhenEnabled();
         await _LmStudioWarnsWithoutReloadWhenDisabled();
@@ -32,24 +33,28 @@ internal static class LocalModelContextContract
         Assert.Equal(65_536, OpenAiCompatSessionDriver.TurnLimitsFrom(loaded).ContextWindowTokens);
         Assert.Contains("Profiles[].Provider.ContextTokens", SettingsCarrierWhitelist.Carried);
         Assert.Contains("Profiles[].Provider.LoadModelWithContext", SettingsCarrierWhitelist.Carried);
+
+        var protectedSettings = JsonNode.Parse("""{"ContextTokens":32768,"ApiKey":"secret"}""")!.AsObject();
+        Assert.Equal(
+            ["ApiKey"],
+            SecretJsonWalker.Transform(protectedSettings, SecretFields.ByName, (_, _) => "protected"));
+        Assert.Equal(32_768, protectedSettings["ContextTokens"]!.GetValue<int>());
+
+        var recovered = JsonSerializer.Deserialize<ProviderConfigEntry>(
+            """{"Provider":"Ollama","ContextTokens":"32768"}""",
+            CockpitConfigFileAccess.SerializerOptions);
+        Assert.Equal(32_768, recovered!.ContextTokens);
     }
 
-    private static async Task _OllamaSendsNumCtxOnEveryRequest()
+    private static async Task _OllamaDoesNotFakeNumCtxPerRequest()
     {
-        ChatOptions? observed = null;
-        var inner = Substitute.For<IChatClient>();
-        inner.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions>(options => observed = options), Arg.Any<CancellationToken>())
-            .Returns(_EmptyStream());
-        using var client = new OllamaContextChatClient(inner, 32_768);
+        var handler = new RecordingHandler(_ => _Json("{}"));
+        var warning = await _Manager(handler).PrepareAsync(
+            new OllamaConfig("http://localhost:11434", "qwen", ContextTokens: 32_768));
 
-        await foreach (var _ in client.GetStreamingResponseAsync([new ChatMessage(ChatRole.User, "hi")]))
-        {
-        }
-
-        var raw = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(observed!.RawRepresentationFactory!(inner));
-#pragma warning disable SCME0001
-        Assert.Equal(32_768, raw.Patch.GetInt32("$.options.num_ctx"u8));
-#pragma warning restore SCME0001
+        Assert.Contains("OLLAMA_CONTEXT_LENGTH", warning);
+        Assert.Contains("PARAMETER num_ctx", warning);
+        Assert.Empty(handler.Requests);
     }
 
     private static async Task _LmStudioLoadsAnUnloadedModel()
@@ -117,12 +122,6 @@ internal static class LocalModelContextContract
     {
         Content = new StringContent(json, Encoding.UTF8, "application/json"),
     };
-
-    private static async IAsyncEnumerable<ChatResponseUpdate> _EmptyStream()
-    {
-        await Task.CompletedTask;
-        yield break;
-    }
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
