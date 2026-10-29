@@ -251,6 +251,8 @@ public class DepotBrowserServiceTests
         var source = _Source(rig);
         var file = DepotFileRefs.Create("c1", "acme/cockpit", "a.md");
         var read = await source.ReadAsync(file, default);
+        var readRequest = Assert.Single(rig.RestCalls, call => call.Path.EndsWith("/read?includeChecksums=true", StringComparison.Ordinal));
+        Assert.Contains("includeChecksums=true", readRequest.Path, StringComparison.Ordinal);
         Assert.True(read.CanWrite);
         using var reader = new StreamReader(read.Content);
         Assert.Equal("# original", await reader.ReadToEndAsync());

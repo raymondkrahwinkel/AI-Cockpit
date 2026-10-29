@@ -31,7 +31,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
                 var (project, path) = DepotFileRefs.Parse(file, connectionId);
                 var connection = _Connection();
                 var role = await _AuthorizeAsync(connection, project, false, cancellationToken).ConfigureAwait(false);
-                using var response = await _PostAsync(connection, project, "read", new[] { path }, cancellationToken).ConfigureAwait(false);
+                using var response = await _PostAsync(connection, project, "read", new[] { path }, cancellationToken, "includeChecksums=true").ConfigureAwait(false);
                 if (response.RootElement.TryGetProperty("truncated", out var truncated) && truncated.ValueKind == JsonValueKind.True)
                 {
                     throw new FileSourceException(FileSourceErrorKind.TooLarge, "Depot truncated the file; no partial text was opened.");
@@ -120,7 +120,7 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
             return role;
         }
 
-        private async Task<JsonDocument> _PostAsync<T>(DepotConnectionRegistration connection, string project, string operation, T request, CancellationToken cancellationToken)
+        private async Task<JsonDocument> _PostAsync<T>(DepotConnectionRegistration connection, string project, string operation, T request, CancellationToken cancellationToken, string? query = null)
         {
             if (_Connection() != connection)
             {
@@ -128,7 +128,8 @@ internal sealed class DepotFileSourceProvider(ICockpitHost host,
             }
             var address = project.Split('/');
             using var api = new DepotApi(host, connection);
-            var result = await api.PostJsonAsync($"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/{operation}",
+            var endpoint = $"sync/{Uri.EscapeDataString(address[0])}/{Uri.EscapeDataString(address[1])}/{operation}" + (query is null ? string.Empty : $"?{query}");
+            var result = await api.PostJsonAsync(endpoint,
                 request, cancellationToken).ConfigureAwait(false);
             if (result.Outcome != DepotApiOutcome.Success)
             {
