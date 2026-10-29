@@ -90,7 +90,6 @@ internal sealed class DepotSharedProjectSource(
         var cancellation = new CancellationTokenSource();
         lock (_projectListRefreshLock)
         {
-            _projectListRefreshCancellation?.Cancel();
             _projectListRefreshCancellation = cancellation;
         }
 
