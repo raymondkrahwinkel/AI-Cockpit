@@ -324,6 +324,7 @@ public class AssistantSessionHostTests
                 AssistantIdentity.McpServerName,
                 AssistantIdentity.ActMcpServerName,
                 GitHubPullRequestsMcp.ServerName,
+                "cockpit-elevated",
             },
             selection);
     }

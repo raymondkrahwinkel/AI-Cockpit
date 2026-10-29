@@ -56,6 +56,8 @@ internal sealed class ElevatedSessionTools(
             return _Error("No consent surface is available, so nothing was run as administrator.");
         }
 
+        // The card carries the literal command line the runner will start — the same `plan` goes to both — plus
+        // the agent's reason, labelled as its own words so a prompt-injected justification cannot pose as the host's.
         var plan = elevated.Plan(command);
         var decision = await consent.RequestConsentAsync(new ConsentRequest(
             "A session wants to run a command as administrator",

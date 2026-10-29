@@ -37,6 +37,7 @@ public class McpToolProviderConfinementTests
         // The pane-scoped report endpoint the step legitimately needs.
         new() { Name = "cockpit-autopilot-run", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
+        new() { Name = "cockpit-agents", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-coding", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-elevated", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true, Internal = true },
     ];
@@ -107,6 +108,7 @@ public class McpToolProviderConfinementTests
         Assert.Contains("memory", names);
         Assert.Contains("cockpit-autopilot-run", names);
         Assert.Contains("cockpit-session", names);
+        Assert.Contains("cockpit-agents", names);
         Assert.Contains("cockpit-coding", names);
         Assert.DoesNotContain("cockpit-elevated", names);
         Assert.DoesNotContain("run_elevated", sessionTools);

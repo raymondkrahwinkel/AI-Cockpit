@@ -871,6 +871,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             // AC-869: the assistant always has cockpit-github-pull-requests, regardless of working directory —
             // the one launch other than a git-repo session that names this internal endpoint.
             GitHubPullRequestsMcp.ServerName,
+            // AC-1911: the operator's assistant retains administrator execution after it was split away from
+            // ordinary build agents; ElevatedSessionTools still gates every call through consent and UAC.
+            "cockpit-elevated",
         };
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they

@@ -305,10 +305,13 @@ internal sealed class McpToolProvider(
         return [.. byName.Values];
     }
 
-    // AC-174: keep pane-safe controls and worktree-confined cockpit-coding (AC-1489). Autopilot names stay literal
-    // to avoid an Infrastructure dependency; shell and elevated controls remain escape routes.
+    // AC-174: keep pane-safe controls and worktree-confined cockpit-coding (AC-1489). cockpit-agents is pane-scoped
+    // messaging without filesystem access. Shell and elevated controls remain escape routes.
     private static readonly HashSet<string> ConfinedControlEndpoints =
-        new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-session", CodingTools.EndpointName };
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-session", "cockpit-agents", CodingTools.EndpointName,
+        };
 
     // AC-174: the confined effective set for a session pinned to <paramref name="root"/> — filesystem preset
     // re-rooted at the worktree, the in-memory knowledge server, and the Autopilot endpoint if already present.
