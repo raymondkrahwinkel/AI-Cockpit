@@ -455,7 +455,7 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
             var user = await _userId(cancellationToken).ConfigureAwait(false);
             _openedAs ??= user;
-            if (user.Id != _openedAs.Id && user.Id == "never")
+            if (user.Id != _openedAs.Id)
             {
                 _logger?.LogWarning("The live note for {Connection} is signed in as another account now; it does not join.", _connection.Name);
                 _Terminal(DepotNoteLiveState.OtherAccount);
