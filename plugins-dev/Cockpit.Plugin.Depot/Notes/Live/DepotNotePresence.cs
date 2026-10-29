@@ -54,6 +54,16 @@ internal sealed class DepotNotePresence : IDisposable
     private DepotPresenceSelf? _self;
     private ulong _clock;
     private bool _away;
+    private (LivePeer Peer, DateTimeOffset Until)? _outside;
+
+    public Task OutsideAsync(string name, CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            _outside = (new LivePeer("outside:" + name, name, "", "agent", "Editor", "editing"), _time.GetUtcNow().AddSeconds(30));
+        }
+        return _RaiseAsync(cancellationToken);
+    }
 
     public DepotNotePresence(
         ulong clientId, IDepotCursorMap map, Func<byte[], CancellationToken, Task> send, Action<IReadOnlyList<LivePeer>> changed,
@@ -213,15 +223,20 @@ internal sealed class DepotNotePresence : IDisposable
             bool dropped;
             lock (_gate)
             {
+                var outsideExpired = _outside is { } outside && outside.Until <= now;
+                if (outsideExpired)
+                {
+                    _outside = null;
+                }
                 // Offline the people stay, dimmed, and nothing can be sent; the beat resumes with the connection.
-                if (_away)
+                if (_away && !outsideExpired)
                 {
                     return;
                 }
 
-                var gone = _remote.Where(pair => now - pair.Value.Seen >= Silence).Select(pair => pair.Key).ToList();
+                var gone = _remote.Where(pair => !_away && now - pair.Value.Seen >= Silence).Select(pair => pair.Key).ToList();
                 gone.ForEach(id => _remote.Remove(id));
-                dropped = gone.Count > 0;
+                dropped = gone.Count > 0 || outsideExpired;
             }
 
             if (dropped)
@@ -229,7 +244,10 @@ internal sealed class DepotNotePresence : IDisposable
                 await _RaiseAsync(_life.Token).ConfigureAwait(false);
             }
 
-            await _SendAsync(_life.Token).ConfigureAwait(false);
+            if (!_away)
+            {
+                await _SendAsync(_life.Token).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested) { }
         catch (Exception error)
@@ -355,9 +373,11 @@ internal sealed class DepotNotePresence : IDisposable
             DepotPresenceSelf? self;
             LivePresenceState own;
             bool away;
+            LivePeer? outside;
             lock (_gate)
             {
                 (remote, self, own, away) = ([.. _remote.Values.OrderBy(item => item.Peer.Who, StringComparer.Ordinal)], _self, _own, _away);
+                outside = _outside is { } writer && writer.Until > _time.GetUtcNow() ? writer.Peer : null;
             }
 
             var peers = new List<LivePeer>();
@@ -374,6 +394,10 @@ internal sealed class DepotNotePresence : IDisposable
                 peers.Add(item.Peer with { Away = away, Caret = caret, Selection = selection });
             }
 
+            if (outside is not null)
+            {
+                peers.Add(outside with { Away = away });
+            }
             Volatile.Write(ref _published, peers);
             _changed(peers);
         }

@@ -655,6 +655,9 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
     private async Task _UnloadAsync()
     {
+        _externalWriter = null;
+        _ambiguousExternalWriter = false;
+        _outsidePending = false;
         await _text.WaitAsync(_life.Token).ConfigureAwait(false);
         try
         {
@@ -780,6 +783,12 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
         switch (hubEvent)
         {
+            case { Kind: "outside", Args: [_, JsonElement outside, ..] }:
+                await _GuardAsync(() => _OutsideAsync(outside), "Reading an outside writer").ConfigureAwait(false);
+                break;
+            case { Kind: "merged", Args: [_, int[] blocks, ..] }:
+                await _GuardAsync(() => _MergedAsync(blocks), "Marking an outside write").ConfigureAwait(false);
+                break;
             case { Kind: "update", Args: [_, byte[] data, ..] }:
                 await _GuardAsync(() => _ApplyRemoteAsync(data, _life.Token), "Applying a live note update").ConfigureAwait(false);
                 break;
@@ -868,6 +877,9 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         // Without the socket the hub may already have named another saver (editor.ts does the same): the next Join asks again.
         _mine = false;
         _saver?.SetSaver(false);
+        _externalWriter = null;
+        _ambiguousExternalWriter = false;
+        _outsidePending = false;
         var hub = Interlocked.Exchange(ref _hub, null);
         if (hub is not null)
         {

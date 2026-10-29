@@ -370,6 +370,7 @@ internal sealed class MarkdownFileWorkspace : UserControl
             _savedText = snapshot.Text;
             live.Attach(id, snapshot);
             live.Changed += (_, _) => _UpdateState();
+            live.ExternalEdited += (_, edit) => Editor.MarkExternalEdit(edit);
             _live = live;
             if (wire.Peers is { } peers)
             {

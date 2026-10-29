@@ -27,7 +27,7 @@ internal static partial class Screenshotter
     // The note of the AC-1895 v2 mockup, with its people: Sanne selects a phrase, Joris has his caret after "Linux".
     private const string PresenceNote = "# Weekly sync — 28 October\n\n**Date:** Wednesday 28 October 2026, 14:00 · **Present:** Raymond, Sanne, Joris\n\n## Notes\n- Notes taker: the native editor replaces the webview; the mockups are in review\n- Live bridge spike passed G3: byte-equal on all six fixtures\n- Release 0.141 stays on Friday\n\n## Decisions\n- Jint runs `markdown.ts` in the Depot plugin, not in the host\n\n## Action items\n- [x] Sanne: send the fixtures diff to the team\n- [ ] Joris: measure Jint start-up on Linux\n- [ ] Raymond: review mockups 4, 5 and 6\n";
 
-    private static IReadOnlyList<LivePeer> _PresencePeers(bool away)
+    private static IReadOnlyList<LivePeer> _PresencePeers(bool away, bool agent = false)
     {
         var sanne = PresenceNote.IndexOf("not in the host", StringComparison.Ordinal);
         var joris = PresenceNote.IndexOf("on Linux", StringComparison.Ordinal) + "on Linux".Length;
@@ -36,6 +36,7 @@ internal static partial class Screenshotter
             new("raymond", "Raymond Krahwinkel", "#3b82f6", "Cockpit", "Editor", "editing", You: true),
             new("sanne", "Sanne de Vries", "#3fb8c4", "web", "Editor", "selecting", Away: away, Caret: sanne + 15, Selection: new LiveRange(sanne, sanne + 15)),
             new("joris", "Joris Bakker", "#d9a441", "Cockpit", "Editor", "editing", Away: away, Caret: joris),
+            .. agent ? new[] { new LivePeer("assistant", "Assistant · on behalf of Raymond", "", "agent", "Editor", "editing") } : [],
         ];
     }
 
@@ -49,13 +50,17 @@ internal static partial class Screenshotter
             _ => null,
         };
         var text = presence ? PresenceNote : "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
+        if (state == "presence-agent")
+        {
+            text += "- [ ] Joris: post the Linux numbers in #cockpit before Friday\n- [ ] Sanne: plan the inbox dry run with two web users\n- [ ] Raymond: decide B7 (Cockpit as saver) after LB-3\n";
+        }
         var options = new FileWorkspaceOpenOptions(
             presence ? new FileRef("scene", "idea", "Meetings/2026-10-28 Weekly sync.md") : new FileRef("scene", "idea", "Ideas/md-editor-in-cockpit.md"),
             "idea", presence ? "2026-10-28 Weekly sync.md" : "md-editor-in-cockpit.md", "Depot / Work / krahwinkel-it/cockpit",
             Edit: state is not ("readonly" or "preview"), CreateNew: state == "new", InitialText: "# md-editor-in-cockpit\n\n");
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(new WorkspaceTypeRegistration("scene.file", "Markdown", context =>
-            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state))),
+            new MarkdownFileWorkspace(context, options, new FileSourceChannelClient(new FileSceneChannel(text, state != "readonly", state.StartsWith("conflict"), state is "live" || presence, presence, away: state == "presence-away", status: readOnly ?? _SceneStatus(state), agent: state == "presence-agent")),
                 () => Task.FromResult(false))) { CanFloat = true }, new PluginScenes.SceneStorage(), NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
         var workspaces = cockpit.Workspaces;
@@ -67,6 +72,10 @@ internal static partial class Screenshotter
         var entry = workspaces.Active ?? throw new InvalidOperationException("The file scene did not open.");
         var body = workspaces.BodyFor(entry) as MarkdownFileWorkspace ?? throw new InvalidOperationException("The editor scene is missing.");
         body.Ready.GetAwaiter().GetResult();
+        if (state == "presence-agent")
+        {
+            body.Editor.MarkExternalEdit(new ExternalTextEdit("Assistant · on behalf of Raymond", DateTimeOffset.UtcNow, [new(PresenceNote.Length, text.Length)]));
+        }
         if (state.StartsWith("conflict"))
         {
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "- Reply when it is done\n");
@@ -112,7 +121,7 @@ internal static partial class Screenshotter
         return saved is null ? null : new LiveFileStatus(LiveFileState.Live) { Saved = saved };
     }
 
-    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null) : IPluginUiChannel
+    private sealed class FileSceneChannel(string text, bool writable, bool conflict = false, bool live = false, bool presence = false, bool away = false, LiveFileStatus? status = null, bool agent = false) : IPluginUiChannel
     {
         private string Changed => text.Replace("`baseChecksum`" + (char)10, "`baseChecksum`" + (char)10 + "- Compare before you overwrite" + (char)10);
         private bool _read;
@@ -130,7 +139,7 @@ internal static partial class Screenshotter
                     { CanWrite = writable, Live = live, ModifiedBy = presence ? "Sanne" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LiveOpen when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveSnapshot>(
                 new("scene", Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), 1, status ?? new(LiveFileState.Live))
-                    { Peers = presence ? _PresencePeers(away) : null, OpenUrl = presence ? "https://depot.example/projects/krahwinkel-it/cockpit" : null }, null), FileSourceChannel.Json),
+                    { Peers = presence ? _PresencePeers(away, agent) : null, OpenUrl = presence ? "https://depot.example/projects/krahwinkel-it/cockpit" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LivePresenceSet when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLivePresenceSet>(
                 JsonSerializer.Deserialize<FileSourceLivePresenceSet>(payload, FileSourceChannel.Json), null), FileSourceChannel.Json),
             FileSourceChannel.LiveClose when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveRequest>(new("scene"), null), FileSourceChannel.Json),

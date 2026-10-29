@@ -199,7 +199,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             workingDirectory,
             () => inner.SessionId,
             logger,
-            cancellationToken).ConfigureAwait(false);
+              cancellationToken, Profile?.Label).ConfigureAwait(false);
     }
 
     // Non-null once StartAsync mounted one for this session.
@@ -378,7 +378,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     return null;
                 }
 
-                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
+                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl, Profile?.Label) is { } mapped)
                 {
                     return mapped;
                 }

@@ -581,6 +581,7 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
             // AC-403: this connection's own id, so the host files its OAuth token under something the operator
             // cannot edit — the Name is free-text, and renaming used to strand sign-in under the old name.
             Id = connection.Id,
+            IncludeAgentName = true,
             // Scheme+host+port of the stored base URL: Depot's protected-resource metadata names the origin as
             // its authorization_servers entry, not a subpath. Falls back to the base URL if unparseable (defensive only).
             OAuthAuthority = DepotUrlNormalizer.Origin(connection.Url) ?? connection.Url,

@@ -25,7 +25,7 @@ internal sealed class McpToolProvider(
     SessionMcpMounts? mounts = null)
     : IMcpToolProvider, IMcpToolInvoker, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, string? projectId = null, string? workingDirectory = null, CancellationToken cancellationToken = default, string? agentName = null)
     {
         // AC-89: a session with a pane id mints one per-session token here (not per server) so every
         // cockpit-hosted endpoint it connects to can attribute requests to this pane; no pane id falls back to the shared app key.
@@ -66,7 +66,7 @@ internal sealed class McpToolProvider(
         // Connect concurrently rather than one-by-one — sequential round-trips added up once more than one
         // server was configured. Task.WhenAll preserves input order, so results stay deterministic even
         // though the connects race in parallel; each keeps its own try/catch (_ConnectServerAsync).
-        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken)));
+        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken, agentName)));
         var serversNeedingSignIn = new List<string>();
         var connectionIssues = new List<McpServerConnectionIssue>();
 
@@ -209,7 +209,7 @@ internal sealed class McpToolProvider(
     // The connect result plus, on failure, the operator-facing reason (AC-997) — carried alongside the null
     // ServerConnection rather than thrown, since Task.WhenAll below needs one result per server regardless of
     // which one failed.
-    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
+    private async Task<(ServerConnection? Connection, string? FailureReason)> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken, string? agentName = null)
     {
         McpClient? client = null;
         var connected = false;
@@ -224,7 +224,7 @@ internal sealed class McpToolProvider(
                 return (null, NeedsSignIn);
             }
 
-            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken), options: null, cancellationToken).ConfigureAwait(false);
+            client = await McpClientConnector.ConnectAsync(_BuildTransport(server, sessionToken, agentName), options: null, cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // AC-79: classify each tool from its MCP annotations at connect; an absent readOnlyHint stays
@@ -349,7 +349,7 @@ internal sealed class McpToolProvider(
 
     private const string NeedsSignIn = "Needs a sign-in.";
 
-    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken, string? agentName = null) => server.Transport switch
     {
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -367,7 +367,7 @@ internal sealed class McpToolProvider(
             // AC-40/AC-89: a bearer header carries the auth for a cockpit-hosted endpoint (this session's
             // per-session token, else the shared app key) or a user API-key server's own key; OAuth via the authorizer.
             // AC-354: operator headers first, then the auth-derived Authorization on top.
-            AdditionalHeaders = _Headers(server, sessionToken),
+            AdditionalHeaders = _Headers(server, sessionToken, agentName),
             // Never interactive (AC-1517): the browser opens only from a Sign in the operator pressed, so a token
             // the coordinator approved but the server then refuses ends as a failed connect, not as a stray tab.
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server, interactive: false) : null,
@@ -377,13 +377,13 @@ internal sealed class McpToolProvider(
 
     // Same operator-headers-vs-managed-credential rule the spawn paths use (McpAgentHeaders); here the cockpit
     // sets the Authorization itself in-process instead of a spawned agent's provider writing it.
-    private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken)
+    private Dictionary<string, string> _Headers(McpServerConfig server, string? sessionToken, string? agentName)
     {
         var bearer = server.CockpitHosted && sessionToken is not null
             ? sessionToken
             : CockpitMcpBearer.For(server, authKey);
 
-        var headers = new Dictionary<string, string>(McpAgentHeaders.For(server, bearer), StringComparer.OrdinalIgnoreCase);
+        var headers = new Dictionary<string, string>(McpAgentHeaders.For(server, bearer, agentName), StringComparer.OrdinalIgnoreCase);
         if (bearer is not null)
         {
             headers["Authorization"] = $"Bearer {bearer}";

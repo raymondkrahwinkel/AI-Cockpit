@@ -69,6 +69,10 @@ public sealed partial class MarkdownEditor : UserControl, IMarkdownEditor
 
         _editor.TextArea.Caret.PositionChanged += (_, _) => _OnCaretMoved();
         _editor.Document.Changed += (_, e) => _OnDocumentChanged(e);
+        _editor.Document.Changing += (_, e) => _ExternalChanging(e);
+        _externalClock.Tick += (_, _) => _ExpireExternalLines();
+        DetachedFromVisualTree += (_, _) => _externalClock.Stop();
+        AttachedToVisualTree += (_, _) => _ExpireExternalLines();
         _editor.TextArea.AddHandler(KeyDownEvent, _OnKeyDown, RoutingStrategies.Tunnel);
         _editor.TextArea.AddHandler(TextInputEvent, _OnTextInput, RoutingStrategies.Tunnel);
         _editor.TextArea.AddHandler(PointerPressedEvent, _OnPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);

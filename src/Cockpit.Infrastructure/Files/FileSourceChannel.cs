@@ -92,7 +92,7 @@ internal static class FileSourceChannel
             var session = await live.OpenLiveAsync(request.File, ct).ConfigureAwait(false);
             var open = new LiveSession(session,
                 (_, patch) => channel.Publish(Wire.LivePatch, JsonSerializer.SerializeToElement(
-                    new FileSourceLivePatch(id, patch.Rev, [.. patch.Ops], patch.Who), Wire.Json)),
+                    new FileSourceLivePatch(id, patch.Rev, [.. patch.Ops], patch.Who) { ExternalEdit = patch.ExternalEdit }, Wire.Json)),
                 (_, status) => channel.Publish(Wire.LiveState, JsonSerializer.SerializeToElement(
                     new FileSourceLiveState(id, status), Wire.Json)),
                 (_, peers) => channel.Publish(Wire.LivePresence, JsonSerializer.SerializeToElement(

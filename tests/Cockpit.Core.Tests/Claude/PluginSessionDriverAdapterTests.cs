@@ -269,14 +269,16 @@ public class PluginSessionDriverAdapterTests
         Assert.True(adapter.Capabilities.ConfinesFileAccessToWorkingDirectory);
     }
 
-    [Fact]
-    public async Task StartAsync_ExcludesLocalOnlyAndTheReservedPermissionServer_FromTheFanOut()
+    [Theory]
+    [InlineData(true, "Assistant")]
+    [InlineData(false, null)]
+    public async Task StartAsync_ExcludesLocalOnlyAndTheReservedPermissionServer_FromTheFanOut(bool includeAgentName, string? expectedName)
     {
         var inner = new FakePluginSessionDriver();
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
-            new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
+            new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp", IncludeAgentName = includeAgentName },
             new() { Name = "filesystem", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Scope = McpServerScope.LocalOnly },
             new() { Name = McpConfigFile.ServerName, Transport = McpTransport.Http, Url = "http://127.0.0.1:2/mcp" },
         });
@@ -284,9 +286,11 @@ public class PluginSessionDriverAdapterTests
 
         // No per-session selection — every eligible server, but a local-model-only server and the reserved
         // permission-server key (Codex prompts for approvals itself) must never fan out to the agent.
-        await adapter.StartAsync();
+        await adapter.StartAsync(profile: new SessionProfile("Assistant", new PluginProviderConfig("test", "{}")));
 
-        Assert.Equal("cockpit-orchestrator", Assert.Single(inner.LastMcpServers!).Name);
+        var mounted = Assert.Single(inner.LastMcpServers ?? []);
+        Assert.Equal("cockpit-orchestrator", mounted.Name);
+        Assert.Equal(expectedName, mounted.Headers.GetValueOrDefault("X-Cockpit-Agent"));
     }
 
     // AC-378, criterion 3 — the finding this ticket exists for: narrowing a delegated task DOWN to a server the

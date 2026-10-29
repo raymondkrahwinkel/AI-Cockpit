@@ -31,7 +31,7 @@ internal sealed class PluginTtySessionProviderAdapter(
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
-        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory);
+        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames, context.ProjectId, context.WorkingDirectory, context.Profile?.Label);
 
         // AC-408: the same pane id TtyLauncher puts on the base environment as COCKPIT_PANE_ID, read back here
         // (rather than added to TtyLaunchContext itself) so ReportConversationId below knows which pane a later
@@ -76,7 +76,7 @@ internal sealed class PluginTtySessionProviderAdapter(
     // AC-1013: Agent-eligible MCP servers and delegation eligibility, resolved once per launch off the operator's
     // checklist (AC-218 scopes to the project, resolved host-side — never a paneId→projectId lookup here, which
     // would need a UI-thread hop this sync spawn path can't take); best-effort — a missing store/read failure yields no servers/delegation, never blocks the launch.
-    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory)
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames, string? projectId, string? workingDirectory, string? agentName)
     {
         if (mcpServerCatalog is null)
         {
@@ -114,7 +114,7 @@ internal sealed class PluginTtySessionProviderAdapter(
                     return null;
                 }
 
-                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl) is { } mapped)
+                if (PluginMcpServerMapper.ToPluginMcpServer(server, access.AccessToken, proxyUrl, agentName) is { } mapped)
                 {
                     return mapped;
                 }

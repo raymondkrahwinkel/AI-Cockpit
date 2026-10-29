@@ -6,13 +6,13 @@ namespace Cockpit.Infrastructure.Sessions;
 
 internal static class PluginMcpServerMapper
 {
-    internal static PluginMcpServer? ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl) => server.Transport switch
+    internal static PluginMcpServer? ToPluginMcpServer(McpServerConfig server, string? oauthAccessToken, string? oauthProxyUrl, string? agentName = null) => server.Transport switch
     {
         McpTransport.Http when oauthProxyUrl is { Length: > 0 } => new PluginMcpServer
         {
             Name = server.Name,
             Url = oauthProxyUrl,
-            Headers = McpAgentHeaders.For(server, null),
+            Headers = McpAgentHeaders.For(server, null, agentName),
             CockpitHosted = true,
         },
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
@@ -20,7 +20,7 @@ internal static class PluginMcpServerMapper
             Name = server.Name,
             Url = server.Url,
             BearerToken = CockpitMcpBearer.UserCredential(server, oauthAccessToken),
-            Headers = McpAgentHeaders.For(server, CockpitMcpBearer.UserCredential(server, oauthAccessToken)),
+            Headers = McpAgentHeaders.For(server, CockpitMcpBearer.UserCredential(server, oauthAccessToken), agentName),
             CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer

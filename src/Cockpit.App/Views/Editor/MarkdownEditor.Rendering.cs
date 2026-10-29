@@ -477,6 +477,7 @@ public sealed partial class MarkdownEditor
                 _PaintCompare(owner, drawingContext, number, row, gutter);
                 if (owner.ShowSource)
                 {
+                    owner._PaintExternal(drawingContext, number, row, gutter);
                     continue;
                 }
 
@@ -513,6 +514,7 @@ public sealed partial class MarkdownEditor
                 {
                     _Badge(drawingContext, visual, row, label);
                 }
+                owner._PaintExternal(drawingContext, number, row, gutter);
             }
         }
 

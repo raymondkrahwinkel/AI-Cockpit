@@ -27,6 +27,9 @@ public sealed record McpServerContribution(
     string? BearerToken = null,
     McpContributionScope Scope = McpContributionScope.All)
 {
+    /// <summary>Requests the launching profile's display name in the X-Cockpit-Agent header.</summary>
+    public bool IncludeAgentName { get; init; }
+
     // AC-500: init-only properties rather than widening the primary constructor — a plugin prebuilt against an
     // older assembly still calls the original 4-parameter ctor by its exact IL signature; widening it would throw
     // MissingMethodException. This is additive without touching the ctor, like a default interface method.

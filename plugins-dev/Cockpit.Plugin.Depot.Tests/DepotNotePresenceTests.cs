@@ -63,6 +63,17 @@ public class DepotNotePresenceTests
         var real = Assert.Single(presence.Peers);
         Assert.Equal(("admin@depot.local", "#a78bda", "web", "Editor", "selecting"), (real.Name, real.Color, real.Source, real.Role, real.Activity));
         Assert.Equal((87, new LiveRange(71, 87)), (real.Caret, real.Selection));
+
+        await presence.OutsideAsync("Assistant · on behalf of Raymond", CancellationToken.None);
+        Assert.Equal("agent", presence.Peers[^1].Source);
+        Assert.Equal("Assistant · on behalf of Raymond", presence.Peers[^1].Name);
+        time.Advance(TimeSpan.FromSeconds(29));
+        await presence.BeatAsync();
+        Assert.Equal("agent", Assert.Single(presence.Peers).Source);
+        await presence.SetAwayAsync(true);
+        time.Advance(TimeSpan.FromSeconds(1));
+        await presence.BeatAsync();
+        Assert.Empty(presence.Peers);
     }
 
     // A cursor "position" that is only its item clock, which is all this test needs of the bridge's mapping.
