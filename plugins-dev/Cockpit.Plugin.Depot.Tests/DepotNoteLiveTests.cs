@@ -39,7 +39,12 @@ public class DepotNoteLiveTests
         var posts = 0;
         var joined = new DepotNoteJoinResult("doc-1", "editor", [], true, false, "epoch-1", false, false, Markdown: "# Original\n");
         var first = new _Hub(_ => Task.FromResult(joined));
-        var later = new _Hub(_ => Task.FromResult(joined));
+        var joinedLate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var later = new _Hub(_ =>
+        {
+            joinedLate.TrySetResult();
+            return Task.FromResult(joined);
+        });
         var hubs = new Queue<_Hub>([first, new _Hub(_ => throw new HubException("auth.session_expired: refused")), later]);
         await using var session = new DepotNoteSession(Connection, Note, _ => Task.FromResult(new DepotNoteUser(user, "Raymond")),
             (_, _, closed) => hubs.Dequeue().With(closed), clientId => new JintNoteRoom(clientId), _ => { }, [TimeSpan.Zero],
@@ -59,7 +64,7 @@ public class DepotNoteLiveTests
 
         user = "user-2";
         await session.ReconnectAsync(signIn: true, CancellationToken.None);
-        await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.WhenAny(session.Completion, joinedLate.Task).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Empty(later.Joins);
         Assert.Empty(later.Updates);
