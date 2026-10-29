@@ -171,6 +171,10 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
 
     public ISessionHandle Handle { get; }
 
+    // The machine badge the flat "Waiting for you" list shows on this row; null while the grouped list is showing.
+    [ObservableProperty]
+    private string? _machineBadge;
+
     [ObservableProperty]
     private string _title = "";
 

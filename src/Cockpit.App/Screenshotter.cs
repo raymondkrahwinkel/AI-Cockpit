@@ -302,6 +302,7 @@ internal static partial class Screenshotter
         // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
         ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
         ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
+        ["sidebar-waiting"] = ServerGroupScene.SidebarWaiting,
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-start-refused"] = ServerGroupScene.StartRefused,
