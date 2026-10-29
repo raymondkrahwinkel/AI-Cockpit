@@ -74,11 +74,11 @@ internal sealed class AssistantReadMcpTools(
                 hasStatusline = session.Statusline.Length > 0,
                 status = session.Status,
                 needsYou = session.NeedsYou,
-                // Idle covers both "never came up" and "finished a turn" â€” status alone cannot tell them apart,
+                // Idle covers both "never came up" and "finished a turn" — status alone cannot tell them apart,
                 // ready is the field that does.
                 ready = session.Ready,
                 // AC-1309: something of this session's own is still running even though status does not say
-                // so â€” a backgrounded shell, deliberately not status-pinning (AC-276).
+                // so — a backgrounded shell, deliberately not status-pinning (AC-276).
                 hasOutstandingWork = session.HasOutstandingWork,
                 // AC-1096: what that session's processes are still doing, which its status cannot say.
                 processCount = session.ProcessCount,
@@ -90,7 +90,7 @@ internal sealed class AssistantReadMcpTools(
             });
 
             // AC-1320: a node's rows, under the node's own address shape. Deliberately fewer fields than a local
-            // row â€” a desk, readiness and process figures are not measurable across machines, and absent is
+            // row — a desk, readiness and process figures are not measurable across machines, and absent is
             // honest where zero would read as idle.
             var nodeRows = nodeReads
                 .Where(read => read.Snapshot is not null)
@@ -132,7 +132,7 @@ internal sealed class AssistantReadMcpTools(
         }
         catch (Exception exception)
         {
-            // A tool result, never an MCP protocol error â€” the same choice cockpit-agents makes, so an unexpected
+            // A tool result, never an MCP protocol error — the same choice cockpit-agents makes, so an unexpected
             // failure here does not look to the assistant's runtime like the transport itself broke.
             return _Serialize(new { ok = false, error = exception.Message });
         }
@@ -145,7 +145,7 @@ internal sealed class AssistantReadMcpTools(
     }
 
     // One node under `NodeBudget`, or what the last attempt inside `UnreachableMemory` already said. `Since` is
-    // the first failed attempt in this run, not the latest â€” the node has been away at least that long.
+    // the first failed attempt in this run, not the latest — the node has been away at least that long.
     private async Task<_NodeRead> _ReadNodeAsync(string name)
     {
         var now = DateTimeOffset.UtcNow;
@@ -182,7 +182,7 @@ internal sealed class AssistantReadMcpTools(
     private sealed record _NodeRead(string Name, NodeSessionsSnapshot? Snapshot, _Unreachable? Unreachable);
 
     // How much of a transcript one `read_transcript` hands over when the caller does not say. Thirty rows because
-    // a row is not a turn (roughly the last few turns), which is the span a spoken question usually wants â€” the
+    // a row is not a turn (roughly the last few turns), which is the span a spoken question usually wants — the
     // bound exists because the alternative is a whole session pulled into context, priced per token.
     internal const int DefaultEntryCount = 30;
 
@@ -190,13 +190,13 @@ internal sealed class AssistantReadMcpTools(
     // wants as much as it can have, and `omitted` in the reply already says what it did not get.
     internal const int MaxEntryCount = 100;
 
-    // The most of any single transcript row repeated into the assistant's context â€” bounding row count does not
+    // The most of any single transcript row repeated into the assistant's context — bounding row count does not
     // bound byte count (a build log or `git diff` can dwarf every other row combined). Same limit as
     // `AgentMessageContent.MaxBodyLength`. Truncated rather than refused: nobody to hand a refusal to.
     internal const int MaxEntryTextLength = 2000;
 
     [McpServerTool(Name = "list_projects", ReadOnly = true)]
-    [Description("Lists the projects this cockpit knows: name, what the operator wrote about each, the folder its work lives in, the profile its sessions default to, and links â€” what a plugin calls this project elsewhere, keyed by field, e.g. {\"youtrack.project\": \"AC\"}. That key is the ticket prefix: an issue named AC-555 belongs to whichever project links \"youtrack.project\" to \"AC\", which is how \"pick up AC-555\" is assembled from list_projects, YouTrack's own get_issue, list_workspaces and start_agent rather than needing a tool of its own. A LINK'S VALUE CAN NAME SEVERAL PREFIXES, comma-separated, e.g. {\"youtrack.project\": \"EWB, AT, EJ\"} for one Cockpit project tracked under several YouTrack projects at once â€” an issue named AT-42 belongs to that project exactly as EWB-1 does; check every comma-separated item, not just the first. A PROJECT IS NOT A DESK AND NOT A SESSION â€” it is the operator's own idea of a body of work, it outlives every session, and asking \"which projects do we have\" is this tool and never list_workspaces. A project with no folder is an ordinary project, not a broken one: administrative work is work. The folder is also the honest answer to \"start something for that project\": it is where that project's sessions are meant to run, so pass it as the working directory rather than guessing a path. A PROJECT CAN DECLARE MORE THAN ONE REPOSITORY (AC-938) â€” a web repo and an android repo, say, neither nested in the other, kept as one project: repositories lists all of them, each with its path and an optional label the operator gave it (\"web\", \"android\"); sourceDirectory is always repositories[0].path. A session runs in exactly one repository at a time â€” pick the one you mean and pass its path as the working directory, rather than assuming the first is the one wanted. NEVER GUESS A LINK: if two projects' comma-separated lists under the same key share a prefix, or a prefix matches no project's list at all, that is a question for the operator, not a coin flip â€” say what you found (or that two projects claim it) and ask which one, rather than picking either. THIS ALSO COVERS EVERY PAIRED NODE'S PROJECTS (AC-1326), same as list_sessions: each row carries machine and runsOn â€” every machine name that project is known to exist on, this one included. A shared project bound on both machines (the same Project.Id on each) is ONE row with both names in runsOn; a project that exists only on a node is a row with just that node's name, and the fields this cockpit cannot know about it (description, folder, links) are absent rather than guessed. Never merge two rows by name â€” only a shared Project.Id makes them the same project. This is what start_agent's refusal (a project on more than one machine needs node said explicitly) is reading when it says which other machine has it. AN UNREACHABLE NODE NEVER JUST DROPS ITS PROJECTS SILENTLY (AC-1333): it shows up in nodes[], the same shape list_sessions gives it (name, reachable, error, unreachableSince), so a project that lives only there reads as 'that node did not answer' rather than 'that project does not exist'.")]
+    [Description("Lists the projects this cockpit knows: name, what the operator wrote about each, the folder its work lives in, the profile its sessions default to, and links — what a plugin calls this project elsewhere, keyed by field, e.g. {\"youtrack.project\": \"AC\"}. That key is the ticket prefix: an issue named AC-555 belongs to whichever project links \"youtrack.project\" to \"AC\", which is how \"pick up AC-555\" is assembled from list_projects, YouTrack's own get_issue, list_workspaces and start_agent rather than needing a tool of its own. A LINK'S VALUE CAN NAME SEVERAL PREFIXES, comma-separated, e.g. {\"youtrack.project\": \"EWB, AT, EJ\"} for one Cockpit project tracked under several YouTrack projects at once — an issue named AT-42 belongs to that project exactly as EWB-1 does; check every comma-separated item, not just the first. A PROJECT IS NOT A DESK AND NOT A SESSION — it is the operator's own idea of a body of work, it outlives every session, and asking \"which projects do we have\" is this tool and never list_workspaces. A project with no folder is an ordinary project, not a broken one: administrative work is work. The folder is also the honest answer to \"start something for that project\": it is where that project's sessions are meant to run, so pass it as the working directory rather than guessing a path. A PROJECT CAN DECLARE MORE THAN ONE REPOSITORY (AC-938) — a web repo and an android repo, say, neither nested in the other, kept as one project: repositories lists all of them, each with its path and an optional label the operator gave it (\"web\", \"android\"); sourceDirectory is always repositories[0].path. A session runs in exactly one repository at a time — pick the one you mean and pass its path as the working directory, rather than assuming the first is the one wanted. NEVER GUESS A LINK: if two projects' comma-separated lists under the same key share a prefix, or a prefix matches no project's list at all, that is a question for the operator, not a coin flip — say what you found (or that two projects claim it) and ask which one, rather than picking either. THIS ALSO COVERS EVERY PAIRED NODE'S PROJECTS (AC-1326), same as list_sessions: each row carries machine and runsOn — every machine name that project is known to exist on, this one included. A shared project bound on both machines (the same Project.Id on each) is ONE row with both names in runsOn; a project that exists only on a node is a row with just that node's name, and the fields this cockpit cannot know about it (description, folder, links) are absent rather than guessed. Never merge two rows by name — only a shared Project.Id makes them the same project. This is what start_agent's refusal (a project on more than one machine needs node said explicitly) is reading when it says which other machine has it. AN UNREACHABLE NODE NEVER JUST DROPS ITS PROJECTS SILENTLY (AC-1333): it shows up in nodes[], the same shape list_sessions gives it (name, reachable, error, unreachableSince), so a project that lives only there reads as 'that node did not answer' rather than 'that project does not exist'.")]
     public async Task<string> ListProjectsAsync()
     {
         try
@@ -253,7 +253,7 @@ internal sealed class AssistantReadMcpTools(
             });
 
             // Node-only projects (AC-1326): no local record exists, so only the id and name a node reported are
-            // known â€” the fields a local project carries (folder, links, profile) are absent, not guessed.
+            // known — the fields a local project carries (folder, links, profile) are absent, not guessed.
             var localIds = localProjects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
             var seenNodeOnly = new HashSet<string>(StringComparer.Ordinal);
             var nodeOnlyRows = nodeReads
@@ -279,7 +279,7 @@ internal sealed class AssistantReadMcpTools(
             {
                 ok = true,
                 projects,
-                // AC-1333: same shape as list_sessions' nodes[] â€” an unreachable node's projects are missing from
+                // AC-1333: same shape as list_sessions' nodes[] — an unreachable node's projects are missing from
                 // `projects` above, and this is where that absence gets a name instead of staying silent.
                 nodes = nodeReads.Select(read => new
                 {
@@ -305,7 +305,9 @@ internal sealed class AssistantReadMcpTools(
     [Description("States what is known right now about the model behind each configured profile, so you can pick profile, model and effort with facts: call it BEFORE every start_agent and before giving a subagent a model, for the task type at hand. Per profile: price now (USD per million tokens, input and output) and which window or modifier is applied, the quality index for the task type (taskType coding uses the coding index, agentic the agentic one, anything else or none the intelligence index), context tokens, limits, peak windows (provider-reported or public, each with whether it is active now) and quota state (how far each usage window stands and when it resets). EVERY FACT CARRIES ITS SOURCE AND AGE (ageSeconds; stale true once it is past what its source vouches for) and attribution lists the sources used. \"unknown\" means no source knows it, and the text after it says why: it is never 0 and never free (a model that is genuinely free says price 0 with a source). Say so when you meet it, and when data is stale, and never fill a gap with a figure of your own. Rows are ranked by the quality index for the task type, best first, unknown last. maxPricePerMTokens keeps only rows whose known input and output price now are both at or under it; a row with an unknown price is kept and marked, never dropped. This tool states facts and does not choose: the choice stays yours, within the operator's rules, and you state it in one line with the reason.")]
     public async Task<string> ModelOptionsAsync(
         [Description("What the work is: coding, agentic, or anything else (e.g. review, research, chat) for the general intelligence index. Optional.")] string? taskType = null,
-        [Description("Keep only rows whose known price now (input and output, USD per million tokens) is at or under this. Optional.")] decimal? maxPricePerMTokens = null)
+        [Description("Keep only rows whose known price now (input and output, USD per million tokens) is at or under this. Optional.")] decimal? maxPricePerMTokens = null,
+        [Description("Case-insensitive provider name or substring. Null or empty means no filter; unknown values return no models.")] string? provider = null,
+        [Description("Case-insensitive exact profile label. Null or empty means no filter; unknown values return no models.")] string? profile = null)
     {
         try
         {
@@ -418,6 +420,11 @@ internal sealed class AssistantReadMcpTools(
                 };
             }).ToArray();
 
+            models = models
+                .Where(model => string.IsNullOrEmpty(provider) || model.provider.Contains(provider, StringComparison.OrdinalIgnoreCase))
+                .Where(model => string.IsNullOrEmpty(profile) || string.Equals(model.profile, profile, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
             return _Serialize(new { ok = true, taskType = kind, at = picture.At, count = models.Length, models, attribution = used });
         }
         catch (Exception exception)
@@ -427,7 +434,7 @@ internal sealed class AssistantReadMcpTools(
     }
 
     [McpServerTool(Name = "list_shared_projects", ReadOnly = true)]
-    [Description("Lists shared projects this machine can see but has not bound to a local project yet, grouped by the source that offers them (e.g. \"Depot â€” Work\"). Call this before create_project: a project that looks new to this machine may already be shared here under a different name, and binding it is one step instead of creating a duplicate. Each source reports succeeded and, when it did not, an error explaining why (not signed in, unreachable) â€” one broken source never costs another source's rows, so check succeeded per source rather than assuming an empty projects list means nothing is shared there. A project already bound on this machine is left out, since binding it again is not what this tool is for.")]
+    [Description("Lists shared projects this machine can see but has not bound to a local project yet, grouped by the source that offers them (e.g. \"Depot — Work\"). Call this before create_project: a project that looks new to this machine may already be shared here under a different name, and binding it is one step instead of creating a duplicate. Each source reports succeeded and, when it did not, an error explaining why (not signed in, unreachable) — one broken source never costs another source's rows, so check succeeded per source rather than assuming an empty projects list means nothing is shared there. A project already bound on this machine is left out, since binding it again is not what this tool is for.")]
     public async Task<string> ListSharedProjectsAsync()
     {
         try
@@ -463,9 +470,9 @@ internal sealed class AssistantReadMcpTools(
     }
 
     [McpServerTool(Name = "list_delegated_tasks", ReadOnly = true)]
-    [Description("Lists the delegated tasks THIS MACHINE is running â€” the background work a session started with delegate_task, which always runs here even for a session on a paired node (AC-1326: a node has no delegation of its own) â€” newest first, across every owner pane. THIS IS THE HALF list_sessions CANNOT SEE: a delegated task runs without a pane, so it has no row there and no statusline however busy it is; a session that fanned its work out further looks idle in one list and is doing five things in the other. Each entry has the task id, the profile it runs under, its label and task type, its status (Queued, Running, Completed, Failed or Stopped), when it was created/started/finished, how many turns it has taken, its result or its error, and ownerPaneId â€” the session that started it, which is how you attribute background work to the agent you spawned. A null ownerPaneId means the task was started off the verified path (the operator or the cockpit itself), not that nobody owns it. Each entry also carries permission â€” what the task was allowed to do, read-only unless its caller asked for more â€” and changedPaths, the paths the cockpit itself found changed in its working directory, which is what answers 'who wrote that' about work no pane did. A null changedPaths means the cockpit could not establish it (no working directory, or not a git checkout), never that nothing changed. Reading only: starting, stopping or following up on a task is not available here. Turn count is progress, not success â€” a task with turns and no result is still working, and one that is Failed says why in error.")]
+    [Description("Lists the delegated tasks THIS MACHINE is running — the background work a session started with delegate_task, which always runs here even for a session on a paired node (AC-1326: a node has no delegation of its own) — newest first, across every owner pane. THIS IS THE HALF list_sessions CANNOT SEE: a delegated task runs without a pane, so it has no row there and no statusline however busy it is; a session that fanned its work out further looks idle in one list and is doing five things in the other. Each entry has the task id, the profile it runs under, its label and task type, its status (Queued, Running, Completed, Failed or Stopped), when it was created/started/finished, how many turns it has taken, its result or its error, and ownerPaneId — the session that started it, which is how you attribute background work to the agent you spawned. A null ownerPaneId means the task was started off the verified path (the operator or the cockpit itself), not that nobody owns it. Each entry also carries permission — what the task was allowed to do, read-only unless its caller asked for more — and changedPaths, the paths the cockpit itself found changed in its working directory, which is what answers 'who wrote that' about work no pane did. A null changedPaths means the cockpit could not establish it (no working directory, or not a git checkout), never that nothing changed. Reading only: starting, stopping or following up on a task is not available here. Turn count is progress, not success — a task with turns and no result is still working, and one that is Failed says why in error.")]
     public string ListDelegatedTasks(
-        [Description("Only tasks in this state: Queued, Running, Completed, Failed or Stopped. Omit it for every task. An unrecognised value is refused rather than quietly listing everything â€” a filter nobody applied reads exactly like nothing matching it.")] string? status = null)
+        [Description("Only tasks in this state: Queued, Running, Completed, Failed or Stopped. Omit it for every task. An unrecognised value is refused rather than quietly listing everything — a filter nobody applied reads exactly like nothing matching it.")] string? status = null)
     {
         try
         {
@@ -514,7 +521,7 @@ internal sealed class AssistantReadMcpTools(
                     error = task.Error,
                     ownerPaneId = task.OwnerPaneId,
                     // AC-971: what the task was allowed to do, and what the cockpit itself saw it change. Read out
-                    // together they answer the question this tool exists for â€” who did that, and what did they touch.
+                    // together they answer the question this tool exists for — who did that, and what did they touch.
                     permission = task.Permission,
                     changedPaths = task.ChangedPaths,
                 }),
@@ -527,10 +534,10 @@ internal sealed class AssistantReadMcpTools(
     }
 
     [McpServerTool(Name = "read_transcript", ReadOnly = true)]
-    [Description("Reads the raw transcript of one AI session, named by its pane id â€” any session in any workspace, not just one desk, and a session on a paired node when the pane id is a node address (\"<node> Â· <paneId>\"): the rows then come from that machine, in the same shape, and the reply's machine says so. Take the pane id from list_sessions. Returns the entries as they happened, oldest first: each has a kind (UserText, AssistantText, ToolUse, ToolResult, Thinking, Question, Error, TurnCompleted), the text of the row, and â€” on a tool call â€” the result that call returned. It is passed through raw and unedited, exactly as the operator's own screen shows it; reading it, making sense of it and saying what it means in a sentence is your job, not the cockpit's. BOUNDED: by default you get the last 30 entries, not the whole session, which is the recent end where nearly every spoken question is actually pointed. The reply always says totalEntries and omitted, so you can tell a short session from a long one you only saw the tail of â€” never report a session as having started with what is simply the first line you were given. Ask for more with count (up to 100) only when the question really is about earlier on, e.g. \"what did it try before that\". A single very long entry is cut to 2000 characters and marked truncated: that is a shortened tool result, not a complete one.")]
+    [Description("Reads the raw transcript of one AI session, named by its pane id — any session in any workspace, not just one desk, and a session on a paired node when the pane id is a node address (\"<node> · <paneId>\"): the rows then come from that machine, in the same shape, and the reply's machine says so. Take the pane id from list_sessions. Returns the entries as they happened, oldest first: each has a kind (UserText, AssistantText, ToolUse, ToolResult, Thinking, Question, Error, TurnCompleted), the text of the row, and — on a tool call — the result that call returned. It is passed through raw and unedited, exactly as the operator's own screen shows it; reading it, making sense of it and saying what it means in a sentence is your job, not the cockpit's. BOUNDED: by default you get the last 30 entries, not the whole session, which is the recent end where nearly every spoken question is actually pointed. The reply always says totalEntries and omitted, so you can tell a short session from a long one you only saw the tail of — never report a session as having started with what is simply the first line you were given. Ask for more with count (up to 100) only when the question really is about earlier on, e.g. \"what did it try before that\". A single very long entry is cut to 2000 characters and marked truncated: that is a shortened tool result, not a complete one.")]
     public async Task<string> ReadTranscriptAsync(
         [Description("The pane id of the session to read, exactly as list_sessions reports it. There is no name lookup here: find the session with list_sessions first, then read the pane it names.")] string paneId,
-        [Description("How many of the most recent entries to return. Defaults to 30 and is capped at 100 â€” a larger number is quietly clamped, not refused. Zero or a negative number is clamped up to 1 rather than returning nothing, so a miscounted argument still answers something instead of looking like an empty session. Raise it only when the question is about earlier in the session; a wider read costs context on every turn that follows it.")] int count = DefaultEntryCount)
+        [Description("How many of the most recent entries to return. Defaults to 30 and is capped at 100 — a larger number is quietly clamped, not refused. Zero or a negative number is clamped up to 1 rather than returning nothing, so a miscounted argument still answers something instead of looking like an empty session. Raise it only when the question is about earlier in the session; a wider read costs context on every turn that follows it.")] int count = DefaultEntryCount)
     {
         try
         {
@@ -553,7 +560,7 @@ internal sealed class AssistantReadMcpTools(
             if (transcript is null)
             {
                 // A pane id matching nothing is either a closed session or a plain terminal with no transcript.
-                // Neither is worth a search over session names â€” list_sessions is right there for that.
+                // Neither is worth a search over session names — list_sessions is right there for that.
                 return _Serialize(new
                 {
                     ok = false,
@@ -588,11 +595,11 @@ internal sealed class AssistantReadMcpTools(
                 count = entries.Length,
                 totalEntries = transcript.TotalEntries,
                 // What was left out in front of this slice. A capped read has to say so, or a tail is indistinguishable
-                // from a whole session and the assistant reports a beginning that is not one â€” the same field, and the
+                // from a whole session and the assistant reports a beginning that is not one — the same field, and the
                 // same reasoning, as read_inbox's `remaining`.
                 omitted = transcript.TotalEntries - entries.Length,
                 more = transcript.TotalEntries > entries.Length
-                    ? $"This is the last {entries.Length} of {transcript.TotalEntries} entries â€” {transcript.TotalEntries - entries.Length} earlier ones were not read. Ask again with a larger count (up to {MaxEntryCount}) if the question is about earlier on."
+                    ? $"This is the last {entries.Length} of {transcript.TotalEntries} entries — {transcript.TotalEntries - entries.Length} earlier ones were not read. Ask again with a larger count (up to {MaxEntryCount}) if the question is about earlier on."
                     : null,
                 entries,
             });
@@ -614,7 +621,7 @@ internal sealed class AssistantReadMcpTools(
 
     // The gate, in one place so every tool on this server shares it. A request with no verified pane is refused
     // too (the shared app-lifetime key path can't be attributed to any session), not because it might be an
-    // impostor â€” there is simply no identity to check, and the safe answer to that is no.
+    // impostor — there is simply no identity to check, and the safe answer to that is no.
     private static string? _RefuseIfNotTheAssistant() =>
         string.Equals(McpRequestContext.CurrentPaneId, AssistantIdentity.PaneId, StringComparison.Ordinal)
             ? null
