@@ -276,7 +276,7 @@ public class DepotNoteBridgeTests
     {
         var hub = new _Hub(seed);
         var joined = new _Joins();
-        await using var bridge = _Session(hub, _ => { }, joined.Publish);
+        await using var bridge = _Session(hub, _ => { }, joined.Publish, statusChanged: joined.Host);
         bridge.Connect();
         await joined.First.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var before = await bridge.ReadAsync(CancellationToken.None);
@@ -286,9 +286,10 @@ public class DepotNoteBridgeTests
         await bridge.EditAsync("offline", before.Rev, [new(5, 0, "MINE")], CancellationToken.None);
         hub.Role = "viewer";
         hub.Offline = false;
+        // The refused update already sent the session back to Join, held until the role changed; a second disconnect could drop
+        // that rejoin again.
         rejoin.SetResult();
-        await hub.DisconnectAsync();
-        await joined.Second.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await joined.ReadOnly.Task.WaitAsync(TimeSpan.FromSeconds(30));
         var readOnly = await bridge.ReadAsync(CancellationToken.None);
         Assert.Equal(LiveFileState.ReadOnly, readOnly.Status.State);
         Assert.Contains("MINE", readOnly.Text);
@@ -299,12 +300,20 @@ public class DepotNoteBridgeTests
     private sealed class _Joins
     {
         public TaskCompletionSource First { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Second { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The host's view: read-only once the rejoin as a viewer landed.
+        public TaskCompletionSource ReadOnly { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Host(LiveFileStatus status)
+        {
+            if (status.State == LiveFileState.ReadOnly)
+            {
+                ReadOnly.TrySetResult();
+            }
+        }
         public void Publish(DepotNoteLiveStatus status)
         {
             if (status.State == DepotNoteLiveState.Live)
             {
-                (First.Task.IsCompleted ? Second : First).TrySetResult();
+                First.TrySetResult();
             }
         }
     }

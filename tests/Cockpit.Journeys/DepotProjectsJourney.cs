@@ -251,6 +251,8 @@ public sealed class DepotProjectsJourney
             Assert.True(body.Editor.Text.StartsWith("# Weekly sync", StringComparison.Ordinal), body.Editor.Text);
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "Typed in Cockpit.");
             await depot.NoteEdited.WaitAsync(Until.Ceiling);
+            // This fake Depot saves nothing, so the tab saves the file itself after its quiet; a tab closed before then asks first.
+            await Until.LayoutHolds(body, () => !body.IsDirty).WaitAsync(Until.Ceiling);
             await workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaces.Active?.Id ?? throw new InvalidOperationException("The note tab is gone."));
         });
     }
