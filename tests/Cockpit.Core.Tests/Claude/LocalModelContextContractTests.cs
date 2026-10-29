@@ -1,9 +1,8 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
-using NSubstitute;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Configuration;
@@ -40,17 +39,15 @@ internal static class LocalModelContextContract
             ["ApiKey"],
             SecretJsonWalker.Transform(protectedSettings, SecretFields.ByName, (_, _) => "protected"));
         Assert.Equal(32_768, protectedSettings["ContextTokens"]!.GetValue<int>());
+
+        var recovered = JsonSerializer.Deserialize<ProviderConfigEntry>(
+            """{"Provider":"Ollama","ContextTokens":"32768"}""",
+            CockpitConfigFileAccess.SerializerOptions);
+        Assert.Equal(32_768, recovered!.ContextTokens);
     }
 
     private static async Task _OllamaDoesNotFakeNumCtxPerRequest()
     {
-        var inner = Substitute.For<IChatClient>();
-        var client = OpenAiCompatChatClientFactory.ApplyProviderRequestPolicy(
-            new OllamaConfig("http://localhost:11434", "qwen", ContextTokens: 32_768),
-            inner);
-
-        Assert.Same(inner, client);
-
         var handler = new RecordingHandler(_ => _Json("{}"));
         var warning = await _Manager(handler).PrepareAsync(
             new OllamaConfig("http://localhost:11434", "qwen", ContextTokens: 32_768));

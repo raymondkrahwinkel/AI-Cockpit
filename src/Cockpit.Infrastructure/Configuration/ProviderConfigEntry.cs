@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -21,6 +22,7 @@ internal sealed class ProviderConfigEntry
     // AC-1489: an Ollama/LM Studio profile's optional context-guard bounds, carried as the JSON it was written as.
     public JsonElement? TurnLimits { get; set; }
 
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
     public int ContextTokens { get; set; } = LocalModelContext.DefaultTokens;
 
     public bool LoadModelWithContext { get; set; }

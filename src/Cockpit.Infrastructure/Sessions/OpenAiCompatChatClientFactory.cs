@@ -20,7 +20,7 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
             _ => throw new NotSupportedException($"Provider {config.Provider} is not OpenAI-compatible."),
         };
 
-        return ApplyProviderRequestPolicy(config, CreateForEndpoint(baseUrl, model, apiKey));
+        return CreateForEndpoint(baseUrl, model, apiKey);
     }
 
     public IChatClient CreateForEndpoint(string baseUrl, string model, string? apiKey = null)
@@ -29,8 +29,4 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
         var credential = new ApiKeyCredential(string.IsNullOrEmpty(apiKey) ? "not-needed" : apiKey);
         return new OpenAIClient(credential, options).GetChatClient(model).AsIChatClient();
     }
-
-    // Ollama's OpenAI-compatible /v1 route supports tools, but not its native options.num_ctx. Keep the request
-    // unmodified; LocalModelContextManager explains the two server-side context settings at session start.
-    internal static IChatClient ApplyProviderRequestPolicy(ProviderConfig _, IChatClient client) => client;
 }
