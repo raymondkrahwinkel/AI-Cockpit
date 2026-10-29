@@ -161,15 +161,15 @@ internal sealed partial class CockpitUiHost(
 
     // Keyed by this plugin's id, so a plugin can only ever replace its own line.
     public void SetStatusText(string? text) =>
-        services.GetService<CockpitViewModel>()?.SetPluginStatusText(pluginId, text);
+        _Service<CockpitViewModel>()?.SetPluginStatusText(pluginId, text);
 
     public void SetStatusText(string? text, SideMenuButtonBadgeTone tone) =>
-        services.GetService<CockpitViewModel>()?.SetPluginStatusText(pluginId, text, tone);
+        _Service<CockpitViewModel>()?.SetPluginStatusText(pluginId, text, tone);
 
     // Only this plugin's own panels: a plugin cannot pull another's panel into view. Floating stays floating.
     public async Task OpenDockPanelAsync(string panelId)
     {
-        if (!_ownDockPanelIds.Contains(panelId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        if (!_ownDockPanelIds.Contains(panelId) || _Service<CockpitViewModel>() is not { } cockpit)
         {
             return;
         }
@@ -228,7 +228,7 @@ internal sealed partial class CockpitUiHost(
     {
         // The plugin's workspaces live on the on-screen view model — the same instance the UI binds to — not a
         // separately DI-resolved WorkspacesViewModel, which would open the workspace on a surface no one is looking at.
-        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces)
+        if (_Service<CockpitViewModel>()?.Workspaces is not { } workspaces)
         {
             return;
         }
@@ -250,7 +250,7 @@ internal sealed partial class CockpitUiHost(
     }
 
     public Control? CreateEmbeddedSessionView(string paneId) =>
-        services.GetService<IEmbeddedSessionHost>()?.EmbeddedSessionView(paneId);
+        _Service<IEmbeddedSessionHost>()?.EmbeddedSessionView(paneId);
 
     // A plugin's dialog gets a gear in its title bar when the plugin has settings to open — checked when the
     // dialog opens, not when the plugin is built, since settings and dialogs can register in any order.
@@ -289,7 +289,7 @@ internal sealed partial class CockpitUiHost(
             // modal dialog, which has nowhere to appear in a process without a dispatcher loop. An inline branch
             // would turn "no UI thread" from a hang into a dialog nobody can answer.
             var dialog = await UiThreadCall.DispatchAsync<Task<string?>>(() =>
-                services.GetService<CockpitViewModel>() is { } cockpit
+                _Service<CockpitViewModel>() is { } cockpit
                     ? cockpit.ShowNewSessionDialogForPluginAsync(prefill)
                     : Task.FromResult<string?>(null));
 
@@ -395,8 +395,8 @@ internal sealed partial class CockpitUiHost(
     // are AttentionNotifier's. A click is reported off the UI thread, so the window and the callback are posted back.
     public void ShowSystemNotification(string title, string body, Action? onClick = null)
     {
-        if (services.GetService<CockpitViewModel>() is { IsWindowActive: true }
-            || services.GetService<IAttentionNotifier>() is not { } notifier)
+        if (_Service<CockpitViewModel>() is { IsWindowActive: true }
+            || _Service<IAttentionNotifier>() is not { } notifier)
         {
             return;
         }
@@ -433,7 +433,7 @@ internal sealed partial class CockpitUiHost(
     }
 
     private void _LogNotificationFailure(Exception exception) =>
-        services.GetService<ILogger<CockpitUiHost>>()?.LogWarning(exception, "Plugin {PluginId}'s system notification failed.", pluginId);
+        _Service<ILogger<CockpitUiHost>>()?.LogWarning(exception, "Plugin {PluginId}'s system notification failed.", pluginId);
 
     public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) => host.RequestConsentAsync(request);
 
@@ -449,7 +449,7 @@ internal sealed partial class CockpitUiHost(
     // AC-1397: what PluginActions.InjectIntoActiveSessionAsync does for the selected pane, for a named one — placed, not sent.
     public Task InsertIntoSessionAsync(string paneId, string text)
     {
-        var cockpit = services.GetService<CockpitViewModel>();
+        var cockpit = _Service<CockpitViewModel>();
         cockpit?.Sessions.Append<SessionPanelViewModel?>(cockpit.AssistantPane)
             .FirstOrDefault(session => session is not null && string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
             ?.InjectText(text);
@@ -458,7 +458,7 @@ internal sealed partial class CockpitUiHost(
 
     public Task<bool> FocusSessionAsync(string paneId) => UiThreadCall.RunAsync(() =>
     {
-        var cockpit = services.GetService<CockpitViewModel>();
+        var cockpit = _Service<CockpitViewModel>();
         var session = cockpit?.Sessions.FirstOrDefault(candidate => string.Equals(candidate.PaneId, paneId, StringComparison.Ordinal));
         if (cockpit is null || session is null)
         {
@@ -511,9 +511,23 @@ internal sealed partial class CockpitUiHost(
     public Task SignOutMcpServerAsync(string name, CancellationToken cancellationToken = default) =>
         host.SignOutMcpServerAsync(name, cancellationToken);
 
-    private ILogger? _Logger() => services.GetService<ILoggerFactory>()?.CreateLogger<CockpitUiHost>();
+    private ILogger? _Logger() => _Service<ILoggerFactory>()?.CreateLogger<CockpitUiHost>();
 
-    private HelpService? _Help() => services.GetService<HelpService>();
+    private HelpService? _Help() => _Service<HelpService>();
+
+    // A channel continuation can land after teardown disposed the container (AC-1891); then there is nobody to tell,
+    // the same as DesktopSessionSeams.SessionStarted.
+    private T? _Service<T>() where T : class
+    {
+        try
+        {
+            return services.GetService<T>();
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+    }
 
     internal sealed class UiChannel(PluginChannelHub hub, string pluginId) : IPluginUiChannel
     {
