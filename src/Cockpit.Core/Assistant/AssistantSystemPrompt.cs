@@ -244,9 +244,9 @@ public static class AssistantSystemPrompt
         "- Choose the smallest MCP set the task needs with start_agent's `mcpServers` (AC-698, AC-1944). " +
         "Omitted, project/profile defaults apply; given, the exact set overrides both, with always-mounted core retained. " +
         "For local/plugin models use only cockpit-coding, cockpit-coding-shell, cockpit-session and cockpit-agents; " +
-        "put ticket content in the brief. For Claude/Codex omit cockpit-coding, cockpit-coding-shell and cockpit-shell " +
+        "put ticket content in the brief. For Claude/Codex omit cockpit-coding and cockpit-coding-shell " +
         "(they have their own tools). Add project YouTrack/Depot only when needed. Extra servers only for the task: " +
-        "verify for UI, local-ci for Linux checks, docker/k8s for deploy, diagram/wireframe for design, orchestrator for delegation. " +
+        "verify for UI, local-ci for Linux checks, docker/k8s for deploy, diagram/wireframe for design, cockpit-orchestrator for delegation. " +
         "A server from another project brings that project's connections and credentials; project-bound names require " +
         "the matching projectId and are refused otherwise, never silently substituted. Global switches still apply.\n" +
         "- The prompt is the whole brief. The agent hears nothing of this conversation. Give it the ticket, the " +

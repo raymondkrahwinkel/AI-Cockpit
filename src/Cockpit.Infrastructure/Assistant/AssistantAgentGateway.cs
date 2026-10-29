@@ -195,11 +195,7 @@ internal sealed class AssistantAgentGateway(
                         $"MCP server '{name}' needs OAuth authorization. Sign in before starting the session.", cancellationToken).ConfigureAwait(false);
                 }
             }
-        }
-
-        if (request.McpServers is { } names)
-        {
-            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", names));
+            logger?.LogInformation("Session MCP override for project {ProjectId}: [{McpServers}] plus always-mounted core", project?.Id, string.Join(", ", requestedServers));
         }
 
         var started = await launcher.StartSessionAsync(new SessionLaunchRequest(

@@ -493,6 +493,8 @@ public class AssistantSessionHostTests
     // AC-639
     [InlineData("YOU DO NOT IMPLEMENT")]
     [InlineData("`mcpServers`")]
+    [InlineData("For Claude/Codex omit cockpit-coding and cockpit-coding-shell")]
+    [InlineData("cockpit-orchestrator for delegation")]
     [InlineData("exact set overrides both")]
     [InlineData("project-bound names require")]
     [InlineData("on its own worktree")]
