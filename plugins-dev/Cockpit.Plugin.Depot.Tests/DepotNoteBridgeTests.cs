@@ -331,9 +331,15 @@ public class DepotNoteBridgeTests
         Assert.Empty(hub.Calls);
     }
 
-    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched, Action<DepotNoteLiveStatus>? publish = null, DepotNoteUser? user = null, Action<LiveFileStatus>? statusChanged = null) => new(
-        Connection, Note, _ => Task.FromResult(user ?? new DepotNoteUser("user-1")), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
-        publish ?? (_ => { }), [TimeSpan.Zero], patched: patched, statusChanged: statusChanged);
+    // The patches arrive through the Patched event, the one the host's file channel listens to.
+    private static DepotNoteSession _Session(_Hub hub, Action<LiveFilePatch> patched, Action<DepotNoteLiveStatus>? publish = null, DepotNoteUser? user = null, Action<LiveFileStatus>? statusChanged = null)
+    {
+        var session = new DepotNoteSession(
+            Connection, Note, _ => Task.FromResult(user ?? new DepotNoteUser("user-1")), (_, _, onClosed) => hub.With(onClosed), clientId => new JintNoteRoom(clientId),
+            publish ?? (_ => { }), [TimeSpan.Zero], statusChanged: statusChanged);
+        session.Patched += (_, patch) => patched(patch);
+        return session;
+    }
 
     // The web's seed of a fixture (protocol §5.3), as the one row the hub holds.
     private static async Task<byte[]> _SeedAsync(JintNoteRoom web, string fixture)

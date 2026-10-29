@@ -372,6 +372,15 @@ internal sealed partial class DepotNoteSaver : IDisposable
             return;
         }
 
+        // An account change during the read turned the saver off: the post would go out under the new sign-in.
+        lock (_gate)
+        {
+            if (!_Ready())
+            {
+                return;
+            }
+        }
+
         _state(DepotNoteSaveState.Saving, null);
         DepotNoteSaveAnswer answer;
         try

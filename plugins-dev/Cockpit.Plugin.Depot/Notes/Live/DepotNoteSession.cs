@@ -39,7 +39,6 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
     private readonly Action<DepotNoteLiveStatus> _publish;
     private readonly IReadOnlyList<TimeSpan> _backoff;
     private readonly ILogger? _logger;
-    private readonly Action<LiveFilePatch>? _patched;
     private readonly Action<LiveFileStatus>? _statusChanged;
     private readonly TimeProvider _time;
     private readonly DepotNoteSaver? _saver;
@@ -111,7 +110,6 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         Action<DepotNoteLiveStatus> publish,
         IReadOnlyList<TimeSpan>? backoff = null,
         ILogger? logger = null,
-        Action<LiveFilePatch>? patched = null,
         DepotNotePost? post = null,
         Action<LiveFileStatus>? statusChanged = null,
         TimeProvider? time = null,
@@ -128,7 +126,6 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
         _publish = publish;
         _backoff = backoff ?? DepotEventReconnect.Backoff;
         _logger = logger;
-        _patched = patched;
         _statusChanged = statusChanged;
         _time = time ?? TimeProvider.System;
         _disposed = disposed;
@@ -274,7 +271,14 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
                 throw new FileSourceException(FileSourceErrorKind.Forbidden, "This note is read-only here.");
             }
 
-            if (!_loaded || baseRev != _rev)
+            // Unloaded (a reset, or an update that does not read), the revision is current but nothing can be applied. Stale
+            // would send the host into read, merge and resend at once; a failure waits for its next change or status.
+            if (!_loaded)
+            {
+                throw new FileSourceException(FileSourceErrorKind.Unavailable, "The live note is not loaded yet.");
+            }
+
+            if (baseRev != _rev)
             {
                 return new LiveEditResult(LiveEditStatus.Stale, _rev);
             }
@@ -769,7 +773,6 @@ internal sealed partial class DepotNoteSession : ILiveFileSession, ILivePresence
 
         _rev++;
         var patch = new LiveFilePatch(_rev, ops);
-        _patched?.Invoke(patch);
         Patched?.Invoke(this, patch);
     }
 

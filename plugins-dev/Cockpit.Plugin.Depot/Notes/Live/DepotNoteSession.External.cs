@@ -45,7 +45,7 @@ internal sealed partial class DepotNoteSession
             if (ranges.Count > 0)
             {
                 _rev++;
-                _patched?.Invoke(new LiveFilePatch(_rev, [])
+                Patched?.Invoke(this, new LiveFilePatch(_rev, [])
                 {
                     ExternalEdit = new ExternalTextEdit(writer.Label, _outsideAt, ranges),
                 });

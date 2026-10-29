@@ -770,15 +770,14 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
         ToolTip.SetTip(_statusChip, live?.Reason);
         _readOnlyBanner.IsVisible = readOnly && live?.Reason is { Length: > 0 } && live.ReadOnlyReason != LiveReadOnlyReason.Viewer;
         _readOnlyText.Inlines?.Clear();
-        if (live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch)
+        // The source words the reason; a schema mismatch leads with its first sentence in bold.
+        var reason = live?.Reason ?? "";
+        var lead = live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch ? reason.IndexOf(". ", StringComparison.Ordinal) + 1 : 0;
+        if (lead > 0)
         {
-            _readOnlyText.Inlines?.Add(new Run("This note uses a newer Depot editor.") { FontWeight = FontWeight.SemiBold });
-            _readOnlyText.Inlines?.Add(new Run(" You can watch it live; editing comes back once Cockpit's Depot plugin is updated."));
+            _readOnlyText.Inlines?.Add(new Run(reason[..lead]) { FontWeight = FontWeight.SemiBold });
         }
-        else
-        {
-            _readOnlyText.Inlines?.Add(new Run(live?.Reason ?? ""));
-        }
+        _readOnlyText.Inlines?.Add(new Run(reason[lead..]));
         _updates.IsVisible = live?.ReadOnlyReason == LiveReadOnlyReason.SchemaMismatch;
         _copy.IsVisible = readOnly && dirty;
         _reload.IsVisible = _merge.IsVisible = _overwrite.IsVisible = _live is null || _IsLiveLight;
