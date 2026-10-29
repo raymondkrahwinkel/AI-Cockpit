@@ -127,7 +127,7 @@ internal sealed class DepotNoteLive(
         var me = await response.Content.ReadFromJsonAsync<Me>(DepotChannel.Json, cancellationToken).ConfigureAwait(false);
         return string.IsNullOrWhiteSpace(me?.UserId)
             ? throw new HttpRequestException("Depot did not identify the user.", null, HttpStatusCode.Unauthorized)
-            : new DepotNoteUser(me.UserId, me.Name, me.Color);
+            : new DepotNoteUser(me.UserId, me.Name, me.Color, me.Email);
     }
 
     private void _Forget(DepotNoteSession session)
@@ -149,7 +149,7 @@ internal sealed class DepotNoteLive(
     {
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         using var form = new FormUrlEncodedContent([
-            new("path", note.Path), new("baseChecksum", baseChecksum), new("content", content), new("session", session)]);
+            new("path", note.Path), new("baseChecksum", baseChecksum), new("content", content), new("session", session), new("expectedUser", expectedUser)]);
         var url = $"{connection.Url.TrimEnd('/')}/cockpit/projects/{Uri.EscapeDataString(note.Organization)}/{Uri.EscapeDataString(note.Project)}/note-save";
         using var response = await http.PostAsync(url, form, cancellationToken).ConfigureAwait(false);
         // A 403 or a 400 may carry no JSON at all; the status alone decides then.
