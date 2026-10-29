@@ -46,10 +46,25 @@ public class AssistantSpawnProjectIsolationTests
 {
     private const string Repository = "/repo";
 
-    [Fact]
-    public async Task SpawnWhoseDirectoryResolvesToAProject_InheritsIsolationPromptAndProjectId()
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("cockpit-coding", true)]
+    [InlineData("cockpit-session", true)]
+    [InlineData("cockpit-elevated", false)]
+    [InlineData("cockpit-assistant", false)]
+    [InlineData("unknown", false)]
+    [InlineData("other-project-server", false)]
+    [InlineData("off-server", false)]
+    [InlineData("oauth", false)]
+    [InlineData("project-server", true)]
+    public async Task SpawnWhoseDirectoryResolvesToAProject_InheritsIsolationPromptAndProjectId(string? server, bool accepted)
     {
-        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude")) { SystemPrompt = "You are Olaf." };
+        var profile = new SessionProfile("work", new ClaudeConfig("/fake/.claude"))
+        {
+            SystemPrompt = "You are Olaf.",
+            EnabledMcpServerNames = ["profile-only"],
+        };
         var project = Project.Create("Cockpit") with
         {
             SourceDirectories = [new(Repository)],
@@ -58,15 +73,42 @@ public class AssistantSpawnProjectIsolationTests
         };
         var worktrees = _WorktreeManagerThatIsolatesCleanly();
 
-        var (gateway, cockpit, _, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
+        var (gateway, cockpit, trail, workspaceId) = Dispatcher.UIThread.Invoke(() => _Gateway(profile, project, worktrees));
 
-        var result = await gateway.SpawnAsync(_Request(workspaceId) with { WorkingDirectory = Repository });
+        var result = await gateway.SpawnAsync(_Request(workspaceId) with
+        {
+            WorkingDirectory = Repository,
+            ProjectId = project.Id,
+            McpServers = server is null ? null : server.Length == 0 ? [] : [server],
+        });
+
+        if (!accepted)
+        {
+            Assert.False(result.Ok);
+            Assert.Contains(server!, result.Error);
+            Assert.Equal(result.Error, Assert.Single(trail.Entries).Refusal);
+            Assert.Empty(Dispatcher.UIThread.Invoke(() => cockpit.Sessions));
+            return;
+        }
 
         Assert.True(result.Ok, result.Error);
         var launch = Dispatcher.UIThread.Invoke(() => cockpit.Sessions.Single().LaunchResult)!;
         Assert.True(launch.IsolateInWorktree);
         Assert.Contains("Work ticket by ticket.", launch.SystemPrompt);
         Assert.Equal(project.Id, launch.ProjectId);
+        if (server is not null)
+        {
+            Assert.Equal(server.Length == 0 ? [] : new[] { server }, launch.EnabledMcpServerNames);
+            Assert.IsType<ExactMcpServerSelection>(launch.EnabledMcpServerNames);
+            Assert.Equal(server.Length == 0 ? [] : new[] { server }, Assert.Single(trail.Entries).McpServers);
+        }
+        if (server == "project-server")
+        {
+            var refused = await gateway.SpawnAsync(_Request(workspaceId) with { McpServers = [server] });
+            Assert.False(refused.Ok);
+            Assert.Contains("another project", refused.Error);
+            Assert.Contains("another project", trail.Entries.Last().Refusal);
+        }
     }
 
     [Fact]
@@ -452,10 +494,18 @@ public class AssistantSpawnProjectIsolationTests
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([profile]));
         var mcpCatalog = Substitute.For<IMcpServerCatalog>();
         CockpitViewModel? composingFor = null;
-        mcpCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        mcpCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(call =>
         {
             whileComposing?.Invoke(composingFor ?? throw new InvalidOperationException("Composed before the cockpit was built."));
-            return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
+            return Task.FromResult<IReadOnlyList<McpServerConfig>>([
+                new() { Name = "cockpit-coding" },
+                new() { Name = "cockpit-session", AlwaysMounted = true },
+                new() { Name = "cockpit-elevated", Internal = true },
+                new() { Name = "cockpit-assistant", Internal = true },
+                new() { Name = "off-server", Enabled = false },
+                new() { Name = "oauth", Auth = McpServerAuth.OAuth },
+                .. call.ArgAt<string?>(0) == project.Id ? new McpServerConfig[] { new() { Name = "project-server", ProjectLinked = true } } : [],
+            ]);
         });
         var quickStart = new ProjectQuickStart(profileStore, new SessionStartComposer(
             projectStore, mcpCatalog, Substitute.For<ITtySessionProviderResolver>(), new ProjectMemorySourceRegistry(), worktreeManager));

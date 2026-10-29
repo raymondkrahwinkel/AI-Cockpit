@@ -100,6 +100,7 @@ public sealed record SessionLaunchRequest(
     public string? Effort { get; init; }
 
     public IReadOnlySet<string>? EnabledMcpServerNames { get; init; }
+    public IReadOnlyList<string>? McpServersOverride { get; init; }
 
     public ReadingLevel? ReadingLevel { get; init; }
 

@@ -82,6 +82,7 @@ public class AssistantAgentGatewayTests
             TimeSpan.FromMilliseconds(10),
             new SessionProfile("work", new PluginProviderConfig("claude", "{}"))
             {
+                EnabledMcpServerNames = ["depot"],
                 Defaults = new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: false)
                 {
                     OptionDefaults = new Dictionary<string, string> { ["effort"] = "high", [WellKnownPluginSessionOptions.Model] = "claude-sonnet-4.5" },
@@ -96,6 +97,7 @@ public class AssistantAgentGatewayTests
 
         var claude = profiles.Single(profile => profile.Label == "work");
         Assert.Equal("Claude", claude.Provider);
+        Assert.Equal(["depot"], claude.EnabledMcpServers);
         Assert.Equal("claude-sonnet-4.5", claude.Model);
         var effort = Assert.Single(claude.Options);
         Assert.Equal(("effort", "Effort", "high", "High", true),
@@ -106,6 +108,7 @@ public class AssistantAgentGatewayTests
         Assert.Equal("LmStudio", local.Provider);
         Assert.Equal("qwen2.5", local.Model);
         Assert.Empty(local.Options);
+        Assert.Null(local.EnabledMcpServers);
         Assert.Equal("Qwen3.8-27B", profiles.Single(profile => profile.Label == "Hetzner").Model);
         Assert.Null(profiles.Single(profile => profile.Label == "Broken").Model);
         Assert.Null(profiles.Single(profile => profile.Label == "Delayed").Model);

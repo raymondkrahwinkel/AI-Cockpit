@@ -1,5 +1,7 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Workspaces;
@@ -14,7 +16,8 @@ internal sealed class AssistantReadGateway(
     ISessionRegistry sessions,
     ISharedProjectSourceRegistry sharedProjectSources,
     IProjectStore projectStore,
-    IWorkspaceSettingsStore workspaceStore)
+    IWorkspaceSettingsStore workspaceStore,
+    IMcpServerCatalog? mcpServers = null)
     : IAssistantReadGateway, ISingletonService
 {
     public async Task<IReadOnlyList<AssistantSessionRow>> ListSessionsAsync()
@@ -61,7 +64,8 @@ internal sealed class AssistantReadGateway(
             session.ProcessMemoryBytes,
             session.AbandonedProcessCount,
             // AC-1367: what a project-scoped connect key's visibility is decided on.
-            session.ProjectId);
+            session.ProjectId,
+            session.McpServersOverride);
     }
 
     public async Task<IReadOnlyList<AssistantProjectRow>> ListProjectsAsync()
@@ -72,7 +76,7 @@ internal sealed class AssistantReadGateway(
             // The operator's own project list, in the order the store holds it. All of them, including the ones
             // with no folder: an administrative project is a project, and a reader that quietly dropped those
             // would answer "which projects do we have" with a subset and no sign that it had.
-            .. settings.Projects.Select(project => new AssistantProjectRow(
+            .. await Task.WhenAll(settings.Projects.Select(async project => new AssistantProjectRow(
                 project.Id,
                 project.Name,
                 project.Description,
@@ -80,7 +84,13 @@ internal sealed class AssistantReadGateway(
                 project.DefaultProfileLabel,
                 project.PluginFields,
                 project.GitUrl,
-                [.. project.SourceDirectories.Select(repository => new AssistantProjectRepositoryRow(repository.Path, repository.Label))])),
+                [.. project.SourceDirectories.Select(repository => new AssistantProjectRepositoryRow(repository.Path, repository.Label))])
+            {
+                McpSelection = project.McpOverlay with { AdditionalServers = [] },
+                AdditionalMcpServers = [.. project.McpOverlay.AdditionalServers.Select(server => server.Name)],
+                AvailableMcpServers = mcpServers is null ? [] : [.. McpServerRegistryFilter.OfferedToOperator(
+                    await mcpServers.GetServersForProjectAsync(project.Id).ConfigureAwait(false)).Select(server => server.Name)],
+            })),
         ];
     }
 

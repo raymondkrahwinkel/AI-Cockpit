@@ -58,6 +58,14 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains("verify the requested result", systemPrompt);
         Assert.Contains(events.OfType<AssistantTextCompleted>(), completed => completed.Text.Contains("geladen met 8192", StringComparison.Ordinal));
         await LocalModelContextContract.AssertAsync();
+        var exact = new Cockpit.Core.Mcp.ExactMcpServerSelection([]);
+        var provider = _SelectionSensitiveProvider();
+        var restricted = _CreateDriver(chatClient, provider, contextManager);
+        await restricted.StartAsync(profile, enabledMcpServerNames: exact);
+        await provider.Received(1).ConnectAsync(
+            Arg.Is<IReadOnlySet<string>?>(selection => ReferenceEquals(selection, exact)),
+            Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+            Arg.Any<CancellationToken>(), Arg.Any<string?>());
     }
 
     [Fact]

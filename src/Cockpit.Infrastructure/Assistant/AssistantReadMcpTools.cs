@@ -101,6 +101,7 @@ internal sealed class AssistantReadMcpTools(
                 memoryBytes = session.MemoryBytes,
                 abandonedProcessCount = session.AbandonedProcessCount,
                 projectId = session.ProjectId,
+                mcpServers = session.McpServers,
                 machine = here,
             });
 
@@ -263,6 +264,9 @@ internal sealed class AssistantReadMcpTools(
                 project.Links,
                 project.GitUrl,
                 project.Repositories,
+                project.McpSelection,
+                project.AvailableMcpServers,
+                project.AdditionalMcpServers,
                 machine = here,
                 runsOn = runsOn[project.Id],
             });

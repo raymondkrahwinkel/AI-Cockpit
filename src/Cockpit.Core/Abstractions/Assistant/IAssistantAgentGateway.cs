@@ -472,7 +472,8 @@ public sealed record AgentSpawnRequest(
     string? SessionName = null,
     string? Kind = null,
     IReadOnlyDictionary<string, string>? OptionOverrides = null,
-    bool? IsolateInWorktree = null);
+    bool? IsolateInWorktree = null,
+    IReadOnlyList<string>? McpServers = null);
 
 // AC-1013: What came of a spawn — a refusal carries Error and no pane, so a failed spawn is a sentence the
 // operator hears, not a session that's silently missing. PromptDelivered (AC-760) and ResolvedProfileLabel
@@ -520,6 +521,7 @@ public sealed record AssistantWorkspaceRow(
 // the label's wording; a null Model means the provider's own default, distinct from blank.
 public sealed record AssistantProfileRow(string Label, string Provider, string? Model)
 {
+    public IReadOnlyList<string>? EnabledMcpServers { get; init; }
     // What this profile is actually configured to run at, in its provider's own vocabulary (AC-647) — read from
     // the provider's declared option schema, so a raw settings dump never has to be guessed at. Empty for a
     // provider that declares nothing; that is an answer, not a gap to fill with another provider's fields.
