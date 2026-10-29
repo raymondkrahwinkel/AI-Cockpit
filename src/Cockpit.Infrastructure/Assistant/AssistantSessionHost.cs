@@ -832,9 +832,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ).ConfigureAwait(true);
     }
 
-    // AC-1013: MCP servers the assistant launches with — the profile's own selection (or, if unset,
-    // `OfferedToOperator`'s full fan-out set) plus the broad read server only this launch may mount (AC-544
-    // criterion 2, exclusion by construction). A catalog read failure is logged; launch proceeds with the broad server alone.
+    // The assistant defaults to its own tools and the always-mounted core.
     private async Task<IReadOnlySet<string>> _McpSelectionAsync(
         Cockpit.Core.Profiles.SessionProfile profile, CancellationToken cancellationToken)
     {
@@ -866,34 +864,18 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // AC-1013: Both of the assistant's own Internal endpoints, named here and nowhere else — read (AC-544) and
         // acting (AC-545). Both also check the caller's pane per tool, so this mount is gate one of two. Naming only
         // the read server would leave AC-545's tools registered but mounted nowhere, silently absent.
-        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        var selection = new ExactMcpServerSelection([])
         {
             AssistantIdentity.McpServerName,
             AssistantIdentity.ActMcpServerName,
-            // AC-869: the assistant always has cockpit-github-pull-requests, regardless of working directory —
-            // the one launch other than a git-repo session that names this internal endpoint.
-            GitHubPullRequestsMcp.ServerName,
-            // AC-1911: the operator's assistant retains administrator execution after it was split away from
-            // ordinary build agents; ElevatedSessionTools still gates every call through consent and UAC.
-            "cockpit-elevated",
         };
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they
         // ticked it deliberately. The filter is about what an assistant gets when nobody said.
-        selection.UnionWith(profile.EnabledMcpServerNames
-            ?? [.. McpServerRegistryFilter.OfferedToOperator(catalog)
-                .Select(server => server.Name)
-                .Where(name => !NotFannedOutToTheAssistant.Contains(name))]);
+        selection.UnionWith(profile.EnabledMcpServerNames ?? []);
+        selection.UnionWith(catalog.Where(server => server.AlwaysMounted).Select(server => server.Name));
         return selection;
     }
-
-    // AC-1013: Servers deliberately not handed by the no-selection fan-out (AC-545). High bar — shell/containers/
-    // cluster/worktrees/checks were dropped from an earlier draft since they raise their own Allow/Deny row.
-    // `cockpit-orchestrator` stays out: `delegate_task` starts AI work with no pane/roster/spawn trail, a side door around AC-545. Still a default (operator can opt in on the profile), not a boundary.
-    internal static readonly HashSet<string> NotFannedOutToTheAssistant = new(StringComparer.OrdinalIgnoreCase)
-    {
-        Cockpit.Core.Delegation.DelegationMcp.ServerName,
-    };
 
     // AC-1013: Launch options = profile's `OptionDefaults` (carries permission mode/model/effort — without it an
     // operator's `bypassPermissions` used to reach the driver as "default", tool calls still asked about) plus
