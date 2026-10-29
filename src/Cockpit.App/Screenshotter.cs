@@ -209,6 +209,8 @@ internal static partial class Screenshotter
         ["markdown-file-conflict-compare"] = (width, height) => _MarkdownFileScene(width, height, "conflict-compare"),
         ["markdown-file-readonly"] = (width, height) => _MarkdownFileScene(width, height, "readonly"),
         ["markdown-file-live"] = (width, height) => _MarkdownFileScene(width, height, "live"),
+        ["markdown-file-live-light"] = (width, height) => _MarkdownFileScene(width, height, "live-light"),
+        ["markdown-file-live-light-saved"] = (width, height) => _MarkdownFileScene(width, height, "live-light-saved"),
         ["markdown-file-schema-mismatch"] = (width, height) => _MarkdownFileScene(width, height, "schema-mismatch"),
         ["markdown-file-viewer"] = (width, height) => _MarkdownFileScene(width, height, "viewer"),
         // AC-1900 (mockup AC-1895 v2, screens 4 and 4p): others' carets and selections, the avatars in the header, and the list they open.

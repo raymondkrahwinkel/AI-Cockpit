@@ -28,6 +28,8 @@ public enum LiveFileState
 /// <summary>A <see cref="LiveFileState"/> with the operator-facing reason, when there is one.</summary>
 public sealed record LiveFileStatus(LiveFileState State, string? Reason = null)
 {
+    /// <summary>The old room cannot receive edits; save local text to the file before closing and opening a fresh session.</summary>
+    public bool RequiresRejoin { get; init; }
     /// <summary>The read-only cause, for the workspace's badge and recovery action.</summary>
     public LiveReadOnlyReason ReadOnlyReason { get; init; }
     /// <summary>The shared text when the source holds local edits it can no longer send; null when none are held.</summary>

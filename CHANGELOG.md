@@ -45,6 +45,10 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   in yet: you are asked to sign in first, and nothing opens by itself. A note you joined from the inbox is marked read, and its
   card says "Joined" with a Show tab button, which brings the note's tab forward (Depot plugin 0.43.0).
 
+- added: **live notes keep saving when their live connection drops.** Local edits are saved after three seconds of quiet,
+  separate line changes are merged, and overlapping changes wait for your choice. Amber gutter marks and a footer count
+  show lines that exist only in this Cockpit. A rebuilt room is joined afresh after your text is safely stored in the file.
+
 - added: **a live Markdown file says who saved it last.** The status chip reads "Saved by {name} · hh:mm" with a dot in their
   colour, or "Not saved to Depot yet" until someone has saved since you joined (plugin SDK 3.49.0, Cockpit 0.146.0). The
   Depot plugin 0.39.0 can now be the one that saves a live note: it fills an empty note from the file, saves your typing after

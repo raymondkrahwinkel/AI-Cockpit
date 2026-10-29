@@ -36,6 +36,7 @@ internal sealed class LiveTextDocument : IDisposable
     private bool _remote;
     private bool _closed;
     private TaskCompletionSource<bool>? _idle;
+    private Task<bool>? _closing;
 
     // Subscribes before the session is opened, so no patch published between the open and Attach is lost.
     public LiveTextDocument(TextDocument document, FileSourceChannelClient client, ILogger logger)
@@ -130,19 +131,31 @@ internal sealed class LiveTextDocument : IDisposable
         if (_id is { } id)
         {
             // Closing cannot be awaited by the workspace's close; a failure only leaves the source to time the session out.
-            _ = _CloseAsync(id);
+            _closing = _CloseAsync(id);
         }
     }
 
-    private async Task _CloseAsync(string id)
+    public async Task<bool> CloseAsync()
+    {
+        Dispose();
+        if (_closing is { } closing && await closing.ConfigureAwait(true))
+        {
+            return true;
+        }
+        return _id is null || await _CloseAsync(_id).ConfigureAwait(true);
+    }
+
+    private async Task<bool> _CloseAsync(string id)
     {
         try
         {
             await _client.CloseLiveAsync(id, CancellationToken.None).ConfigureAwait(false);
+            return true;
         }
         catch (Exception error)
         {
             _logger.LogWarning(error, "Closing live file session {SessionId} failed.", id);
+            return false;
         }
     }
 
@@ -171,9 +184,9 @@ internal sealed class LiveTextDocument : IDisposable
             {
                 return;
             }
-            Status = state.Status;
+            Status = state.Status with { RequiresRejoin = Status.RequiresRejoin || state.Status.RequiresRejoin };
             _failed = false;
-            _resync |= state.Status.State == LiveFileState.Stale;
+            _resync |= state.Status.State == LiveFileState.Stale && !state.Status.RequiresRejoin;
             Changed?.Invoke(this, EventArgs.Empty);
             _Pump();
         }
@@ -221,6 +234,10 @@ internal sealed class LiveTextDocument : IDisposable
     // Applies the patches that follow on from _rev. Patches arrive in order, so a gap with no call out to explain it is resynced.
     private void _Drain()
     {
+        if (_closed || Status.RequiresRejoin)
+        {
+            return;
+        }
         if (_reading)
         {
             return;
@@ -444,7 +461,7 @@ internal sealed class LiveTextDocument : IDisposable
 
     private void _Pump()
     {
-        if (_sending || _closed || _failed || _id is null)
+        if (_sending || _closed || _failed || _id is null || Status.RequiresRejoin)
         {
             return;
         }
@@ -507,6 +524,7 @@ internal sealed class LiveTextDocument : IDisposable
             {
                 _sending = false;
             }
+            _lifetime.Token.ThrowIfCancellationRequested();
             _Drain();
         }
         catch (OperationCanceledException) when (_closed)
@@ -554,6 +572,7 @@ internal sealed class LiveTextDocument : IDisposable
         try
         {
             result = await _client.EditLiveAsync(_id ?? "", _editId, baseRev, ops, cancellationToken).ConfigureAwait(true);
+            cancellationToken.ThrowIfCancellationRequested();
         }
         catch (FileSourceException error) when (error.Kind == FileSourceErrorKind.Forbidden)
         {
@@ -612,6 +631,11 @@ internal sealed class LiveTextDocument : IDisposable
         finally
         {
             _reading = false;
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Status.RequiresRejoin)
+        {
+            return;
         }
         var mine = _document.Text;
         var theirs = snapshot.Text;
