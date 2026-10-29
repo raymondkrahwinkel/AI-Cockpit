@@ -363,7 +363,7 @@ internal sealed class DepotInboxPanel : UserControl
             }
             else
             {
-                var joinButton = new Button { Content = "Join", Classes = { "accent" }, IsEnabled = reachable };
+                var joinButton = new Button { Content = "Join", Classes = { "Accent" }, IsEnabled = reachable };
                 joinButton.Click += async (_, _) => await _GuardedAsync(() => join(owner, message)).ConfigureAwait(true);
                 open.Classes.Remove("accent");
                 actions.Children.Add(joinButton);

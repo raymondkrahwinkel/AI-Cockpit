@@ -55,7 +55,7 @@ internal sealed class DepotSharedNoteView : UserControl
             connection = connections.FirstOrDefault(candidate => candidate.Id == connectionId);
         }
 
-        var open = new Button { Content = "Open in Depot ↗", Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Center, IsEnabled = connection is not null };
+        var open = new Button { Content = "Open in Depot ↗", Classes = { "Accent" }, HorizontalAlignment = HorizontalAlignment.Center, IsEnabled = connection is not null };
         open.Click += async (_, _) =>
         {
             if (connection is not null)
