@@ -264,7 +264,9 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
     {
         McpRequestContext.Set(NodeCallerIdentity.PaneId);
         _pairing.Profiles.Add(AllowedProfile);
-        _read.Sessions.Add(new AssistantSessionRow("pane-mine", "the sweep", AllowedProfile, "", null, null));
+        // AC-1311: HasOutstandingWork must reach this server's own wire — the second copy of list_sessions' projection,
+        // easiest one to forget because it lives beside the assistant's rather than in it.
+        _read.Sessions.Add(new AssistantSessionRow("pane-mine", "the sweep", AllowedProfile, "", null, null, HasOutstandingWork: true));
         // The node operator's own work, under a profile they never ticked for this controller.
         _read.Sessions.Add(new AssistantSessionRow("pane-theirs", "their own work", "Something Expensive", "", null, null));
 
@@ -274,24 +276,9 @@ public sealed class NodeSessionMcpToolsTests : IDisposable
         // Seeing and stopping are the same set on purpose: a fresh pairing with nothing ticked could otherwise end
         // every agent on the machine while being allowed to start none.
         Assert.Equal("pane-mine", Assert.Single(listed)!["paneId"]!.GetValue<string>());
+        Assert.True(listed[0]!["hasOutstandingWork"]!.GetValue<bool>());
         Assert.False(stop["ok"]!.GetValue<bool>());
         Assert.DoesNotContain(_gateway.Calls, call => call.StartsWith("StopAsync", StringComparison.Ordinal));
-    }
-
-    // AC-1311: the field was carried by AssistantSessionRow but never reached this server's own wire — the
-    // second copy of list_sessions' projection, easiest one to forget because it lives beside the assistant's
-    // rather than in it.
-    [Fact]
-    public async Task List_CarriesHasOutstandingWork()
-    {
-        McpRequestContext.Set(NodeCallerIdentity.PaneId);
-        _pairing.Profiles.Add(AllowedProfile);
-        _read.Sessions.Add(new AssistantSessionRow(
-            "pane-mine", "a test run", AllowedProfile, "", null, null, HasOutstandingWork: true));
-
-        var listed = _Json(await _Tools().ListNodeSessionsAsync())["sessions"]!.AsArray();
-
-        Assert.True(Assert.Single(listed)!["hasOutstandingWork"]!.GetValue<bool>());
     }
 
     [Fact]

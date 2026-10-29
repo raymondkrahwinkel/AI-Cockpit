@@ -56,7 +56,9 @@ public sealed partial class SecurityOptionsViewModel(
     // AC-1456: the connect servers the session list shows as groups; their cards follow those instead of polling.
     IRemoteServers? remoteServers = null,
     // AC-1593: what the organisation's policy forbids; absent in the design-time/unit-test graph, where nothing is.
-    IOrgPolicy? orgPolicy = null) : ObservableObject
+    IOrgPolicy? orgPolicy = null,
+    // AC-1943: what a paused or disconnected node's card tells the rest of the cockpit.
+    INodeLinkGate? nodeLinkGate = null) : ObservableObject
 {
     public bool TerminalAccessEditable => !OrgPolicyCeilings.TerminalForbidden(orgPolicy?.Current);
 
@@ -489,7 +491,7 @@ public sealed partial class SecurityOptionsViewModel(
             {
                 var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
                 var row = rows.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal));
-                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync)
+                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync, nodeLinkGate)
                 {
                     Url = row?.Url,
                     KeyExpiresAt = row?.KeyExpiresAt,
@@ -507,6 +509,13 @@ public sealed partial class SecurityOptionsViewModel(
                 if (_disconnectedNodes.TryGetValue(node, out var disconnectedAt))
                 {
                     card.ShowDisconnected(disconnectedAt);
+                    PairedNodes.Add(card);
+                    continue;
+                }
+
+                if (nodeLinkGate?.IsPaused(node) == true)
+                {
+                    card.ShowPaused();
                     PairedNodes.Add(card);
                     continue;
                 }
