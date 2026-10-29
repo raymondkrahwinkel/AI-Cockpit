@@ -68,13 +68,7 @@ internal sealed class DepotNoteRoute(
         Uri.TryCreate(link, UriKind.Absolute, out var uri) && DepotNoteRef.FromHref(uri.AbsolutePath) is { } note
             && connections().FirstOrDefault(connection => Uri.TryCreate(connection.Url, UriKind.Absolute, out var configured)
                 && string.Equals(configured.Host, uri.Host, StringComparison.OrdinalIgnoreCase)) is { } match
-            ? _OwnRoute(match) : _NoNote();
-
-    private async Task<DepotNoteJoinResult> _OwnRoute(DepotConnectionRegistration match)
-    {
-        await OpenLive!(match, new("o", "p", "x", "t", DepotNoteStand.Edit)).ConfigureAwait(true);
-        return new(DepotNoteJoinOutcome.Opened);
-    }
+            ? JoinAsync(match, note) : _NoNote();
 
     public async Task<DepotNoteJoinResult> JoinAsync(DepotConnectionRegistration connection, DepotNoteRef note)
     {
