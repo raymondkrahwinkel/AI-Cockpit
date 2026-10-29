@@ -741,27 +741,11 @@ public sealed class RemoteAdminJourney
                 .FirstAsync(evt => evt.Kind == "row" && evt.Data.GetRawText().Contains(echoPane, StringComparison.Ordinal) && evt.Data.GetRawText().Contains("echo: hello", StringComparison.Ordinal), timeout.Token);
             var profilesStatus = HeadlessAvalonia.Run(() => profiles.Status);
 
-            // AC-1712: a session that mounts Playwright MCP gets the agent Chromium's endpoint at launch, on the server too.
-            // A page opened through it is in its own targets, the browser goes away with the session, and with the plugin's
-            // setting off the next session gets no endpoint at all.
-            using var cdp = new HttpClient();
+            // AC-1938: a headless server never runs Chromium for an agent session.
             var (browserPane, browserEndpoint) = await _AskForCdpEndpointAsync(setup);
-            Assert.StartsWith("http://127.0.0.1:", browserEndpoint);
-            using (var page = await cdp.SendAsync(new HttpRequestMessage(HttpMethod.Put, $"{browserEndpoint}/json/new?data:text/html,agent-tab")))
-            {
-                page.EnsureSuccessStatusCode();
-            }
-
-            Assert.Contains("agent-tab", await cdp.GetStringAsync($"{browserEndpoint}/json/list"));
+            Assert.Equal("unavailable:agent-browser-is-not-available-on-a-headless-server", browserEndpoint);
+            Assert.False(Directory.Exists(Path.Combine(stateRoot, "browser-runtimes")));
             await setup.SendAsync<JsonObject>(HttpMethod.Delete, $"api/v1/sessions/{browserPane}", null);
-            await Assert.ThrowsAnyAsync<HttpRequestException>(async () =>
-            {
-                for (var attempt = 0; attempt < 50; attempt++)
-                {
-                    await cdp.GetStringAsync($"{browserEndpoint}/json/version");
-                    await Task.Delay(100);
-                }
-            });
             await setup.SendAsync<JsonObject>(HttpMethod.Put, "api/v1/plugins/browser/storage", new { values = new { agentsUseCockpitBrowser = false }, removed = Array.Empty<string>(), secrets = Array.Empty<string>() });
             Assert.Equal("none", (await _AskForCdpEndpointAsync(setup)).Endpoint);
 
@@ -1259,8 +1243,16 @@ public sealed class RemoteAdminJourney
         }
 
         Directory.CreateDirectory(stateRoot);
-        Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
-        Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
+        var previous = Environment.GetEnvironmentVariable(CockpitBuild.StateRootVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
+            Assert.Equal([id], await new BundledPluginInstaller().InstallAsync(bundled, PluginBootstrap.PluginsRoot));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, previous);
+        }
     }
 
     // The server writes its state while the journey reads it; a shared read waits for no one.

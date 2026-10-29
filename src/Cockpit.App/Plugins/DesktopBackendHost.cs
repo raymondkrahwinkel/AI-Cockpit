@@ -30,6 +30,8 @@ internal sealed class DesktopBackendHost(
     IReadOnlyList<string>? capabilities = null)
     : PluginBackendHost(pluginId, pluginName, services, storage, sessions, actions, diagnostics, ownPluginType, cache, capabilities), ICockpitHost
 {
+    public override bool IsHeadless => false;
+
     protected override IReadOnlyList<string> LegacyClaudeModels => SessionOptionCatalog.ClaudeModelSuggestions;
 
     // AC-1342: the native/legacy-typed Claude profile's own effort levels — SessionOptionCatalog.Efforts mirrors
