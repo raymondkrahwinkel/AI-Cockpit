@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using AvaloniaEdit.Editing;
 using Cockpit.App.Files;
 using Cockpit.App.Plugins;
+using Cockpit.App.Views.Editor;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Channels;
@@ -354,12 +355,16 @@ public sealed class LiveFileWorkspaceTests
         try
         {
             source.Refuse = true;
+            var readOnlyApplied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            body.Editor.PropertyChanged += (_, change) => _ = change.Property == MarkdownEditor.IsReadOnlyProperty
+                && body.Editor.IsReadOnly && readOnlyApplied.TrySetResult();
             var hold = new TaskCompletionSource();
             source.Hold = hold.Task;
             body.Editor.TextEditor.Document.Insert(0, "MINE ");
             body.Editor.TextEditor.Document.Insert(5, "QUEUED ");
             hold.SetResult();
             await source.Refused.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await readOnlyApplied.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Dispatcher.UIThread.RunJobs();
             Assert.True(body.Editor.IsReadOnly);
             Assert.True(body.IsDirty);
