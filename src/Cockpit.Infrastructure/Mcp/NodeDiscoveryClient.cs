@@ -31,7 +31,12 @@ internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonServ
         _port = port ?? NodeDiscoveryProtocol.Port;
     }
 
-    public async Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        FindAsync(timeout, accept: null, cancellationToken);
+
+    // AC-1916: an answer whose sender address `accept` refuses is skipped before it is listed; the swarm passes
+    // `SwarmNetworkPolicy.IsAllowedAsync` as `accept`.
+    public async Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, Func<IPAddress, CancellationToken, Task<bool>>? accept, CancellationToken cancellationToken = default)
     {
         var found = new Dictionary<string, NodeDiscoveryFound>(StringComparer.Ordinal);
 
@@ -78,6 +83,11 @@ internal sealed class NodeDiscoveryClient : INodeDiscoveryClient, ISingletonServ
                 }
 
                 if (announce.DiscoveryId == _discoveryId.Value)
+                {
+                    continue;
+                }
+
+                if (accept is not null && !await accept(received.RemoteEndPoint.Address, linked.Token).ConfigureAwait(false))
                 {
                     continue;
                 }
