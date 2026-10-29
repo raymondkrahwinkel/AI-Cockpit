@@ -23,7 +23,7 @@ internal static class McpAgentHeaders
             headers.Remove("Authorization");
         }
 
-        if (server.IncludeAgentName && !string.IsNullOrWhiteSpace(agentName))
+        if (!string.IsNullOrWhiteSpace(agentName))
         {
             headers["X-Cockpit-Agent"] = agentName;
         }
