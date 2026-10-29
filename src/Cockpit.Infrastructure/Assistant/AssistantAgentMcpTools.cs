@@ -1208,7 +1208,7 @@ internal sealed class AssistantAgentMcpTools(
 
     [McpServerTool(Name = "set_thread", ReadOnly = false, Destructive = false)]
     [McpMeta(AlwaysLoadMeta, true)]
-    [Description("Files the rest of this turn — your reply, your tool calls, your questions — under the project threads it is about. Your conversation is one, but the operator reads it per project: a thread for each, plus General for what is about none. WITHOUT THIS CALL a turn follows what opened it: the thread the operator typed in, or the project of the session whose message you are answering. CALL IT ON EVERY TURN ABOUT A PROJECT, WHEREVER IT WAS TYPED: in All, by voice, in General or in another project's thread (\"hoe staat Depot ervoor?\", \"is dit de nieuwe versie?\"), short follow-ups included, or when the turn is about two projects at once. What the turn is about decides, not where it was typed; nothing leaves the thread it was typed in, it shows there as well. Ids come from list_projects; an empty list is General. Once per turn, early, before you write the reply. WITH ONE PROJECT IT FILES THE OPERATOR'S PROMPT THERE TOO. With two or more, split the prompt with tag_prompt.")]
+    [Description("Files the rest of this turn under projectIds from list_projects; an empty array means General. Without a call, routing follows the turn's origin. The original thread retains its rows. A single project also receives the operator's prompt; use tag_prompt to split a prompt across multiple projects.")]
     public async Task<string> SetThreadAsync(
         [Description("The project ids this turn is about, from list_projects. Empty for General.")] string[] projectIds)
     {
@@ -1230,7 +1230,7 @@ internal sealed class AssistantAgentMcpTools(
 
     [McpServerTool(Name = "tag_prompt", ReadOnly = false, Destructive = false)]
     [McpMeta(AlwaysLoadMeta, true)]
-    [Description("Splits the operator's last prompt over the projects it is about, when one prompt asks for two things in two projects (\"voor Depot dit, voor WayMark dat\"). Not needed for a prompt about one project: set_thread with that project files the prompt as well. For each project, quote the words of the prompt that belong to it, exactly as they were said; the prompt then shows in each thread, with its own part in front, and still in the thread it was typed in. A quote that is not in the prompt still gives the prompt that project, and the reply says so. Pair it with set_thread for the same projects, and write your reply in blocks: a line `<!-- project:<id> -->` on its own opens the block for that project, so each thread shows only its own part. Text before the first marker belongs to all of them. Ids come from list_projects.")]
+    [Description("Tags the operator's last prompt with project parts. Requires at least one part containing a projectId from list_projects and an exact quote. A missing quote match still assigns the project and is reported in the result. The original thread retains the prompt. Use set_thread for reply routing; one-project prompts need only set_thread.")]
     public async Task<string> TagPromptAsync(
         [Description("One entry per project: its id from list_projects and the words of the prompt that belong to it.")] List<TagPromptPartArg> parts)
     {
@@ -1257,7 +1257,7 @@ internal sealed class AssistantAgentMcpTools(
 
     [McpServerTool(Name = "list_threads", ReadOnly = true)]
     [McpMeta(AlwaysLoadMeta, true)]
-    [Description("Lists the project threads of your conversation, open and closed: per thread its project id and name, whether it is closed, how many rows it has, when it last had activity, the sessions still running for that project and the questions or approvals still waiting on the operator there. The rail beside the chat shows the open ones; a closed thread keeps all its rows (in All and on disk) and opens again by itself when something new for its project arrives. READ IT BEFORE YOU CLOSE OR SUGGEST CLOSING ANYTHING.")]
+    [Description("Lists open and closed project threads with projectId, name, status, row count, lastActivity, runningSessions and openQuestions (including approvals). Closed threads retain all rows and reopen automatically on new project activity. Use these ids and eligibility facts for close_thread or suggest_closing_threads.")]
     public async Task<string> ListThreadsAsync()
     {
         try
@@ -1290,7 +1290,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "close_thread", ReadOnly = false, Destructive = false)]
-    [Description("Closes one project thread so the rail beside the chat stays short: it leaves the rail and goes under Closed at its foot, every row of it stays (in All and on disk), and it opens again by itself when something new for that project arrives. FOR WHEN THE OPERATOR ASKS YOU TO CLOSE A THREAD. To propose closing quiet threads yourself, use suggest_closing_threads instead — that lets the operator decide with one click. Refused for General, for a thread with a question or an approval still waiting, and for a thread that is closed already, before anyone is asked. Take the project id from list_threads." + AskingCanBeSwitchedOff)]
+    [Description("Closes a project thread by projectId from list_threads when the operator requests it. Rows remain stored and new project activity reopens it. Refuses General, already-closed threads and threads with pending questions or approvals. Use suggest_closing_threads to propose closure instead.")]
     public async Task<string> CloseThreadAsync(
         [Description("The project id of the thread, from list_threads.")] string projectId)
     {
@@ -1327,7 +1327,7 @@ internal sealed class AssistantAgentMcpTools(
     }
 
     [McpServerTool(Name = "reopen_thread", ReadOnly = false, Destructive = false)]
-    [Description("Brings a closed project thread back to the rail. Needs no approval: it hides nothing and changes no row. You rarely need it — a closed thread opens again by itself when something new for its project arrives — so reach for it when the operator asks for the thread back, or when you are about to talk about a closed project at length. Take the project id from list_threads.")]
+    [Description("Reopens a closed project thread by projectId from list_threads without approval or changing its rows. New project activity also reopens threads automatically.")]
     public async Task<string> ReopenThreadAsync(
         [Description("The project id of the thread, from list_threads.")] string projectId)
     {
