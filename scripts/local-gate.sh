@@ -23,7 +23,7 @@ if [[ ${1:-} == "--linux" ]]; then
 
   shift 2
   MSYS_NO_PATHCONV=1 docker run --rm --interactive \
-    --volume "$PWD:/work" \
+    --volume "$PWD:/source:ro" \
     --workdir /work \
     --env DOTNET_CLI_HOME=/tmp/dotnet-home \
     mcr.microsoft.com/dotnet/sdk:10.0 \
@@ -32,6 +32,14 @@ set -euo pipefail
 
 test_project=$1
 shift
+
+# Build on Docker's Linux filesystem; compiling through Docker Desktop's Windows bind mount is too slow and
+# lets Linux obj/bin files interfere with the following Windows proof.
+tar -C /source --exclude=.git --exclude=.superpowers --exclude=TestResults \
+  --exclude='*/bin' --exclude='*/bin/*' --exclude='*/obj' --exclude='*/obj/*' -cf - . | tar -xf -
+
+apt-get update --quiet
+apt-get install --yes --no-install-recommends --quiet libfontconfig1
 
 dotnet build "$test_project" --configuration Release -warnaserror
 

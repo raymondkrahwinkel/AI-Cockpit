@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Sessions;
@@ -110,15 +111,16 @@ public sealed class TranscriptStreamFlickerTests
             $"the reply's tail ended {run.FinalGap?.ToString("F0") ?? "unmeasurably"}px below the viewport: "
             + "the follow gave up, so it cannot also be said not to have moved");
 
-        // Judged together, so a variant trading one fault for another cannot report only the half that got worse.
-        // The thumb is Offset over Extent - Viewport (Avalonia's ScrollBarMaximum), not Offset: when the extent
-        // estimate shrinks along with it, the thumb does not move at all.
+        _AssertNoFlicker(run);
+    }
+
+    private static void _AssertNoFlicker(Run run)
+    {
         var worstThumb = _WorstBackwardJump(run.Thumbs) * run.Viewport;
         var worstJump = _WorstBackwardJump(run.Painted);
         var worstSlide = _WorstSlide(run.Gaps);
         var faults = new List<string>();
 
-        // Claim 1 — the scrollbar, as the operator sees it: where the thumb sits on its track.
         if (worstThumb > VisibleJumpPx)
         {
             faults.Add(
@@ -127,8 +129,6 @@ public sealed class TranscriptStreamFlickerTests
                 + "ever moves towards the newest row");
         }
 
-        // Claim 2 — the text. Only half of the fault: with the newest row unrealised its slide is unmeasurable
-        // rather than zero, which is what claim 3 counts.
         if (worstSlide > VisibleJumpPx)
         {
             faults.Add(
@@ -137,9 +137,6 @@ public sealed class TranscriptStreamFlickerTests
                 + "reading visibly slid away while the reply was still arriving");
         }
 
-        // Claim 3 — the answer vanishing. On frames with no end of the reply on screen, not on frames missing only
-        // the newest row: that one is always a frame below the fold before the follow reaches it, so a claim on the
-        // raw count would measure physics rather than a defect. It stays as a reading beside this one.
         var blindFrames = run.Gaps.Count(gap => gap is null);
         var replyNowhere = run.TailNowhere.Count(x => x);
         if (replyNowhere > 0)
@@ -174,7 +171,7 @@ public sealed class TranscriptStreamFlickerTests
         var viewport = 0.0;
         double? finalGap = null;
 
-        await HeadlessAvalonia.RunAsync(async () =>
+        await HeadlessAvalonia.RunAsync(() =>
         {
             var vm = new SessionViewModel();
             vm.Transcript.Clear();
@@ -194,7 +191,7 @@ public sealed class TranscriptStreamFlickerTests
             var window = new Window { Content = view, Width = width, Height = height };
             window.Show();
             window.UpdateLayout();
-            await _PumpAsync(null, null, TimeSpan.FromMilliseconds(300));
+            _Pump(null, 20);
 
             var scroll = view.TranscriptScroll!;
 
@@ -246,10 +243,10 @@ public sealed class TranscriptStreamFlickerTests
                     BlockIndex = 0,
                     Text = $"paragraph {i} of a long markdown answer that keeps growing and wrapping over several lines.\n\n",
                 });
-                await _PumpAsync(Sample, scroll, TimeSpan.FromMilliseconds(25));
+                _Pump(Sample, 2);
             }
 
-            await _PumpAsync(Sample, scroll, TimeSpan.FromMilliseconds(400));
+            _Pump(Sample, 20);
 
             viewport = scroll.Viewport.Height;
             finalGap = TailGap();
@@ -258,12 +255,12 @@ public sealed class TranscriptStreamFlickerTests
             // for the thumb, and for the gap a reply that grows while nothing follows it.
             view.Follower.StickToBottom = false;
             var start = scroll.Offset.Y;
-            await _PumpAsync(ControlSample, scroll, TimeSpan.FromMilliseconds(80));
+            _Pump(ControlSample, 4);
             scroll.Offset = scroll.Offset.WithY(0);
-            await _PumpAsync(ControlSample, scroll, TimeSpan.FromMilliseconds(80));
+            _Pump(ControlSample, 4);
 
             scroll.Offset = scroll.Offset.WithY(start);
-            await _PumpAsync(ControlSample, scroll, TimeSpan.FromMilliseconds(40));
+            _Pump(ControlSample, 2);
             for (var i = 0; i < 12; i++)
             {
                 vm.Apply(new AssistantTextDelta
@@ -274,9 +271,10 @@ public sealed class TranscriptStreamFlickerTests
                 });
             }
 
-            await _PumpAsync(ControlSample, scroll, TimeSpan.FromMilliseconds(120));
+            _Pump(ControlSample, 6);
 
             window.Close();
+            return Task.CompletedTask;
         });
 
         return new Run(
@@ -320,19 +318,15 @@ public sealed class TranscriptStreamFlickerTests
         return worst;
     }
 
-    /// <summary>One sample per forced render tick: the transcript as it is about to be painted.</summary>
-    private static async Task _PumpAsync(Action? sample, ScrollViewer? scroll, TimeSpan duration)
+    /// <summary>One sample after each forced render tick and its queued dispatcher work have completed.</summary>
+    private static void _Pump(Action? sample, int frames)
     {
-        var until = DateTime.UtcNow + duration;
-        while (DateTime.UtcNow < until)
+        for (var frame = 0; frame < frames; frame++)
         {
-            if (sample is not null && scroll is not null)
-            {
-                sample();
-            }
-
+            Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            await Task.Delay(8);
+            Dispatcher.UIThread.RunJobs();
+            sample?.Invoke();
         }
     }
 }
