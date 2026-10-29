@@ -11,6 +11,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
 {
     internal const long MaxSizeBytes = 8 * 1024 * 1024;
     internal const int QueueCapacity = 4096;
+    private const string WriterLockSuffix = ".lock";
     private static readonly TimeSpan DrainBudget = TimeSpan.FromSeconds(2);
     // On Unix .NET maps FileShare.None to an exclusive advisory flock that denies tail readers,
     // so the log stream uses the shared read lock on every platform (a log must stay readable
@@ -179,6 +180,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
     private void _WriteQueued()
     {
         Stream? stream = null;
+        FileStream? writerLock = null;
         long length = 0;
         try
         {
@@ -222,19 +224,19 @@ public sealed class FileLoggerProvider : ILoggerProvider
 
                 if (entry.Line is null)
                 {
-                    _Close(ref stream);
+                    _Close(ref stream, ref writerLock);
                     continue;
                 }
 
                 if (dropped > 0)
                 {
-                    if (!_AppendWithRetry($"{dropped} log lines dropped (queue full; {warnings} at Warning or above){Environment.NewLine}", ref stream, ref length))
+                    if (!_AppendWithRetry($"{dropped} log lines dropped (queue full; {warnings} at Warning or above){Environment.NewLine}", ref stream, ref writerLock, ref length))
                     {
                         return;
                     }
                 }
 
-                if (!_AppendWithRetry(entry.Line, ref stream, ref length))
+                if (!_AppendWithRetry(entry.Line, ref stream, ref writerLock, ref length))
                 {
                     return;
                 }
@@ -251,7 +253,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
         }
         finally
         {
-            _Close(ref stream);
+            _Close(ref stream, ref writerLock);
 
             lock (_queueGate)
             {
@@ -263,7 +265,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
         }
     }
 
-    private bool _AppendWithRetry(string line, ref Stream? stream, ref long length)
+    private bool _AppendWithRetry(string line, ref Stream? stream, ref FileStream? writerLock, ref long length)
     {
         var bytes = Encoding.UTF8.GetBytes(line);
         while (true)
@@ -272,6 +274,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
             {
                 if (stream is null)
                 {
+                    writerLock ??= _OpenWriterLock();
                     if (!_prepared)
                     {
                         if (File.Exists(_path))
@@ -312,7 +315,7 @@ public sealed class FileLoggerProvider : ILoggerProvider
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                _Close(ref stream);
+                _Close(ref stream, ref writerLock);
             }
 
             lock (_queueGate)
@@ -327,7 +330,18 @@ public sealed class FileLoggerProvider : ILoggerProvider
         }
     }
 
-    private static void _Close(ref Stream? stream)
+    private FileStream _OpenWriterLock()
+    {
+        var directory = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        return new FileStream(_path + WriterLockSuffix, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    }
+
+    private static void _Close(ref Stream? stream, ref FileStream? writerLock)
     {
         try
         {
@@ -339,6 +353,18 @@ public sealed class FileLoggerProvider : ILoggerProvider
         finally
         {
             stream = null;
+        }
+
+        try
+        {
+            writerLock?.Dispose();
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            writerLock = null;
         }
     }
 
