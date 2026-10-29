@@ -46,8 +46,7 @@ public sealed class PluginChannelHub(ILogger<PluginChannelHub> logger) : ISingle
             return Task.FromException<JsonElement>(new PluginChannelUnknownActionException(pluginId, action));
         }
 
-        var owned = _Own(payload);
-        return Task.Run(() => handler(owned, cancellationToken), cancellationToken);
+        return handler(_Own(payload), cancellationToken);
     }
 
     public void Publish(string pluginId, string name, JsonElement payload)
