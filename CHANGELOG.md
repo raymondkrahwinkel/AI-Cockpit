@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Depot 0.45.5 includes checksums when opening files in the Depot browser.
+
 - A plugin no longer freezes the cockpit while its backend works. Saving the settings of Depot, Kubernetes, Docker, Slack, Discord, Proxmox or Local CI waits for the save without holding the window. The Kubernetes settings load their clusters after the page is shown. The Git status badge starts watching a repository in the background, and the diagram, whiteboard and wireframe lists say "Loading…" while they read your memory folders. Plugins that use the new settings save need host 0.151.0.
 
 - Depot 0.45.2 sends the note's opening account with saves and shows its email in the sign-in banner, falling back to its name on older servers (DEP-539).
