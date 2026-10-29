@@ -83,7 +83,6 @@ internal abstract class SurfaceChannelClient(IPluginUiChannel channel) : IDispos
     // Waits for the call before it, whatever became of that one: its own caller hears about its failure.
     private async Task<JsonElement?> _AfterAsync(Task previous, string action, JsonElement payload)
     {
-        await previous.ContinueWith(static _ => { }, TaskScheduler.Default).ConfigureAwait(false);
         try
         {
             return await channel.InvokeAsync(action, payload).ConfigureAwait(false);
