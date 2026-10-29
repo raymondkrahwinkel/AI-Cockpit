@@ -21,13 +21,52 @@ public class DepotNoteLiveTests
     private const string Secret = "sk-live-bearer-0123456789";
 
     // AC-1901: the two ways a sign-in ends (an HTTP 401 and the hub's code) in one test, every assert kept, instead of a theory that
-    // branched on its parameter.
+    // branched on its parameter. AC-1582 adds what signing in again as someone else does to the same session.
     [Fact]
     public async Task SignInNeeded_IsPublishedOnce_WithoutRetry_AndNeverCarriesTheToken()
     {
         await _SignInNeededOnceAsync(new HttpRequestException($"401 Authorization: Bearer {Secret}", null, HttpStatusCode.Unauthorized));
         await _SignInNeededOnceAsync(new HubException($"auth.session_expired: refused (Bearer {Secret})"));
         await _StaleEpochDoesNotSendTheOfflineRoomAsync();
+        await _OtherAccountAfterSignInWritesNothingAsync();
+    }
+
+    // AC-1582, layer 2: signed in again as another account, the session joins nothing, sends nothing and saves nothing, and the
+    // text typed while signed out stays.
+    private static async Task _OtherAccountAfterSignInWritesNothingAsync()
+    {
+        var user = "user-1";
+        var posts = 0;
+        var joined = new DepotNoteJoinResult("doc-1", "editor", [], true, false, "epoch-1", false, false, Markdown: "# Original\n");
+        var first = new _Hub(_ => Task.FromResult(joined));
+        var later = new _Hub(_ => Task.FromResult(joined));
+        var hubs = new Queue<_Hub>([first, new _Hub(_ => throw new HubException("auth.session_expired: refused")), later]);
+        await using var session = new DepotNoteSession(Connection, Note, _ => Task.FromResult(new DepotNoteUser(user, "Raymond")),
+            (_, _, closed) => hubs.Dequeue().With(closed), clientId => new JintNoteRoom(clientId), _ => { }, [TimeSpan.Zero],
+            post: (_, _, _, _) =>
+            {
+                posts++;
+                return Task.FromResult(new DepotNoteSaveAnswer(200));
+            },
+            signIn: _ => Task.FromResult(true));
+        session.Connect();
+        var snapshot = await session.ReadAsync(CancellationToken.None);
+        await first.DropAsync();
+        await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(LiveFileState.SignInNeeded, session.Status.State);
+        Assert.Equal("Raymond", session.Status.Account);
+        await session.EditAsync("signed-out", snapshot.Rev, [new(0, 0, "MINE\n")], CancellationToken.None);
+
+        user = "user-2";
+        await session.ReconnectAsync(signIn: true, CancellationToken.None);
+        await session.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Empty(later.Joins);
+        Assert.Empty(later.Updates);
+        Assert.Equal(0, posts);
+        Assert.Equal(LiveFileState.SignInNeeded, session.Status.State);
+        Assert.Equal("Signed in as another account. Your changes were not saved.", session.Status.Reason);
+        Assert.StartsWith("MINE\n", (await session.ReadAsync(CancellationToken.None)).Text);
     }
 
     // AC-1903, layer 2: a stale epoch fences the old Jint room before its missing diff reaches the hub.
@@ -90,7 +129,9 @@ public class DepotNoteLiveTests
         Assert.Same(session, notes.Open(Note));
         await session.Completion.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(2, factoryCalls);
-        Assert.Equal(LiveFileState.SignInNeeded, seen[^1].State);
+        // AC-1582: until the account is known again it never looks Offline, which would let the host save as anyone.
+        Assert.Equal(LiveFileState.SignInNeeded, session.Status.State);
+        Assert.DoesNotContain(seen, status => status.State == LiveFileState.Offline);
 
         // AC-1580: the editor tab takes over the session that is open for its note, and any other file is a snapshot.
         var source = (ILiveFileSource)new DepotFileSourceProvider(Substitute.For<ICockpitHost>(), () => [Connection], () => notes).Open("work");

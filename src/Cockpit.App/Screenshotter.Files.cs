@@ -45,12 +45,13 @@ internal static partial class Screenshotter
 
     private static Window _MarkdownFileScene(int width, int height, string state)
     {
-        var presence = state.StartsWith("presence") || state is "viewer" or "schema-mismatch" || state.StartsWith("live-light");
+        var presence = state.StartsWith("presence") || state is "viewer" or "schema-mismatch" || state.StartsWith("live-light") || state == "sign-in-expired";
         var readOnly = state switch
         {
             "viewer" => new LiveFileStatus(LiveFileState.ReadOnly) { ReadOnlyReason = LiveReadOnlyReason.Viewer },
             "schema-mismatch" => new LiveFileStatus(LiveFileState.ReadOnly, "This note uses a newer Depot editor. You can watch it live; editing comes back once Cockpit's Depot plugin is updated.") { ReadOnlyReason = LiveReadOnlyReason.SchemaMismatch },
             "live-light" or "live-light-saved" => new LiveFileStatus(LiveFileState.Offline),
+            "sign-in-expired" => new LiveFileStatus(LiveFileState.SignInNeeded) { Account = "Raymond Krahwinkel" },
             _ => null,
         };
         var text = presence ? PresenceNote : "# md-editor-in-cockpit\n\nCapture an idea straight from the **Depot file browser**, and see *right away* how it looks.\n\n## Wishes\n- A new file in a chosen place\n- A tab or a separate window\n- Saving writes back to Depot with `baseChecksum`\n\n## Tasks\n- [x] Mockup v003\n- [ ] Write the next idea\n";
@@ -81,7 +82,7 @@ internal static partial class Screenshotter
         {
             body.Editor.MarkExternalEdit(new ExternalTextEdit("Assistant · on behalf of Raymond", DateTimeOffset.UtcNow, [new(PresenceNote.Length, text.Length)]));
         }
-        if (state.StartsWith("live-light"))
+        if (state.StartsWith("live-light") || state == "sign-in-expired")
         {
             var offset = body.Editor.Text.IndexOf("\n\n## Decisions", StringComparison.Ordinal);
             body.Editor.TextEditor.Document.Insert(offset, LocalNoteLines);
@@ -171,7 +172,7 @@ internal static partial class Screenshotter
                     { CanWrite = writable, Live = live, ModifiedBy = presence ? "Sanne" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LiveOpen when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLiveSnapshot>(
                 new("scene", Convert.ToBase64String(Encoding.UTF8.GetBytes(text)), 1, status ?? new(LiveFileState.Live))
-                    { Peers = presence ? status?.State == LiveFileState.Offline
+                    { Peers = presence ? status?.State is LiveFileState.Offline or LiveFileState.SignInNeeded
                         ? _PresencePeers(true, agent).Select(peer => peer.You ? peer : peer with { Caret = null, Selection = null }).ToArray()
                         : _PresencePeers(away, agent) : null, OpenUrl = presence ? "https://depot.example/projects/krahwinkel-it/cockpit" : null }, null), FileSourceChannel.Json),
             FileSourceChannel.LivePresenceSet when live => JsonSerializer.SerializeToElement(new FileSourceAnswer<FileSourceLivePresenceSet>(

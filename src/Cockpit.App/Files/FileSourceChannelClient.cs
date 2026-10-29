@@ -53,6 +53,10 @@ internal sealed class FileSourceChannelClient(IPluginUiChannel channel)
         _RunAsync(() => _CallAsync<FileSourceLiveUndoRequest>(FileSourceChannel.LiveUndo,
             new FileSourceLiveUndoRequest(sessionId, redo), cancellationToken), cancellationToken);
 
+    public Task ReconnectLiveAsync(string sessionId, bool signIn, CancellationToken cancellationToken) =>
+        _RunAsync(() => _CallAsync<FileSourceLiveReconnectRequest>(FileSourceChannel.LiveReconnect,
+            new FileSourceLiveReconnectRequest(sessionId, signIn), cancellationToken), cancellationToken);
+
     public Task SetPresenceAsync(string sessionId, LivePresenceState state, CancellationToken cancellationToken) =>
         _RunAsync(() => _CallAsync<FileSourceLivePresenceSet>(FileSourceChannel.LivePresenceSet,
             new FileSourceLivePresenceSet(sessionId, state), cancellationToken), cancellationToken);

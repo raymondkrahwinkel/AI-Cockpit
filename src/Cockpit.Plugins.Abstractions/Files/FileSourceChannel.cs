@@ -15,6 +15,7 @@ public static class FileSourceChannel
     public const string LiveEdit = "files-live-edit";
     public const string LiveUndo = "files-live-undo";
     public const string LiveClose = "files-live-close";
+    public const string LiveReconnect = "files-live-reconnect";
     public const string LivePatch = "files-live-patch";
     public const string LiveState = "files-live-state";
     public const string LivePresence = "files-live-presence";
@@ -72,6 +73,7 @@ public sealed record FileSourceReadAnswer(string ContentBase64, string Version, 
 public sealed record FileSourceLiveRequest(string SessionId);
 public sealed record FileSourceLiveEditRequest(string SessionId, string EditId, long BaseRev, TextOp[] Ops);
 public sealed record FileSourceLiveUndoRequest(string SessionId, bool Redo);
+public sealed record FileSourceLiveReconnectRequest(string SessionId, bool SignIn);
 public sealed record FileSourceLiveSnapshot(string SessionId, string ContentBase64, long Rev, LiveFileStatus Status)
 {
     public IReadOnlyList<LivePeer>? Peers { get; init; }

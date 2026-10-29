@@ -29,6 +29,9 @@ internal static class DepotNoteLiveState
     // Not signed in, or the session ended. One attempt, then nothing until the user signs in again.
     public const string SignInNeeded = "sign-in-needed";
 
+    // Signed in again, but as someone else than the note was opened as (AC-1582): no Join, no save, until that account is back.
+    public const string OtherAccount = "other-account";
+
     public const string Unavailable = "unavailable";
 
     public const string Disabled = "disabled";

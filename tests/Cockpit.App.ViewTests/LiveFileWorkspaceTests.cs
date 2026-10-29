@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using AvaloniaEdit.Editing;
@@ -77,6 +79,7 @@ public sealed class LiveFileWorkspaceTests
         await _Offline_BlocksOverlappingLinesAsync();
         await _Offline_RevertingToTheInitialTextStillSavesAsync();
         await _Offline_FailedSaveStaysDirtyAfterSignInExpiresAsync();
+        await _SignedOutFromLive_KeepsTheTextDirtyAsync();
         await _Offline_NewerFileKeepsAnExplicitReversionAsync();
         await _StaleRoomIsReopenedOnlyAfterSavingAsync();
         await _TypingDuringFreshJoinIsSavedBeforeReplacingTheEditorAsync();
@@ -255,12 +258,45 @@ public sealed class LiveFileWorkspaceTests
             Assert.StartsWith("MINE\n", body.Editor.Text);
             Assert.Equal(Lines, source.FileText);
             Assert.Equal(WorkspaceMarker.Unsaved, marker());
+            // AC-1582, 5c: the amber banner says what happened and offers the plugin's own sign-in.
+            Assert.Equal("Not saved to Depot yet", body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "FileStatus").Text);
+            Assert.Equal("Your Depot sign-in has expired — Depot stopped the live session at " + DateTime.Now.ToString("HH:mm")
+                + ". Nothing was lost; your text is still here. Sign in again to rejoin the note.", _BannerText(body));
+            body.GetLogicalDescendants().OfType<Button>().Single(button => button.IsVisible && Equals(button.Content, "Sign in again"))
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(new[] { true }, source.Reconnects);
+            Assert.Equal(Lines, source.FileText);
         }
         finally
         {
             window.Close();
         }
     }
+
+    // Layer 2, view (AC-1582): text typed after the sign-in expired is only here, so the tab warns before it closes (AC-1754).
+    private static async Task _SignedOutFromLive_KeepsTheTextDirtyAsync()
+    {
+        var (source, body, marker, window) = await _OpenAsync();
+        try
+        {
+            body.Editor.TextEditor.Document.Insert(0, "MINE\n");
+            Dispatcher.UIThread.RunJobs();
+            source.Status = source.Status with { State = LiveFileState.SignInNeeded };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(body.IsDirty);
+            Assert.Equal("1 lines only in this Cockpit", body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LocalLineCount").Text);
+            Assert.Equal(0, source.Writes);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static string _BannerText(MarkdownFileWorkspace body) => string.Concat(
+        body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LiveBannerText").Inlines?.OfType<Run>().Select(run => run.Text) ?? []);
 
     // Layer 2, view: fallback uses the file version, retaining another writer's separate line.
     private static async Task _Offline_MergesSeparateLinesAsync()
@@ -274,12 +310,19 @@ public sealed class LiveFileWorkspaceTests
             source.FileVersion = "external";
             Assert.True(body.IsDirty);
             Assert.Equal("1 lines only in this Cockpit", body.GetLogicalDescendants().OfType<TextBlock>().Single(block => block.Name == "LocalLineCount").Text);
+            // AC-1582, 5a: the banner names Depot, the time it dropped and the next try.
+            Assert.Matches(@"^The live connection to Depot dropped at \d\d:\d\d\. Keep writing: your text stays in this Cockpit and is merged into the note when Depot is back\. Next try in \d+ s\.$", _BannerText(body));
             await source.Saved.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal("MINE\n" + Lines + "\nTHEIRS", source.FileText);
             Assert.Equal(source.FileText, body.Editor.Text);
             Assert.False(body.HasConflict);
             Assert.False(body.IsDirty);
             Assert.Equal(new[] { "v1", "external" }, source.WriteVersions);
+            // 5b: back live, the done bar counts what was merged.
+            source.Status = source.Status with { State = LiveFileState.Live };
+            source.PublishStatus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Back live. Your 1 offline line was merged into the note; nothing overlapped.", _BannerText(body));
         }
         finally
         {
@@ -469,6 +512,7 @@ public sealed class LiveFileWorkspaceTests
         public List<string?> WriteVersions { get; } = [];
         public TaskCompletionSource Saved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool FailWrites { get; set; }
+        public List<bool> Reconnects { get; } = [];
         public int OpenCount { get; private set; }
         public int DisposeCount { get; private set; }
         public Task? HoldReopen { get; set; }
@@ -558,6 +602,11 @@ public sealed class LiveFileWorkspaceTests
             Landed = new(TaskCreationOptions.RunContinuationsAsynchronously);
             landed.SetResult();
             return new LiveEditResult(LiveEditStatus.Applied, ++Rev);
+        }
+        public Task ReconnectAsync(bool signIn, CancellationToken cancellationToken)
+        {
+            Reconnects.Add(signIn);
+            return Task.CompletedTask;
         }
         public Task UndoAsync(bool redo, CancellationToken cancellationToken)
         {

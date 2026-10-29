@@ -132,6 +132,12 @@ internal static class FileSourceChannel
             await _Live(registration, request.SessionId).UndoAsync(request.Redo, ct).ConfigureAwait(false);
             return request;
         })));
+        registration.Handlers.Add(channel.Handle(Wire.LiveReconnect, (payload, ct) => _RunAsync(async () =>
+        {
+            var request = payload.Deserialize<FileSourceLiveReconnectRequest>(Wire.Json) ?? throw new JsonException();
+            await _Live(registration, request.SessionId).ReconnectAsync(request.SignIn, ct).ConfigureAwait(false);
+            return request;
+        })));
         registration.Handlers.Add(channel.Handle(Wire.LivePresenceSet, (payload, ct) => _RunAsync(async () =>
         {
             var request = payload.Deserialize<FileSourceLivePresenceSet>(Wire.Json) ?? throw new JsonException();

@@ -87,6 +87,9 @@ internal sealed class LiveTextDocument : IDisposable
         _Pump();
     }
 
+    // Asks the source to try its connection now; with signIn, to let the operator sign in again first.
+    public Task ReconnectAsync(bool signIn) => _id is { } id ? _client.ReconnectLiveAsync(id, signIn, _lifetime.Token) : Task.CompletedTask;
+
     public void Resync()
     {
         _resync = true;

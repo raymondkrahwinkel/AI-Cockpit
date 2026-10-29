@@ -644,7 +644,9 @@
     <!-- 3.51.0: McpServerContribution.IncludeAgentName and LiveFilePatch.ExternalEdit (AC-1583); requires host 0.148.0. -->
     <!-- 3.52.0 (AC-1903): LiveFileStatus.RequiresRejoin fences an old room until local text is saved to the file.
          A plugin that supplies this flag sets minHostVersion 0.149.0. Additive; still v3. -->
-    <Version>3.52.0</Version>
+    <!-- 3.53.0 (AC-1582): LiveFileStatus.Account and ILiveFileSession.ReconnectAsync, with the files-live-reconnect action.
+         A plugin that uses them sets minHostVersion 0.150.0. Additive; still v3. -->
+    <Version>3.53.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

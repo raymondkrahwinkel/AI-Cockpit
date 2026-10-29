@@ -45,6 +45,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
   in yet: you are asked to sign in first, and nothing opens by itself. A note you joined from the inbox is marked read, and its
   card says "Joined" with a Show tab button, which brings the note's tab forward (Depot plugin 0.43.0).
 
+- added: **a live note says when Depot is out of reach or your sign-in expired.** An amber banner says when the live
+  connection dropped and when the next try is, with Retry; a green bar says how many offline lines were merged once it is back.
+  An expired Depot sign-in offers Sign in again, and the note rejoins only as the same account: signed in as someone else,
+  nothing is saved and your text stays in the editor. Closing a tab with text that is only in this Cockpit asks first
+  (plugin SDK 3.53.0, Cockpit 0.150.0, Depot plugin 0.45.0).
+
 - added: **live notes keep saving when their live connection drops.** Local edits are saved after three seconds of quiet,
   separate line changes are merged, and overlapping changes wait for your choice. Amber gutter marks and a footer count
   show lines that exist only in this Cockpit. A rebuilt room is joined afresh after your text is safely stored in the file.
