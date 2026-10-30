@@ -531,6 +531,12 @@ public partial class OptionsDialog : Window
         }
     }
 
+    private async void OnSwarmKick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Control { DataContext: SwarmMachineRow machine } || DataContext is not CockpitViewModel cockpit) return;
+        await cockpit.Swarm.KickAsync(machine);
+    }
+
     private int _FilterRows(Control root, string? searchText)
     {
         if (Equals(root.Tag, "swarm") && OptionsSearchMatcher.MatchesAny(searchText, "swarm machines pairing ranks leader")) searchText = null;

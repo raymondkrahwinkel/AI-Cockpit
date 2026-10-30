@@ -295,6 +295,8 @@ internal static partial class Screenshotter
         // controller's assistant may do here render nowhere else.
         ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
         ["options-swarm"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-kicked"] = (_, _) => _OptionsSwarm(removal: "Laptop removed this machine from the swarm. Your sessions here keep running. Join again with confirmation on both screens and a new rank. removed_from_swarm"),
+        ["options-swarm-removal-pending"] = (_, _) => _OptionsSwarm(removal: "Kicked · removal_pending: sleeping members learn the signed removal at their next contact."),
         ["options-swarm-no-answer"] = (_, _) => _OptionsSwarm(failure: "no_answer"),
         ["options-swarm-refused"] = (_, _) => _OptionsSwarm(failure: "connection_refused"),
         ["options-swarm-certificate"] = (_, _) => _OptionsSwarm(failure: "certificate_changed"),
@@ -1942,25 +1944,32 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false, string? failure = null)
+    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false, string? failure = null, string? removal = null)
     {
         var swarm = new SwarmOptionsViewModel
         {
             ExtraInternalCidrsText = invalidCidr ? "100.64.0.0/99" : "100.64.0.0/10",
             Address = "nuc-garage:20382",
+            RemovalStatus = removal ?? "",
             Incoming = incoming ? new("scene-pairing", "Desktop", "482 193", DateTimeOffset.UtcNow.AddMinutes(2)) : null,
         };
         if (!empty)
         {
-            swarm.Machines.Add(new("Desktop", "192.168.1.10:20382", "Discovered", "1042", "Leader", "Now", false, true));
-            swarm.Machines.Add(new("Laptop", "192.168.1.23:20382", "This machine", "5789", "Online", "Now", true, true));
-            swarm.Machines.Add(new("Studio", "studio:20382", "Manual address", "8931", "Online", "Now", false, true));
-            swarm.Machines.Add(new("NUC", "192.168.1.44:20382", "Discovered", "15237", "Asleep", "Today, 14:32", false, false));
-            swarm.Machines.Add(new("Workshop", "workshop:20382", "Manual address", "18004", "Not reachable", "Yesterday, 18:04", false, false));
+            swarm.Machines.Add(new("Desktop", "192.168.1.10:20382", "Discovered", "1042", "Leader", "Now", false, true) { IsPaired = true });
+            swarm.Machines.Add(new("Laptop", "192.168.1.23:20382", "This machine", "5789", "Online", "Now", true, true) { IsPaired = true });
+            swarm.Machines.Add(new("Studio", "studio:20382", "Manual address", "8931", "Online", "Now", false, true) { IsPaired = true });
+            swarm.Machines.Add(new("NUC", "192.168.1.44:20382", "Discovered", "15237", "Asleep", "Today, 14:32", false, false) { IsPaired = true });
+            swarm.Machines.Add(new("Workshop", "workshop:20382", "Manual address", "18004", "Not reachable", "Yesterday, 18:04", false, false) { IsPaired = true });
             swarm.LeaderLine = "Leader: Desktop · Lowest rank of the 3 reachable";
             swarm.RankOrder = "Desktop (1042) → Laptop (5789) → Studio (8931) → NUC (15237) → Workshop (18004)";
             swarm.PairingCode = "482 193";
             swarm.PairingCaption = "Compare with NUC-garage on the other screen. Confirm there too, then continue here.";
+        }
+        if (removal?.Contains("removed_from_swarm", StringComparison.Ordinal) == true)
+        {
+            swarm.Machines.Clear();
+            swarm.PairingCode = "";
+            swarm.LeaderLine = "This machine works on its own";
         }
         if (failure is not null)
         {

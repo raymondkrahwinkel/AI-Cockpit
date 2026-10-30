@@ -62,6 +62,9 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         public SwarmLeadership Leadership { get; private set; } = null!;
         public SwarmSettingsStore SwarmSettings { get; private set; } = null!;
         public SwarmPropagation Propagation { get; private set; } = null!;
+        public SwarmKick Kick { get; private set; } = null!;
+        public bool Sleep { get; set; }
+        public bool External { get; set; }
         public Cockpit.Core.Swarm.SwarmReachability Reachability { get; private set; } = null!;
         public List<string> Notices { get; } = [];
         public bool RejectConnect { get; set; }
@@ -89,13 +92,15 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                 machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
             machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join,
                 new SwarmManualAddress(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")), policy), machine.Settings, new NodeDiscoveryClient());
-            machine.Propagation = new(machine.Membership, new NoticesToast(machine.Notices));
+            machine.Kick = new(machine.Membership, machine.Identity, machine.Certificate, machine.Keys, machine.Servers, policy,
+                new SwarmManualAddress(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")), policy), NullLogger<SwarmKick>.Instance);
+            machine.Propagation = new(machine.Membership, new NoticesToast(machine.Notices), machine.Kick);
             machine.Reachability = new(time);
             machine.SwarmSettings = new(Path.Combine(machine._root, "cockpit.json"));
             machine.Leadership = new(machine.Membership, machine.SwarmSettings, machine.Identity, machine.Reachability) { Time = time };
             machine.Heartbeat = new(machine.Identity, machine.Certificate, machine.Membership, machine.Propagation, policy,
                 machine.Client, machine.Servers, machine.Settings, machine.Keys, machine.Reachability,
-                machine.Leadership, new SwarmManualAddress(machine.SwarmSettings, policy), new HeartbeatLog()) { Time = time };
+                machine.Leadership, new SwarmManualAddress(machine.SwarmSettings, policy), new HeartbeatLog(), machine.Kick) { Time = time };
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(policy);
             builder.Services.AddSingleton(machine.Client);
@@ -109,6 +114,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine._app = builder.Build();
             machine._app.Use(async (context, next) =>
             {
+                if (machine.External) context.Connection.RemoteIpAddress = IPAddress.Parse("8.8.8.8");
+                if (machine.Sleep) { context.Response.StatusCode = 503; return; }
                 if (machine.RejectConnect && context.Request.Path == "/swarm/connect")
                     await Results.Json(new NodePairingProblem(NodePairingError.InvalidToken, "Sleeping"), NodePairingJson.Options, statusCode: 403).ExecuteAsync(context);
                 else await next(context);

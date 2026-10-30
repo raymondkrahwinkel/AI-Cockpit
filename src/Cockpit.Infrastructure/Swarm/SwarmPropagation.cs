@@ -6,7 +6,7 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.Infrastructure.Swarm;
 
-internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService? toasts = null) : ISingletonService
+internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService? toasts = null, SwarmKick? kick = null) : ISingletonService
 {
     internal static string Stamp(SwarmRecord record) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         SwarmRecordJson.Canonicalize(record.Payload)));
@@ -52,12 +52,18 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
                     throw new InvalidDataException("swarm_record_refused");
                 if (change is SwarmMember member) joined.Add(member);
             }
-            if (candidate.Sequence == current.Sequence) return;
+            if (candidate.Sequence == current.Sequence)
+            {
+                if (kick is not null) await kick.RevokeAsync(candidate, ct);
+                return;
+            }
             store.Save(candidate);
+            if (kick is not null) await kick.RevokeAsync(candidate, ct);
             foreach (var member in joined)
             {
                 var adder = candidate.Members.FirstOrDefault(item => item.Id == member.AddedBy)?.Name ?? member.AddedBy.Value;
-                toasts?.Show($"{member.Name} joined the swarm, added by {adder}", ToastSeverity.Information, [], false, "Swarm", member.Id.Value);
+                toasts?.Show($"{member.Name} joined the swarm, added by {adder}", ToastSeverity.Information,
+                    kick is null ? [] : [new ToastAction("Remove", () => kick.RequestRemoval(member))], false, "Swarm", member.Id.Value);
             }
         }
         finally

@@ -20,6 +20,8 @@ public sealed class SwarmMembership
 
     public IEnumerable<SwarmMember> Members => _members.Values.Where(member => !_tombstones.ContainsKey(member.Id));
 
+    public IEnumerable<SwarmTombstone> Tombstones => _tombstones.Values;
+
     // The resolver for `SwarmRecord.Verify`: current members only, so a removed member's signature no longer verifies.
     public byte[]? PublicKeyOf(SwarmMemberId id) => _tombstones.ContainsKey(id) ? null : _members.GetValueOrDefault(id)?.PublicKey;
 
@@ -53,7 +55,8 @@ public sealed class SwarmMembership
         switch (change)
         {
             case SwarmMember member:
-                _members.Add(member.Id, member);
+                _members[member.Id] = member;
+                _tombstones.Remove(member.Id);
                 break;
             case SwarmTombstone tombstone:
                 _tombstones.Add(tombstone.Member, tombstone);
@@ -128,12 +131,12 @@ public sealed class SwarmMembership
             return SwarmMembershipVerdict.Malformed;
         }
 
-        if (_tombstones.ContainsKey(member.Id))
+        if (_tombstones.ContainsKey(member.Id) && member.Rank == _members[member.Id].Rank)
         {
             return SwarmMembershipVerdict.Removed;
         }
 
-        if (_members.ContainsKey(member.Id))
+        if (_members.ContainsKey(member.Id) && !_tombstones.ContainsKey(member.Id))
         {
             return SwarmMembershipVerdict.AlreadyMember;
         }
