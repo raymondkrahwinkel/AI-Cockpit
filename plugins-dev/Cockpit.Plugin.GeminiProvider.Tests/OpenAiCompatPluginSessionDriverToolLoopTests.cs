@@ -12,7 +12,7 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
     [Fact]
     public async Task SendUserMessage_WhenTheSameToolFailsThreeTimes_StopsTheTurnWithTheReason()
     {
-        var toolset = new FakeToolset(["run_command"], reachable: ["run_command"], result: "Tool call failed: path does not exist.");
+        var toolset = new FakeToolset(["call_tool"], reachable: ["call_tool", "run_command"], result: "Tool call failed: path does not exist.");
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(
@@ -27,6 +27,11 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         var events = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
 
         Assert.Equal(3, toolset.Calls.Count);
+        Assert.All(toolset.Calls, call =>
+        {
+            Assert.Equal("run_command", call.Name);
+            Assert.Contains("ls /home/user/project", call.ArgumentsJson);
+        });
         Assert.Contains("same tool call returned the same error 3 times", string.Concat(events.OfType<PluginAssistantTextDelta>().Select(delta => delta.Text)));
         Assert.False(Assert.Single(events.OfType<PluginTurnCompleted>()).IsError);
     }
@@ -97,6 +102,28 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
     [Fact]
     public async Task SendUserMessage_WithLargeToolResults_CapsEachOne_AndPrunesOlderOnesBelowTheContextLimit_KeepingEveryCallWithItsResult()
     {
+        var smallLimits = ChatTurnLimits.Default with { ContextWindowTokens = 32_768 };
+        foreach (var inputTokens in new[] { 16_000, 24_000, 25_000 })
+        {
+            var model = Substitute.For<IChatClient>();
+            ChatOptions? offered = null;
+            model.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions?>(value => offered = value), Arg.Any<CancellationToken>())
+                .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+            using var guard = new ContextGuardChatClient(model, smallLimits);
+            await guard.GetResponseAsync([new ChatMessage(ChatRole.User, new string('x', inputTokens * 4))],
+                new ChatOptions { Tools = [AIFunctionFactory.Create(() => "ok", "read")] });
+            Assert.Equal(inputTokens > 24_576, guard.Turn.ContextFull);
+            Assert.Equal(inputTokens > 24_576, offered!.Tools is null);
+            Assert.Equal(0, guard.Turn.Pruned);
+        }
+
+        Assert.Equal(8_192, smallLimits.ReserveTokens);
+        Assert.Equal(20_000, ChatTurnLimits.Default.ReserveTokens);
+        Assert.Equal(4_096, (smallLimits with { ContextWindowTokens = 16_384 }).ReserveTokens);
+        Assert.Equal(1_000, (smallLimits with { ReserveTokens = 1_000 }).ReserveTokens);
+        using var configuredJson = System.Text.Json.JsonDocument.Parse("""{"contextWindowTokens":32768,"reserveTokens":2000}""");
+        Assert.Equal(2_000, ChatTurnLimits.From(configuredJson.RootElement).ReserveTokens);
+
         var limits = new ChatTurnLimits { ContextWindowTokens = 50_000, SoftLimitRatio = 0.5, ReserveTokens = 20_000, ProtectRecentTokens = 15_000 };
         var bigResult = string.Concat(Enumerable.Repeat(new string('x', 99) + "\n", 1024));
         var requests = new List<(List<ChatMessage> Messages, List<string> Results, long Chars)>();

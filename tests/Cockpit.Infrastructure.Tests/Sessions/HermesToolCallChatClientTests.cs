@@ -215,7 +215,7 @@ public class HermesToolCallChatClientTests
         var toolProvider = Substitute.For<IMcpToolProvider>();
         toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>()).Returns(toolSession);
 
-        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, Substitute.For<ILocalModelContextManager>());
     }
 
     private static async Task<List<SessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver)

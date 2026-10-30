@@ -4,6 +4,10 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.AI;
+using NSubstitute;
+using Cockpit.Infrastructure;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Infrastructure.Configuration;
@@ -27,6 +31,10 @@ internal static class LocalModelContextContract
 
     private static void _ProfileContextRoundTripsAndDrivesTheTurnGuard()
     {
+        using var services = new ServiceCollection().AddLogging().AddInfrastructure()
+            .AddServices(typeof(LocalModelContextManager).Assembly).BuildServiceProvider();
+        Assert.NotNull(services.GetService<ILocalModelContextManager>());
+        Assert.Same(services.GetRequiredService<LocalModelContextManager>(), services.GetRequiredService<ILocalModelContextManager>());
         var stored = ProviderConfigEntry.FromDomain(new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 65_536, LoadModelWithContext: true));
         var loaded = Assert.IsType<LmStudioConfig>(stored.ToDomain(string.Empty, null));
 
@@ -89,33 +97,92 @@ internal static class LocalModelContextContract
 
     private static async Task _LmStudioLoadsAnUnloadedModel()
     {
-        var handler = new RecordingHandler(request => request.Method == HttpMethod.Get
-            ? _Json("""{"models":[{"key":"qwen","loaded_instances":[]}]}""")
-            : _Json("{}"));
+        var loaded = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return _Json(loaded ? _LoadedAt(65_536) : """{"models":[{"key":"qwen","loaded_instances":[]}]}""");
+            }
+
+            loaded = true;
+            return _Json("{}");
+        });
         var manager = _Manager(handler);
 
-        var warning = await manager.PrepareAsync(new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 32_768));
+        var profile = new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 65_536, LoadModelWithContext: true);
+        var warning = await manager.PrepareAsync(profile, sessionId: "first");
 
         Assert.Null(warning);
-        Assert.Equal(["/api/v1/models", "/api/v1/models/load"], handler.Requests.Select(request => request.Path));
+        Assert.Equal(["/api/v1/models", "/api/v1/models/load", "/api/v1/models"], handler.Requests.Select(request => request.Path));
         Assert.Contains("\"model\":\"qwen\"", handler.Requests[1].Body);
-        Assert.Contains("\"context_length\":32768", handler.Requests[1].Body);
+        Assert.Contains("\"context_length\":65536", handler.Requests[1].Body);
+        await manager.PrepareAsync(profile, sessionId: "second");
+        Assert.Equal(4, handler.Requests.Count);
+        await manager.ReleaseAsync("first");
+        await manager.ReleaseAsync("second");
+        loaded = false;
+        var factory = Substitute.For<IChatClientFactory>();
+        factory.Create(Arg.Any<ProviderConfig>()).Returns(_ =>
+        {
+            Assert.True(loaded);
+            Assert.Equal("/api/v1/models", handler.Requests[^1].Path);
+            return Substitute.For<IChatClient>();
+        });
+        var toolSession = Substitute.For<Cockpit.Infrastructure.Mcp.IMcpToolSession>();
+        toolSession.Tools.Returns([]);
+        toolSession.ConnectedServerNames.Returns([]);
+        var toolProvider = Substitute.For<Cockpit.Infrastructure.Mcp.IMcpToolProvider>();
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(toolSession);
+        await using var driver = new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, manager);
+        await driver.StartAsync(new SessionProfile("after unload", profile));
+        factory.Received(1).Create(profile);
+        Assert.Equal(2, handler.Requests.Count(request => request.Path == "/api/v1/models/load"));
     }
 
     private static async Task _LmStudioReloadsASmallerContextWhenEnabled()
     {
-        var handler = new RecordingHandler(request => request.Method == HttpMethod.Get
-            ? _Json(_LoadedAt(8_192))
-            : _Json("{}"));
+        var context = 32_768;
+        var target = 65_536;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return _Json(_LoadedAt(context));
+            }
+
+            if (request.RequestUri!.AbsolutePath.EndsWith("/load", StringComparison.Ordinal))
+            {
+                context = target;
+            }
+
+            return _Json("{}");
+        });
         var manager = _Manager(handler);
 
-        var warning = await manager.PrepareAsync(new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 32_768, LoadModelWithContext: true));
+        var profile = new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 65_536, LoadModelWithContext: true);
+        var warning = await manager.PrepareAsync(profile);
 
         Assert.Null(warning);
-        Assert.Equal(["/api/v1/models", "/api/v1/models/unload", "/api/v1/models/load"], handler.Requests.Select(request => request.Path));
+        Assert.Equal(["/api/v1/models", "/api/v1/models/unload", "/api/v1/models/load", "/api/v1/models"], handler.Requests.Select(request => request.Path));
         Assert.Contains("\"instance_id\":\"instance-1\"", handler.Requests[1].Body);
         Assert.Contains("\"model\":\"qwen\"", handler.Requests[2].Body);
-        Assert.Contains("\"context_length\":32768", handler.Requests[2].Body);
+        Assert.Contains("\"context_length\":65536", handler.Requests[2].Body);
+        await manager.PrepareAsync(profile, sessionId: "active");
+        var before = handler.Requests.Count;
+        var smaller = profile with { BaseUrl = "http://127.0.0.1:1234", ContextTokens = 32_768 };
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => manager.PrepareAsync(smaller, sessionId: "other-profile"));
+        Assert.Contains("another Cockpit session", refused.Message);
+        Assert.Equal(before + 1, handler.Requests.Count);
+        await manager.ReleaseAsync("active");
+        target = 32_768;
+        Assert.Null(await manager.PrepareAsync(smaller));
+        Assert.Equal(before + 5, handler.Requests.Count);
+        Assert.Equal("/api/v1/models/unload", handler.Requests[^3].Path);
+        Assert.Contains("\"context_length\":32768", handler.Requests[^2].Body);
+        target = 16_384;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => manager.PrepareAsync(profile));
     }
 
     private static async Task _LmStudioWarnsWithoutReloadWhenDisabled()
@@ -135,11 +202,13 @@ internal static class LocalModelContextContract
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         var manager = _Manager(handler);
 
-        var warning = await manager.PrepareAsync(new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 32_768, LoadModelWithContext: true));
+        var warning = await manager.PrepareAsync(new LmStudioConfig("http://localhost:1234", "qwen", ContextTokens: 32_768));
 
         Assert.Contains("v1 model-API", warning);
         Assert.Contains("32768", warning);
         Assert.Single(handler.Requests);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => manager.PrepareAsync(
+            new LmStudioConfig("http://localhost:1234", "qwen", LoadModelWithContext: true)));
         await Assert.ThrowsAsync<InvalidOperationException>(() => manager.PrepareAsync(
             new LmStudioConfig("http://localhost:1234", "qwen", LoadOptions: _EOptions)));
     }
@@ -191,6 +260,12 @@ internal static class LocalModelContextContract
             var layer = creation.GetProperty("loadConfigStack").GetProperty("layers")[0];
             Assert.Equal("apiOverride", layer.GetProperty("layerName").GetString());
             Assert.True(LmStudioModelOptions.Matches(layer.GetProperty("config"), fields));
+            using var busySocket = new SdkSocket(_SdkConfig(different));
+            var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => new LmStudioModelOptions(busySocket)
+                .ReconcileAsync(profile, "instance-1", "physical-key", default, allowReload: false));
+            Assert.Contains("another Cockpit session", refused.Message);
+            Assert.DoesNotContain(busySocket.Packets, packet => packet.TryGetProperty("endpoint", out var endpoint) && endpoint.GetString() is "unloadModel" or "loadModel");
+            Assert.DoesNotContain(busySocket.Packets, packet => packet.TryGetProperty("type", out var type) && type.GetString() == "channelCreate");
         }
 
         using (var socket = new SdkSocket(_SdkConfig([])))

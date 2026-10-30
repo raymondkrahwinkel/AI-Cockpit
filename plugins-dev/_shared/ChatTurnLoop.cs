@@ -425,9 +425,7 @@ internal sealed class ChatStreamIdleTimeoutException(TimeSpan timeout)
 
 internal sealed record ChatTurnOutcome(string Text, ChatFinishReason? FinishReason, int ToolRounds, int Continuations);
 
-// The bounds the context guard and the continuation net work within (AC-1489), read from an optional `turnLimits`
-// object in the provider config. The defaults follow opencode (50 KiB / 2000 lines per result, 20K reserve, 40K
-// protected); the context window defaults low on purpose, since a model that has more says so in its config.
+// Profile turnLimits override the defaults; the reserve scales with the context window up to 20K.
 internal sealed record ChatTurnLimits
 {
     internal static readonly ChatTurnLimits Default = new();
@@ -444,7 +442,9 @@ internal sealed record ChatTurnLimits
 
     public double SoftLimitRatio { get; init; } = 0.75;
 
-    public int ReserveTokens { get; init; } = 20_000;
+    private readonly int? _reserveTokens;
+
+    public int ReserveTokens { get => _reserveTokens ?? Math.Min(20_000, ContextWindowTokens / 4); init => _reserveTokens = value; }
 
     public int ProtectRecentTokens { get; init; } = 40_000;
 
@@ -542,16 +542,17 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
         if (tokens > Limits.ContextWindowTokens - Limits.ReserveTokens)
         {
             turn.ContextFull = true;
-            _logger.LogWarning("Chat turn guard: ~{Tokens} input tokens is past the context window of {Window} minus the reserve; asking the model to wrap up.", tokens, Limits.ContextWindowTokens);
+            _logger.LogWarning("Chat turn guard: ~{Tokens} input tokens is past the context window of {Window} minus reserve {Reserve}; asking the model to wrap up.", tokens, Limits.ContextWindowTokens, Limits.ReserveTokens);
         }
 
         turn.PeakTokens = Math.Max(turn.PeakTokens, tokens);
         var note = turn.ContextFull ? ContextFullNote : turn.BudgetHit ? BudgetNote : null;
         _logger.LogDebug(
-            "Chat turn guard: ~{Tokens} input tokens, {ResultChars} result chars this turn, {Pruned} chars pruned, reason {Reason}.",
+            "Chat turn guard: ~{Tokens} input tokens, {ResultChars} result chars this turn, {Pruned} chars pruned, reserve {Reserve}, reason {Reason}.",
             tokens,
             turn.ResultChars,
             pruned,
+            Limits.ReserveTokens,
             note is null ? "(none)" : turn.ContextFull ? "context full" : "budget used up");
         if (note is null || options?.Tools is not { Count: > 0 })
         {

@@ -25,6 +25,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     // results back, so a turn can span several round trips. Built at start, once, whether or not there are tools.
     private IChatClient? _agent;
     private IReadOnlyList<AITool> _tools = [];
+    private IReadOnlyList<AIFunction> _additionalTools = [];
 
     // Every tool name this session can reach, which is more than _tools whenever the host kept part of the
     // catalogue behind a search proxy. What the init event reports, so the header's count is the real one.
@@ -55,7 +56,11 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
 
         _sessionId = Guid.NewGuid().ToString();
         _agent = new ChatClientBuilder(chatClient)
-            .UseFunctionInvocation(configure: ChatTurnLoop.ConfigureToolLoop)
+            .UseFunctionInvocation(configure: client =>
+            {
+                ChatTurnLoop.ConfigureToolLoop(client);
+                client.AdditionalTools = [.. _additionalTools];
+            })
             .Use(inner => new ContextGuardChatClient(inner, turnLimits ?? ChatTurnLimits.Default, logger))
             .Build();
         _events.Publish(new PluginSessionInitialized { SessionId = _sessionId, Tools = _reachableToolNames });
@@ -91,6 +96,8 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
         {
             _tools = [.. toolset.Tools.Select(descriptor => new HostTool(descriptor, toolset))];
             _reachableToolNames = toolset.ReachableToolNames;
+            _additionalTools = [.. _reachableToolNames.Except(_tools.Select(tool => tool.Name), StringComparer.Ordinal)
+                .Select(name => new HostTool(new PluginToolDescriptor(string.Empty, name, null, """{"type":"object"}"""), toolset))];
 
             // SupportsPermissions stays false on purpose: it means Claude's permission *modes*, and a session
             // that reports tools without them is what gives the header its per-call "Allow all tools" toggle —
