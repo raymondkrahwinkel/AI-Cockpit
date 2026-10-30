@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Delegation;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.ModelIntelligence;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -15,10 +16,12 @@ internal sealed class OrchestratorTools
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     private readonly IDelegationService _delegation;
+    private readonly ModelPictureReader _modelPicture;
 
-    public OrchestratorTools(IDelegationService delegation)
+    public OrchestratorTools(IDelegationService delegation, ModelPictureReader modelPicture)
     {
         _delegation = delegation;
+        _modelPicture = modelPicture;
     }
 
     [McpServerTool(Name = "list_profiles", ReadOnly = true)]
@@ -27,6 +30,20 @@ internal sealed class OrchestratorTools
     {
         var targets = await _delegation.ListTargetsAsync(cancellationToken);
         return JsonSerializer.Serialize(targets, SerializerOptions);
+    }
+
+    [McpServerTool(Name = "model_options", ReadOnly = true)]
+    [Description("Reports sourced model facts for the profiles list_profiles allows you to delegate to: current price in USD per million tokens, task quality, context, limits, peak windows and quota, ranked by quality with unknown last; unknown prices remain in budget-filtered results, and source age and staleness are included.")]
+    public async Task<string> ModelOptionsAsync(
+        [Description("What the work is: coding, agentic, or anything else for the general intelligence index. Optional.")] string? taskType = null,
+        [Description("Keep only rows whose known input and output price now, USD per million tokens, is at or under this. Optional.")] decimal? maxPricePerMTokens = null,
+        [Description("Case-insensitive provider name or substring. Null or empty means no filter; unknown values return no models.")] string? provider = null,
+        [Description("Case-insensitive exact profile label. Null or empty means no filter; unknown values return no models.")] string? profile = null,
+        CancellationToken cancellationToken = default)
+    {
+        var targets = await _delegation.ListTargetsAsync(cancellationToken).ConfigureAwait(false);
+        var allowedProfiles = targets.Select(target => target.ProfileLabel).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return await ModelOptions.ReadAsync(_modelPicture, taskType, maxPricePerMTokens, provider, profile, allowedProfiles).ConfigureAwait(false);
     }
 
     [McpServerTool(Name = "describe_profile", ReadOnly = false, Destructive = false)]
@@ -88,7 +105,7 @@ internal sealed class OrchestratorTools
     }
 
     [McpServerTool(Name = "delegate_task", ReadOnly = false, Destructive = false)]
-    [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again. IMPORTANT: a task runs READ-ONLY unless you pass requested_permission — telling it in the prompt not to change anything is not what stops it, and asking it to change something without that permission makes it fail. When it finishes, the task reports the paths the cockpit itself saw change in its working directory, not the ones the task chose to mention. THIS MACHINE ONLY (AC-1326): a delegated task always runs here, never on a paired node — a node has no delegation of its own — so profile must be one of THIS machine's own rows from list_profiles, never one carrying another machine's name.")]
+    [Description("Use model_options to pick the model and state why before handing a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again. IMPORTANT: a task runs READ-ONLY unless you pass requested_permission — telling it in the prompt not to change anything is not what stops it, and asking it to change something without that permission makes it fail. When it finishes, the task reports the paths the cockpit itself saw change in its working directory, not the ones the task chose to mention. THIS MACHINE ONLY (AC-1326): a delegated task always runs here, never on a paired node — a node has no delegation of its own — so profile must be one of THIS machine's own rows from list_profiles, never one carrying another machine's name.")]
     public async Task<string> DelegateTaskAsync(
         [Description("The label of the profile to delegate to, as returned by list_profiles — one of this machine's own rows, never a node's.")] string profile,
         [Description("The prompt for the delegated session.")] string prompt,

@@ -8,6 +8,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.ModelIntelligence;
 using Cockpit.Infrastructure.Sessions;
@@ -18,7 +19,7 @@ using System.ComponentModel;
 
 namespace Cockpit.Infrastructure.Tests.Assistant;
 
-// AC-1813: model_options states the model picture for the assistant, and only for the assistant.
+// AC-1813: model_options covers the assistant tool and the orchestrator's delegation rights.
 public sealed class ModelOptionsTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 27, 12, 0, 0, TimeSpan.Zero);
@@ -48,9 +49,8 @@ public sealed class ModelOptionsTests
         _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(reading);
     }
 
-    // Security: the model picture belongs to the assistant; an ordinary session is refused before anything is read.
     [Fact]
-    public async Task ModelOptions_FromAnOrdinaryAgentSession_IsRefused_AndNothingIsRead()
+    public async Task ModelOptions_AssistantToolRefusesAgents_OrchestratorToolShowsOnlyDelegatableProfiles()
     {
         McpRequestContext.Set("pane-ordinary");
 
@@ -60,6 +60,29 @@ public sealed class ModelOptionsTests
         Assert.Contains("not available to an agent session", (string)result["error"]!);
         await _public.DidNotReceive().GetSnapshotsAsync(Arg.Any<CancellationToken>());
         await _provider.DidNotReceive().ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence
+        {
+            Models = [new PluginModelCostEstimate("m1")],
+        });
+        _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new SessionProfile("Prov", new PluginProviderConfig("p", "{}")),
+            new SessionProfile("Other", new PluginProviderConfig("other", "{}")),
+        ]);
+        var delegation = Substitute.For<IDelegationService>();
+        delegation.ListTargetsAsync(Arg.Any<CancellationToken>()).Returns(
+            [new DelegationTargetView("Prov", "p", null, [], [], 1, 0, [])]);
+        var tools = new OrchestratorTools(delegation, new ModelPictureReader(_public, _provider, _profiles, new FakeClock(Now)));
+
+        var options = JsonNode.Parse(await tools.ModelOptionsAsync())!;
+
+        Assert.True((bool)options["ok"]!);
+        Assert.Equal(1, (int)options["count"]!);
+        Assert.Equal("Prov", (string)Assert.Single(options["models"]!.AsArray())!["profile"]!);
+        var tool = typeof(OrchestratorTools).GetMethod(nameof(OrchestratorTools.ModelOptionsAsync))!.GetCustomAttribute<McpServerToolAttribute>()!;
+        Assert.Equal("model_options", tool.Name);
+        Assert.True(tool.ReadOnly);
     }
 
     // AC-1855 merged two cases: the provider's price wins with its source, and a missing quota or index is unknown, never 0.
