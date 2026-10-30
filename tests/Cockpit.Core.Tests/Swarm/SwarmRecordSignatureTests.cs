@@ -14,10 +14,13 @@ namespace Cockpit.Core.Tests.Swarm;
 /// </summary>
 public class SwarmRecordSignatureTests
 {
-    [Theory]
-    [InlineData("tampered-payload")]
-    [InlineData("foreign-key")]
-    public void Verify_AcceptsOnlyThePayloadSignedByTheKeyBehindTheMemberId(string forgery)
+    [Fact]
+    public void Verify_AcceptsOnlyThePayloadSignedByTheKeyBehindTheMemberId()
+    {
+        foreach (var forgery in new[] { "tampered-payload", "foreign-key" }) VerifyForgery(forgery);
+    }
+
+    private static void VerifyForgery(string forgery)
     {
         var originalPath = Path.Combine(Path.GetTempPath(), $"swarm-identity-{Guid.NewGuid():N}.pfx");
         var renewedPath = Path.Combine(Path.GetTempPath(), $"swarm-identity-{Guid.NewGuid():N}.pfx");
