@@ -36,15 +36,28 @@ internal sealed class SwarmJoinHost(
     public void Confirm(string id)
     {
         _gate.Wait();
-        try { var state = _Get(id); state.Confirmed = true; }
-        finally { _gate.Release(); }
+        try
+        {
+            var state = _Get(id);
+            state.Confirmed = true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     public void Refuse(string id)
     {
         _gate.Wait();
-        try { _Get(id).Refused = true; }
-        finally { _gate.Release(); }
+        try
+        {
+            _Get(id).Refused = true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     public void MapRoutes(IEndpointRouteBuilder routes, IServiceProvider services)
@@ -87,7 +100,7 @@ internal sealed class SwarmJoinHost(
                 var peerId = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
                 if (current.Sequence == 0 || incoming.Sequence < current.Sequence || incoming.PublicKeyOf(peerId) is null
                     || request.Transport.Pin != NodeCertificatePin.FingerprintOf(peer)
-                    || !current.Log.Zip(incoming.Log).All(pair => System.Text.Json.JsonSerializer.Serialize(pair.First, SwarmRecordJson.Options) == System.Text.Json.JsonSerializer.Serialize(pair.Second, SwarmRecordJson.Options)))
+                    || !_ExtendsLog(current, incoming))
                     throw NodePairingException.For(NodePairingError.InvalidToken, "Not a member of this swarm.");
                 var name = incoming.Members.Single(member => member.Id == peerId).Name;
                 await StoreTransportAsync(name, request.Transport, context.RequestAborted);
@@ -98,6 +111,11 @@ internal sealed class SwarmJoinHost(
             finally { _gate.Release(); }
         })));
     }
+
+    private static bool _ExtendsLog(SwarmMembership current, SwarmMembership incoming) =>
+        current.Log.Zip(incoming.Log).All(pair =>
+            System.Text.Json.JsonSerializer.Serialize(pair.First, SwarmRecordJson.Options)
+            == System.Text.Json.JsonSerializer.Serialize(pair.Second, SwarmRecordJson.Options));
 
     private void _Desktop()
     {
