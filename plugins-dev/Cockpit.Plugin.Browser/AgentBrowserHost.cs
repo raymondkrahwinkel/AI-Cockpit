@@ -57,6 +57,16 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
 
     public sealed record Session(Guid Generation, string Endpoint, string Upstream, bool OperatorDrives);
 
+    internal bool OwnBoundary(string paneId, Guid generation, IDisposable boundary)
+    {
+        lock (_gate)
+        {
+            if (!_running.TryGetValue(paneId, out var running) || running.Generation != generation || running.Stopped) return false;
+            running.Boundary = boundary;
+            return true;
+        }
+    }
+
     public Session? SessionFor(string paneId)
     {
         lock (_gate)
@@ -534,6 +544,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         public string? Upstream { get; set; }
 
         public AgentCdpProxy? Proxy { get; set; }
+        public IDisposable? Boundary { get; set; }
 
         public bool Stopped { get; set; }
 
@@ -553,6 +564,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             }
 
             _ended = true;
+            Boundary?.Dispose();
             var exited = false;
             try
             {

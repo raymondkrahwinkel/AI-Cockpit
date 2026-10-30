@@ -70,7 +70,77 @@ public class AgentOwnedTabTests
         AssertOk(await tools.CloseTab(aId));
         Assert.DoesNotContain(await tabs.ListAsync("a"), tab => tab.TabId == aId);
         Assert.Contains("not_owner:", await tools.WaitFor(aId, selector: "body"));
+        await DownloadBoundaryAsync(tabs, browsers, fixture, "self");
+        await DownloadBoundaryAsync(tabs, browsers, fixture, "operator");
+        await ChooserBoundaryAsync(tabs, browsers, fixture, "self");
+        await ChooserBoundaryAsync(tabs, browsers, fixture, "operator");
+        await ProtocolBoundaryAsync(tabs, fixture, "self");
+        await ProtocolBoundaryAsync(tabs, fixture, "operator");
     }
+
+    private static async Task DownloadBoundaryAsync(AgentOwnedTabs tabs, AgentBrowserHost browsers, OwnedTabFixture fixture, string purpose)
+    {
+        var opened = await tabs.OpenAsync("boundary", fixture.Url, purpose);
+        Assert.True(opened.Ok, opened.Error);
+        using var page = await FixturePageAsync(browsers, fixture.Url);
+        await page.CallAsync("Browser.setDownloadBehavior", new { behavior = "allow", downloadPath = fixture.Downloads }, CancellationToken.None);
+        var download = await tabs.OpenAsync("boundary", fixture.Url + "download", purpose);
+        await Task.Delay(200);
+        Assert.Empty(Directory.GetFiles(fixture.Downloads));
+        Assert.False(download.Ok);
+        Assert.Equal("confirmation_required", download.Code);
+        Assert.Contains("confirmation_required", (await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#download"))).Error);
+        Assert.Contains("confirmation_required", (await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#download-popup"))).Error);
+        Assert.Equal("confirmation_required", (await tabs.OpenAsync("boundary", fixture.Url + "redirect?to=/download", purpose)).Code);
+        Assert.Empty(Directory.GetFiles(fixture.Downloads));
+    }
+
+    private static async Task ChooserBoundaryAsync(AgentOwnedTabs tabs, AgentBrowserHost browsers, OwnedTabFixture fixture, string purpose)
+    {
+        var opened = await tabs.OpenAsync("boundary", fixture.Url, purpose);
+        Assert.True(opened.Ok, opened.Error);
+        using var page = await FixturePageAsync(browsers, fixture.Url);
+        var clicked = await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#upload"));
+        Assert.Contains("confirmation_required", clicked.Error);
+        var files = await page.CallAsync("Runtime.evaluate", new { expression = "document.querySelector('#upload').files.length", returnByValue = true }, CancellationToken.None);
+        Assert.Equal(0, files.GetProperty("result").GetProperty("value").GetInt32());
+    }
+
+    private static async Task ProtocolBoundaryAsync(AgentOwnedTabs tabs, OwnedTabFixture fixture, string purpose)
+    {
+        Assert.Equal("invalid_argument", (await tabs.OpenAsync("boundary", "javascript:document.title='escaped'", purpose)).Code);
+        Assert.Equal("invalid_argument", (await tabs.OpenAsync("boundary", "file:///secret", purpose)).Code);
+        Assert.Equal("invalid_argument", (await tabs.OpenAsync("boundary", "chrome://version", purpose)).Code);
+        Assert.Equal("invalid_argument", (await tabs.OpenAsync("boundary", fixture.Url + "redirect?to=data:text/html,secret", purpose)).Code);
+        Assert.Equal("invalid_argument", (await tabs.OpenAsync("boundary", fixture.Url + "redirect?to=file:///secret", purpose)).Code);
+        var opened = await tabs.OpenAsync("boundary", fixture.Url, purpose);
+        Assert.True(opened.Ok, opened.Error);
+        Assert.Contains("invalid_argument", (await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#script"))).Error);
+        Assert.Contains("invalid_argument", (await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#internal"))).Error);
+        Assert.Contains("invalid_argument", (await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#bad-popup"), timeoutMs: 5000)).Error);
+        Assert.Contains("invalid_argument", (await tabs.ActAsync("boundary", new("", "", "navigate", opened.TabId, Text: "data:text/html,secret"))).Error);
+        Assert.True((await tabs.ActAsync("boundary", new("", "", "click", opened.TabId, Selector: "#popup"))).Ok);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        AgentOwnedTabs.Info? popup;
+        do
+        {
+            popup = (await tabs.ListAsync("boundary")).FirstOrDefault(t => t.Url == fixture.Url + "popup");
+            if (popup is null) await Task.Delay(50, timeout.Token);
+        } while (popup is null);
+        Assert.Equal("self", popup.Purpose);
+        Assert.Contains("Fixture content", (await tabs.ReadAsync("boundary", popup.TabId, "text")).Text);
+        Assert.True((await tabs.ActAsync("boundary", new("", "", "close", popup.TabId))).Ok);
+    }
+
+    private static async Task<string> SocketAsync(AgentBrowserHost browsers, string url)
+    {
+        using var http = new HttpClient();
+        using var targets = JsonDocument.Parse(await http.GetStringAsync(browsers.SessionFor("boundary")!.Upstream + "/json/list"));
+        return targets.RootElement.EnumerateArray().First(t => t.GetProperty("url").GetString() == url).GetProperty("webSocketDebuggerUrl").GetString()!;
+    }
+
+    private static async Task<CdpPage> FixturePageAsync(AgentBrowserHost browsers, string url) =>
+        await CdpPage.ConnectAsync(await SocketAsync(browsers, url), (_, _) => { }, CancellationToken.None);
 
     // L2b: caller and generation boundaries, takeover, validation and failed starts leave no usable browser.
     [Fact]
@@ -188,11 +258,13 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
 {
     private readonly HttpListener _listener = new();
     private readonly Task _server;
-    public string Root { get; } = Path.Combine("C:\\t\\AC-1870", Guid.NewGuid().ToString("N"));
+    public string Root { get; } = Path.Combine(Path.GetTempPath(), "cockpit-owned-tabs", Guid.NewGuid().ToString("N"));
+    public string Downloads => Path.Combine(Root, "downloads");
     public string Url { get; }
 
     public OwnedTabFixture()
     {
+        Directory.CreateDirectory(Downloads);
         using var port = new TcpListener(IPAddress.Loopback, 0);
         port.Start();
         Url = $"http://127.0.0.1:{((IPEndPoint)port.LocalEndpoint).Port}/";
@@ -212,7 +284,31 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
             while (_listener.IsListening)
             {
                 var context = await _listener.GetContextAsync();
-                var bytes = Encoding.UTF8.GetBytes("<html><head><title>Local fixture</title></head><body><h1>Fixture content</h1><a id='link' href='/'>Local link</a><input id='field' oninput='document.querySelector(\"output\").textContent=this.value' onkeydown='if(event.key===\"Enter\")this.id=\"entered\"'><output></output></body></html>");
+                if (context.Request.Url!.AbsolutePath == "/redirect")
+                {
+                    context.Response.StatusCode = 302;
+                    context.Response.RedirectLocation = context.Request.QueryString["to"];
+                    context.Response.Close();
+                    continue;
+                }
+                if (context.Request.Url!.AbsolutePath == "/download")
+                {
+                    context.Response.ContentType = "application/octet-stream";
+                    context.Response.Headers["Content-Disposition"] = "attachment; filename=boundary.txt";
+                    await context.Response.OutputStream.WriteAsync(Encoding.UTF8.GetBytes("fixture download"));
+                    context.Response.Close();
+                    continue;
+                }
+                var bytes = Encoding.UTF8.GetBytes("""
+                    <html><head><title>Local fixture</title></head><body><h1>Fixture content</h1>
+                    <a id='link' href='/'>Local link</a>
+                    <input id='field' oninput='document.querySelector("output").textContent=this.value' onkeydown='if(event.key==="Enter")this.id="entered"'><output></output>
+                    <a id='download' href='/download'>download</a><a id='download-popup' target='_blank' href='/download'>download popup</a>
+                    <input id='upload' type='file'><a id='script' href='javascript:document.title="escaped"'>script</a>
+                    <a id='internal' href='chrome://version'>internal</a><a id='popup' target='_blank' href='/popup'>popup</a>
+                    <button id='bad-popup' onclick='window.open("data:text/html,secret")'>bad popup</button>
+                    </body></html>
+                    """);
                 context.Response.ContentType = "text/html; charset=utf-8";
                 await context.Response.OutputStream.WriteAsync(bytes);
                 context.Response.Close();

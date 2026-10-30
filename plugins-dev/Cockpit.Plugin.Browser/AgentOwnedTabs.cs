@@ -8,6 +8,8 @@ internal sealed partial class AgentOwnedTabs(AgentBrowserHost browsers)
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly ConcurrentDictionary<string, Entry> _tabs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<Guid, AgentTabBoundary> _boundaries = new();
+    private readonly SemaphoreSlim _boundaryGate = new(1, 1);
     internal sealed record Entry(string TabId, string Owner, Guid Generation, string Target, string Purpose);
     internal sealed record Info(string TabId, string Title, string Url, string Purpose);
     internal sealed record OpenResult(bool Ok, string? TabId = null, string? Url = null, string? Title = null,
@@ -35,14 +37,16 @@ internal sealed partial class AgentOwnedTabs(AgentBrowserHost browsers)
                 return new(false, Code: "browser_unavailable", Error: "The session browser is unavailable.");
             }
             var session = RequireSession(caller);
+            var boundary = await BoundaryAsync(caller, session, timeout.Token).ConfigureAwait(false);
+            await boundary.DenyDownloadsAsync(timeout.Token).ConfigureAwait(false);
             Check(caller, session.Generation, mutate: true);
             using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Put, session.Upstream + "/json/new?about:blank"), timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             using var created = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false));
             target = RequiredString(created.RootElement, "id");
-            tabId = "owned:" + Guid.NewGuid().ToString("N");
+            await boundary.ReadyAsync(target, timeout.Token).ConfigureAwait(false);
+            tabId = Register(caller, session.Generation, target, purpose).TabId;
             wsUrl = RequiredString(created.RootElement, "webSocketDebuggerUrl");
-            _tabs[tabId] = new(tabId, caller, session.Generation, target, purpose);
             var loaded = new ConcurrentDictionary<string, TaskCompletionSource>();
             var loadFailure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var page = await CdpPage.ConnectAsync(wsUrl, (name, data) =>
@@ -64,14 +68,17 @@ internal sealed partial class AgentOwnedTabs(AgentBrowserHost browsers)
                     loadFailure.TrySetException(new OwnedTabException("browser_unavailable", "Navigation failed."));
                 }
             }, timeout.Token).ConfigureAwait(false);
-            await page.CallAsync("Browser.setDownloadBehavior", new { behavior = "deny" }, timeout.Token).ConfigureAwait(false);
             await page.CallAsync("Page.enable", null, timeout.Token).ConfigureAwait(false);
             await page.CallAsync("Page.setLifecycleEventsEnabled", new { enabled = true }, timeout.Token).ConfigureAwait(false);
             Check(caller, session.Generation, mutate: true);
             var navigation = await page.CallAsync("Page.navigate", new { url = uri.AbsoluteUri }, timeout.Token).ConfigureAwait(false);
+            if (navigation.TryGetProperty("isDownload", out var download) && download.GetBoolean())
+            {
+                throw new OwnedTabException("confirmation_required", "File transfer requires an operator action.");
+            }
             if (navigation.TryGetProperty("errorText", out _))
             {
-                throw new OwnedTabException("browser_unavailable", "Navigation failed.");
+                throw new OwnedTabException(boundary.TakeBlocked(target) ?? "browser_unavailable", "Navigation failed.");
             }
             // Match the navigation's loader, so about:blank's readiness cannot complete this open.
             var loader = RequiredString(navigation, "loaderId");
@@ -186,6 +193,37 @@ internal sealed partial class AgentOwnedTabs(AgentBrowserHost browsers)
     private AgentBrowserHost.Session RequireSession(string caller) => browsers.SessionFor(caller)
         ?? throw new OwnedTabException("session_ended", "The browser run has ended.");
 
+    private Entry Register(string caller, Guid generation, string target, string purpose)
+    {
+        lock (_tabs)
+        {
+            var entry = _tabs.Values.FirstOrDefault(e => e.Generation == generation && e.Target == target);
+            entry = entry is null ? new("owned:" + Guid.NewGuid().ToString("N"), caller, generation, target, purpose) : entry with { Purpose = purpose };
+            _tabs[entry.TabId] = entry;
+            return entry;
+        }
+    }
+
+    private async Task<AgentTabBoundary> BoundaryAsync(string caller, AgentBrowserHost.Session session, CancellationToken token)
+    {
+        await _boundaryGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            if (_boundaries.TryGetValue(session.Generation, out var existing)) return existing;
+            var boundary = new AgentTabBoundary(target => Register(caller, session.Generation, target, "self"));
+            try
+            {
+                await boundary.StartAsync(session.Upstream, token).ConfigureAwait(false);
+                if (!browsers.OwnBoundary(caller, session.Generation, boundary))
+                    throw new OwnedTabException("session_ended", "The browser run has ended.");
+                _boundaries[session.Generation] = boundary;
+                return boundary;
+            }
+            catch { boundary.Dispose(); throw; }
+        }
+        finally { _boundaryGate.Release(); }
+    }
+
     private AgentBrowserHost.Session Check(string caller, Guid generation, bool mutate = false)
     {
         var session = RequireSession(caller);
@@ -204,6 +242,8 @@ internal sealed partial class AgentOwnedTabs(AgentBrowserHost browsers)
     {
         var result = await page.CallAsync("Runtime.evaluate", new { expression = "({url:location.href,title:document.title})", returnByValue = true }, token).ConfigureAwait(false);
         var value = result.GetProperty("result").GetProperty("value");
+        if (!AgentTabBoundary.IsWeb(value.GetProperty("url").GetString()))
+            throw new OwnedTabException("invalid_argument", "Only http(s) pages are allowed.");
         return (value.GetProperty("url").GetString() ?? "", value.GetProperty("title").GetString() ?? "");
     }
 
