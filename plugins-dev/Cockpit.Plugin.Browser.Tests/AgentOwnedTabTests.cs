@@ -95,11 +95,11 @@ public class AgentOwnedTabTests
         Assert.Contains("session_ended", (await tabs.ReadAsync("a", operatorId, "text")).Error);
         Assert.Contains("session_ended", (await tabs.ReadAsync("a", selfId, "text")).Error);
         Assert.True((await tabs.ReadAsync("b", otherId, "text")).Ok);
-        var retained = Assert.Single(browsers.Live().Where(b => b.Upstream == session.Upstream));
+        var retained = Assert.Single(browsers.Live(), b => b.Upstream == session.Upstream);
         Assert.StartsWith("retained:", retained.PaneId);
-        using var after = JsonDocument.Parse(await http.GetStringAsync(session.Upstream + "/json/list"));
+        using var after = await RetainedPagesAsync(session.Upstream);
         Assert.DoesNotContain(after.RootElement.EnumerateArray(), p => p.GetProperty("id").GetString() == selfTarget);
-        var kept = Assert.Single(after.RootElement.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "page"));
+        var kept = Assert.Single(after.RootElement.EnumerateArray(), p => p.GetProperty("type").GetString() == "page");
         using var page = await CdpPage.ConnectAsync(kept.GetProperty("webSocketDebuggerUrl").GetString()!, (_, _) => { }, CancellationToken.None);
         Assert.Equal("Local fixture", (await page.CallAsync("Runtime.evaluate", new { expression = "document.title", returnByValue = true }, CancellationToken.None)).GetProperty("result").GetProperty("value").GetString());
         Assert.False(browsers.SetOperatorDrives(retained.PaneId, false));
@@ -274,13 +274,25 @@ public class AgentOwnedTabTests
             browsers.Stop("inflight");
             Assert.False((await waiting.WaitAsync(TimeSpan.FromSeconds(3))).Ok);
             Assert.False((await opening.WaitAsync(TimeSpan.FromSeconds(3))).Ok);
-            using var http = new HttpClient();
-            using var pages = JsonDocument.Parse(await http.GetStringAsync(session.Upstream + "/json/list"));
-            Assert.Single(pages.RootElement.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "page"));
+            using var pages = await RetainedPagesAsync(session.Upstream);
+            Assert.Single(pages.RootElement.EnumerateArray(), p => p.GetProperty("type").GetString() == "page");
             browsers.Dispose();
             Assert.Empty(browsers.Live());
         }
         finally { fixture.ReleaseSlow.TrySetResult(); }
+    }
+
+    private static async Task<JsonDocument> RetainedPagesAsync(string upstream)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var http = new HttpClient();
+        while (true)
+        {
+            var pages = JsonDocument.Parse(await http.GetStringAsync(upstream + "/json/list", timeout.Token));
+            if (pages.RootElement.EnumerateArray().Count(p => p.GetProperty("type").GetString() == "page") == 1) return pages;
+            pages.Dispose();
+            await Task.Delay(50, timeout.Token);
+        }
     }
 
     private static void AssertOk(string result)

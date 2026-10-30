@@ -294,8 +294,15 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
             {
                 var key = "retained:" + running.Generation.ToString("N");
                 lock (_gate) { _retained[key] = running; }
-                try { CloseSelfTargetsAsync(running, keep).GetAwaiter().GetResult(); }
-                catch (Exception ex) when (AgentOwnedTabs.IsBrowserFailure(ex)) { CloseRetained(key); }
+                _ = Task.Run(async () =>
+                {
+                    try { await CloseSelfTargetsAsync(running, keep).ConfigureAwait(false); }
+                    catch (Exception ex)
+                    {
+                        Report(LogLevel.Warning, $"Closing self tabs failed ({ex.GetType().Name}); closing the retained browser.");
+                        CloseRetained(key);
+                    }
+                });
             }
             else running.Stop();
             Changed?.Invoke();
