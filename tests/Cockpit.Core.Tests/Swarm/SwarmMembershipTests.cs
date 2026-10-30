@@ -7,7 +7,7 @@ namespace Cockpit.Core.Tests.Swarm;
 /// Layer 2, authorization/protocol (AC-1917). A membership change counts only when a current member signed it: a
 /// stranger's correctly self-signed record is refused, and so is anything a removed member signs after its tombstone.
 /// </summary>
-public class SwarmMembershipTests
+internal static class SwarmMembershipTests
 {
     // Per row, built from keys A, B and C: the changes the register accepts first, and last the forgery it must refuse.
     public static TheoryData<Func<ECDsa[], SwarmRecord[]>, SwarmMembershipVerdict> Forgeries => new()
@@ -22,9 +22,7 @@ public class SwarmMembershipTests
         },
     };
 
-    [Theory]
-    [MemberData(nameof(Forgeries))]
-    public void Accept_RefusesAChangeNotSignedByACurrentMember(Func<ECDsa[], SwarmRecord[]> build, SwarmMembershipVerdict expected)
+    internal static void Accept_RefusesAChangeNotSignedByACurrentMember(Func<ECDsa[], SwarmRecord[]> build, SwarmMembershipVerdict expected)
     {
         using var a = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var b = ECDsa.Create(ECCurve.NamedCurves.nistP256);

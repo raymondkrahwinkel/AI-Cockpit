@@ -3,13 +3,9 @@ using Cockpit.Core.Swarm;
 
 namespace Cockpit.Core.Tests.Swarm;
 
-public class SwarmReachabilityTests
+internal static class SwarmReachabilityTests
 {
-    public static TheoryData<bool> Responses => new() { true, false };
-
-    [Theory]
-    [MemberData(nameof(Responses))]
-    public void OnlyAuthorizedAnswersRenewTheLeaseAndStableReturn(bool authorized)
+    internal static void OnlyAuthorizedAnswersRenewTheLeaseAndStableReturn(bool authorized)
     {
         foreach (var response in authorized ? new[] { HttpStatusCode.OK } : new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden })
         {

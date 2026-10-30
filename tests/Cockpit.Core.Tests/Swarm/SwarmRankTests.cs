@@ -2,10 +2,9 @@ using Cockpit.Core.Swarm;
 
 namespace Cockpit.Core.Tests.Swarm;
 
-public class SwarmRankTests
+internal static class SwarmRankTests
 {
-    [Fact]
-    public void CollisionIsRetriedBeforeSigning()
+    internal static void CollisionIsRetriedBeforeSigning()
     {
         foreach (var taken in new[] { 1, long.MinValue, long.MaxValue })
         {

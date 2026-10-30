@@ -12,6 +12,23 @@ public class SwarmLeaderElectionTests
     [InlineData(3)]
     public void ReachableRankAndStableReturnDetermineLeadership(int criterion)
     {
+        switch (criterion)
+        {
+            case 1:
+                SwarmRankTests.CollisionIsRetriedBeforeSigning();
+                break;
+            case 2:
+                SwarmReachabilityTests.OnlyAuthorizedAnswersRenewTheLeaseAndStableReturn(true);
+                SwarmReachabilityTests.OnlyAuthorizedAnswersRenewTheLeaseAndStableReturn(false);
+                break;
+            case 3:
+                foreach (var row in SwarmMembershipTests.Forgeries)
+                {
+                    SwarmMembershipTests.Accept_RefusesAChangeNotSignedByACurrentMember(
+                        (Func<ECDsa[], SwarmRecord[]>)row[0], (SwarmMembershipVerdict)row[1]);
+                }
+                break;
+        }
         using var desktopKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var laptopKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var desktop = new SwarmMember(desktopKey.ExportSubjectPublicKeyInfo(), "Desktop", 17, ["10.0.0.1"], 7443,
