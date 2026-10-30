@@ -26,7 +26,7 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
             return new(false, Code: "invalid_argument", Error: "Use an absolute http(s) URL and purpose self or operator.");
         }
 
-        string? tabId = null;
+        string? tabId = null, target = null, wsUrl = null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
@@ -39,12 +39,13 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
             using var response = await Http.SendAsync(new HttpRequestMessage(HttpMethod.Put, session.Upstream + "/json/new?about:blank"), timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             using var created = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false));
-            var target = RequiredString(created.RootElement, "id");
+            target = RequiredString(created.RootElement, "id");
             tabId = "owned:" + Guid.NewGuid().ToString("N");
+            wsUrl = RequiredString(created.RootElement, "webSocketDebuggerUrl");
             _tabs[tabId] = new(tabId, caller, session.Generation, target, purpose);
             var loaded = new ConcurrentDictionary<string, TaskCompletionSource>();
             var loadFailure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var page = await CdpPage.ConnectAsync(RequiredString(created.RootElement, "webSocketDebuggerUrl"), (name, data) =>
+            using var page = await CdpPage.ConnectAsync(wsUrl, (name, data) =>
             {
                 if (name == "Page.lifecycleEvent" && data.GetProperty("name").GetString() == "DOMContentLoaded")
                 {
@@ -56,6 +57,11 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
                     {
                         loadFailure.TrySetException(ex);
                     }
+                }
+                else if (name == "Page.loadEventFailed")
+                {
+                    // A net error never reaches DOMContentLoaded; fail the open instead of waiting it out.
+                    loadFailure.TrySetException(new OwnedTabException("browser_unavailable", "Navigation failed."));
                 }
             }, timeout.Token).ConfigureAwait(false);
             await page.CallAsync("Browser.setDownloadBehavior", new { behavior = "deny" }, timeout.Token).ConfigureAwait(false);
@@ -77,7 +83,32 @@ internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
         }
         catch (Exception ex) when (IsBrowserFailure(ex))
         {
-            return new(false, tabId, Purpose: purpose, Code: Code(ex), Error: Message(ex));
+            if (tabId is not null && browsers.SessionFor(caller) is not null)
+            {
+                _tabs.TryRemove(tabId, out _);
+                // The 30 s open timeout may have cancelled `timeout`; the close needs its own live token.
+                using var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await CloseTargetAsync(wsUrl, target, closeTimeout.Token).ConfigureAwait(false);
+            }
+            return new(false, Purpose: purpose, Code: Code(ex), Error: Message(ex));
+        }
+    }
+
+    // AC-1884: a failed open must not leave its about:blank target behind in the session's browser.
+    private static async Task CloseTargetAsync(string? wsUrl, string? target, CancellationToken token)
+    {
+        if (wsUrl is null || target is null)
+        {
+            return;
+        }
+        try
+        {
+            using var page = await CdpPage.ConnectAsync(wsUrl, (_, _) => { }, token).ConfigureAwait(false);
+            await page.CallAsync("Target.closeTarget", new { targetId = target }, token).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The target may already be gone; the open reports its original failure either way.
         }
     }
 

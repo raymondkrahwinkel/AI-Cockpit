@@ -62,6 +62,12 @@ internal sealed partial class TabShareMcpTools
             return _Refusal(NoCaller);
         }
 
+        // AC-1884: a session's own tab is not an operator tab to control (AC-1871); the shared-tab text would mislead.
+        if (action.TabId is { } tabId && AgentOwnedTabs.IsOwnedId(tabId))
+        {
+            return _Refusal("This is a tab your session opened; operating your own tabs is not available yet.");
+        }
+
         var answer = await bridge.AskAsync(action with { Id = Guid.NewGuid().ToString("N"), PaneId = caller }, TimeSpan.FromSeconds(15)).ConfigureAwait(false);
         if (answer.Ok == false)
         {

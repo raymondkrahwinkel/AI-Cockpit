@@ -78,6 +78,18 @@ public class AgentOwnedTabTests
         Assert.True((await tabs.OpenAsync("a", fixture.Url, "self")).Ok);
         Assert.False((await tabs.ReadAsync("a", aId, "text")).Ok);
         Assert.Single(await tabs.ListAsync("a"));
+        // AC-1884: a failed open returns no tabId and leaves no about:blank target behind.
+        using (var free = new TcpListener(IPAddress.Loopback, 0))
+        {
+            free.Start();
+            var dead = $"http://127.0.0.1:{((IPEndPoint)free.LocalEndpoint).Port}/";
+            free.Stop();
+            var failedOpen = await tabs.OpenAsync("a", dead, "self");
+            Assert.False(failedOpen.Ok);
+            Assert.Null(failedOpen.TabId);
+            Assert.Equal("browser_unavailable", failedOpen.Code);
+            Assert.Single(await tabs.ListAsync("a"));
+        }
         using var failed = new AgentBrowserHost(() => "C:\\t\\AC-1870\\missing-browser.exe", fixture.Root + "-failed");
         Assert.Null(await failed.GetOrCreateAsync("failed"));
         Assert.Null(await failed.GetOrCreateAsync("failed"));
