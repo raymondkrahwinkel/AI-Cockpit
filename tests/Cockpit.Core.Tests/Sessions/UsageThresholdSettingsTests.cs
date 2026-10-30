@@ -10,32 +10,16 @@ namespace Cockpit.Core.Tests.Sessions;
 public class UsageThresholdSettingsTests
 {
     [Fact]
-    public void WithNothingSet_TheProvidersOwnDeclarationStands()
+    public void OverridesFollowProfileThenProvider_AndClearingFallsBackToTheDeclaration()
     {
         var settings = new UsageThresholdSettings();
 
         Assert.Equal(90, settings.Resolve("claude", "personal", "weekly", declared: 90, isAssistant: false));
-    }
-
-    [Fact]
-    public void AProfileOverride_BeatsTheProvider()
-    {
-        // A profile used for long unattended runs can be stricter without changing it for everything else.
-        var settings = new UsageThresholdSettings();
         settings.Set(settings.ByProvider, "claude", "weekly", 75);
         settings.Set(settings.ByProfile, "work", "weekly", 60);
 
         Assert.Equal(60, settings.Resolve("claude", "work", "weekly", declared: 90, isAssistant: false));
         Assert.Equal(75, settings.Resolve("claude", "personal", "weekly", declared: 90, isAssistant: false));
-    }
-
-    [Fact]
-    public void ClearingAnOverride_FallsBackRatherThanFreezingTheCurrentValue()
-    {
-        // Storing the absence, not a copy: a later change to the provider's own default has to carry.
-        var settings = new UsageThresholdSettings();
-        settings.Set(settings.ByProvider, "claude", "weekly", 75);
-
         settings.Set(settings.ByProvider, "claude", "weekly", null);
 
         Assert.Equal(90, settings.Resolve("claude", null, "weekly", declared: 90, isAssistant: false));

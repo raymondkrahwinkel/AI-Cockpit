@@ -20,7 +20,7 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
             _ => throw new NotSupportedException($"Provider {config.Provider} is not OpenAI-compatible."),
         };
 
-        return CreateForEndpoint(baseUrl, model, apiKey);
+        return new LocalReasoningChatClient(CreateForEndpoint(baseUrl, model, apiKey));
     }
 
     public IChatClient CreateForEndpoint(string baseUrl, string model, string? apiKey = null)
