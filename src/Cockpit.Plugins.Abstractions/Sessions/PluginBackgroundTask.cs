@@ -12,4 +12,11 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// <param name="Description">
 /// A short human-readable label (the command, or the agent's task), for display.
 /// </param>
-public sealed record PluginBackgroundTask(string TaskId, PluginBackgroundTaskKind Kind, string? Description);
+public sealed record PluginBackgroundTask(string TaskId, PluginBackgroundTaskKind Kind, string? Description)
+{
+    /// <summary>The last tool reported for this task, or null when unavailable.</summary>
+    public string? LastTool { get; init; }
+
+    /// <summary>The task's reported token count, or null when unavailable.</summary>
+    public long? Tokens { get; init; }
+}

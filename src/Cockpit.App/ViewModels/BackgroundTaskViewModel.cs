@@ -11,6 +11,8 @@ public sealed class BackgroundTaskViewModel : ObservableObject
 {
     private readonly DateTimeOffset _firstSeenAt;
     private string? _description;
+    private string? _lastTool;
+    private long? _tokens;
     private bool _isSelected;
 
     public BackgroundTaskViewModel(
@@ -37,13 +39,19 @@ public sealed class BackgroundTaskViewModel : ObservableObject
     public BackgroundTaskKind Kind { get; }
 
     // Falls back to a label rather than rendering blank — the CLI's own description is optional.
-    public string Description => string.IsNullOrEmpty(_description) ? "(no description)" : _description;
+    public string Description => string.IsNullOrWhiteSpace(_description) ? "unknown" : _description;
+
+    public string LastToolText => string.IsNullOrWhiteSpace(_lastTool) ? "unknown" : _lastTool;
+
+    public string TokensText => _tokens?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";
+
+    public string StatusText => "running";
 
     public string KindLabel => Kind switch
     {
         BackgroundTaskKind.Shell => "Shell",
         BackgroundTaskKind.SubAgent => "Sub-agent",
-        _ => "Background task",
+        _ => "unknown",
     };
 
     // Kind-coded, not a real per-task status — the contract carries no status field. Sub-agents read as the busy
@@ -69,7 +77,12 @@ public sealed class BackgroundTaskViewModel : ObservableObject
 
     // The driver restates the whole set on every snapshot, so a still-running task's description can
     // legitimately change between two reports — this keeps the row current instead of freezing on the first one.
-    internal void UpdateDescription(string? description) => SetProperty(ref _description, description, nameof(Description));
+    internal void Update(BackgroundTask task)
+    {
+        SetProperty(ref _description, task.Description, nameof(Description));
+        SetProperty(ref _lastTool, task.LastTool, nameof(LastToolText));
+        SetProperty(ref _tokens, task.Tokens, nameof(TokensText));
+    }
 
     // Re-raises `AgeText`'s change notification — called on the same view-owned tick
     // `SessionViewModel.RefreshActiveToolActivityAge` uses, so the pop-out's elapsed time visibly
