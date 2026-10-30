@@ -82,7 +82,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             var endpoint = new Endpoint();
             var host = new SwarmHost(kind);
             machine.Presence = new(time);
-            machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings, machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
+            machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings,
+                machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
             machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join, machine.Settings, new NodeDiscoveryClient());
             machine.Propagation = new(machine.Membership, new NoticesToast(machine.Notices));
             machine.Reachability = new(time);

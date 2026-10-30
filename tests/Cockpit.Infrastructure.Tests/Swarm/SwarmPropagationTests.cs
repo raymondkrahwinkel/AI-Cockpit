@@ -7,7 +7,7 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 
 public class SwarmPropagationTests
 {
-    public static TheoryData<string> Scenarios => new() { "catchup", "forged-record", "wrong-signer", "wrong-pin", "external", "collision", "sleep" };
+    public static TheoryData<string> Scenarios => new() { "catchup", "forged-record", "wrong-signer", "wrong-pin", "external", "collision", "sleep", "gap" };
 
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -16,7 +16,7 @@ public class SwarmPropagationTests
         await using var pair = await SwarmJoinFixture.CreateAsync();
         await using var third = await SwarmJoinFixture.Machine.CreateAsync(pair.Time, SwarmHostKind.Desktop);
         await JoinAsync(pair.A, pair.B);
-        pair.B.RejectConnect = scenario is "forged-record" or "collision";
+        pair.B.RejectConnect = scenario is "forged-record" or "collision" or "gap";
         await JoinAsync(pair.A, third);
         pair.Time.Advance(TimeSpan.FromSeconds(1));
         if (scenario == "catchup")
@@ -35,11 +35,18 @@ public class SwarmPropagationTests
             return;
         }
         var membership = await pair.B.Membership.LoadAsync();
-        if (scenario is "forged-record" or "collision")
+        if (scenario is "forged-record" or "collision" or "gap")
         {
             var delta = await third.Propagation.RecordsAsync(membership.Sequence, SwarmPropagation.Prefix(membership.Log), default);
             if (scenario == "forged-record")
                 delta = delta with { Records = [delta.Records[0] with { Signatures = [] }] };
+            else if (scenario == "gap")
+            {
+                var proposed = delta.Records[0].Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember;
+                var gap = pair.A.Identity.Sign(SwarmMembership.ToPayload(proposed! with { Sequence = proposed.Sequence + 1 }));
+                using var key = third.Certificate.Value.GetECDsaPrivateKey()!;
+                delta = delta with { Records = [gap.CoSign(key)] };
+            }
             else
             {
                 var competing = delta.Records[0].Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember;
@@ -47,6 +54,8 @@ public class SwarmPropagationTests
                 using var key = third.Certificate.Value.GetECDsaPrivateKey()!;
                 Assert.Equal(SwarmMembershipVerdict.Accepted, membership.Accept(collision.CoSign(key)));
                 pair.B.Membership.Save(membership);
+                await Assert.ThrowsAsync<InvalidDataException>(() => third.Propagation.RecordsAsync(membership.Sequence,
+                    SwarmPropagation.Prefix(membership.Log), default));
             }
             await Assert.ThrowsAsync<InvalidDataException>(() => pair.B.Propagation.ApplyAsync(delta, default));
             Assert.Equal(membership.Sequence, (await pair.B.Membership.LoadAsync()).Sequence);

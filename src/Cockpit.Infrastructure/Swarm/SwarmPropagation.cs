@@ -28,6 +28,7 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
 
     internal async Task ApplyAsync(SwarmRecords delta, CancellationToken ct)
     {
+        if (delta.Records is null) throw new InvalidDataException("swarm_record_refused");
         await store.Gate.WaitAsync(ct);
         try
         {
@@ -39,6 +40,7 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
             var joined = new List<SwarmMember>();
             foreach (var record in delta.Records)
             {
+                if (record is null || record.Signatures is null) throw new InvalidDataException("swarm_record_refused");
                 var change = record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options);
                 if (change is not null && change.Sequence <= current.Sequence)
                 {

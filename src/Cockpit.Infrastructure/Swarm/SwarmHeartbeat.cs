@@ -32,7 +32,7 @@ internal sealed class SwarmHeartbeat(
     private readonly SemaphoreSlim _tick = new(1, 1);
     private readonly Lock _gate = new();
     private readonly Dictionary<SwarmMemberId, SwarmHeartbeatUpdate> _updates = [];
-    private bool _asleep;
+    private volatile bool _asleep;
     internal TimeProvider Time { get; set; } = TimeProvider.System;
 
     internal SwarmHeartbeatUpdate? Latest(SwarmMemberId member)
@@ -54,11 +54,12 @@ internal sealed class SwarmHeartbeat(
     {
         var membership = await store.LoadAsync(ct);
         var member = membership.Members.FirstOrDefault(item => item.Id == peer);
-        if (member is null || !record.Verify(membership.PublicKeyOf)) return null;
+        if (member is null || record.Signatures is null || !record.Verify(membership.PublicKeyOf)) return null;
         var update = record.Payload.Deserialize<SwarmHeartbeatUpdate>(SwarmRecordJson.Options);
-        if (update is null || update.Kind != "heartbeat" || update.Member != peer
+        if (update is null || update.Addresses is null || update.Kind != "heartbeat" || update.Member != peer
             || !record.Signatures.Any(signature => signature.MemberId == update.Member)
-            || update.Port is <= 0 or > 65535 || update.Sequence < 0 || update.At > Time.GetUtcNow() + SwarmReachability.Lease)
+            || update.Port is <= 0 or > 65535 || update.Sequence < 0
+            || update.At > Time.GetUtcNow() + SwarmReachability.Lease || update.At < Time.GetUtcNow() - SwarmReachability.Lease)
             return null;
         var transport = (await servers.LoadAsync(ct)).FirstOrDefault(server =>
             server.Name.StartsWith(NodeServerName.PrefixFor(member.Name), StringComparison.Ordinal)
@@ -74,8 +75,8 @@ internal sealed class SwarmHeartbeat(
         lock (_gate)
         {
             if (_updates.TryGetValue(peer, out var previous) && update.At <= previous.At) return null;
-            _updates[peer] = update with { Addresses = addresses.Count == 0 ? member.Addresses : addresses,
-                Port = addresses.Count == 0 ? member.Port : update.Port };
+            _updates[peer] = update with { Addresses = addresses.Count == 0 ? previous?.Addresses ?? member.Addresses : addresses,
+                Port = addresses.Count == 0 ? previous?.Port ?? member.Port : update.Port };
         }
         reachability.Answer(peer, HttpStatusCode.OK, update.Asleep);
         return update;
@@ -89,7 +90,7 @@ internal sealed class SwarmHeartbeat(
             var record = await context.Request.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, context.RequestAborted);
             var pin = NodeCertificatePin.FingerprintOf((await context.Connection.GetClientCertificateAsync(context.RequestAborted))!);
             if (record is null || await AcceptAsync(record, peer, pin, context.RequestAborted) is null) return Results.StatusCode(403);
-            return Results.Json(await OwnAsync(false, context.RequestAborted), SwarmRecordJson.Options);
+            return Results.Json(await OwnAsync(_asleep, context.RequestAborted), SwarmRecordJson.Options);
         })));
         group.MapGet("/records", (Delegate)((HttpContext context) => HandleAsync(context, async _ =>
         {
@@ -209,6 +210,21 @@ internal sealed class SwarmHeartbeat(
     {
         if (host.Kind == SwarmHostKind.Server) return;
         if (OperatingSystem.IsWindows()) Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        using var bus = OperatingSystem.IsLinux() ? new Tmds.DBus.Connection(Tmds.DBus.Address.System) : null;
+        IDisposable? sleepWatch = null;
+        if (bus is not null)
+        {
+            try
+            {
+                await bus.ConnectAsync();
+                var manager = bus.CreateProxy<ISwarmSleepManager>("org.freedesktop.login1", "/org/freedesktop/login1");
+                sleepWatch = await manager.WatchPrepareForSleepAsync(asleep => _ = PowerChangedAsync(asleep));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not watch swarm suspend transitions.");
+            }
+        }
         using var timer = new PeriodicTimer(SwarmReachability.Interval, Time);
         try
         {
@@ -220,14 +236,18 @@ internal sealed class SwarmHeartbeat(
         }
         finally
         {
+            sleepWatch?.Dispose();
             if (OperatingSystem.IsWindows()) Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private async void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs args)
+    private async void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs args) =>
+        await PowerChangedAsync(args.Mode == Microsoft.Win32.PowerModes.Suspend);
+
+    private async Task PowerChangedAsync(bool asleep)
     {
-        _asleep = args.Mode == Microsoft.Win32.PowerModes.Suspend;
+        _asleep = asleep;
         try
         {
             await TickAsync(_asleep);
@@ -247,3 +267,9 @@ internal sealed class SwarmHeartbeat(
 
 internal sealed record SwarmHeartbeatUpdate(string Kind, SwarmMemberId Member, IReadOnlyList<string> Addresses, int Port,
     bool Asleep, long Sequence, string? Prefix, DateTimeOffset At);
+
+[Tmds.DBus.DBusInterface("org.freedesktop.login1.Manager")]
+public interface ISwarmSleepManager : Tmds.DBus.IDBusObject
+{
+    Task<IDisposable> WatchPrepareForSleepAsync(Action<bool> handler);
+}
