@@ -59,13 +59,16 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains("verify the requested result", systemPrompt);
         Assert.Contains(events.OfType<AssistantTextCompleted>(), completed => completed.Text.Contains("geladen met 8192", StringComparison.Ordinal));
         await LocalModelContextContract.AssertAsync();
-        var exact = new Cockpit.Core.Mcp.ExactMcpServerSelection([]);
+        var exact = new Cockpit.Core.Mcp.ExactMcpServerSelection(["Depot", "YouTrack", "cockpit-coding-shell"]);
         var provider = _SelectionSensitiveProvider();
         var restricted = _CreateDriver(chatClient, provider, contextManager);
-        await restricted.StartAsync(profile, enabledMcpServerNames: exact);
+        // AC-1962: an isolated start forwards the complete selection and still vouches for its own file tools.
+        await restricted.StartAsync(profile, enabledMcpServerNames: exact, workingDirectory: "/wt/run-1",
+            launchOptions: new Dictionary<string, string> { [Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true" });
+        Assert.True(restricted.Capabilities.ConfinesFileAccessToWorkingDirectory);
         await provider.Received(1).ConnectAsync(
             Arg.Is<IReadOnlySet<string>?>(selection => ReferenceEquals(selection, exact)),
-            Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+            Arg.Any<string?>(), "/wt/run-1", Arg.Any<string?>(), "/wt/run-1",
             Arg.Any<CancellationToken>(), Arg.Any<string?>());
         await restricted.SendUserMessageAsync("hi");
         await _CollectUntilTurnCompletedAsync(restricted);

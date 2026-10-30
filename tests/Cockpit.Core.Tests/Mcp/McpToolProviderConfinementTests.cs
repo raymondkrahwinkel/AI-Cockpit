@@ -16,7 +16,7 @@ namespace Cockpit.Core.Tests.Mcp;
 /// <summary>
 /// Confinement of a session's MCP tools to a worktree (AC-174, Raymond 2026-07-22): the security-critical transform that
 /// lets a local model run an isolated step without reaching the operator's real checkout. It re-roots the filesystem
-/// server at the worktree and drops every server that could write or execute outside it.
+/// server at the worktree while preserving the operator's MCP selection (AC-1962).
 /// </summary>
 public class McpToolProviderConfinementTests
 {
@@ -30,7 +30,7 @@ public class McpToolProviderConfinementTests
         _Stdio("git", "mcp-server-git", "--repository", "/home/op"),
         _Stdio("fetch", "mcp-server-fetch"),
         _Stdio("memory", "-y", "@modelcontextprotocol/server-memory"),
-        // Escape channels that must be dropped.
+        // AC-1962: operator-selected servers remain available outside the file-tool guarantee.
         new() { Name = "cockpit-terminal", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
         new() { Name = "cockpit-worktrees", Transport = McpTransport.Http, Url = "http://x", CockpitHosted = true },
@@ -51,18 +51,17 @@ public class McpToolProviderConfinementTests
         // Its allowed directory (the last arg) is the worktree, not the operator's home.
         Assert.Equal("/wt/run-1", filesystem.Args[^1]);
         Assert.DoesNotContain("/home/op", filesystem.Args);
+        Assert.Equal(McpServerPresets.LocalDefaults.Single(server => server.Name == "filesystem").Command, filesystem.Command);
+        Assert.Contains(McpServerPresets.FilesystemServerPackage, filesystem.Args);
     }
 
     [Fact]
-    public void ConfinedServers_DropsEveryEscapeChannel()
+    public void ConfinedServers_KeepsEverySelectedServer()
     {
         var names = McpToolProvider._ConfinedServers(_FullEffectiveSet(), "/wt/run-1").Select(server => server.Name).ToList();
 
-        Assert.DoesNotContain("cockpit-terminal", names);
-        Assert.DoesNotContain("cockpit-orchestrator", names);
-        Assert.DoesNotContain("cockpit-worktrees", names);
-        Assert.DoesNotContain("fetch", names);
-        Assert.DoesNotContain("git", names);
+        // AC-1962: confinement changes the filesystem root, never the operator's selection.
+        Assert.Equal(_FullEffectiveSet().Select(server => server.Name), names);
     }
 
     [Fact]
@@ -110,7 +109,7 @@ public class McpToolProviderConfinementTests
         Assert.Contains("cockpit-session", names);
         Assert.Contains("cockpit-agents", names);
         Assert.Contains("cockpit-coding", names);
-        Assert.DoesNotContain("cockpit-elevated", names);
+        Assert.Contains("cockpit-elevated", names); // AC-1962: explicit selection survives confinement.
         Assert.DoesNotContain("run_elevated", sessionTools);
         Assert.Equal(new[] { "run_elevated" }, elevatedTools);
         Assert.True(elevated.Internal);
@@ -127,7 +126,7 @@ public class McpToolProviderConfinementTests
     }
 
     [Fact]
-    public void ConfinedServers_WithoutAReportEndpoint_StillYieldsOnlyTheSafeFileServers()
+    public void ConfinedServers_WithoutAReportEndpoint_PreservesOnlyTheSelectedServers()
     {
         // A session that never had the report endpoint does not gain it — confinement never adds reach it lacked.
         IReadOnlyList<McpServerConfig> noReport =
@@ -138,6 +137,7 @@ public class McpToolProviderConfinementTests
 
         var names = McpToolProvider._ConfinedServers(noReport, "/wt/run-1").Select(server => server.Name).ToList();
 
-        Assert.Equivalent(new object[] { "filesystem", "memory" }, names);
+        Assert.Equal(new[] { "filesystem", "cockpit-terminal" }, names); // AC-1962: no filtering or extra presets.
+        Assert.Empty(McpToolProvider._ConfinedServers([], "/wt/run-1"));
     }
 }

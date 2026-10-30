@@ -48,17 +48,21 @@ internal sealed class McpToolProvider(
         // a disabled one, overrides the same-named built-in). #44's per-session selection is already applied above.
         var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
 
-        // AC-174: confined sessions swap the whole effective set for a safe one — filesystem preset
-        // re-rooted at the directory, benign in-process servers, and the Autopilot report endpoint — so a
-        // local model cannot reach the operator's real checkout via any other escape channel.
+        // AC-1962: confine Cockpit's file tools without changing the operator's MCP selection.
         if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
         {
             enabledServers = _ConfinedServers(enabledServers, confineFileToolsToDirectory);
+            var independentServers = enabledServers.Where(server =>
+                !string.Equals(server.Name, "filesystem", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(server.Name, CodingTools.EndpointName, StringComparison.OrdinalIgnoreCase));
+            logger.LogInformation(
+                "MCP file confinement covers the filesystem preset and cockpit-coding at {Root}; other selected servers outside that guarantee: [{Names}]. Their own access rules apply.",
+                confineFileToolsToDirectory, string.Join(", ", independentServers.Select(server => server.Name)));
         }
 
         // AC-1148: the mount decision recorded before the first connect, not after it — the cockpit-hosted
         // endpoints below refuse a pane they were never mounted for, and this route is one of their clients.
-        // A confined session (AC-174) is granted its confined set, so the sandbox holds at the door too.
+        // AC-1962: confinement grants the same selection, including independently scoped servers.
         if (!string.IsNullOrEmpty(paneId))
         {
             mounts?.Grant(paneId, [.. enabledServers.Select(server => server.Name)]);
@@ -305,34 +309,13 @@ internal sealed class McpToolProvider(
         return [.. byName.Values];
     }
 
-    // AC-174: keep pane-safe controls and worktree-confined cockpit-coding (AC-1489). cockpit-agents is pane-scoped
-    // messaging without filesystem access. Shell and elevated controls remain escape routes.
-    private static readonly HashSet<string> ConfinedControlEndpoints =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "cockpit-autopilot-run", "cockpit-autopilot-ceo", "cockpit-session", "cockpit-agents", CodingTools.EndpointName,
-        };
-
-    // AC-174: the confined effective set for a session pinned to <paramref name="root"/> — filesystem preset
-    // re-rooted at the worktree, the in-memory knowledge server, and the Autopilot endpoint if already present.
-    // Built from the presets, not the caller's own servers, so a custom same-named "filesystem" cannot widen the sandbox.
+    // AC-1962: preserve selection; replace filesystem from the trusted preset so an override cannot widen its root.
     internal static List<McpServerConfig> _ConfinedServers(IReadOnlyList<McpServerConfig> effective, string root)
     {
-        var confined = new List<McpServerConfig>();
-        foreach (var preset in McpServerPresets.LocalDefaults)
-        {
-            if (string.Equals(preset.Name, "filesystem", StringComparison.OrdinalIgnoreCase))
-            {
-                confined.Add(_ReRootLastArg(preset, root));
-            }
-            else if (string.Equals(preset.Name, "memory", StringComparison.OrdinalIgnoreCase))
-            {
-                confined.Add(preset);
-            }
-        }
-
-        confined.AddRange(effective.Where(server => ConfinedControlEndpoints.Contains(server.Name)));
-        return confined;
+        var filesystem = McpServerPresets.LocalDefaults.Single(server => server.Name == "filesystem");
+        return [.. effective.Select(server => string.Equals(server.Name, "filesystem", StringComparison.OrdinalIgnoreCase)
+            ? _ReRootLastArg(filesystem, root)
+            : server)];
     }
 
     // Re-roots a filesystem-style stdio preset by replacing its last CLI argument (the server's single allowed
