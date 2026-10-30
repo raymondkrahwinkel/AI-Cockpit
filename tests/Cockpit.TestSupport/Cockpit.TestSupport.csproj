@@ -12,7 +12,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
     <!-- LoopbackHttpServer runs on Kestrel. Declared here rather than leaned on transitively, because the
          plugin test projects reference no ASP.NET of their own. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

@@ -55,7 +55,7 @@ public sealed class BackendWithPluginsTests : IDisposable
     {
         var mountLog = new MountLog();
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(mountLog));
-        var backend = CockpitBackend.Build(loggerFactory, services => Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services), plugins: PluginStartup.Load);
+        var backend = CockpitBackend.Build(loggerFactory, plugins: PluginStartup.Load);
         await using var services = backend.Services;
         var endpoints = services.GetRequiredService<CockpitMcpEndpointHost>();
         var mounted = mountLog.Until(() => PluginEndpoints.All(name => endpoints.GetServers().Any(server => server.Name == name)));

@@ -76,7 +76,8 @@ internal static class Program
         var backend = CockpitBackend.Build(
             loggerFactory,
             plugins: PluginStartup.Load,
-            nodeListenAddress: nodeListenAddress);
+            nodeListenAddress: nodeListenAddress,
+            enableStorageMaintenance: true);
 
         var protection = backend.Services.GetRequiredService<ISecretProtectionService>();
         if ((await protection.GetStatusAsync()).Enabled)

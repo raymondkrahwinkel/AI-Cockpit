@@ -28,7 +28,7 @@ internal sealed class AgentsMcpTools(
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     [McpServerTool(Name = "acknowledge_storage_pause", ReadOnly = false, Destructive = false)]
-    [Description("Acknowledges that this session has paused Docker work for the operator's pending compaction. Use the pauseId from the storage pause inbox message. Do not use Docker again until storage resume arrives. This never approves compaction on behalf of the operator.")]
+    [Description("Acknowledges this session's Docker pause using the inbox pauseId until storage resume arrives, without approving compaction for the operator.")]
     public string AcknowledgeStoragePause([Description("The pauseId from this session's storage pause message.")] string pauseId) =>
         _Serialize(new { ok = McpRequestContext.CurrentPaneId is { } caller && storage?.AcknowledgePause(caller, pauseId) == true });
 

@@ -26,7 +26,7 @@ public class TerminalShellIntegrationTrackerTests
     }
 
     [Fact]
-    public void APromptMark_MeansTheShellIsIdle_AndACommandStartingTakesItOffThePrompt()
+    public void PromptAndCommandMarksTrackIdleStateCompletionCountsAndExitCodes()
     {
         var tracker = new TerminalShellIntegrationTracker();
 
@@ -36,28 +36,18 @@ public class TerminalShellIntegrationTrackerTests
 
         tracker.Feed(Mark("C") + "building...\r\n");
         Assert.False(tracker.AtPrompt, "a command is running, so this is also when a full-screen program would be open");
-    }
 
-    [Fact]
-    public void AFinishMark_CountsTheCommand_AndCarriesItsExitCode()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
-        tracker.Feed(Mark("B") + Mark("C") + "boom\r\n" + Mark("D;1"));
+        tracker.Feed("boom\r\n" + Mark("D;1"));
 
         Assert.Equal(1, tracker.CommandsFinished);
         Assert.Equal(1, tracker.LastExitCode);
         Assert.False(tracker.AtPrompt, "the next prompt mark is what says it is ready again");
-    }
 
-    [Fact]
-    public void AFinishMarkWithoutACode_CountsButReportsNoExitCode()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
+        tracker.Feed(Mark("B"));
+        Assert.True(tracker.AtPrompt);
         tracker.Feed(Mark("C") + Mark("D"));
 
-        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Equal(2, tracker.CommandsFinished);
         Assert.Null(tracker.LastExitCode);
     }
 

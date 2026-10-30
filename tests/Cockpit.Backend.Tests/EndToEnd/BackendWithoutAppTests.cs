@@ -9,14 +9,15 @@ using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Hotkeys;
 using SoundFlow.Abstracts;
-using Cockpit.TestSupport;
+using Cockpit.Core.Diagnostics;
+using NSubstitute;
 
 namespace Cockpit.Backend.Tests.EndToEnd;
 
 [CollectionDefinition(BackendWithoutAppTests.Alone, DisableParallelization = true)]
 public sealed class BackendWithoutAppCollection;
 
-// Fresh-root coverage keeps planner ordering intact while faking machine-wide storage maintenance.
+// The state root is process-wide, so these backend startup checks run alone.
 [Collection(Alone)]
 public sealed class BackendWithoutAppTests : IDisposable
 {
@@ -50,7 +51,8 @@ public sealed class BackendWithoutAppTests : IDisposable
     [Fact]
     public async Task ThePlanners_StartOnlyAfterTheStartupReconcile_AndNeverHoldTheCaller()
     {
-        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.FakeMachineStorage());
+        var maintenance = Substitute.For<IDockerStorageMaintenance>();
+        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.AddSingleton(maintenance));
         await using var services = backend.Services;
 
         var early = Record.Exception(backend.StartPlanners);
@@ -72,12 +74,13 @@ public sealed class BackendWithoutAppTests : IDisposable
         Assert.True(handedBackIn < TimeSpan.FromSeconds(1), $"The caller was held for {handedBackIn}.");
         Assert.Equal(1, starts);
         Assert.NotNull(services.GetRequiredService<CiWatcher>().Watching);
+        maintenance.DidNotReceive().Start();
     }
 
     [Fact]
     public async Task ABackendWithoutTheDesktop_UsesNoHotkeysAndResolvesNoUiOnlyServices()
     {
-        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.FakeMachineStorage());
+        var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
         await using var services = backend.Services;
 
         Assert.IsType<NoOpGlobalHotkeyService>(services.GetRequiredService<IGlobalHotkeyService>());
