@@ -11,7 +11,7 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   `app.manifest` carrying `supportedOS` (without it, offscreen rendering freezes after the first frames of a heavy
   page). The SDK only embeds that manifest when building on Windows, so a Windows zip has to be built on Windows.
   See "Publishing per platform" below.
-- **Raymond's profile** is its own `CefRequestContext` under `<state root>/browser/raymond/`. **No remote debugging
+- **The user's profile** is its own `CefRequestContext` under `<state root>/browser/user/`. **No remote debugging
   port, ever**: it would open every tab of every profile to the whole machine.
 - **One browser, two places:** a tab (`browser.tab`) and the rail (`browser.rail`, KeepAlive and CanFloat). The view
   is in one place at a time; the other says where it is.
@@ -49,11 +49,11 @@ A web browser inside Cockpit on CEF (Chromium Embedded Framework). This README c
   badge. It reads them over the plugin channel (`agents.*`), so it works when the backend runs on a server.
 - **The picture** is a CDP `Page.startScreencast` of the tab on screen, straight from the agent Chromium: no CEF. It runs
   only while the view is visible; hide the panel and it stops. The count in the rail tab is the number of agent tabs.
-- **Take over / Give back / Stop agent:** Playwright MCP is pointed at `AgentCdpProxy`, not at Chromium. While Raymond
-  drives, the proxy answers the session's `Input.*` commands with an error that says so; everything else passes. His
+- **Take over / Give back / Stop agent:** Playwright MCP is pointed at `AgentCdpProxy`, not at Chromium. While you
+  drive, the proxy answers the session's `Input.*` commands with an error that says so; everything else passes. Your
   own mouse and keys go to the tab over a separate connection, so the pause never holds them. Stop agent kills the
-  Chromium and leaves the proxy up, so the session's next call reads that Raymond stopped it.
-- **Known edges:** a session's `Runtime.evaluate` can still click while Raymond drives (only `Input.*` is held), and the
+  Chromium and leaves the proxy up, so the session's next call reads that you stopped it.
+- **Known edges:** a session's `Runtime.evaluate` can still click while you drive (only `Input.*` is held), and the
   rail count is refreshed on changes and while the panel is open, not by a background poll.
 
 ## How the engine arrives

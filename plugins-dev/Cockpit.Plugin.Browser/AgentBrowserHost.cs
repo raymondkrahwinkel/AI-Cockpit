@@ -206,7 +206,7 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         }
     }
 
-    // Raymond takes the surface of one session, or hands it back. False when the session has no live browser.
+    // You take the surface of one session, or hand it back. False when the session has no live browser.
     public bool SetOperatorDrives(string paneId, bool drives)
     {
         lock (_gate)

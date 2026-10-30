@@ -5,7 +5,7 @@ using Avalonia.Media;
 
 namespace Cockpit.Plugin.Browser.UI;
 
-// The picture of the agent tab on screen (AC-1713). Shows the last screencast frame; while Raymond drives, his mouse
+// The picture of the agent tab on screen (AC-1713). Shows the last screencast frame; while you drive, your mouse
 // and keys go to the page through the model, mapped from this control onto the page's own pixels.
 internal sealed class AgentScreen : Control
 {
@@ -37,7 +37,7 @@ internal sealed class AgentScreen : Control
         model.FrameChanged += InvalidateVisual;
     }
 
-    // Pointer and keys are only taken while Raymond drives that tab.
+    // Pointer and keys are only taken while you drive that tab.
     private bool Driving => _model.Active?.OperatorDrives ?? false;
 
     public override void Render(DrawingContext context)

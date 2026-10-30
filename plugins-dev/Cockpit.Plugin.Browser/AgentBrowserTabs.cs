@@ -2,8 +2,8 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Browser;
 
-// AC-1713: What Raymond sees and does in the agent profile, on top of AgentBrowserHost: the tabs of every live agent
-// browser, one screencast for the tab he is looking at, and Neem over / Geef terug / Stop agent. The screencast runs
+// AC-1713: What you see and do in the agent profile, on top of AgentBrowserHost: the tabs of every live agent
+// browser, one screencast for the tab you are looking at, and Neem over / Geef terug / Stop agent. The screencast runs
 // only between Watch and Unwatch, so nobody looking costs nothing. Frames and changes go out as plugin-channel events.
 internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, string?> sessionName, Action<string, object> publish) : IDisposable
 {
@@ -78,7 +78,7 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
         return browsers.StopBrowser(paneId);
     }
 
-    // Raymond's input, only while he drives that session and only into the tab he is watching.
+    // The user's input, only while you drive that session and only into the tab you are watching.
     public async Task<string?> InputAsync(string paneId, string targetId, string method, JsonElement parameters)
     {
         Watch? watch;
