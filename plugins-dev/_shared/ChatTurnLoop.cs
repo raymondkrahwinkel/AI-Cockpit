@@ -98,8 +98,11 @@ internal static class ChatTurnLoop
     internal static async Task<ChatTurnOutcome> RunAsync(IChatClient agent, List<ChatMessage> history, ChatOptions options, Action<string> onText, ILogger? logger, CancellationToken cancellationToken, TimeSpan? streamIdleTimeout = null)
     {
         logger ??= NullLogger.Instance;
-        _TrimOldToolResults(history);
         var guard = agent.GetService<ContextGuardChatClient>();
+        if (guard?.PreservePrefix != true)
+        {
+            _TrimOldToolResults(history);
+        }
         var limits = guard?.Limits ?? ChatTurnLimits.Default;
         guard?.BeginTurn();
         var turnText = new StringBuilder();
@@ -473,7 +476,7 @@ internal sealed record ChatTurnLimits
 // Sits between the function-invocation loop and the model (AC-1489), so it sees every HTTP call of a turn before it
 // leaves: caps each tool result, keeps a per-turn budget, prunes old results near the context limit, and as a last
 // resort drops the tools so the model must wrap up. Only a result's text ever gets shorter: every call keeps its result.
-internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits limits, ILogger? logger = null) : DelegatingChatClient(inner)
+internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits limits, ILogger? logger = null, bool preservePrefix = false) : DelegatingChatClient(inner)
 {
     private const int CharsPerToken = 4;
 
@@ -493,6 +496,8 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
 
     public ChatTurnLimits Limits { get; } = limits;
+
+    public bool PreservePrefix { get; } = preservePrefix;
 
     public TurnGuardState Turn { get; private set; } = new();
 
@@ -616,7 +621,9 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     // the prompt in the measured failure (DEP-234). Add a summary call once a measured session shows pruning falls short.
     private long _Prune(IList<ChatMessage> messages, TurnGuardState turn)
     {
-        var protectedChars = (long)Limits.ProtectRecentTokens * CharsPerToken;
+        // Local models repay cache rebuilds less often when pruning leaves room for several more requests.
+        var protectedTokens = PreservePrefix ? Math.Min(Limits.ProtectRecentTokens, Limits.ContextWindowTokens / 4) : Limits.ProtectRecentTokens;
+        var protectedChars = (long)protectedTokens * CharsPerToken;
         var seen = 0L;
         var pruned = 0L;
         foreach (var result in messages.Reverse().SelectMany(message => message.Contents.Reverse()).OfType<FunctionResultContent>())

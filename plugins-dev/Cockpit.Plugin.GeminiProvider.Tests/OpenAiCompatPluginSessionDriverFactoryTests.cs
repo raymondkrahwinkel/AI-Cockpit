@@ -21,5 +21,7 @@ public class OpenAiCompatPluginSessionDriverFactoryTests
         var options = OpenAiCompatPluginSessionDriverFactory.BuildClientOptions(config);
 
         Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), options.NetworkTimeout);
+        var local = config with { BaseUrl = "http://127.0.0.1:1234/v1" };
+        Assert.Equal(Timeout.InfiniteTimeSpan, OpenAiCompatPluginSessionDriverFactory.BuildClientOptions(local).NetworkTimeout);
     }
 }

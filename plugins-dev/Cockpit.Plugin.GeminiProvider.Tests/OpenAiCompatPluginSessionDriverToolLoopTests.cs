@@ -39,43 +39,45 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
     [Fact]
     public async Task SendUserMessage_AfterADroppedConnection_RetriesWithoutRerunningTheTool_AndLaterTurnsSeeTheToolResult_TrimmedOnceTwoTurnsOld()
     {
-        var sent = new List<List<ChatMessage>>();
-        var sentResults = new List<string?>();
-        var toolset = new FakeToolset(["set_status"], reachable: ["set_status"], result: new string('x', 2000));
-        var chatClient = Substitute.For<IChatClient>();
-        chatClient.GetStreamingResponseAsync(
-                Arg.Do<IEnumerable<ChatMessage>>(messages =>
-                {
-                    sent.Add([.. messages]);
-                    sentResults.Add(messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>().SingleOrDefault()?.Result?.ToString());
-                }),
-                Arg.Any<ChatOptions>(),
-                Arg.Any<CancellationToken>())
-            .Returns(_ToolCall("set_status", ("status", "AC-1431")), _DropConnection("Now I'll "), _Stream("status set. [turn complete]"), _Stream("second turn. [turn complete]"), _Stream("third turn. [turn complete]"));
-        var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5");
-        await _StartWithToolsetAsync(driver, toolset);
+        foreach (var preservePrefix in new[] { false, true })
+        {
+            var sent = new List<List<ChatMessage>>();
+            var sentResults = new List<string?>();
+            var toolset = new FakeToolset(["set_status"], reachable: ["set_status"], result: new string('x', 2000));
+            var chatClient = Substitute.For<IChatClient>();
+            chatClient.GetStreamingResponseAsync(
+                    Arg.Do<IEnumerable<ChatMessage>>(messages =>
+                    {
+                        sent.Add([.. messages]);
+                        sentResults.Add(messages.SelectMany(message => message.Contents).OfType<FunctionResultContent>().SingleOrDefault()?.Result?.ToString());
+                    }),
+                    Arg.Any<ChatOptions>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(_ToolCall("set_status", ("status", "AC-1431")), _DropConnection("Now I'll "), _Stream("status set. [turn complete]"), _Stream("second turn. [turn complete]"), _Stream("third turn. [turn complete]"));
+            var driver = new OpenAiCompatPluginSessionDriver(chatClient, "gpt-5", preservePrefix: preservePrefix);
+            await _StartWithToolsetAsync(driver, toolset);
 
-        await driver.SendUserMessageAsync("set my status");
-        var first = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-        await driver.SendUserMessageAsync("and now?");
-        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
-        await driver.SendUserMessageAsync("and then?");
-        await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+            await driver.SendUserMessageAsync("set my status");
+            var first = await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+            await driver.SendUserMessageAsync("and now?");
+            await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
+            await driver.SendUserMessageAsync("and then?");
+            await _CollectAsync(driver, evt => evt is PluginTurnCompleted);
 
-        // AC-1431 criterion 3: the transport failure is retried into a successful turn, without running the tool twice.
-        Assert.False(Assert.Single(first.OfType<PluginTurnCompleted>()).IsError);
-        Assert.Single(toolset.Calls);
+            // AC-1431 criterion 3: the transport failure is retried into a successful turn, without running the tool twice.
+            Assert.False(Assert.Single(first.OfType<PluginTurnCompleted>()).IsError);
+            Assert.Single(toolset.Calls);
 
-        // Criterion 1: the second turn carries the first turn's call and its result, the call first.
-        var history = sent[3];
-        var call = history.FindIndex(message => message.Role == ChatRole.Assistant && message.Contents.OfType<FunctionCallContent>().Any(content => content.CallId == "call_set_status"));
-        var result = history.FindIndex(message => message.Role == ChatRole.Tool && message.Contents.OfType<FunctionResultContent>().Any(content => content.CallId == "call_set_status"));
-        Assert.InRange(call, 0, result - 1);
-        Assert.Equal(["system", "user", "assistant", "tool", "assistant", "user"], history.Select(message => message.Role.Value));
+            // Criterion 1: the second turn carries the first turn's call and its result, the call first.
+            var history = sent[3];
+            var call = history.FindIndex(message => message.Role == ChatRole.Assistant && message.Contents.OfType<FunctionCallContent>().Any(content => content.CallId == "call_set_status"));
+            var result = history.FindIndex(message => message.Role == ChatRole.Tool && message.Contents.OfType<FunctionResultContent>().Any(content => content.CallId == "call_set_status"));
+            Assert.InRange(call, 0, result - 1);
+            Assert.Equal(["system", "user", "assistant", "tool", "assistant", "user"], history.Select(message => message.Role.Value));
 
-        // The previous turn's result rides along whole; two turns on, only its first 1500 characters and a note do.
-        Assert.Equal(2000, sentResults[3]?.Length);
-        Assert.Equal(new string('x', 1500) + "\n[truncated by cockpit: 2000 chars]", sentResults[4]);
+            Assert.Equal(2000, sentResults[3]?.Length);
+            Assert.Equal(preservePrefix ? new string('x', 2000) : new string('x', 1500) + "\n[truncated by cockpit: 2000 chars]", sentResults[4]);
+        }
     }
 
     [Fact]
@@ -109,7 +111,7 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
             ChatOptions? offered = null;
             model.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions?>(value => offered = value), Arg.Any<CancellationToken>())
                 .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
-            using var guard = new ContextGuardChatClient(model, smallLimits);
+            using var guard = new ContextGuardChatClient(model, smallLimits, preservePrefix: true);
             await guard.GetResponseAsync([new ChatMessage(ChatRole.User, new string('x', inputTokens * 4))],
                 new ChatOptions { Tools = [AIFunctionFactory.Create(() => "ok", "read")] });
             Assert.Equal(inputTokens > 24_576, guard.Turn.ContextFull);
@@ -123,6 +125,29 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
         Assert.Equal(1_000, (smallLimits with { ReserveTokens = 1_000 }).ReserveTokens);
         using var configuredJson = System.Text.Json.JsonDocument.Parse("""{"contextWindowTokens":32768,"reserveTokens":2000}""");
         Assert.Equal(2_000, ChatTurnLimits.From(configuredJson.RootElement).ReserveTokens);
+
+        var localModel = Substitute.For<IChatClient>();
+        localModel.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "done")));
+        using var localGuard = new ContextGuardChatClient(localModel, smallLimits, preservePrefix: true);
+        var oldA = new FunctionResultContent("a", new string('a', 50_000));
+        var oldB = new FunctionResultContent("b", new string('b', 50_000));
+        var recent = new FunctionResultContent("c", new string('c', 8_000));
+        List<ChatMessage> localHistory =
+        [
+            new(ChatRole.User, "read"),
+            new(ChatRole.Tool, [oldA, oldB, recent]),
+        ];
+        await localGuard.GetResponseAsync(localHistory);
+        Assert.Equal(2, localGuard.Turn.Pruned);
+        Assert.False(localGuard.Turn.ContextFull);
+        Assert.Equal(new string('c', 8_000), recent.Result);
+        var compacted = localHistory.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Select(result => result.Result).ToArray();
+        localHistory.Add(new ChatMessage(ChatRole.User, new string('x', 10_000)));
+        localGuard.BeginTurn();
+        await localGuard.GetResponseAsync(localHistory);
+        Assert.Equal(0, localGuard.Turn.Pruned);
+        Assert.Equal(compacted, localHistory.SelectMany(message => message.Contents).OfType<FunctionResultContent>().Select(result => result.Result));
 
         var limits = new ChatTurnLimits { ContextWindowTokens = 50_000, SoftLimitRatio = 0.5, ReserveTokens = 20_000, ProtectRecentTokens = 15_000 };
         var bigResult = string.Concat(Enumerable.Repeat(new string('x', 99) + "\n", 1024));
