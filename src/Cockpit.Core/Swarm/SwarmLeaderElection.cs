@@ -34,14 +34,30 @@ public static class SwarmLeaderElection
             .OrderBy(member => member.Rank).ThenBy(member => member.Id.Value, StringComparer.Ordinal).ToArray();
         var lowest = online.FirstOrDefault();
         var current = online.FirstOrDefault(member => member.Id == previous.Current?.Id);
-        if (current is null || lowest is null) return new(lowest);
-        if (lowest.Id == current.Id) return new(current);
-        if (previous.Suppressed == lowest.Id) return new(current, Suppressed: lowest.Id);
-        var pending = previous.Pending?.Member.Id == lowest.Id ? previous.Pending : new(lowest, now + SwarmReachability.Stabilization);
-        if (action == SwarmTakeoverAction.StayWithCurrent) return new(current, Suppressed: lowest.Id);
+        if (current is null || lowest is null)
+        {
+            return new(lowest);
+        }
+        if (lowest.Id == current.Id)
+        {
+            return new(current);
+        }
+        if (previous.Suppressed == lowest.Id && action != SwarmTakeoverAction.TakeOverNow)
+        {
+            return new(current, Suppressed: lowest.Id);
+        }
+        var pending = previous.Pending?.Member.Id == lowest.Id
+            ? previous.Pending
+            : new(lowest, now + SwarmReachability.Stabilization);
+        if (action == SwarmTakeoverAction.StayWithCurrent)
+        {
+            return new(current, Suppressed: lowest.Id);
+        }
         if (mode == SwarmLowerRankReturn.AnnouncedTakeover
             && (action == SwarmTakeoverAction.TakeOverNow || now >= pending.At && presence(lowest.Id).Stable))
+        {
             return new(lowest);
+        }
         return new(current, pending);
     }
 }

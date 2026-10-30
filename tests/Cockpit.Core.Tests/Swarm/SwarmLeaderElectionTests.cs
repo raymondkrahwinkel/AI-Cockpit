@@ -64,6 +64,10 @@ public class SwarmLeaderElectionTests
             var cancelled = Elect(waiting, action: SwarmTakeoverAction.StayWithCurrent);
             Assert.Null(cancelled.Pending);
             Assert.Equal(laptop.Id, Elect(cancelled).Current?.Id);
+            var resumed = Elect(cancelled, action: SwarmTakeoverAction.TakeOverNow);
+            Assert.Equal(desktop.Id, resumed.Current?.Id);
+            Assert.Null(resumed.Suppressed);
+            Assert.Null(resumed.Pending);
             Assert.Equal(desktop.Id, Elect(waiting).Current?.Id);
             Assert.Equal(desktop.Id, Elect(waiting, action: SwarmTakeoverAction.TakeOverNow).Current?.Id);
             time.Advance(16);

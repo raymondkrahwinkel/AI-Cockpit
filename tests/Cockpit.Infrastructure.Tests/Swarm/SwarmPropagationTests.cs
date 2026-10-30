@@ -52,6 +52,14 @@ public class SwarmPropagationTests
             foreach (var machine in machines)
                 foreach (var peer in machines.Where(peer => peer != machine))
                     machine.Reachability.Answer(peer.Identity.MemberId, System.Net.HttpStatusCode.OK);
+            await higher.Leadership.RefreshAsync();
+            Assert.Equal(lowest.Identity.MemberId, higher.Leadership.PendingTakeover?.Member.Id);
+            await higher.Leadership.StayWithCurrentAsync();
+            Assert.Null(higher.Leadership.PendingTakeover);
+            Assert.True(higher.Leadership.IsSelf);
+            await higher.Leadership.TakeOverNowAsync();
+            Assert.Equal(lowest.Identity.MemberId, higher.Leadership.Current?.Id);
+            Assert.Equal(SwarmTakeoverAction.TakeOverNow, higher.Leadership.Decision?.Action);
             lowest.Leadership.Observe(higher.Identity.MemberId, higher.Identity.MemberId, null);
             await lowest.Leadership.RefreshAsync();
             var reranked = await lowest.Membership.LoadAsync();
