@@ -3579,6 +3579,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sdkPaneOver = sdkPaneOver;
         _sessionLauncher = sessionLauncher;
         _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient, serverSignIns);
+        if (swarmOptions is not null && swarmLeadership is not null && nodeSessionsClient is not null)
+            ShowSwarm(swarmOptions, swarmLeadership, nodeSessionsClient);
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;
@@ -10140,6 +10142,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _disposed = true;
+        _StopSwarmSidebar();
 
         // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
         // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three

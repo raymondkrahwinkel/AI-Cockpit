@@ -283,7 +283,7 @@
                     ToolTip.Tip="Open this session; it runs on the server">
                 <!-- The waiting wash is the local row's own: the sessionItem style classes, off the same predicate. -->
                 <Border Classes="sessionItem" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
-                        Classes.attention="{Binding Status, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}">
+                        Classes.attention="{Binding ShowAttention}">
                     <StackPanel Spacing="2">
                         <Grid ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
                             <Ellipse Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center"
@@ -292,7 +292,7 @@
                                        TextTrimming="CharacterEllipsis"/>
                             <materialIcons:MaterialIcon Grid.Column="2" Margin="6,0,0,0" Kind="AlertOutline" Width="13" Height="13"
                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}"
-                                       IsVisible="{Binding Status, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
+                                       IsVisible="{Binding ShowAttention}"
                                        ToolTip.Tip="Needs attention"/>
                             <Border Grid.Column="3" Classes="tag" Margin="6,0,0,0" VerticalAlignment="Center"
                                     CornerRadius="{StaticResource CockpitPillRadius}"
@@ -307,6 +307,13 @@
                         </Grid>
                         <TextBlock Text="{Binding Detail}" FontSize="11" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding ShowStatusline}"
+                                   Foreground="{DynamicResource CockpitAccentBrush}"/>
+                        <Border Classes="tag" HorizontalAlignment="Left"
+                                IsVisible="{Binding ActivityBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <TextBlock Text="{Binding ActivityBadge}" FontSize="9" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </Border>
                     </StackPanel>
                 </Border>
             </Button>
@@ -840,10 +847,13 @@
                         <!-- AC-1487: this laptop's desks, which a remote window does not have. -->
                         <StackPanel Spacing="2" IsVisible="{Binding !IsRemoteWindow}">
                             <!-- AC-1456: once a server group stands below, this laptop's desks get their own heading. -->
-                            <Grid ColumnDefinitions="*,Auto" Margin="2,0,4,2" IsVisible="{Binding HasServerGroups}">
+                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,4,2" IsVisible="{Binding ShowLocalMachineHeading}">
                                 <TextBlock Text="This laptop" FontSize="11" FontWeight="SemiBold"
                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Sessions.Count}" FontSize="11"
+                                <Border Grid.Column="1" Classes="tag" Margin="4,0" IsVisible="{Binding LocalLeads}">
+                                    <TextBlock Text="leads" FontSize="10" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                </Border>
+                                <TextBlock Grid.Column="2" Text="{Binding Sessions.Count}" FontSize="11"
                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                             </Grid>
                             <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding SessionWorkspaceGroups}">
@@ -922,7 +932,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ServerGroupViewModel">
                                     <StackPanel Spacing="2" Margin="0,0,0,6">
-                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="4" Margin="2,3">
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="4" Margin="2,3">
                                             <ToggleButton Grid.Column="0" Classes="Subtle" Padding="2,0"
                                                           IsChecked="{Binding IsExpanded}"
                                                           Foreground="{DynamicResource CockpitTextFaintBrush}"
@@ -940,16 +950,21 @@
                                             <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
                                                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource CockpitAccentBrush}"/>
-                                            <TextBlock Grid.Column="3" Text="{Binding SidebarStatus}" FontSize="11"
+                                            <Border Grid.Column="3" Classes="tag" IsVisible="{Binding Leads}">
+                                                <TextBlock Text="leads" FontSize="10" Foreground="{DynamicResource CockpitStatusDoneBrush}"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="4" Text="{Binding SidebarStatus}" FontSize="11"
                                                        VerticalAlignment="Center" Margin="0,0,4,0"
                                                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                         </Grid>
                                         <ItemsControl ItemsSource="{Binding Sessions}" Margin="13,0,0,0" IsVisible="{Binding IsExpanded}"
+                                                      Opacity="{Binding RowsOpacity}"
                                                       ItemTemplate="{StaticResource ServerSessionRow}"/>
                                         <Button Classes="Subtle" Padding="8,2" FontSize="11" Margin="13,0,0,0"
-                                                HorizontalAlignment="Left" IsVisible="{Binding IsExpanded}"
+                                                HorizontalAlignment="Left" IsVisible="{Binding ShowStart}"
                                                 Foreground="{DynamicResource CockpitTextFaintBrush}"
                                                 Content="{Binding Start.SidebarLabel}"
+                                                IsEnabled="{Binding IsConnected}"
                                                 Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerStartCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </StackPanel>
@@ -1605,7 +1620,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ServerGroupViewModel">
                             <StackPanel Spacing="8" Margin="0,0,0,8">
-                                <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}"
+                                <Border Padding="14,10" Background="{DynamicResource CockpitPanelBgBrush}" IsVisible="{Binding IsConnectServer}"
                                         BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
                                         CornerRadius="{StaticResource CockpitControlRadius}">
                                     <DockPanel>
@@ -1659,7 +1674,7 @@
                                     </DockPanel>
                                 </Border>
 
-                                <StackPanel IsVisible="{Binding Health.IsOpen}">
+                                <StackPanel IsVisible="{Binding Health.IsOpen, FallbackValue=False, TargetNullValue=False}">
                                     <controls:ServerHealthView DataContext="{Binding Health}"/>
                                 </StackPanel>
 
@@ -1686,7 +1701,7 @@
                                         HorizontalAlignment="Left" CornerRadius="{StaticResource CockpitControlRadius}">
                                     <StackPanel Spacing="10">
                                         <TextBlock Text="{Binding Start.Heading}" FontSize="14" FontWeight="SemiBold"/>
-                                        <TextBlock Text="Runs on the server. Only SDK sessions; profiles and projects are the server's own. No project uses the server's scratch directory."
+                                        <TextBlock Text="{Binding Start.HelpText}"
                                                    FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                         <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
                                             <StackPanel Spacing="4">
