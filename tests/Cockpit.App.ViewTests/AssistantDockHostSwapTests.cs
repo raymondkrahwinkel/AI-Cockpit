@@ -37,6 +37,8 @@ public sealed class AssistantDockHostSwapTests
         // of them the rail lists nothing and every assertion about it would pass for the wrong reason.
         var panels = new DockPanelRegistry();
         var cockpit = new CockpitViewModel(panels);
+        // Keep this fixture assistant-only so an empty registry still exercises rail collapse.
+        panels.Unregister(AgentsOverviewViewModel.DockPanelId);
 
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantSettings());
