@@ -166,9 +166,15 @@ internal sealed class SwarmHeartbeat(
                     handler.SslOptions.ClientCertificates = new X509CertificateCollection { certificate.Value };
                     handler.SslOptions.RemoteCertificateValidationCallback = (_, remote, _, _) =>
                     {
-                        if (remote is null) return false;
+                        if (remote is null)
+                        {
+                            return false;
+                        }
                         var actual = NodeCertificatePin.FingerprintOf(remote);
-                        if (actual != pin) throw new NodeCertificatePinMismatchException(pin, actual);
+                        if (actual != pin)
+                        {
+                            throw new NodeCertificatePinMismatchException(pin, actual);
+                        }
                         using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
                         return SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == member.Id;
                     };
@@ -182,7 +188,10 @@ internal sealed class SwarmHeartbeat(
                     response.EnsureSuccessStatusCode();
                     var record = await response.Content.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, ct);
                     if (record is null || await AcceptAsync(record, member.Id, pin, ct) is not { } update) return;
-                    if (manualUri is not null) await manual.RememberAsync(manualUri.ToString(), member.Id.Value, online: true, ct: ct);
+                    if (manualUri is not null)
+                    {
+                        await manual.RememberAsync(manualUri.ToString(), member.Id.Value, online: true, ct: ct);
+                    }
                     var current = await store.LoadAsync(ct);
                     if (update.Sequence >= current.Sequence)
                     {
@@ -203,7 +212,9 @@ internal sealed class SwarmHeartbeat(
                     or InvalidDataException or JsonException or NodePairingException)
                 {
                     if (await manual.ForMemberAsync(member.Id, ct) is { } uri)
+                    {
                         await manual.RememberAsync(uri.ToString(), member.Id.Value, ex, ct: ct);
+                    }
                     logger.LogWarning(ex, "Swarm heartbeat or synchronization failed for {Member}.", member.Id);
                 }
             }));

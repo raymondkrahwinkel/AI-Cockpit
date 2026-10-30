@@ -11,12 +11,19 @@ internal sealed class SwarmManualAddress(SwarmSettingsStore settings, SwarmNetwo
     public static Uri Parse(string address)
     {
         var value = address.Trim();
-        if (IPAddress.TryParse(value, out var ip)) value = ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{ip}]" : ip.ToString();
+        if (IPAddress.TryParse(value, out var ip))
+        {
+            value = ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{ip}]" : ip.ToString();
+        }
         var uri = NodePairingClient.NormalizeAddress(value);
-        if (uri.Scheme != "https" || uri.UserInfo.Length > 0 || uri.AbsolutePath != "/" || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.Port == 0)
+        if (uri.Scheme != "https" || uri.UserInfo.Length > 0 || uri.AbsolutePath != "/"
+            || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.Port == 0)
+        {
             throw new FormatException("Enter a host or host:port.");
+        }
         var authority = value.Replace("https://", "", StringComparison.OrdinalIgnoreCase).TrimEnd('/');
-        var explicitPort = authority.StartsWith('[') ? authority.Contains("]:", StringComparison.Ordinal) : authority.Contains(':');
+        var explicitPort = authority.StartsWith('[')
+            ? authority.Contains("]:", StringComparison.Ordinal) : authority.Contains(':');
         return explicitPort ? uri : new UriBuilder(uri) { Port = 20382 }.Uri;
     }
 
@@ -38,7 +45,9 @@ internal sealed class SwarmManualAddress(SwarmSettingsStore settings, SwarmNetwo
     internal async Task AttachAsync(string address, SwarmMemberId member, CancellationToken ct)
     {
         if ((await settings.LoadAsync(ct)).ManualAddresses.Any(item => item.Address == Key(Parse(address))))
+        {
             await RememberAsync(address, member.Value, online: true, ct: ct);
+        }
     }
 
     public async Task RememberAsync(string address, string? memberId = null, Exception? failure = null, bool online = false, CancellationToken ct = default)
@@ -47,8 +56,9 @@ internal sealed class SwarmManualAddress(SwarmSettingsStore settings, SwarmNetwo
         var error = failure is null ? null : NodeConnectionFailure.Find<NodePairingException>(failure);
         var pin = failure is null ? null : NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(failure);
         var refused = failure is null ? null : NodeConnectionFailure.Find<System.Net.Sockets.SocketException>(failure);
-        var code = error?.Error ?? (pin is not null ? "certificate_changed" : refused?.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused
-            ? "connection_refused" : failure is not null ? "no_answer" : "");
+        var code = error?.Error ?? (pin is not null ? "certificate_changed"
+            : refused?.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused ? "connection_refused"
+            : failure is not null ? "no_answer" : "");
         var status = online ? "Online" : failure is null ? "Awaiting pairing" : code switch
         {
             "certificate_changed" => "Certificate changed",
@@ -56,14 +66,22 @@ internal sealed class SwarmManualAddress(SwarmSettingsStore settings, SwarmNetwo
             SwarmNetworkError.AddressNotInternal => "Not reachable",
             _ => "No answer",
         };
-        var message = failure is null ? "" : error?.Message ?? NodeConnectionFailure.Describe(uri.Authority, failure, NodeConnectionFailure.DefaultBudget);
+        var message = failure is null ? "" : error?.Message
+            ?? NodeConnectionFailure.Describe(uri.Authority, failure, NodeConnectionFailure.DefaultBudget);
         var previous = (await settings.LoadAsync(ct)).ManualAddresses.FirstOrDefault(item => item.Address == Key(uri));
         var entry = new SwarmManualMember(Key(uri), memberId ?? previous?.MemberId, status, code, message);
-        if (entry == previous) return;
+        if (entry == previous)
+        {
+            return;
+        }
         await settings.UpdateAsync(current =>
         {
             var latest = current.ManualAddresses.FirstOrDefault(item => item.Address == entry.Address);
-            return current with { ManualAddresses = [.. current.ManualAddresses.Where(item => item.Address != entry.Address), entry with { MemberId = memberId ?? latest?.MemberId }] };
+            return current with
+            {
+                ManualAddresses = [.. current.ManualAddresses.Where(item => item.Address != entry.Address),
+                    entry with { MemberId = memberId ?? latest?.MemberId }],
+            };
         }, ct);
     }
 }
