@@ -72,7 +72,7 @@ internal static class CodexJsonlEventMapper
             return [];
         }
 
-        var itemType = _GetString(item, "item_type");
+        var itemType = _GetString(item, "type") ?? _GetString(item, "item_type");
         var itemId = _GetString(item, "id") ?? string.Empty;
 
         // Only command executions and MCP tool calls have a request/response shape the narrow contract can
@@ -82,6 +82,7 @@ internal static class CodexJsonlEventMapper
         {
             "command_execution" => [new PluginToolUseRequested { SessionId = sessionId, ToolUseId = itemId, ToolName = "command_execution", InputJson = _ToInputJson(item, "command") }],
             "mcp_tool_call" => [new PluginToolUseRequested { SessionId = sessionId, ToolUseId = itemId, ToolName = _GetString(item, "tool") ?? "mcp_tool_call", InputJson = _ToInputJson(item, "arguments") }],
+            "collab_tool_call" => [new PluginToolUseRequested { SessionId = sessionId, ToolUseId = itemId, ToolName = _GetString(item, "tool") ?? "collab", InputJson = item.GetRawText() }],
             _ => [],
         };
     }
@@ -93,11 +94,14 @@ internal static class CodexJsonlEventMapper
             return [];
         }
 
-        var itemType = _GetString(item, "item_type");
+        var itemType = _GetString(item, "type") ?? _GetString(item, "item_type");
         var itemId = _GetString(item, "id") ?? string.Empty;
 
         switch (itemType)
         {
+            case "collab_tool_call":
+                return [new PluginToolResult { SessionId = sessionId, ToolUseId = itemId, Content = _ToInputJson(item, "agents_states"), IsError = _GetString(item, "status") == "failed" }];
+
             case "agent_message":
                 // Caveat (design doc §2.3): unknown whether Codex emits token-deltas or whole messages on
                 // item.completed. Treated as the latter — one PluginAssistantTextDelta with the full text —

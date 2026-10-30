@@ -3233,14 +3233,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
 
-        if (!_control.IsAttached)
+        if (_control.IsAttached)
         {
-            return;
+            var stopping = _control.StopAsync();
+            OnPropertyChanged(nameof(IsSessionReady));
+            await stopping;
         }
 
-        // The host clears its runtime before its first await, so readiness reads false by the time this is raised.
-        var stopping = _control.StopAsync();
-        OnPropertyChanged(nameof(IsSessionReady));
-        await stopping;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _backgroundTasks = [];
+            _RebuildBackgroundTaskRows();
+        });
     }
 }

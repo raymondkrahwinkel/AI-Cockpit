@@ -34,7 +34,10 @@ internal sealed class SessionLiveStateFold
         DateTimeOffset now)
     {
         // AC-1088: a resumed session carries its id from its first event, and a `/clear` gives it a new one mid-session.
-        _cliSessionId = evt.SessionId ?? _cliSessionId;
+        if (!fold.InSubAgentLane)
+        {
+            _cliSessionId = evt.SessionId ?? _cliSessionId;
+        }
 
         switch (evt)
         {
@@ -74,6 +77,10 @@ internal sealed class SessionLiveStateFold
             // AC-531: the background tasks deliberately outlive the turn.
             case TurnCompleted turn:
                 _ClearActiveToolCalls();
+                if (interruptRequested)
+                {
+                    _backgroundTasks = [];
+                }
                 // AC-1529: a turn broken off by Stop did not finish, so the session stands Idle, not Done.
                 _hasCompletedATurn = !interruptRequested;
                 _lastTurnFailed = false;
@@ -130,6 +137,7 @@ internal sealed class SessionLiveStateFold
     public void Reset()
     {
         _ClearActiveToolCalls();
+        _backgroundTasks = [];
         _needsAttention = false;
         _hasCompletedATurn = false;
         _lastTurnFailed = false;

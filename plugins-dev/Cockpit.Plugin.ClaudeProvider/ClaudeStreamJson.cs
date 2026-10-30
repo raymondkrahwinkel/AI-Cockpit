@@ -6,9 +6,14 @@ namespace Cockpit.Plugin.ClaudeProvider;
 // Parses a single JSON-lines stdout line from `claude --output-format stream-json` into zero-or-more events.
 // `stream_event` text/thinking deltas carry progressive output, so the `assistant` snapshot's own text/thinking
 // is not re-emitted (AC-213); only its tool_use blocks are, since deltas don't carry those.
-internal static class ClaudeStreamJson
+internal sealed class ClaudeStreamJson
 {
-    public static IEnumerable<PluginSessionEvent> ParseLine(string line)
+    private readonly Dictionary<string, PluginBackgroundTask> _tasks = new();
+    private readonly Dictionary<string, string?> _finished = new();
+
+    public static IEnumerable<PluginSessionEvent> ParseLine(string line) => new ClaudeStreamJson().Parse(line);
+
+    public IEnumerable<PluginSessionEvent> Parse(string line)
     {
         if (string.IsNullOrWhiteSpace(line))
         {
@@ -47,13 +52,14 @@ internal static class ClaudeStreamJson
         }
     }
 
-    private static IEnumerable<PluginSessionEvent> _ParseSystem(JsonElement root, string? sessionId) =>
+    private IEnumerable<PluginSessionEvent> _ParseSystem(JsonElement root, string? sessionId) =>
         root.TryGetProperty("subtype", out var st)
             ? st.GetString() switch
             {
                 "init" => _ParseInit(root, sessionId),
                 "background_tasks_changed" => [_ParseBackgroundTasks(root, sessionId)],
                 "task_notification" => _ParseTaskNotification(root, sessionId),
+                "task_started" or "task_progress" or "task_updated" => _ParseTask(root, sessionId, st.GetString()),
                 _ => [],
             }
             : [];
@@ -61,7 +67,7 @@ internal static class ClaudeStreamJson
     // The CLI's own ledger of work that outlived its turn (AC-276), restating the complete set every time rather
     // than deltas. An unrecognised `task_type` maps to Unknown rather than being dropped, and the host
     // deliberately acts on neither status nor notification for it — it cannot know which weighing applies.
-    private static PluginBackgroundTasksChanged _ParseBackgroundTasks(JsonElement root, string? sessionId)
+    private PluginBackgroundTasksChanged _ParseBackgroundTasks(JsonElement root, string? sessionId)
     {
         var tasks = new List<PluginBackgroundTask>();
         if (root.TryGetProperty("tasks", out var tasksProp) && tasksProp.ValueKind == JsonValueKind.Array)
@@ -91,17 +97,96 @@ internal static class ClaudeStreamJson
                 // _String flattens "absent" to "" — carry that through as null, so a consumer showing the label
                 // can tell "no description" from an empty one instead of rendering a blank.
                 var description = _String(task, "description");
-                tasks.Add(new PluginBackgroundTask(id, kind, string.IsNullOrEmpty(description) ? null : description));
+                var key = _NullableString(task, "agent_id") ?? id;
+                _tasks.TryGetValue(key, out var previous);
+                tasks.Add(new PluginBackgroundTask(key, kind, string.IsNullOrEmpty(description) ? previous?.Description : description)
+                {
+                    AgentId = _NullableString(task, "agent_id") ?? previous?.AgentId ?? (_NullableString(task, "run_id") is null ? null : id),
+                    RunId = _NullableString(task, "run_id") ?? previous?.RunId,
+                    ParentTaskId = _NullableString(task, "parent_task_id") ?? previous?.ParentTaskId,
+                    ParentToolUseId = _NullableString(task, "tool_use_id") ?? previous?.ParentToolUseId,
+                    LastTool = previous?.LastTool,
+                    Tokens = previous?.Tokens,
+                });
             }
         }
 
-        return new PluginBackgroundTasksChanged { SessionId = sessionId, Tasks = tasks };
+        foreach (var old in _tasks.Values.Where(old => !tasks.Any(task => task.TaskId == old.TaskId)))
+        {
+            _finished[old.TaskId] = old.RunId;
+        }
+
+        _tasks.Clear();
+        foreach (var task in tasks)
+        {
+            _tasks[task.TaskId] = task;
+        }
+
+        return _Snapshot(sessionId);
+    }
+
+    private PluginBackgroundTasksChanged _Snapshot(string? sessionId) => new() { SessionId = sessionId, Tasks = [.. _tasks.Values] };
+
+    private static string? _NullableString(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private IEnumerable<PluginSessionEvent> _ParseTask(JsonElement root, string? sessionId, string? subtype)
+    {
+        var id = _NullableString(root, "agent_id") ?? _NullableString(root, "task_id");
+        if (string.IsNullOrEmpty(id))
+        {
+            yield break;
+        }
+
+        var run = _NullableString(root, "run_id");
+        _tasks.TryGetValue(id, out var previous);
+        if (previous?.RunId is { } activeRun && run is not null && activeRun != run && subtype != "task_started")
+        {
+            yield break;
+        }
+
+        if (_finished.TryGetValue(id, out var finishedRun)
+            && (subtype != "task_started" || run is null || run == finishedRun))
+        {
+            yield break;
+        }
+
+        var patch = root.TryGetProperty("patch", out var p) && p.ValueKind == JsonValueKind.Object ? p : root;
+        var status = _NullableString(patch, "status");
+        if (status is "completed" or "failed" or "stopped" or "cancelled")
+        {
+            _finished[id] = run ?? previous?.RunId;
+            _tasks.Remove(id);
+            yield return _Snapshot(sessionId);
+            yield break;
+        }
+
+        if (subtype == "task_updated" && previous is null)
+        {
+            yield break;
+        }
+
+        _finished.Remove(id);
+        long? tokens = patch.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object
+            && usage.TryGetProperty("total_tokens", out var total) && total.TryGetInt64(out var count) ? count : null;
+        var kind = previous?.Kind ?? (_String(root, "task_type") == "local_bash" ? PluginBackgroundTaskKind.Shell : PluginBackgroundTaskKind.SubAgent);
+        _tasks[id] = new PluginBackgroundTask(id, kind,
+            _NullableString(patch, "description") ?? previous?.Description)
+        {
+            AgentId = _NullableString(root, "agent_id") ?? id,
+            RunId = run ?? previous?.RunId,
+            ParentTaskId = _NullableString(root, "parent_task_id") ?? previous?.ParentTaskId,
+            ParentToolUseId = _NullableString(root, "tool_use_id") ?? _NullableString(root, "parent_tool_use_id") ?? previous?.ParentToolUseId,
+            LastTool = _NullableString(patch, "last_tool_name") ?? previous?.LastTool,
+            Tokens = tokens ?? previous?.Tokens,
+        };
+        yield return _Snapshot(sessionId);
     }
 
     // The CLI's own verdict on a task named by an earlier `background_tasks_changed` (AC-1057, CLI 2.1.246) — the
     // only place completed and failed are told apart; the ledger above only ever says "still there or not". Wire
     // shape is a plain `system` message, not the plain-text `<task-notification>` block an earlier CLI used.
-    private static IEnumerable<PluginSessionEvent> _ParseTaskNotification(JsonElement root, string? sessionId)
+    private IEnumerable<PluginSessionEvent> _ParseTaskNotification(JsonElement root, string? sessionId)
     {
         var taskId = _String(root, "task_id");
         if (string.IsNullOrEmpty(taskId))
@@ -118,13 +203,28 @@ internal static class ClaudeStreamJson
         };
 
         var toolUseId = _String(root, "tool_use_id");
+        var id = _NullableString(root, "agent_id") ?? taskId;
+        var run = _NullableString(root, "run_id");
+        if (_tasks.TryGetValue(id, out var current) && current.RunId is not null && run is not null && current.RunId != run)
+        {
+            yield break;
+        }
+
         yield return new PluginBackgroundTaskNotification
         {
             SessionId = sessionId,
             TaskId = taskId,
             ToolUseId = string.IsNullOrEmpty(toolUseId) ? null : toolUseId,
             Status = status,
+            AgentId = _NullableString(root, "agent_id") ?? taskId,
+            RunId = _NullableString(root, "run_id"),
         };
+        if (status != PluginBackgroundTaskStatus.Unknown && _tasks.TryGetValue(id, out var task) && (run is null || task.RunId is null || task.RunId == run))
+        {
+            _finished[id] = run ?? task.RunId;
+            _tasks.Remove(id);
+            yield return _Snapshot(sessionId);
+        }
     }
 
     private static IEnumerable<PluginSessionEvent> _ParseInit(JsonElement root, string? sessionId)

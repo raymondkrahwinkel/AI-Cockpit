@@ -9,6 +9,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </remarks>
 public sealed record PluginBackgroundTaskNotification : PluginSessionEvent
 {
+    /// <summary>The stable provider agent id, when available.</summary>
+    public string? AgentId { get; init; }
+
+    /// <summary>The invocation that ended.</summary>
+    public string? RunId { get; init; }
+
     /// <summary>
     /// The same id <see cref="PluginBackgroundTask.TaskId"/> reported while the task was outstanding.
     /// </summary>
