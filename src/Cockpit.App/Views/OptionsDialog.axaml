@@ -287,6 +287,9 @@
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Text="Machines" FontWeight="SemiBold"/>
+                        <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.RemovalStatus.Length}">
+                            <TextBlock Text="{Binding Swarm.RemovalStatus}" TextWrapping="Wrap"/>
+                        </Border>
                         <TextBlock Text="{Binding Swarm.LeaderLine}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                         <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.NoOtherMachineOnline}">
                             <StackPanel Spacing="4">
@@ -300,7 +303,7 @@
                                     <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}"
                                             Background="{DynamicResource CockpitSecondaryBgBrush}"
                                             BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
-                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                                 <TextBlock Text="{Binding Origin}" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"/>
@@ -319,6 +322,9 @@
                                             <TextBlock Grid.Row="2" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}">
                                                 <Run Text="Rank "/><Run Text="{Binding Rank}"/><Run Text=" · Last seen "/><Run Text="{Binding LastSeen}"/>
                                             </TextBlock>
+                                            <Button Grid.Row="4" Grid.ColumnSpan="2" Content="{Binding RemoveLabel}" Click="OnSwarmKick"
+                                                    IsVisible="{Binding IsPaired}" IsEnabled="{Binding !$parent[Window].((vm:CockpitViewModel)DataContext).Swarm.IsBusy}"
+                                                    HorizontalAlignment="Left" Margin="0,8,0,0"/>
                                             <Border Grid.Row="3" Grid.ColumnSpan="2" Classes="errorCard blocking" Padding="12,10" Margin="0,8,0,0" IsVisible="{Binding ErrorCode.Length}">
                                                 <StackPanel Spacing="6">
                                                     <TextBlock Text="{Binding ErrorCode}" FontFamily="{StaticResource CockpitMonoFont}"/>

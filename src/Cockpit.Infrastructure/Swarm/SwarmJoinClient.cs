@@ -84,7 +84,7 @@ internal sealed class SwarmJoinClient(
             using var key = certificate.Value.GetECDsaPrivateKey() ?? throw new InvalidOperationException("No signing key.");
             var signed = proposal.CoSign(key);
             if (register.Accept(signed) != SwarmMembershipVerdict.Accepted) throw new InvalidDataException("Invalid membership change.");
-            var reverse = await local.IssueTransportAsync(handshake.Offer.NodeName, ct);
+            var reverse = await local.IssueTransportAsync(member, ct);
             var transport = await _PostAsync<SwarmJoinCommit, SwarmTransport>(client, "swarm/join/commit", new(claim, signed, reverse), ct);
             if (transport.Pin != handshake.Pin) throw NodePairingException.For(NodePairingError.InvalidToken, "Unexpected transport pin.");
             await local.StoreTransportAsync(handshake.Offer.NodeName, transport, ct);
@@ -123,7 +123,7 @@ internal sealed class SwarmJoinClient(
         var manualUri = await manual.ForMemberAsync(member.Id, ct);
         var address = manualUri?.IdnHost ?? member.Addresses.FirstOrDefault() ?? throw new InvalidDataException("Member has no address.");
         using var client = new HttpClient(handler) { BaseAddress = manualUri ?? new UriBuilder("https", address, member.Port).Uri, Timeout = TimeSpan.FromSeconds(5) };
-        var reverse = await local.IssueTransportAsync(member.Name, ct);
+        var reverse = await local.IssueTransportAsync(member, ct);
         var transport = await _PostAsync<SwarmMeshRequest, SwarmTransport>(client, "swarm/connect", new(register.Log, reverse), ct);
         await local.StoreTransportAsync(member.Name, transport, ct);
     }

@@ -8,7 +8,8 @@ using Cockpit.Core.Swarm;
 
 namespace Cockpit.App.ViewModels;
 
-public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null, ISwarmLeadership? leadership = null) : ObservableObject
+public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null, ISwarmLeadership? leadership = null,
+    Func<string, string, string, Task<bool>>? confirm = null) : ObservableObject
 {
     private SwarmJoinHandshake? _handshake;
     private bool _discovered;
@@ -29,6 +30,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [ObservableProperty] private string _cidrError = "";
     [ObservableProperty] private string _persistError = "";
     [ObservableProperty] private string _status = "";
+    [ObservableProperty] private string _removalStatus = "";
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _pairingCode = "";
     [ObservableProperty] private string _pairingCaption = "";
@@ -111,8 +113,9 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         try
         {
             var machines = await options.MachinesAsync();
+            RemovalStatus = await options.RemovalStatusAsync();
             var manual = (await options.LoadSettingsAsync()).ManualAddresses;
-            var leader = leadership?.Current;
+            var leader = machines.Any(machine => machine.IsSelf) ? leadership?.Current : null;
             Machines.Clear();
             foreach (var machine in machines)
             {
@@ -130,7 +133,7 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
                     }, machine.IsSelf ? "Now" : machine.Presence.LastSeen?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "Not yet seen",
                     machine.IsSelf, machine.Presence.Status == SwarmPresence.Online)
                 {
-                    ErrorCode = addressEntry?.ErrorCode ?? "", ErrorMessage = addressEntry?.ErrorMessage ?? "", IsPaired = true,
+                    ErrorCode = addressEntry?.ErrorCode ?? "", ErrorMessage = addressEntry?.ErrorMessage ?? "", IsPaired = true, MemberId = member.Id,
                 });
             }
             foreach (var entry in manual.Where(item => item.MemberId is null))
@@ -165,6 +168,24 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         catch (Exception ex) { Status = $"Discovery failed. {ex.Message}"; }
         finally { IsBusy = false; }
     }
+
+    public async Task KickAsync(SwarmMachineRow machine)
+    {
+        if (options is null || IsBusy || machine.MemberId is not { } id) return;
+        IsBusy = true;
+        try
+        {
+            if (confirm is null || !await confirm(machine.IsSelf ? "Leave the swarm?" : $"Kick {machine.Name} out of the swarm?",
+                "This machine signs the removal and sends it to every member. Returning requires a new pairing, with confirmation on both screens, and a new rank. Sessions on the removed machine keep running.",
+                machine.IsSelf ? "Leave swarm" : $"Kick {machine.Name}")) return;
+            await options.KickAsync(id);
+            Status = machine.IsSelf ? "Left the swarm. Your sessions keep running." : $"{machine.Name}: Kicked";
+        }
+        catch (Exception ex) { Status = $"Could not remove the machine. {ex.Message}"; }
+        finally { IsBusy = false; await RefreshAsync(); }
+    }
+
+    public Task RequestRemovalAsync(SwarmMember member) => KickAsync(new(member.Name, "", "", "", "", "", false, false) { MemberId = member.Id });
 
     [RelayCommand]
     private Task PairFoundAsync(NodeDiscoveryFound machine) => _BeginAsync(machine.Address, true);
@@ -250,5 +271,7 @@ public sealed record SwarmMachineRow(string Name, string Address, string Origin,
     public string ErrorCode { get; init; } = "";
     public string ErrorMessage { get; init; } = "";
     public bool IsPaired { get; init; }
+    public SwarmMemberId? MemberId { get; init; }
+    public string RemoveLabel => IsSelf ? "Leave swarm…" : "Kick…";
     public bool IsLeader => Status == "Leader";
 }

@@ -3501,7 +3501,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             orgPolicy);
         _ = Security.RefreshAsync();
 
-        Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership);
+        Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership, ConfirmAsync);
+        if (swarmOptions is not null)
+            swarmOptions.RemovalRequested += member => _OnUiThread(() => _ = Swarm.RequestRemovalAsync(member));
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
         // it closed nothing was listening at all, so a pairing request reached no screen.

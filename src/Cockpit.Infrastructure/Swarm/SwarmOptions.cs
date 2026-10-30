@@ -6,10 +6,17 @@ namespace Cockpit.Infrastructure.Swarm;
 
 internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipStore membership,
     SwarmIdentity identity, SwarmReachability reachability, SwarmJoinClient join, SwarmJoinHost host,
-    SwarmManualAddress manual, SwarmHeartbeat heartbeat)
+    SwarmManualAddress manual, SwarmHeartbeat heartbeat, SwarmKick kick)
     : ISwarmOptions, ISingletonService
 {
+    public event Action<SwarmMember>? RemovalRequested
+    {
+        add => kick.RemovalRequested += value;
+        remove => kick.RemovalRequested -= value;
+    }
     public SwarmJoinPending? Pending => host.Pending;
+    public Task<string> RemovalStatusAsync(CancellationToken ct = default) => kick.StatusAsync(ct);
+    public Task KickAsync(SwarmMemberId member, CancellationToken ct = default) => kick.RemoveAsync(member, ct);
     public Task<SwarmSettings> LoadSettingsAsync(CancellationToken ct = default) => settings.LoadAsync(ct);
 
     public async Task SaveSettingsAsync(SwarmSettings value, CancellationToken ct = default)
@@ -20,6 +27,7 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
     public async Task<IReadOnlyList<SwarmMachine>> MachinesAsync(CancellationToken ct = default)
     {
         var register = await membership.LoadAsync(ct);
+        if (register.Sequence > 0 && register.PublicKeyOf(identity.MemberId) is null) return [];
         var options = await settings.LoadAsync(ct);
         return register.Members.OrderBy(member => member.Rank).Select(member => new SwarmMachine(member,
             member.Id == identity.MemberId,

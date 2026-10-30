@@ -28,7 +28,7 @@ internal sealed class SwarmHeartbeat(
     SwarmReachability reachability,
     SwarmLeadership leadership,
     SwarmManualAddress manual,
-    ILogger<SwarmHeartbeat> logger) : BackgroundService, ISingletonService
+    ILogger<SwarmHeartbeat> logger, SwarmKick? kick = null) : BackgroundService, ISingletonService
 {
     private readonly SemaphoreSlim _tick = new(1, 1);
     private readonly Lock _gate = new();
@@ -87,6 +87,7 @@ internal sealed class SwarmHeartbeat(
 
     public void MapRoutes(IEndpointRouteBuilder routes, IServiceProvider services)
     {
+        kick?.MapRoutes(routes, services);
         var group = SwarmNetworkPolicy.MapGroup(routes, services);
         group.MapPost("/heartbeat", (Delegate)((HttpContext context) => HandleAsync(context, async peer =>
         {
@@ -146,7 +147,9 @@ internal sealed class SwarmHeartbeat(
         await _tick.WaitAsync(ct);
         try
         {
+            if (kick is not null) await kick.DeliverAsync(ct);
             var membership = await store.LoadAsync(ct);
+            if (membership.PublicKeyOf(identity.MemberId) is null && membership.Sequence > 0) return;
             await Task.WhenAll(membership.Members.Where(member => member.Id != identity.MemberId).Select(async member =>
             {
                 try
