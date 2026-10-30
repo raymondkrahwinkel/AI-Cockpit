@@ -490,7 +490,8 @@ Voice models are downloaded on first use and are **not** covered by AI-Cockpit's
 - **Whisper** (dictation) ggml models and the **Whisper.net** runtime carry their own upstream licences.
 
 See [`NOTICE`](NOTICE) for the full third-party attribution list (models, runtimes and libraries).
-# Scratch-folder and condition notifications
+
+## Scratch-folder and condition notifications
 
 The `notifications` section in `cockpit.json` accepts `IgnoredHomeFolderPatterns`
 (directory names, case-insensitive `*` and `?` wildcards). Defaults are
@@ -500,4 +501,3 @@ Folder notifications say "Creator unknown"; filesystem events do not identify th
 `ToastTimeoutSeconds` defaults to 5; positive values set the timeout for ordinary informational
 and condition toasts. Nonpositive values fall back to 5. Timed-out messages remain in the bell.
 Condition messages also close when resolved, and their actions become unavailable.
-
