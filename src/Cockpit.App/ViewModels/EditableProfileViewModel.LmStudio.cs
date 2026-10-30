@@ -22,6 +22,18 @@ public partial class EditableProfileViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsValid), nameof(LmStudioLoadOptionsError))]
+    private int? _lmStudioEvalBatchSize;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsValid), nameof(LmStudioLoadOptionsError))]
+    private int? _lmStudioPhysicalBatchSize;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsValid), nameof(LmStudioLoadOptionsError))]
+    private int? _lmStudioCpuThreads;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsValid), nameof(LmStudioLoadOptionsError))]
     private string _lmStudioFlashAttention = "LM Studio default";
 
     [ObservableProperty]
@@ -71,7 +83,10 @@ public partial class EditableProfileViewModel
         string.IsNullOrWhiteSpace(LmStudioDraftModel) ? null : LmStudioDraftModel.Trim(),
         LmStudioDraftMaxTokens,
         LmStudioDraftMinTokens,
-        LmStudioDraftMinContinueProbability);
+        LmStudioDraftMinContinueProbability,
+        LmStudioEvalBatchSize,
+        LmStudioPhysicalBatchSize,
+        LmStudioCpuThreads);
 
     private void _InitializeLmStudioOptions(LmStudioConfig? config)
     {
@@ -84,6 +99,9 @@ public partial class EditableProfileViewModel
 
         LmStudioGpuOffloadRatio = options.GpuOffloadRatio;
         LmStudioParallel = options.Parallel;
+        LmStudioEvalBatchSize = options.EvalBatchSize;
+        LmStudioPhysicalBatchSize = options.PhysicalBatchSize;
+        LmStudioCpuThreads = options.CpuThreads;
         LmStudioFlashAttention = _ToggleChoice(options.FlashAttention);
         LmStudioKCacheQuantization = options.KCacheQuantization ?? "LM Studio default";
         LmStudioVCacheQuantization = options.VCacheQuantization ?? "LM Studio default";

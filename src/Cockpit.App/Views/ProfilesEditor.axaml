@@ -227,6 +227,20 @@
                                         <NumericUpDown Name="LmStudioParallel" Value="{Binding LmStudioParallel}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="Default"/>
                                     </StackPanel>
                                 </Grid>
+                                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Evaluation batch size" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioEvalBatchSize" Value="{Binding LmStudioEvalBatchSize}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="LM Studio default"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="Physical batch size" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioPhysicalBatchSize" Value="{Binding LmStudioPhysicalBatchSize}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="LM Studio default"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="4">
+                                        <TextBlock Text="CPU threads" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioCpuThreads" Value="{Binding LmStudioCpuThreads}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="LM Studio default"/>
+                                    </StackPanel>
+                                </Grid>
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Flash Attention" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
