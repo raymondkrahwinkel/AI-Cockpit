@@ -318,7 +318,10 @@ internal sealed class AgentBrowserHost(Func<string?> resolveExecutable, string p
         {
             var target = page.GetProperty("id").GetString()!;
             if (!keep.Contains(target))
-                await http.GetStringAsync(running.Upstream + "/json/close/" + target, timeout.Token).ConfigureAwait(false);
+            {
+                using var response = await http.GetAsync(running.Upstream + "/json/close/" + target, timeout.Token).ConfigureAwait(false);
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound) response.EnsureSuccessStatusCode();
+            }
         }
     }
 
