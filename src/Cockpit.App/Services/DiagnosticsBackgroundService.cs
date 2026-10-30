@@ -71,6 +71,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // cross-thread 64-bit access. -1 means "no pong yet", which _Run uses to avoid arming the heartbeat before
     // the dispatcher loop is even pumping.
     private long _lastPongTicks = -1;
+    private int _uiManagedThreadId;
+    private TimeSpan? _lastStackCaptureAt;
 
     // Set on the background thread before the probe is posted, cleared by the commit's continuation on whichever
     // thread completes it. While true no second probe is posted, so an outstanding probe is the stall itself.
@@ -254,7 +256,11 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 // Background priority: work already queued ahead of it counts against the pong too, so a
                 // dispatcher merely drowning in queued work reads as a hang the same as one truly stuck — which
                 // is the complaint this exists to catch.
-                Dispatcher.UIThread.Post(() => Interlocked.Exchange(ref _lastPongTicks, _clock.Elapsed.Ticks), DispatcherPriority.Background);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    Volatile.Write(ref _uiManagedThreadId, Environment.CurrentManagedThreadId);
+                    Interlocked.Exchange(ref _lastPongTicks, _clock.Elapsed.Ticks);
+                }, DispatcherPriority.Background);
 
                 // AC-1196: a measurement, not work — one Interlocked.Exchange per tick. AC-1138/AC-1204's "do not
                 // lift work to Render or Send" still holds; this is posted there precisely because Send outranks
@@ -621,11 +627,10 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // shows handle count, and this is the only caller.
     private void _LogHang(TimeSpan sinceLastPong, CpuSampler cpu, TimeSpan? sinceHighPriorityPong)
     {
+        _LogUiThreadStack();
         using var process = Process.GetCurrentProcess();
 
-        // The distinction this buys without a callstack (which no supported .NET API can give us for another
-        // thread, macOS included): tolling versus blocked. A high CPU delta plus queued threadpool work says the
-        // process is busy somewhere; near-zero CPU says something is genuinely stuck waiting.
+        // These counters remain available on platforms without in-memory stack snapshots.
         var threadStates = process.Threads
             .Cast<ProcessThread>()
             .GroupBy(thread => thread.ThreadState)
@@ -645,6 +650,30 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
             ThreadPool.ThreadCount,
             GC.GetGCMemoryInfo().PauseTimePercentage,
             string.Join(' ', threadStates));
+    }
+
+    private void _LogUiThreadStack()
+    {
+        if (!OperatingSystem.IsWindows() || Volatile.Read(ref _uiManagedThreadId) == 0)
+        {
+            return;
+        }
+
+        var now = _clock.Elapsed;
+        if (_lastStackCaptureAt is { } last && now - last < TimeSpan.FromMinutes(5))
+        {
+            return;
+        }
+
+        _lastStackCaptureAt = now;
+        try
+        {
+            _logger.LogWarning("uifreeze managed UI stack: {Stack}", WindowsUiThreadStack.Capture(Volatile.Read(ref _uiManagedThreadId)));
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning("uifreeze managed UI stack unavailable ({ErrorType}).", exception.GetType().Name);
+        }
     }
 
     // AC-1125 C: a heap ceiling above which forceFullCollection:true is skipped — extrapolated with margin from
