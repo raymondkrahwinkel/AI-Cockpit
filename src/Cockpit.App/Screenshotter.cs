@@ -38,6 +38,21 @@ internal static partial class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
+    private static Window _BackgroundWorkScene()
+    {
+        var session = new SessionViewModel();
+        session.Apply(new BackgroundTasksChanged
+        {
+            SessionId = "s1",
+            Tasks =
+            [
+                new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes"),
+                new BackgroundTask("agent-2", BackgroundTaskKind.SubAgent, "Check the Background pop-out and tests"),
+            ],
+        });
+        return new Window { Width = 450, Height = 300, Content = new Controls.BackgroundWorkList { DataContext = session } };
+    }
+
     public const string Argument = "--screenshot";
 
     // A render that has not finished by now is stuck, not slow — and a stuck render used to hold the process
@@ -171,6 +186,7 @@ internal static partial class Screenshotter
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
+        ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
         // AC-1829: the real window while projects and sessions are still loading.
         ["main-loading"] = (_, _) => _MainWhileLoading(),

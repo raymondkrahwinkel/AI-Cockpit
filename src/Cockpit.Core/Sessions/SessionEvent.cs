@@ -165,7 +165,11 @@ public enum BackgroundTaskKind
 }
 
 // One piece of work that outlived its turn — see `BackgroundTasksChanged`.
-public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description);
+public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description)
+{
+    public string? LastTool { get; init; }
+    public long? Tokens { get; init; }
+}
 
 // The set of work outliving its turn changed (AC-276). `Tasks` is the *complete* set as of
 // this event and never a delta — a dropped event self-corrects on the next one, where a start/stop ledger would

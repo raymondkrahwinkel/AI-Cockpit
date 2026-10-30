@@ -24,6 +24,8 @@ public class SessionBackgroundTaskPopoutTests
     public void SubAgentsAndShells_AreGroupedSeparately_AndCountedTogether() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();
+        Assert.Equal(0, session.BackgroundTaskCount);
+        Assert.Empty(session.BackgroundSubAgents);
 
         session.Apply(Outstanding(
             new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1: review the diff"),
@@ -36,11 +38,31 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Single(session.BackgroundShells);
         Assert.Empty(session.BackgroundOtherTasks);
         Assert.Equal("2 sub-agents · 1 shell", session.BackgroundTaskSummary);
-
-        // Distinguishable by kind colour (AC-531 #3) — no per-task status exists in the contract, so this is
-        // derived purely from Kind.
         Assert.Equal("CockpitStatusBusyBrush", session.BackgroundSubAgents[0].StatusBrushKey);
         Assert.Equal("CockpitStatusWaitingBrush", session.BackgroundShells[0].StatusBrushKey);
+        Assert.All(session.BackgroundSubAgents, row =>
+        {
+            Assert.Equal("Sub-agent", row.KindLabel);
+            Assert.Equal("running", row.StatusText);
+            Assert.Equal("unknown", row.LastToolText);
+            Assert.Equal("unknown", row.TokensText);
+        });
+
+        var row = session.BackgroundSubAgents[0];
+        session.Apply(Outstanding(
+            new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Review updated") { LastTool = "Read", Tokens = 1234 },
+            new BackgroundTask("a2", BackgroundTaskKind.SubAgent, "Agent 2: write tests")));
+        Assert.Same(row, session.BackgroundSubAgents[0]);
+        Assert.Equal("Review updated", row.Description);
+        Assert.Equal("Read", row.LastToolText);
+        Assert.Equal("1234", row.TokensText);
+        session.Apply(new BackgroundTaskNotification
+        {
+            SessionId = "s1", TaskId = "a1", Status = BackgroundTaskStatus.Completed,
+        });
+        Assert.Equal("running", row.StatusText);
+        Assert.Equal(2, session.BackgroundTaskCount);
+
     });
 
     [Fact]
@@ -54,6 +76,7 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Empty(session.BackgroundSubAgents);
         Assert.Empty(session.BackgroundShells);
         Assert.Single(session.BackgroundOtherTasks);
+        Assert.Equal("unknown", session.BackgroundOtherTasks[0].KindLabel);
         Assert.Equal("1 other", session.BackgroundTaskSummary);
     });
 
@@ -122,7 +145,12 @@ public class SessionBackgroundTaskPopoutTests
 
         session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.Shell, null)));
 
-        Assert.Equal("(no description)", session.BackgroundShells[0].Description);
+        Assert.Equal("unknown", session.BackgroundShells[0].Description);
+        Assert.Equal("unknown", session.BackgroundShells[0].LastToolText);
+        Assert.Equal("unknown", session.BackgroundShells[0].TokensText);
+        session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.Shell, " ") { LastTool = " " }));
+        Assert.Equal("unknown", session.BackgroundShells[0].Description);
+        Assert.Equal("unknown", session.BackgroundShells[0].LastToolText);
     });
 
     [Fact]
@@ -218,6 +246,22 @@ public class SessionBackgroundTaskPopoutTests
         Assert.True(Avalonia.Application.Current!.Resources.TryGetResource(
             "BackgroundTaskRowTemplate", Avalonia.Styling.ThemeVariant.Dark, out var template));
         Assert.IsAssignableFrom<Avalonia.Controls.Templates.IDataTemplate>(template);
+        var window = new Avalonia.Controls.Window
+        {
+            Width = 450, Height = 300,
+            Content = new Cockpit.App.Controls.BackgroundWorkList { DataContext = session },
+        };
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var texts = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window)
+            .OfType<Avalonia.Controls.TextBlock>().Where(text => text.IsEffectivelyVisible).Select(text => text.Text).ToList();
+        Assert.Contains("Sub-agent", texts);
+        Assert.Contains("Agent 1", texts);
+        Assert.Contains("running", texts);
+        Assert.Contains("Last tool: unknown", texts);
+        Assert.Contains("Tokens: unknown", texts);
+        Assert.Contains("Time: 0:00", texts);
+        window.Close();
     });
 
     [Fact]

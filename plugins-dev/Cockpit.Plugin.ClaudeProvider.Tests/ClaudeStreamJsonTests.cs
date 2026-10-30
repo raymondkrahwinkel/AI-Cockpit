@@ -162,6 +162,11 @@ public class ClaudeStreamJsonTests
         var changed = Assert.IsType<PluginBackgroundTasksChanged>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
 
         Assert.Equal(2, changed.Tasks.Count);
+        Assert.All(changed.Tasks, task =>
+        {
+            Assert.Null(task.LastTool);
+            Assert.Null(task.Tokens);
+        });
         Assert.Equal(new PluginBackgroundTask("a0ce6840b9", PluginBackgroundTaskKind.SubAgent, "Agent 1: sleep and reply"), changed.Tasks[0]);
         Assert.Equal(new PluginBackgroundTask("b706pro1i", PluginBackgroundTaskKind.Shell, "npm run dev"), changed.Tasks[1]);
     }

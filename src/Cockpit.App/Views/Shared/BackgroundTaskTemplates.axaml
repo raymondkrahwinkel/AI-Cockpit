@@ -14,21 +14,29 @@
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                     CornerRadius="{StaticResource CockpitControlRadius}"
                     Background="{DynamicResource CockpitSecondaryBgBrush}">
-                <Grid ColumnDefinitions="Auto,*,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto">
                     <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
                              Margin="0,0,8,0"
                              Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                    <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="12.5"
+                    <TextBlock Grid.Column="1" Text="{Binding KindLabel}" FontSize="11.5"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Description}" FontSize="12.5"
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Grid.Column="2" Text="{Binding AgeText}" FontSize="11.5" VerticalAlignment="Center"
-                               Margin="8,0,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <Grid Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Margin="0,4,0,0">
+                        <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding AgeText, StringFormat='Time: {0}'}" FontSize="11"
+                                   Margin="8,0,0,0" ToolTip.Tip="Time since first observed"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Grid.Column="2" Text="{Binding TokensText, StringFormat='Tokens: {0}'}" FontSize="11"
+                                   Margin="8,0,0,0" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </Grid>
                 </Grid>
             </Button>
 
-            <!-- Expanded detail (AC-531 #4): the full, untruncated description plus the kind spelled out — the
-                 only things the collapsed row above does not already show in full. BackgroundTask carries no
-                 richer per-task activity than kind + description, so this shows what exists rather than
-                 inventing a feed the contract does not have (AC-531 #7). -->
             <Border IsVisible="{Binding IsSelected}" Margin="0,3,0,0" Padding="9,7"
                     Background="{DynamicResource CockpitSecondaryBgBrush}"
                     BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1"
