@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
@@ -18,7 +19,8 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class NodeSessionsClient(
     IMcpServerStore servers,
     INodeDiscoveryClient discovery,
-    ILogger<NodeSessionsClient> logger) : INodeSessionsClient, ISingletonService
+    ILogger<NodeSessionsClient> logger,
+    IServiceProvider? services = null) : INodeSessionsClient, ISingletonService
 {
     // Shared with NodeConnectionFailure.Describe, so the "did not answer within Xs" wording it produces always
     // matches the timeout this client actually used.
@@ -410,7 +412,17 @@ internal sealed class NodeSessionsClient(
 
         try
         {
-            return await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
+            var connection = await _OpenAsync(server, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (services?.GetService<Swarm.SwarmMigration>() is { } migration)
+                    await migration.OnConnectedAsync(server, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Swarm migration did not finish; keeping the existing node connection.");
+            }
+            return connection;
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {

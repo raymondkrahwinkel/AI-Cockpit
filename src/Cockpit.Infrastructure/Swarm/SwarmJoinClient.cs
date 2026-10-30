@@ -1,0 +1,101 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
+using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
+using Cockpit.Core.Swarm;
+using Cockpit.Infrastructure.Mcp;
+
+namespace Cockpit.Infrastructure.Swarm;
+
+internal sealed class SwarmJoinClient(
+    SwarmHost host,
+    NodeSelfSignedCertificate certificate,
+    SwarmIdentity identity,
+    SwarmMembershipStore membership,
+    SwarmNetworkPolicy network,
+    SwarmJoinHost local,
+    INodeEndpointSettingsStore settings,
+    NodeDiscoveryClient discovery) : ISingletonService
+{
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(TimeSpan timeout, CancellationToken ct = default) =>
+        discovery.FindAsync(timeout, network.IsAllowedAsync, ct);
+
+    public Task<SwarmJoinHandshake> BeginAsync(string address, CancellationToken ct = default) => _BeginAsync(address, null, null, ct);
+
+    internal async Task<SwarmJoinHandshake> _BeginAsync(string address, string? credential, string? expectedPin, CancellationToken ct)
+    {
+        if (host.Kind == SwarmHostKind.Server) throw NodePairingException.For(SwarmJoinError.IsAServer, "A server keeps its existing connections.");
+        if (!(await settings.LoadAsync(ct)).Enabled) throw NodePairingException.For(NodePairingError.NotVisible, "Enable the node endpoint first.");
+        var uri = NodePairingClient.NormalizeAddress(address);
+        if (uri.Scheme != "https") throw NodePairingException.For(NodePairingError.InvalidToken, "Join requires TLS.");
+        string? pin = null;
+        byte[]? publicKey = null;
+        using var handler = new SocketsHttpHandler { ConnectCallback = network.ConnectAsync };
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, remote, _, _) =>
+        {
+            if (remote is null) return false;
+            pin = NodeCertificatePin.FingerprintOf(remote);
+            if (expectedPin is not null && !ConnectKeyVerifier.ConstantTimeEquals(pin, expectedPin)) return false;
+            using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
+            publicKey = peer.PublicKey.ExportSubjectPublicKeyInfo();
+            return true;
+        };
+        using var client = new HttpClient(handler) { BaseAddress = uri };
+        if (credential is not null) client.DefaultRequestHeaders.Authorization = new("Bearer", credential);
+        var request = new SwarmJoinRequest(Environment.MachineName, certificate.Value.RawData, "");
+        var offer = await _PostAsync<SwarmJoinRequest, NodePairingOffer>(client, credential is null ? "swarm/request" : "swarm/migrate", request, ct);
+        if (pin is null || publicKey is null) throw NodePairingException.For(NodePairingError.InvalidToken, "No TLS identity.");
+        return new(uri.ToString(), offer, NodePairingCode.Derive(offer.Nonce, pin), pin, publicKey);
+    }
+
+    public async Task CompleteAsync(SwarmJoinHandshake handshake, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            var register = await membership.LoadAsync(ct);
+            if (register.Sequence == 0)
+            {
+                var options = await settings.LoadAsync(ct);
+                var founder = new SwarmMember(certificate.Value.PublicKey.ExportSubjectPublicKeyInfo(), Environment.MachineName,
+                    SwarmRank.Draw([]), [], options.Port, identity.MemberId, DateTimeOffset.UtcNow, 1);
+                if (register.Accept(identity.Sign(SwarmMembership.ToPayload(founder))) != SwarmMembershipVerdict.Accepted)
+                    throw new InvalidDataException("Cannot create the local swarm.");
+            }
+            using var client = new HttpClient(NodeCertificatePin.Require(handshake.Pin, network.ConnectAsync)) { BaseAddress = new(handshake.Address) };
+            var claim = new NodePairingClaimRequest(handshake.Offer.PairingId, handshake.Offer.ClaimToken);
+            var proposal = await _PostAsync<SwarmJoinPrepare, SwarmRecord>(client, "swarm/join", new(claim, register.Log), ct);
+            var member = proposal.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember;
+            var peerId = SwarmMemberId.FromPublicKey(handshake.PublicKey);
+            if (member is null || member.Id != peerId || member.AddedBy != identity.MemberId
+                || register.Members.Any(existing => existing.Rank == member.Rank)
+                || !proposal.Verify(id => id == peerId ? handshake.PublicKey : null))
+                throw NodePairingException.For(NodePairingError.InvalidToken, "Invalid join proposal.");
+            using var key = certificate.Value.GetECDsaPrivateKey() ?? throw new InvalidOperationException("No signing key.");
+            var signed = proposal.CoSign(key);
+            if (register.Accept(signed) != SwarmMembershipVerdict.Accepted) throw new InvalidDataException("Invalid membership change.");
+            var reverse = await local.IssueTransportAsync(handshake.Offer.NodeName, ct);
+            var transport = await _PostAsync<SwarmJoinCommit, SwarmTransport>(client, "swarm/join/commit", new(claim, signed, reverse), ct);
+            if (transport.Pin != handshake.Pin) throw NodePairingException.For(NodePairingError.InvalidToken, "Unexpected transport pin.");
+            await local.StoreTransportAsync(handshake.Offer.NodeName, transport, ct);
+            membership.Save(register);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private static async Task<TOut> _PostAsync<TIn, TOut>(HttpClient client, string path, TIn value, CancellationToken ct)
+    {
+        using var response = await client.PostAsJsonAsync(path, value, SwarmRecordJson.Options, ct);
+        if (!response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Accepted)
+        {
+            var problem = await response.Content.ReadFromJsonAsync<NodePairingProblem>(NodePairingJson.Options, ct);
+            throw new NodePairingException(problem ?? new(NodePairingError.InvalidToken, "Empty join response."));
+        }
+        return await response.Content.ReadFromJsonAsync<TOut>(SwarmRecordJson.Options, ct) ?? throw new InvalidDataException("Empty join response.");
+    }
+}
