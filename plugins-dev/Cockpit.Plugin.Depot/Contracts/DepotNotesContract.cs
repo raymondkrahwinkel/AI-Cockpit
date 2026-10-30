@@ -14,4 +14,5 @@ internal sealed record DepotLiveNote(
 
 internal sealed record DepotNotePerson(string Name, string? Color = null);
 
-internal sealed record DepotNotesPage(string ConnectionId, string State, IReadOnlyList<DepotLiveNote> Notes);
+// Reason: what Depot said when the state is not ok and not about signing in; null means plain unreachable.
+internal sealed record DepotNotesPage(string ConnectionId, string State, IReadOnlyList<DepotLiveNote> Notes, string? Reason = null);

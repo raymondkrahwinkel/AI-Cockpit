@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- The Depot dock's Notes tab loads live notes again after signing in, instead of asking to sign in forever; a refusal or an older Depot now says so instead of "Sign in".
+
 - Assistant question-card resolution now reaches its gateway in the acting assistant's pane.
 
 - Coding shell sessions fall back to Windows PowerShell when PowerShell 7 is unavailable.

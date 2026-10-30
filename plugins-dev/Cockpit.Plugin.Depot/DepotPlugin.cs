@@ -192,8 +192,9 @@ public sealed class DepotPlugin : ICockpitPlugin, IPluginMcpProvider, IFirstStar
         notes.Start();
 
         // AC-1581: a /n/{token} link to its place and role (DEP-534); the UI part's one route function asks here.
+        // AC-1958: /cockpit/note-link is in Depot's bearer group too, so it takes the depot token, not depot.host.
         var noteLinks = new Notes.DepotNoteLinks(() => settings.Connections,
-            connection => host.CreateAuthorizedHandler(connection.McpServerName, "depot.host"), _logger);
+            connection => host.CreateAuthorizedHandler(connection.McpServerName), _logger);
         _handlers.Add(host.Channel.Handle(DepotNoteLinkChannel.Resolve, async (payload, cancellationToken) =>
         {
             var request = payload.Deserialize<DepotNoteLinkRequest>(DepotChannel.Json)
