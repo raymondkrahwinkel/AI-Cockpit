@@ -10,6 +10,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Plugins;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Projects;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -171,6 +172,25 @@ public class PluginBackendHostTests
         Assert.Equal(("work", "NeedsAttention"), (observer.OpenSessions[0].ProfileLabel, observer.OpenSessions[0].Status));
         Assert.Equal(["pane-1"], closed);
         Assert.Equal(("/work/two", (string?)null), (observer.GetWorkingDirectory("pane-2"), observer.GetWorkingDirectory("pane-1")));
+        registry.RegisterAssistant(_Pane("cockpit-assistant", "Old assistant"));
+        registry.RegisterAssistant(_Pane("cockpit-assistant", "New assistant"));
+        registry.Register(_Pane("pane-2", "Replacement"));
+        Assert.Equal(["pane-1", "cockpit-assistant", "pane-2"], closed);
+        var keyring = new SessionMcpKeyring();
+        using var services = new ServiceCollection().AddSingleton(keyring).BuildServiceProvider();
+        var lifecycle = new PluginBackendSessionObserver(registry, services);
+        var ended = new List<string>();
+        lifecycle.SessionClosed += (_, paneId) => ended.Add(paneId);
+        var oldToken = keyring.TokenFor("pane-2");
+        var newToken = keyring.TokenFor("pane-2");
+        Assert.Null(keyring.PaneFor(oldToken));
+        Assert.Equal(["pane-2"], ended);
+        keyring.Revoke("pane-2", oldToken);
+        Assert.Single(ended);
+        Assert.Equal("pane-2", keyring.PaneFor(newToken));
+        keyring.Revoke("pane-2", newToken);
+        Assert.Null(keyring.PaneFor(newToken));
+        Assert.Equal(["pane-2", "pane-2"], ended);
     }
 
     // AC-1415: a plugin in a backend without an App hears what a real session produces, through its handle: the reply,

@@ -76,6 +76,43 @@ public class AgentOwnedTabTests
         await ChooserBoundaryAsync(tabs, browsers, fixture, "operator");
         await ProtocolBoundaryAsync(tabs, fixture, "self");
         await ProtocolBoundaryAsync(tabs, fixture, "operator");
+        await RetainedLifecycleAsync(tabs, browsers, fixture, more[0].TabId!, more[1].TabId!, bId);
+    }
+
+    private static async Task RetainedLifecycleAsync(AgentOwnedTabs tabs, AgentBrowserHost browsers, OwnedTabFixture fixture, string operatorId, string selfId, string otherId)
+    {
+        Assert.True((await tabs.ActAsync("a", new("", "", "navigate", operatorId, Text: fixture.Url + "operator"))).Ok);
+        var session = browsers.SessionFor("a")!;
+        var processId = browsers.ProcessIdFor("a")!.Value;
+        var profile = Directory.GetDirectories(fixture.Root).Single(path => File.Exists(Path.Combine(path, "cockpit-owner.txt")) && File.ReadLines(Path.Combine(path, "cockpit-owner.txt")).First() == processId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        using var http = new HttpClient();
+        using var before = JsonDocument.Parse(await http.GetStringAsync(session.Upstream + "/json/list"));
+        var selfTarget = before.RootElement.EnumerateArray().Single(p => p.GetProperty("url").GetString() == fixture.Url).GetProperty("id").GetString();
+        browsers.Stop("a");
+        Assert.True(session.Ended.IsCancellationRequested);
+        Assert.Null(browsers.SessionFor("a"));
+        Assert.Empty(await tabs.ListAsync("a"));
+        Assert.Contains("session_ended", (await tabs.ReadAsync("a", operatorId, "text")).Error);
+        Assert.Contains("session_ended", (await tabs.ReadAsync("a", selfId, "text")).Error);
+        Assert.True((await tabs.ReadAsync("b", otherId, "text")).Ok);
+        var retained = Assert.Single(browsers.Live().Where(b => b.Upstream == session.Upstream));
+        Assert.StartsWith("retained:", retained.PaneId);
+        using var after = JsonDocument.Parse(await http.GetStringAsync(session.Upstream + "/json/list"));
+        Assert.DoesNotContain(after.RootElement.EnumerateArray(), p => p.GetProperty("id").GetString() == selfTarget);
+        var kept = Assert.Single(after.RootElement.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "page"));
+        using var page = await CdpPage.ConnectAsync(kept.GetProperty("webSocketDebuggerUrl").GetString()!, (_, _) => { }, CancellationToken.None);
+        Assert.Equal("Local fixture", (await page.CallAsync("Runtime.evaluate", new { expression = "document.title", returnByValue = true }, CancellationToken.None)).GetProperty("result").GetProperty("value").GetString());
+        Assert.False(browsers.SetOperatorDrives(retained.PaneId, false));
+        Assert.True((await tabs.OpenAsync("a", fixture.Url, "self")).Ok);
+        Assert.NotEqual(session.Generation, browsers.SessionFor("a")!.Generation);
+        Assert.Contains("session_ended", (await tabs.ReadAsync("a", operatorId, "text")).Error);
+        Assert.Contains("session_ended", (await tabs.ActAsync("a", new("", "", "close", operatorId))).Error);
+        Assert.True(await browsers.CloseTabAsync(retained.PaneId, kept.GetProperty("id").GetString()!, CancellationToken.None));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        while (browsers.Live().Any(b => b.PaneId == retained.PaneId) || Directory.Exists(profile))
+            await Task.Delay(50, timeout.Token);
+        Assert.DoesNotContain(browsers.Live(), b => b.PaneId == retained.PaneId);
+        Assert.False(Directory.Exists(profile));
     }
 
     private static async Task DownloadBoundaryAsync(AgentOwnedTabs tabs, AgentBrowserHost browsers, OwnedTabFixture fixture, string purpose)
@@ -221,6 +258,29 @@ public class AgentOwnedTabTests
         Assert.Null(await endedStart);
         Assert.Equal(1, resolutions);
         Assert.Null(queued.SessionFor("ended"));
+        await StopDuringCallsAsync(tabs, browsers, fixture);
+    }
+
+    private static async Task StopDuringCallsAsync(AgentOwnedTabs tabs, AgentBrowserHost browsers, OwnedTabFixture fixture)
+    {
+        var kept = await tabs.OpenAsync("inflight", fixture.Url, "operator");
+        Assert.True(kept.Ok, kept.Error);
+        var session = browsers.SessionFor("inflight")!;
+        var waiting = tabs.ActAsync("inflight", new("", "", "wait", kept.TabId, Selector: "#never"));
+        var opening = tabs.OpenAsync("inflight", fixture.Url + "slow", "self");
+        try
+        {
+            await fixture.SlowRequested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            browsers.Stop("inflight");
+            Assert.False((await waiting.WaitAsync(TimeSpan.FromSeconds(3))).Ok);
+            Assert.False((await opening.WaitAsync(TimeSpan.FromSeconds(3))).Ok);
+            using var http = new HttpClient();
+            using var pages = JsonDocument.Parse(await http.GetStringAsync(session.Upstream + "/json/list"));
+            Assert.Single(pages.RootElement.EnumerateArray().Where(p => p.GetProperty("type").GetString() == "page"));
+            browsers.Dispose();
+            Assert.Empty(browsers.Live());
+        }
+        finally { fixture.ReleaseSlow.TrySetResult(); }
     }
 
     private static void AssertOk(string result)
@@ -261,6 +321,8 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
     public string Root { get; } = Path.Combine(Path.GetTempPath(), "cockpit-owned-tabs", Guid.NewGuid().ToString("N"));
     public string Downloads => Path.Combine(Root, "downloads");
     public string Url { get; }
+    public TaskCompletionSource SlowRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource ReleaseSlow { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public OwnedTabFixture()
     {
@@ -284,6 +346,11 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
             while (_listener.IsListening)
             {
                 var context = await _listener.GetContextAsync();
+                if (context.Request.Url!.AbsolutePath == "/slow")
+                {
+                    SlowRequested.TrySetResult();
+                    await ReleaseSlow.Task;
+                }
                 if (context.Request.Url!.AbsolutePath == "/redirect")
                 {
                     context.Response.StatusCode = 302;

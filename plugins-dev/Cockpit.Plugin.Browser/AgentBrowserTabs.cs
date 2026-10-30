@@ -72,6 +72,8 @@ internal sealed class AgentBrowserTabs(AgentBrowserHost browsers, Func<string, s
 
     public bool GiveBack(string paneId) => browsers.SetOperatorDrives(paneId, false);
 
+    public Task<bool> CloseAsync(string paneId, string targetId, CancellationToken token) => browsers.CloseTabAsync(paneId, targetId, token);
+
     public bool Stop(string paneId)
     {
         Unwatch();

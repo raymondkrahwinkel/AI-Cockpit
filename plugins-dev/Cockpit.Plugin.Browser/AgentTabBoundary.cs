@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Browser;
 
-internal sealed class AgentTabBoundary(Action<string> register) : IDisposable
+internal sealed class AgentTabBoundary(Func<string, bool> register, Action<string> closed) : IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
     private readonly ConcurrentDictionary<string, string> _targets = new();
@@ -21,6 +21,7 @@ internal sealed class AgentTabBoundary(Action<string> register) : IDisposable
         using var version = JsonDocument.Parse(await http.GetStringAsync(upstream + "/json/version", token).ConfigureAwait(false));
         _browser = await CdpPage.ConnectAsync(version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()!, OnEvent, token).ConfigureAwait(false);
         await DenyDownloadsAsync(token).ConfigureAwait(false);
+        await _browser.CallAsync("Target.setDiscoverTargets", new { discover = true }, token).ConfigureAwait(false);
         await _browser.CallAsync("Target.setAutoAttach", new { autoAttach = true, waitForDebuggerOnStart = true, flatten = true,
             filter = new object[] { new { type = "page", exclude = false }, new { exclude = true } } }, token).ConfigureAwait(false);
     }
@@ -43,6 +44,12 @@ internal sealed class AgentTabBoundary(Action<string> register) : IDisposable
         string? target = session is not null && _targets.TryGetValue(session, out var id) ? id : null;
         try
         {
+            if (name == "Target.targetDestroyed")
+            {
+                var destroyed = data.GetProperty("targetId").GetString()!;
+                _ = Task.Run(() => closed(destroyed));
+                return;
+            }
             if (name == "Target.attachedToTarget")
             {
                 session = data.GetProperty("sessionId").GetString()!;
@@ -73,7 +80,13 @@ internal sealed class AgentTabBoundary(Action<string> register) : IDisposable
                     await CloseAsync(target).ConfigureAwait(false);
                     return;
                 }
-                if (data.GetProperty("waitingForDebugger").GetBoolean()) register(target);
+                if (data.GetProperty("waitingForDebugger").GetBoolean() && !register(target))
+                {
+                    var close = CloseAsync(target);
+                    await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
+                    await close.ConfigureAwait(false);
+                    return;
+                }
                 var chooser = SendAsync("Page.setInterceptFileChooserDialog", new { enabled = true }, session);
                 await SendAsync("Runtime.runIfWaitingForDebugger", null, session).ConfigureAwait(false);
                 await chooser.ConfigureAwait(false);
