@@ -14,6 +14,18 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </param>
 public sealed record PluginBackgroundTask(string TaskId, PluginBackgroundTaskKind Kind, string? Description)
 {
+    /// <summary>The stable provider agent id, when available.</summary>
+    public string? AgentId { get; init; }
+
+    /// <summary>The current invocation of the agent.</summary>
+    public string? RunId { get; init; }
+
+    /// <summary>The owning provider task or thread.</summary>
+    public string? ParentTaskId { get; init; }
+
+    /// <summary>The parent tool call used to nest the agent's activity.</summary>
+    public string? ParentToolUseId { get; init; }
+
     /// <summary>The last tool reported for this task, or null when unavailable.</summary>
     public string? LastTool { get; init; }
 

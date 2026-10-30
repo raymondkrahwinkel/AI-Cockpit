@@ -171,8 +171,7 @@ public class ClaudeStreamJsonTests
         Assert.Equal(new PluginBackgroundTask("b706pro1i", PluginBackgroundTaskKind.Shell, "npm run dev"), changed.Tasks[1]);
     }
 
-    [Fact]
-    public void BackgroundTasksChanged_WithAnEmptyList_ReportsNothingOutstanding()
+    private static void _AssertEmptyBackgroundList()
     {
         // How the last task ending arrives: not a per-task "done" but a restatement of the whole set, now empty.
         // A consumer that treated an empty list as "no news" would never let the session go idle again.
@@ -186,6 +185,7 @@ public class ClaudeStreamJsonTests
     [Fact]
     public void BackgroundTasksChanged_WithAnUnknownTaskType_KeepsTheTaskButNotItsKind()
     {
+        _AssertEmptyBackgroundList();
         // A task type a newer CLI names and this build does not must still count as outstanding work — dropping it
         // would report an idle session that is not idle. It maps to Unknown rather than guessing SubAgent, which
         // would let it freeze the status.
@@ -216,10 +216,41 @@ public class ClaudeStreamJsonTests
     [Fact]
     public void System_WithAnUnrelatedSubtype_StillYieldsNothing()
     {
-        // The other system subtypes (hook_started, thinking_tokens, task_progress, …) carry no session-level
-        // signal; opening _ParseSystem up for background_tasks_changed must not start admitting those.
+        Assert.Empty(ClaudeStreamJson.ParseLine("""{"type":"system","subtype":"hook_started","session_id":"abc"}"""));
         Assert.Empty(ClaudeStreamJson.ParseLine("""{"type":"system","subtype":"task_progress","session_id":"abc"}"""));
     }
+
+    [Fact]
+    public void TaskLifecycle_Captured314Lines_KeepIdentityAndRejectLateUpdates()
+    {
+        var mapper = new ClaudeStreamJson();
+        var started = _Tasks(mapper, """{"type":"system","subtype":"task_started","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","tool_use_id":"toolu_01JQC5fVX21zsh9nYsHGthVu","description":"Echo protocol check","task_type":"local_agent"}""");
+        var first = Assert.Single(started.Tasks);
+        Assert.Equal("a6f9e61056d8b3a4b", first.AgentId);
+        Assert.Equal("0mvvfau5u-59e932a3", first.RunId);
+        Assert.Equal("toolu_01JQC5fVX21zsh9nYsHGthVu", first.ParentToolUseId);
+        var progress = _Tasks(mapper, """{"type":"system","subtype":"task_progress","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","description":"Running Echo CHILD_OK marker","usage":{"total_tokens":5798,"tool_uses":1,"duration_ms":1294},"last_tool_name":"Bash"}""");
+        Assert.Equal(5798, Assert.Single(progress.Tasks).Tokens);
+        Assert.Equal("Bash", Assert.Single(progress.Tasks).LastTool);
+        var other = _Tasks(mapper, """{"type":"system","subtype":"task_progress","task_id":"a6f9e61056d8b3a4b","agent_id":"other","run_id":"other-run","parent_task_id":"parent","last_tool_name":"Read"}""");
+        Assert.Equal(2, other.Tasks.Count);
+        Assert.Equal("parent", other.Tasks[1].ParentTaskId);
+        Assert.Equal("Bash", other.Tasks[0].LastTool);
+        var ended = _Tasks(mapper, """{"type":"system","subtype":"task_updated","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","patch":{"status":"completed","end_time":1793392016590}}""");
+        Assert.Equal("other", Assert.Single(ended.Tasks).AgentId);
+        Assert.Empty(mapper.Parse("""{"type":"system","subtype":"task_updated","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","patch":{"status":"running"}}"""));
+        var resumed = _Tasks(mapper, """{"type":"system","subtype":"task_started","task_id":"new-tool-task","agent_id":"a6f9e61056d8b3a4b","run_id":"resume","tool_use_id":"new-tool"}""");
+        var sameAgent = Assert.Single(resumed.Tasks, task => task.AgentId == first.AgentId);
+        Assert.Equal(first.TaskId, sameAgent.TaskId);
+        Assert.Equal("resume", sameAgent.RunId);
+        Assert.Empty(mapper.Parse("""{"type":"system","subtype":"task_notification","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","status":"completed"}"""));
+        Assert.Empty(_Tasks(mapper, """{"type":"system","subtype":"background_tasks_changed","tasks":[]}""").Tasks);
+        Assert.Empty(mapper.Parse("""{"type":"system","subtype":"task_updated","agent_id":"a6f9e61056d8b3a4b","run_id":"resume","patch":{"status":"running"}}"""));
+        Assert.Empty(mapper.Parse("""{"type":"system","subtype":"hook_started"}"""));
+    }
+
+    private static PluginBackgroundTasksChanged _Tasks(ClaudeStreamJson mapper, string line) =>
+        Assert.IsType<PluginBackgroundTasksChanged>(Assert.Single(mapper.Parse(line)));
 
     // AC-1057: the CLI's afterthought on a backgrounded task, captured verbatim against a real 2.1.246 run driving
     // a deliberately failing `Bash(run_in_background: true)` call. The ticket assumed a plain-text

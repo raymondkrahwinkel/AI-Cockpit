@@ -38,6 +38,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private readonly ClaudeProviderConfig _config;
     private readonly string _executablePath;
     private readonly PluginSessionEventPublisher _events = new();
+    private readonly ClaudeStreamJson _mapper = new();
     private readonly CancellationTokenSource _lifetime = new();
 
     // tool_use_id -> the pending can_use_tool request the CLI is blocking on. Keyed on tool_use_id because that is what
@@ -511,7 +512,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 return;
             }
 
-            foreach (var evt in ClaudeStreamJson.ParseLine(line))
+            foreach (var evt in _mapper.Parse(line))
             {
                 // AC-739: read once off the CLI's own init line, before the event is published, so a caller like
                 // InterruptAsync can feature-detect a control-protocol field the CLI just advertised.
