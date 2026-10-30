@@ -3228,6 +3228,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // panel that actually opens (AC-953's docked assistant).
         _dockPanelRegistry = dockPanelRegistry ?? new DockPanelRegistry();
         _WireDockPanelChanges();
+        RegisterAgentsPanel();
 
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         // AC-1711: a scene passes the plugin workspace types it shows (--scene plugin:<name>).
@@ -3471,6 +3472,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _dockPanelRegistry = dockPanelRegistry;
         _WireDockPanelChanges();
         RegisterNotificationsPanel();
+        RegisterAgentsPanel();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -5765,6 +5767,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         });
         Notifications.Badge.Activated += (_, _) => OpenDockPanelId = NotificationCenterViewModel.DockPanelId;
         Notifications.PluginIcon = pluginId => PluginSideButtons.FirstOrDefault(button => button.PluginId == pluginId && button.IconKind is not null)?.IconKind;
+    }
+
+    internal void RegisterAgentsPanel()
+    {
+        _dockPanelRegistry?.Register(new DockPanelRegistration(
+            AgentsOverviewViewModel.DockPanelId, "Agents", MaterialIconKind.AccountGroupOutline,
+            () => new Views.AgentsOverviewView { DataContext = new AgentsOverviewViewModel(this) })
+        {
+            CanFloat = true,
+            KeepAlive = true,
+        });
     }
 
     // The bell. The Simple stand's rail holds the conversation, so there the panel stands in its own window.

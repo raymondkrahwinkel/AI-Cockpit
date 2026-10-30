@@ -175,7 +175,7 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
     private string _title = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusBrushKey), nameof(Detail))]
+    [NotifyPropertyChangedFor(nameof(StatusBrushKey), nameof(Detail), nameof(StatusLabel))]
     private SessionStatus _status;
 
     [ObservableProperty]
@@ -183,9 +183,14 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
     private string _profile = "";
 
     [ObservableProperty]
+    private string _statusline = "";
+
+    [ObservableProperty]
     private SessionPanelViewModel? _pane;
 
-    public string Detail => $"{Profile} · {_StatusWord(Status)}";
+    public string Detail => $"{Profile} · {StatusLabel}";
+
+    public string StatusLabel => _StatusWord(Status);
 
     public string StatusBrushKey => Status switch
     {
@@ -201,6 +206,7 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
         Title = Handle.Title;
         Status = Handle.SessionStatus;
         Profile = Handle.ActiveProfileLabel ?? "";
+        Statusline = Handle.Statusline;
         if (Pane is { } pane)
         {
             pane.Title = Title;
