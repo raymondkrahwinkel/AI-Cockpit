@@ -44,6 +44,32 @@ public class AgentOwnedTabTests
         Assert.Contains("Fixture content", (await tabs.ReadAsync("b", bId, "text")).Text);
         Assert.Contains("heading: Fixture content", (await tabs.ReadAsync("b", bId, "tree")).Text);
         Assert.NotEmpty(Assert.IsType<string>((await tabs.ReadAsync("b", bId, "text", screenshot: true)).ImagePng));
+        await using var second = new OwnedTabFixture();
+        var host = DispatchProxy.Create<ICockpitHost, AppKeyHost>();
+        ((AppKeyHost)(object)host).Caller = "a";
+        using var bridge = new TabShareBridge(host);
+        var tools = new TabShareMcpTools(host, bridge, tabs);
+        AssertOk(await tools.Navigate(aId, second.Url));
+        AssertOk(await tools.WaitFor(aId, loadState: "domcontentloaded"));
+        AssertOk(await tools.WaitFor(aId, selector: "#field"));
+        AssertOk(await tools.Click(aId, selector: "#field"));
+        AssertOk(await tools.Type(aId, "typed fixture"));
+        Assert.Contains("typed fixture", (await tabs.ReadAsync("a", aId, "text")).Text);
+        AssertOk(await tools.PressKey(aId, "Enter"));
+        AssertOk(await tools.WaitFor(aId, selector: "#entered"));
+        AssertOk(await tools.Scroll(aId, 0, -120));
+        AssertOk(await tools.Click(aId, 10, 10));
+        AssertOk(await tools.Click(aId, selector: "#link"));
+        AssertOk(await tools.WaitFor(aId, loadState: "load"));
+        Assert.Equal(second.Url, (await tabs.ReadAsync("a", aId, "text")).Url);
+        Assert.Contains("timeout:", await tools.WaitFor(aId, selector: "#never", timeoutMs: 150));
+        Assert.Contains("invalid_argument:", await tools.WaitFor(aId, selector: "["));
+        Assert.Contains("invalid_argument:", await tools.WaitFor(aId, selector: "body", timeoutMs: 30001));
+        Assert.Contains("invalid_argument:", await tools.Navigate(aId, "file:///secret"));
+        Assert.Contains("not_owner:", await tools.CloseTab(bId));
+        AssertOk(await tools.CloseTab(aId));
+        Assert.DoesNotContain(await tabs.ListAsync("a"), tab => tab.TabId == aId);
+        Assert.Contains("not_owner:", await tools.WaitFor(aId, selector: "body"));
     }
 
     // L2b: caller and generation boundaries, takeover, validation and failed starts leave no usable browser.
@@ -74,9 +100,20 @@ public class AgentOwnedTabTests
         Assert.True(browsers.SetOperatorDrives("a", true));
         Assert.Equal("operator_drives", (await tabs.OpenAsync("a", fixture.Url, "self")).Code);
         Assert.True((await tabs.ReadAsync("a", aId, "text")).Ok);
+        Assert.Contains("operator_drives:", (await tabs.ActAsync("a", new("", "", "navigate", aId, Text: fixture.Url))).Error);
+        Assert.Contains("operator_drives:", (await tabs.ActAsync("a", new("", "", "close", aId))).Error);
+        Assert.Contains("operator_drives:", (await tabs.ActAsync("a", new("", "", "click", aId, Selector: "body"))).Error);
+        Assert.Contains("operator_drives:", (await tabs.ActAsync("a", new("", "", "type", aId, Text: "blocked"))).Error);
+        Assert.Contains("operator_drives:", (await tabs.ActAsync("a", new("", "", "key", aId, Text: "Enter"))).Error);
+        Assert.Contains("operator_drives:", (await tabs.ActAsync("a", new("", "", "scroll", aId, X: 0, Y: -120))).Error);
+        Assert.True((await tabs.ActAsync("a", new("", "", "wait", aId, Selector: "body"))).Ok);
+        browsers.SetOperatorDrives("a", false);
+        var pending = tabs.ActAsync("a", new("", "", "wait", aId, Selector: "#never"), timeoutMs: 5000);
         browsers.Stop("a");
+        Assert.False((await pending).Ok);
         Assert.True((await tabs.OpenAsync("a", fixture.Url, "self")).Ok);
         Assert.False((await tabs.ReadAsync("a", aId, "text")).Ok);
+        Assert.Contains("session_ended:", (await tabs.ActAsync("a", new("", "", "close", aId))).Error);
         Assert.Single(await tabs.ListAsync("a"));
         // AC-1884: a failed open returns no tabId and leaves no about:blank target behind.
         using (var free = new TcpListener(IPAddress.Loopback, 0))
@@ -115,10 +152,17 @@ public class AgentOwnedTabTests
         Assert.Equal(1, resolutions);
         Assert.Null(queued.SessionFor("ended"));
     }
+
+    private static void AssertOk(string result)
+    {
+        using var json = JsonDocument.Parse(result);
+        Assert.True(json.RootElement.GetProperty("ok").GetBoolean(), result);
+    }
 }
 
 public class AppKeyHost : DispatchProxy
 {
+    public string? Caller { get; set; }
     private readonly Dictionary<string, object?> _members = new()
     {
         ["get_CurrentMcpCaller"] = null,
@@ -127,7 +171,9 @@ public class AppKeyHost : DispatchProxy
     };
 
     protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
-        _members.TryGetValue(targetMethod?.Name ?? "", out var member) ? member : throw new InvalidOperationException("An app key must not reach browser resources.");
+        targetMethod?.Name == "get_CurrentMcpCaller" && Caller is { } caller
+            ? new Cockpit.Plugins.Abstractions.Mcp.McpCaller(caller, Cockpit.Plugins.Abstractions.Mcp.McpCallerKind.Session)
+            : _members.TryGetValue(targetMethod?.Name ?? "", out var member) ? member : throw new InvalidOperationException("An app key must not reach browser resources.");
 
     private sealed class AppKeyChannel : IPluginBackendChannel, IDisposable
     {
@@ -166,7 +212,7 @@ internal sealed class OwnedTabFixture : IAsyncDisposable
             while (_listener.IsListening)
             {
                 var context = await _listener.GetContextAsync();
-                var bytes = Encoding.UTF8.GetBytes("<html><head><title>Local fixture</title></head><body><h1>Fixture content</h1><a href='/'>Local link</a></body></html>");
+                var bytes = Encoding.UTF8.GetBytes("<html><head><title>Local fixture</title></head><body><h1>Fixture content</h1><a id='link' href='/'>Local link</a><input id='field' oninput='document.querySelector(\"output\").textContent=this.value' onkeydown='if(event.key===\"Enter\")this.id=\"entered\"'><output></output></body></html>");
                 context.Response.ContentType = "text/html; charset=utf-8";
                 await context.Response.OutputStream.WriteAsync(bytes);
                 context.Response.Close();

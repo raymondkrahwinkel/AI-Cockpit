@@ -15,7 +15,7 @@ internal sealed class CdpPage : IDisposable
     private int _nextId;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
-    public async Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken)
+    public async Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken, Action? beforeSend = null)
     {
         var id = Interlocked.Increment(ref _nextId);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -25,6 +25,7 @@ internal sealed class CdpPage : IDisposable
             await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                beforeSend?.Invoke();
                 await _socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { } }), WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
             }
             finally { _sendGate.Release(); }
