@@ -27,6 +27,7 @@ internal sealed class SwarmHeartbeat(
     INodeEndpointSettingsStore settings,
     ConnectKeyVerifier keys,
     SwarmReachability reachability,
+    SwarmLeadership leadership,
     ILogger<SwarmHeartbeat> logger) : BackgroundService, ISingletonService
 {
     private readonly SemaphoreSlim _tick = new(1, 1);
@@ -46,7 +47,7 @@ internal sealed class SwarmHeartbeat(
         var local = await settings.LoadAsync(ct);
         var update = new SwarmHeartbeatUpdate("heartbeat", identity.MemberId,
             [NodeReachableAddress.Resolve() ?? "127.0.0.1"], local.Port, asleep, membership.Sequence,
-            SwarmPropagation.Prefix(membership.Log), Time.GetUtcNow());
+            SwarmPropagation.Prefix(membership.Log), Time.GetUtcNow(), leadership.Current?.Id, leadership.Decision);
         return identity.Sign(JsonSerializer.SerializeToElement(update, SwarmRecordJson.Options));
     }
 
@@ -79,6 +80,8 @@ internal sealed class SwarmHeartbeat(
                 Port = addresses.Count == 0 ? previous?.Port ?? member.Port : update.Port };
         }
         reachability.Answer(peer, HttpStatusCode.OK, update.Asleep);
+        leadership.Observe(peer, update.Leader, update.Decision is { } decision
+            && decision.At <= update.At && decision.At >= update.At - SwarmReachability.Stabilization ? decision : null);
         return update;
     }
 
@@ -109,7 +112,6 @@ internal sealed class SwarmHeartbeat(
 
     private async Task<IResult> HandleAsync(HttpContext context, Func<SwarmMemberId, Task<IResult>> action)
     {
-        if (host.Kind == SwarmHostKind.Server) return Results.StatusCode(403);
         var ct = context.RequestAborted;
         var peer = await context.Connection.GetClientCertificateAsync(ct);
         if (peer is null) return Results.Unauthorized();
@@ -199,6 +201,7 @@ internal sealed class SwarmHeartbeat(
                     logger.LogWarning(ex, "Swarm heartbeat or synchronization failed for {Member}.", member.Id);
                 }
             }));
+            await leadership.RefreshAsync(ct: ct, asleep: asleep);
         }
         finally
         {
@@ -208,7 +211,6 @@ internal sealed class SwarmHeartbeat(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (host.Kind == SwarmHostKind.Server) return;
         if (OperatingSystem.IsWindows()) Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
         using var bus = OperatingSystem.IsLinux() ? new Tmds.DBus.Connection(Tmds.DBus.Address.System) : null;
         IDisposable? sleepWatch = null;
@@ -261,12 +263,12 @@ internal sealed class SwarmHeartbeat(
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         await base.StopAsync(cancellationToken);
-        if (host.Kind == SwarmHostKind.Desktop) await TickAsync(true, cancellationToken);
+        await TickAsync(true, cancellationToken);
     }
 }
 
 internal sealed record SwarmHeartbeatUpdate(string Kind, SwarmMemberId Member, IReadOnlyList<string> Addresses, int Port,
-    bool Asleep, long Sequence, string? Prefix, DateTimeOffset At);
+    bool Asleep, long Sequence, string? Prefix, DateTimeOffset At, SwarmMemberId? Leader = null, SwarmTakeoverDecision? Decision = null);
 
 [Tmds.DBus.DBusInterface("org.freedesktop.login1.Manager")]
 public interface ISwarmSleepManager : Tmds.DBus.IDBusObject

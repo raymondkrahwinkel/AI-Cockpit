@@ -58,6 +58,9 @@ public sealed class SwarmMembership
             case SwarmTombstone tombstone:
                 _tombstones.Add(tombstone.Member, tombstone);
                 break;
+            case SwarmRankChange rank:
+                _members[rank.Member] = _members[rank.Member] with { Rank = rank.Rank };
+                break;
         }
 
         _log.Add(record);
@@ -82,6 +85,10 @@ public sealed class SwarmMembership
         {
             SwarmMember member => _JudgeMember(member, signers),
             SwarmTombstone tombstone => _JudgeTombstone(tombstone, signers),
+            SwarmRankChange rank => PublicKeyOf(rank.Member) is null ? SwarmMembershipVerdict.UnknownMember
+                : !signers.Contains(rank.Member) ? SwarmMembershipVerdict.MissingSignature
+                : Members.Any(member => member.Rank >= rank.Rank) ? SwarmMembershipVerdict.RankTaken
+                : SwarmMembershipVerdict.Accepted,
             _ => SwarmMembershipVerdict.Malformed,
         };
         if (verdict != SwarmMembershipVerdict.Accepted)
@@ -177,7 +184,10 @@ public sealed class SwarmMembership
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(SwarmMember), "member")]
 [JsonDerivedType(typeof(SwarmTombstone), "tombstone")]
+[JsonDerivedType(typeof(SwarmRankChange), "rank")]
 public abstract record SwarmChange(long Sequence);
+
+public sealed record SwarmRankChange(SwarmMemberId Member, long Rank, long Sequence) : SwarmChange(Sequence);
 
 // The id is the hash of `PublicKey`, so a record cannot name a member whose key it does not carry.
 public sealed record SwarmMember(
