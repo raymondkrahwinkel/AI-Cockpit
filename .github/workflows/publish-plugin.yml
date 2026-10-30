@@ -323,7 +323,7 @@ jobs:
           if ! git merge-base --is-ancestor "$plugin_sha" "$nsha"; then
             # AC-1959: after a Nightly, main may already hold a merge that nightly predates; the next Nightly ships it.
             # Only that automatic route waits; a hand-fired run still fails, since there red is the answer asked for.
-            if true; then
+            if [ "$EVENT" = "workflow_run" ]; then
               echo "::notice::Nightly $nsha does not contain $plugin_sha (newest commit to $DIR) yet. $PLUGIN waits for the next Nightly, which publishes it."
               echo "wait=true" >> "$GITHUB_OUTPUT"
               exit 0
