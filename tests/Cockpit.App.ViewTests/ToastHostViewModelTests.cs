@@ -58,27 +58,26 @@ public sealed class ToastHostViewModelTests
         Assert.True(Assert.Single(host.Notifications.Items).IsHandled);
     }
 
-    public static IEnumerable<object[]> AutoDismissCases() =>
-    [
-        [ToastSeverity.Information, false, true],
-        [ToastSeverity.Information, true, false],
-        [ToastSeverity.Success, false, true],
-        [ToastSeverity.Success, true, false],
-        [ToastSeverity.Warning, false, false],
-        [ToastSeverity.Warning, true, false],
-        [ToastSeverity.Error, false, false],
-        [ToastSeverity.Error, true, false],
-    ];
+    [Fact]
+    public void Add_AutoDismissesOnlyPlainInformationAndSuccessToasts()
+    {
+        Assert.True(_AutoDismisses(ToastSeverity.Information, false));
+        Assert.False(_AutoDismisses(ToastSeverity.Information, true));
+        Assert.True(_AutoDismisses(ToastSeverity.Success, false));
+        Assert.False(_AutoDismisses(ToastSeverity.Success, true));
+        Assert.False(_AutoDismisses(ToastSeverity.Warning, false));
+        Assert.False(_AutoDismisses(ToastSeverity.Warning, true));
+        Assert.False(_AutoDismisses(ToastSeverity.Error, false));
+        Assert.False(_AutoDismisses(ToastSeverity.Error, true));
+    }
 
-    [Theory]
-    [MemberData(nameof(AutoDismissCases))]
-    public void Add_AutoDismissesOnlyPlainInformationAndSuccessToasts(ToastSeverity severity, bool hasAction, bool shouldAutoDismiss)
+    private static bool _AutoDismisses(ToastSeverity severity, bool hasAction)
     {
         var scheduled = false;
         var host = new ToastHostViewModel((_, _) => scheduled = true);
 
         host.Add("toast", severity, hasAction ? [new ToastAction("Act", static () => { })] : [], sticky: false);
 
-        Assert.Equal(shouldAutoDismiss, scheduled);
+        return scheduled;
     }
 }

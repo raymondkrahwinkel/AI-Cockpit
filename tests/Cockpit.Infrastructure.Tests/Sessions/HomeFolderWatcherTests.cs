@@ -1,6 +1,8 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
+using Cockpit.Core.Notifications;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -12,6 +14,15 @@ public sealed class HomeFolderWatcherTests
     [Fact]
     public void NewVisibleDirectoryReportsOnceWithUnknownCreator_IgnoredDirectoryFileAndNoSessionDoNot()
     {
+        var defaults = new NotificationSettingsEntry().ToDomain();
+        Assert.Equal(["Config.Msi", "MSI*.tmp", "$Recycle.Bin", "System Volume Information"], defaults.IgnoredHomeFolderPatterns);
+        Assert.Equal(5, defaults.ToastTimeoutSeconds);
+        var settings = new NotificationSettings { IgnoredHomeFolderPatterns = ["custom-*"], ToastTimeoutSeconds = 17 };
+        var restored = NotificationSettingsEntry.FromDomain(settings).ToDomain();
+        Assert.Equal(["custom-*"], restored.IgnoredHomeFolderPatterns);
+        Assert.Equal(17, restored.ToastTimeoutSeconds);
+        Assert.Equal(5, new NotificationSettingsEntry { ToastTimeoutSeconds = 0 }.ToDomain().ToastTimeoutSeconds);
+
         Assert.True(HomeFolderWatcher.ShouldWatchDrive(DriveType.Fixed));
         Assert.False(HomeFolderWatcher.ShouldWatchDrive(DriveType.Network));
         Assert.False(HomeFolderWatcher.ShouldWatchDrive(DriveType.Removable));
