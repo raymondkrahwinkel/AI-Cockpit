@@ -16,7 +16,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Swarm;
 
-/// <summary>Replicates assistant state and supplies the next leader's restart context.</summary>
 public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLeadership leadership) : ISingletonService
 {
     private readonly SemaphoreSlim _publish = new(1, 1);
@@ -81,7 +80,6 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
             services.GetService<IToastService>()?.Show("Taking over the assistant — " + TakeoverNotice(snapshot.At), ToastSeverity.Information);
     }
 
-    /// <summary>Labels the last complete copy in the takeover divider and notification.</summary>
     public static string TakeoverNotice(DateTimeOffset at) =>
         $"Taken over · up to {at.ToLocalTime():HH:mm}";
 
