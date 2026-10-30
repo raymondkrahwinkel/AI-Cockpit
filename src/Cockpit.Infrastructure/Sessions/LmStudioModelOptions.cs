@@ -132,6 +132,9 @@ internal sealed class LmStudioModelOptions(WebSocket socket)
         Add("llama.kCacheQuantizationType", options.KCacheQuantization is { } k ? new { @checked = true, value = k } : null);
         Add("llama.vCacheQuantizationType", options.VCacheQuantization is { } v ? new { @checked = true, value = v } : null);
         Add("offloadKVCacheToGpu", options.OffloadKvCacheToGpu);
+        Add("llama.evalBatchSize", options.EvalBatchSize);
+        Add("llama.physicalBatchSize", options.PhysicalBatchSize);
+        Add("llama.cpuThreadPoolSize", options.CpuThreads);
         Add("speculativeDecoding.draftMtp", options.DraftMtp);
         if (options.DraftMtp == true)
         {

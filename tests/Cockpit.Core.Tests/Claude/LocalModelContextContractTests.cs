@@ -216,7 +216,8 @@ internal static class LocalModelContextContract
     private static readonly LmStudioLoadOptions _EOptions = new(
         GpuOffloadRatio: 1, Parallel: 1, FlashAttention: true,
         KCacheQuantization: "q8_0", VCacheQuantization: "q8_0", OffloadKvCacheToGpu: true,
-        DraftMtp: true, DraftMaxTokens: 3, DraftMinTokens: 0, DraftMinContinueProbability: 0);
+        DraftMtp: true, DraftMaxTokens: 3, DraftMinTokens: 0, DraftMinContinueProbability: 0,
+        EvalBatchSize: 43, PhysicalBatchSize: 42, CpuThreads: 44);
 
     private static async Task _LmStudioExplicitOptionsAsync()
     {
@@ -225,8 +226,15 @@ internal static class LocalModelContextContract
         var fields = LmStudioModelOptions.Fields(profile);
         Assert.Equal(32_768, fields["llm.load.contextLength"]);
         Assert.Equal(1d, fields["llm.load.llama.acceleration.offloadRatio"]);
+        Assert.Equal(43, fields["llm.load.llama.evalBatchSize"]);
+        Assert.Equal(42, fields["llm.load.llama.physicalBatchSize"]);
+        Assert.Equal(44, fields["llm.load.llama.cpuThreadPoolSize"]);
         Assert.False((bool)fields["llm.load.speculativeDecoding.draftSimple"]);
         Assert.DoesNotContain(fields.Keys, key => key.Contains("prediction", StringComparison.Ordinal));
+        var blankBatchFields = LmStudioModelOptions.Fields(profile with { LoadOptions = new LmStudioLoadOptions() });
+        Assert.DoesNotContain("llm.load.llama.evalBatchSize", blankBatchFields.Keys);
+        Assert.DoesNotContain("llm.load.llama.physicalBatchSize", blankBatchFields.Keys);
+        Assert.DoesNotContain("llm.load.llama.cpuThreadPoolSize", blankBatchFields.Keys);
         Assert.Null(_EOptions.ValidationError);
         Assert.NotNull((_EOptions with { GpuOffloadRatio = double.NaN }).ValidationError);
         Assert.NotNull((_EOptions with { Parallel = 0 }).ValidationError);

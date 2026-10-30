@@ -87,6 +87,12 @@ public class ProfileMemoryCapFieldTests
         Field<CheckBox>("ManageLmStudioLoadOptions").IsChecked = true;
         Field<NumericUpDown>("LmStudioGpuOffloadRatio").Value = 1;
         Field<NumericUpDown>("LmStudioParallel").Value = 1;
+        Assert.Null(Field<NumericUpDown>("LmStudioEvalBatchSize").Value);
+        Assert.Null(Field<NumericUpDown>("LmStudioPhysicalBatchSize").Value);
+        Assert.Null(Field<NumericUpDown>("LmStudioCpuThreads").Value);
+        Field<NumericUpDown>("LmStudioEvalBatchSize").Value = 43;
+        Field<NumericUpDown>("LmStudioPhysicalBatchSize").Value = 42;
+        Field<NumericUpDown>("LmStudioCpuThreads").Value = 44;
         Field<ComboBox>("LmStudioFlashAttention").SelectedItem = "On";
         Field<ComboBox>("LmStudioOffloadKvCacheToGpu").SelectedItem = "On";
         Field<ComboBox>("LmStudioKCacheQuantization").SelectedItem = "q8_0";
@@ -98,7 +104,8 @@ public class ProfileMemoryCapFieldTests
         Field<ComboBox>("LmStudioThinking").SelectedItem = "On";
         scene.Window.UpdateLayout();
         var saved = Assert.IsType<LmStudioConfig>(row.ToProfile().ProviderConfig);
-        Assert.Equal(new LmStudioLoadOptions(1, 1, true, "q8_0", "q8_0", true, true, DraftMaxTokens: 3, DraftMinTokens: 0, DraftMinContinueProbability: 0), saved.LoadOptions);
+        Assert.Equal(new LmStudioLoadOptions(1, 1, true, "q8_0", "q8_0", true, true, DraftMaxTokens: 3, DraftMinTokens: 0, DraftMinContinueProbability: 0,
+            EvalBatchSize: 43, PhysicalBatchSize: 42, CpuThreads: 44), saved.LoadOptions);
         Assert.True(saved.EnableThinking);
         Assert.True(row.IsValid);
         if (Environment.GetEnvironmentVariable("LMSTUDIO_PROFILE_RENDER_DIR") is { Length: > 0 } folder)
