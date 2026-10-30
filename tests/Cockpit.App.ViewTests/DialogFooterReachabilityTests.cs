@@ -210,7 +210,11 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var scene in Screenshotter.SceneNames)
             {
-                names.Add(Screenshotter.BuildScene(scene).GetType().Name);
+                var window = Screenshotter.BuildScene(scene);
+                names.Add(window.GetType().Name);
+                // Scene sessions must not keep windows alive with a shutdown confirmation.
+                window.DataContext = null;
+                window.Close();
             }
 
             return names;
@@ -301,6 +305,8 @@ public class DialogFooterReachabilityTests(ITestOutputHelper output)
         var window = Screenshotter.BuildScene(scene);
         if (!window.GetType().Name.EndsWith("Dialog", StringComparison.Ordinal))
         {
+            window.DataContext = null;
+            window.Close();
             return null;
         }
 
