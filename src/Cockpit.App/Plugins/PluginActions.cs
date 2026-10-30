@@ -47,8 +47,7 @@ public sealed class PluginActions(
                     ? "No session profiles are configured."
                     : $"No profile is called '{profileLabel}'. There is: {string.Join(", ", profiles.Select(candidate => candidate.Label))}.");
 
-        var name = await UiThreadCall.Uncapped(() =>
-            cockpit.StartSessionForPluginAsync(profile, prompt, workingDirectory, sessionName)).ConfigureAwait(false);
+        var name = await cockpit.StartSessionForPluginAsync(profile, prompt, workingDirectory, sessionName).ConfigureAwait(false);
 
         return name;
     }
