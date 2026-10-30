@@ -137,7 +137,7 @@ internal sealed class DepotNotes(
         {
             // AC-1958: /cockpit/notes/live sits in Depot's bearer group, which wants the depot scope; the host-only
             // depot.host token is refused there with 403, so this uses the connection's own token.
-            using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName)) { Timeout = TimeSpan.FromSeconds(20) };
+            using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName, "depot.host")) { Timeout = TimeSpan.FromSeconds(20) };
             using var api = new DepotApi(host, connection, http);
             var answer = await api.GetAsync("/cockpit/notes/live", cancellationToken).ConfigureAwait(false);
             if (answer.Outcome == DepotApiOutcome.NotSignedIn)
