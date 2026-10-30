@@ -4375,10 +4375,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
+        var active = usage.Sessions
+            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes > 0
+                && SessionMemoryPressure.Decide(measured.MemoryBytes, session.MemoryCapBytes,
+                    _sessionsOverMemoryCap.Contains(measured.PaneId)).Warned)
+            .Select(measured => measured.PaneId).ToArray();
         _sessionsOverMemoryCap.Clear();
-        _sessionsOverMemoryCap.UnionWith(usage.Sessions
-            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes > 0 && measured.MemoryBytes > session.MemoryCapBytes)
-            .Select(measured => measured.PaneId));
+        _sessionsOverMemoryCap.UnionWith(active);
 
         foreach (var measured in usage.Sessions)
         {

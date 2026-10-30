@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Toasts;
+using Cockpit.Core.Diagnostics;
 
 namespace Cockpit.App.ViewTests;
 
@@ -40,15 +41,22 @@ public sealed class ToastHostViewModelTests
     private static void _ConditionRecoveryOrSessionRemovalClosesBeforeTimeout_RecurrenceCanNotifyAgain()
     {
         var host = new ToastHostViewModel((_, _) => { });
-        var memory = 11;
+        var warned = SessionMemoryPressure.Decide(101, 100, false).Warned;
         var present = true;
-        host.AddCondition("memory:one", "over cap", ToastSeverity.Warning, [], () => present && memory > 10);
-        memory = 10;
+        host.AddCondition("memory:one", "over cap", ToastSeverity.Warning, [], () => present && warned);
+        warned = SessionMemoryPressure.Decide(99, 100, warned).Warned;
+        host.RecheckConditions();
+        Assert.Single(host.Toasts);
+        Assert.False(Assert.Single(host.Notifications.Items).IsHandled);
+        warned = SessionMemoryPressure.Decide(101, 100, warned).Warned;
+        host.RecheckConditions();
+        Assert.Single(host.Toasts);
+        warned = SessionMemoryPressure.Decide(90, 100, warned).Warned;
         host.RecheckConditions();
         Assert.Empty(host.Toasts);
         Assert.True(Assert.Single(host.Notifications.Items).IsHandled);
-        memory = 11;
-        host.AddCondition("memory:one", "over again", ToastSeverity.Warning, [], () => present && memory > 10);
+        warned = SessionMemoryPressure.Decide(101, 100, warned).Warned;
+        host.AddCondition("memory:one", "over again", ToastSeverity.Warning, [], () => present && warned);
         Assert.Single(host.Toasts);
         present = false;
         host.RecheckConditions();
