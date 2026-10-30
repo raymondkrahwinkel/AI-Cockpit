@@ -111,23 +111,31 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         try
         {
             var machines = await options.MachinesAsync();
+            var manual = (await options.LoadSettingsAsync()).ManualAddresses;
             var leader = leadership?.Current;
             Machines.Clear();
             foreach (var machine in machines)
             {
                 var member = machine.Member;
-                Machines.Add(new(member.Name, string.Join(", ", member.Addresses.Select(address =>
+                var addressEntry = manual.FirstOrDefault(item => item.MemberId == member.Id.Value);
+                Machines.Add(new(member.Name, addressEntry?.Address ?? string.Join(", ", member.Addresses.Select(address =>
                     new UriBuilder("https", address, member.Port).Uri.Authority)),
                     machine.IsSelf ? "This machine" : machine.Origin,
                     member.Rank.ToString(CultureInfo.InvariantCulture),
-                    member.Id == leader?.Id ? "Leader" : machine.Presence.Status switch
+                    addressEntry?.ErrorCode.Length > 0 ? addressEntry.Status : member.Id == leader?.Id ? "Leader" : machine.Presence.Status switch
                     {
                         SwarmPresence.Online => "Online",
                         SwarmPresence.Asleep => "Asleep",
                         _ => "Not reachable",
                     }, machine.IsSelf ? "Now" : machine.Presence.LastSeen?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "Not yet seen",
-                    machine.IsSelf, machine.Presence.Status == SwarmPresence.Online));
+                    machine.IsSelf, machine.Presence.Status == SwarmPresence.Online)
+                {
+                    ErrorCode = addressEntry?.ErrorCode ?? "", ErrorMessage = addressEntry?.ErrorMessage ?? "", IsPaired = true,
+                });
             }
+            foreach (var entry in manual.Where(item => item.MemberId is null))
+                Machines.Add(new(entry.Address, entry.Address, "Manual address", "—", entry.Status, "Not yet seen", false, false)
+                { ErrorCode = entry.ErrorCode, ErrorMessage = entry.ErrorMessage });
             var reachable = machines.Count(machine => machine.Presence.Status == SwarmPresence.Online);
             LeaderLine = leader is null ? "Leader: this machine · No other machine online"
                 : leadership?.PendingTakeover is { } pendingLeader
@@ -164,6 +172,17 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [RelayCommand]
     private Task AddByAddressAsync() => _BeginAsync(Address, false);
 
+    [RelayCommand]
+    private async Task TryAgainAsync(SwarmMachineRow machine)
+    {
+        if (options is null || IsBusy) return;
+        if (!machine.IsPaired) { await _BeginAsync(machine.Address, false); return; }
+        IsBusy = true;
+        try { await options.RetryAsync(); }
+        catch (Exception ex) { Status = ex.Message; }
+        finally { IsBusy = false; await RefreshAsync(); }
+    }
+
     private async Task _BeginAsync(string address, bool discovered)
     {
         if (options is null || IsBusy) return;
@@ -171,14 +190,14 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         CancelPairing();
         try
         {
-            _handshake = await options.BeginAsync(address.Trim());
+            _handshake = discovered ? await options.BeginAsync(address.Trim()) : await options.BeginManualAsync(address.Trim());
             _discovered = discovered;
             PairingCaption = $"Compare with {_handshake.Offer.NodeName}. Confirm on that machine too, then continue here.";
             PairingCode = _handshake.Code;
             Status = "Pairing expires after two minutes. Only continue if both screens show the same six digits.";
         }
         catch (Exception ex) { Status = $"Could not start pairing. {ex.Message}"; }
-        finally { IsBusy = false; }
+        finally { IsBusy = false; await RefreshAsync(); }
     }
 
     [RelayCommand]
@@ -228,5 +247,8 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
 public sealed record SwarmMachineRow(string Name, string Address, string Origin, string Rank, string Status,
     string LastSeen, bool IsSelf, bool IsOnline)
 {
+    public string ErrorCode { get; init; } = "";
+    public string ErrorMessage { get; init; } = "";
+    public bool IsPaired { get; init; }
     public bool IsLeader => Status == "Leader";
 }

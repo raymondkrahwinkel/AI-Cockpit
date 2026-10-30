@@ -14,11 +14,15 @@ internal sealed class SwarmSettingsEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? PairingOrigins { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<SwarmManualMember>? ManualAddresses { get; set; }
+
     public static SwarmSettingsEntry FromDomain(SwarmSettings settings) => new()
     {
         ExtraInternalCidrs = settings.ExtraInternalCidrs.Count == 0 ? null : [.. settings.ExtraInternalCidrs],
         WhenALowerRankComesBack = settings.WhenALowerRankComesBack,
         PairingOrigins = settings.PairingOrigins.Count == 0 ? null : new(settings.PairingOrigins),
+        ManualAddresses = settings.ManualAddresses.Count == 0 ? null : [.. settings.ManualAddresses],
     };
 
     public SwarmSettings ToDomain() => new()
@@ -26,5 +30,6 @@ internal sealed class SwarmSettingsEntry
         ExtraInternalCidrs = ExtraInternalCidrs ?? [],
         WhenALowerRankComesBack = WhenALowerRankComesBack,
         PairingOrigins = PairingOrigins ?? [],
+        ManualAddresses = ManualAddresses ?? [],
     };
 }

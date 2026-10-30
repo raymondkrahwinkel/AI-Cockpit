@@ -87,14 +87,15 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine.Presence = new(time);
             machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings,
                 machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
-            machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join, machine.Settings, new NodeDiscoveryClient());
+            machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join,
+                new SwarmManualAddress(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")), policy), machine.Settings, new NodeDiscoveryClient());
             machine.Propagation = new(machine.Membership, new NoticesToast(machine.Notices));
             machine.Reachability = new(time);
             machine.SwarmSettings = new(Path.Combine(machine._root, "cockpit.json"));
             machine.Leadership = new(machine.Membership, machine.SwarmSettings, machine.Identity, machine.Reachability) { Time = time };
             machine.Heartbeat = new(machine.Identity, machine.Certificate, machine.Membership, machine.Propagation, policy,
                 machine.Client, machine.Servers, machine.Settings, machine.Keys, machine.Reachability,
-                machine.Leadership, new HeartbeatLog()) { Time = time };
+                machine.Leadership, new SwarmManualAddress(machine.SwarmSettings, policy), new HeartbeatLog()) { Time = time };
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(policy);
             builder.Services.AddSingleton(machine.Client);

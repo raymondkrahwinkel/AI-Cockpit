@@ -19,6 +19,7 @@ internal sealed class SwarmJoinClient(
     SwarmMembershipStore membership,
     SwarmNetworkPolicy network,
     SwarmJoinHost local,
+    SwarmManualAddress manual,
     INodeEndpointSettingsStore settings,
     NodeDiscoveryClient discovery,
     ILogger<SwarmJoinClient>? logger = null,
@@ -35,7 +36,7 @@ internal sealed class SwarmJoinClient(
     {
         if (host.Kind == SwarmHostKind.Server) throw NodePairingException.For(SwarmJoinError.IsAServer, "A server keeps its existing connections.");
         if (!(await settings.LoadAsync(ct)).Enabled) throw NodePairingException.For(NodePairingError.NotVisible, "Enable the node endpoint first.");
-        var uri = NodePairingClient.NormalizeAddress(address);
+        var uri = SwarmManualAddress.Parse(address);
         if (uri.Scheme != "https") throw NodePairingException.For(NodePairingError.InvalidToken, "Join requires TLS.");
         string? pin = null;
         byte[]? publicKey = null;
@@ -49,7 +50,7 @@ internal sealed class SwarmJoinClient(
             publicKey = peer.PublicKey.ExportSubjectPublicKeyInfo();
             return true;
         };
-        using var client = new HttpClient(handler) { BaseAddress = uri };
+        using var client = new HttpClient(handler) { BaseAddress = uri, Timeout = NodeConnectionFailure.DefaultBudget };
         if (credential is not null) client.DefaultRequestHeaders.Authorization = new("Bearer", credential);
         var request = new SwarmJoinRequest(local.Name, certificate.Value.RawData, "");
         var offer = await _PostAsync<SwarmJoinRequest, NodePairingOffer>(client, credential is null ? "swarm/request" : "swarm/migrate", request, ct);
@@ -89,6 +90,7 @@ internal sealed class SwarmJoinClient(
             await local.StoreTransportAsync(handshake.Offer.NodeName, transport, ct);
             if (services is null) membership.Save(register);
             else await services.GetRequiredService<SwarmPropagation>().ApplyAsync(new(0, null, register.Log), ct);
+            await manual.AttachAsync(handshake.Address, peerId, ct);
         }
         finally { _gate.Release(); }
         if (services is not null) await services.GetRequiredService<SwarmHeartbeat>().TickAsync(ct: ct);
@@ -118,8 +120,9 @@ internal sealed class SwarmJoinClient(
             using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
             return SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == member.Id;
         };
-        var address = member.Addresses.FirstOrDefault() ?? throw new InvalidDataException("Member has no address.");
-        using var client = new HttpClient(handler) { BaseAddress = new UriBuilder("https", address, member.Port).Uri, Timeout = TimeSpan.FromSeconds(5) };
+        var manualUri = await manual.ForMemberAsync(member.Id, ct);
+        var address = manualUri?.IdnHost ?? member.Addresses.FirstOrDefault() ?? throw new InvalidDataException("Member has no address.");
+        using var client = new HttpClient(handler) { BaseAddress = manualUri ?? new UriBuilder("https", address, member.Port).Uri, Timeout = TimeSpan.FromSeconds(5) };
         var reverse = await local.IssueTransportAsync(member.Name, ct);
         var transport = await _PostAsync<SwarmMeshRequest, SwarmTransport>(client, "swarm/connect", new(register.Log, reverse), ct);
         await local.StoreTransportAsync(member.Name, transport, ct);

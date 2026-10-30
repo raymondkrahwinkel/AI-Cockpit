@@ -5,7 +5,8 @@ using Cockpit.Core.Swarm;
 namespace Cockpit.Infrastructure.Swarm;
 
 internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipStore membership,
-    SwarmIdentity identity, SwarmReachability reachability, SwarmJoinClient join, SwarmJoinHost host)
+    SwarmIdentity identity, SwarmReachability reachability, SwarmJoinClient join, SwarmJoinHost host,
+    SwarmManualAddress manual, SwarmHeartbeat heartbeat)
     : ISwarmOptions, ISingletonService
 {
     public SwarmJoinPending? Pending => host.Pending;
@@ -13,8 +14,7 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
 
     public async Task SaveSettingsAsync(SwarmSettings value, CancellationToken ct = default)
     {
-        var current = await settings.LoadAsync(ct);
-        await settings.SaveAsync(value with { PairingOrigins = current.PairingOrigins }, ct);
+        await settings.UpdateAsync(current => value with { PairingOrigins = current.PairingOrigins, ManualAddresses = current.ManualAddresses }, ct);
     }
 
     public async Task<IReadOnlyList<SwarmMachine>> MachinesAsync(CancellationToken ct = default)
@@ -31,15 +31,32 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
     public Task<IReadOnlyList<NodeDiscoveryFound>> FindAsync(CancellationToken ct = default) => join.FindAsync(TimeSpan.FromSeconds(3), ct);
     public Task<SwarmJoinHandshake> BeginAsync(string address, CancellationToken ct = default) => join.BeginAsync(address, ct);
 
+    public async Task<SwarmJoinHandshake> BeginManualAsync(string address, CancellationToken ct = default)
+    {
+        var uri = SwarmManualAddress.Parse(address);
+        await manual.RememberAsync(uri.ToString(), ct: ct);
+        try { return await join.BeginAsync(uri.ToString(), ct); }
+        catch (Exception ex)
+        {
+            await manual.RememberAsync(uri.ToString(), failure: ex, ct: ct);
+            throw;
+        }
+    }
+
+    public Task RetryAsync(CancellationToken ct = default) => heartbeat.TickAsync(ct: ct);
+
     public async Task CompleteAsync(SwarmJoinHandshake handshake, bool discovered, CancellationToken ct = default)
     {
-        await join.CompleteAsync(handshake, ct);
-        var current = await settings.LoadAsync(ct);
-        var origins = new Dictionary<string, string>(current.PairingOrigins)
+        try { await join.CompleteAsync(handshake, ct); }
+        catch (Exception ex)
+        {
+            if (!discovered) await manual.RememberAsync(handshake.Address, failure: ex, ct: ct);
+            throw;
+        }
+        await settings.UpdateAsync(current => current with { PairingOrigins = new Dictionary<string, string>(current.PairingOrigins)
         {
             [SwarmMemberId.FromPublicKey(handshake.PublicKey).Value] = discovered ? "Discovered" : "Manual address",
-        };
-        await settings.SaveAsync(current with { PairingOrigins = origins }, ct);
+        } }, ct);
     }
 
     public void Confirm(string pairingId) => host.Confirm(pairingId);

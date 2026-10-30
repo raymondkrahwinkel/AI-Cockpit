@@ -29,4 +29,7 @@ internal sealed class SwarmSettingsStore : ISingletonService
 
     public Task SaveAsync(SwarmSettings settings, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file => file.Swarm = SwarmSettingsEntry.FromDomain(settings), cancellationToken);
+
+    internal Task UpdateAsync(Func<SwarmSettings, SwarmSettings> update, CancellationToken ct = default) =>
+        _configFile.UpdateAsync(file => file.Swarm = SwarmSettingsEntry.FromDomain(update(file.Swarm?.ToDomain() ?? SwarmSettings.Default)), ct);
 }
