@@ -118,11 +118,11 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
             {
                 var member = machine.Member;
                 var addressEntry = manual.FirstOrDefault(item => item.MemberId == member.Id.Value);
-                Machines.Add(new(member.Name, string.Join(", ", member.Addresses.Select(address =>
+                Machines.Add(new(member.Name, addressEntry?.Address ?? string.Join(", ", member.Addresses.Select(address =>
                     new UriBuilder("https", address, member.Port).Uri.Authority)),
                     machine.IsSelf ? "This machine" : machine.Origin,
                     member.Rank.ToString(CultureInfo.InvariantCulture),
-                    member.Id == leader?.Id ? "Leader" : machine.Presence.Status switch
+                    addressEntry?.ErrorCode.Length > 0 ? addressEntry.Status : member.Id == leader?.Id ? "Leader" : machine.Presence.Status switch
                     {
                         SwarmPresence.Online => "Online",
                         SwarmPresence.Asleep => "Asleep",
@@ -130,11 +130,6 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
                     }, machine.IsSelf ? "Now" : machine.Presence.LastSeen?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "Not yet seen",
                     machine.IsSelf, machine.Presence.Status == SwarmPresence.Online)
                 {
-                    Address = addressEntry?.Address ?? string.Join(", ", member.Addresses.Select(address => new UriBuilder("https", address, member.Port).Uri.Authority)),
-                    Status = addressEntry?.ErrorCode.Length > 0 ? addressEntry.Status : member.Id == leader?.Id ? "Leader" : machine.Presence.Status switch
-                    {
-                        SwarmPresence.Online => "Online", SwarmPresence.Asleep => "Asleep", _ => "Not reachable",
-                    },
                     ErrorCode = addressEntry?.ErrorCode ?? "", ErrorMessage = addressEntry?.ErrorMessage ?? "", IsPaired = true,
                 });
             }

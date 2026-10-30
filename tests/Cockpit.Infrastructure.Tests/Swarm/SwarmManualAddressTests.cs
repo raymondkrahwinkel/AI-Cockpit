@@ -33,6 +33,8 @@ public sealed class SwarmManualAddressTests
                 Assert.NotNull(stored);
                 var uri = await manual.ResolveAsync(stored.ToString());
                 Assert.Equal((host, port), (uri.IdnHost, uri.Port));
+                await manual.RememberAsync(stored.ToString(), memberId.Value, online: true);
+                Assert.Equal("Online", Assert.Single((await store.LoadAsync()).ManualAddresses).Status);
             }
             if (allowed)
             {

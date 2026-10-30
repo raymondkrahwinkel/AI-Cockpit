@@ -176,13 +176,13 @@ internal sealed class SwarmHeartbeat(
                     var address = manualUri?.IdnHost ?? last?.Addresses.FirstOrDefault() ?? member.Addresses.FirstOrDefault();
                     if (address is null) return;
                     using var client = new HttpClient(handler) { BaseAddress = manualUri ?? new UriBuilder("https", address, last?.Port ?? member.Port).Uri,
-                        Timeout = SwarmReachability.Interval };
+                        Timeout = NodeConnectionFailure.DefaultBudget };
                     client.DefaultRequestHeaders.Authorization = new("Bearer", transport.ApiKey);
                     using var response = await client.PostAsJsonAsync("swarm/heartbeat", await OwnAsync(asleep, ct), SwarmRecordJson.Options, ct);
                     response.EnsureSuccessStatusCode();
                     var record = await response.Content.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, ct);
                     if (record is null || await AcceptAsync(record, member.Id, pin, ct) is not { } update) return;
-                    if (manualUri is not null) await manual.RememberAsync(manualUri.Authority, member.Id.Value, online: true, ct: ct);
+                    if (manualUri is not null) await manual.RememberAsync(manualUri.ToString(), member.Id.Value, online: true, ct: ct);
                     var current = await store.LoadAsync(ct);
                     if (update.Sequence >= current.Sequence)
                     {
@@ -203,7 +203,7 @@ internal sealed class SwarmHeartbeat(
                     or InvalidDataException or JsonException or NodePairingException)
                 {
                     if (await manual.ForMemberAsync(member.Id, ct) is { } uri)
-                        await manual.RememberAsync(uri.Authority, member.Id.Value, ex, ct: ct);
+                        await manual.RememberAsync(uri.ToString(), member.Id.Value, ex, ct: ct);
                     logger.LogWarning(ex, "Swarm heartbeat or synchronization failed for {Member}.", member.Id);
                 }
             }));

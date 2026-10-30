@@ -90,6 +90,7 @@ internal sealed class SwarmJoinClient(
             await local.StoreTransportAsync(handshake.Offer.NodeName, transport, ct);
             if (services is null) membership.Save(register);
             else await services.GetRequiredService<SwarmPropagation>().ApplyAsync(new(0, null, register.Log), ct);
+            await manual.AttachAsync(handshake.Address, peerId, ct);
         }
         finally { _gate.Release(); }
         if (services is not null) await services.GetRequiredService<SwarmHeartbeat>().TickAsync(ct: ct);

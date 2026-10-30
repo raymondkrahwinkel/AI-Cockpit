@@ -34,11 +34,11 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
     public async Task<SwarmJoinHandshake> BeginManualAsync(string address, CancellationToken ct = default)
     {
         var uri = SwarmManualAddress.Parse(address);
-        await manual.RememberAsync(uri.Authority, ct: ct);
+        await manual.RememberAsync(uri.ToString(), ct: ct);
         try { return await join.BeginAsync(uri.ToString(), ct); }
         catch (Exception ex)
         {
-            await manual.RememberAsync(uri.Authority, failure: ex, ct: ct);
+            await manual.RememberAsync(uri.ToString(), failure: ex, ct: ct);
             throw;
         }
     }
@@ -53,7 +53,6 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
             if (!discovered) await manual.RememberAsync(handshake.Address, failure: ex, ct: ct);
             throw;
         }
-        if (!discovered) await manual.RememberAsync(handshake.Address, SwarmMemberId.FromPublicKey(handshake.PublicKey).Value, online: true, ct: ct);
         await settings.UpdateAsync(current => current with { PairingOrigins = new Dictionary<string, string>(current.PairingOrigins)
         {
             [SwarmMemberId.FromPublicKey(handshake.PublicKey).Value] = discovered ? "Discovered" : "Manual address",

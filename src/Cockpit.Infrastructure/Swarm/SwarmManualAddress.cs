@@ -33,7 +33,15 @@ internal sealed class SwarmManualAddress(SwarmSettingsStore settings, SwarmNetwo
         return entry is null ? null : Parse(entry.Address);
     }
 
-    public Task RememberAsync(string address, string? memberId = null, Exception? failure = null, bool online = false, CancellationToken ct = default)
+    internal static string Key(Uri uri) => uri.GetComponents(UriComponents.HostAndPort, UriFormat.UriEscaped);
+
+    internal async Task AttachAsync(string address, SwarmMemberId member, CancellationToken ct)
+    {
+        if ((await settings.LoadAsync(ct)).ManualAddresses.Any(item => item.Address == Key(Parse(address))))
+            await RememberAsync(address, member.Value, online: true, ct: ct);
+    }
+
+    public async Task RememberAsync(string address, string? memberId = null, Exception? failure = null, bool online = false, CancellationToken ct = default)
     {
         var uri = Parse(address);
         var error = failure is null ? null : NodeConnectionFailure.Find<NodePairingException>(failure);
@@ -49,11 +57,13 @@ internal sealed class SwarmManualAddress(SwarmSettingsStore settings, SwarmNetwo
             _ => "No answer",
         };
         var message = failure is null ? "" : error?.Message ?? NodeConnectionFailure.Describe(uri.Authority, failure, NodeConnectionFailure.DefaultBudget);
-        return settings.UpdateAsync(current =>
+        var previous = (await settings.LoadAsync(ct)).ManualAddresses.FirstOrDefault(item => item.Address == Key(uri));
+        var entry = new SwarmManualMember(Key(uri), memberId ?? previous?.MemberId, status, code, message);
+        if (entry == previous) return;
+        await settings.UpdateAsync(current =>
         {
-            var previous = current.ManualAddresses.FirstOrDefault(item => item.Address == uri.Authority);
-            var entry = new SwarmManualMember(uri.Authority, memberId ?? previous?.MemberId, status, code, message);
-            return current with { ManualAddresses = [.. current.ManualAddresses.Where(item => item.Address != entry.Address), entry] };
+            var latest = current.ManualAddresses.FirstOrDefault(item => item.Address == entry.Address);
+            return current with { ManualAddresses = [.. current.ManualAddresses.Where(item => item.Address != entry.Address), entry with { MemberId = memberId ?? latest?.MemberId }] };
         }, ct);
     }
 }
