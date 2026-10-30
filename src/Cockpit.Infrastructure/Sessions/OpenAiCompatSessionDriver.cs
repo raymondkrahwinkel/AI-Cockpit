@@ -350,12 +350,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     {
         var agent = _agent ?? throw new InvalidOperationException($"{nameof(_StreamTurnAsync)} called before {nameof(StartAsync)}.");
         var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
-        if (Profile?.ProviderConfig is LmStudioConfig { EnableThinking: { } thinking })
+        if (Profile?.ProviderConfig is LmStudioConfig { EnableThinking: false })
         {
             options.RawRepresentationFactory = _ => new ChatCompletionOptions
             {
-#pragma warning disable OPENAI001 // LM Studio's OpenAI endpoint accepts low/none, not the native on/off values.
-                ReasoningEffortLevel = new ChatReasoningEffortLevel(thinking ? "low" : "none"),
+#pragma warning disable OPENAI001 // Only explicit opt-out overrides LM Studio's per-model thinking default.
+                ReasoningEffortLevel = new ChatReasoningEffortLevel("none"),
 #pragma warning restore OPENAI001
             };
         }
