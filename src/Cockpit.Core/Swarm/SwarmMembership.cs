@@ -203,6 +203,8 @@ public sealed record SwarmMember(
     DateTimeOffset AddedAt,
     long Sequence) : SwarmChange(Sequence)
 {
+    public SwarmHostKind HostKind { get; init; }
+
     [JsonIgnore]
     public SwarmMemberId Id => SwarmMemberId.FromPublicKey(PublicKey);
 }

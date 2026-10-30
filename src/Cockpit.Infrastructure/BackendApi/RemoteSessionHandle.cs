@@ -82,7 +82,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public string PaneId => _Facts.PaneId;
 
-    public ISessionControl? Control => _isAssistant ? null : this;
+    public ISessionControl? Control => _isAssistant && !_client.IsSwarm ? null : this;
 
     public string Title => _Facts.Name;
 
@@ -272,7 +272,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     internal RemoteSessionRow Facts => _Facts;
 
-    private string _Path => _isAssistant ? "api/v1/assistant" : $"api/v1/sessions/{Uri.EscapeDataString(PaneId)}";
+    private string _Path => _isAssistant ? _client.IsSwarm ? "swarm/assistant" : "api/v1/assistant" : $"api/v1/sessions/{Uri.EscapeDataString(PaneId)}";
 
     public Task<SessionLaunched?> StartAsync(SessionStart start) =>
         throw new NotSupportedException("A remote handle is attached by its backend and cannot start itself.");
@@ -522,7 +522,7 @@ public sealed class RemoteSessionHandle : ISessionHandle, ISessionControl
 
     public async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
     {
-        if (_isAssistant)
+        if (_isAssistant && (!_client.IsSwarm || forSession))
         {
             return false;
         }

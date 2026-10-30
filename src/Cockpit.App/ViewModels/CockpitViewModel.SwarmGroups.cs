@@ -14,6 +14,15 @@ public partial class CockpitViewModel
     private readonly CancellationTokenSource _swarmSidebarStop = new();
     private bool _refreshingSwarm;
     private readonly HashSet<string> _swarmMemberNames = new(StringComparer.Ordinal);
+    private string? _swarmSelfName;
+
+    internal ISwarmLeadership? SwarmLeadership => _swarmLeadership;
+    internal INodeSessionsClient? SwarmSessions => _swarmSessions;
+    public string? AssistantLeadershipLabel => _swarmLeadership?.IsActive != true ? null
+        : LocalLeads ? "You lead" : _swarmLeadership.Current is { } leader ? $"Led by {leader.Name}" : "Waiting for a leader";
+    public string? AssistantLocationLabel => _swarmLeadership?.IsActive != true ? null
+        : $"You are on {_swarmSelfName ?? Environment.MachineName}. The assistant runs on {_swarmLeadership.Current?.Name ?? "the leader"}.";
+    public bool AssistantLeaderIsServer => _swarmLeadership?.Current?.HostKind == SwarmHostKind.Server;
 
     public bool LocalLeads => _swarmLeadership?.IsSelf == true;
     public bool ShowLocalMachineHeading => !IsRemoteWindow && (HasServerGroups || _swarmSidebar is not null);
@@ -23,6 +32,8 @@ public partial class CockpitViewModel
         _swarmSidebar = options;
         _swarmLeadership = leadership;
         _swarmSessions = sessions;
+        OnPropertyChanged(nameof(AssistantLeadershipLabel));
+        OnPropertyChanged(nameof(AssistantLocationLabel));
         _remotePaneOver ??= SessionViewModel.OverRemoteAsync;
         leadership.Changed += _SwarmLeaderChanged;
         if (poll)
@@ -42,6 +53,9 @@ public partial class CockpitViewModel
     private void _UpdateSwarmLeader()
     {
         OnPropertyChanged(nameof(LocalLeads));
+        OnPropertyChanged(nameof(AssistantLeadershipLabel));
+        OnPropertyChanged(nameof(AssistantLocationLabel));
+        OnPropertyChanged(nameof(AssistantLeaderIsServer));
         foreach (var group in ServerGroups.Where(group => group.IsSwarmMember))
             group.Leads = group.MemberId == _swarmLeadership?.Current?.Id;
     }
@@ -53,6 +67,7 @@ public partial class CockpitViewModel
         try
         {
             var machines = await _swarmSidebar.MachinesAsync(_swarmSidebarStop.Token);
+            _swarmSelfName = machines.FirstOrDefault(machine => machine.IsSelf)?.Member.Name;
             var members = machines.Where(machine => !machine.IsSelf).ToArray();
             _swarmMemberNames.Clear();
             foreach (var member in members) _swarmMemberNames.Add(member.Member.Name);

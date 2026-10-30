@@ -261,6 +261,7 @@ internal sealed class CockpitMcpEndpointHost
                     && _services.GetService<SwarmMembershipStore>() is not null)
                 {
                     SwarmSessionEventsEndpoint.Map(app, _services);
+                    SwarmAssistantRelay.Map(app, _services);
                 }
             }
 

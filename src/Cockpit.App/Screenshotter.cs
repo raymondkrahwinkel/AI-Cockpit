@@ -682,6 +682,9 @@ internal static partial class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        ["assistant-swarm-follower"] = (_, _) => _AssistantSwarm(),
+        ["assistant-swarm-leader"] = (_, _) => _AssistantSwarm(selfLeads: true),
+        ["assistant-swarm-server"] = (_, _) => _AssistantSwarm(serverLeads: true),
         // AC-953: the same chat surface in its other host — docked into the right-hand rail, inside MainWindow,
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
@@ -2119,6 +2122,9 @@ internal static partial class Screenshotter
     // The node a scene connects to: answers a probe and a read as told, and whoami with the mockup's key.
     private sealed class _SceneNodeSessions : INodeSessionsClient
     {
+        public Func<string, string, Cockpit.Core.Abstractions.Sessions.ISessionHandle?>? OpenHandle { get; init; }
+        public Task<Cockpit.Core.Abstractions.Sessions.ISessionHandle?> OpenSessionAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(OpenHandle?.Invoke(nodeName, paneId));
         public Func<string, NodeSessionsSnapshot>? ReadSnapshot { get; init; }
         public Func<string, string, string?, NodeStartResult>? StartSession { get; init; }
         public Exception? ProbeFailure { get; init; }

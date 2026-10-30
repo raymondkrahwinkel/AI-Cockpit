@@ -213,6 +213,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // Compact one-line label for a collapsed tool-use row (T5): tool name + a short hint pulled from the
     // input (command/file/pattern/…), so a call reads as "Bash · dotnet build" instead of the full input
     // JSON. The full input shows once expanded; the row's own chevron renders separately as `ToggleIconKind`.
+    public string? ToolOriginLabel => Session?.RemoteServer is { } server ? $"ran on {Machine ?? server}"
+        : Session?.PaneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId ? $"ran on {Machine ?? Environment.MachineName}" : null;
+
     public string ToolHeader
     {
         get

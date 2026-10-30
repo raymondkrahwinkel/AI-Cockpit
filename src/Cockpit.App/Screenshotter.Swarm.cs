@@ -4,11 +4,61 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Swarm;
+using Cockpit.App.Services;
+using Avalonia.Controls;
 
 namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
+    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false)
+    {
+        var cockpit = new CockpitViewModel();
+        var options = new SidebarSwarmOptions(false);
+        var leader = selfLeads ? options.Laptop : serverLeads ? options.Desktop with { Name = "Server", HostKind = SwarmHostKind.Server } : options.Desktop;
+        var leadership = new SidebarLeadership(leader);
+        var conversation = new SessionViewModel { Title = "Assistant", ActiveProfileLabel = "Zyra" };
+        conversation.Transcript.Clear();
+        conversation.QueuedMessages.Clear();
+        conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "[from Laptop] Check the build on Desktop."));
+        conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "dotnet build -warnaserror")
+        {
+            ToolName = "Bash", InputJson = "{\"command\":\"dotnet build -warnaserror\"}",
+            ToolUseId = "build", ResultText = "Build succeeded. 0 warnings. 0 errors.",
+        });
+        conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
+            $"The build passed on {leader.Name}. You can continue from this machine."));
+        var handle = new SessionPanelHandle(conversation, false, () => null);
+        var nodes = new _SceneNodeSessions
+        {
+            OpenHandle = (node, pane) => node == leader.Name && pane == Cockpit.Core.Assistant.AssistantIdentity.PaneId
+                ? handle : throw new InvalidOperationException("The chat must open its leader's assistant session."),
+        };
+        cockpit.ShowSwarm(options, leadership, nodes, poll: false);
+        cockpit.RefreshSwarmGroupsAsync().GetAwaiter().GetResult();
+        var chat = _AssistantChatViewModel(conversation, cockpit: cockpit);
+        var reportedLeader = chat.LeadershipLabel;
+        System.ComponentModel.PropertyChangedEventHandler changed = (_, args) =>
+        {
+            if (args.PropertyName == nameof(AssistantChatViewModel.LeadershipLabel)) reportedLeader = chat.LeadershipLabel;
+        };
+        chat.PropertyChanged += changed;
+        leadership.MoveTo(selfLeads ? options.Desktop : options.Laptop);
+        if (reportedLeader != (selfLeads ? "Led by Desktop" : "You lead"))
+            throw new InvalidOperationException("The assistant chip must follow the leader change immediately.");
+        leadership.MoveTo(leader);
+        chat.PropertyChanged -= changed;
+        chat.EnsureOpenedAsync().GetAwaiter().GetResult();
+        chat.InputText = "And check the tests next";
+        if (!selfLeads && chat.Session is not { IsRemote: true, Transcript.Count: > 0 })
+            throw new InvalidOperationException("A follower must draw the leader's real remote transcript.");
+        return new AssistantChatWindow
+        {
+            DataContext = chat, Width = 960, Height = 720, Topmost = false,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+        };
+    }
+
     private static MainWindow _SwarmSidebar(int width, int height, bool asleep = false, bool start = false, bool empty = false)
     {
         var cockpit = new CockpitViewModel { SidebarWidth = 262, IsZoomed = true, AssistantIndicator = new AssistantIndicatorViewModel() };

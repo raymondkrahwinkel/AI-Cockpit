@@ -743,6 +743,9 @@
                                 <TextBlock Text="{Binding ToolHeader}"/>
                             </StackPanel>
                         </Button>
+                        <TextBlock Text="{Binding ToolOriginLabel}" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding ToolOriginLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <!-- AC-1056: a call the session let go of instead of waiting on, and how that task is
                              doing — the one thing that told a blocking call from a background one apart was
                              the raw input JSON, which is folded away until the operator expands the row. -->

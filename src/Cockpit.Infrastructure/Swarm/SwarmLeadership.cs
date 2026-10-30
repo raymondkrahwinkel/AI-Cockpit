@@ -8,6 +8,13 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private volatile SwarmLeadershipState _state = new();
+    private volatile bool _active;
+    public bool IsActive => _active;
+    private readonly Lock _leadershipGate = new();
+    public T WithLeader<T>(Func<SwarmMember?, T> action)
+    {
+        lock (_leadershipGate) return action(_state.Current);
+    }
     private readonly System.Collections.Concurrent.ConcurrentDictionary<SwarmMemberId, SwarmMemberId> _leaders = new();
     private SwarmTakeoverDecision? _decision;
     private readonly Lock _decisionGate = new();
@@ -56,6 +63,7 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
         try
         {
             var register = await store.LoadAsync(ct);
+            var active = register.PublicKeyOf(identity.MemberId) is not null;
             var mode = (await settings.LoadAsync(ct)).WhenALowerRankComesBack;
             var now = Time.GetUtcNow();
             SwarmMemberPresence Presence(SwarmMemberId id) => id == identity.MemberId
@@ -115,9 +123,9 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
                 }
                 next = SwarmLeaderElection.Evaluate(register, Presence, now, previous, mode);
             }
-            changed = next.Current?.Id != _state.Current?.Id || next.Current?.Rank != _state.Current?.Rank
+            changed = active != _active || next.Current?.Id != _state.Current?.Id || next.Current?.Rank != _state.Current?.Rank
                 || next.Pending?.Member.Id != _state.Pending?.Member.Id || next.Pending?.At != _state.Pending?.At;
-            _state = next;
+            lock (_leadershipGate) { _state = active ? next : new(); _active = active; }
         }
         finally
         {

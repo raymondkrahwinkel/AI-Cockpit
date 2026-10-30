@@ -24,6 +24,6 @@ internal static class SwarmSessionEventsEndpoint
             return;
         }
 
-        await EventsEndpoint.StreamAsync(context, services).ConfigureAwait(false);
+        await EventsEndpoint.StreamAsync(context, services, swarmAssistant: true).ConfigureAwait(false);
     }
 }

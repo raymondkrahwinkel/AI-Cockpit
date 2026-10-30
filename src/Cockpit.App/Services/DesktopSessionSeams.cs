@@ -13,6 +13,9 @@ namespace Cockpit.App.Services;
 internal sealed class DesktopSessionSeams(Func<CockpitViewModel> cockpit)
     : ISessionDesks, ISessionHosting, ISessionStartObserver, IAssistantSessionFactory
 {
+    public Task<T> OnOwnerThreadAsync<T>(Func<Task<T>> action) =>
+        Dispatcher.UIThread.CheckAccess() ? action() : Dispatcher.UIThread.InvokeAsync(action);
+
     public Task<T> RunExclusiveAsync<T>(Func<T> decision) => UiThreadCall.RunAsync(decision);
 
     public WorkspaceSettings Workspaces => cockpit().Workspaces.Settings;

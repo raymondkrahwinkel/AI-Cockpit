@@ -39,7 +39,7 @@ public class TerminalShellIntegrationTrackerTests
     }
 
     [Fact]
-    public void AFinishMark_CountsTheCommand_AndCarriesItsExitCode()
+    public void FinishMarks_CountCommands_AndReportOnlyTheCurrentExitCode()
     {
         var tracker = new TerminalShellIntegrationTracker();
 
@@ -48,16 +48,9 @@ public class TerminalShellIntegrationTrackerTests
         Assert.Equal(1, tracker.CommandsFinished);
         Assert.Equal(1, tracker.LastExitCode);
         Assert.False(tracker.AtPrompt, "the next prompt mark is what says it is ready again");
-    }
-
-    [Fact]
-    public void AFinishMarkWithoutACode_CountsButReportsNoExitCode()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
         tracker.Feed(Mark("C") + Mark("D"));
 
-        Assert.Equal(1, tracker.CommandsFinished);
+        Assert.Equal(2, tracker.CommandsFinished);
         Assert.Null(tracker.LastExitCode);
     }
 
