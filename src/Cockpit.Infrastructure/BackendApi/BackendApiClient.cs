@@ -17,6 +17,7 @@ public sealed class BackendApiClient : IDisposable
     private readonly HttpClient _http;
     private readonly TimeProvider _time;
     private readonly string _eventsPath;
+    internal bool IsSwarm => _eventsPath == "swarm/session-events";
 
     public BackendApiClient(Uri baseAddress, string key, string fingerprint, TimeProvider time)
         : this(baseAddress, key, fingerprint, time, null, "api/v1/events")

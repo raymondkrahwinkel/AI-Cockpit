@@ -22,7 +22,8 @@ internal sealed class AgentsMcpTools(
     IAgentLineBudget budget,
     INodeControllerPresence? presence = null,
     INodePairingBroker? pairing = null,
-    ISessionRegistry? sessions = null)
+    ISessionRegistry? sessions = null,
+    Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
@@ -201,7 +202,8 @@ internal sealed class AgentsMcpTools(
             // its key's scope, or the pairing grant); any other session's mail stays local.
             var profile = _ProfileOf(snapshot, caller) ?? string.Empty;
             var projectId = sessions?.Find(caller)?.ProjectId;
-            var current = string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal) ? presence?.Current : null;
+            var swarmAssistant = addressee == AssistantIdentity.PaneId && swarmLeadership?.IsActive == true;
+            var current = !swarmAssistant && string.Equals(addressee, AssistantIdentity.PaneId, StringComparison.Ordinal) ? presence?.Current : null;
             var controller = current is not null
                 && pairing is not null
                 && NodeCaller.Holding(current).AllowsSession(profile, projectId, pairing)
@@ -211,7 +213,7 @@ internal sealed class AgentsMcpTools(
             // The workspace boundary, enforced here at send time on the host's own answer to "who is on this
             // caller's desk" (AC-391's gateway) — never on anything the agent supplied. A pane on another desk is
             // not in this snapshot, so it cannot be addressed.
-            if (controller is null && !_IsOnTheDesk(snapshot, addressee))
+            if (!swarmAssistant && controller is null && !_IsOnTheDesk(snapshot, addressee))
             {
                 // AC-1013 (AC-614): distinguishes "recipient left" from "address never existed" — one refusal for
                 // both used to make a sender with a stale listing wrongly conclude it had mistyped the id.
@@ -245,7 +247,7 @@ internal sealed class AgentsMcpTools(
             // AC-1013: re-checks membership after delivery to close the race where the recipient's Forget (on the
             // UI thread) runs between the pre-delivery snapshot and Deliver — see ticket comment for the full
             // race analysis and why a null re-snapshot is not treated as the recipient having left.
-            if (controller is null
+            if (!swarmAssistant && controller is null
                 && delivery.Outcome == AgentMessageDeliveryOutcome.Delivered
                 && await workspaces.GetWorkspaceSnapshotAsync(caller).ConfigureAwait(false) is { } afterDelivery
                 && !_IsOnTheDesk(afterDelivery, addressee))
@@ -266,7 +268,8 @@ internal sealed class AgentsMcpTools(
             // After the message is safely in the inbox and after the recipient-gone retraction above, so a wake is
             // only ever started for a message that is actually waiting to be read. Nothing to wake for a message
             // queued for the controller (AC-1322): its assistant is on another machine, and its poll collects it.
-            var wake = urgent && controller is null ? await _WakeAsync(caller, addressee, label, deduplicated).ConfigureAwait(false) : (AgentWakeOutcome?)null;
+            var wake = urgent && controller is null && (!swarmAssistant || swarmLeadership!.IsSelf)
+                ? await _WakeAsync(caller, addressee, label, deduplicated).ConfigureAwait(false) : (AgentWakeOutcome?)null;
 
             await notifyAudit.RecordAsync(new AgentNotifyAuditEntry(
                 DateTimeOffset.UtcNow,
@@ -293,12 +296,13 @@ internal sealed class AgentsMcpTools(
                 deliveredTo = message.ToPaneId,
                 // AC-1322: the machine whose assistant collects this, when it is not the one here.
                 controller = controller?.Name,
+                leader = swarmAssistant ? swarmLeadership!.Current?.Name : null,
                 // AC-1013: whether the recipient sees this unasked, reported here (not just list_agents) at the
                 // moment a sender forms its expectation — else it waits on a reply that isn't coming.
                 deliversAtTurnStart = controller is null && _DeliversAtTurnStart(snapshot, addressee),
                 // AC-1013 (AC-614): warns when nothing will collect this — otherwise every field reads like
                 // success while the message sits unopened. See ticket comment for the origin incident.
-                unreachable = controller is null ? _UnreachableWarning(coordinator, snapshot, addressee) : null,
+                unreachable = controller is null && !swarmAssistant ? _UnreachableWarning(coordinator, snapshot, addressee) : null,
                 // AC-1013: null only when unrequested; always present when a wake was asked for, including why it
                 // didn't fire — a silent non-wake would leave the sender believing it worked while nobody answers.
                 wake = wake is { } outcome

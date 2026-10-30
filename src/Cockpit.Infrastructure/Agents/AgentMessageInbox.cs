@@ -174,6 +174,9 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
 
     private AgentMessageDelivery _Deliver(ActiveController? holder, string fromPaneId, string toPaneId, string kind, string body, string? senderProfile, string? senderProjectId, bool profileWide, string? subjectPaneId)
     {
+        if (toPaneId is AssistantIdentity.PaneId or AssistantIdentity.ControllerInboxPaneId
+            && _services?.GetService<Cockpit.Core.Swarm.ISwarmLeadership>() is { IsActive: true, IsSelf: false })
+            toPaneId = Cockpit.Infrastructure.Swarm.SwarmAssistantRelay.Outbox;
         lock (_lock)
         {
             // AC-1405: first, so mail queued for a holder no longer live neither dedups nor crowds out mail for the next.

@@ -18,7 +18,7 @@ internal static class EventsEndpoint
         api.MapGet("/events", (Func<HttpContext, Task>)(context => StreamAsync(context, services))).RequireOperate();
     }
 
-    internal static async Task StreamAsync(HttpContext context, IServiceProvider services)
+    internal static async Task StreamAsync(HttpContext context, IServiceProvider services, bool swarmAssistant = false)
     {
         var cursor = context.Request.Headers["Last-Event-ID"].ToString();
         if (cursor.Length == 0)
@@ -75,7 +75,7 @@ internal static class EventsEndpoint
                     // AC-1472: a clone's outcome names its project and folder, which are an admin's to read.
                     if ((evt.PaneId is { } paneId
                             && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
-                                ? !caller.HoldsAssistant
+                                ? !caller.HoldsAssistant && !swarmAssistant
                                 : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing)))
                         || (evt.Kind == ProjectsEndpoints.EventKind && caller.Capability != ConnectKeyCapability.Admin))
                     {

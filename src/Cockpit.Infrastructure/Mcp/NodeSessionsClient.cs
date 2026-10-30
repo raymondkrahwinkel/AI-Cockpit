@@ -52,7 +52,7 @@ internal sealed class NodeSessionsClient(
         {
             var channel = await pending.ConfigureAwait(false);
             if (channel.TryObserve()) _ = _EvictWhenFinishedAsync(nodeName, pending, channel);
-            return channel.Backend.Find(paneId);
+            return paneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId ? channel.Backend.Assistant : channel.Backend.Find(paneId);
         }
         catch
         {

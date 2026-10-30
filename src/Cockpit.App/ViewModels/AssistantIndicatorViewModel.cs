@@ -9,6 +9,9 @@ namespace Cockpit.App.ViewModels;
 // instead of the same control (AC-543, AC-238).
 public partial class AssistantIndicatorViewModel : ViewModelBase
 {
+    [ObservableProperty]
+    private string? _leadershipLabel;
+
     // What the indicator reports — see `AssistantActivity` for the eight states.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Label))]

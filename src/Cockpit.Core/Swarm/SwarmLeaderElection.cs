@@ -14,8 +14,10 @@ public interface ISwarmLeadership
 {
     SwarmMember? Current { get; }
     bool IsSelf { get; }
+    bool IsActive => Current is not null;
     SwarmTakeover? PendingTakeover { get; }
     event EventHandler? Changed;
+    T WithLeader<T>(Func<SwarmMember?, T> action) => action(Current);
     Task TakeOverNowAsync(CancellationToken ct = default);
     Task StayWithCurrentAsync(CancellationToken ct = default);
 }

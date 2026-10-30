@@ -177,6 +177,9 @@
                         <StackPanel x:Name="TitleRow" Orientation="Horizontal" Spacing="6">
                             <TextBlock Text="Assistant" FontSize="13.5" FontWeight="SemiBold"
                                        Foreground="{DynamicResource CockpitTextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding LeadershipLabel}" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
+                                       IsVisible="{Binding LeadershipLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding Session.ActiveProfileLabel}" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
@@ -310,7 +313,7 @@
                                          and memory/current-state survive it untouched — the confirmation dialog
                                          says so. -->
                                     <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                            Padding="10,8" Margin="4" Command="{Binding ClearConversationCommand}">
+                                            Padding="10,8" Margin="4" Command="{Binding ClearConversationCommand}" IsVisible="{Binding CanClearConversation}">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <materialIcons:MaterialIcon Kind="Broom" Width="14" Height="14" VerticalAlignment="Center"/>
                                             <TextBlock Text="Clear conversation…" FontSize="11.5" VerticalAlignment="Center"/>
@@ -364,6 +367,19 @@
                  narrow for both breaks the second pill onto its own line instead of clipping it or shoving the
                  usage pill aside — same WrapPanel/340px-MinWidth precedent as the warning bar's own button row
                  further down ("T2's narrow-window layout"). -->
+            <Border DockPanel.Dock="Top" Padding="12,8" Background="{DynamicResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{DynamicResource CockpitHairlineSoftBrush}" BorderThickness="0,0,0,1"
+                    IsVisible="{Binding LocationLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="{Binding LocationLabel}" FontSize="11.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="No one is at that machine" FontSize="11" IsVisible="{Binding LeaderIsServer}"
+                               Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding LeaderSessionError}" FontSize="11" TextWrapping="Wrap"
+                               IsVisible="{Binding LeaderSessionError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
             <WrapPanel DockPanel.Dock="Top" Margin="10,6,10,0" ItemSpacing="8" LineSpacing="6">
                 <!-- AC-1529: usage is ⋯ → Details in the Simple stand (AC-1533). -->
                 <Panel>

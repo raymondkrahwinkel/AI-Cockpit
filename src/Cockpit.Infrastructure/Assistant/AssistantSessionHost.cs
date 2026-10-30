@@ -12,6 +12,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Core.Swarm;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -34,6 +35,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
     private readonly ILogger<AssistantSessionHost> _logger;
+    private readonly ISwarmAssistantRelay? _swarmRelay;
+    private readonly ISwarmLeadership? _leadership;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -59,7 +62,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         SessionStateRecorder sessionStateRecorder,
         IMcpServerCatalog mcpServers,
         IAssistantMemory memory,
-        ILogger<AssistantSessionHost> logger)
+        ILogger<AssistantSessionHost> logger,
+        ISwarmAssistantRelay? swarmRelay = null,
+        ISwarmLeadership? leadership = null)
     {
         _sessions = sessions;
         _presence = presence;
@@ -70,6 +75,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         _mcpServers = mcpServers;
         _memory = memory;
         _logger = logger;
+        _swarmRelay = swarmRelay;
+        _leadership = leadership;
+        if (leadership is not null) leadership.Changed += (_, _) =>
+            _ = _sessions.OnOwnerThreadAsync(() => { _ApplyTurnHold(); return Task.FromResult(true); });
 
         // AC-1321: a controller appearing or going away is re-read through the same path a settings save takes,
         // so the takeover is one more reason on the existing off state and not a second one.
@@ -240,8 +249,18 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // AC-1013: Brings the assistant up if not already (idempotent, replaces a dead instance). Never throws — the
     // callers are hotkey/click handlers with nowhere to put an exception; a failed start instead leaves
     // `Activity` on `Unavailable` with the reason set, so the chip says what the log used to say alone.
-    public Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
-        _StartOrReplaceAsync(replaceALiveInstance: false, startFresh: false, cancellationToken);
+    public async Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken) && _leadership?.IsSelf != true)
+        {
+            await _swarmRelay.EnsureStartedAsync(cancellationToken);
+            return null;
+        }
+        return await EnsureLocalStartedAsync(cancellationToken);
+    }
+
+    internal Task<IAssistantSession?> EnsureLocalStartedAsync(CancellationToken ct) =>
+        _StartOrReplaceAsync(replaceALiveInstance: false, startFresh: false, ct);
 
     // AC-1013: Stands the assistant down and brings it straight back up on the same conversation, so a start-time
     // setting (e.g. `bypassPermissions`, choosable only at a start — bug #15) takes effect without closing the
@@ -276,6 +295,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
+            if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken) && _leadership?.IsSelf != true)
+            {
+                _SetUnavailable("Waiting for the swarm leader.");
+                return null;
+            }
             // AC-1321: no new turn while a controller holds the line — before the live-instance shortcut, since a
             // running conversation is allowed to finish its turn but not to take another.
             if (_presence.Current is { } controller)
@@ -323,6 +347,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
     public async Task SendAsync(string text, IReadOnlyList<byte[]> pngImages, CancellationToken cancellationToken = default)
     {
+        if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken))
+        {
+            await _swarmRelay.SendAsync(text, pngImages, cancellationToken);
+            return;
+        }
         // An image with no words is a message too (AC-630) — a pasted or captured attachment waiting on the
         // composer is reason enough to send, and refusing here left it hanging with no way out.
         if (string.IsNullOrWhiteSpace(text) && pngImages.Count == 0 && Session is not { HasPendingAttachments: true })
@@ -936,7 +965,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     {
         if (Session is { } live)
         {
-            live.TurnsHeldBecause = _presence.Current is { } controller ? controller.TakeoverReason() : null;
+            live.TurnsHeldBecause = _leadership is { IsActive: true, IsSelf: false }
+                ? "The assistant runs on the swarm leader."
+                : _presence.Current is { } controller ? controller.TakeoverReason() : null;
         }
     }
 

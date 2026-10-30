@@ -3495,7 +3495,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodeSessionsClient,
             nodeInboxRelay,
             // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
-            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
+            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session,
+                () => swarmLeadership?.IsActive != true || swarmLeadership.IsSelf),
             behaviourSync,
             remoteServers,
             orgPolicy);
