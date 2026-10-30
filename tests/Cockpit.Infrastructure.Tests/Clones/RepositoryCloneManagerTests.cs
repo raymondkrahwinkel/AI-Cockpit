@@ -12,7 +12,7 @@ namespace Cockpit.Infrastructure.Tests.Clones;
 /// </summary>
 public sealed class RepositoryCloneManagerTests : IDisposable
 {
-    private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"cockpit-clone-{Guid.NewGuid():n}");
+    private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
     private readonly string _clonesRoot;
     private readonly string _source;
     private readonly string _sourceUrl;
