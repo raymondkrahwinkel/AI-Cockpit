@@ -107,6 +107,7 @@ internal sealed partial class AgentOwnedTabs
             Check(caller, entry.Generation);
             if (action.Tool is "click" or "key" or "navigate")
             {
+                // ponytail: feedback waits at most 200 ms; slower boundary events may miss this action's response.
                 await Task.Delay(200, token).ConfigureAwait(false);
                 if (boundary.TakeBlocked(entry.Target) is { } blocked)
                     throw new OwnedTabException(blocked, "The browser blocked this action at the file or protocol boundary.");
