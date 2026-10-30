@@ -3911,6 +3911,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _notificationSettingsStore.LoadAsync();
+        ToastHost.AutoDismissDelay = TimeSpan.FromSeconds(settings.ToastTimeoutSeconds > 0 ? settings.ToastTimeoutSeconds : 5);
         LocalNotificationsEnabled = settings.LocalEnabled;
         DiscordNotificationsEnabled = settings.DiscordEnabled;
         WebhookUrl = settings.WebhookUrl ?? string.Empty;
@@ -3937,7 +3938,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? IdleThresholdMinutes
             : (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
-        var settings = new NotificationSettings
+        var settings = (await _notificationSettingsStore.LoadAsync()) with
         {
             LocalEnabled = LocalNotificationsEnabled,
             DiscordEnabled = DiscordNotificationsEnabled,
@@ -4308,7 +4309,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // One warned-flag per session pane (AC-692), not one flag for the whole cockpit — a session that has already
     // been named should not silence the toast for the next one that climbs.
-    private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _sessionsOverMemoryCap = new(StringComparer.Ordinal);
 
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
     // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by pane id, the
@@ -4374,30 +4375,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
-        var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.PaneId), StringComparer.Ordinal);
-        foreach (var paneId in _warnedAboutSessionMemory.Keys.Where(paneId => !stillHere.Contains(paneId)).ToList())
-        {
-            _warnedAboutSessionMemory.Remove(paneId);
-        }
+        var active = usage.Sessions
+            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes is { } cap && cap > 0
+                && SessionMemoryPressure.Decide(measured.MemoryBytes, cap,
+                    _sessionsOverMemoryCap.Contains(measured.PaneId)).Warned)
+            .Select(measured => measured.PaneId).ToArray();
+        _sessionsOverMemoryCap.Clear();
+        _sessionsOverMemoryCap.UnionWith(active);
 
         foreach (var measured in usage.Sessions)
         {
             var session = _FindMeasured(measured);
             var cap = session?.MemoryCapBytes ?? 0;
-            var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.PaneId);
-            var decision = SessionMemoryPressure.Decide(measured.MemoryBytes, cap, warned);
-            _warnedAboutSessionMemory[measured.PaneId] = decision.Warned;
-
-            if (!decision.Warn || session is null)
+            if (session is null || !_sessionsOverMemoryCap.Contains(measured.PaneId))
             {
                 continue;
             }
 
-            ToastHost.Add(
+            ToastHost.AddCondition($"memory-cap:{measured.PaneId}",
                 $"'{measured.Title}' is over its {_Megabytes(cap)} memory cap, holding {_Megabytes(measured.MemoryBytes)}. Cockpit will not close it on its own.",
                 ToastSeverity.Warning,
-                actionLabel: "Kill",
-                onAction: () => _ = CloseSessionCommand.ExecuteAsync(session));
+                [new ToastAction("Kill", () => _ = CloseSessionCommand.ExecuteAsync(session))],
+                () => Sessions.Contains(session) && _sessionsOverMemoryCap.Contains(session.PaneId));
         }
     }
 
@@ -4511,9 +4510,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
+        _ReportSessionProcesses(usage);
         _WarnAboutSessionMemory(usage);
         _WarnAboutSessionPressure(usage);
-        _ReportSessionProcesses(usage);
+        ToastHost.RecheckConditions();
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);

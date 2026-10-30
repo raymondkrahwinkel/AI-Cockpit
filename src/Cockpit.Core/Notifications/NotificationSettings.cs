@@ -5,6 +5,10 @@ namespace Cockpit.Core.Notifications;
 // URL used when away, the idle threshold for "away", and the master on/off switch.
 public sealed record NotificationSettings
 {
+    public string[] IgnoredHomeFolderPatterns { get; init; } = ["Config.Msi", "MSI*.tmp", "$Recycle.Bin", "System Volume Information"];
+
+    public int ToastTimeoutSeconds { get; init; } = 5;
+
     // Default idle time before the operator counts as "away" when the PC is not locked.
     public static readonly TimeSpan DefaultIdleThreshold = TimeSpan.FromMinutes(15);
 
