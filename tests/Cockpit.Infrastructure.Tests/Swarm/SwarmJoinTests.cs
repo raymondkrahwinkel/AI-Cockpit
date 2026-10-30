@@ -5,29 +5,41 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 
 public class SwarmJoinTests
 {
-    public static TheoryData<string> Outcomes => new() { "confirmed", "refused", "expired", "pending" };
+    public static TheoryData<string> Outcomes => new() { "confirmed", "refused", "expired", "pending", "mesh" };
 
     [Theory]
     [MemberData(nameof(Outcomes))]
     public async Task JoinRequiresBothOperatorsAndGrantsBothDirections(string outcome)
     {
         await using var pair = await SwarmJoinFixture.CreateAsync();
+        await using var third = await SwarmJoinFixture.Machine.CreateAsync(pair.Time, SwarmHostKind.Desktop);
+        if (outcome == "mesh")
+        {
+            var earlier = await pair.A.Client.BeginAsync(third.Address);
+            third.Join.Confirm(earlier.Offer.PairingId);
+            await pair.A.Client.CompleteAsync(earlier);
+        }
         var handshake = await pair.A.Client.BeginAsync(pair.B.Address);
         Assert.Equal(pair.B.Join.Pending!.Code, handshake.Code);
         Assert.Equal(6, handshake.Code.Length);
         Assert.Equal(pair.B.Identity.MemberId, SwarmMemberId.FromPublicKey(handshake.PublicKey));
         Assert.NotEqual(pair.B.Certificate.Fingerprint, pair.B.Identity.MemberId.Value);
-        if (outcome == "confirmed")
+        if (outcome is "confirmed" or "mesh")
         {
             pair.B.Join.Confirm(handshake.Offer.PairingId);
             await pair.A.Client.CompleteAsync(handshake);
             var a = await pair.A.Membership.LoadAsync();
             var b = await pair.B.Membership.LoadAsync();
-            Assert.Equal(2, a.Members.Count());
+            Assert.Equal(outcome == "mesh" ? 3 : 2, a.Members.Count());
             Assert.Equal(System.Text.Json.JsonSerializer.Serialize(a.Log, SwarmRecordJson.Options), System.Text.Json.JsonSerializer.Serialize(b.Log, SwarmRecordJson.Options));
             Assert.All(a.Log, record => Assert.True(record.Verify(a.PublicKeyOf)));
             Assert.Equal(2, a.Log[^1].Signatures.Count);
             await pair.AssertBothDirectionsAsync();
+            if (outcome == "mesh")
+            {
+                Assert.Equal(2, (await pair.B.Servers.LoadAsync()).Count);
+                Assert.Equal(2, (await third.Servers.LoadAsync()).Count);
+            }
         }
         else
         {

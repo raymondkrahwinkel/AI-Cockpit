@@ -79,7 +79,12 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
             // AC-1284: the configured port, not 0 — a controller stores this address and never hears about a new
             // one, so an OS-assigned port made the node's first restart break the pairing permanently.
             builder.WebHost.ConfigureKestrel(options =>
-                options.Listen(_listenAddress, settings.Port, listenOptions => listenOptions.UseHttps(_certificate.Value)));
+                options.Listen(_listenAddress, settings.Port, listenOptions => listenOptions.UseHttps(https =>
+                {
+                    https.ServerCertificate = _certificate.Value;
+                    https.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
+                    https.ClientCertificateValidation = (_, _, _) => true;
+                })));
 
             var app = builder.Build();
             _MapRoutes(app);

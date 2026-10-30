@@ -11,6 +11,7 @@ public sealed record SwarmJoinCommit(NodePairingClaimRequest Claim, SwarmRecord 
 public sealed record SwarmTransport(string ConnectKey, string Pin, IReadOnlyList<NodeEndpointAddress> Endpoints);
 public sealed record SwarmJoinHandshake(string Address, NodePairingOffer Offer, string Code, string Pin, byte[] PublicKey);
 public sealed record SwarmJoinPending(string PairingId, string Name, string Code, DateTimeOffset ExpiresAt);
+public sealed record SwarmMeshRequest(IReadOnlyList<SwarmRecord> Log, SwarmTransport Transport);
 
 public static class SwarmJoinError
 {

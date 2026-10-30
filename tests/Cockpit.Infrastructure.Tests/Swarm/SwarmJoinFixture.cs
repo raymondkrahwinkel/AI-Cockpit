@@ -35,7 +35,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
     {
         foreach (var (source, target) in new[] { (A, B), (B, A) })
         {
-            var server = Assert.Single(await source.Servers.LoadAsync());
+            var server = Assert.Single(await source.Servers.LoadAsync(), server => server.PinnedCertificateFingerprint == target.Certificate.Fingerprint);
             Assert.Equal(target.Certificate.Fingerprint, server.PinnedCertificateFingerprint);
             using var client = new HttpClient(NodeCertificatePin.Require(server.PinnedCertificateFingerprint!));
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", server.ApiKey);
@@ -77,11 +77,17 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             var endpoint = new Endpoint();
             var host = new SwarmHost(kind);
             machine.Presence = new(time);
-            machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings, machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time };
+            machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings, machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
             machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join, machine.Settings, new NodeDiscoveryClient());
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(policy);
-            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(machine.Certificate.Value)));
+            builder.Services.AddSingleton(machine.Client);
+            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Any, 0, listen => listen.UseHttps(https =>
+            {
+                https.ServerCertificate = machine.Certificate.Value;
+                https.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
+                https.ClientCertificateValidation = (_, _, _) => true;
+            })));
             machine._app = builder.Build();
             machine.Join.MapRoutes(machine._app, machine._app.Services);
             machine._app.MapGet("/remote", async (HttpContext context) =>
@@ -92,7 +98,10 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                     ? Results.Ok() : Results.Unauthorized();
             });
             await machine._app.StartAsync();
-            machine.Address = machine._app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            var bound = machine._app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            var port = new Uri(bound).Port;
+            machine.Address = $"https://127.0.0.1:{port}";
+            await machine.Settings.SaveAsync(new NodeEndpointSettings { Enabled = true, Port = port });
             endpoint.Address = machine.Address + "/remote";
             return machine;
         }
