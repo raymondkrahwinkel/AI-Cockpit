@@ -4376,8 +4376,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
         var active = usage.Sessions
-            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes > 0
-                && SessionMemoryPressure.Decide(measured.MemoryBytes, session.MemoryCapBytes,
+            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes is { } cap && cap > 0
+                && SessionMemoryPressure.Decide(measured.MemoryBytes, cap,
                     _sessionsOverMemoryCap.Contains(measured.PaneId)).Warned)
             .Select(measured => measured.PaneId).ToArray();
         _sessionsOverMemoryCap.Clear();
