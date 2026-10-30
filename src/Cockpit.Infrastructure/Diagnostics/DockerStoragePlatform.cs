@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Shell;
+using Cockpit.Core.Configuration;
 
 namespace Cockpit.Infrastructure.Diagnostics;
 
@@ -28,7 +29,7 @@ internal sealed class DockerStoragePlatform(IShellCommandRunner shell) : IDocker
 
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         List<string> roots = [System.IO.Path.Combine(local, "Docker", "wsl")];
-        var settings = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docker");
+        var settings = System.IO.Path.Combine(CockpitBuild.RoamingApplicationData, "Docker");
         foreach (var name in new[] { "settings-store.json", "settings.json" })
         {
             var file = System.IO.Path.Combine(settings, name);
