@@ -35,6 +35,41 @@ public class SwarmPropagationTests
             return;
         }
         var membership = await pair.B.Membership.LoadAsync();
+        if (scenario == "sleep")
+        {
+            var machines = new[] { pair.A, pair.B, third };
+            var lowest = machines.MinBy(machine => membership.Members.Single(member => member.Id == machine.Identity.MemberId).Rank)!;
+            var higher = machines.First(machine => machine != lowest);
+            var changed = 0;
+            higher.Leadership.Changed += (_, _) => changed++;
+            await higher.Leadership.RefreshAsync();
+            var before = changed;
+            await higher.Leadership.RefreshAsync();
+            Assert.Equal(before, changed);
+            await lowest.SwarmSettings.SaveAsync(new() { WhenALowerRankComesBack = SwarmLowerRankReturn.JoinAtBack });
+            Assert.Equal(SwarmLowerRankReturn.JoinAtBack, (await lowest.SwarmSettings.LoadAsync()).WhenALowerRankComesBack);
+            Assert.True((await lowest.Settings.LoadAsync()).Enabled);
+            foreach (var machine in machines)
+                foreach (var peer in machines.Where(peer => peer != machine))
+                    machine.Reachability.Answer(peer.Identity.MemberId, System.Net.HttpStatusCode.OK);
+            await higher.Leadership.RefreshAsync();
+            Assert.Equal(lowest.Identity.MemberId, higher.Leadership.PendingTakeover?.Member.Id);
+            await higher.Leadership.StayWithCurrentAsync();
+            Assert.Null(higher.Leadership.PendingTakeover);
+            Assert.True(higher.Leadership.IsSelf);
+            await higher.Leadership.TakeOverNowAsync();
+            Assert.Equal(lowest.Identity.MemberId, higher.Leadership.Current?.Id);
+            Assert.Equal(SwarmTakeoverAction.TakeOverNow, higher.Leadership.Decision?.Action);
+            lowest.Leadership.Observe(higher.Identity.MemberId, higher.Identity.MemberId, null);
+            await lowest.Leadership.RefreshAsync();
+            var reranked = await lowest.Membership.LoadAsync();
+            Assert.True(reranked.Members.Single(member => member.Id == lowest.Identity.MemberId).Rank > membership.Members.Max(member => member.Rank));
+            Assert.False(lowest.Leadership.IsSelf);
+            await higher.Propagation.ApplyAsync(await lowest.Propagation.RecordsAsync(membership.Sequence,
+                SwarmPropagation.Prefix(membership.Log), default), default);
+            Assert.Equal(reranked.Members.Single(member => member.Id == lowest.Identity.MemberId).Rank,
+                (await higher.Membership.LoadAsync()).Members.Single(member => member.Id == lowest.Identity.MemberId).Rank);
+        }
         if (scenario is "forged-record" or "collision" or "gap")
         {
             var delta = await third.Propagation.RecordsAsync(membership.Sequence, SwarmPropagation.Prefix(membership.Log), default);

@@ -159,28 +159,16 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
-    public void AReadingBackUnderItsThreshold_TakesItsOwnWarningDownWithIt()
-    {
-        // A /clear empties the context and the very next reading says so, but the bar went on repeating the figure
-        // from before it — a notice about a window that no longer existed, and only a click could remove it.
-        var session = Build();
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
-        Assert.True(session.HasUsageWarning);
-
-        session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
-
-        Assert.False(session.HasUsageWarning);
-    }
-
-    [Fact]
     public void AWarningThatClearedItself_SpeaksAgainOnTheNextCrossing()
     {
         // The same re-crossing as DroppingBackAndClimbingAgain, minus the dismiss that used to be needed in
         // between — the crossing is what speaks, and clearing on the way down must not have consumed it.
         var session = Build();
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
+        Assert.True(session.HasUsageWarning);
 
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 4, null)]);
+        Assert.False(session.HasUsageWarning);
         session.ApplyUsage(Signals, [new PluginUsageReading("context", 51, null)]);
 
         Assert.True(session.HasUsageWarning);
