@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Cockpit.Plugin.Browser;
 
 // Public ids never disclose a target or an endpoint. A restarted pane cannot inherit its old run's tabs.
-internal sealed class AgentOwnedTabs(AgentBrowserHost browsers)
+internal sealed partial class AgentOwnedTabs(AgentBrowserHost browsers)
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
     private readonly ConcurrentDictionary<string, Entry> _tabs = new(StringComparer.Ordinal);
