@@ -12,12 +12,11 @@ internal interface ILocalModelContextManager
     Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default);
 }
 
-// LM Studio's OpenAI-compatible inference endpoint cannot select a context per request. Its native v1 model API
-// can, so session startup reconciles the loaded instance with the profile before the first chat call. An old server
-// remains usable: inability to inspect or load is reported to the session as a warning, never as a startup failure.
 internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<LocalModelContextManager> logger)
     : ILocalModelContextManager, ISingletonService
 {
+    private static readonly SemaphoreSlim _lmStudioLoadGate = new(1, 1);
+
     public async Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default)
     {
         if (config is OllamaConfig ollama)
@@ -36,17 +35,30 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
         }
 
         var requested = LocalModelContext.Normalize(lmStudio.ContextTokens);
+        await _lmStudioLoadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             using var response = await _SendAsync(lmStudio, HttpMethod.Get, "/api/v1/models", null, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                if (lmStudio.LoadOptions is not null)
+                {
+                    throw new InvalidOperationException($"LM Studio model inspection failed (HTTP {(int)response.StatusCode}); load options were not applied.");
+                }
+
                 return _UnavailableWarning(lmStudio, requested, $"HTTP {(int)response.StatusCode}");
             }
 
             await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var document = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken).ConfigureAwait(false);
             var instance = _LoadedInstance(document.RootElement, lmStudio.Model);
+            if (lmStudio.LoadOptions is not null)
+            {
+                var summary = await LmStudioModelOptions.PrepareAsync(lmStudio, instance?.Id, instance?.ModelKey ?? lmStudio.Model, cancellationToken).ConfigureAwait(false);
+                logger.LogInformation("{LoadOptions}", summary);
+                return summary;
+            }
+
             if (instance is null)
             {
                 return await _LoadAsync(lmStudio, requested, cancellationToken).ConfigureAwait(false);
@@ -85,9 +97,13 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
         {
             throw;
         }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException or InvalidOperationException or UriFormatException)
+        catch (Exception exception) when (lmStudio.LoadOptions is null && (exception is HttpRequestException or JsonException or InvalidOperationException or UriFormatException))
         {
             return _UnavailableWarning(lmStudio, requested, exception.Message, exception);
+        }
+        finally
+        {
+            _lmStudioLoadGate.Release();
         }
     }
 
@@ -169,7 +185,7 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
                     continue;
                 }
 
-                var candidate = new LoadedInstance(id.GetString() ?? model, tokens);
+                var candidate = new LoadedInstance(id.GetString() ?? model, tokens, key.ValueKind == JsonValueKind.String ? key.GetString()! : model);
                 if (string.Equals(candidate.Id, model, StringComparison.OrdinalIgnoreCase))
                 {
                     return candidate;
@@ -190,5 +206,5 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
         return null;
     }
 
-    private readonly record struct LoadedInstance(string Id, int ContextLength);
+    private readonly record struct LoadedInstance(string Id, int ContextLength, string ModelKey);
 }

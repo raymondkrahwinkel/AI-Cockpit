@@ -27,6 +27,10 @@ internal sealed class ProviderConfigEntry
 
     public bool LoadModelWithContext { get; set; }
 
+    public LmStudioLoadOptions? LoadOptions { get; set; }
+
+    public bool? EnableThinking { get; set; }
+
     // The registered provider's id, for a plugin-backed profile (#45) — see `PluginProviderConfig`.
     public string? PluginProviderId { get; set; }
 
@@ -39,7 +43,7 @@ internal sealed class ProviderConfigEntry
     {
         ClaudeConfig => new() { Provider = SessionProvider.ClaudeCli },
         OllamaConfig ollama => new() { Provider = SessionProvider.Ollama, BaseUrl = ollama.BaseUrl, Model = ollama.Model, SystemPrompt = ollama.SystemPrompt, TurnLimits = ollama.TurnLimits, ContextTokens = ollama.ContextTokens },
-        LmStudioConfig lmStudio => new() { Provider = SessionProvider.LmStudio, BaseUrl = lmStudio.BaseUrl, Model = lmStudio.Model, ApiKey = lmStudio.ApiKey, SystemPrompt = lmStudio.SystemPrompt, TurnLimits = lmStudio.TurnLimits, ContextTokens = lmStudio.ContextTokens, LoadModelWithContext = lmStudio.LoadModelWithContext },
+        LmStudioConfig lmStudio => new() { Provider = SessionProvider.LmStudio, BaseUrl = lmStudio.BaseUrl, Model = lmStudio.Model, ApiKey = lmStudio.ApiKey, SystemPrompt = lmStudio.SystemPrompt, TurnLimits = lmStudio.TurnLimits, ContextTokens = lmStudio.ContextTokens, LoadModelWithContext = lmStudio.LoadModelWithContext, LoadOptions = lmStudio.LoadOptions, EnableThinking = lmStudio.EnableThinking },
         PluginProviderConfig plugin => new() { Provider = SessionProvider.Plugin, PluginProviderId = plugin.ProviderId, PluginConfigJson = plugin.ConfigJson },
         _ => throw new InvalidOperationException($"No on-disk shape is defined for provider config {config.GetType().Name}."),
     };
@@ -49,7 +53,7 @@ internal sealed class ProviderConfigEntry
     public ProviderConfig ToDomain(string claudeConfigDir, string? claudeExecutablePath) => Provider switch
     {
         SessionProvider.Ollama => new OllamaConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, SystemPrompt, TurnLimits, LocalModelContext.Normalize(ContextTokens)),
-        SessionProvider.LmStudio => new LmStudioConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, ApiKey, SystemPrompt, TurnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext),
+        SessionProvider.LmStudio => new LmStudioConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, ApiKey, SystemPrompt, TurnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext, LoadOptions, EnableThinking),
         SessionProvider.Plugin => new PluginProviderConfig(PluginProviderId ?? string.Empty, PluginConfigJson ?? string.Empty),
         _ => ClaudePluginProfile.Create(claudeConfigDir, claudeExecutablePath),
     };
