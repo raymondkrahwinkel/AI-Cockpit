@@ -20,7 +20,7 @@ internal sealed class NodeSessionsClient(
     IMcpServerStore servers,
     INodeDiscoveryClient discovery,
     ILogger<NodeSessionsClient> logger,
-    IServiceProvider? services = null) : INodeSessionsClient, ISingletonService
+    IServiceProvider? services = null) : INodeSessionsClient, ISingletonService, IAsyncDisposable
 {
     // Shared with NodeConnectionFailure.Describe, so the "did not answer within Xs" wording it produces always
     // matches the timeout this client actually used.
@@ -37,9 +37,108 @@ internal sealed class NodeSessionsClient(
     // read. A failed read never overwrites this — a stale-but-real snapshot is what start_agent's ambiguity check
     // and list_profiles's node rows read instead of a round trip, and that only works if a timeout can't erase it.
     private readonly ConcurrentDictionary<string, (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)> _lastSnapshots = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Task<LiveChannel>> _liveChannels = new(StringComparer.Ordinal);
 
     public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) =>
         _lastSnapshots.TryGetValue(nodeName, out var memory) ? memory : null;
+
+    public async Task<Cockpit.Core.Abstractions.Sessions.ISessionHandle?> OpenSessionAsync(
+        string nodeName,
+        string paneId,
+        CancellationToken cancellationToken = default)
+    {
+        var pending = _liveChannels.GetOrAdd(nodeName, _ => _OpenLiveChannelAsync(nodeName, cancellationToken));
+        try
+        {
+            var channel = await pending.ConfigureAwait(false);
+            if (channel.TryObserve()) _ = _EvictWhenFinishedAsync(nodeName, pending, channel);
+            return channel.Backend.Find(paneId);
+        }
+        catch
+        {
+            _liveChannels.TryRemove(new KeyValuePair<string, Task<LiveChannel>>(nodeName, pending));
+            throw;
+        }
+    }
+
+    private async Task _EvictWhenFinishedAsync(string nodeName, Task<LiveChannel> pending, LiveChannel channel)
+    {
+        try
+        {
+            await channel.Backend.Completion.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live session channel for {NodeName} ended unexpectedly.", nodeName);
+        }
+
+        if (!_liveChannels.TryRemove(new KeyValuePair<string, Task<LiveChannel>>(nodeName, pending)))
+        {
+            return;
+        }
+
+        try
+        {
+            await channel.Backend.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live session channel for {NodeName} failed during cleanup.", nodeName);
+        }
+        finally
+        {
+            channel.Client.Dispose();
+        }
+    }
+
+    private async Task<LiveChannel> _OpenLiveChannelAsync(string nodeName, CancellationToken cancellationToken)
+    {
+        var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
+        var server = (await servers.LoadAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"This cockpit has no session transport for '{nodeName}'.");
+        if (server.Url is null || server.ApiKey is null || server.PinnedCertificateFingerprint is null)
+        {
+            throw new InvalidOperationException($"The session transport for '{nodeName}' is incomplete.");
+        }
+
+        var network = services?.GetRequiredService<Swarm.SwarmNetworkPolicy>()
+            ?? throw new InvalidOperationException("The swarm network policy is unavailable.");
+        var time = services.GetService<TimeProvider>() ?? TimeProvider.System;
+        var endpoint = new Uri(new Uri(server.Url).GetLeftPart(UriPartial.Authority));
+        var client = new BackendApiClient(endpoint, server.ApiKey, server.PinnedCertificateFingerprint, time, network.ConnectAsync, "swarm/session-events");
+        try
+        {
+            return new LiveChannel(client, await RemoteBackend.ConnectAsync(client).ConfigureAwait(false));
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var entry in _liveChannels.ToArray())
+        {
+            if (!_liveChannels.TryRemove(entry) || !entry.Value.IsCompletedSuccessfully)
+            {
+                continue;
+            }
+
+            await entry.Value.Result.Backend.DisposeAsync().ConfigureAwait(false);
+            entry.Value.Result.Client.Dispose();
+        }
+    }
+
+    private sealed class LiveChannel(BackendApiClient client, RemoteBackend backend)
+    {
+        private int _observed;
+        public BackendApiClient Client { get; } = client;
+        public RemoteBackend Backend { get; } = backend;
+        public bool TryObserve() => Interlocked.Exchange(ref _observed, 1) == 0;
+    }
 
     public async Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default)
     {
