@@ -627,7 +627,6 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // shows handle count, and this is the only caller.
     private void _LogHang(TimeSpan sinceLastPong, CpuSampler cpu, TimeSpan? sinceHighPriorityPong)
     {
-        _LogUiThreadStack();
         using var process = Process.GetCurrentProcess();
 
         // These counters remain available on platforms without in-memory stack snapshots.
