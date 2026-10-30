@@ -1,6 +1,8 @@
 using System.ClientModel;
 using System.Globalization;
 using System.Threading.Channels;
+using ChatCompletionOptions = OpenAI.Chat.ChatCompletionOptions;
+using ChatReasoningEffortLevel = OpenAI.Chat.ChatReasoningEffortLevel;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
@@ -103,10 +105,19 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
         Profile = profile;
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
+        if (config is LmStudioConfig { LoadOptions: not null } lmStudio && _model is { } selectedModel)
+        {
+            config = lmStudio with { Model = selectedModel };
+        }
+
         _sessionId = Guid.NewGuid().ToString();
         var contextWarning = _localModelContext is null
             ? null
             : await _localModelContext.PrepareAsync(config, cancellationToken).ConfigureAwait(false);
+        if (config is LmStudioConfig { EnableThinking: { } thinking })
+        {
+            _logger.LogInformation("LM Studio thinking per request: {EnableThinking}.", thinking);
+        }
 
         // AC-192: .Use* registration order = outer→inner: UseFunctionInvocation (outer) → HermesToolCallChatClient →
         // the context guard (AC-1489) → model client (inner). The Hermes shim turns local-model text tool-calls into
@@ -210,7 +221,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             _events.Writer.TryWrite(new AssistantTextCompleted
             {
                 SessionId = _sessionId,
-                Text = $"⚠️ Cockpit: {contextWarning}",
+                Text = config is LmStudioConfig { LoadOptions: not null } ? $"Cockpit: {contextWarning}" : $"⚠️ Cockpit: {contextWarning}",
             });
         }
     }
@@ -339,6 +350,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     {
         var agent = _agent ?? throw new InvalidOperationException($"{nameof(_StreamTurnAsync)} called before {nameof(StartAsync)}.");
         var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
+        if (Profile?.ProviderConfig is LmStudioConfig { EnableThinking: { } thinking })
+        {
+            options.RawRepresentationFactory = _ => new ChatCompletionOptions
+            {
+#pragma warning disable OPENAI001 // LM Studio accepts its own on/off effort values through this SDK field.
+                ReasoningEffortLevel = new ChatReasoningEffortLevel(thinking ? "on" : "off"),
+#pragma warning restore OPENAI001
+            };
+        }
         var outcome = await ChatTurnLoop.RunAsync(
             agent,
             _history,

@@ -35,7 +35,7 @@ public class OpenAiCompatSessionDriverTests
         contextManager.PrepareAsync(Arg.Any<ProviderConfig>(), Arg.Any<CancellationToken>())
             .Returns("LM Studio is geladen met 8192 tokens; het profiel vraagt 32768 tokens.");
         var driver = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
-        var profile = new SessionProfile("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen3-coder"))
+        var profile = new SessionProfile("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen3-coder", EnableThinking: true))
         {
             EnabledMcpServerNames = ["test-server"],
         };
@@ -51,6 +51,11 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == "shell");
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == CockpitToolSearch.SearchToolName);
         Assert.DoesNotContain(sentOptions.Tools!, tool => tool.Name == "background_0");
+        var requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions.RawRepresentationFactory!(chatClient));
+        using (var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString()))
+        {
+            Assert.Equal("on", request.RootElement.GetProperty("reasoning_effort").GetString());
+        }
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
         Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
         Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
@@ -66,6 +71,32 @@ public class OpenAiCompatSessionDriverTests
             Arg.Is<IReadOnlySet<string>?>(selection => ReferenceEquals(selection, exact)),
             Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
             Arg.Any<CancellationToken>(), Arg.Any<string?>());
+        await restricted.SendUserMessageAsync("hi");
+        await _CollectUntilTurnCompletedAsync(restricted);
+        foreach (var thinking in new bool?[] { false, null })
+        {
+            var alternate = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
+            await alternate.StartAsync(new SessionProfile("alternate", Assert.IsType<LmStudioConfig>(profile.ProviderConfig) with { EnableThinking = thinking }));
+            await alternate.SendUserMessageAsync("hi");
+            await _CollectUntilTurnCompletedAsync(alternate);
+            if (thinking is null)
+            {
+                Assert.Null(sentOptions!.RawRepresentationFactory);
+            }
+            else
+            {
+                requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions!.RawRepresentationFactory!(chatClient));
+                using var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString());
+                Assert.Equal("off", request.RootElement.GetProperty("reasoning_effort").GetString());
+            }
+        }
+
+        var overrideConfig = Assert.IsType<LmStudioConfig>(profile.ProviderConfig) with { LoadOptions = new LmStudioLoadOptions(Parallel: 1) };
+        var overridden = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
+        await overridden.StartAsync(new SessionProfile("override", overrideConfig), model: "other-model");
+        await contextManager.Received(1).PrepareAsync(
+            Arg.Is<LmStudioConfig>(config => config.Model == "other-model" && config.LoadOptions == overrideConfig.LoadOptions),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
