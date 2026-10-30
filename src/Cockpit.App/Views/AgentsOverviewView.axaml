@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:views="using:Cockpit.App.Views"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Views.AgentsOverviewView"
+             x:DataType="vm:AgentsOverviewViewModel">
+    <UserControl.Styles>
+        <Style Selector="Border.agentCard">
+            <Setter Property="Background" Value="{DynamicResource CockpitPanelBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        </Style>
+        <Style Selector="Border.agentCard.attention">
+            <Setter Property="Background" Value="{DynamicResource CockpitStatusWaitingRowTintBrush}"/>
+        </Style>
+        <Style Selector="Border.agentBadge">
+            <Setter Property="Background" Value="{DynamicResource CockpitInsetBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource CockpitHairlineBrush}"/>
+            <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+            <Setter Property="CornerRadius" Value="{StaticResource CockpitPillRadius}"/>
+            <Setter Property="Padding" Value="7,1"/>
+        </Style>
+    </UserControl.Styles>
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Columns}" Margin="8">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AgentsOverviewColumnViewModel">
+                    <StackPanel Width="{Binding $parent[views:AgentsOverviewView].ColumnWidth}" Spacing="6">
+                    <StackPanel Spacing="6" Margin="4,4,4,10">
+                        <StackPanel Orientation="Horizontal" Spacing="7" Margin="0,4,0,2">
+                            <Ellipse Width="7" Height="7" Fill="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                            <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <Border Classes="agentBadge">
+                                <TextBlock Text="{Binding Cards.Count}" FontSize="10.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="No sessions" FontSize="11" Margin="0,0,0,6"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}" IsVisible="{Binding !Cards.Count}"/>
+                        <ItemsControl ItemsSource="{Binding Cards}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AgentOverviewCardViewModel">
+                                    <Border Classes="sessionItem agentCard" Classes.active="{Binding IsSelected}" Classes.attention="{Binding NeedsAttention}"
+                                            CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,6">
+                                        <Button Classes="Subtle" Command="{Binding OpenCommand}" HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Stretch" Padding="10,8"
+                                                AutomationProperties.Name="{Binding Title}" ToolTip.Tip="{Binding Statusline}">
+                                            <StackPanel Spacing="4">
+                                                <WrapPanel Orientation="Horizontal">
+                                                    <Border Classes="agentBadge" Margin="0,0,5,0">
+                                                        <TextBlock Text="{Binding Machine}" FontSize="10.5"/>
+                                                    </Border>
+                                                    <Border Classes="agentBadge">
+                                                        <TextBlock Text="{Binding Project}" FontSize="10.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                    </Border>
+                                                </WrapPanel>
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                                    <Ellipse Width="8" Height="8" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                    <icons:MaterialIcon Grid.Column="2" Kind="AlertOutline" Width="13" Height="13"
+                                                                        Foreground="{DynamicResource CockpitStatusWaitingBrush}" IsVisible="{Binding NeedsAttention}"/>
+                                                </Grid>
+                                                <TextBlock FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding Profile}"/><Run Text=" · "/><Run Text="{Binding StatusLabel}"/>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Statusline}" FontSize="11" Foreground="{DynamicResource CockpitAccentBrush}"
+                                                           TextTrimming="CharacterEllipsis" IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                                    <Border Classes="agentBadge" HorizontalAlignment="Left" IsVisible="{Binding TerminalOnly}">
+                                                        <TextBlock Text="Terminal only" FontSize="10.5" Foreground="{DynamicResource CockpitAccentBrush}"/>
+                                                    </Border>
+                                            </StackPanel>
+                                        </Button>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</UserControl>
