@@ -48,7 +48,8 @@ internal sealed class DockerCli : IDockerCli, ISingletonService
         }
 
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(Timeout);
+        var timeout = arguments.Contains("prune") || arguments.FirstOrDefault() == "desktop" ? TimeSpan.FromMinutes(5) : Timeout;
+        deadline.CancelAfter(timeout);
 
         var readStandardOutput = process.StandardOutput.ReadToEndAsync(deadline.Token);
         var readStandardError = process.StandardError.ReadToEndAsync(deadline.Token);
@@ -61,7 +62,7 @@ internal sealed class DockerCli : IDockerCli, ISingletonService
         catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             _Kill(process);
-            throw new InvalidOperationException($"docker {string.Join(' ', arguments)} did not finish within {Timeout.TotalSeconds:F0}s and was stopped.");
+            throw new InvalidOperationException($"docker {string.Join(' ', arguments)} did not finish within {timeout.TotalSeconds:F0}s and was stopped.");
         }
         catch (OperationCanceledException)
         {

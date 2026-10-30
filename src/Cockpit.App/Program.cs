@@ -135,7 +135,8 @@ sealed class Program
                 loggerFactory,
                 services => AddDesktop(services, loggerFactory),
                 args.Contains(PluginManager.SafeModeArgument) ? PluginStartup.SafeMode : PluginStartup.Load,
-                applyIncomingSettings: false);
+                applyIncomingSettings: false,
+                enableStorageMaintenance: true);
             Services = backend.Services;
 
             // The hosted services, then the worktree reconcile; the planners follow once the main window is up (App).

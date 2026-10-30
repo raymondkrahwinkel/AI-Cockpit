@@ -48,8 +48,13 @@ public sealed class CockpitBackend
     private bool _pluginSettingsSeeded;
     private bool _pluginsInitialized;
     private int _plannersRequested;
+    private readonly bool _enableStorageMaintenance;
 
-    private CockpitBackend(ServiceProvider services) => Services = services;
+    private CockpitBackend(ServiceProvider services, bool enableStorageMaintenance)
+    {
+        Services = services;
+        _enableStorageMaintenance = enableStorageMaintenance;
+    }
 
     public ServiceProvider Services { get; }
 
@@ -126,7 +131,8 @@ public sealed class CockpitBackend
         Action<IServiceCollection>? frontend = null,
         PluginStartup plugins = PluginStartup.None,
         System.Net.IPAddress? nodeListenAddress = null,
-        bool applyIncomingSettings = true)
+        bool applyIncomingSettings = true,
+        bool enableStorageMaintenance = false)
     {
         var services = new ServiceCollection();
         ManagedConfigKeys.Log = loggerFactory.CreateLogger(typeof(ManagedConfigKeys));
@@ -165,7 +171,7 @@ public sealed class CockpitBackend
 
         CockpitBackend? built = null;
         services.AddSingleton(_ => built ?? throw new InvalidOperationException("The backend is resolved from its own container only once built."));
-        built = new CockpitBackend(services.BuildServiceProvider());
+        built = new CockpitBackend(services.BuildServiceProvider(), enableStorageMaintenance);
         return built;
     }
 
@@ -352,6 +358,10 @@ public sealed class CockpitBackend
 
         // AC-1535: the machine's load, sampled from the start, so the heavy-run queue's first decision is no guess.
         Services.GetService<MachineResources>()?.Start();
+        if (_enableStorageMaintenance)
+        {
+            Services.GetService<Cockpit.Core.Diagnostics.IDockerStorageMaintenance>()?.Start();
+        }
 
         // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at
         // once, and the catalog (which hands the watcher its projects, loading its settings on demand) must exist by then.

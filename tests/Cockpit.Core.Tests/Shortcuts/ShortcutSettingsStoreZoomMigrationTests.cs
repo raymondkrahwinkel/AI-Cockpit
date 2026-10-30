@@ -24,7 +24,7 @@ public class ShortcutSettingsStoreZoomMigrationTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_SavedCtrlBZoom_MigratesToTheNewDefault()
+    public async Task LoadAsync_SavedCtrlBZoom_MigratesToTheNewDefault_AndSavingItKeepsTheMigration()
     {
         await File.WriteAllTextAsync(_configFilePath, """
             {
@@ -36,19 +36,8 @@ public class ShortcutSettingsStoreZoomMigrationTests : IDisposable
         var settings = await store.LoadAsync();
 
         Assert.Equal("Ctrl+Shift+M", settings.GestureFor(ShortcutAction.ToggleZoom));
-    }
 
-    [Fact]
-    public async Task LoadAsync_AfterTheMigrationWasSavedBack_ChangesNothingFurther()
-    {
-        await File.WriteAllTextAsync(_configFilePath, """
-            {
-              "Shortcuts": { "Gestures": { "ToggleZoom": "Ctrl+B" } }
-            }
-            """);
-        var store = new ShortcutSettingsStore(_configFilePath);
-
-        await store.SaveAsync(await store.LoadAsync());
+        await store.SaveAsync(settings);
         var reloaded = await store.LoadAsync();
 
         Assert.Equal("Ctrl+Shift+M", reloaded.GestureFor(ShortcutAction.ToggleZoom));

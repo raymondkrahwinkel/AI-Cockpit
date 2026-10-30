@@ -22,9 +22,15 @@ internal sealed class AgentsMcpTools(
     IAgentLineBudget budget,
     INodeControllerPresence? presence = null,
     INodePairingBroker? pairing = null,
-    ISessionRegistry? sessions = null)
+    ISessionRegistry? sessions = null,
+    Cockpit.Infrastructure.Diagnostics.DockerStorageMaintenance? storage = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
+    [McpServerTool(Name = "acknowledge_storage_pause", ReadOnly = false, Destructive = false)]
+    [Description("Acknowledges this session's Docker pause using the inbox pauseId until storage resume arrives, without approving compaction for the operator.")]
+    public string AcknowledgeStoragePause([Description("The pauseId from this session's storage pause message.")] string pauseId) =>
+        _Serialize(new { ok = McpRequestContext.CurrentPaneId is { } caller && storage?.AcknowledgePause(caller, pauseId) == true });
 
     // AC-1013: bound is the recipient's, not the senders' — draining everything waiting would let neighbours
     // decide how much context/money the recipient spends reading mail. `remaining` in the reply avoids silent loss.
