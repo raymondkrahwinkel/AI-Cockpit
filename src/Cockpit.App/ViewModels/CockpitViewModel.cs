@@ -4310,6 +4310,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // One warned-flag per session pane (AC-692), not one flag for the whole cockpit — a session that has already
     // been named should not silence the toast for the next one that climbs.
     private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _sessionsOverMemoryCap = new(StringComparer.Ordinal);
 
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
     // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by pane id, the
@@ -4375,6 +4376,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
+        _sessionsOverMemoryCap.Clear();
         var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.PaneId), StringComparer.Ordinal);
         foreach (var paneId in _warnedAboutSessionMemory.Keys.Where(paneId => !stillHere.Contains(paneId)).ToList())
         {
@@ -4385,6 +4387,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             var session = _FindMeasured(measured);
             var cap = session?.MemoryCapBytes ?? 0;
+            if (cap > 0 && measured.MemoryBytes > cap)
+            {
+                _sessionsOverMemoryCap.Add(measured.PaneId);
+            }
             var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.PaneId);
             var decision = SessionMemoryPressure.Decide(measured.MemoryBytes, cap, warned);
             _warnedAboutSessionMemory[measured.PaneId] = decision.Warned;
@@ -4398,7 +4404,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 $"'{measured.Title}' is over its {_Megabytes(cap)} memory cap, holding {_Megabytes(measured.MemoryBytes)}. Cockpit will not close it on its own.",
                 ToastSeverity.Warning,
                 [new ToastAction("Kill", () => _ = CloseSessionCommand.ExecuteAsync(session))],
-                () => Sessions.Contains(session) && session.ProcessMemoryBytes > session.MemoryCapBytes && session.MemoryCapBytes > 0);
+                () => Sessions.Contains(session) && _sessionsOverMemoryCap.Contains(session.PaneId));
         }
     }
 
