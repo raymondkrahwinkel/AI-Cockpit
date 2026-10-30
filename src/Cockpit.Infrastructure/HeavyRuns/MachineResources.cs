@@ -13,11 +13,16 @@ namespace Cockpit.Infrastructure.HeavyRuns;
 public sealed class MachineResources : IMachineResources, ISingletonService, IDisposable
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DiskInterval = TimeSpan.FromSeconds(60);
 
     // An exponential moving average whose weight matches a thirty-second window of two-second samples.
     private const double Smoothing = 2.0 / 30.0;
 
     private readonly ILogger<MachineResources> _logger;
+    private readonly IHeavyRunSettingsStore? _settingsStore;
+    private readonly Dictionary<string, DiskSpaceForecast> _diskForecasts = new(StringComparer.Ordinal);
+    private IReadOnlyList<DiskSpaceSnapshot> _disks = [];
+    private DateTimeOffset? _lastDiskSample;
     private ITimer? _timer;
     private CpuTimes? _lastCpu;
     private bool _isCpuUnmeasured;
@@ -27,12 +32,15 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
     // An int, not a bool: the timer can fire again while a slow tick is still running on another thread.
     private int _sampling;
 
-    public MachineResources(ILogger<MachineResources>? logger = null)
+    public MachineResources(ILogger<MachineResources>? logger = null, IHeavyRunSettingsStore? settingsStore = null)
     {
         _logger = logger ?? NullLogger<MachineResources>.Instance;
+        _settingsStore = settingsStore;
     }
 
     public MachineLoad Current { get; private set; } = MachineLoad.Unknown;
+
+    public IReadOnlyList<DiskSpaceSnapshot> Disks => Volatile.Read(ref _disks);
 
     public event Action? Sampled;
 
@@ -43,7 +51,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
             return;
         }
 
-        _timer = TimeProvider.System.CreateTimer(_ => _OnTick(), null, TimeSpan.Zero, Interval);
+        _timer = TimeProvider.System.CreateTimer(_ => _ = _OnTickAsync(), null, TimeSpan.Zero, Interval);
     }
 
     public long? FreeDiskBytes(string directory)
@@ -53,7 +61,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
             var volume = OperatingSystem.IsWindows() ? Path.GetPathRoot(Path.GetFullPath(directory)) : directory;
             return volume is { Length: > 0 } ? new DriveInfo(volume).AvailableFreeSpace : null;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
         {
             return null;
         }
@@ -66,7 +74,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         _timer = null;
     }
 
-    private void _OnTick()
+    private async Task _OnTickAsync()
     {
         if (Interlocked.CompareExchange(ref _sampling, 1, 0) != 0)
         {
@@ -76,6 +84,7 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         try
         {
             _Sample();
+            await _SampleDisksAsync(DateTimeOffset.UtcNow).ConfigureAwait(false);
             Sampled?.Invoke();
         }
         catch (Exception exception)
@@ -86,6 +95,48 @@ public sealed class MachineResources : IMachineResources, ISingletonService, IDi
         {
             Interlocked.Exchange(ref _sampling, 0);
         }
+    }
+
+    private async Task _SampleDisksAsync(DateTimeOffset timestamp)
+    {
+        if (_lastDiskSample is { } previous && timestamp - previous < DiskInterval)
+        {
+            return;
+        }
+
+        _lastDiskSample = timestamp;
+        var settings = _settingsStore is null ? new HeavyRunSettings()
+            : await _settingsStore.LoadAsync().ConfigureAwait(false);
+        List<DiskSpaceSnapshot> snapshots = [];
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            try
+            {
+                if (drive.DriveType != DriveType.Fixed || !drive.IsReady || FreeDiskBytes(drive.Name) is not { } freeBytes)
+                {
+                    continue;
+                }
+
+                if (!_diskForecasts.TryGetValue(drive.Name, out var forecast))
+                {
+                    forecast = new DiskSpaceForecast(drive.Name);
+                    _diskForecasts.Add(drive.Name, forecast);
+                }
+
+                snapshots.Add(forecast.Sample(timestamp, drive.TotalSize, freeBytes, settings));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException)
+            {
+                _logger.LogDebug(exception, "Reading drive {Drive} failed; the next disk sample will try again.", drive.Name);
+            }
+        }
+
+        foreach (var name in _diskForecasts.Keys.Except(snapshots.Select(snapshot => snapshot.Name)).ToArray())
+        {
+            _diskForecasts.Remove(name);
+        }
+
+        Volatile.Write(ref _disks, snapshots.AsReadOnly());
     }
 
     private void _Sample()

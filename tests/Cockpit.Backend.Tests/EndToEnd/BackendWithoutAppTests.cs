@@ -9,15 +9,14 @@ using Cockpit.Infrastructure.Ci;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Hotkeys;
 using SoundFlow.Abstracts;
+using Cockpit.TestSupport;
 
 namespace Cockpit.Backend.Tests.EndToEnd;
 
 [CollectionDefinition(BackendWithoutAppTests.Alone, DisableParallelization = true)]
 public sealed class BackendWithoutAppCollection;
 
-// AC-1381: the backend built by `CockpitBackend` on a fresh state root, with no App, no plugins and no stub for any
-// seam. AC-1425: what the journeys already start went; what is left is the order the worktree planner depends on
-// (data loss). Alone, because the state root is the process environment's.
+// Fresh-root coverage keeps planner ordering intact while faking machine-wide storage maintenance.
 [Collection(Alone)]
 public sealed class BackendWithoutAppTests : IDisposable
 {
@@ -51,7 +50,7 @@ public sealed class BackendWithoutAppTests : IDisposable
     [Fact]
     public async Task ThePlanners_StartOnlyAfterTheStartupReconcile_AndNeverHoldTheCaller()
     {
-        var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
+        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.FakeMachineStorage());
         await using var services = backend.Services;
 
         var early = Record.Exception(backend.StartPlanners);
@@ -78,7 +77,7 @@ public sealed class BackendWithoutAppTests : IDisposable
     [Fact]
     public async Task ABackendWithoutTheDesktop_UsesNoHotkeysAndResolvesNoUiOnlyServices()
     {
-        var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
+        var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.FakeMachineStorage());
         await using var services = backend.Services;
 
         Assert.IsType<NoOpGlobalHotkeyService>(services.GetRequiredService<IGlobalHotkeyService>());

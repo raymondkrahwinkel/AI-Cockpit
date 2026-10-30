@@ -202,12 +202,14 @@ public class NodePairingHandshakeTests : IAsyncLifetime
     // Criterion 6: discovery (AC-793) will hand this client an address it found rather than one that was typed.
     // Both are strings arriving at the same method, and both have to normalise onto the same base address — which
     // is what makes "one handshake, two entrances" a property of the code rather than a promise in a comment.
-    [Theory]
-    [InlineData("192.168.1.20:7331")]
-    [InlineData("https://192.168.1.20:7331")]
-    [InlineData("  https://192.168.1.20:7331/  ")]
-    public void AnAddressTypedOrDiscovered_NormalisesOntoTheSameEndpoint(string address) =>
-        Assert.Equal(new Uri("https://192.168.1.20:7331/"), NodePairingClient.NormalizeAddress(address));
+    [Fact]
+    public void AnAddressTypedOrDiscovered_NormalisesOntoTheSameEndpoint()
+    {
+        foreach (var address in new[] { "192.168.1.20:7331", "https://192.168.1.20:7331", "  https://192.168.1.20:7331/  " })
+        {
+            Assert.Equal(new Uri("https://192.168.1.20:7331/"), NodePairingClient.NormalizeAddress(address));
+        }
+    }
 
     public async Task DisposeAsync()
     {

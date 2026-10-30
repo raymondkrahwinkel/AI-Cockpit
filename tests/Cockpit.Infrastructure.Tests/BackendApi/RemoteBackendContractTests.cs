@@ -68,7 +68,11 @@ public sealed class RemoteBackendContractTests : BackendContractTests
         {
             Directory.CreateDirectory(stateRoot);
             Environment.SetEnvironmentVariable(CockpitBuild.StateRootVariable, stateRoot);
-            backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => services.AddSingleton<ISessionDriverFactory>(new ContractDrivers()));
+            backend = CockpitBackend.Build(NullLoggerFactory.Instance, services =>
+            {
+                services.AddSingleton<ISessionDriverFactory>(new ContractDrivers());
+                Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
+            });
             var services = backend.Services;
             var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
             await services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id });

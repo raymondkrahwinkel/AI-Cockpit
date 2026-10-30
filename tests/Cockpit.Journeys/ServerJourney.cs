@@ -244,7 +244,7 @@ public sealed class ServerJourney
         SecretKeyHolder.Shared.Lock();
         try
         {
-            var backend = CockpitBackend.Build(NullLoggerFactory.Instance);
+            var backend = CockpitBackend.Build(NullLoggerFactory.Instance, services => Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services));
             await using var services = backend.Services;
             var desk = Workspace.Create("Sessions", WorkspaceType.Sessions);
             await services.GetRequiredService<IWorkspaceSettingsStore>().SaveAsync(new WorkspaceSettings { Workspaces = [desk], ActiveWorkspaceId = desk.Id });

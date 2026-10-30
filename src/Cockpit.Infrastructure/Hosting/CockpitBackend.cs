@@ -352,6 +352,7 @@ public sealed class CockpitBackend
 
         // AC-1535: the machine's load, sampled from the start, so the heavy-run queue's first decision is no guess.
         Services.GetService<MachineResources>()?.Start();
+        Services.GetService<Cockpit.Core.Diagnostics.IDockerStorageMaintenance>()?.Start();
 
         // AC-894: poll every Depot-bound project's checksum for a change made elsewhere. AC-1570: the first pass runs at
         // once, and the catalog (which hands the watcher its projects, loading its settings on demand) must exist by then.

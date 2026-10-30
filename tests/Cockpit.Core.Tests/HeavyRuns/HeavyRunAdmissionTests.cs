@@ -35,12 +35,10 @@ public class HeavyRunAdmissionTests
     }
 
     // Windows samples are written "idle kernel user"; /proc/stat samples as the file's own `cpu` line.
-    [Theory]
-    [InlineData(true, "cpu  100 0 50 800 50 0 0 0 0 0", "cpu  200 0 100 850 50 0 0 0 0 0", 75)]
-    [InlineData(false, "800 1000 200", "900 1150 250", 50)]
-    public void TheBusyShareIsTheNonIdlePartOfTheTimeBetweenTwoSamples(bool isProcStat, string before, string after, double expected)
+    [Fact]
+    public void TheBusyShareIsTheNonIdlePartOfTheTimeBetweenTwoSamples()
     {
-        CpuTimes Read(string sample)
+        CpuTimes Read(bool isProcStat, string sample)
         {
             if (isProcStat)
             {
@@ -51,6 +49,8 @@ public class HeavyRunAdmissionTests
             return CpuTimes.FromSystemTimes(times[0], times[1], times[2]);
         }
 
-        Assert.Equal(expected, CpuTimes.BusyPercent(Read(before), Read(after)), precision: 6);
+        Assert.Equal(75, CpuTimes.BusyPercent(Read(true, "cpu  100 0 50 800 50 0 0 0 0 0"),
+            Read(true, "cpu  200 0 100 850 50 0 0 0 0 0")), precision: 6);
+        Assert.Equal(50, CpuTimes.BusyPercent(Read(false, "800 1000 200"), Read(false, "900 1150 250")), precision: 6);
     }
 }
