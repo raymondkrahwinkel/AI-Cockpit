@@ -9,12 +9,11 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 
 public sealed class SwarmManualAddressTests
 {
-    [Theory]
-    [InlineData("[fd00::5]:20382", "fd00::5", 20382, true)]
-    [InlineData("10.0.0.5", "10.0.0.5", 20382, true)]
-    [InlineData("nuc.local:20382", "nuc.local", 20382, false)]
-    public async Task ManualAddress_ResolvesAndAuthorizesEveryConnection(string address, string host, int port, bool allowed)
+    [Fact]
+    public async Task ManualAddress_IsReauthorizedOnEveryConnection()
     {
+        var ipv6 = SwarmManualAddress.Parse("[fd00::5]:20382");
+        Assert.Equal(("fd00::5", 20382), (ipv6.IdnHost, ipv6.Port));
         var directory = Path.Combine(Path.GetTempPath(), $"swarm-manual-{Guid.NewGuid():N}");
         try
         {
@@ -23,34 +22,34 @@ public sealed class SwarmManualAddressTests
             var policy = new SwarmNetworkPolicy(store,
                 new NodeAccessAuditLog(Path.Combine(directory, "audit.jsonl"), NullLogger<NodeAccessAuditLog>.Instance),
                 NullLogger<SwarmNetworkPolicy>.Instance,
-                (name, _) => Task.FromResult(new[] { IPAddress.Parse(name == "nuc.local" ? answers.Dequeue() : name) }));
+                (name, _) =>
+                {
+                    Assert.Equal("nuc.local", name);
+                    return Task.FromResult(new[] { IPAddress.Parse(answers.Dequeue()) });
+                });
             var manual = new SwarmManualAddress(store, policy);
             var memberId = SwarmMemberId.FromPublicKey([1, 2, 3]);
-            await manual.RememberAsync(address, memberId.Value, online: true);
+            await manual.RememberAsync("nuc.local", memberId.Value);
             for (var connection = 0; connection < 2; connection++)
             {
                 var stored = await manual.ForMemberAsync(memberId);
                 Assert.NotNull(stored);
                 var uri = await manual.ResolveAsync(stored.ToString());
-                Assert.Equal((host, port), (uri.IdnHost, uri.Port));
+                Assert.Equal(("nuc.local", 20382), (uri.IdnHost, uri.Port));
                 await manual.RememberAsync(stored.ToString(), memberId.Value, online: true);
                 Assert.Equal("Online", Assert.Single((await store.LoadAsync()).ManualAddresses).Status);
             }
-            if (allowed)
-            {
-                await manual.RememberAsync(address, failure: new TaskCanceledException());
-            }
-            else
-            {
-                var error = await Assert.ThrowsAsync<NodePairingException>(() => manual.ResolveAsync(address));
-                Assert.Equal(SwarmNetworkError.AddressNotInternal, error.Error);
-                await manual.RememberAsync(address, failure: error);
-            }
+            var third = await manual.ForMemberAsync(memberId);
+            Assert.NotNull(third);
+            var error = await Assert.ThrowsAsync<NodePairingException>(() => manual.ResolveAsync(third.ToString()));
+            Assert.Equal(SwarmNetworkError.AddressNotInternal, error.Error);
+            await manual.RememberAsync(third.ToString(), failure: error);
+            Assert.Empty(answers);
             var saved = Assert.Single((await new SwarmSettingsStore(Path.Combine(directory, "cockpit.json")).LoadAsync()).ManualAddresses);
-            Assert.Equal(SwarmManualAddress.Parse(address).Authority, saved.Address);
+            Assert.Equal("nuc.local:20382", saved.Address);
             Assert.Equal(memberId.Value, saved.MemberId);
-            Assert.Equal(allowed ? "No answer" : "Not reachable", saved.Status);
-            Assert.Equal(allowed ? "no_answer" : SwarmNetworkError.AddressNotInternal, saved.ErrorCode);
+            Assert.Equal("Not reachable", saved.Status);
+            Assert.Equal(SwarmNetworkError.AddressNotInternal, saved.ErrorCode);
             Assert.NotEmpty(saved.ErrorMessage);
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }

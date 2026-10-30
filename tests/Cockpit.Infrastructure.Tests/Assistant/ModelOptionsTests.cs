@@ -117,9 +117,11 @@ public sealed class ModelOptionsTests
     public static TheoryData<string, string, string, string, Func<JsonNode, string>> ModelReferenceCases => new()
     {
         { "claude-opus-5-5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
+        { "anthropic/claude-opus-5.5", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
         { "~anthropic/claude-opus-latest", "coding", "anthropic/claude-opus-5.5 via ~anthropic/claude-opus-latest", "coding missing → intelligence", _Basis },
         { "anthropic/claude-opus-5.5:batch", "coding", "anthropic/claude-opus-5.5", "coding missing → intelligence", _Basis },
         { "gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
+        { "openai/gpt-6.1-sol", "coding", "openai/gpt-6.1-sol", "coding missing → intelligence", _Basis },
         { "qwen3.8-27b-Q4_K_M", "coding", "qwen/qwen3.8-27b", "coding missing → intelligence", _Basis },
         { "agentic-only", "agentic", "example/agentic-only", "agentic missing → coding", _Basis },
         { "onbekend-model", "coding", "onbekend-model", "unknown: no match for onbekend-model; closest approximation: qwen/qwen3.8-27b", _Quality },
