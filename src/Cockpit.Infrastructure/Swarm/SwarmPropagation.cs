@@ -6,7 +6,7 @@ using Cockpit.Core.Toasts;
 
 namespace Cockpit.Infrastructure.Swarm;
 
-internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService toasts) : ISingletonService
+internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService? toasts = null) : ISingletonService
 {
     internal static string Stamp(SwarmRecord record) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         SwarmRecordJson.Canonicalize(record.Payload)));
@@ -57,7 +57,7 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
             foreach (var member in joined)
             {
                 var adder = candidate.Members.FirstOrDefault(item => item.Id == member.AddedBy)?.Name ?? member.AddedBy.Value;
-                toasts.Show($"{member.Name} joined the swarm, added by {adder}", ToastSeverity.Information, [], false, "Swarm", member.Id.Value);
+                toasts?.Show($"{member.Name} joined the swarm, added by {adder}", ToastSeverity.Information, [], false, "Swarm", member.Id.Value);
             }
         }
         finally
