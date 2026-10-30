@@ -41,11 +41,17 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
                 continue;
             }
 
-            // A dev sync refreshes what is installed; it does not decide, on the operator's behalf, to install
-            // every first-party plugin in the repo just because it was built.
-            if (!installNew && !Directory.Exists(target))
+            // Dev refresh requires consent for the current bytes; a pending update pins different bytes.
+            if (!installNew)
             {
-                continue;
+                if (savedRegistration is null || !Directory.Exists(target)
+                    || !string.Equals(
+                        await PluginClosureHash.OfInstalledFolderAsync(target, cancellationToken).ConfigureAwait(false),
+                        savedRegistration.PinnedSha256,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
             }
 
             if (!await _NeedsInstallAsync(source, target, manifest, cancellationToken).ConfigureAwait(false))
