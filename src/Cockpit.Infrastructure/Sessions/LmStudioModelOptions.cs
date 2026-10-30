@@ -10,7 +10,7 @@ internal sealed class LmStudioModelOptions(WebSocket socket)
 {
     private int _callId;
 
-    internal static async Task<string> PrepareAsync(LmStudioConfig config, string? instanceId, string modelKey, CancellationToken cancellationToken)
+    internal static async Task<string> PrepareAsync(LmStudioConfig config, string? instanceId, string modelKey, CancellationToken cancellationToken, bool allowReload = true)
     {
         _ = Fields(config);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -24,10 +24,10 @@ internal sealed class LmStudioModelOptions(WebSocket socket)
         var uri = new UriBuilder($"{config.BaseUrl.TrimEnd('/')}/llm");
         uri.Scheme = uri.Scheme == "https" ? "wss" : "ws";
         await socket.ConnectAsync(uri.Uri, timeout.Token).ConfigureAwait(false);
-        return await new LmStudioModelOptions(socket).ReconcileAsync(config, instanceId, modelKey, timeout.Token).ConfigureAwait(false);
+        return await new LmStudioModelOptions(socket).ReconcileAsync(config, instanceId, modelKey, timeout.Token, allowReload).ConfigureAwait(false);
     }
 
-    internal async Task<string> ReconcileAsync(LmStudioConfig config, string? instanceId, string modelKey, CancellationToken cancellationToken)
+    internal async Task<string> ReconcileAsync(LmStudioConfig config, string? instanceId, string modelKey, CancellationToken cancellationToken, bool allowReload = true)
     {
         var requested = Fields(config);
         var identity = Guid.NewGuid().ToString("N");
@@ -47,6 +47,11 @@ internal sealed class LmStudioModelOptions(WebSocket socket)
         var action = "already loaded";
         if (instanceId is null || !Matches(await _ConfigAsync(instanceId, cancellationToken).ConfigureAwait(false), requested))
         {
+            if (!allowReload)
+            {
+                throw new InvalidOperationException("LM Studio load/reload refused: another Cockpit session uses this endpoint. Stop that session before changing model context or load options.");
+            }
+
             action = instanceId is null ? "loaded" : "reloaded";
             if (instanceId is not null)
             {
