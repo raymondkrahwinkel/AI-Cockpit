@@ -29,14 +29,14 @@ internal static class BrowserScenes
         ["browser-rail"] = () => _Shell(BrowserPlace.Rail),
         // Cockpit hangs a name ending in -floating in its own dock-panel window, titled by the automation name.
         ["browser-floating"] = () => _Named(_Shell(BrowserPlace.Rail), "Browser"),
-        // Mockup screen 5: the Agents side with an agent tab's live picture, and the same while Raymond has taken over.
+        // Mockup screen 5: the Agents side with an agent tab's live picture, and the same while you have taken over.
         ["browser-agents"] = () => _Shell(BrowserPlace.Tab, agentSide: true),
         ["browser-agents-driving"] = () => _Shell(BrowserPlace.Tab, agentSide: true, driving: true),
         ["browser-codec"] = () => _Shell(BrowserPlace.Tab, codecUnsupported: true),
         // AC-1714, mockup screen 7: the active tab shared with one session, and the same tab after it moved to another site.
         ["browser-shared"] = () => _Shell(BrowserPlace.Tab, share: Shared.Reading),
         ["browser-share-paused"] = () => _Shell(BrowserPlace.Tab, share: Shared.Moved),
-        // AC-1728, mockup v2 screens 10 to 12: a controlled tab, a form held for Raymond, and Raymond taking over.
+        // AC-1728, mockup v2 screens 10 to 12: a controlled tab, a form held for you, and you taking over.
         ["browser-tab-controlled"] = () => _Shell(BrowserPlace.Tab, share: Shared.Controlled),
         ["browser-form-held"] = () => _Shell(BrowserPlace.Tab, share: Shared.FormHeld),
         ["browser-took-over"] = () => _Shell(BrowserPlace.Tab, share: Shared.TookOver),

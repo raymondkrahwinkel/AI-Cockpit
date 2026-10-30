@@ -12,7 +12,7 @@ using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Browser.UI;
 
-// The browser as Raymond sees it (AC-1711, mockup screens 1-3): profile switch and tabs, address bar, the codec bar
+// The browser as you see it (AC-1711, mockup screens 1-3): profile switch and tabs, address bar, the codec bar
 // and the page. One instance per process; BrowserHome hangs it in the tab or the rail. With no engine it shows why.
 internal sealed class BrowserShell : UserControl
 {
@@ -406,7 +406,7 @@ internal sealed class BrowserShell : UserControl
         var text = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12 };
         text.Inlines ??= [];
         text.Inlines.Add(new Run("Agent profile") { FontWeight = FontWeight.SemiBold });
-        text.Inlines.Add(new Run(drives ? "  ·  you are driving: the session's browser calls are refused until you give it back" : "  ·  live view of the agent Chromium  ·  no logins of Raymond  ·  driven by "));
+        text.Inlines.Add(new Run(drives ? "  ·  you are driving: the session's browser calls are refused until you give it back" : "  ·  live view of the agent Chromium  ·  no logins of the user  ·  driven by "));
         if (drives == false)
         {
             text.Inlines.Add(new Run(tab.Session) { FontWeight = FontWeight.SemiBold });
@@ -544,7 +544,7 @@ internal sealed class BrowserShell : UserControl
     }
 
     // AC-1728, mockup v2 screens 10 to 12: who controls the tab and Stop; a held form with Send and Don't send; and
-    // Raymond's takeover with Give back. Stop ends the grant at once, so the next action is refused.
+    // Your takeover with Give back. Stop ends the grant at once, so the next action is refused.
     private Control _ControlBar(TabGrant controller, BrowserTab tab)
     {
         var stop = new Button { Content = "Stop", Classes = { "Compact" }, Margin = new Thickness(8, 0, 0, 0) }.Themed(Button.BorderBrushProperty, "CockpitStatusErrorBrush");

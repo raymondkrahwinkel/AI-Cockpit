@@ -5,7 +5,7 @@ using System.Collections.Concurrent;
 namespace Cockpit.Plugin.Browser;
 
 // AC-1713: One CDP connection of ours to one tab of an agent browser, straight to Chromium (not through the pause
-// proxy: Raymond's own input and the screencast must not be held by it). Commands are fired and forgotten; only events
+// proxy: the user's own input and the screencast must not be held by it). Commands are fired and forgotten; only events
 // are read back.
 internal sealed class CdpPage : IDisposable
 {

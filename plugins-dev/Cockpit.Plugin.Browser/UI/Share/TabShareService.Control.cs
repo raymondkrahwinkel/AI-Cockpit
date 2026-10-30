@@ -4,7 +4,7 @@ using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Plugin.Browser.UI.Share;
 
-// AC-1728: an agent acting in one of Raymond's tabs. Asking for control opens the share card on the agent's behalf;
+// AC-1728: an agent acting in one of the user's tabs. Asking for control opens the share card on the agent's behalf;
 // every action needs a control grant of exactly that session on exactly that tab, on the origin it was granted for,
 // and goes in as the OSR input the operator's own mouse and keys use. No DevTools Input, no debugging port.
 internal sealed partial class TabShareService
@@ -239,8 +239,8 @@ internal sealed partial class TabShareService
 
     private static string _Target(string submit) => submit[(submit.IndexOf(' ') + 1)..];
 
-    // Raymond's own click or key in a controlled tab pauses the agent there until he gives control back, and drops
-    // whatever submission was waiting, so nothing the agent started can be sent on his later click.
+    // Your own click or key in a controlled tab pauses the agent there until you give control back, and drops
+    // whatever submission was waiting, so nothing the agent started can be sent on your later click.
     private void _OperatorInput(BrowserTab tab)
     {
         if (Grants.ForTab(tab.Id).Any(grant => grant.Controls && grant.OperatorHolds == false))
