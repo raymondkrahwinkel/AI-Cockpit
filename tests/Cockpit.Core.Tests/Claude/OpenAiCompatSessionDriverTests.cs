@@ -23,6 +23,7 @@ public class OpenAiCompatSessionDriverTests
     [Fact]
     public async Task LmStudio_OffersCodingNatively_WithTheWorkingDirectoryInTheSystemPrompt()
     {
+        Assert.Equal(Timeout.InfiniteTimeSpan, OpenAiCompatChatClientFactory.BuildClientOptions("http://localhost:1234").NetworkTimeout);
         List<ChatMessage>? sent = null;
         ChatOptions? sentOptions = null;
         var chatClient = Substitute.For<IChatClient>();
