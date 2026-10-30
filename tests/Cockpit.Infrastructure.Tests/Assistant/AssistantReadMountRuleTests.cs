@@ -117,7 +117,7 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         McpRequestContext.Set(AssistantIdentity.PaneId);
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(
-            [new SessionProfile("LM Coder (Qwen3.8 27B)", new LmStudioConfig("http://127.0.0.1:1234", "qwen/qwen3.8-27b"))]));
+            [new SessionProfile("Renamed local reader", new LmStudioConfig("http://127.0.0.1:1234", "qwen/qwen3.8-27b"))]));
         var handler = new _LocalModelHandler();
         using var http = new HttpClient(handler);
         var tools = _Tools(localText: new LocalTextModelClient(profiles, http));
@@ -137,10 +137,11 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         }
         handler.Finish = "length";
         handler.Answer = "";
-        var exhausted = _Json(await tools.LocalSummarizeAsync("summarize", "source", thinkingBudget: 17));
+        var exhausted = _Json(await tools.LocalSummarizeAsync("summarize", "source", tokenBudget: 17));
         Assert.Equal("budget_exhausted", (string)exhausted["outcome"]!);
         Assert.Equal(LocalTextModelClient.NoAnswer, (string)exhausted["text"]!);
         Assert.Equal(17, (int)handler.LastBody!["max_tokens"]!);
+        Assert.Equal(17, (int)exhausted["tokenBudget"]!);
         handler.Answer = "unfinished draft";
         Assert.Equal(LocalTextModelClient.NoAnswer, (string)_Json(await tools.LocalSummarizeAsync("brief", "source"))["text"]!);
         handler.Finish = "stop";
@@ -155,7 +156,7 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         Assert.False((bool)_Json(await tools.LocalSummarizeAsync("brief", ""))["ok"]!);
         Assert.False((bool)_Json(await tools.LocalSummarizeAsync("brief", new string('a', 80_001)))["ok"]!);
         Assert.False((bool)_Json(await tools.LocalSummarizeAsync("brief", "source", wordLimit: 0))["ok"]!);
-        Assert.False((bool)_Json(await tools.LocalSummarizeAsync("brief", "source", thinkingBudget: 4097))["ok"]!);
+        Assert.False((bool)_Json(await tools.LocalSummarizeAsync("brief", "source", tokenBudget: 4097))["ok"]!);
         Assert.Equal(before, handler.Calls);
 
         foreach (var url in new[] { "https://example.com", "http://localhost.evil.test", "http://192.168.1.2:1234", "http://localhost:1234/proxy" })
@@ -184,6 +185,11 @@ public sealed class AssistantReadMountRuleTests : IDisposable
         before = handler.Calls;
         profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>([]));
         Assert.False((bool)_Json(await tools.LocalSummarizeAsync("brief", "source"))["ok"]!);
+        Assert.Equal(before, handler.Calls);
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(
+            [new SessionProfile("One", new LmStudioConfig("http://localhost:1234", "one")),
+             new SessionProfile("Two", new LmStudioConfig("http://localhost:1234", "two"))]));
+        Assert.Contains("exactly one", (string)_Json(await tools.LocalSummarizeAsync("brief", "source"))["error"]!);
         Assert.Equal(before, handler.Calls);
     }
 

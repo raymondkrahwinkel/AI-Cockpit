@@ -14,7 +14,7 @@ internal sealed class LocalTextModelClient(ISessionProfileStore profiles, HttpCl
     public void Dispose() => http.Dispose();
 
     internal async Task<object> RunAsync(string taskType, string sourceText, int? wordLimit,
-        int thinkingBudget, CancellationToken cancellationToken)
+        int tokenBudget, CancellationToken cancellationToken)
     {
         var instruction = taskType switch
         {
@@ -29,18 +29,18 @@ internal sealed class LocalTextModelClient(ISessionProfileStore profiles, HttpCl
         {
             throw new ArgumentException("sourceText must contain 1 to 80000 characters.");
         }
-        if (wordLimit is < 1 or > 2000 || thinkingBudget is < 1 or > 4096)
+        if (wordLimit is < 1 or > 2000 || tokenBudget is < 1 or > 4096)
         {
-            throw new ArgumentException("wordLimit must be 1..2000; thinkingBudget must be 1..4096.");
+            throw new ArgumentException("wordLimit must be 1..2000; tokenBudget must be 1..4096.");
         }
 
         var configured = await profiles.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var profile = configured.SingleOrDefault(p => p.Label.Equals("LM Coder", StringComparison.OrdinalIgnoreCase)
-            || p.Label.StartsWith("LM Coder (", StringComparison.OrdinalIgnoreCase));
-        if (profile?.ProviderConfig is not LmStudioConfig config)
+        var candidates = configured.Select(p => p.ProviderConfig).OfType<LmStudioConfig>().ToArray();
+        if (candidates.Length != 1)
         {
-            throw new InvalidOperationException("Configure an LM Studio profile named LM Coder first.");
+            throw new InvalidOperationException("Configure exactly one LM Studio profile for local_summarize; profile labels do not matter.");
         }
+        var config = candidates[0];
         if (!Uri.TryCreate(config.BaseUrl, UriKind.Absolute, out var endpoint)
             || endpoint.Scheme != Uri.UriSchemeHttp
             || !(endpoint.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
@@ -48,7 +48,7 @@ internal sealed class LocalTextModelClient(ISessionProfileStore profiles, HttpCl
             || endpoint.AbsolutePath != "/" || endpoint.Query.Length != 0 || endpoint.UserInfo.Length != 0
             || endpoint.Fragment.Length != 0 || string.IsNullOrWhiteSpace(config.Model))
         {
-            throw new InvalidOperationException("LM Coder must use a local loopback LM Studio HTTP endpoint and an explicit model.");
+            throw new InvalidOperationException("The LM Studio profile must use a local loopback HTTP endpoint and an explicit model.");
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -65,7 +65,7 @@ internal sealed class LocalTextModelClient(ISessionProfileStore profiles, HttpCl
             .Any(instance => instance.GetProperty("id").GetString() == config.Model);
         if (!loaded)
         {
-            throw new InvalidOperationException("The LM Coder model is not already loaded in LM Studio; no model was loaded.");
+            throw new InvalidOperationException("The configured model is not already loaded in LM Studio; no model was loaded.");
         }
 
         using var request = _Request(HttpMethod.Post, "v1/chat/completions");
@@ -74,7 +74,7 @@ internal sealed class LocalTextModelClient(ISessionProfileStore profiles, HttpCl
             model = config.Model,
             reasoning_effort = "low",
             // LM Studio counts thinking and answer tokens together; this is a hard ceiling, not a reserved answer slice.
-            max_tokens = thinkingBudget,
+            max_tokens = tokenBudget,
             stream = false,
             messages = new[]
             {
@@ -92,7 +92,7 @@ internal sealed class LocalTextModelClient(ISessionProfileStore profiles, HttpCl
         var complete = choice.GetProperty("finish_reason").GetString() == "stop" && !string.IsNullOrWhiteSpace(text);
         var usage = body.RootElement.TryGetProperty("usage", out var counts) ? counts.Clone() : (JsonElement?)null;
         return new { ok = true, outcome = complete ? "answered" : "budget_exhausted", text = complete ? text : NoAnswer,
-            elapsedMilliseconds = timer.ElapsedMilliseconds, tokens = usage, thinkingBudget, model = config.Model };
+            elapsedMilliseconds = timer.ElapsedMilliseconds, tokens = usage, tokenBudget, model = config.Model };
 
         HttpRequestMessage _Request(HttpMethod method, string path)
         {

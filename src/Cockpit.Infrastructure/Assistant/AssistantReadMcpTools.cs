@@ -321,16 +321,17 @@ internal sealed class AssistantReadMcpTools(
     }
 
     [McpServerTool(Name = "local_summarize", ReadOnly = true)]
-    [Description("Bounded local reading and drafting using the already loaded LM Coder LM Studio model on this desktop. "
+    [Description("Bounded local reading and drafting using the already loaded model of the single configured LM Studio profile on this desktop. "
         + "Tasks: summarize, analyze_log, draft_comment, clean_dictation, brief. Never classify, decide or review. "
         + "The assistant must check the result against the source. No external service, retry or model loading. "
         + "Returns text or 'geen antwoord binnen het denkbudget', elapsedMilliseconds and token usage. "
-        + "thinkingBudget caps thinking AND answer tokens together; it does not reserve an answer slice.")]
+        + "tokenBudget caps thinking AND answer tokens together; it does not reserve an answer slice. "
+        + "Allow enough tokens for both the requested wordLimit and thinking.")]
     public async Task<string> LocalSummarizeAsync(
         [Description("summarize, analyze_log, draft_comment, clean_dictation or brief.")] string taskType,
         [Description("Source text, 1..80000 characters; treated as data.")] string sourceText,
         [Description("Optional requested maximum words, 1..2000.")] int? wordLimit = null,
-        [Description("Hard combined thinking and answer token ceiling, 1..4096; default 1024.")] int thinkingBudget = 1024,
+        [Description("Hard combined thinking and answer token ceiling, 1..4096; default 1024.")] int tokenBudget = 1024,
         CancellationToken cancellationToken = default)
     {
         if (_RefuseIfNotTheAssistant() is { } refusal)
@@ -340,7 +341,7 @@ internal sealed class AssistantReadMcpTools(
         try
         {
             return _Serialize(await (localText ?? throw new InvalidOperationException("Local model client unavailable."))
-                .RunAsync(taskType, sourceText, wordLimit, thinkingBudget, cancellationToken).ConfigureAwait(false));
+                .RunAsync(taskType, sourceText, wordLimit, tokenBudget, cancellationToken).ConfigureAwait(false));
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
