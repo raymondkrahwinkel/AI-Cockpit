@@ -13,6 +13,8 @@ public sealed class ToastHostViewModel
 {
     public TimeSpan AutoDismissDelay { get; set; } = TimeSpan.FromSeconds(5);
     private readonly Dictionary<string, ConditionToast> _conditions = new(StringComparer.Ordinal);
+    private readonly bool _automaticallyRecheck;
+    private DispatcherTimer? _conditionTimer;
     private const int MaxBundleLines = 3;
     private readonly Action<ToastViewModel, TimeSpan> _scheduleAutoDismiss;
     private List<StartupToast>? _startupToasts;
@@ -23,9 +25,7 @@ public sealed class ToastHostViewModel
     public ToastHostViewModel()
         : this(_ScheduleWithDispatcherTimer)
     {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        timer.Tick += (_, _) => RecheckConditions();
-        timer.Start();
+        _automaticallyRecheck = true;
     }
 
     internal ToastHostViewModel(Action<ToastViewModel, TimeSpan> scheduleAutoDismiss)
@@ -92,6 +92,12 @@ public sealed class ToastHostViewModel
         var item = Notifications.Items.First(item => item.Key == key && item.SourceId is null);
         var condition = new ConditionToast(toast, item, stillApplies, deadline);
         _conditions[key] = condition;
+        if (_automaticallyRecheck && _conditionTimer is null)
+        {
+            _conditionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _conditionTimer.Tick += (_, _) => RecheckConditions();
+            _conditionTimer.Start();
+        }
         foreach (var action in toast.Actions)
         {
             action.StillApplies = stillApplies;
@@ -119,6 +125,12 @@ public sealed class ToastHostViewModel
                 _conditions.Remove(key);
                 _Resolve(condition);
             }
+        }
+
+        if (_conditions.Count == 0)
+        {
+            _conditionTimer?.Stop();
+            _conditionTimer = null;
         }
     }
 

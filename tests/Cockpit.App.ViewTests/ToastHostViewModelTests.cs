@@ -5,8 +5,7 @@ namespace Cockpit.App.ViewTests;
 
 public sealed class ToastHostViewModelTests
 {
-    [Fact]
-    public void ConditionUpdatesOneToast_TimesOutToHistory_ResolvesAndDisablesActions()
+    private static void _ConditionUpdatesOneToast_TimesOutToHistory_ResolvesAndDisablesActions()
     {
         var scheduled = new List<(ToastViewModel Toast, TimeSpan Delay)>();
         var host = new ToastHostViewModel((toast, delay) => scheduled.Add((toast, delay)))
@@ -38,8 +37,7 @@ public sealed class ToastHostViewModelTests
         Assert.False(invoked);
     }
 
-    [Fact]
-    public void ConditionRecoveryOrSessionRemovalClosesBeforeTimeout_RecurrenceCanNotifyAgain()
+    private static void _ConditionRecoveryOrSessionRemovalClosesBeforeTimeout_RecurrenceCanNotifyAgain()
     {
         var host = new ToastHostViewModel((_, _) => { });
         var memory = 11;
@@ -59,8 +57,10 @@ public sealed class ToastHostViewModelTests
     }
 
     [Fact]
-    public void Add_AutoDismissesOnlyPlainInformationAndSuccessToasts()
+    public void NotificationsRespectTimeoutsDedupAndConditionLifetime()
     {
+        _ConditionUpdatesOneToast_TimesOutToHistory_ResolvesAndDisablesActions();
+        _ConditionRecoveryOrSessionRemovalClosesBeforeTimeout_RecurrenceCanNotifyAgain();
         Assert.True(_AutoDismisses(ToastSeverity.Information, false));
         Assert.False(_AutoDismisses(ToastSeverity.Information, true));
         Assert.True(_AutoDismisses(ToastSeverity.Success, false));
