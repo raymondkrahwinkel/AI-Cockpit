@@ -12,9 +12,9 @@ public static class UiThreadHeartbeat
     // right after the warning does not immediately flip back and forth.
     public static readonly TimeSpan CalmBelow = TimeSpan.FromSeconds(1);
 
-    public static UiThreadHeartbeatDecision Decide(TimeSpan sinceLastPong, bool warned)
+    public static UiThreadHeartbeatDecision Decide(TimeSpan sinceLastPong, bool warned, TimeSpan? warnAfter = null)
     {
-        if (!warned && sinceLastPong > WarnAfter)
+        if (!warned && sinceLastPong > (warnAfter ?? WarnAfter))
         {
             return new UiThreadHeartbeatDecision(Warn: true, Recovered: false, Warned: true);
         }

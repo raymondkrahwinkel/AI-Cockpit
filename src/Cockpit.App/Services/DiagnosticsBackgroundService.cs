@@ -117,7 +117,8 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     // AC-1196: the budget both alarms below are judged against. Injectable for the same reason heapBytesProbe is —
     // a test would otherwise have to hold a thread hostage for a real quarter-minute per case, three times over.
-    private readonly TimeSpan _alarmAfter;
+    private TimeSpan _alarmAfter;
+    private TimeSpan _uiFreezeAfter = UiThreadHeartbeat.WarnAfter;
 
     // AC-1263: how long the guard takes to react is N times this, not N alone. Injectable for the same reason
     // alarmAfter is -- a test of the cut would otherwise have to hold a thread for half a minute.
@@ -164,6 +165,14 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
     // Flips the periodic-snapshot half on or off live — called by CockpitViewModel from the Options checkbox and
     // at startup load. The heartbeat half is not gated by this; it always runs.
     public void SetSnapshotsEnabled(bool enabled) => _snapshotsEnabled = enabled;
+
+    public void ConfigureThresholds(Cockpit.Core.Debugging.DebugSettings settings)
+    {
+        _uiFreezeAfter = settings.UiFreezeThresholdSeconds > 1
+            ? TimeSpan.FromSeconds(settings.UiFreezeThresholdSeconds) : UiThreadHeartbeat.WarnAfter;
+        _alarmAfter = settings.RenderStallThresholdSeconds > 0
+            ? TimeSpan.FromSeconds(settings.RenderStallThresholdSeconds) : RenderClockHeartbeat.StallAfter;
+    }
 
     // Internal so a view test can drive the edge without a compositor that really stalls. Posts rather than raising
     // inline: the caller is this background thread and every subscriber touches visuals.
@@ -214,7 +223,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
         // every run, past or present, without needing a reproduction.
         _logger.LogInformation(
             "diagnostics thread running snapshots={Snapshots} warnAfter={WarnAfter:0}s stallAfter={StallAfter:0}s",
-            _snapshotsEnabled, UiThreadHeartbeat.WarnAfter.TotalSeconds, _alarmAfter.TotalSeconds);
+            _snapshotsEnabled, _uiFreezeAfter.TotalSeconds, _alarmAfter.TotalSeconds);
 
         // AC-1125 F: one sampler per caller, not one shared between them — PercentSinceLastCall() resets its own
         // baseline on every call, so two callers sharing one instance stole each other's measurement window.
@@ -257,7 +266,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
                 if (lastPongTicks >= 0)
                 {
                     var sinceLastPong = TimeSpan.FromTicks(_clock.Elapsed.Ticks - lastPongTicks);
-                    var decision = UiThreadHeartbeat.Decide(sinceLastPong, warned);
+                    var decision = UiThreadHeartbeat.Decide(sinceLastPong, warned, _uiFreezeAfter);
 
                     if (decision.Warn)
                     {
