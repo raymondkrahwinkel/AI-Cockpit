@@ -52,7 +52,7 @@ public sealed class PluginStartSessionDeliveryTests
             "Hours week 43"));
 
         Assert.Equal("Hours week 43", name);
-        var session = Assert.IsType<SessionViewModel>(Assert.Single(cockpit.Sessions));
+        var session = Assert.IsType<ThreadCheckedSession>(Assert.Single(cockpit.Sessions));
         Assert.True(session.HasPromptWaitingToBeDelivered);
         Assert.Equal(string.Empty, session.InputText);
 
@@ -93,11 +93,7 @@ public sealed class PluginStartSessionDeliveryTests
         terminal.LoadAsync().Returns(new TerminalSettings());
 
         return new CockpitViewModel(
-            () =>
-            {
-                Assert.True(Dispatcher.UIThread.CheckAccess());
-                return new SessionViewModel();
-            },
+            () => new ThreadCheckedSession(),
             () => new TtyViewModel(),
             Substitute.For<ISessionDialogService>(),
             Substitute.For<IAudioCaptureService>(),
@@ -111,5 +107,17 @@ public sealed class PluginStartSessionDeliveryTests
             terminal,
             sessionRegistry: registry,
             sessionLauncher: launcher.Get);
+    }
+
+    private sealed class ThreadCheckedSession : SessionViewModel
+    {
+        public override bool CanTakeAPrompt
+        {
+            get
+            {
+                Assert.True(Dispatcher.UIThread.CheckAccess(), "Prompt readiness must be checked on the UI thread.");
+                return base.CanTakeAPrompt;
+            }
+        }
     }
 }
