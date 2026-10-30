@@ -54,7 +54,7 @@ public class OpenAiCompatSessionDriverTests
         var requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions.RawRepresentationFactory!(chatClient));
         using (var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString()))
         {
-            Assert.Equal("on", request.RootElement.GetProperty("reasoning_effort").GetString());
+            Assert.Equal("low", request.RootElement.GetProperty("reasoning_effort").GetString());
         }
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
         Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
@@ -87,7 +87,7 @@ public class OpenAiCompatSessionDriverTests
             {
                 requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions!.RawRepresentationFactory!(chatClient));
                 using var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString());
-                Assert.Equal("off", request.RootElement.GetProperty("reasoning_effort").GetString());
+                Assert.Equal("none", request.RootElement.GetProperty("reasoning_effort").GetString());
             }
         }
 

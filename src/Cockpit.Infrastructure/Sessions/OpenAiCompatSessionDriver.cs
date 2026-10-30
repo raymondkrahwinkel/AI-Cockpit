@@ -354,8 +354,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         {
             options.RawRepresentationFactory = _ => new ChatCompletionOptions
             {
-#pragma warning disable OPENAI001 // LM Studio accepts its own on/off effort values through this SDK field.
-                ReasoningEffortLevel = new ChatReasoningEffortLevel(thinking ? "on" : "off"),
+#pragma warning disable OPENAI001 // LM Studio's OpenAI endpoint accepts low/none, not the native on/off values.
+                ReasoningEffortLevel = new ChatReasoningEffortLevel(thinking ? "low" : "none"),
 #pragma warning restore OPENAI001
             };
         }
