@@ -3911,6 +3911,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _notificationSettingsStore.LoadAsync();
+        ToastHost.AutoDismissDelay = TimeSpan.FromSeconds(settings.ToastTimeoutSeconds > 0 ? settings.ToastTimeoutSeconds : 5);
         LocalNotificationsEnabled = settings.LocalEnabled;
         DiscordNotificationsEnabled = settings.DiscordEnabled;
         WebhookUrl = settings.WebhookUrl ?? string.Empty;
@@ -3937,7 +3938,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? IdleThresholdMinutes
             : (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
-        var settings = new NotificationSettings
+        var settings = (await _notificationSettingsStore.LoadAsync()) with
         {
             LocalEnabled = LocalNotificationsEnabled,
             DiscordEnabled = DiscordNotificationsEnabled,
@@ -4393,11 +4394,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 continue;
             }
 
-            ToastHost.Add(
+            ToastHost.AddCondition($"memory-cap:{measured.PaneId}",
                 $"'{measured.Title}' is over its {_Megabytes(cap)} memory cap, holding {_Megabytes(measured.MemoryBytes)}. Cockpit will not close it on its own.",
                 ToastSeverity.Warning,
-                actionLabel: "Kill",
-                onAction: () => _ = CloseSessionCommand.ExecuteAsync(session));
+                [new ToastAction("Kill", () => _ = CloseSessionCommand.ExecuteAsync(session))],
+                () => Sessions.Contains(session) && session.ProcessMemoryBytes > session.MemoryCapBytes && session.MemoryCapBytes > 0);
         }
     }
 
@@ -4511,9 +4512,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
+        _ReportSessionProcesses(usage);
         _WarnAboutSessionMemory(usage);
         _WarnAboutSessionPressure(usage);
-        _ReportSessionProcesses(usage);
+        ToastHost.RecheckConditions();
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);

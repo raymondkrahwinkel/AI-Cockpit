@@ -1,4 +1,7 @@
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Notifications;
+using System.IO.Enumeration;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Toasts;
@@ -8,7 +11,8 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.Sessions;
 
 // AC-1820: report new top-level directories while agents live; never attribute authorship or remove anything.
-internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToastService? toasts = null)
+internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToastService? toasts = null,
+    INotificationSettingsStore? settingsStore = null)
     : ISingletonService, IDisposable
 {
     private readonly Lock _gate = new();
@@ -22,6 +26,7 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
     private bool _watchersWanted;
     private bool _watching;
     private bool _workerRunning;
+    internal NotificationSettings Settings { get; set; } = new();
     private readonly HashSet<string> _failedRoots = new(StringComparer.OrdinalIgnoreCase);
 
     public void Start(ISessionRegistry registry, IDelegationService? delegation = null)
@@ -114,10 +119,15 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
         }
     }
 
-    private void _UpdateWatchers()
+    private async Task _UpdateWatchers()
     {
         try
         {
+            if (settingsStore is not null)
+            {
+                Settings = await settingsStore.LoadAsync().ConfigureAwait(false);
+            }
+
             while (true)
             {
                 bool wanted;
@@ -214,21 +224,22 @@ internal sealed class HomeFolderWatcher(ILogger<HomeFolderWatcher> logger, IToas
         {
             lock (_gate)
             {
-                if (_disposed || Path.GetFileName(path).StartsWith('.') || !Directory.Exists(path))
+                var name = Path.GetFileName(path);
+                if (_disposed || name.StartsWith('.') || !Directory.Exists(path)
+                    || Settings.IgnoredHomeFolderPatterns.Any(pattern => FileSystemName.MatchesSimpleExpression(pattern, name, ignoreCase: true)))
                 {
                     return;
                 }
 
-                var names = _SessionNames();
                 var canonical = Path.GetFullPath(path);
-                if (names.Count == 0 || !_reported.Add(canonical))
+                if (_SessionNames().Count == 0 || !_reported.Add(canonical))
                 {
                     return;
                 }
 
                 var keyPath = OperatingSystem.IsWindows() ? canonical.ToUpperInvariant() : canonical;
-                toasts?.Show($"New directory: {canonical}\nSessions running at the time: {string.Join(", ", names)}",
-                    ToastSeverity.Warning, [], false, "Cockpit", $"home-folder:{keyPath}", "New folder outside session scratch");
+                toasts?.Show($"New directory: {canonical}\nCreator unknown.",
+                    ToastSeverity.Information, [], false, "Cockpit", $"home-folder:{keyPath}", "New folder outside session scratch");
             }
         }
         catch (Exception exception)
