@@ -87,25 +87,7 @@ public sealed class StateRootOverrideTests
 
         using var _ = new OverrideScope(Override);
 
-        // AC-1962: scratch paths follow TEMP, which can happen to sit beneath the default state root.
-        string[] scratchPaths = ["SessionScratch.BasePath", "SessionScratch.FallbackBase", "SessionScratch.LegacyRoot"];
-        foreach (var name in scratchPaths)
-        {
-            var scratch = Assert.Single(withoutOverride, path => path.Name == name);
-            var resolved = _Resolve(scratch.Member);
-            if (name == "SessionScratch.LegacyRoot")
-            {
-                Assert.Equal(Path.GetDirectoryName(scratch.Value), Path.GetDirectoryName(resolved));
-                Assert.NotEqual(scratch.Value, resolved);
-            }
-            else
-            {
-                Assert.Equal(scratch.Value, resolved);
-            }
-        }
-
         var stragglers = underRealRoot
-            .Where(path => !scratchPaths.Contains(path.Name, StringComparer.Ordinal))
             .Select(path => (path.Name, Value: _Resolve(path.Member)))
             .Where(path => path.Value is null || !_IsUnder(path.Value, Override))
             .Select(path => $"{path.Name} = {path.Value ?? "<unreadable>"}")

@@ -71,8 +71,6 @@ public class DelegatedWorkspaceChangesTests : IDisposable
     public async Task SnapshotAsync_OutsideAWorkTree_IsNull()
     {
         Directory.CreateDirectory(_repository);
-        // A bare repository stays outside a worktree even when TEMP is inside the enclosing checkout (AC-1962).
-        await GitCli.RunCheckedAsync(_repository, ["init", "--bare"], CancellationToken.None);
 
         Assert.Null(await DelegatedWorkspaceChanges.SnapshotAsync(_repository));
     }
