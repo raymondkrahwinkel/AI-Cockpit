@@ -16,7 +16,7 @@ internal static class SettingsCarrierWhitelist
         "Profiles[].Defaults.AutoApproveTools", "Profiles[].Defaults.OptionDefaults", "Profiles[].Defaults.DefaultReadingLevel",
         "Profiles[].Provider.Provider", "Profiles[].Provider.BaseUrl", "Profiles[].Provider.Model",
         "Profiles[].Provider.SystemPrompt", "Profiles[].Provider.TurnLimits", "Profiles[].Provider.ContextTokens",
-        "Profiles[].Provider.LoadModelWithContext", "Profiles[].Provider.PluginProviderId",
+        "Profiles[].Provider.LoadModelWithContext", "Profiles[].Provider.LoadOptions", "Profiles[].Provider.EnableThinking", "Profiles[].Provider.PluginProviderId",
         "Profiles[].Delegation.AllowedAsTarget", "Profiles[].Delegation.MaxConcurrent", "Profiles[].Delegation.PermissionCeiling",
         "Profiles[].Delegation.MayDelegateFurther", "Profiles[].Delegation.TimeoutMinutes", "Profiles[].Delegation.AllowedTaskTypes",
         "Profiles[].Delegation.Purpose", "Profiles[].Delegation.Tags", "Profiles[].Delegation.AllowedTools",

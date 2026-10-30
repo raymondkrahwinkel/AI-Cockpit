@@ -12,7 +12,9 @@ public sealed record LmStudioConfig(
     string? SystemPrompt = null,
     JsonElement? TurnLimits = null,
     int ContextTokens = LocalModelContext.DefaultTokens,
-    bool LoadModelWithContext = false) : ProviderConfig(SessionProvider.LmStudio)
+    bool LoadModelWithContext = false,
+    LmStudioLoadOptions? LoadOptions = null,
+    bool? EnableThinking = null) : ProviderConfig(SessionProvider.LmStudio)
 {
     // Overrides the record's auto-generated `ToString()`, which would otherwise print `ApiKey`
     // in the clear — anywhere this config lands in a log line or exception message (a leak surface, not just
