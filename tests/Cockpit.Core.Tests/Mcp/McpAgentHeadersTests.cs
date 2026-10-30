@@ -36,19 +36,14 @@ public class McpAgentHeadersTests
     }
 
     [Fact]
-    public void For_ForACockpitHostedEndpoint_DropsAHandTypedAuthorization()
+    public void For_ForManagedAuthentication_DropsAHandTypedAuthorization()
     {
         var server = _ServerWith(new McpHeader("Authorization", "Bearer mine")) with { CockpitHosted = true };
 
         // A cockpit-hosted endpoint carries no literal token here — its auth rides an env var the provider
         // references — but it is still an Authorization the operator must not be able to displace.
         Assert.False(McpAgentHeaders.For(server, bearerToken: null).ContainsKey("Authorization"));
-    }
-
-    [Fact]
-    public void For_ForAnOAuthServer_DropsAHandTypedAuthorization_EvenWithNoTokenInHand()
-    {
-        var server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.OAuth };
+        server = _ServerWith(new McpHeader("Authorization", "Token abc123")) with { Auth = McpServerAuth.OAuth };
 
         // The case a "is a bearer going out?" test would have missed. In-process an OAuth server produces no bearer at
         // all — the MCP SDK negotiates the authorization itself — so a hand-typed Authorization would have survived on
