@@ -244,6 +244,7 @@ public partial class CockpitViewModel
     {
         if (group.IsSwarmMember)
         {
+            pane.SetRemoteLink(group.IsConnected, mayAnswerPermissions: true, allowsForSession: true);
             pane.ComposerPlaceholder = group.IsConnected ? $"Running on {group.Name}" : group.LastSeenLabel;
             return;
         }
@@ -300,7 +301,10 @@ public partial class CockpitViewModel
                 return;
             }
 
-            var pane = await _remotePaneOver(row.Handle, group.Name);
+            var handle = group.IsSwarmMember && _swarmSessions is { } nodes
+                ? await nodes.OpenSessionAsync(group.Name, row.Handle.PaneId) ?? row.Handle
+                : row.Handle;
+            var pane = await _remotePaneOver(handle, group.Name);
             pane.ShowsWhereItRuns = true;
             _ApplyLink(pane, group);
             row.Pane = pane;

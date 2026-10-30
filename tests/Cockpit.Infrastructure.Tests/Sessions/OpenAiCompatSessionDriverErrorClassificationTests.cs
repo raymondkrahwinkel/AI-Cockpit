@@ -25,7 +25,7 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
     }
 
     [Fact]
-    public void RetryAfterFrom_A429WithADeltaSecondsHeader_ReturnsThatManySecondsFromNow()
+    public void RetryAfterFrom_ParsesDeltaSecondsAndHttpDate()
     {
         var ex = new ClientResultException(new _FakeResponse(429, retryAfterHeaderValue: "30"));
 
@@ -33,15 +33,8 @@ public class OpenAiCompatSessionDriverErrorClassificationTests
 
         Assert.NotNull(retryAfter);
         Assert.True(retryAfter > DateTimeOffset.UtcNow.AddSeconds(25) && retryAfter <= DateTimeOffset.UtcNow.AddSeconds(30));
-    }
-
-    [Fact]
-    public void RetryAfterFrom_A429WithAnHttpDateHeader_ParsesTheDateInstead()
-    {
-        // RFC 9110 §10.2.3: Retry-After may be an HTTP-date instead of delta-seconds.
-        var ex = new ClientResultException(new _FakeResponse(429, retryAfterHeaderValue: "Wed, 21 Oct 2026 07:28:00 GMT"));
-
-        Assert.Equal(new DateTimeOffset(2026, 10, 21, 7, 28, 0, TimeSpan.Zero), OpenAiCompatSessionDriver._RetryAfterFrom(ex));
+        var date = new ClientResultException(new _FakeResponse(429, retryAfterHeaderValue: "Wed, 21 Oct 2026 07:28:00 GMT"));
+        Assert.Equal(new DateTimeOffset(2026, 10, 21, 7, 28, 0, TimeSpan.Zero), OpenAiCompatSessionDriver._RetryAfterFrom(date));
     }
 
     // Minimal PipelineResponse: just enough of the abstract surface to build a ClientResultException with a

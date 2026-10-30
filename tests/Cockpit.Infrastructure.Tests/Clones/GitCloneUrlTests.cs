@@ -10,7 +10,7 @@ namespace Cockpit.Infrastructure.Tests.Clones;
 public sealed class GitCloneUrlTests
 {
     [Fact]
-    public void Parse_HttpsUrl_ExtractsHostSlugAndSegmentsAndKeepsNonDefaultPort()
+    public void Parse_CommonHttpsAndScpStyleUrls_KeepTheirRequiredParts()
     {
         var parsed = GitCloneUrl.Parse("https://gitlab.com/group/subgroup/repo.git");
 
@@ -19,6 +19,10 @@ public sealed class GitCloneUrlTests
         Assert.Equal("gitlab.com/group/subgroup/repo", parsed.Slug);
         Assert.Equal("https://gitlab.com/group/subgroup/repo", parsed.RemoteUrl);
         Assert.Equal("https://ghe.example.com:8443/org/repo", GitCloneUrl.Parse("https://ghe.example.com:8443/org/repo.git").RemoteUrl);
+        var ssh = GitCloneUrl.Parse("git@github.com:org/repo.git");
+        Assert.Equal("github.com", ssh.Host);
+        Assert.Equal(new[] { "org", "repo" }, ssh.Segments);
+        Assert.Equal("git@github.com:org/repo.git", ssh.RemoteUrl);
     }
 
     // The load-bearing security property (a binding rule): a token in an HTTPS URL is dropped before git ever sees
@@ -31,17 +35,6 @@ public sealed class GitCloneUrlTests
         Assert.Equal("https://github.com/org/repo", parsed.RemoteUrl);
         Assert.DoesNotContain("ghp_secretsecret", parsed.RemoteUrl);
         Assert.DoesNotContain("@", parsed.RemoteUrl);
-    }
-
-    [Fact]
-    public void Parse_ScpStyleSshUrl_KeepsTheLoginAndParsesHostAndPath()
-    {
-        var parsed = GitCloneUrl.Parse("git@github.com:org/repo.git");
-
-        Assert.Equal("github.com", parsed.Host);
-        Assert.Equal(new[] { "org", "repo" }, parsed.Segments);
-        // The git@ user is the SSH login, not a secret, and the clone needs it — kept verbatim.
-        Assert.Equal("git@github.com:org/repo.git", parsed.RemoteUrl);
     }
 
     // The same binding rule as HTTPS, for the one scheme that kept its userinfo: an ssh:// URL may carry the git@

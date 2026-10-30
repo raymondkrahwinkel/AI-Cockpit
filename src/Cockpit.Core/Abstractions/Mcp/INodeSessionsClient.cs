@@ -1,4 +1,5 @@
 using Cockpit.Core.Abstractions.Assistant;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Abstractions.Mcp;
@@ -21,6 +22,9 @@ public interface INodeSessionsClient
     /// it comes back as <see cref="NodeSessionsSnapshot.Error"/> rather than an exception.
     /// </summary>
     Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default);
+
+    Task<ISessionHandle?> OpenSessionAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<ISessionHandle?>(null);
 
     /// <summary>
     /// Starts a session on <paramref name="nodeName"/> under <paramref name="profileLabel"/>, optionally for one of
