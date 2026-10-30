@@ -17,6 +17,9 @@ internal sealed partial class AgentOwnedTabs
             var session = Check(caller, entry.Generation, mutate);
             using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
             var token = timeout.Token;
+            var boundary = await BoundaryAsync(caller, session, token).ConfigureAwait(false);
+            boundary.TakeBlocked(entry.Target);
+            await boundary.DenyDownloadsAsync(token).ConfigureAwait(false);
             using var targets = JsonDocument.Parse(await Http.GetStringAsync(session.Upstream + "/json/list", token).ConfigureAwait(false));
             var target = targets.RootElement.EnumerateArray().FirstOrDefault(p => p.GetProperty("id").GetString() == entry.Target);
             if (target.ValueKind == JsonValueKind.Undefined)
@@ -46,9 +49,11 @@ internal sealed partial class AgentOwnedTabs
             {
                 case "navigate":
                     var navigation = await Send("Page.navigate", new { url = action.Text }).ConfigureAwait(false);
+                    if (navigation.TryGetProperty("isDownload", out var download) && download.GetBoolean())
+                        throw new OwnedTabException("confirmation_required", "File transfer requires an operator action.");
                     if (navigation.TryGetProperty("errorText", out _))
                     {
-                        throw new OwnedTabException("browser_unavailable", "Navigation failed.");
+                        throw new OwnedTabException(boundary.TakeBlocked(entry.Target) ?? "browser_unavailable", "Navigation failed.");
                     }
                     break;
                 case "close":
@@ -72,6 +77,7 @@ internal sealed partial class AgentOwnedTabs
                     await Send("Input.insertText", new { text = action.Text }).ConfigureAwait(false);
                     break;
                 case "key":
+                    await ValidateLinkAsync(Evaluate, "document.activeElement").ConfigureAwait(false);
                     var (key, code) = Key(action.Text!);
                     await Send("Input.dispatchKeyEvent", new { type = "keyDown", key, windowsVirtualKeyCode = code, text = key.Length == 1 ? key : "" }).ConfigureAwait(false);
                     await Send("Input.dispatchKeyEvent", new { type = "keyUp", key, windowsVirtualKeyCode = code }).ConfigureAwait(false);
@@ -93,11 +99,18 @@ internal sealed partial class AgentOwnedTabs
                         x = point.GetProperty("x").GetDouble();
                         y = point.GetProperty("y").GetDouble();
                     }
+                    await ValidateLinkAsync(Evaluate, "document.elementFromPoint(" + JsonSerializer.Serialize(x) + "," + JsonSerializer.Serialize(y) + ")").ConfigureAwait(false);
                     await Send("Input.dispatchMouseEvent", new { type = "mousePressed", x, y, button = "left", clickCount = 1 }).ConfigureAwait(false);
                     await Send("Input.dispatchMouseEvent", new { type = "mouseReleased", x, y, button = "left", clickCount = 1 }).ConfigureAwait(false);
                     break;
             }
             Check(caller, entry.Generation);
+            if (action.Tool is "click" or "key" or "navigate")
+            {
+                await Task.Delay(200, token).ConfigureAwait(false);
+                if (boundary.TakeBlocked(entry.Target) is { } blocked)
+                    throw new OwnedTabException(blocked, "The browser blocked this action at the file or protocol boundary.");
+            }
             return new("", true, Action: action.Tool);
         }
         catch (Exception ex) when (IsBrowserFailure(ex))
@@ -125,6 +138,13 @@ internal sealed partial class AgentOwnedTabs
         {
             throw new OwnedTabException("invalid_argument", "Invalid browser action, selector, loadState or timeout (1..30000 ms).");
         }
+    }
+
+    private static async Task ValidateLinkAsync(Func<string, Task<JsonElement>> evaluate, string element)
+    {
+        var href = await evaluate("(() => { const a=(" + element + ")?.closest('a,area'); return a?.href || ''; })()").ConfigureAwait(false);
+        if (href.GetString() is { Length: > 0 } url && !AgentTabBoundary.IsWeb(url))
+            throw new OwnedTabException("invalid_argument", "Only http(s) links are allowed.");
     }
 
     private static (string Key, int Code) Key(string key) => key switch

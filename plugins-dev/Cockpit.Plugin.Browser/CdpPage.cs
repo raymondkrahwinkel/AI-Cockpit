@@ -15,7 +15,7 @@ internal sealed class CdpPage : IDisposable
     private int _nextId;
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
-    public async Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken, Action? beforeSend = null)
+    public async Task<JsonElement> CallAsync(string method, object? parameters, CancellationToken cancellationToken, Action? beforeSend = null, string? sessionId = null)
     {
         var id = Interlocked.Increment(ref _nextId);
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -26,7 +26,10 @@ internal sealed class CdpPage : IDisposable
             try
             {
                 beforeSend?.Invoke();
-                await _socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { } }), WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
+                var bytes = sessionId is null
+                    ? JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { } })
+                    : JsonSerializer.SerializeToUtf8Bytes(new { id, method, @params = parameters ?? new { }, sessionId });
+                await _socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken).ConfigureAwait(false);
             }
             finally { _sendGate.Release(); }
             return await completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -39,6 +42,9 @@ internal sealed class CdpPage : IDisposable
     }
 
     public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement> onEvent, CancellationToken cancellationToken)
+        => await ConnectAsync(socketUrl, (name, data, _) => onEvent(name, data), cancellationToken).ConfigureAwait(false);
+
+    public static async Task<CdpPage> ConnectAsync(string socketUrl, Action<string, JsonElement, string?> onEvent, CancellationToken cancellationToken)
     {
         var page = new CdpPage();
         try { await page._socket.ConnectAsync(new Uri(socketUrl), cancellationToken).ConfigureAwait(false); }
@@ -67,7 +73,7 @@ internal sealed class CdpPage : IDisposable
         _socket.Dispose();
     }
 
-    private async Task ReadAsync(Action<string, JsonElement> onEvent)
+    private async Task ReadAsync(Action<string, JsonElement, string?> onEvent)
     {
         var buffer = new byte[64 * 1024];
         using var message = new MemoryStream();
@@ -104,7 +110,8 @@ internal sealed class CdpPage : IDisposable
                 }
                 if (root.TryGetProperty("method", out var method) && method.GetString() is { } name)
                 {
-                    onEvent(name, root.TryGetProperty("params", out var parameters) ? parameters : default);
+                    onEvent(name, root.TryGetProperty("params", out var parameters) ? parameters : default,
+                        root.TryGetProperty("sessionId", out var session) ? session.GetString() : null);
                 }
             }
         }
