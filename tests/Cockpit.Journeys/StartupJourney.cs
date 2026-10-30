@@ -124,13 +124,13 @@ public sealed class StartupJourney
             async () => reminders = JsonSerializer.Deserialize<string>((await services.GetRequiredService<IPluginRegistrationStore>().LoadDataAsync("schedules"))["reminders"]) ?? "",
             () => reminders.Contains("\"State\":\"Done\"", StringComparison.Ordinal));
 
-        // AC-1853 (screen 02): two more in the window make five; the bundle names three of them and counts the rest.
+        // AC-1907/1909: the handled reminder no longer counts; two more leave four, with three named in the bundle.
         await HeadlessAvalonia.RunAsync(() =>
         {
             cockpitViewModel.ToastHost.Add("Late one", ToastSeverity.Warning, [new ToastAction("Look", static () => { })], sticky: true, source: "Journey");
             cockpitViewModel.ToastHost.Add("Later one", ToastSeverity.Information, [], sticky: false, source: "Journey", title: "A titled one");
             var bundle = Assert.Single(cockpitViewModel.Toasts);
-            Assert.Equal(("5 notifications at startup", 3, "+2 more"), (bundle.Message, bundle.Lines.Count, bundle.MoreLabel));
+            Assert.Equal(("4 notifications at startup", 3, "+1 more"), (bundle.Message, bundle.Lines.Count, bundle.MoreLabel));
             bundle.Actions[1].InvokeCommand.Execute(null);
             return Task.CompletedTask;
         });
