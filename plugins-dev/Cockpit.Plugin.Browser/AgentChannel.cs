@@ -10,6 +10,7 @@ internal static class AgentChannel
     public static void Register(IPluginBackendChannel channel, AgentBrowserTabs tabs)
     {
         channel.Handle("agents.tabs", async (_, cancellationToken) => Json(new { ok = true, tabs = await tabs.ListAsync(cancellationToken).ConfigureAwait(false) }));
+        channel.Handle("agents.close", async (payload, token) => Done(await tabs.CloseAsync(Text(payload, "paneId"), Text(payload, "targetId"), token).ConfigureAwait(false), "That tab is gone"));
         channel.Handle("agents.watch", async (payload, cancellationToken) =>
             Done(await tabs.WatchAsync(Text(payload, "paneId"), Text(payload, "targetId"), cancellationToken).ConfigureAwait(false), "That tab is gone"));
         channel.Handle("agents.unwatch", (_, _) =>

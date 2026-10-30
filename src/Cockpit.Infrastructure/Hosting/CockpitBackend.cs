@@ -635,7 +635,7 @@ public sealed class CockpitBackend
         var registrationStore = Services.GetRequiredService<IPluginRegistrationStore>();
         var secretFieldStore = Services.GetRequiredService<IPluginSecretFieldStore>();
         var cache = PluginCacheStore.ForStateRoot(Services.GetService<ILogger<PluginCacheStore>>());
-        var sessions = new PluginBackendSessionObserver(Services.GetRequiredService<ISessionRegistry>());
+        var sessions = new PluginBackendSessionObserver(Services.GetRequiredService<ISessionRegistry>(), Services);
         var actions = new PluginBackendActions(
             Services.GetRequiredService<ISessionProfileStore>(),
             Services.GetRequiredService<IDelegationService>(),

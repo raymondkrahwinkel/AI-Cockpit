@@ -16,6 +16,7 @@ internal sealed partial class AgentOwnedTabs
             var mutate = action.Tool != "wait";
             var session = Check(caller, entry.Generation, mutate);
             using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
+            using var ended = session.Ended.Register(timeout.Cancel);
             var token = timeout.Token;
             var boundary = await BoundaryAsync(caller, session, token).ConfigureAwait(false);
             boundary.TakeBlocked(entry.Target);
