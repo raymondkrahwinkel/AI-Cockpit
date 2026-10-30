@@ -294,6 +294,11 @@ internal static partial class Screenshotter
         // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
         // controller's assistant may do here render nowhere else.
         ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
+        ["options-swarm"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-empty"] = (_, _) => _OptionsSwarm(empty: true),
+        ["options-swarm-invalid-cidr"] = (_, _) => _OptionsSwarm(invalidCidr: true),
+        ["options-swarm-settings"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-incoming"] = (_, _) => _OptionsSwarm(incoming: true),
         // AC-1458: the connect form after a connect that went through — they match, and Connected; and the four
         // connection statuses beside the four outcomes, each drawn by the same view the Nodes page uses.
         ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
@@ -1315,6 +1320,9 @@ internal static partial class Screenshotter
         // on Height alone to make it fit.
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
+        ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-swarm-invalid-cidr"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-swarm-incoming"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
@@ -1927,6 +1935,33 @@ internal static partial class Screenshotter
         // paired-node cards, and a render that crops it proves nothing about the part this change touched.
         var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
         dialog.SelectCategory("nodes");
+        return dialog;
+    }
+
+    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false)
+    {
+        var swarm = new SwarmOptionsViewModel
+        {
+            ExtraInternalCidrsText = invalidCidr ? "100.64.0.0/99" : "100.64.0.0/10",
+            Address = "nuc-garage:20382",
+            Incoming = incoming ? new("scene-pairing", "Desktop", "482 193", DateTimeOffset.UtcNow.AddMinutes(2)) : null,
+        };
+        if (!empty)
+        {
+            swarm.Machines.Add(new("Desktop", "192.168.1.10:20382", "Discovered", "1042", "Leader", "Now", false, true));
+            swarm.Machines.Add(new("Laptop", "192.168.1.23:20382", "This machine", "5789", "Online", "Now", true, true));
+            swarm.Machines.Add(new("Studio", "studio:20382", "Manual address", "8931", "Online", "Now", false, true));
+            swarm.Machines.Add(new("NUC", "192.168.1.44:20382", "Discovered", "15237", "Asleep", "Today, 14:32", false, false));
+            swarm.Machines.Add(new("Workshop", "workshop:20382", "Manual address", "18004", "Not reachable", "Yesterday, 18:04", false, false));
+            swarm.LeaderLine = "Leader: Desktop · Lowest rank of the 3 reachable";
+            swarm.RankOrder = "Desktop (1042) → Laptop (5789) → Studio (8931) → NUC (15237) → Workshop (18004)";
+            swarm.PairingCode = "482 193";
+            swarm.PairingCaption = "Compare with NUC-garage on the other screen. Confirm there too, then continue here.";
+        }
+        var cockpit = new CockpitViewModel { Swarm = swarm };
+        cockpit.Security.NodeEndpointEnabled = true;
+        var dialog = new OptionsDialog { DataContext = cockpit, Width = 1100, Height = 1700 };
+        dialog.SelectCategory("swarm");
         return dialog;
     }
 

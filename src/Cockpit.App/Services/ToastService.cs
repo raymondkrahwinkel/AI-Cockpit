@@ -31,6 +31,11 @@ public sealed class ToastService(CockpitViewModel cockpit) : IToastService, ISin
 
     public void Show(string message, ToastSeverity severity, IReadOnlyList<ToastAction> actions, bool sticky, string? source, string? key, string? title)
     {
+        if (source == "Swarm" && actions.Count == 0)
+        {
+            actions = [new ToastAction("Open Swarm", () => cockpit.OpenSwarmOptionsCommand.Execute(null))];
+        }
+
         if (Dispatcher.UIThread.CheckAccess())
         {
             cockpit.ToastHost.Add(message, severity, actions, sticky, source, key, title: title);

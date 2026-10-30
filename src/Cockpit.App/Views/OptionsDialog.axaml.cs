@@ -79,6 +79,7 @@ public partial class OptionsDialog : Window
             {
                 cockpit.RefreshBackupPlugins();
                 cockpit.Diagnostics.Refresh();
+                cockpit.Swarm.StartListening();
                 cockpit.ModelIntelligence.LoadCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
                 _ApplySearch(cockpit.OptionsSearchText);
@@ -93,6 +94,7 @@ public partial class OptionsDialog : Window
             _UnwireSearch();
             _ClearSearchVisibilityOverrides();
             (DataContext as CockpitViewModel)?.StopMicTest();
+            (DataContext as CockpitViewModel)?.Swarm.StopListening();
             (DataContext as CockpitViewModel)?.OptionsClosed();
         };
         Closing += OnClosingDialog;
@@ -494,7 +496,9 @@ public partial class OptionsDialog : Window
         var pages = CategoryContent.Children.OfType<Control>()
             .Where(page => page.Tag is string)
             .ToDictionary(page => (string)page.Tag!);
-        var matches = pages.ToDictionary(pair => pair.Key, pair => _FilterRows(pair.Value, searchText));
+        var matches = pages.ToDictionary(pair => pair.Key, pair => pair.Key == "servers"
+            ? OptionsSearchMatcher.MatchesAny(searchText, "servers admin headless connect keys plugins profiles projects audit") ? 1 : 0
+            : _FilterRows(pair.Value, searchText));
 
         foreach (var (tag, plugin) in _pluginRows)
         {
@@ -529,6 +533,7 @@ public partial class OptionsDialog : Window
 
     private int _FilterRows(Control root, string? searchText)
     {
+        if (Equals(root.Tag, "swarm") && OptionsSearchMatcher.MatchesAny(searchText, "swarm machines pairing ranks leader")) searchText = null;
         var searching = !string.IsNullOrWhiteSpace(searchText);
         var matchCount = 0;
         foreach (var row in _Descendants(root).Where(_IsSearchableInput).Select(control => _RowFor(root, control)).DistinctBy(row => row[^1]))

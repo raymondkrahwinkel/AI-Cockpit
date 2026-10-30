@@ -9,6 +9,8 @@ public sealed record SwarmSettings
     // "100.64.0.0/10". Empty by default: a VPN's range counts as internal only once it is listed here.
     public IReadOnlyList<string> ExtraInternalCidrs { get; init; } = [];
 
+    public IReadOnlyDictionary<string, string> PairingOrigins { get; init; } = new Dictionary<string, string>();
+
     public static SwarmSettings Default { get; } = new();
 }
 

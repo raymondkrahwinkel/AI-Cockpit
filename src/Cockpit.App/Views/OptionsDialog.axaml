@@ -6,6 +6,7 @@
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:core="using:Cockpit.Core.ModelIntelligence"
+        xmlns:mcp="using:Cockpit.Core.Mcp"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -188,6 +189,20 @@
                             </Grid>
                         </ListBoxItem>
 
+                        <ListBoxItem Tag="swarm">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Kind="Lan" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Swarm" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge"><TextBlock/></Border>
+                            </Grid>
+                        </ListBoxItem>
+                        <ListBoxItem Tag="servers">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <materialIcons:MaterialIcon Kind="Server" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Grid.Column="1" Text="Servers" VerticalAlignment="Center"/>
+                                <Border Grid.Column="2" Classes="searchMatchBadge"><TextBlock/></Border>
+                            </Grid>
+                        </ListBoxItem>
                         <ListBoxItem Tag="nodes">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <materialIcons:MaterialIcon Grid.Column="0" Kind="Lan" Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -262,6 +277,146 @@
                 </StackPanel>
             </Border>
             <Panel x:Name="CategoryContent">
+
+                <ScrollViewer Tag="swarm"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=swarm}">
+                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
+                        <TextBlock Text="Swarm" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="Your own Cockpits, controlling each other directly. One machine leads the assistant; sessions keep running where they started." Classes="optionsHint"/>
+                        <TextBlock Text="Only your own machines, paired by you on both screens. No cloud or external relay." Classes="optionsHint"/>
+                        <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Machines" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Swarm.LeaderLine}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                        <Border Classes="errorCard informational" Padding="12,10" IsVisible="{Binding Swarm.NoOtherMachineOnline}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="No other machine online" FontWeight="SemiBold"/>
+                                <TextBlock Text="This machine works on its own. Add another Cockpit below, or wake a paired machine." Classes="optionsHint"/>
+                            </StackPanel>
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Swarm.Machines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SwarmMachineRow">
+                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                                            Background="{DynamicResource CockpitSecondaryBgBrush}"
+                                            BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Origin}" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Padding="8,3" CornerRadius="{StaticResource CockpitPillRadius}"
+                                                    Background="{DynamicResource CockpitInsetBgBrush}"
+                                                    Classes.swarmLeader="{Binding IsLeader}">
+                                                <Border.Styles>
+                                                    <Style Selector="Border.swarmLeader">
+                                                        <Setter Property="Background" Value="{DynamicResource CockpitAccentSelectionBrush}"/>
+                                                    </Style>
+                                                </Border.Styles>
+                                                <TextBlock Text="{Binding Status}" FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Row="1" Text="{Binding Address}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11.5" TextWrapping="Wrap"/>
+                                            <TextBlock Grid.Row="2" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}">
+                                                <Run Text="Rank "/><Run Text="{Binding Rank}"/><Run Text=" · Last seen "/><Run Text="{Binding LastSeen}"/>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Rank order" FontWeight="SemiBold" FontSize="12"/>
+                        <TextBlock Text="{Binding Swarm.RankOrder}" Classes="optionsHint"/>
+
+                        <TextBlock Text="Add a machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <TextBlock Text="Enable accepting connections on both machines first. Finding or adding an address starts pairing; compare the six digits on both screens." Classes="optionsHint"/>
+                        <Button Content="Find on this network" HorizontalAlignment="Left" Command="{Binding Swarm.FindCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                        <ItemsControl ItemsSource="{Binding Swarm.Found}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mcp:NodeDiscoveryFound">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                        <TextBlock Text="{Binding Address}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" Content="Pair" Classes="Compact"
+                                                Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).Swarm.PairFoundCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Add by address" FontSize="12"/>
+                        <Grid ColumnDefinitions="*,8,Auto">
+                            <TextBox Text="{Binding Swarm.Address}" PlaceholderText="host or host:port" FontFamily="{StaticResource CockpitMonoFont}"/>
+                            <Button Grid.Column="2" Content="Pair" Command="{Binding Swarm.AddByAddressCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                        </Grid>
+                        <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Background="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding Swarm.PairingCode.Length}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Confirm the pairing" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Swarm.PairingCaption}" Classes="optionsHint"/>
+                                <TextBlock Text="{Binding Swarm.PairingCode}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="24" FontWeight="Bold"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="The codes match — pair" Classes="Accent" Command="{Binding Swarm.ConfirmPairingCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                                    <Button Content="Cancel" Classes="Ghost" Command="{Binding Swarm.CancelPairingCommand}" IsEnabled="{Binding !Swarm.IsBusy}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="{Binding Swarm.Status}" IsVisible="{Binding Swarm.Status.Length}" Classes="optionsHint"/>
+
+                        <TextBlock Text="This machine" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <CheckBox Content="Accept connections from my other Cockpits" IsChecked="{Binding Security.NodeEndpointEnabled}"/>
+                        <TextBlock Text="Apply this setting and restart Cockpit to change the network listener." Classes="optionsHint"/>
+                        <TextBlock Text="{Binding Security.NodePairingAddress}" Classes="optionsHint" IsVisible="{Binding Security.NodeEndpointEnabled}"/>
+                        <Border Padding="10" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Background="{DynamicResource CockpitInsetBgBrush}" IsVisible="{Binding Swarm.Incoming, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Confirm the pairing" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Swarm.Incoming.Name, StringFormat='Compare with {0} on the other screen.'}" Classes="optionsHint"/>
+                                <TextBlock Text="{Binding Swarm.Incoming.Code}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="24" FontWeight="Bold"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="The codes match — join" Classes="Accent" Command="{Binding Swarm.ConfirmIncomingCommand}"/>
+                                    <Button Content="Refuse" Classes="Ghost" Command="{Binding Swarm.RefuseIncomingCommand}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="Internal network only" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                        <CheckBox Content="Always on" IsChecked="True" IsEnabled="False"/>
+                        <TextBlock Text="Private, link-local and IPv6 local addresses are allowed. Add your VPN's internal CIDR range if needed. Public addresses are refused." Classes="optionsHint"/>
+                        <TextBlock Text="Extra internal CIDRs" FontSize="12"/>
+                        <TextBox Text="{Binding Swarm.ExtraInternalCidrsText}" PlaceholderText="e.g. 100.64.0.0/10" FontFamily="{StaticResource CockpitMonoFont}"/>
+                        <Border Classes="errorCard blocking" Padding="12,10" IsVisible="{Binding Swarm.CidrError.Length}">
+                            <TextBlock Text="{Binding Swarm.CidrError}" TextWrapping="Wrap"/>
+                        </Border>
+                        <Border Classes="errorCard blocking" Padding="12,10" IsVisible="{Binding Swarm.PersistError.Length}">
+                            <TextBlock Text="{Binding Swarm.PersistError}" TextWrapping="Wrap"/>
+                        </Border>
+                        <TextBlock Text="When a lower rank comes back" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <ComboBox ItemsSource="{Binding Swarm.ReturnChoices}" SelectedIndex="{Binding Swarm.ReturnChoice}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="Take over after a wait: announce a 30-second countdown before switching. Join at the back: the returning machine gets a higher rank and the current leader stays." Classes="optionsHint"/>
+                        <TextBlock Text="Pairing adds the machine immediately. Cancel does not undo a pairing; Apply saves the settings below This machine." Classes="optionsHint"/>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <ScrollViewer Tag="servers"
+                              IsVisible="{Binding #CategoryNav.SelectedItem, Converter={x:Static conv:CategoryTagEqualsConverter.Instance}, ConverterParameter=servers}">
+                    <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
+                        <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="Manage headless Cockpit servers: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
+                        <TextBlock Text="Pair your own desktops in Swarm. Connect to a headless server on the Nodes page." Classes="optionsHint"/>
+                        <TextBlock Text="No server connected. Connect to a server on the Nodes page first." Classes="optionsHint" IsVisible="{Binding !ServerGroups.Count}"/>
+                        <ItemsControl ItemsSource="{Binding ServerGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ServerGroupViewModel">
+                                    <Border Padding="10" Margin="0,0,0,6" CornerRadius="{StaticResource CockpitControlRadius}" Background="{DynamicResource CockpitSecondaryBgBrush}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="1" Content="Manage server" IsEnabled="{Binding IsAdminKey}"
+                                                    Command="{Binding $parent[Window].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}" CommandParameter="{Binding}"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- ================= SESSIONS ================= -->
                 <ScrollViewer Tag="sessions"
