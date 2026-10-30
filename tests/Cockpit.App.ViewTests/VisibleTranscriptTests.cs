@@ -11,6 +11,35 @@ namespace Cockpit.App.ViewTests;
 /// </summary>
 public sealed class VisibleTranscriptTests
 {
+    private static void _AssertBlankAssistantVisibility()
+    {
+        var vm = _Session(ReadingLevel.Developer);
+        var empty = _Add(vm, TranscriptEntryKind.AssistantText, "");
+        _Add(vm, TranscriptEntryKind.AssistantText, " \t\r\n");
+        var image = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "")
+        {
+            Images = [new ImageAttachment("image/png", "AA==")],
+        };
+        vm.Transcript.Add(image);
+        var tool = _Add(vm, TranscriptEntryKind.ToolUse, "");
+        var thinking = _Add(vm, TranscriptEntryKind.Thinking, "reasoning");
+        var prose = _Add(vm, TranscriptEntryKind.AssistantText, "word word\n    code");
+        Assert.Equal([image, tool, thinking, prose], vm.VisibleTranscript);
+
+        empty.Text = " \t\n";
+        Assert.Equal([image, tool, thinking, prose], vm.VisibleTranscript);
+        empty.Text = "arrived";
+        Assert.Equal([empty, image, tool, thinking, prose], vm.VisibleTranscript);
+        empty.Text = "";
+        Assert.Equal([image, tool, thinking, prose], vm.VisibleTranscript);
+
+        vm.ReadingLevel = ReadingLevel.Focus;
+        Assert.Equal([image, tool, prose], vm.VisibleTranscript);
+        vm.ReadingLevel = ReadingLevel.Simple;
+        Assert.Equal([image, tool, prose], vm.VisibleTranscript);
+        Assert.Equal("word word\n    code", prose.Text);
+    }
+
     private static SessionViewModel _Session(ReadingLevel level)
     {
         var vm = new SessionViewModel();
@@ -113,6 +142,7 @@ public sealed class VisibleTranscriptTests
     [Fact]
     public void SwitchingReadingLevel_RebuildsWhatIsShown()
     {
+        _AssertBlankAssistantVisibility();
         var vm = _Session(ReadingLevel.Focus);
         _Add(vm, TranscriptEntryKind.AssistantText, "prose");
         _Add(vm, TranscriptEntryKind.Thinking, "reasoning");
