@@ -60,6 +60,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         public SwarmJoinClient Client { get; private set; } = null!;
         public SwarmHeartbeat Heartbeat { get; private set; } = null!;
         public SwarmLeadership Leadership { get; private set; } = null!;
+        public SwarmStandbyCopy Standby { get; private set; } = null!;
+        public SwarmNetworkPolicy Network { get; private set; } = null!;
         public SwarmSettingsStore SwarmSettings { get; private set; } = null!;
         public SwarmPropagation Propagation { get; private set; } = null!;
         public SwarmKick Kick { get; private set; } = null!;
@@ -86,6 +88,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             var policy = new SwarmNetworkPolicy(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")),
                 audit, NullLogger<SwarmNetworkPolicy>.Instance, (_, _) => Task.FromResult(new[] { IPAddress.Loopback }));
             var endpoint = new Endpoint();
+            machine.Network = policy;
+            machine.Standby = new(Path.Combine(machine._root, "standby.json"));
             var host = new SwarmHost(kind);
             machine.Presence = new(time);
             machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings,
@@ -105,6 +109,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             builder.Services.AddSingleton(policy);
             builder.Services.AddSingleton(machine.Client);
             builder.Services.AddSingleton(machine.Propagation);
+            builder.Services.AddSingleton(machine.Membership).AddSingleton<ISwarmLeadership>(machine.Leadership).AddSingleton(machine.Standby);
             builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(https =>
             {
                 https.ServerCertificate = machine.Certificate.Value;
@@ -118,8 +123,17 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                 if (machine.Sleep) { context.Response.StatusCode = 503; return; }
                 if (machine.RejectConnect && context.Request.Path == "/swarm/connect")
                     await Results.Json(new NodePairingProblem(NodePairingError.InvalidToken, "Sleeping"), NodePairingJson.Options, statusCode: 403).ExecuteAsync(context);
+                else if (context.Request.Path == "/swarm/standby")
+                {
+                    var token = context.Request.Headers.Authorization.ToString();
+                    var caller = await machine.Keys.AuthenticateAsync(token.StartsWith("Bearer ", StringComparison.Ordinal) ? token[7..] : token, null, "127.0.0.1");
+                    McpRequestContext.Set(null, caller);
+                    try { await next(context); }
+                    finally { McpRequestContext.Set(null); }
+                }
                 else await next(context);
             });
+            SwarmAssistantRelay.Map(machine._app, machine._app.Services);
             machine.Join.MapRoutes(machine._app, machine._app.Services);
             machine.Heartbeat.MapRoutes(machine._app, machine._app.Services);
             machine._app.MapGet("/remote", async (HttpContext context) =>

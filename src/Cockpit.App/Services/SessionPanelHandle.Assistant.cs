@@ -78,6 +78,9 @@ internal sealed partial class SessionPanelHandle : IAssistantSession
     Task IAssistantSession.PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken) =>
         _Assistant.PrepareRecordedTranscriptAsync(resume, cancellationToken);
 
+    void IAssistantSession.RestoreStandbyTranscript(IReadOnlyList<TranscriptSnapshotEntry> rows) =>
+        _Assistant.RestoreStandbyTranscript(rows);
+
     // AC-1013: App defaults only as the floor — the profile's own permission mode/model/effort ride the launch
     // options (the driver prefers those), so a profile that says nothing still starts as before.
     Task IAssistantSession.StartAsync(AssistantLaunch launch) =>

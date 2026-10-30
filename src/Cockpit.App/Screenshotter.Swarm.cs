@@ -11,7 +11,7 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
-    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false)
+    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false, bool takeover = false)
     {
         var cockpit = new CockpitViewModel();
         var options = new SidebarSwarmOptions(false);
@@ -28,6 +28,9 @@ internal static partial class Screenshotter
         });
         conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
             $"The build passed on {leader.Name}. You can continue from this machine."));
+        if (takeover)
+            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider,
+                Cockpit.Infrastructure.Swarm.SwarmTakeoverCoordinator.TakeoverNotice(DateTimeOffset.Now.Date.AddHours(14).AddMinutes(31))));
         var handle = new SessionPanelHandle(conversation, false, () => null);
         var nodes = new _SceneNodeSessions
         {

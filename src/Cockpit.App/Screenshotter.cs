@@ -685,6 +685,7 @@ internal static partial class Screenshotter
         ["assistant-swarm-follower"] = (_, _) => _AssistantSwarm(),
         ["assistant-swarm-leader"] = (_, _) => _AssistantSwarm(selfLeads: true),
         ["assistant-swarm-server"] = (_, _) => _AssistantSwarm(serverLeads: true),
+        ["assistant-swarm-takeover"] = (_, _) => _AssistantSwarm(selfLeads: true, takeover: true),
         // AC-953: the same chat surface in its other host — docked into the right-hand rail, inside MainWindow,
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.

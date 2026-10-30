@@ -325,6 +325,24 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         }
     }
 
+    internal AgentMessage[] CaptureAssistantStandby()
+    {
+        lock (_lock)
+            return [.. _inFlight.GetValueOrDefault(AssistantIdentity.PaneId, []), .. _inboxes.GetValueOrDefault(AssistantIdentity.PaneId, [])];
+    }
+
+    internal void RestoreAssistantStandby(IEnumerable<AgentMessage> messages)
+    {
+        lock (_lock)
+        {
+            if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var waiting))
+                _inboxes[AssistantIdentity.PaneId] = waiting = [];
+            var known = waiting.Concat(_inFlight.GetValueOrDefault(AssistantIdentity.PaneId, [])).Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var message in messages)
+                if (message.ToPaneId == AssistantIdentity.PaneId && known.Add(message.Id)) waiting.Add(message);
+        }
+    }
+
     public AgentInboxBatch TakeForDelivery(string paneId, int limit)
     {
         lock (_lock)
