@@ -6258,8 +6258,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // first input (AC-312).
     public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory, string? sessionName = null)
     {
-        Dispatcher.UIThread.VerifyAccess();
-
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
         // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
