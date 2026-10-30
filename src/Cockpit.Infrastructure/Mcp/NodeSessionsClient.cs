@@ -50,12 +50,44 @@ internal sealed class NodeSessionsClient(
         var pending = _liveChannels.GetOrAdd(nodeName, _ => _OpenLiveChannelAsync(nodeName, cancellationToken));
         try
         {
-            return (await pending.ConfigureAwait(false)).Backend.Find(paneId);
+            var channel = await pending.ConfigureAwait(false);
+            if (channel.TryObserve()) _ = _EvictWhenFinishedAsync(nodeName, pending, channel);
+            return channel.Backend.Find(paneId);
         }
         catch
         {
             _liveChannels.TryRemove(new KeyValuePair<string, Task<LiveChannel>>(nodeName, pending));
             throw;
+        }
+    }
+
+    private async Task _EvictWhenFinishedAsync(string nodeName, Task<LiveChannel> pending, LiveChannel channel)
+    {
+        try
+        {
+            await channel.Backend.Completion.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live session channel for {NodeName} ended unexpectedly.", nodeName);
+        }
+
+        if (!_liveChannels.TryRemove(new KeyValuePair<string, Task<LiveChannel>>(nodeName, pending)))
+        {
+            return;
+        }
+
+        try
+        {
+            await channel.Backend.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "Live session channel for {NodeName} failed during cleanup.", nodeName);
+        }
+        finally
+        {
+            channel.Client.Dispose();
         }
     }
 
@@ -88,19 +120,25 @@ internal sealed class NodeSessionsClient(
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var channel in _liveChannels.Values)
+        foreach (var entry in _liveChannels.ToArray())
         {
-            if (!channel.IsCompletedSuccessfully)
+            if (!_liveChannels.TryRemove(entry) || !entry.Value.IsCompletedSuccessfully)
             {
                 continue;
             }
 
-            await channel.Result.Backend.DisposeAsync().ConfigureAwait(false);
-            channel.Result.Client.Dispose();
+            await entry.Value.Result.Backend.DisposeAsync().ConfigureAwait(false);
+            entry.Value.Result.Client.Dispose();
         }
     }
 
-    private sealed record LiveChannel(BackendApiClient Client, RemoteBackend Backend);
+    private sealed class LiveChannel(BackendApiClient client, RemoteBackend backend)
+    {
+        private int _observed;
+        public BackendApiClient Client { get; } = client;
+        public RemoteBackend Backend { get; } = backend;
+        public bool TryObserve() => Interlocked.Exchange(ref _observed, 1) == 0;
+    }
 
     public async Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default)
     {
