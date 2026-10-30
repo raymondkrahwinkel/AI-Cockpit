@@ -410,6 +410,7 @@ public sealed class RemoteAdminJourney
 
             // AC-1651: a resource 404 stays specific unless the known server semver is older than this desktop's.
             var remoteServer = view.ServerGroups.Single().Server;
+            Assert.NotNull(remoteServer);
             var currentAdmin = new ServerAdminViewModel(
                 Server, admin.KeyLabel, remoteServer.Administration, [], [], remoteServer.Plugins,
                 serverVersion: "1.2.3", desktopVersion: "1.2.3");
