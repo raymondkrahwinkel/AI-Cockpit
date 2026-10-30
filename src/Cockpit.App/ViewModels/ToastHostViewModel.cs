@@ -120,7 +120,7 @@ public sealed class ToastHostViewModel
     {
         foreach (var (key, condition) in _conditions.ToArray())
         {
-            if (!condition.StillApplies())
+            if (false && !condition.StillApplies())
             {
                 _conditions.Remove(key);
                 _Resolve(condition);
