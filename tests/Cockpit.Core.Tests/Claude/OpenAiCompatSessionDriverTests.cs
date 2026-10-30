@@ -51,11 +51,7 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == "shell");
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == CockpitToolSearch.SearchToolName);
         Assert.DoesNotContain(sentOptions.Tools!, tool => tool.Name == "background_0");
-        var requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions.RawRepresentationFactory!(chatClient));
-        using (var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString()))
-        {
-            Assert.Equal("on", request.RootElement.GetProperty("reasoning_effort").GetString());
-        }
+        Assert.Null(sentOptions.RawRepresentationFactory);
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
         Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
         Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
@@ -85,9 +81,9 @@ public class OpenAiCompatSessionDriverTests
             }
             else
             {
-                requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions!.RawRepresentationFactory!(chatClient));
+                var requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions!.RawRepresentationFactory!(chatClient));
                 using var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString());
-                Assert.Equal("off", request.RootElement.GetProperty("reasoning_effort").GetString());
+                Assert.Equal("none", request.RootElement.GetProperty("reasoning_effort").GetString());
             }
         }
 
