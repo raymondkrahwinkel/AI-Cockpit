@@ -112,6 +112,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             Certificate.Dispose();
             Directory.Delete(_root, true);
         }
+
+        public Task StopAsync() => _app.StopAsync();
     }
 
     internal sealed class Clock : TimeProvider

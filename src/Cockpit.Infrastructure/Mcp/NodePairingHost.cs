@@ -83,6 +83,7 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
                 {
                     https.ServerCertificate = _certificate.Value;
                     https.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
+                    // /swarm/connect checks this key against the signed membership.
                     https.ClientCertificateValidation = (_, _, _) => true;
                 })));
 

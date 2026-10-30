@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Swarm;
 using Cockpit.Infrastructure.Mcp;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Swarm;
 
@@ -18,7 +19,8 @@ internal sealed class SwarmJoinClient(
     SwarmNetworkPolicy network,
     SwarmJoinHost local,
     INodeEndpointSettingsStore settings,
-    NodeDiscoveryClient discovery) : ISingletonService
+    NodeDiscoveryClient discovery,
+    ILogger<SwarmJoinClient>? logger = null) : ISingletonService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -94,20 +96,29 @@ internal sealed class SwarmJoinClient(
         var self = register.Members.Single(member => member.Id == identity.MemberId);
         foreach (var member in register.Members.Where(member => member.Id != identity.MemberId && member.Id != self.AddedBy))
         {
-            using var handler = new SocketsHttpHandler { ConnectCallback = network.ConnectAsync };
-            handler.SslOptions.ClientCertificates = new X509CertificateCollection { certificate.Value };
-            handler.SslOptions.RemoteCertificateValidationCallback = (_, remote, _, _) =>
+            try { await _ConnectMemberAsync(register, member, ct); }
+            catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException or NodePairingException)
             {
-                if (remote is null) return false;
-                using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
-                return SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == member.Id;
-            };
-            var address = member.Addresses.FirstOrDefault() ?? throw new InvalidDataException("Member has no address.");
-            using var client = new HttpClient(handler) { BaseAddress = new UriBuilder("https", address, member.Port).Uri };
-            var reverse = await local.IssueTransportAsync(member.Name, ct);
-            var transport = await _PostAsync<SwarmMeshRequest, SwarmTransport>(client, "swarm/connect", new(register.Log, reverse), ct);
-            await local.StoreTransportAsync(member.Name, transport, ct);
+                logger?.LogWarning(ex, "Swarm member {Member} could not be connected after joining.", member.Id);
+            }
         }
+    }
+
+    private async Task _ConnectMemberAsync(SwarmMembership register, SwarmMember member, CancellationToken ct)
+    {
+        using var handler = new SocketsHttpHandler { ConnectCallback = network.ConnectAsync };
+        handler.SslOptions.ClientCertificates = new X509CertificateCollection { certificate.Value };
+        handler.SslOptions.RemoteCertificateValidationCallback = (_, remote, _, _) =>
+        {
+            if (remote is null) return false;
+            using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
+            return SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == member.Id;
+        };
+        var address = member.Addresses.FirstOrDefault() ?? throw new InvalidDataException("Member has no address.");
+        using var client = new HttpClient(handler) { BaseAddress = new UriBuilder("https", address, member.Port).Uri, Timeout = TimeSpan.FromSeconds(5) };
+        var reverse = await local.IssueTransportAsync(member.Name, ct);
+        var transport = await _PostAsync<SwarmMeshRequest, SwarmTransport>(client, "swarm/connect", new(register.Log, reverse), ct);
+        await local.StoreTransportAsync(member.Name, transport, ct);
     }
 
     private static async Task<TOut> _PostAsync<TIn, TOut>(HttpClient client, string path, TIn value, CancellationToken ct)
