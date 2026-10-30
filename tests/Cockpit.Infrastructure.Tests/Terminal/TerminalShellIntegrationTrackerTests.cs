@@ -14,7 +14,7 @@ public class TerminalShellIntegrationTrackerTests
     private static string Mark(string payload) => $"{Escape}]133;{payload}{Bell}";
 
     [Fact]
-    public void AShellThatSaysNothing_LeavesUsWithoutAnyClaimToMake()
+    public void OnlyShellMarksTrackThePromptAndTheCurrentCommandsExitCode()
     {
         var tracker = new TerminalShellIntegrationTracker();
 
@@ -23,26 +23,12 @@ public class TerminalShellIntegrationTrackerTests
         Assert.False(tracker.ShellIntegrationSeen, "prompt-looking text is not a mark, and guessing from it is what this avoids");
         Assert.False(tracker.AtPrompt);
         Assert.Equal(0, tracker.CommandsFinished);
-    }
-
-    [Fact]
-    public void APromptMark_MeansTheShellIsIdle_AndACommandStartingTakesItOffThePrompt()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
         tracker.Feed(Mark("A") + "raymond@box $ " + Mark("B"));
         Assert.True(tracker.ShellIntegrationSeen);
         Assert.True(tracker.AtPrompt);
 
         tracker.Feed(Mark("C") + "building...\r\n");
         Assert.False(tracker.AtPrompt, "a command is running, so this is also when a full-screen program would be open");
-    }
-
-    [Fact]
-    public void FinishMarks_CountCommands_AndReportOnlyTheCurrentExitCode()
-    {
-        var tracker = new TerminalShellIntegrationTracker();
-
         tracker.Feed(Mark("B") + Mark("C") + "boom\r\n" + Mark("D;1"));
 
         Assert.Equal(1, tracker.CommandsFinished);

@@ -709,6 +709,7 @@ public partial class SessionViewModel
                 StatusKinds.Contains(message.Kind.Trim()) ? TranscriptEntryKind.Status : TranscriptEntryKind.Inbox,
                 message.Body)
             {
+                Id = message.Id,
                 SenderPaneId = message.FromPaneId,
                 SenderTitle = senderTitle,
                 MessageKind = message.Kind,

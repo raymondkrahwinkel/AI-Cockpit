@@ -97,7 +97,7 @@ public sealed class BehaviourMemorySync(
 
     // Only a `- ` line is a rule — the heading and the blank line under it are structure, not content, and must
     // never round-trip as if the operator had written a rule that says "# What the operator asked me to remember".
-    private static List<string> _Entries(string text) =>
+    internal static List<string> _Entries(string text) =>
         [.. text
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
@@ -109,7 +109,7 @@ public sealed class BehaviourMemorySync(
         return match.Success ? entry[match.Length..] : entry;
     }
 
-    private static string _StripOrigin(string line)
+    internal static string _StripOrigin(string line)
     {
         var match = _OriginSuffix.Match(line);
         return match.Success ? line[..match.Index] : line;

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Agents;
 using Cockpit.Core.Abstractions.Mcp;
@@ -30,6 +32,22 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
     private readonly IServiceProvider _services;
     private readonly SemaphoreSlim _receive = new(1, 1);
     private readonly Dictionary<(SwarmMemberId, Guid), string> _accepted = [];
+    private readonly Lock _receiptGate = new();
+
+    internal SwarmAssistantReceipt[] Receipts()
+    {
+        lock (_receiptGate) return _accepted.Select(item => new SwarmAssistantReceipt(item.Key.Item1.Value, item.Key.Item2, item.Value)).ToArray();
+    }
+
+    internal void RestoreReceipts(IEnumerable<SwarmAssistantReceipt> receipts)
+    {
+        lock (_receiptGate)
+            foreach (var receipt in receipts)
+            {
+                if (!SwarmMemberId.TryParse(receipt.Source, out var source)) throw new InvalidDataException("Invalid receipt source.");
+                _accepted[(source, receipt.MessageId)] = receipt.Digest;
+            }
+    }
 
     public SwarmAssistantRelay(ISwarmLeadership leadership, IServiceProvider services)
     {
@@ -58,7 +76,7 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            var target = attempted ?? _leadership.Current;
+            var target = attempted is not null && attempted.Id == _leadership.Current?.Id ? attempted : _leadership.Current;
             if (target is not null)
             {
                 try
@@ -71,7 +89,7 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
                 }
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
                 {
-                    // A lost acknowledgement must be resolved at the original receiver before choosing another leader.
+                    // Stable ids let the next leader settle retries from its copied receipts.
                     attempted = target;
                 }
             }
@@ -85,8 +103,10 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
         try
         {
             var factory = _services.GetService<IAssistantSessionFactory>();
-            return await (factory?.OnOwnerThreadAsync(() => ReceiveOnOwnerAsync(source, message, ct))
+            var accepted = await (factory?.OnOwnerThreadAsync(() => ReceiveOnOwnerAsync(source, message, ct))
                 ?? ReceiveOnOwnerAsync(source, message, ct));
+            if (accepted && _services.GetService<SwarmTakeoverCoordinator>() is { } takeover) await takeover.PublishAsync(ct);
+            return accepted;
         }
         finally
         {
@@ -96,11 +116,15 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
 
     private async Task<bool> ReceiveOnOwnerAsync(SwarmMemberId source, SwarmAssistantMessage message, CancellationToken ct)
     {
-        var stamp = JsonSerializer.Serialize(message);
-        if (_accepted.TryGetValue((source, message.Id), out var previous))
+        if (_leadership.IsSelf && _services.GetService<SwarmStandbyCopy>()?.Read() is { } snapshot) RestoreReceipts(snapshot.Receipts);
+        var stamp = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message))));
+        lock (_receiptGate)
         {
-            if (previous != stamp) throw new InvalidDataException("The message id already names different content.");
-            return true;
+            if (_accepted.TryGetValue((source, message.Id), out var previous))
+            {
+                if (previous != stamp) throw new InvalidDataException("The message id already names different content.");
+                return true;
+            }
         }
         if (!_leadership.IsSelf) return false;
         var member = (await _services.GetRequiredService<SwarmMembershipStore>().LoadAsync(ct))
@@ -125,7 +149,7 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
                 foreach (var image in message.Images) session.AddPastedImage(image);
                 session.InjectAndSubmit($"[from {member.Name}] {message.Text}");
             }
-            _accepted.Add((source, message.Id), stamp);
+            lock (_receiptGate) _accepted.Add((source, message.Id), stamp);
             return true;
         });
     }
@@ -155,7 +179,8 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
 
     public static void Map(IEndpointRouteBuilder routes, IServiceProvider services)
     {
-        var group = SwarmNetworkPolicy.MapGroup(routes, services).MapGroup("/assistant");
+        var members = SwarmNetworkPolicy.MapGroup(routes, services);
+        var group = members.MapGroup("/assistant");
         group.AddEndpointFilter(async (context, next) =>
         {
             var caller = McpRequestContext.CurrentNodeCaller;
@@ -196,6 +221,23 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
             if (services.GetRequiredService<ISessionRegistry>().Assistant is not { } assistant) return Results.NotFound();
             await assistant.UseControlAsync(control => control.InterruptAsync());
             return Results.Json(new { interrupted = true });
+        }));
+        members.MapPost("/standby", (Func<HttpContext, Task<IResult>>)(async context =>
+        {
+            var caller = McpRequestContext.CurrentNodeCaller;
+            if (caller is not { ByConnectKey: true, Capability: ConnectKeyCapability.Admin }) return Results.Unauthorized();
+            var member = (await services.GetRequiredService<SwarmMembershipStore>().LoadAsync(context.RequestAborted))
+                .Members.SingleOrDefault(member => SwarmKick.KeyLabel(member) == caller.Label);
+            if (member is null) return Results.StatusCode(403);
+            if (services.GetRequiredService<ISwarmLeadership>().Current?.Id != member.Id) return Results.Conflict();
+            try
+            {
+                await services.GetRequiredService<SwarmStandbyCopy>().ReceiveAsync(context.Request.Body, member.Id, context.RequestAborted,
+                    services.GetRequiredService<ISwarmLeadership>());
+                return Results.Ok();
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidDataException) { return Results.BadRequest(); }
+            catch (InvalidOperationException) { return Results.Conflict(); }
         }));
     }
 

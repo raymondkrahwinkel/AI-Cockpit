@@ -85,6 +85,9 @@ public interface IAssistantSession : IAsyncDisposable
     /// </summary>
     Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default);
 
+    /// <summary>Restores another member's conversation before starting a fresh local runtime.</summary>
+    void RestoreStandbyTranscript(IReadOnlyList<TranscriptSnapshotEntry> rows);
+
     /// <summary>
     /// Launches its runtime; a failure shows in <see cref="IsSessionReady"/> and <see cref="FailureReason"/>, never as a throw.
     /// </summary>

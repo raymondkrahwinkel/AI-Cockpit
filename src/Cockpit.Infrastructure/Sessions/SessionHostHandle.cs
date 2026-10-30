@@ -510,6 +510,16 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     }
 
     // `SessionViewModel.PrepareRecordedTranscriptAsync`'s rule: a resumed conversation repaints its log, a new one rolls it.
+    public void RestoreStandbyTranscript(IReadOnlyList<TranscriptSnapshotEntry> rows)
+    {
+        lock (_gate)
+        {
+            _rows.Clear();
+            _rows.AddRange(rows.Select(row => row with { IsPendingPermission = false }));
+            _host.SeedTranscript(_rows);
+        }
+    }
+
     public async Task PrepareRecordedTranscriptAsync(SessionResume resume, CancellationToken cancellationToken = default)
     {
         if (resume.Mode != SessionResumeMode.BySessionId)
