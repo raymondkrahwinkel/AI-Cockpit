@@ -11,15 +11,20 @@ internal sealed class SwarmSettingsEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<string>? ExtraInternalCidrs { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, string>? PairingOrigins { get; set; }
+
     public static SwarmSettingsEntry FromDomain(SwarmSettings settings) => new()
     {
         ExtraInternalCidrs = settings.ExtraInternalCidrs.Count == 0 ? null : [.. settings.ExtraInternalCidrs],
         WhenALowerRankComesBack = settings.WhenALowerRankComesBack,
+        PairingOrigins = settings.PairingOrigins.Count == 0 ? null : new(settings.PairingOrigins),
     };
 
     public SwarmSettings ToDomain() => new()
     {
         ExtraInternalCidrs = ExtraInternalCidrs ?? [],
         WhenALowerRankComesBack = WhenALowerRankComesBack,
+        PairingOrigins = PairingOrigins ?? [],
     };
 }

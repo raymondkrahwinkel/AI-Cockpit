@@ -77,6 +77,8 @@ internal static class OptionsStaging
         "Security.NodeEndpointEnabled",
         "Security.ShellAccessEnabled",
         "Security.TerminalAccessEnabled",
+        "Swarm.ExtraInternalCidrsText",
+        "Swarm.ReturnChoice",
         "AssistantOptions.AlwaysOnTop",
         "AssistantOptions.ConsentBypassAll",
         "AssistantOptions.IsEnabled",
@@ -95,6 +97,7 @@ internal static class OptionsStaging
         "BackupIncludesProfiles",
         "ScheduledBackupSettings",
         "Security.PairWithNodeAddress",
+        "Swarm.Address",
         // AC-1352: the same shape as PairWithNodeAddress above — inputs to a one-shot connect action, not a
         // setting Apply persists or Cancel should put back.
         "Security.ConnectNodeName",

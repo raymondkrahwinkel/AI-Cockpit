@@ -1624,14 +1624,14 @@
                                                 </StackPanel>
                                             </Button>
                                             <Border Classes="tag" IsVisible="{Binding IsOperateKey}" VerticalAlignment="Center"
-                                                    ToolTip.Tip="Admin needs an admin key; this key may operate only">
+                                                    ToolTip.Tip="Managing servers needs an admin key; this key may operate only">
                                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                                    <TextBlock Text="Admin" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                                    <TextBlock Text="Servers" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                                     <materialIcons:MaterialIcon Kind="Lock" Width="11" Height="11"
                                                                                 Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                                                 </StackPanel>
                                             </Border>
-                                            <Button Classes="Subtle Compact" Content="Admin" IsVisible="{Binding IsAdminKey}"
+                                            <Button Classes="Subtle Compact" Content="Servers" IsVisible="{Binding IsAdminKey}"
                                                     Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenServerAdminCommand}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip.Tip="Options on this server: its connect keys and audit log"/>

@@ -3267,6 +3267,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
     public SecurityOptionsViewModel Security { get; init; }
 
+    public SwarmOptionsViewModel Swarm { get; init; } = new();
+
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.
     public AssistantOptionsViewModel AssistantOptions { get; }
@@ -3451,7 +3453,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IRegisteredBackupTargets? backupTargets = null,
         IOrgPolicy? orgPolicy = null,
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
-        IModelIntelligenceOptions? modelIntelligenceOptions = null)
+        IModelIntelligenceOptions? modelIntelligenceOptions = null,
+        Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3496,6 +3500,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             remoteServers,
             orgPolicy);
         _ = Security.RefreshAsync();
+
+        Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership);
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
         // it closed nothing was listening at all, so a pairing request reached no screen.
@@ -7017,6 +7023,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task OptionsAsync() => _ShowOptionsAsync();
 
+    [RelayCommand]
+    private Task OpenSwarmOptionsAsync() => _ShowOptionsAsync("swarm");
+
     // Opens the projects manager (AC-161) — its own window, not a corner of Options.
     // Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
     // so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
@@ -7050,6 +7059,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _MarkOptionsOpen("mcp");
         }
 
+        if (!_optionsStaged) await Swarm.LoadSettingsAsync();
         await _dialogService.ShowOptionsDialogAsync(this, category);
     }
 
@@ -7379,6 +7389,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         HasPendingOptionChanges = false;
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
+        Swarm.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
         _RebuildPluginOptionsRows();
@@ -7511,6 +7522,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         measurement.Mark("security");
+
+        await Swarm.SaveStagedAsync();
+        if (Swarm.CidrError.Length > 0 || Swarm.PersistError.Length > 0)
+        {
+            failures.Add(("Swarm", Swarm.CidrError.Length > 0 ? Swarm.CidrError : Swarm.PersistError, "swarm"));
+        }
 
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
@@ -7648,6 +7665,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1286: the one refresh that is meant to overwrite what the operator staged — Cancel keeps
         // SuspendPersistence up across the re-seed, and every other refresh now leaves those values alone.
         await Security.RefreshAsync(reseedStagedValues: true);
+        await Swarm.LoadSettingsAsync();
         await AssistantOptions.RefreshAsync();
         await ModelIntelligence.LoadAsync();
 
@@ -7774,6 +7792,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _chosenChannel = updates.Channel;
 
         Security.RestoreDefaults();
+        Swarm.RestoreDefaults();
         AssistantOptions.RestoreDefaults();
         UsageThresholdSettings?.RestoreDefaults();
     }
@@ -7782,6 +7801,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         PropertyChanged -= _OnStagedPropertyChanged;
         Security.PropertyChanged -= _OnStagedPropertyChanged;
+        Swarm.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
         _optionsStaged = false;

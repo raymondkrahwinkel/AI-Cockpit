@@ -49,9 +49,13 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- Headless server management is now named Servers, beside Swarm in Options. Searching for Admin still finds it.
+
 - changed: OpenAI-compatible provider plugins now ask models to verify tool-backed task results before ending a turn.
 
 ### Added
+
+- Options has a Swarm page for pairing your own Cockpits, checking machines and their leader, and setting internal network ranges and returning-machine behaviour.
 
 - The sidebar has a "Waiting for you" filter above the sessions: it counts every session that needs you, on this machine and on connected servers, and when switched on lists them flat with a machine badge per row. Its state is kept across restarts.
 

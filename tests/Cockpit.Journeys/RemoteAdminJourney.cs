@@ -115,7 +115,10 @@ public sealed class RemoteAdminJourney
             await cockpit.StartDesktopAsync();
 
             var opened = new TaskCompletionSource<OptionsDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((dialog, _) => opened.TrySetResult(dialog));
+            using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((dialog, _) =>
+            {
+                if (dialog.Server is not null) opened.TrySetResult(dialog);
+            });
             var view = cockpit.Cockpit;
             var adminClosed = Task.CompletedTask;
             await HeadlessAvalonia.RunAsync(async () =>
@@ -123,10 +126,19 @@ public sealed class RemoteAdminJourney
                 await Until.CollectionHolds(view.ServerGroups, () => view.ServerGroups.Count == 1);
                 var group = view.ServerGroups[0];
                 await Until.Holds(group, () => group.IsAdminKey);
-                adminClosed = view.OpenServerAdminCommand.ExecuteAsync(group);
+                var options = new OptionsDialog { DataContext = view };
+                options.Show();
+                options.SelectCategory("servers");
+                await Until.LayoutHolds(options, () => options.GetVisualDescendants().OfType<Button>().Any(button => Equals(button.Content, "Manage server")));
+                var manage = options.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Manage server"));
+                Assert.NotNull(manage.Command);
+                manage.Command.Execute(manage.CommandParameter);
+                adminClosed = view.OpenServerAdminCommand.ExecutionTask
+                    ?? throw new InvalidOperationException("Manage server did not start opening its Options.");
+                options.Close();
             });
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
-            var admin = dialog.Server ?? throw new InvalidOperationException("Admin opened Options without its server.");
+            var admin = dialog.Server ?? throw new InvalidOperationException("Servers opened Options without its server.");
 
             await HeadlessAvalonia.RunAsync(async () =>
             {
