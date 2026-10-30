@@ -257,7 +257,11 @@ internal sealed class CockpitMcpEndpointHost
             if (connectKeys is not null)
             {
                 BackendApiRoutes.Map(app, _services);
-                SwarmSessionEventsEndpoint.Map(app, _services);
+                if (_services.GetService<SwarmNetworkPolicy>() is not null
+                    && _services.GetService<SwarmMembershipStore>() is not null)
+                {
+                    SwarmSessionEventsEndpoint.Map(app, _services);
+                }
             }
 
             _apps.Add(app);
