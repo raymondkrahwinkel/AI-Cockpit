@@ -187,9 +187,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _gate.ToolClasses = _toolSession.ToolClasses;
         _gatedTools = [.. _toolSession.Tools.Select(tool => tool with { Function = new GatedTool(tool.Function, _gate) })];
         _turnTools = _BuildTurnTools();
-        // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when
-        // confineRoot re-rooted file access and dropped every escape channel — the host's fail-closed isolation gate
-        // reads this, so it must never read true for a session that was not actually confined.
+        // AC-1962: confinement vouches for Cockpit's file tools; independently selected servers keep their own access.
         Capabilities = Capabilities with
         {
             SupportsTools = _turnTools.Count > 0,

@@ -67,6 +67,7 @@ public class PluginHostToolLoopTests
         string? confine = null;
         string? project = null;
         string? agent = null;
+        IReadOnlySet<string>? selection = null;
         var toolProvider = _ToolProvider(
             [],
             new Dictionary<string, ToolPermissionClass>(),
@@ -79,7 +80,7 @@ public class PluginHostToolLoopTests
 
         // Discarded rather than awaited: this is NSubstitute recording what to capture, not a call to make.
         _ = toolProvider.ConnectAsync(
-            Arg.Any<IReadOnlySet<string>?>(),
+            Arg.Do<IReadOnlySet<string>?>(value => selection = value),
             Arg.Do<string?>(value => pane = value),
             Arg.Do<string?>(value => confine = value),
             Arg.Do<string?>(value => project = value),
@@ -92,6 +93,7 @@ public class PluginHostToolLoopTests
         await driver.StartAsync(
             profile: new Cockpit.Core.Profiles.SessionProfile("Assistant", new Cockpit.Core.Profiles.PluginProviderConfig("test", "{}")),
             workingDirectory: "/tmp/worktree",
+            enabledMcpServerNames: new HashSet<string> { "Depot", "YouTrack", CodingTools.ShellEndpointName },
             launchOptions: new Dictionary<string, string>
             {
                 [WellKnownPluginSessionOptions.PaneId] = "pane-7",
@@ -105,6 +107,10 @@ public class PluginHostToolLoopTests
         Assert.Equal("/tmp/worktree", confine);
         Assert.Equal("project-3", project);
         Assert.Equal("Assistant", agent);
+        // AC-1962: the plugin host loop forwards every selected server alongside the confinement root.
+        Assert.Contains("Depot", selection!);
+        Assert.Contains("YouTrack", selection!);
+        Assert.Contains(CodingTools.ShellEndpointName, selection!);
         Assert.Contains(inner.Toolset!.Tools, tool => tool.Name == "read");
         Assert.Contains(inner.Toolset.Tools, tool => tool.Name == "shell");
         Assert.DoesNotContain(inner.Toolset.Tools, tool => tool.Name == "background_0");
