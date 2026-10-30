@@ -11,7 +11,12 @@ public sealed record SwarmSettings
 
     public IReadOnlyDictionary<string, string> PairingOrigins { get; init; } = new Dictionary<string, string>();
 
+    public IReadOnlyList<SwarmManualMember> ManualAddresses { get; init; } = [];
+
     public static SwarmSettings Default { get; } = new();
 }
 
 public enum SwarmLowerRankReturn { AnnouncedTakeover, JoinAtBack }
+
+public sealed record SwarmManualMember(string Address, string? MemberId = null, string Status = "Not reachable",
+    string ErrorCode = "", string ErrorMessage = "");

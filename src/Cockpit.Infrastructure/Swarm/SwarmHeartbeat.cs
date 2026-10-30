@@ -27,6 +27,7 @@ internal sealed class SwarmHeartbeat(
     ConnectKeyVerifier keys,
     SwarmReachability reachability,
     SwarmLeadership leadership,
+    SwarmManualAddress manual,
     ILogger<SwarmHeartbeat> logger) : BackgroundService, ISingletonService
 {
     private readonly SemaphoreSlim _tick = new(1, 1);
@@ -165,19 +166,23 @@ internal sealed class SwarmHeartbeat(
                     handler.SslOptions.ClientCertificates = new X509CertificateCollection { certificate.Value };
                     handler.SslOptions.RemoteCertificateValidationCallback = (_, remote, _, _) =>
                     {
-                        if (remote is null || NodeCertificatePin.FingerprintOf(remote) != pin) return false;
+                        if (remote is null) return false;
+                        var actual = NodeCertificatePin.FingerprintOf(remote);
+                        if (actual != pin) throw new NodeCertificatePinMismatchException(pin, actual);
                         using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
                         return SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == member.Id;
                     };
-                    var address = last?.Addresses.FirstOrDefault() ?? member.Addresses.FirstOrDefault();
+                    var manualUri = await manual.ForMemberAsync(member.Id, ct);
+                    var address = manualUri?.IdnHost ?? last?.Addresses.FirstOrDefault() ?? member.Addresses.FirstOrDefault();
                     if (address is null) return;
-                    using var client = new HttpClient(handler) { BaseAddress = new UriBuilder("https", address, last?.Port ?? member.Port).Uri,
+                    using var client = new HttpClient(handler) { BaseAddress = manualUri ?? new UriBuilder("https", address, last?.Port ?? member.Port).Uri,
                         Timeout = SwarmReachability.Interval };
                     client.DefaultRequestHeaders.Authorization = new("Bearer", transport.ApiKey);
                     using var response = await client.PostAsJsonAsync("swarm/heartbeat", await OwnAsync(asleep, ct), SwarmRecordJson.Options, ct);
-                    if (!response.IsSuccessStatusCode) return;
+                    response.EnsureSuccessStatusCode();
                     var record = await response.Content.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, ct);
                     if (record is null || await AcceptAsync(record, member.Id, pin, ct) is not { } update) return;
+                    if (manualUri is not null) await manual.RememberAsync(manualUri.Authority, member.Id.Value, online: true, ct: ct);
                     var current = await store.LoadAsync(ct);
                     if (update.Sequence >= current.Sequence)
                     {
@@ -197,6 +202,8 @@ internal sealed class SwarmHeartbeat(
                 catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException
                     or InvalidDataException or JsonException or NodePairingException)
                 {
+                    if (await manual.ForMemberAsync(member.Id, ct) is { } uri)
+                        await manual.RememberAsync(uri.Authority, member.Id.Value, ex, ct: ct);
                     logger.LogWarning(ex, "Swarm heartbeat or synchronization failed for {Member}.", member.Id);
                 }
             }));

@@ -295,6 +295,10 @@ internal static partial class Screenshotter
         // controller's assistant may do here render nowhere else.
         ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
         ["options-swarm"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-no-answer"] = (_, _) => _OptionsSwarm(failure: "no_answer"),
+        ["options-swarm-refused"] = (_, _) => _OptionsSwarm(failure: "connection_refused"),
+        ["options-swarm-certificate"] = (_, _) => _OptionsSwarm(failure: "certificate_changed"),
+        ["options-swarm-public"] = (_, _) => _OptionsSwarm(failure: "address_not_internal"),
         ["options-swarm-empty"] = (_, _) => _OptionsSwarm(empty: true),
         ["options-swarm-invalid-cidr"] = (_, _) => _OptionsSwarm(invalidCidr: true),
         ["options-swarm-settings"] = (_, _) => _OptionsSwarm(),
@@ -1938,7 +1942,7 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false)
+    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false, string? failure = null)
     {
         var swarm = new SwarmOptionsViewModel
         {
@@ -1957,6 +1961,29 @@ internal static partial class Screenshotter
             swarm.RankOrder = "Desktop (1042) → Laptop (5789) → Studio (8931) → NUC (15237) → Workshop (18004)";
             swarm.PairingCode = "482 193";
             swarm.PairingCaption = "Compare with NUC-garage on the other screen. Confirm there too, then continue here.";
+        }
+        if (failure is not null)
+        {
+            swarm.Machines.Clear();
+            var exception = failure switch
+            {
+                "connection_refused" => (Exception)new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused),
+                "certificate_changed" => new NodeCertificatePinMismatchException("AABB", "CCDD"),
+                "address_not_internal" => NodePairingException.For("address_not_internal", "nuc.local is not on the internal network, so this cockpit will not connect to it. A VPN's range can be added as an internal range."),
+                _ => new TaskCanceledException(),
+            };
+            swarm.Machines.Add(new("NUC", "nuc.local:20382", "Manual address", "8931", failure switch
+            {
+                "connection_refused" => "Connection refused", "certificate_changed" => "Certificate changed",
+                "no_answer" => "No answer", _ => "Not reachable",
+            }, "Not yet seen", false, false)
+            {
+                ErrorCode = failure,
+                ErrorMessage = exception is NodePairingException ? exception.Message : NodeConnectionFailure.Describe("nuc.local:20382", exception, NodeConnectionFailure.DefaultBudget),
+            });
+            swarm.PairingCode = "";
+            swarm.LeaderLine = "Leader: this machine · No other machine online";
+            swarm.RankOrder = "NUC (8931)";
         }
         var cockpit = new CockpitViewModel { Swarm = swarm };
         cockpit.Security.NodeEndpointEnabled = true;
