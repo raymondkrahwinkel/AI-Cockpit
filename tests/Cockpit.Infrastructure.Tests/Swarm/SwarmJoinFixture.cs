@@ -92,7 +92,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine.Reachability = new(time);
             machine.SwarmSettings = new(Path.Combine(machine._root, "cockpit.json"));
             machine.Leadership = new(machine.Membership, machine.SwarmSettings, machine.Identity, machine.Reachability) { Time = time };
-            machine.Heartbeat = new(host, machine.Identity, machine.Certificate, machine.Membership, machine.Propagation, policy,
+            machine.Heartbeat = new(machine.Identity, machine.Certificate, machine.Membership, machine.Propagation, policy,
                 machine.Client, machine.Servers, machine.Settings, machine.Keys, machine.Reachability,
                 machine.Leadership, new HeartbeatLog()) { Time = time };
             var builder = WebApplication.CreateSlimBuilder();

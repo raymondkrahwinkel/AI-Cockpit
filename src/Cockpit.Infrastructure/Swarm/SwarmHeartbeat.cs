@@ -16,7 +16,6 @@ using Microsoft.Extensions.Logging;
 namespace Cockpit.Infrastructure.Swarm;
 
 internal sealed class SwarmHeartbeat(
-    SwarmHost host,
     SwarmIdentity identity,
     NodeSelfSignedCertificate certificate,
     SwarmMembershipStore store,

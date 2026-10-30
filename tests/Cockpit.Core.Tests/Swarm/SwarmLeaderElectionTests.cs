@@ -38,13 +38,23 @@ public class SwarmLeaderElectionTests
         var alone = Elect(initial);
         Assert.Equal(laptop.Id, alone.Current?.Id);
         Assert.Equal(alone.Current?.Id, Elect(initial).Current?.Id);
-        if (criterion == 1) return;
+        if (criterion == 1)
+        {
+            var removal = new SwarmTombstone(laptop.Id, desktop.Id, time.GetUtcNow(), register.Sequence + 1);
+            Assert.Equal(SwarmMembershipVerdict.Accepted, register.Accept(SwarmRecord.Sign(SwarmMembership.ToPayload(removal), desktopKey)));
+            Answer();
+            Assert.Equal(17, Elect(new()).Current?.Rank);
+            Assert.Equal(17, SwarmMembership.Replay(register.Log).Members.Single().Rank);
+            return;
+        }
         Answer();
         var mode = criterion == 3 ? SwarmLowerRankReturn.JoinAtBack : SwarmLowerRankReturn.AnnouncedTakeover;
         var waiting = Elect(alone, mode);
         Assert.Equal(laptop.Id, waiting.Current?.Id);
         Assert.Equal(desktop.Id, waiting.Pending?.Member.Id);
         Assert.Equal(time.GetUtcNow().AddSeconds(30), waiting.Pending?.At);
+        if (criterion == 2)
+            Assert.Equal(desktop.Id, Elect(waiting, action: SwarmTakeoverAction.TakeOverNow).Current?.Id);
         for (var i = 0; i < 5; i++) { time.Advance(5); Answer(); }
         Assert.Equal(laptop.Id, Elect(waiting, mode).Current?.Id);
         time.Advance(5);
@@ -65,6 +75,12 @@ public class SwarmLeaderElectionTests
             time.Advance(10);
             Answer();
             Assert.Equal(laptop.Id, Elect(again).Current?.Id);
+            using var thirdKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var third = new SwarmMember(thirdKey.ExportSubjectPublicKeyInfo(), "Server", 5, ["10.0.0.3"], 7443,
+                laptop.Id, time.GetUtcNow(), register.Sequence + 1);
+            Assert.Equal(SwarmMembershipVerdict.Accepted, register.Accept(SwarmRecord.Sign(SwarmMembership.ToPayload(third), laptopKey).CoSign(thirdKey)));
+            reachability.Answer(third.Id, HttpStatusCode.OK);
+            Assert.Equal(third.Id, Elect(again).Pending?.Member.Id);
             return;
         }
         var change = SwarmLeaderElection.RejoinAtBack(register, desktop.Id);

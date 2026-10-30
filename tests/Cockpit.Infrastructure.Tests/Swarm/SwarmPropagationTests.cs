@@ -52,6 +52,7 @@ public class SwarmPropagationTests
             foreach (var machine in machines)
                 foreach (var peer in machines.Where(peer => peer != machine))
                     machine.Reachability.Answer(peer.Identity.MemberId, System.Net.HttpStatusCode.OK);
+            lowest.Leadership.Observe(higher.Identity.MemberId, higher.Identity.MemberId, null);
             await lowest.Leadership.RefreshAsync();
             var reranked = await lowest.Membership.LoadAsync();
             Assert.True(reranked.Members.Single(member => member.Id == lowest.Identity.MemberId).Rank > membership.Members.Max(member => member.Rank));

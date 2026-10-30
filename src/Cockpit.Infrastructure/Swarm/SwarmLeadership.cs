@@ -7,7 +7,7 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
     SwarmIdentity identity, SwarmReachability reachability) : ISwarmLeadership, ISingletonService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private SwarmLeadershipState _state = new();
+    private volatile SwarmLeadershipState _state = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<SwarmMemberId, SwarmMemberId> _leaders = new();
     private SwarmTakeoverDecision? _decision;
     private readonly Lock _decisionGate = new();
@@ -45,7 +45,8 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
             var previous = _state;
             if (previous.Current is null)
             {
-                var peer = register.Members.Where(member => member.Id != identity.MemberId && Presence(member.Id).Status == SwarmPresence.Online)
+                var peer = register.Members.Where(member => member.Id != identity.MemberId && Presence(member.Id).Status == SwarmPresence.Online
+                    && _leaders.TryGetValue(member.Id, out var leader) && leader == member.Id)
                     .MinBy(member => member.Rank);
                 previous = new(peer);
             }
