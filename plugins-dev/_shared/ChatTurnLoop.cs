@@ -375,9 +375,17 @@ internal static class ChatTurnLoop
             var hold = final ? 0 : _HeldTail(text);
             _held.Clear().Append(text, text.Length - hold, hold);
             var release = text[..^hold];
-            if (release.Length == 0)
+            if (release.Length == 0 || (!_emitted && string.IsNullOrWhiteSpace(release)))
             {
                 return;
+            }
+
+            if (!_emitted)
+            {
+                // Leading blank lines become standalone transcript rows; keep indentation on the first text line.
+                var leading = release.Length - release.AsSpan().TrimStart().Length;
+                var lineEnd = release.AsSpan(0, leading).LastIndexOfAny('\r', '\n');
+                release = release[(lineEnd + 1)..];
             }
 
             // A continuation round's text starts a new paragraph instead of running on from the previous round.

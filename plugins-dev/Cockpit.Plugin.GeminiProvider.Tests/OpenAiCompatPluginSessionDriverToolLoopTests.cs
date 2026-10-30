@@ -208,6 +208,13 @@ public class OpenAiCompatPluginSessionDriverToolLoopTests
 
     private static async IAsyncEnumerable<ChatResponseUpdate> _ToolCall(string name, string callId, params (string Key, object? Value)[] args)
     {
+        yield return new ChatResponseUpdate(ChatRole.Assistant, "");
+        yield return new ChatResponseUpdate(ChatRole.Assistant, " \t\n");
+        yield return new ChatResponseUpdate
+        {
+            Role = ChatRole.Assistant,
+            Contents = [new TextReasoningContent("reasoning without content")],
+        };
         yield return new ChatResponseUpdate
         {
             Role = ChatRole.Assistant,
