@@ -83,7 +83,7 @@ public sealed class JourneyHost : IAsyncDisposable
     public static JourneyHost Api() => new(null, (loggerFactory, drivers) => CockpitBackend.Build(
         loggerFactory, services =>
         {
-            Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
+            global::Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
             services.AddSingleton<ISessionDriverFactory>(drivers);
         }, nodeListenAddress: System.Net.IPAddress.Loopback));
 
@@ -98,7 +98,7 @@ public sealed class JourneyHost : IAsyncDisposable
             services =>
             {
                 Program.AddDesktop(services, loggerFactory);
-                Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
+                global::Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
                 services.AddSingleton<ISessionDriverFactory>(drivers);
                 configure?.Invoke(services);
             },
@@ -116,7 +116,7 @@ public sealed class JourneyHost : IAsyncDisposable
             services =>
             {
                 Program.AddDesktop(services, loggerFactory);
-                Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
+                global::Cockpit.TestSupport.MachineStorageTestServices.FakeMachineStorage(services);
                 configure?.Invoke(services);
             },
             PluginStartup.Load,
