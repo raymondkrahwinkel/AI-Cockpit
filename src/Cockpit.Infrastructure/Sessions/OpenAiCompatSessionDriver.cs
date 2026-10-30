@@ -190,7 +190,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
                     client.AdditionalTools = [.. _gatedTools.Select(tool => tool.Function)];
                 })
                 .Use(inner => new HermesToolCallChatClient(inner))
-                .Use(inner => new ContextGuardChatClient(inner, turnLimits, _logger, preservePrefix: true))
+                .Use(inner => new ContextGuardChatClient(inner, turnLimits, _logger, preservePrefix: config is LmStudioConfig or OllamaConfig))
                 .Build();
             // AC-1962: confinement vouches for Cockpit's file tools; independently selected servers keep their own access.
             Capabilities = Capabilities with

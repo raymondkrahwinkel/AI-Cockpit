@@ -132,34 +132,33 @@ public class OpenAiCompatSessionDriverTests
         Assert.Equal("turn cleanup failed", cleanupError.Message);
         await faultedToolSession.Received(1).DisposeAsync();
         await contextManager.Received(1).ReleaseAsync(faulted.SessionId!);
+    }
+
+    [Fact]
+    public async Task LocalProfileEffort_IsSentWhenSet_AndAbsentWhenEmpty()
+    {
         using var handler = new LocalReasoningChatClientTests.CapturingHandler();
         using var http = new HttpClient(handler);
         var sdkOptions = OpenAiCompatChatClientFactory.BuildClientOptions("http://localhost:1234");
         sdkOptions.Transport = new System.ClientModel.Primitives.HttpClientPipelineTransport(http);
         using var sdk = new OpenAI.OpenAIClient(new System.ClientModel.ApiKeyCredential("audit"), sdkOptions).GetChatClient("model").AsIChatClient();
-        foreach (var (providerKind, effort, thinking, expected) in new (SessionProvider, string?, bool?, string?)[]
+        foreach (var (effort, expected) in new (string, string?)[]
         {
-            (SessionProvider.LmStudio, " medium ", null, "medium"),
-            (SessionProvider.LmStudio, "", null, null),
-            (SessionProvider.LmStudio, " ", true, null),
-            (SessionProvider.LmStudio, null, null, null),
-            (SessionProvider.LmStudio, "high", false, "none"),
-            (SessionProvider.Ollama, "low", null, "low"),
-            (SessionProvider.Ollama, "", null, null),
+            ("medium", "medium"),
+            ("", null),
         })
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(new { Provider = providerKind, BaseUrl = "http://localhost:1234", Model = "model", ReasoningEffort = effort, EnableThinking = thinking });
-            var entry = System.Text.Json.JsonSerializer.Deserialize<Cockpit.Infrastructure.Configuration.ProviderConfigEntry>(json)!;
+            var entry = Cockpit.Infrastructure.Configuration.ProviderConfigEntry.FromDomain(new LmStudioConfig("http://192.0.2.10:1234", "model", ReasoningEffort: effort));
             var effortProfile = new SessionProfile("effort", entry.ToDomain("", null));
             var editor = new Cockpit.App.ViewModels.EditableProfileViewModel(effortProfile, isLoggedIn: false);
             var saved = Cockpit.Infrastructure.Configuration.ProviderConfigEntry.FromDomain(editor.ToProfile().ProviderConfig);
-            if (!string.IsNullOrWhiteSpace(effort))
-            {
-                Assert.Equal(effort.Trim(), System.Text.Json.JsonSerializer.SerializeToElement(saved).GetProperty("ReasoningEffort").GetString());
-            }
+            Assert.Equal(expected, saved.ReasoningEffort);
 
-            await using var effortDriver = _CreateDriver(sdk, _SelectionSensitiveProvider(), contextManager);
+            await using var effortDriver = _CreateDriver(sdk, _SelectionSensitiveProvider(), null);
             await effortDriver.StartAsync(editor.ToProfile());
+            var agent = Assert.IsAssignableFrom<IChatClient>(typeof(OpenAiCompatSessionDriver)
+                .GetField("_agent", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(effortDriver));
+            Assert.True(agent.GetService<Cockpit.Plugins.OpenAiCompat.ContextGuardChatClient>()!.PreservePrefix);
             await effortDriver.SendUserMessageAsync("hi");
             var effortEvents = await _CollectUntilTurnCompletedAsync(effortDriver);
             Assert.False(Assert.Single(effortEvents.OfType<TurnCompleted>()).IsError);

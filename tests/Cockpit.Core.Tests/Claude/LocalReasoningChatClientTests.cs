@@ -50,6 +50,7 @@ public class LocalReasoningChatClientTests
         await cloud.GetResponseAsync(history);
         Assert.InRange(cloud.Turn.PeakTokens, 0, 100);
         Assert.False(handler.Bodies[^1].GetProperty("messages")[1].TryGetProperty("reasoning_content", out _));
+        Assert.Equal("Answer", handler.Bodies[^1].GetProperty("messages")[1].GetProperty("content").GetString());
         Assert.DoesNotContain(handler.Bodies[0].EnumerateObject(), field => field.Name is "temperature" or "top_p" or "top_k" or "min_p" or "presence_penalty");
         using var countOnly = new ContextGuardChatClient(local, ChatTurnLimits.Default, preservePrefix: true);
         await countOnly.GetResponseAsync([new(ChatRole.Assistant, [new TextReasoningContent("ab"), new TextReasoningContent("cd")])]);
@@ -58,8 +59,13 @@ public class LocalReasoningChatClientTests
         await countOnly.GetResponseAsync([new(ChatRole.Assistant, [new TextReasoningContent(""), new TextContent("Plain")])]);
         Assert.Equal("Plain", handler.Bodies[^1].GetProperty("messages")[0].GetProperty("content").GetString());
         Assert.Equal("Plain".Length / 4, countOnly.Turn.PeakTokens);
-        using var factoryClient = new OpenAiCompatChatClientFactory().Create(new Cockpit.Core.Profiles.LmStudioConfig("http://localhost:1234", "model"));
+        var factory = new OpenAiCompatChatClientFactory();
+        using var factoryClient = factory.Create(new Cockpit.Core.Profiles.LmStudioConfig("http://192.0.2.10:1234", "model"));
         Assert.IsType<LocalReasoningChatClient>(factoryClient);
+        using var ollama = factory.Create(new Cockpit.Core.Profiles.OllamaConfig("http://192.0.2.11:11434", "model"));
+        Assert.IsType<LocalReasoningChatClient>(ollama);
+        using var endpoint = factory.CreateForEndpoint("https://api.example.test", "model");
+        Assert.IsNotType<LocalReasoningChatClient>(endpoint);
     }
 
     internal sealed class CapturingHandler : HttpMessageHandler
