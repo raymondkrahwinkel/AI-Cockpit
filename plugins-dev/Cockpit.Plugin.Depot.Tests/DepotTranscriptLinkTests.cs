@@ -13,9 +13,13 @@ public sealed class DepotTranscriptLinkTests
         var connections = new[] { new DepotConnectionRegistration("one", "Linked", "https://linked.example.org") };
 
         var urls = connections.Select(connection => connection.Url).ToList();
-        Assert.True(DepotTranscriptLinks.TryMatch("https://linked.example.org/artifact/acme/cockpit/file-1", urls, out var urlStart, out var urlLength));
+        // AC-1955: an /artifact/ link is a Depot web page, which the system browser opens like any other link.
+        Assert.False(DepotTranscriptLinks.TryMatch("https://linked.example.org/artifact/acme/cockpit/file-1", urls, out var urlStart, out var urlLength));
         Assert.Equal(0, urlStart);
-        Assert.Equal("https://linked.example.org/artifact/acme/cockpit/file-1".Length, urlLength);
+        Assert.Equal(0, urlLength);
+        Assert.True(DepotTranscriptLinks.TryMatch("https://linked.example.org/n/7Kq3xP", urls, out var noteStart, out var noteLength));
+        Assert.Equal(0, noteStart);
+        Assert.Equal("https://linked.example.org/n/7Kq3xP".Length, noteLength);
         Assert.True(DepotTranscriptLinks.TryMatch("acme/cockpit › docs/Readme.md", urls, out var pathStart, out var pathLength));
         Assert.Equal(0, pathStart);
         Assert.Equal("acme/cockpit › docs/Readme.md".Length, pathLength);
