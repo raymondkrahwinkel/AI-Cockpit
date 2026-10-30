@@ -10,6 +10,8 @@ namespace Cockpit.Infrastructure.Swarm;
 internal sealed class SwarmMembershipStore : ISingletonService
 {
     private readonly string _path;
+    internal SemaphoreSlim Gate { get; } = new(1, 1);
+    private readonly Lock _writeGate = new();
 
     public SwarmMembershipStore()
         : this(CockpitConfigPath.SwarmMembers)
@@ -35,6 +37,19 @@ internal sealed class SwarmMembershipStore : ISingletonService
         return SwarmMembership.Replay(log);
     }
 
-    public void Save(SwarmMembership membership) =>
-        CockpitConfigPath.ReplaceAtomicallyPrivate(_path, JsonSerializer.Serialize(membership.Log, SwarmRecordJson.Options));
+    public void Save(SwarmMembership membership)
+    {
+        lock (_writeGate)
+        {
+            if (File.Exists(_path))
+            {
+                var previous = JsonSerializer.Deserialize<List<SwarmRecord>>(File.ReadAllText(_path), SwarmRecordJson.Options)
+                    ?? throw new InvalidDataException("Empty membership log.");
+                if (previous.Count > membership.Sequence
+                    || SwarmPropagation.Prefix(previous) != SwarmPropagation.Prefix(membership.Log.Take(previous.Count)))
+                    throw new InvalidDataException("swarm_log_conflict");
+            }
+            CockpitConfigPath.ReplaceAtomicallyPrivate(_path, JsonSerializer.Serialize(membership.Log, SwarmRecordJson.Options));
+        }
+    }
 }

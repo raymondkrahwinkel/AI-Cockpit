@@ -8,6 +8,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Swarm;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.Swarm;
 
@@ -20,7 +21,8 @@ internal sealed class SwarmJoinClient(
     SwarmJoinHost local,
     INodeEndpointSettingsStore settings,
     NodeDiscoveryClient discovery,
-    ILogger<SwarmJoinClient>? logger = null) : ISingletonService
+    ILogger<SwarmJoinClient>? logger = null,
+    IServiceProvider? services = null) : ISingletonService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -85,9 +87,11 @@ internal sealed class SwarmJoinClient(
             var transport = await _PostAsync<SwarmJoinCommit, SwarmTransport>(client, "swarm/join/commit", new(claim, signed, reverse), ct);
             if (transport.Pin != handshake.Pin) throw NodePairingException.For(NodePairingError.InvalidToken, "Unexpected transport pin.");
             await local.StoreTransportAsync(handshake.Offer.NodeName, transport, ct);
-            membership.Save(register);
+            if (services is null) membership.Save(register);
+            else await services.GetRequiredService<SwarmPropagation>().ApplyAsync(new(0, null, register.Log), ct);
         }
         finally { _gate.Release(); }
+        if (services is not null) await services.GetRequiredService<SwarmHeartbeat>().TickAsync(ct: ct);
     }
 
     internal async Task ConnectMembersAsync(CancellationToken ct)
@@ -96,7 +100,7 @@ internal sealed class SwarmJoinClient(
         var self = register.Members.Single(member => member.Id == identity.MemberId);
         foreach (var member in register.Members.Where(member => member.Id != identity.MemberId && member.Id != self.AddedBy))
         {
-            try { await _ConnectMemberAsync(register, member, ct); }
+            try { await ConnectMemberAsync(register, member, ct); }
             catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException or NodePairingException)
             {
                 logger?.LogWarning(ex, "Swarm member {Member} could not be connected after joining.", member.Id);
@@ -104,7 +108,7 @@ internal sealed class SwarmJoinClient(
         }
     }
 
-    private async Task _ConnectMemberAsync(SwarmMembership register, SwarmMember member, CancellationToken ct)
+    internal async Task ConnectMemberAsync(SwarmMembership register, SwarmMember member, CancellationToken ct)
     {
         using var handler = new SocketsHttpHandler { ConnectCallback = network.ConnectAsync };
         handler.SslOptions.ClientCertificates = new X509CertificateCollection { certificate.Value };

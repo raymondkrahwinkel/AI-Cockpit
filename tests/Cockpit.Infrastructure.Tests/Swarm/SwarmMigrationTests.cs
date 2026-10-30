@@ -7,11 +7,7 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 
 public class SwarmMigrationTests
 {
-    public static TheoryData<string> Cases => new() { "secret", "key", "stranger", "other-key", "server", "server-join" };
-
-    [Theory]
-    [MemberData(nameof(Cases))]
-    public async Task OnlyTheExistingDesktopControllerCanMigrate(string scenario)
+    internal static async Task OnlyTheExistingDesktopControllerCanMigrate(string scenario)
     {
         await using var pair = await SwarmJoinFixture.CreateAsync(scenario.StartsWith("server", StringComparison.Ordinal) ? SwarmHostKind.Server : SwarmHostKind.Desktop);
         var settings = await pair.B.Settings.LoadAsync();
