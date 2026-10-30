@@ -1,7 +1,10 @@
+using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
@@ -36,12 +39,19 @@ public sealed class PluginStartSessionDeliveryTests
         var cockpit = _Cockpit(registry, launcher);
         launcher.Launcher = DesktopLauncher.Over(cockpit, registry);
 
-        await cockpit.StartSessionForPluginAsync(
-            new SessionProfile("Codex", new ClaudeConfig("/fake/.claude")),
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync().Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(
+            [new SessionProfile("Codex", new ClaudeConfig("/fake/.claude"))]));
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>(),
+            profiles, new PluginBackendActions(profiles, Substitute.For<IDelegationService>()));
+
+        var name = await Task.Run(() => actions.StartSessionAsync(
+            "codex",
             "Book the confirmed week proposal.",
             null,
-            "Hours week 43");
+            "Hours week 43"));
 
+        Assert.Equal("Hours week 43", name);
         var session = Assert.IsType<SessionViewModel>(Assert.Single(cockpit.Sessions));
         Assert.True(session.HasPromptWaitingToBeDelivered);
         Assert.Equal(string.Empty, session.InputText);
@@ -83,7 +93,11 @@ public sealed class PluginStartSessionDeliveryTests
         terminal.LoadAsync().Returns(new TerminalSettings());
 
         return new CockpitViewModel(
-            () => new SessionViewModel(),
+            () =>
+            {
+                Assert.True(Dispatcher.UIThread.CheckAccess());
+                return new SessionViewModel();
+            },
             () => new TtyViewModel(),
             Substitute.For<ISessionDialogService>(),
             Substitute.For<IAudioCaptureService>(),
