@@ -650,14 +650,21 @@ internal sealed class ContextGuardChatClient(IChatClient inner, ChatTurnLimits l
     }
 
     // The same rough four-characters-a-token the host's McpToolTokenMath uses, over every message and tool schema.
-    private static long _EstimateTokens(IList<ChatMessage> messages, ChatOptions? options)
+    private long _EstimateTokens(IList<ChatMessage> messages, ChatOptions? options)
     {
         var chars = 0L;
+        if (PreservePrefix)
+        {
+            chars += (long)"<think></think>".Length * messages.Count(message => message.Role == ChatRole.Assistant
+                && message.Contents.OfType<TextReasoningContent>().Any(content => !string.IsNullOrEmpty(content.Text)));
+        }
+
         foreach (var content in messages.SelectMany(message => message.Contents))
         {
             chars += content switch
             {
                 TextContent text => text.Text.Length,
+                TextReasoningContent reasoning when PreservePrefix => reasoning.Text?.Length ?? 0,
                 FunctionCallContent call => call.Name.Length + (call.Arguments is null ? 0 : JsonSerializer.Serialize(call.Arguments, AIJsonUtilities.DefaultOptions).Length),
                 FunctionResultContent result => ChatTurnLoop.ResultText(result.Result)?.Length ?? 0,
                 _ => 0,

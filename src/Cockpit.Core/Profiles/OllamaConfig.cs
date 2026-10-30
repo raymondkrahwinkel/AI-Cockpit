@@ -10,4 +10,5 @@ public sealed record OllamaConfig(
     string Model,
     string? SystemPrompt = null,
     JsonElement? TurnLimits = null,
-    int ContextTokens = LocalModelContext.DefaultTokens) : ProviderConfig(SessionProvider.Ollama);
+    int ContextTokens = LocalModelContext.DefaultTokens,
+    string? ReasoningEffort = null) : ProviderConfig(SessionProvider.Ollama);

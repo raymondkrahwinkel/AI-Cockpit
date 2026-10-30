@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.Profiles;
 public class LmStudioConfigTests
 {
     [Fact]
-    public void ToString_WithAnApiKey_RedactsIt()
+    public void ToString_RedactsAnApiKey_AndReportsAnAbsentKeyAsNull()
     {
         var config = new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", ApiKey: "super-secret-key");
 
@@ -20,15 +20,6 @@ public class LmStudioConfigTests
         Assert.Contains("***", text);
         Assert.Contains("qwen2.5-7b-instruct", text);
         Assert.Contains("http://localhost:1234", text);
-    }
-
-    [Fact]
-    public void ToString_WithNoApiKey_ReportsNullRatherThanAnEmptyOrRedactedValue()
-    {
-        var config = new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct");
-
-        var text = config.ToString();
-
-        Assert.Contains("ApiKey = null", text);
+        Assert.Contains("ApiKey = null", (config with { ApiKey = null }).ToString());
     }
 }

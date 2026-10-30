@@ -183,6 +183,12 @@
                                        IsVisible="{Binding $parent[views:ProfilesEditor].((vm:ManageProfilesDialogViewModel)DataContext).ModelFetchStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
 
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Reasoning effort (optional)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBox Text="{Binding LocalReasoningEffort}" PlaceholderText="Blank uses the model default"
+                                     ToolTip.Tip="Use an effort supported by this model. Thinking Off takes precedence."/>
+                        </StackPanel>
+
                         <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
                             <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>

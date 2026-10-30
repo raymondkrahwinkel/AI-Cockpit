@@ -132,6 +132,41 @@ public class OpenAiCompatSessionDriverTests
         Assert.Equal("turn cleanup failed", cleanupError.Message);
         await faultedToolSession.Received(1).DisposeAsync();
         await contextManager.Received(1).ReleaseAsync(faulted.SessionId!);
+        using var handler = new LocalReasoningChatClientTests.CapturingHandler();
+        using var http = new HttpClient(handler);
+        var sdkOptions = OpenAiCompatChatClientFactory.BuildClientOptions("http://localhost:1234");
+        sdkOptions.Transport = new System.ClientModel.Primitives.HttpClientPipelineTransport(http);
+        using var sdk = new OpenAI.OpenAIClient(new System.ClientModel.ApiKeyCredential("audit"), sdkOptions).GetChatClient("model").AsIChatClient();
+        foreach (var (providerKind, effort, thinking, expected) in new (SessionProvider, string?, bool?, string?)[]
+        {
+            (SessionProvider.LmStudio, " medium ", null, "medium"),
+            (SessionProvider.LmStudio, "", null, null),
+            (SessionProvider.LmStudio, " ", true, null),
+            (SessionProvider.LmStudio, null, null, null),
+            (SessionProvider.LmStudio, "high", false, "none"),
+            (SessionProvider.Ollama, "low", null, "low"),
+            (SessionProvider.Ollama, "", null, null),
+        })
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new { Provider = providerKind, BaseUrl = "http://localhost:1234", Model = "model", ReasoningEffort = effort, EnableThinking = thinking });
+            var entry = System.Text.Json.JsonSerializer.Deserialize<Cockpit.Infrastructure.Configuration.ProviderConfigEntry>(json)!;
+            var effortProfile = new SessionProfile("effort", entry.ToDomain("", null));
+            var editor = new Cockpit.App.ViewModels.EditableProfileViewModel(effortProfile, isLoggedIn: false);
+            var saved = Cockpit.Infrastructure.Configuration.ProviderConfigEntry.FromDomain(editor.ToProfile().ProviderConfig);
+            if (!string.IsNullOrWhiteSpace(effort))
+            {
+                Assert.Equal(effort.Trim(), System.Text.Json.JsonSerializer.SerializeToElement(saved).GetProperty("ReasoningEffort").GetString());
+            }
+
+            await using var effortDriver = _CreateDriver(sdk, _SelectionSensitiveProvider(), contextManager);
+            await effortDriver.StartAsync(editor.ToProfile());
+            await effortDriver.SendUserMessageAsync("hi");
+            var effortEvents = await _CollectUntilTurnCompletedAsync(effortDriver);
+            Assert.False(Assert.Single(effortEvents.OfType<TurnCompleted>()).IsError);
+            var body = handler.Bodies[^1];
+            Assert.Equal(expected is not null, body.TryGetProperty("reasoning_effort", out var value));
+            if (expected is not null) Assert.Equal(expected, value.GetString());
+        }
     }
 
     [Fact]

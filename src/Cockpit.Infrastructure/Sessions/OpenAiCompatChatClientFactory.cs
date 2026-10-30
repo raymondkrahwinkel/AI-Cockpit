@@ -27,7 +27,7 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
     {
         var options = BuildClientOptions(baseUrl);
         var credential = new ApiKeyCredential(string.IsNullOrEmpty(apiKey) ? "not-needed" : apiKey);
-        return new OpenAIClient(credential, options).GetChatClient(model).AsIChatClient();
+        return new LocalReasoningChatClient(new OpenAIClient(credential, options).GetChatClient(model).AsIChatClient());
     }
 
     internal static OpenAIClientOptions BuildClientOptions(string baseUrl) => new()
