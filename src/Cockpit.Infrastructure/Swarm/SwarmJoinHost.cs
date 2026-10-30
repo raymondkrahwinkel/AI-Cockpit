@@ -105,7 +105,7 @@ internal sealed class SwarmJoinHost(
                 var name = incoming.Members.Single(member => member.Id == peerId).Name;
                 await StoreTransportAsync(name, request.Transport, context.RequestAborted);
                 var transport = await IssueTransportAsync(name, context.RequestAborted);
-                membership.Save(incoming);
+                await services.GetRequiredService<SwarmPropagation>().ApplyAsync(new(0, null, incoming.Log), context.RequestAborted);
                 return transport;
             }
             finally { _gate.Release(); }

@@ -5,12 +5,21 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 
 public class SwarmJoinTests
 {
-    public static TheoryData<string> Outcomes => new() { "confirmed", "refused", "expired", "pending", "mesh", "offline" };
+    public static TheoryData<string> Outcomes => new()
+    {
+        "confirmed", "refused", "expired", "pending", "mesh", "offline",
+        "migration:secret", "migration:key", "migration:stranger", "migration:other-key", "migration:server", "migration:server-join",
+    };
 
     [Theory]
     [MemberData(nameof(Outcomes))]
     public async Task JoinRequiresBothOperatorsAndGrantsBothDirections(string outcome)
     {
+        if (outcome.StartsWith("migration:", StringComparison.Ordinal))
+        {
+            await SwarmMigrationTests.OnlyTheExistingDesktopControllerCanMigrate(outcome[10..]);
+            return;
+        }
         await using var pair = await SwarmJoinFixture.CreateAsync();
         await using var third = await SwarmJoinFixture.Machine.CreateAsync(pair.Time, SwarmHostKind.Desktop);
         if (outcome is "mesh" or "offline")

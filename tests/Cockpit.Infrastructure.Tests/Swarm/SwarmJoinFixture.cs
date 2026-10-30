@@ -58,6 +58,11 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         public MemoryServers Servers { get; } = new();
         public SwarmJoinHost Join { get; private set; } = null!;
         public SwarmJoinClient Client { get; private set; } = null!;
+        public SwarmHeartbeat Heartbeat { get; private set; } = null!;
+        public SwarmPropagation Propagation { get; private set; } = null!;
+        public Cockpit.Core.Swarm.SwarmReachability Reachability { get; private set; } = null!;
+        public List<string> Notices { get; } = [];
+        public bool RejectConnect { get; set; }
         public string Address { get; private set; } = "";
         public Toast Toast { get; } = new();
         public NodeControllerPresence Presence { get; private set; } = null!;
@@ -79,9 +84,14 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine.Presence = new(time);
             machine.Join = new(host, machine.Certificate, machine.Identity, machine.Membership, machine.Keys, machine.Settings, machine.Servers, [endpoint], machine.Toast, machine.Presence) { Time = time, Name = Guid.NewGuid().ToString("N") };
             machine.Client = new(host, machine.Certificate, machine.Identity, machine.Membership, policy, machine.Join, machine.Settings, new NodeDiscoveryClient());
+            machine.Propagation = new(machine.Membership, new NoticesToast(machine.Notices));
+            machine.Reachability = new(time);
+            machine.Heartbeat = new(host, machine.Identity, machine.Certificate, machine.Membership, machine.Propagation, policy,
+                machine.Client, machine.Servers, machine.Settings, machine.Keys, machine.Reachability, new HeartbeatLog()) { Time = time };
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(policy);
             builder.Services.AddSingleton(machine.Client);
+            builder.Services.AddSingleton(machine.Propagation);
             builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Any, 0, listen => listen.UseHttps(https =>
             {
                 https.ServerCertificate = machine.Certificate.Value;
@@ -89,7 +99,14 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                 https.ClientCertificateValidation = (_, _, _) => true;
             })));
             machine._app = builder.Build();
+            machine._app.Use(async (context, next) =>
+            {
+                if (machine.RejectConnect && context.Request.Path == "/swarm/connect")
+                    await Results.Json(new NodePairingProblem(NodePairingError.InvalidToken, "Sleeping"), NodePairingJson.Options, statusCode: 403).ExecuteAsync(context);
+                else await next(context);
+            });
             machine.Join.MapRoutes(machine._app, machine._app.Services);
+            machine.Heartbeat.MapRoutes(machine._app, machine._app.Services);
             machine._app.MapGet("/remote", async (HttpContext context) =>
             {
                 var token = context.Request.Headers.Authorization.ToString();
@@ -141,5 +158,18 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         public string Address { get; set; } = "";
         public IReadOnlyList<McpServerConfig> GetServers() => [];
         public IReadOnlyList<NodeEndpointAddress> GetNodeAddresses() => [new("cockpit-node", Address)];
+    }
+
+    private sealed class NoticesToast(List<string> notices) : Cockpit.Core.Abstractions.Toasts.IToastService
+    {
+        public void Show(string message, Cockpit.Core.Toasts.ToastSeverity severity, string? actionLabel = null, Action? onAction = null) => notices.Add(message);
+    }
+
+    private sealed class HeartbeatLog : Microsoft.Extensions.Logging.ILogger<SwarmHeartbeat>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel level) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel level, Microsoft.Extensions.Logging.EventId id,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) => Console.WriteLine(formatter(state, exception) + " " + exception);
     }
 }

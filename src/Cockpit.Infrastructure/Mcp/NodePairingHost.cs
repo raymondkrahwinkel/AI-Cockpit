@@ -90,6 +90,7 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
             var app = builder.Build();
             _MapRoutes(app);
             if (_swarm is not null && _services is not null) _swarm.MapRoutes(app, _services);
+            _services?.GetService<Swarm.SwarmHeartbeat>()?.MapRoutes(app, _services);
 
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
             _app = app;
