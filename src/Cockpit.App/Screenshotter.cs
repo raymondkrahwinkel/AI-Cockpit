@@ -314,6 +314,10 @@ internal static partial class Screenshotter
         ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
         ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
         ["sidebar-waiting"] = ServerGroupScene.SidebarWaiting,
+        ["swarm-sidebar"] = (width, height) => _SwarmSidebar(width, height),
+        ["swarm-sidebar-asleep"] = (width, height) => _SwarmSidebar(width, height, asleep: true),
+        ["swarm-sidebar-start"] = (width, height) => _SwarmSidebar(width, height, start: true),
+        ["swarm-sidebar-empty"] = (width, height) => _SwarmSidebar(width, height, empty: true),
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-start-refused"] = ServerGroupScene.StartRefused,
@@ -2115,6 +2119,8 @@ internal static partial class Screenshotter
     // The node a scene connects to: answers a probe and a read as told, and whoami with the mockup's key.
     private sealed class _SceneNodeSessions : INodeSessionsClient
     {
+        public Func<string, NodeSessionsSnapshot>? ReadSnapshot { get; init; }
+        public Func<string, string, string?, NodeStartResult>? StartSession { get; init; }
         public Exception? ProbeFailure { get; init; }
 
         public string? ReadError { get; init; }
@@ -2133,12 +2139,12 @@ internal static partial class Screenshotter
             Task.FromResult<IReadOnlyList<string>>([]);
 
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
+            Task.FromResult(ReadSnapshot?.Invoke(nodeName) ?? new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
 
         public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => null;
 
         public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromResult(StartSession?.Invoke(nodeName, profileLabel, projectId) ?? throw new NotSupportedException());
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

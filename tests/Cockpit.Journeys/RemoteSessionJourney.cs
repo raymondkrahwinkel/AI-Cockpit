@@ -217,6 +217,8 @@ public sealed class RemoteSessionJourney
                 File.Delete(Path.Combine(root, ServerJourney.SignedInFile));
                 await _WaitUntilServerReadsExpiredAsync(admin);
 
+                Assert.NotNull(group.Server);
+                Assert.NotNull(group.Health);
                 await group.Server.Health.RefreshAsync();
                 await Until.Holds(group.Health, () => group.Health.HasBadge);
                 badgeWhenExpired = group.Health.BadgeText;

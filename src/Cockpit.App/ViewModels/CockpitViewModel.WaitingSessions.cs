@@ -79,7 +79,7 @@ public partial class CockpitViewModel
 
     private void _OnWaitingRowChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(SessionPanelViewModel.SessionStatus) or nameof(ServerSessionRowViewModel.Status))
+        if (e.PropertyName is nameof(SessionPanelViewModel.SessionStatus) or nameof(ServerSessionRowViewModel.Status) or nameof(ServerSessionRowViewModel.LastSeenLabel))
         {
             _SyncWaitingSessions();
         }
@@ -107,7 +107,7 @@ public partial class CockpitViewModel
         List<object> waiting =
         [
             .. Sessions.Where(session => session.SessionStatus == SessionStatus.NeedsAttention),
-            .. ServerGroups.SelectMany(group => group.Sessions).Where(row => row.Status == SessionStatus.NeedsAttention),
+            .. ServerGroups.SelectMany(group => group.Sessions).Where(row => row.Status == SessionStatus.NeedsAttention && row.LastSeenLabel.Length == 0),
         ];
         _ReconcileInto(WaitingSessions, waiting);
         _ApplyWaitingBadges();

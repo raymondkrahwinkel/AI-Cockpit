@@ -162,12 +162,12 @@ public partial class CockpitViewModel
 
     private void _SyncServerGroups()
     {
-        var servers = _remoteServers?.Servers ?? [];
+        var servers = _remoteServers?.Servers.Where(server => !_swarmMemberNames.Contains(server.Name)).ToList() ?? [];
         foreach (var server in servers)
         {
             _registerRemoteFileWorkspaces?.Invoke(server);
         }
-        foreach (var group in ServerGroups.Where(group => !servers.Contains(group.Server)).ToList())
+        foreach (var group in ServerGroups.Where(group => !group.IsSwarmMember && !servers.Any(server => ReferenceEquals(server, group.Server))).ToList())
         {
             group.Dispose();
             ServerGroups.Remove(group);
@@ -189,7 +189,7 @@ public partial class CockpitViewModel
                     _OnOpenServerGroupsChanged();
                 }
             };
-            group.Health.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
+            group.Health!.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
             ISessionRegistry? followed = null;
             void Follow()
             {
@@ -217,6 +217,7 @@ public partial class CockpitViewModel
         }
 
         OnPropertyChanged(nameof(HasServerGroups));
+        OnPropertyChanged(nameof(ShowLocalMachineHeading));
         OnPropertyChanged(nameof(ServerStatusLabels));
         OnPropertyChanged(nameof(RemoteWindowStatus));
         _OnOpenServerGroupsChanged();
@@ -239,11 +240,18 @@ public partial class CockpitViewModel
     }
 
     // Up only once /whoami answered too, so the grant is known before a button is drawn or withheld.
-    private static void _ApplyLink(SessionViewModel pane, ServerGroupViewModel group) =>
+    private static void _ApplyLink(SessionViewModel pane, ServerGroupViewModel group)
+    {
+        if (group.IsSwarmMember)
+        {
+            pane.ComposerPlaceholder = group.IsConnected ? $"Running on {group.Name}" : group.LastSeenLabel;
+            return;
+        }
         pane.SetRemoteLink(
             group.State is { IsConnected: true, Key: not null },
             group.State.Key?.MayAnswerPermissions == true,
             group.State.Key?.AllowsForSession == true);
+    }
 
     private void _OnOpenServerGroupsChanged()
     {
@@ -262,7 +270,10 @@ public partial class CockpitViewModel
     }
 
     [RelayCommand]
-    private static void ToggleServerHealth(ServerGroupViewModel group) => group.Health.IsOpen = !group.Health.IsOpen;
+    private static void ToggleServerHealth(ServerGroupViewModel group)
+    {
+        if (group.Health is { } health) health.IsOpen = !health.IsOpen;
+    }
 
     // A run waiting for a permission is a session of the same name on that server; without one, the first session
     // that needs attention stands in.
@@ -311,15 +322,21 @@ public partial class CockpitViewModel
     private async Task _StopRemoteSessionAsync(SessionPanelViewModel pane)
     {
         if (ServerGroups.SelectMany(group => group.Sessions.Select(row => (Group: group, Row: row)))
-                .FirstOrDefault(entry => ReferenceEquals(entry.Row.Pane, pane)) is not { Row: { } row } entry
-            || entry.Group.Server.Launcher is not { } launcher)
+                .FirstOrDefault(entry => ReferenceEquals(entry.Row.Pane, pane)) is not { Row: { } row } entry)
         {
             return;
         }
 
         try
         {
-            await launcher.StopSessionAsync(row.Handle.PaneId);
+            if (entry.Group.IsSwarmMember && _swarmSessions is { } nodes)
+            {
+                if (await nodes.StopAsync(entry.Group.Name, row.Handle.PaneId) is { } error)
+                    throw new InvalidOperationException(error);
+            }
+            else if (entry.Group.Server?.Launcher is { } launcher)
+                await launcher.StopSessionAsync(row.Handle.PaneId);
+            else return;
         }
         catch (Exception exception)
         {
@@ -394,7 +411,7 @@ public partial class CockpitViewModel
     private async Task OpenServerAdminAsync(ServerGroupViewModel group)
     {
         var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
-        if (show is null || group.State.Key is not { } key)
+        if (show is null || group.State.Key is not { } key || group.Server is null)
         {
             return;
         }
@@ -433,7 +450,7 @@ public partial class CockpitViewModel
         assistant.OpenHealthRequested += () => _OnUiThread(() =>
         {
             group.IsExpanded = true;
-            group.Health.IsOpen = true;
+            group.Health!.IsOpen = true;
         });
         await show(admin);
     }
@@ -514,7 +531,7 @@ public partial class CockpitViewModel
         group.Start.Error = "";
         group.Start.Reason = "";
         group.Start.IsOpen = true;
-        if (_serverChoices is null)
+        if ((group.IsSwarmMember ? _swarmSessions : _serverChoices) is not { } choices)
         {
             return;
         }
@@ -523,7 +540,7 @@ public partial class CockpitViewModel
         try
         {
             // The node tools on the same key: the server filters both lists to its scope (AC-1367).
-            var snapshot = await _serverChoices.ReadAsync(group.Name);
+            var snapshot = await choices.ReadAsync(group.Name);
             if (snapshot.Error is { Length: > 0 } error)
             {
                 group.Start.Error = error;
@@ -531,7 +548,13 @@ public partial class CockpitViewModel
             }
 
             // AC-1472: the projects from the backend API, the same list and scope Admin's Projects page writes to.
-            await group.Server.Projects.LoadAsync();
+            if (group.IsSwarmMember)
+            {
+                group.Start.Fill(snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
+                    snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
+                return;
+            }
+            await group.Server!.Projects.LoadAsync();
             group.Start.Fill(
                 snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
                 group.Server.Projects.Current.Settings.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
@@ -552,7 +575,15 @@ public partial class CockpitViewModel
     [RelayCommand]
     private async Task StartOnServerAsync(ServerGroupViewModel group)
     {
-        if (group.Server.Launcher is not { } launcher || group.Start.SelectedProfile is not { } profile)
+        if (group.IsSwarmMember)
+        {
+            group.Start.IsBusy = true;
+            try { await _StartOnMemberAsync(group); }
+            catch (Exception exception) { group.Start.Error = exception.Message; }
+            finally { group.Start.IsBusy = false; }
+            return;
+        }
+        if (group.Server?.Launcher is not { } launcher || group.Start.SelectedProfile is not { } profile)
         {
             group.Start.Error = "Pick a profile first.";
             return;

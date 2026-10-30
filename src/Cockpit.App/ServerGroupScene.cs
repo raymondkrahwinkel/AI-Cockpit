@@ -92,7 +92,7 @@ internal static class ServerGroupScene
         var group = cockpit.ServerGroups[0];
         if (health)
         {
-            group.Health.IsOpen = true;
+            group.Health!.IsOpen = true;
             if (admin)
             {
                 group.Health.StartSignInCommand.Execute(null);
