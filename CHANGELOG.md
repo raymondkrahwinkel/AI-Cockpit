@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- The automatic plugin publish after a Nightly no longer fails for a plugin merged while that Nightly ran; it waits for the next Nightly with a notice, while a hand-fired publish still fails.
+
 - The Depot dock's Notes tab loads live notes again after signing in, instead of asking to sign in forever; a refusal or an older Depot now says so instead of "Sign in".
 
 - Assistant question-card resolution now reaches its gateway in the acting assistant's pane.

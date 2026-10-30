@@ -251,8 +251,10 @@ jobs:
       # version baked into the current nightly (read from Directory.Build.props at the nightly's commit). If
       # neither reaches the plugin's minHostVersion, the plugin would install and be refused — so stop here.
       - name: Gate on host availability (minHostVersion)
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
           MIN: ${{ steps.resolve.outputs.min_host }}
           PLUGIN: ${{ inputs.plugin }}
           DIR: ${{ steps.resolve.outputs.dir }}
@@ -319,6 +321,13 @@ jobs:
           fi
 
           if ! git merge-base --is-ancestor "$plugin_sha" "$nsha"; then
+            # AC-1959: after a Nightly, main may already hold a merge that nightly predates; the next Nightly ships it.
+            # Only that automatic route waits; a hand-fired run still fails, since there red is the answer asked for.
+            if [ "$EVENT" = "workflow_run" ]; then
+              echo "::notice::Nightly $nsha does not contain $plugin_sha (newest commit to $DIR) yet. $PLUGIN waits for the next Nightly, which publishes it."
+              echo "wait=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::The newest published host is nightly $nsha, which does not contain $plugin_sha — the newest commit to $DIR. Its base version satisfies minHostVersion $MIN, but that build predates the code being published, so a plugin leaning on a host change would install and quietly do nothing. Run the Nightly on this commit first, then re-run this."
             exit 1
           fi
@@ -332,9 +341,14 @@ jobs:
         env:
           PLUGIN: ${{ inputs.plugin }}
           VERSION: ${{ steps.resolve.outputs.version }}
+          WAIT: ${{ steps.gate.outputs.wait }}
         shell: bash
         run: |
           skip=false
+          if [ "$WAIT" = "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -f store/index.json ]; then
             present="$(jq -r --arg id "$PLUGIN" --arg v "$VERSION" \
               '.plugins[]? | select(.id==$id) | .versions[]?.version | select(.==$v)' store/index.json | head -1)"
