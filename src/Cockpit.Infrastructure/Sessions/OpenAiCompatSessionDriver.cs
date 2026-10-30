@@ -562,22 +562,37 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _events.Writer.TryComplete();
         _turnCancellation?.Cancel();
         _gate.CancelPending();
-        if (_turnTask is not null)
+        try
         {
-            await _turnTask.ConfigureAwait(false);
+            if (_turnTask is not null)
+            {
+                await _turnTask.ConfigureAwait(false);
+            }
         }
-
-        _turnCancellation?.Dispose();
-
-        if (_toolSession is not null)
+        finally
         {
-            await _toolSession.DisposeAsync().ConfigureAwait(false);
-        }
-
-        (_agent as IDisposable)?.Dispose();
-        if (_sessionId is not null)
-        {
-            await _localModelContext.ReleaseAsync(_sessionId).ConfigureAwait(false);
+            _turnCancellation?.Dispose();
+            try
+            {
+                if (_toolSession is not null)
+                {
+                    await _toolSession.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                try
+                {
+                    (_agent as IDisposable)?.Dispose();
+                }
+                finally
+                {
+                    if (_sessionId is not null)
+                    {
+                        await _localModelContext.ReleaseAsync(_sessionId).ConfigureAwait(false);
+                    }
+                }
+            }
         }
     }
 

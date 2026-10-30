@@ -117,6 +117,20 @@ public class OpenAiCompatSessionDriverTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => failed.StartAsync(profile));
         failedFactory.DidNotReceive().Create(Arg.Any<ProviderConfig>());
         await failedManager.Received(1).ReleaseAsync(failed.SessionId!);
+        var faultedToolSession = Substitute.For<IMcpToolSession>();
+        faultedToolSession.Tools.Returns([]);
+        faultedToolSession.ConnectedServerNames.Returns([]);
+        var faultedProvider = Substitute.For<IMcpToolProvider>();
+        faultedProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(faultedToolSession);
+        var faulted = _CreateDriver(chatClient, faultedProvider, contextManager);
+        await faulted.StartAsync(profile);
+        typeof(OpenAiCompatSessionDriver).GetField("_turnTask", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(faulted, Task.FromException(new InvalidOperationException("turn cleanup failed")));
+        var cleanupError = await Assert.ThrowsAsync<InvalidOperationException>(() => faulted.DisposeAsync().AsTask());
+        Assert.Equal("turn cleanup failed", cleanupError.Message);
+        await faultedToolSession.Received(1).DisposeAsync();
+        await contextManager.Received(1).ReleaseAsync(faulted.SessionId!);
     }
 
     [Fact]
