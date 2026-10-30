@@ -377,6 +377,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRowVisible))]
     private string _text;
 
     // Collapsed by default for tool-use and standalone tool-result rows, so their input/output stays folded until the operator expands the chip.
@@ -891,6 +892,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // stays visible everywhere. A standalone tool result is treated as auto noise and hidden only in Simple.
     public bool IsRowVisible => Kind switch
     {
+        TranscriptEntryKind.AssistantText => HasImages || !string.IsNullOrWhiteSpace(Text),
         // Reasoning/thinking (AC-213): the developer surface only. Focus and Simple stay calm (AC-138) —
         // the row is still added to the transcript at every level, but it renders hidden below Developer.
         TranscriptEntryKind.Thinking => ReadingLevel == ReadingLevel.Developer,
