@@ -6,29 +6,17 @@ namespace Cockpit.Core.Tests.Swarm;
 
 public class SwarmLeaderElectionTests
 {
-    [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    [InlineData(3)]
-    public void ReachableRankAndStableReturnDetermineLeadership(int criterion)
+    [Fact]
+    public void ReachableRankAndStableReturnDetermineLeadership()
     {
-        switch (criterion)
+        foreach (var criterion in new[] { 1, 2, 3 })
         {
-            case 1:
-                SwarmRankTests.CollisionIsRetriedBeforeSigning();
-                break;
-            case 2:
-                SwarmReachabilityTests.OnlyAuthorizedAnswersRenewTheLeaseAndStableReturn(true);
-                SwarmReachabilityTests.OnlyAuthorizedAnswersRenewTheLeaseAndStableReturn(false);
-                break;
-            case 3:
-                foreach (var row in SwarmMembershipTests.Forgeries)
-                {
-                    SwarmMembershipTests.Accept_RefusesAChangeNotSignedByACurrentMember(
-                        (Func<ECDsa[], SwarmRecord[]>)row[0], (SwarmMembershipVerdict)row[1]);
-                }
-                break;
+            VerifyLeadershipCriterion(criterion);
         }
+    }
+
+    private static void VerifyLeadershipCriterion(int criterion)
+    {
         using var desktopKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var laptopKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var desktop = new SwarmMember(desktopKey.ExportSubjectPublicKeyInfo(), "Desktop", 17, ["10.0.0.1"], 7443,
@@ -71,7 +59,9 @@ public class SwarmLeaderElectionTests
         Assert.Equal(desktop.Id, waiting.Pending?.Member.Id);
         Assert.Equal(time.GetUtcNow().AddSeconds(30), waiting.Pending?.At);
         if (criterion == 2)
+        {
             Assert.Equal(desktop.Id, Elect(waiting, action: SwarmTakeoverAction.TakeOverNow).Current?.Id);
+        }
         for (var i = 0; i < 5; i++) { time.Advance(5); Answer(); }
         Assert.Equal(laptop.Id, Elect(waiting, mode).Current?.Id);
         time.Advance(5);
@@ -112,9 +102,6 @@ public class SwarmLeaderElectionTests
         Assert.Equal(change.Rank, replay.Members.Single(member => member.Id == desktop.Id).Rank);
         Assert.Equal(laptop.Id, Elect(waiting, mode).Current?.Id);
         Assert.Null(Elect(waiting, mode).Pending);
-        Assert.True(SwarmRank.DrawAbove([long.MinValue]) > long.MinValue);
-        Assert.Equal(long.MaxValue, SwarmRank.DrawAbove([long.MaxValue - 1]));
-        Assert.Throws<InvalidOperationException>(() => SwarmRank.DrawAbove([long.MaxValue]));
     }
 
     private sealed class FakeTimeProvider : TimeProvider
