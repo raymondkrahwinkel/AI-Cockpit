@@ -78,7 +78,8 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine.Membership = new(Path.Combine(machine._root, "members.json"));
             var audit = new NodeAccessAuditLog(Path.Combine(machine._root, "audit.jsonl"), NullLogger<NodeAccessAuditLog>.Instance);
             machine.Keys = new(Path.Combine(machine._root, "cockpit.json"), _ => null, _ => { }, time, audit, NullLogger.Instance);
-            var policy = new SwarmNetworkPolicy(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")), audit, NullLogger<SwarmNetworkPolicy>.Instance);
+            var policy = new SwarmNetworkPolicy(new SwarmSettingsStore(Path.Combine(machine._root, "cockpit.json")),
+                audit, NullLogger<SwarmNetworkPolicy>.Instance, (_, _) => Task.FromResult(new[] { IPAddress.Loopback }));
             var endpoint = new Endpoint();
             var host = new SwarmHost(kind);
             machine.Presence = new(time);
@@ -93,7 +94,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             builder.Services.AddSingleton(policy);
             builder.Services.AddSingleton(machine.Client);
             builder.Services.AddSingleton(machine.Propagation);
-            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Any, 0, listen => listen.UseHttps(https =>
+            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(https =>
             {
                 https.ServerCertificate = machine.Certificate.Value;
                 https.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
