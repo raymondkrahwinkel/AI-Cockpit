@@ -132,15 +132,18 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
 
     private async Task<bool> PostAsync(SwarmMember member, SwarmAssistantMessage message, CancellationToken ct)
     {
-        var server = (await _services.GetRequiredService<IMcpServerStore>().LoadAsync(ct)).Single(item =>
+        var server = (await _services.GetRequiredService<IMcpServerStore>().LoadAsync(ct)).FirstOrDefault(item =>
             item.Name == NodeServerName.For(member.Name, NodeServerName.SessionsServerName));
+        if (server is null || string.IsNullOrWhiteSpace(server.ApiKey) || string.IsNullOrWhiteSpace(server.PinnedCertificateFingerprint)
+            || !Uri.TryCreate(server.Url, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+            return false;
         var network = _services.GetRequiredService<SwarmNetworkPolicy>();
         using var handler = new SocketsHttpHandler { ConnectCallback = network.ConnectAsync };
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
             certificate is not null && NodeCertificatePin.FingerprintOf(certificate) == server.PinnedCertificateFingerprint;
         using var client = new HttpClient(handler)
         {
-            BaseAddress = new Uri(new Uri(server.Url!).GetLeftPart(UriPartial.Authority)),
+            BaseAddress = new Uri(endpoint.GetLeftPart(UriPartial.Authority)),
             Timeout = NodeConnectionFailure.DefaultBudget,
         };
         client.DefaultRequestHeaders.Authorization = new("Bearer", server.ApiKey);

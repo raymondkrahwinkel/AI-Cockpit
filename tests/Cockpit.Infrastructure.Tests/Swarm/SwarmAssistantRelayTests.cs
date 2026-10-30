@@ -142,5 +142,27 @@ public sealed class SwarmAssistantRelayTests
         leader.IsSelf.Returns(true);
         await waiting;
         session.Received(1).InjectAndSubmit(Arg.Is<string>(text => text.EndsWith("Typed during the switch", StringComparison.Ordinal)));
+
+        var transportStore = Substitute.For<IMcpServerStore>();
+        var incompleteRetried = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        transportStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            var read = Interlocked.Increment(ref reads);
+            if (read == 1) return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
+            if (read >= 3) incompleteRetried.TrySetResult();
+            return Task.FromResult<IReadOnlyList<McpServerConfig>>(
+                [new() { Name = NodeServerName.For(desktop.Name, NodeServerName.SessionsServerName) }]);
+        });
+        using var transportServices = new ServiceCollection().AddSingleton(pair.B.Identity)
+            .AddSingleton(transportStore).BuildServiceProvider();
+        var joiningRelay = new SwarmAssistantRelay(follower, transportServices);
+        using var pendingTransport = new CancellationTokenSource();
+        var pendingSend = joiningRelay.SendAsync("Typed before the transport arrived", [], pendingTransport.Token);
+        Assert.False(pendingSend.IsCompleted);
+        await incompleteRetried.Task.WaitAsync(timeout.Token);
+        Assert.False(pendingSend.IsCompleted);
+        pendingTransport.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pendingSend);
     }
 }
