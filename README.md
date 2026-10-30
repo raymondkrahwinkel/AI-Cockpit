@@ -275,6 +275,13 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
+The `debug` section accepts `uiFreezeThresholdSeconds` (default 5, minimum 2) and
+`renderStallThresholdSeconds` (default 15, minimum 1). Invalid values use the defaults.
+These warning thresholds take effect after restarting Cockpit; recovery thresholds stay unchanged.
+On Windows, the first UI freeze warning in an episode also logs up to 40 managed stack frames
+(type and method names only), at most once every five minutes. ClrMD uses an in-memory PSS snapshot;
+no dump is written. Linux and macOS keep the counters and thread states without stack capture.
+
 Each **Claude** profile can point at its own **`CLAUDE_CONFIG_DIR`** (e.g. a work vs. a personal account), so two
 sessions can run under two different logins at the same time.
 

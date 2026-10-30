@@ -1520,6 +1520,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _logDiagnosticSnapshots;
 
+    private DebugSettings _loadedDebugSettings = new();
+
     // Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
     // longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
     // default; the change is persisted and takes effect on the next session's servers.
@@ -5500,6 +5502,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _debugSettingsStore.LoadAsync();
+        _loadedDebugSettings = settings;
         ShowDebugControls = settings.ShowDebugControls;
         LogDiagnosticSnapshots = settings.LogDiagnosticSnapshots;
     }
@@ -5513,7 +5516,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _debugSettingsStore.SaveAsync(new DebugSettings
+        await _debugSettingsStore.SaveAsync(_loadedDebugSettings with
         {
             ShowDebugControls = ShowDebugControls,
             LogDiagnosticSnapshots = LogDiagnosticSnapshots,
@@ -7746,6 +7749,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebuildShortcutRows();
 
         var debug = new DebugSettings();
+        _loadedDebugSettings = debug;
         ShowDebugControls = debug.ShowDebugControls;
         LogDiagnosticSnapshots = debug.LogDiagnosticSnapshots;
         OrchestratorMcpEnabled = true;

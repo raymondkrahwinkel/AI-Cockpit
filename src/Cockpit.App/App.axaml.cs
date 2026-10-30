@@ -4,10 +4,12 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Logging;
+using Cockpit.App.Diagnostics;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -123,6 +125,7 @@ public partial class App : Application
 
     private void _BeginCockpit(IClassicDesktopStyleApplicationLifetime desktop)
     {
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "_BeginCockpit");
         // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
         // model, the plugins and the MCP servers all read settings, and reading them without the key would
         // hand them ciphertext. The unlock window goes first and the app starts behind it.
@@ -230,6 +233,7 @@ public partial class App : Application
         }
 
         var unlock = new UnlockViewModel(protection);
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "unlock");
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         unlock.Unlocked += (_, _) => completed.TrySetResult();
         startup.AddOperatorStep("Unlocking…", _ => completed.Task);
@@ -258,7 +262,7 @@ public partial class App : Application
         }
         finally
         {
-            _mainWindow?.Show();
+            _ShowMainWindow();
             Program.Services.GetRequiredService<ILogger<App>>().LogInformation(
                 "config parses during startup: {Parses}", Cockpit.Infrastructure.Configuration.CockpitConfigReads.Parses);
             _StartPlanners();
@@ -421,9 +425,11 @@ public partial class App : Application
     {
         var viewModel = new UnlockViewModel(protection);
         var window = new UnlockWindow { DataContext = viewModel };
+        var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "unlock");
 
         viewModel.Unlocked += (_, _) =>
         {
+            milestone.Dispose();
             // AC-509 criterion 4: unlock first, onboarding after — this is the "locked at startup" half of that
             // ordering, the other half is the direct call in OnFrameworkInitializationCompleted below.
             _StartCockpitAndOnboard(desktop);
@@ -580,7 +586,7 @@ public partial class App : Application
         // auto-show a MainWindow that replaces the startup unlock window. AC-1827: behind a splash it is shown at the end.
         if (_splash is null)
         {
-            _mainWindow.Show();
+            _ShowMainWindow();
         }
 
         await _YieldToPaintAsync();
@@ -636,6 +642,8 @@ public partial class App : Application
         // AC-718: started here, not as an IHostedService — Dispatcher.UIThread is only safe to touch once
         // Avalonia's own Setup() has bound it to this thread, which by this point in the lifecycle it has.
         var diagnosticsBackgroundService = Program.Services.GetRequiredService<DiagnosticsBackgroundService>();
+        var debugSettings = await Program.Services.GetRequiredService<Cockpit.Core.Abstractions.Debugging.IDebugSettingsStore>().LoadAsync();
+        diagnosticsBackgroundService.ConfigureThresholds(debugSettings);
 
         // AC-1125 D: read on demand from the diag line, not pushed on every session/layout change — cheapest
         // way to give the background service the three fields only the view model knows.
@@ -764,8 +772,49 @@ public partial class App : Application
     // AC-1889: the backend's planners (AC-1380, AC-1381) start once the main window is shown, off the UI thread. Nothing
     // before Show or the session restore needs them: the worktree reconcile gate comes from Start, and the crash-net
     // sweep first ticks a quarter of an hour on. The recorder and the wake schedule begin a moment later than before.
-    private static void _StartPlanners() =>
-        _ = Program.Services.GetRequiredService<CockpitBackend>().StartPlannersInBackgroundAsync();
+    private static void _StartPlanners() => _ = _StartPlannersAsync();
+
+    private static async Task _StartPlannersAsync()
+    {
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "StartPlanners");
+        await Program.Services.GetRequiredService<CockpitBackend>().StartPlannersInBackgroundAsync();
+    }
+
+    private void _ShowMainWindow()
+    {
+        if (_mainWindow is not { } window)
+        {
+            return;
+        }
+
+        using (var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "MainWindow.Show()"))
+        {
+            window.Show();
+        }
+
+        _ = _LogFirstCommittedFrameAsync();
+    }
+
+    private static async Task _LogFirstCommittedFrameAsync()
+    {
+        var logger = Program.Services.GetRequiredService<ILogger<App>>();
+        if (Compositor.TryGetDefaultCompositor() is not { } compositor)
+        {
+            return;
+        }
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        logger.LogInformation("startup first committed frame begin");
+        try
+        {
+            await compositor.RequestCommitAsync();
+            logger.LogInformation("startup first committed frame end duration={ElapsedMs}ms", clock.ElapsedMilliseconds);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning("Startup frame probe failed ({ErrorType}).", exception.GetType().Name);
+        }
+    }
 
     // The assistant's standing parts: its hotkey, its host on the cockpit and the chip. AC-1422: internal so the
     // journeys start the assistant the way the cockpit does.
@@ -832,6 +881,7 @@ public partial class App : Application
     // then the UI parts. AC-1422: internal so the journeys run this phase itself, the plugins' UI parts included.
     internal void InitializePlugins()
     {
+        using var milestone = new StartupMilestone(Program.Services.GetRequiredService<ILogger<App>>(), "plugins activated");
         if (Program.Services.GetService<PluginManager>() is null)
         {
             return;

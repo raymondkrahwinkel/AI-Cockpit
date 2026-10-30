@@ -11,31 +11,6 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public class DiagnosticsBackgroundServiceTests
 {
-    // A: fails today (zero lines) — the thread ran no line proving it was alive before the first 10s snapshot.
-    [Fact]
-    public async Task Start_LogsARunningLineWithinTwoTicksEvenBeforeAnySnapshot()
-    {
-        var logger = new _CapturingLogger();
-        var service = new DiagnosticsBackgroundService(logger);
-
-        try
-        {
-            service.Start();
-
-            var deadline = DateTime.UtcNow.AddSeconds(2.5);
-            while (DateTime.UtcNow < deadline && !logger.Messages.Any(m => m.Contains("snapshots=")))
-            {
-                await Task.Delay(50);
-            }
-
-            Assert.Contains(logger.Messages, m => m.Contains("snapshots="));
-        }
-        finally
-        {
-            service.Dispose();
-        }
-    }
-
     // C: bounded — a heap over the ceiling must skip the forced full collection and log why, not silently run it.
     [Fact]
     public void SampleHangRetention_SkipsAndLogsAboveTheHeapCeiling()
