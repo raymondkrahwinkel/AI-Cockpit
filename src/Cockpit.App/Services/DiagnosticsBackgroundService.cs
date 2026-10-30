@@ -654,7 +654,7 @@ public sealed class DiagnosticsBackgroundService : ISingletonService, IDisposabl
 
     private void _LogUiThreadStack()
     {
-        if (OperatingSystem.IsWindows() || Volatile.Read(ref _uiManagedThreadId) == 0)
+        if (!OperatingSystem.IsWindows() || Volatile.Read(ref _uiManagedThreadId) == 0)
         {
             return;
         }
