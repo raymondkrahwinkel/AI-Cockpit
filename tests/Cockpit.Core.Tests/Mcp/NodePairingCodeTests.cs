@@ -12,16 +12,13 @@ public class NodePairingCodeTests
     private const string NodeFingerprint = "3F1A9C4E5B6D7089AB12CD34EF56789012345678ABCDEF1234567890ABCDEF12";
     private const string ImpostorFingerprint = "0011223344556677889900AABBCCDDEEFF00112233445566778899AABBCCDDEE";
 
+    // The certificate is what the operator compares; the nonce makes one code say nothing about the next pairing.
     [Fact]
-    public void Derive_DiffersWhenTheCertificateDiffers_WhichIsWhatTheOperatorSees() =>
-        Assert.NotEqual(
-            NodePairingCode.Derive("A1B2C3", NodeFingerprint),
-            NodePairingCode.Derive("A1B2C3", ImpostorFingerprint));
+    public void Derive_DiffersWhenTheCertificateOrThePairingDiffers()
+    {
+        var code = NodePairingCode.Derive("A1B2C3", NodeFingerprint);
 
-    [Fact]
-    public void Derive_DiffersPerPairing_SoOneCodeSaysNothingAboutTheNext() =>
-        Assert.NotEqual(
-            NodePairingCode.Derive("A1B2C3", NodeFingerprint),
-            NodePairingCode.Derive("D4E5F6", NodeFingerprint));
-
+        Assert.NotEqual(code, NodePairingCode.Derive("A1B2C3", ImpostorFingerprint));
+        Assert.NotEqual(code, NodePairingCode.Derive("D4E5F6", NodeFingerprint));
+    }
 }

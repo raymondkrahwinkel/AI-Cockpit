@@ -11,6 +11,9 @@ public static class SwarmRecordJson
     {
         RespectNullableAnnotations = true,
         RespectRequiredConstructorParameters = true,
+
+        // A canonical payload sorts its properties, so a type tag such as a membership change's `kind` is rarely first.
+        AllowOutOfOrderMetadataProperties = true,
     };
 
     // The payload's one spelling that signatures cover: properties in ordinal name order, no whitespace, strings escaped by the default
