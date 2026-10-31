@@ -63,7 +63,7 @@ public static class ConversationMerge
             var theirsNewer = theirs.ChangedAt > ours.ChangedAt;
             var (newest, other, origin) = theirsNewer ? (theirs, ours, winner.Name) : (ours, theirs, loser.Name);
             fields[key] = newest;
-            if (ours.ChangedAt > splitAt && theirs.ChangedAt > splitAt
+            if (asks && ours.ChangedAt > splitAt && theirs.ChangedAt > splitAt
                 && !keptNow.Exists(item => item.Key == key && item.Version.Value == other.Value))
             {
                 keptNow.Add(new(key, other, origin));
