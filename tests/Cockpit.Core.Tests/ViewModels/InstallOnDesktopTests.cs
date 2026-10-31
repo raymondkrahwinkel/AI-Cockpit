@@ -68,10 +68,11 @@ public class InstallOnDesktopTests
         {
             OpenPluginSettings = _ => Task.CompletedTask,
         };
-        await admin.LoadCommand.ExecuteAsync(null);
+        var row = new ServerPluginRowViewModel(_ServerPlugin("depot"));
+        await admin.OpenPluginSettingsCommand.ExecuteAsync(row);
         Assert.Single(admin.SharedNotices);
 
-        await admin.OpenPluginSettingsCommand.ExecuteAsync(new ServerPluginRowViewModel(_ServerPlugin("depot")));
+        await admin.OpenPluginSettingsCommand.ExecuteAsync(row);
 
         Assert.Equal("Shared", Assert.Single(admin.SharedProjects).Name);
         Assert.Empty(admin.SharedNotices);
