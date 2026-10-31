@@ -242,6 +242,9 @@ internal static partial class Screenshotter
         ["workspace-tab-overflow"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-overflow-middle"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
         ["workspace-tab-interactions"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-tab-list"] = (_, _) => _WorkspacePreviewTabScene(overflow: true),
+        ["workspace-menu-preview"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
+        ["workspace-menu-projects"] = (width, height) => _MarkdownFileScene(width, height, "preview"),
         // AC-1751 (mockup AC-1749 v003, flow 8): a keyed workspace popped out into its own window, with "⇤ Dock back".
         ["workspace-floating"] = (_, _) => _WorkspaceFloatingScene(),
         // AC-1753 (mockup AC-1749 v003, flows 6 and 10): the Markdown editor live, with the caret in a table, as source, and read-only.
@@ -1338,8 +1341,15 @@ internal static partial class Screenshotter
     // they are opened here rather than built into the scene.
     private static readonly Dictionary<string, Action<Window>> Hovers = new(StringComparer.Ordinal)
     {
+        ["workspace-menu-preview"] = window => _OpenWorkspaceTabMenu(window, true),
+        ["workspace-menu-projects"] = window => _OpenWorkspaceTabMenu(window, false),
         ["workspace-tab-interactions"] = _ExerciseWorkspaceTabScrolling,
         ["workspace-tab-overflow"] = _HoverActiveWorkspaceTab,
+        ["workspace-tab-list"] = window =>
+        {
+            window.UpdateLayout();
+            _OpenFlyout(window, "WorkspaceTabsList");
+        },
         ["workspace-tab-overflow-middle"] = window =>
         {
             if (window.DataContext is CockpitViewModel cockpit)
@@ -4578,6 +4588,18 @@ internal static partial class Screenshotter
             throw new InvalidOperationException($"Dragging a scrolled tab did not reorder it: {from} -> {to}; offset {scroll.Offset.X}; tabs {string.Join(", ", cockpit.Workspaces.Tabs.Select(tab => tab.Name))}.");
         }
         _HoverActiveWorkspaceTab(window);
+    }
+
+    private static void _OpenWorkspaceTabMenu(Window window, bool preview)
+    {
+        var tab = window.GetVisualDescendants().OfType<Border>().Single(border =>
+            border.Classes.Contains("workspaceTab") && border.DataContext is WorkspaceTabViewModel model
+            && (preview ? model.IsPreview : model.Name == "Projects"));
+        var position = tab.TranslatePoint(new Point(tab.Bounds.Width / 2, tab.Bounds.Height / 2), window)
+            ?? throw new InvalidOperationException("The workspace tab has no position.");
+        window.MouseDown(position, Avalonia.Input.MouseButton.Right);
+        window.MouseUp(position, Avalonia.Input.MouseButton.Right);
+        Dispatcher.UIThread.RunJobs();
     }
 
     private static Window _WorkspacePreviewTabScene(bool overflow = false)

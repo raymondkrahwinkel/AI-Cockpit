@@ -2,13 +2,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Material.Icons;
 using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions.Workspaces;
+using Cockpit.App.Files;
 
 namespace Cockpit.App.ViewModels;
 
 // One tab in the workspace strip. Mostly a snapshot — the strip is rebuilt whenever the workspace set or the
 // selection changes — but it carries its own inline-rename state, the same way a session row does, since a
 // rename lives and dies inside the tab rather than in a dialog.
-public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isActive, MaterialIconKind? icon = null) : ObservableObject
+public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isActive, WorkspacesViewModel owner, MaterialIconKind? icon = null) : ObservableObject
 {
     public string Id => workspace.Id;
 
@@ -19,6 +20,22 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
 
     // AC-1750: a keyed tab takes its title from its body, so it is not renamed in place.
     public bool CanRename => workspace.InstanceKey is null;
+
+    public bool CanKeepOpen => IsPreview;
+
+    public bool CanPopOut => owner.CanFloat(workspace);
+
+    public bool CanCopyPath => owner.FileBodyFor(workspace) is MarkdownFileWorkspace;
+
+    public bool CanClose => owner.CanClose(Id);
+
+    internal string? FilePath => owner.FileBodyFor(workspace)?.DisplayPath;
+
+    internal void RefreshCapabilities()
+    {
+        OnPropertyChanged(nameof(CanPopOut));
+        OnPropertyChanged(nameof(CanCopyPath));
+    }
 
     // AC-1750: the mark the body put on its tab, drawn as a dot.
     [ObservableProperty]

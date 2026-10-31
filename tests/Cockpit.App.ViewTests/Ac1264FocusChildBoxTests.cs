@@ -19,7 +19,7 @@ public class Ac1264FocusChildBoxTests
     [Fact]
     public void TheFocusBox_NeverArrivesOnATileFromInsideAnArrange() => HeadlessAvalonia.Run(() =>
     {
-        var panel = _RailPanel(out var focusHost, out var tile, out _);
+        var panel = _RailPanel(out var focusHost, out var tile, out var railContent);
 
         using var scene = RenderedScene.Show(panel, 900, 600);
         _Settle(scene);
@@ -28,16 +28,6 @@ public class Ac1264FocusChildBoxTests
         Assert.Equal(0, tile.BoxWritesInsideArrange);
         Assert.True(focusHost.Bounds.Width > 0, "the focus pane's host must have been arranged into a real box");
         LayoutSettledAssertion.AssertSettled(panel);
-    });
-
-    [Fact]
-    public void ARailTilesChild_IsMeasuredAtTheFocusPanesOwnBox() => HeadlessAvalonia.Run(() =>
-    {
-        var panel = _RailPanel(out var focusHost, out _, out var railContent);
-
-        using var scene = RenderedScene.Show(panel, 900, 600);
-        _Settle(scene);
-
         // `MiniatureHost.Fit` measures the child at the focus box itself, and a TTY pane's pty follows that
         // constraint (AC-442/670) — so a box the host was never re-measured for is a wrong terminal, not a
         // cosmetic one.

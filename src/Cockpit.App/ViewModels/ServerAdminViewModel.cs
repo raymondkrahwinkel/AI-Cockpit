@@ -467,7 +467,16 @@ public sealed partial class ServerAdminViewModel : ObservableObject
 
     [RelayCommand]
     private Task OpenPluginSettingsAsync(ServerPluginRowViewModel row) =>
-        _RunAsync(() => OpenPluginSettings?.Invoke(row) ?? Task.CompletedTask);
+        _RunAsync(async () =>
+        {
+            await (OpenPluginSettings?.Invoke(row) ?? Task.CompletedTask);
+
+            // AC-1986: the settings window may have connected a source (Depot), so the shared list is stale.
+            if (_serverProjects is { } serverProjects)
+            {
+                await _LoadSharedAsync(serverProjects);
+            }
+        });
 
     [RelayCommand]
     private Task RemovePluginAsync(ServerPluginRowViewModel row) => _RunAsync(async () =>
