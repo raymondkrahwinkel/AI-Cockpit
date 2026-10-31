@@ -56,9 +56,9 @@ internal sealed class PluginEventsBridge(PluginChannelHub hub, IBackendEventLog 
         }
 
         var payload = channelEvent.Payload.ValueKind == JsonValueKind.Undefined ? NoPayload : channelEvent.Payload;
-        log.Append(EventKind, null, new PluginEventFrame(folderId, channelEvent.Name, payload));
+        log.Append(EventKind, null, new { folder = folderId, name = channelEvent.Name, payload });
     }
 }
 
-// The `data` of a `plugin` event on the stream.
+// The `data` of a `plugin` event on the stream, as a desktop reads it.
 public sealed record PluginEventFrame(string Folder, string Name, JsonElement Payload);

@@ -2,14 +2,18 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Security;
+using System.Text.Json;
 using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -109,25 +113,38 @@ public sealed class EventsEndpointTests
         Assert.Equal($"id: {second}\nevent: row\ndata: {{\"value\":\"inside\"}}", frame);
     }
 
+    // AC-1547 (layer 2, event stream key boundary): a plugin's channel event reaches the stream through the bridge, named
+    // by the plugin's folder, and only an admin key reads it, as only an admin key may call the plugin's channel.
     [Theory]
-    [InlineData(true, "assistant")]
-    [InlineData(false, "session")]
-    public async Task OnlyTheKeyHoldingTheAssistantReceivesItsEvents(bool holdsAssistant, string expected)
+    [InlineData(true, ConnectKeyCapability.Admin, "plugin {\"folder\":\"schedules-folder\",\"name\":\"run-recorded\",\"payload\":{\"id\":\"run-1\"}} | row {\"value\":\"assistant\"}")]
+    [InlineData(false, ConnectKeyCapability.Operate, "row {\"value\":\"session\"}")]
+    public async Task EachKeyReceivesOnlyTheAssistantAndPluginEventsItMayRead(bool holdsAssistant, ConnectKeyCapability capability, string expected)
     {
         var log = new BackendEventLog();
-        var first = log.Append("row", "assistant-pane", new { value = "assistant" }, "profile-a", "project-a");
-        log.Append("row", "pane-a", new { value = "session" }, "profile-a", "project-a");
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+        var plugins = new PluginManager(NullLogger<PluginManager>.Instance, new PluginDiagnostics(false));
+        plugins.LoadAndConfigure(
+            [new DiscoveredPlugin(@"C:\plugins\schedules-folder", "schedules-folder", new PluginManifest("schedules", "Schedules", "1.0.0", "Schedules.dll", 3, null, null, null, null), "hash", PluginLoadDecision.Load)],
+            new ServiceCollection(),
+            _ => Substitute.For<ICockpitPlugin>());
         var sessions = new SessionRegistry();
         sessions.RegisterAssistant(_Session("assistant-pane", "profile-a", "project-a"));
         var services = new ServiceCollection()
             .AddSingleton<IBackendEventLog>(log)
             .AddSingleton<ISessionRegistry>(sessions)
             .AddSingleton(Substitute.For<INodePairingBroker>())
+            .AddSingleton(plugins)
             .BuildServiceProvider();
+        var bridge = new PluginEventsBridge(hub, log, services);
+        await bridge.StartAsync(CancellationToken.None);
+        hub.Publish("schedules", "run-recorded", JsonDocument.Parse("""{"id":"run-1"}""").RootElement);
+        var first = log.LastSeq;
+        log.Append("row", "assistant-pane", new { value = "assistant" }, "profile-a", "project-a");
+        log.Append("row", "pane-a", new { value = "session" }, "profile-a", "project-a");
 
-        var frame = await _FrameAsync(services, (first - 1).ToString(), "", holdsAssistant: holdsAssistant);
+        var frames = await _FramesAsync(services, (first - 1).ToString(), holdsAssistant, capability, holdsAssistant ? 2 : 1);
 
-        Assert.EndsWith($"data: {{\"value\":\"{expected}\"}}", frame);
+        Assert.Equal(expected, frames);
     }
 
     [Fact]
@@ -151,6 +168,34 @@ public sealed class EventsEndpointTests
         Assert.NotSame(survivorRead, await Task.WhenAny(survivorRead, Task.Delay(TimeSpan.FromMilliseconds(200))));
         survivorStop.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await survivorRead);
+    }
+
+    // The next `count` frames as "kind data", joined by " | ".
+    private static async Task<string> _FramesAsync(IServiceProvider services, string header, bool holdsAssistant, ConnectKeyCapability capability, int count)
+    {
+        var pipe = new Pipe();
+        using var stop = new CancellationTokenSource();
+        var context = new DefaultHttpContext();
+        context.RequestAborted = stop.Token;
+        context.Request.Headers["Last-Event-ID"] = header;
+        context.Response.Body = pipe.Writer.AsStream();
+        McpRequestContext.Set(null, Operator with { HoldsAssistant = holdsAssistant, Capability = capability });
+        var stream = EventsEndpoint.StreamAsync(context, services);
+        using var reader = new StreamReader(pipe.Reader.AsStream());
+        List<string> frames = [];
+        while (frames.Count < count)
+        {
+            await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            var kind = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            var data = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            frames.Add($"{kind?["event: ".Length..]} {data?["data: ".Length..]}");
+        }
+
+        stop.Cancel();
+        await stream.WaitAsync(TimeSpan.FromSeconds(1));
+        McpRequestContext.Set(null);
+        return string.Join(" | ", frames);
     }
 
     private static async Task<string> _FrameAsync(IServiceProvider services, string header, string query, ConnectKeyScope? scope = null, bool holdsAssistant = false)
