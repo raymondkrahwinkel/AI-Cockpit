@@ -13,12 +13,12 @@ internal sealed class SyncOptionsService(SettingsCarriers carriers, SettingsCarr
         var node = file?.SettingsSync;
         var categories = (node?["Categories"] as JsonObject)?.Where(pair => pair.Value is JsonArray).ToDictionary(
             pair => pair.Key,
-            pair => (IReadOnlyList<string>)[.. ((JsonArray)pair.Value!).Select(id => id?.GetValue<string>()).OfType<string>()],
+            pair => _Ids(pair.Value),
             StringComparer.Ordinal);
 
         var overrides = (node?["Profiles"] as JsonObject)?.Where(pair => pair.Value is JsonArray).ToDictionary(
             pair => pair.Key,
-            pair => (IReadOnlyList<string>)[.. ((JsonArray)pair.Value!).Select(id => id?.GetValue<string>()).OfType<string>()],
+            pair => _Ids(pair.Value),
             StringComparer.Ordinal) ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         var servers = carriers.All
             .Select(carrier => new SyncServer(carrier.Id, carrier.DisplayName, carrier.AddressLabel, SignedIn: true))
@@ -49,4 +49,7 @@ internal sealed class SyncOptionsService(SettingsCarriers carriers, SettingsCarr
             node["Reviewed"] = true;
             node["Seen"] = new JsonArray([.. seenServers.Select(id => (JsonNode?)JsonValue.Create(id))]);
         }, cancellationToken);
+
+    private static IReadOnlyList<string> _Ids(JsonNode? node) =>
+        node is JsonArray ids ? [.. ids.Select(id => id?.GetValue<string>()).OfType<string>()] : [];
 }

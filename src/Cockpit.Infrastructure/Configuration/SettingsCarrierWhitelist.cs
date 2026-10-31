@@ -142,7 +142,7 @@ internal sealed class SettingsCarrierFilter
             .Select(pair => pair.Key);
         var overrides = (config["SettingsSync"]?["Profiles"] as JsonObject)?
             .Where(pair => pair.Value is JsonArray)
-            .ToDictionary(pair => pair.Key, pair => ((JsonArray)pair.Value!).Any(id => id?.GetValue<string>() == carrierId), StringComparer.Ordinal) ?? new Dictionary<string, bool>(StringComparer.Ordinal);
+            .ToDictionary(pair => pair.Key, pair => pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId), StringComparer.Ordinal) ?? new Dictionary<string, bool>(StringComparer.Ordinal);
         return new([.. categoriesForCarrier], overrides);
     }
 

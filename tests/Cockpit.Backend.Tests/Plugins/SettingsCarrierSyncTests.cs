@@ -143,14 +143,14 @@ public sealed class SettingsCarrierSyncTests : IDisposable
             { "Profiles": [{ "Label": "work", "Purpose": "work" }], "Terminal": { "FontSize": 19, "FontFamily": "Cascadia Mono, Consolas, monospace" } }
             """);
         _space.Blob = Encoding.UTF8.GetBytes(_Local(machine).ToJsonString());
-        File.WriteAllText(Path.Combine(Path.GetDirectoryName(machine.ConfigPath)!, "settings-sync.json"), """
+        var statePath = Path.Combine(Assert.IsType<string>(Path.GetDirectoryName(machine.ConfigPath)), "settings-sync.json");
+        File.WriteAllText(statePath, """
             { "Base": { "Profiles.work": "{\"Label\":\"work\",\"Purpose\":\"work\"}", "Terminal.FontSize": "19", "Terminal.FontFamily": "\"Cascadia Mono, Consolas, monospace\"" } }
             """);
 
         await machine.Sync.RunOnceAsync();
 
         var migrated = _Local(machine);
-        var statePath = Path.Combine(Path.GetDirectoryName(machine.ConfigPath)!, "settings-sync.json");
         var settingsSync = Assert.IsType<JsonObject>(migrated["SettingsSync"]);
         var categories = Assert.IsType<JsonObject>(settingsSync["Categories"]);
         Assert.Equal(8, categories.Count);

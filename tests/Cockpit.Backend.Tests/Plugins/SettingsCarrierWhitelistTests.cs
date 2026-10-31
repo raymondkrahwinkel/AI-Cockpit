@@ -47,7 +47,7 @@ public class SettingsCarrierWhitelistTests
     [Fact]
     public void Extract_ResolvesCarrierCategoriesAndProfiles()
     {
-        JsonObject Config(string sync) => JsonNode.Parse("{\"Profiles\":[{\"Label\":\"Work\"},{\"Label\":\"Home\"}],\"Plugins\":{\"demo\":{\"Enabled\":true}},\"Notifications\":{\"LocalEnabled\":true},\"Updates\":{\"CheckOnStartup\":true},\"SettingsSync\":{" + sync + "}}")!.AsObject();
+        JsonObject Config(string sync) => Assert.IsType<JsonObject>(JsonNode.Parse("{\"Profiles\":[{\"Label\":\"Work\"},{\"Label\":\"Home\"}],\"Plugins\":{\"demo\":{\"Enabled\":true}},\"Notifications\":{\"LocalEnabled\":true},\"Updates\":{\"CheckOnStartup\":true},\"SettingsSync\":{" + sync + "}}"));
         JsonNode? Extract(JsonObject config, string id) => JsonNode.Parse(Encoding.UTF8.GetString(SettingsCarrierWhitelist.Extract(config, SettingsCarrierFilter.FromConfig(config, id))));
 
         var config = Config("\"Categories\":{\"Profiles\":[\"one\",\"two\"],\"Plugins\":[\"one\"],\"Notifications\":[\"two\"]},\"Profiles\":{\"Work\":[\"one\"],\"Home\":[\"two\"]}");
@@ -64,10 +64,10 @@ public class SettingsCarrierWhitelistTests
 
         // AC-1847: a profile's own choice widens or narrows what the category says; a profile without one follows the category.
         config = Config("\"Categories\":{\"Profiles\":[\"one\"]},\"Profiles\":{\"Home\":[\"two\"],\"Work\":[]}");
-        Assert.Empty(Extract(config, "one")!["Profiles"]!.AsArray());
+        Assert.Empty(Assert.IsType<JsonArray>(Extract(config, "one")?["Profiles"]));
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Home"}]}"""), Extract(config, "two")));
         config = Config("\"Categories\":{\"Profiles\":[\"one\"]},\"Profiles\":{\"Home\":[\"two\"]}");
-        Assert.Equal("Work", Extract(config, "one")!["Profiles"]!.AsArray().Single()!["Label"]!.GetValue<string>());
+        Assert.Equal("Work", Assert.Single(Assert.IsType<JsonArray>(Extract(config, "one")?["Profiles"]))?["Label"]?.GetValue<string>());
     }
 
     // AC-1861: project definitions and their category order belong only to project sync.

@@ -23,10 +23,11 @@ public class SyncOptionsViewModelTests
         viewModel.Rows.Single(row => row.Id == "Appearance").Servers[1].IsTicked = true;
         await viewModel.SaveStagedAsync();
 
-        Assert.Equal(8, source.Saved?.Count);
-        Assert.Empty(source.Saved!["Notifications"]);
-        Assert.Equal(["home", "work"], source.Saved["Appearance"]);
-        Assert.Equal(["home"], source.Saved["Plugins"]);
+        var saved = Assert.IsAssignableFrom<IReadOnlyDictionary<string, IReadOnlyList<string>>>(source.Saved);
+        Assert.Equal(8, saved.Count);
+        Assert.Empty(saved["Notifications"]);
+        Assert.Equal(["home", "work"], saved["Appearance"]);
+        Assert.Equal(["home"], saved["Plugins"]);
     }
 
     private sealed class FakeSyncOptions : ISyncOptions

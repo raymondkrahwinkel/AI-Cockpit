@@ -503,6 +503,7 @@ public sealed class SettingsCarrierSync : ISingletonService, IDisposable
         catch (Exception exception) when (_stopping.IsCancellationRequested || exception is ObjectDisposedException)
         {
             // Stopping, also when the host is torn down before this is disposed: the next start picks up where this left off.
+            _logger.LogDebug(exception, "Settings sync stopped with the host");
         }
         catch (Exception exception)
         {

@@ -56,7 +56,10 @@ public sealed partial class SettingsConflictRowViewModel : ObservableObject
         if (value)
         {
             SelectedCarrier = null;
-            foreach (var carrier in Carriers) carrier.IsSelected = false;
+            foreach (var carrier in Carriers)
+            {
+                carrier.IsSelected = false;
+            }
         }
     }
 
@@ -73,7 +76,10 @@ public sealed partial class SettingsConflictRowViewModel : ObservableObject
         KeepMine = false;
         TakeTheirs = false;
         SelectedCarrier = id;
-        foreach (var carrier in Carriers) carrier.IsSelected = carrier.Id == id;
+        foreach (var carrier in Carriers)
+        {
+            carrier.IsSelected = carrier.Id == id;
+        }
     }
 
     private static string _Names(IEnumerable<string> ids) => string.Join(" and ", ids);

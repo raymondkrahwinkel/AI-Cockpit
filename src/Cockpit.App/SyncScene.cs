@@ -19,7 +19,12 @@ internal static class SyncScene
     // Notifications switched off for Home, Appearance, Usage and Updates also on Work: the inline notes.
     public static void StageChanges(Avalonia.Controls.Window window)
     {
-        var sync = ((CockpitViewModel)window.DataContext!).Sync;
+        if (window.DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var sync = cockpit.Sync;
         _Tick(sync, "Notifications", "home", false);
         _Tick(sync, "Appearance", "work", true);
         _Tick(sync, "Usage", "work", true);
@@ -32,8 +37,13 @@ internal static class SyncScene
     // AC-1847: the profile page, the same choice as a field on the selected profile.
     public static OptionsDialog ProfilePage(int width, int height) => _Dialog(width, height, reviewed: true, withProfiles: true, page: "profiles");
 
-    public static void ExpandProfiles(Avalonia.Controls.Window window) =>
-        ((CockpitViewModel)window.DataContext!).Sync.Rows.First(row => row.Id == "Profiles").IsExpanded = true;
+    public static void ExpandProfiles(Avalonia.Controls.Window window)
+    {
+        if (window.DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Sync.Rows.First(row => row.Id == "Profiles").IsExpanded = true;
+        }
+    }
 
     // The settings choice with two servers that disagree about one key (screen 7).
     public static SettingsConflictDialog Disagree(int width, int height) => new()
