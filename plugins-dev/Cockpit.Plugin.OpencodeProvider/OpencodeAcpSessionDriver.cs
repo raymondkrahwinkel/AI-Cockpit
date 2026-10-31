@@ -255,6 +255,17 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
                 throw new OpencodeAcpException($"opencode does not offer the model {effectiveModel}, so the session does not start.");
             }
         }
+
+        // AC-1992: the brain is the one hidden instruction that reaches opencode, as the first visible turn of a new
+        // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
+        // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-783).
+        var brain = string.IsNullOrWhiteSpace(resumeSessionId)
+            ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
+            : null;
+        if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
+        {
+            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token, operatorTurn: false));
+        }
     }
 
     // The permission policy forced onto every spawn via OPENCODE_CONFIG_CONTENT (see StartAsync). Only
@@ -292,7 +303,7 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
         try
         {
@@ -308,7 +319,12 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
                 _promptGate.Release();
             }
 
-            _EmitTurnCompleted(result);
+            // AC-1992: the brain turn is no turn of the operator's, so its end raises no idle, "done" or queued send —
+            // the host never started it, and the operator's first message may already wait behind it.
+            if (operatorTurn)
+            {
+                _EmitTurnCompleted(result);
+            }
         }
         catch (OperationCanceledException)
         {

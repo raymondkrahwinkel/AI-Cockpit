@@ -17,6 +17,10 @@ public class SessionProfileEntryAssistantTests
         var profile = Profile() with { Assistant = "Zyra" };
 
         Assert.Equal("Zyra", SessionProfileEntry.FromDomain(profile).ToDomain().Assistant);
+
+        // AC-1992: a picked brain is the same field, its source scheme, address and server kept exactly.
+        const string Brain = "depot.acme:acme/zyra@depot.acme.example";
+        Assert.Equal(Brain, SessionProfileEntry.FromDomain(profile with { Assistant = Brain }).ToDomain().Assistant);
     }
 
     [Fact]

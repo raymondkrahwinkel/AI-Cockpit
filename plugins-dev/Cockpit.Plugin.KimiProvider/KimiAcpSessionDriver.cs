@@ -325,6 +325,17 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 throw new KimiAcpException($"Kimi does not offer the model {effectiveModel}, so the session does not start.");
             }
         }
+
+        // AC-1992: the brain is the one hidden instruction that reaches Kimi, as the first visible turn of a new
+        // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
+        // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-273).
+        var brain = string.IsNullOrWhiteSpace(resumeSessionId)
+            ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
+            : null;
+        if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
+        {
+            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token, operatorTurn: false));
+        }
     }
 
     // The snapshot's own spelling of `model`, matched case-insensitively; the model itself when the snapshot has no
@@ -352,7 +363,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
         try
         {
@@ -368,7 +379,12 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 _promptGate.Release();
             }
 
-            _EmitTurnCompleted(result);
+            // AC-1992: the brain turn is no turn of the operator's, so its end raises no idle, "done" or queued send —
+            // the host never started it, and the operator's first message may already wait behind it.
+            if (operatorTurn)
+            {
+                _EmitTurnCompleted(result);
+            }
 
             // AC-274: right after a real turn settles is the one sober moment to poll /usage — no independent
             // timer, and never while this same gate has a turn's own prompt outstanding. Fire-and-forget: the

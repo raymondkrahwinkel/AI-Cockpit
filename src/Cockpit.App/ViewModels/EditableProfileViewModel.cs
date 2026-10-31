@@ -52,6 +52,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _assistant;
 
+    // AC-1992: the shared brain picker over `Assistant`, shown instead of the text field once a source has brains.
+    // A pick writes the reference here; None writes empty, which saves as null.
+    public BrainPickerViewModel BrainPicker { get; }
+
     // How much a session under this profile may hold before the OS cuts it off (AC-661). Null means the app
     // default. Numeric rather than text (AC-666): a typed "4096xcxc" used to parse back to null, so the editor
     // silently dropped the cap it appeared to show.
@@ -607,6 +611,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
         _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
         _assistant = profile.Assistant ?? string.Empty;
+        BrainPicker = new BrainPickerViewModel(
+            pluginProviderRegistry?.MemorySourceRegistrations ?? [],
+            profile.Assistant,
+            "None names no brain, so the provider's own instruction files decide. A project's own brain goes first.");
+        BrainPicker.ValueChanged += reference => Assistant = reference ?? string.Empty;
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.

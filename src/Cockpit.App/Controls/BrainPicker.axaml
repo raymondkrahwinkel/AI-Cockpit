@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             x:Class="Cockpit.App.Controls.BrainPicker"
+             x:DataType="vm:BrainPickerViewModel">
+
+    <!-- AC-1992: the one brain picker. "None" first, then every brain a source lists, each with its address and
+         server, so two brains with one name on two servers read apart. A stored choice the list lacks keeps its row. -->
+    <StackPanel Spacing="4">
+        <DockPanel LastChildFill="True" MaxWidth="460" HorizontalAlignment="Left">
+            <Button DockPanel.Dock="Right" Content="Refresh" Classes="Subtle" Margin="6,0,0,0"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="List the brains again"/>
+            <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}" HorizontalAlignment="Stretch" MinWidth="280"
+                      AutomationProperties.Name="Brain">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BrainChoice">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Detail}" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                       IsVisible="{Binding Detail, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+        </DockPanel>
+
+        <TextBlock Text="Listing brains…" FontSize="11"
+                   Foreground="{DynamicResource CockpitStatusBusyBrush}"
+                   IsVisible="{Binding IsLoading, FallbackValue=False}"/>
+
+        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding NeedsSignIn, FallbackValue=False}">
+            <TextBlock Text="Sign in to list the brains." FontSize="11" VerticalAlignment="Center"
+                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
+            <Button Content="Sign in" Classes="Compact" Command="{Binding SignInCommand}"/>
+        </StackPanel>
+
+        <TextBlock Text="{Binding ErrorMessage}" FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CockpitStatusErrorBrush}"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}"/>
+
+        <TextBlock Text="{Binding Hint}" FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+    </StackPanel>
+</UserControl>

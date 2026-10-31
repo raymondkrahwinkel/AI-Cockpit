@@ -84,20 +84,74 @@ public class OpencodeAcpSessionDriverTests
         Assert.Equal("""{"permission":{"*":"ask"}}""", fake.EnvironmentVariables!["OPENCODE_CONFIG_CONTENT"]);
     }
 
+    // Layer 2, provider protocol contract (AC-1992): the brain is opencode's first visible turn, alone and exactly
+    // once, ahead of the task. A resumed conversation (session/resume, never session/load) and a start without a
+    // brain send the task first: no extra turn.
     [Fact]
-    public async Task Start_WithResumeSessionId_SendsSessionResume_NeverSessionLoad()
+    public async Task BrainInstruction_IsTheFirstVisibleMessage_WithoutOtherHiddenInstructions()
     {
-        var fake = new FakeCliSubprocess();
-        await using var driver = new OpencodeAcpSessionDriver(() => fake, _DefaultConfig(), "opencode");
+        const string Brain = "Use brain acme/zyra@depot.example; the brain choice in CLAUDE.md does not apply to this session.";
+        const string Hidden = "HIDDEN-PROJECT-PROMPT-SENTINEL";
+        var withBrain = new Dictionary<string, string>
+        {
+            [WellKnownPluginSessionOptions.AppendSystemPrompt] = $"{Brain}\n\n{Hidden}",
+            [WellKnownPluginSessionOptions.BrainInstruction] = Brain,
+        };
+        var withoutBrain = new Dictionary<string, string> { [WellKnownPluginSessionOptions.AppendSystemPrompt] = Hidden };
+        static List<string?> PromptTexts(FakeCliSubprocess fake) =>
+        [
+            .. fake.WrittenLines
+                .Where(line => line.Contains("\"method\":\"session/prompt\""))
+                .Select(line => JsonDocument.Parse(line).RootElement.GetProperty("params").GetProperty("prompt")[0].GetProperty("text").GetString()),
+        ];
 
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: "ses_99", options: null, mcpServers: null, CancellationToken.None);
-        await _RespondAsync(fake, "initialize", "{}");
-        var resume = await _RespondAsync(fake, "session/resume", """{"configOptions":[]}""");
-        await startTask;
+        var fresh = new FakeCliSubprocess();
+        await using (var driver = new OpencodeAcpSessionDriver(() => fresh, _DefaultConfig(), "opencode"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, withBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(fresh, "initialize", "{}");
+            await _RespondAsync(fresh, "session/new", """{"sessionId":"ses_1","configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the task");
+            await _RespondAsync(fresh, "session/prompt", """{"stopReason":"refusal"}""");
+            await _WaitUntilAsync(() => PromptTexts(fresh).Count == 2);
 
-        Assert.Equal("ses_99", resume.GetProperty("params").GetProperty("sessionId").GetString());
-        Assert.Equal("ses_99", driver.SessionId);
-        Assert.DoesNotContain(fake.WrittenLines, line => line.Contains("\"method\":\"session/load\""));
+            Assert.Equal([Brain, "the task"], PromptTexts(fresh));
+            Assert.DoesNotContain(fresh.WrittenLines, line => line.Contains(Hidden));
+
+            // The brain turn's own end (a refusal here) is never reported: the first turn end is the task's.
+            await _RespondAsync(fresh, "session/prompt", """{"stopReason":"end_turn"}""");
+            Assert.False((await _NextEventOfTypeAsync<PluginTurnCompleted>(driver)).IsError);
+        }
+
+        var resumed = new FakeCliSubprocess();
+        await using (var driver = new OpencodeAcpSessionDriver(() => resumed, _DefaultConfig(), "opencode"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: "ses_99", withBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(resumed, "initialize", "{}");
+            var resume = await _RespondAsync(resumed, "session/resume", """{"configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the task");
+            await _WaitForRequestAsync(resumed, "session/prompt");
+
+            Assert.Equal(["the task"], PromptTexts(resumed));
+            Assert.Equal("ses_99", resume.GetProperty("params").GetProperty("sessionId").GetString());
+            Assert.Equal("ses_99", driver.SessionId);
+            Assert.DoesNotContain(resumed.WrittenLines, line => line.Contains("\"method\":\"session/load\""));
+        }
+
+        var plain = new FakeCliSubprocess();
+        await using (var driver = new OpencodeAcpSessionDriver(() => plain, _DefaultConfig(), "opencode"))
+        {
+            var start = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, withoutBrain, mcpServers: null, CancellationToken.None);
+            await _RespondAsync(plain, "initialize", "{}");
+            await _RespondAsync(plain, "session/new", """{"sessionId":"ses_2","configOptions":[]}""");
+            await start;
+            await driver.SendUserMessageAsync("the task");
+            await _WaitForRequestAsync(plain, "session/prompt");
+
+            Assert.Equal(["the task"], PromptTexts(plain));
+        }
     }
 
     [Fact]

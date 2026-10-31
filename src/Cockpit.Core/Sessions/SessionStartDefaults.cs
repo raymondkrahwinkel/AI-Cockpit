@@ -78,7 +78,7 @@ public sealed record SessionStartDefaults(
             // Order matters, most binding first — the same reasoning _JoinPrompts always applied ("identity first,
             // then the task"): the assistant says who is answering, the profile the rest of who the session is,
             // the heading-and-block that follows what it is working on and what this project already knows.
-            _JoinPrompts(_AssistantNote(project, profile), profile?.SystemPrompt, attributedProjectBlock));
+            _JoinPrompts(_AssistantNote(project, profile, memorySources), profile?.SystemPrompt, attributedProjectBlock));
     }
 
     // AC-1071: the assistant this session runs as — the project's own overrides the profile's, the same
@@ -94,13 +94,78 @@ public sealed record SessionStartDefaults(
 
     // AC-1071: the half that cancels the question, pinned by name so it reads as a decision rather than wording
     // anyone may trim — without it the note names an assistant but leaves "ask first, and wait" standing.
-    public const string AssistantChoiceIsMade =
-        "That choice is already made here, so do not ask which assistant, persona or brain to load and do not " +
-        "wait for an answer before starting — load it as your own instruction files describe, and carry on.";
+    public const string AssistantChoiceIsMade = _ChoiceQuestionWithdrawn + " — load it as your own instruction files describe, and carry on.";
 
-    // Null unless one of the two actually names an assistant — an empty note must never reach `_JoinPrompts`.
-    private static string? _AssistantNote(Project? project, SessionProfile? profile) =>
-        ResolveAssistant(project, profile) is { } assistant ? AssistantNote(assistant) : null;
+    private const string _ChoiceQuestionWithdrawn =
+        "That choice is already made here, so do not ask which assistant, persona or brain to load and do not " +
+        "wait for an answer before starting";
+
+    // AC-1992: the brain this session loads, apart from `SystemPrompt` so a provider without a system prompt can be
+    // handed it on its own. Null when the resolved assistant is no brain reference a source here knows, so the
+    // provider's own instruction files keep their say. Same precedence as `ResolveAssistant`: one brain, never two.
+    public static string? ResolveBrainInstruction(Project? project, SessionProfile? profile, IReadOnlyList<ProjectMemorySource>? memorySources) =>
+        ResolveAssistant(project, profile) is { } assistant ? _Brain(assistant, memorySources).Note : null;
+
+    // AC-1992: pinned by name like `AssistantChoiceIsMade` — the clause that takes the brain question away from the
+    // provider's own CLAUDE.md, without which a session would load that brain beside the cockpit's.
+    public const string ClaudeMdBrainChoiceLapses = "the brain choice in CLAUDE.md does not apply to this session.";
+
+    // AC-1992: an explicit brain in the briefing or project information outranks the profile and project choice.
+    public const string ExplicitBrainWins =
+        "Only a different brain that this session's own briefing or project information names explicitly takes its " +
+        "place; load exactly one brain, never two.";
+
+    // "Use brain X; the CLAUDE.md choice lapses", then how to load it. The load sentence is plugin text: one too long
+    // to fit is left out whole rather than cut, for the reason `_SingleMemorySentence` gives.
+    public static string BrainNote(string brain, string loadInstruction)
+    {
+        var load = ProjectPromptText.OneLine(loadInstruction.Trim());
+        var loadSentence = load.Length is 0 or > _PlaceNameBudget
+            ? string.Empty
+            : $" {(_SentenceEndings.Contains(load[^1]) ? load : $"{load}.")}";
+        return $"{_CappedSentence("Use brain ", ProjectPromptText.OneLine(brain.Trim()), $"; {ClaudeMdBrainChoiceLapses}")} " +
+            $"{_ChoiceQuestionWithdrawn}.{loadSentence} {ExplicitBrainWins}";
+    }
+
+    // AC-1992: a brain reference whose source is here but which no source can load now — its connection removed, or
+    // its server gone from the list. Said out loud, and never a stand-in: not another brain, not CLAUDE.md's.
+    public static string UnavailableBrainNote(string brain) =>
+        $"{_CappedSentence("The brain chosen for this session, ", ProjectPromptText.OneLine(brain.Trim()), ", is not available on this machine")}, " +
+        $"so the cockpit cannot have it loaded; {ClaudeMdBrainChoiceLapses} Tell the operator rather than loading a " +
+        $"different brain. {ExplicitBrainWins}";
+
+    // Whether `assistant` is a brain reference and the note that goes with it. The scheme's own source is asked first;
+    // another may still own the value when connections were reordered, since a value names its server itself. One no
+    // source loads, or with no source here at all, is unavailable — never the assistant sentence, which loads CLAUDE.md's.
+    private static (bool IsBrain, string? Note) _Brain(string assistant, IReadOnlyList<ProjectMemorySource>? memorySources)
+    {
+        if (!ProjectMemoryRef.TryParse(assistant.Trim(), out var scheme, out var value))
+        {
+            return (false, null);
+        }
+
+        var brainSources = (memorySources ?? [])
+            .Where(source => source.BrainInstruction is not null)
+            .OrderByDescending(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var load = brainSources
+            .Select(source => source.BrainInstruction is { } instruction ? instruction(value) : null)
+            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+        if (load is not null)
+        {
+            return (true, BrainNote(value, load));
+        }
+
+        var ownedScheme = brainSources.Any(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase));
+        return ownedScheme || ProjectMemoryRef.IsBrainReference(assistant)
+            ? (true, UnavailableBrainNote(value))
+            : (false, null);
+    }
+
+    // Null unless one of the two actually names an assistant — an empty note must never reach `_JoinPrompts`. A brain
+    // reference is no assistant name: it travels as `ResolveBrainInstruction`, so it is never said twice.
+    private static string? _AssistantNote(Project? project, SessionProfile? profile, IReadOnlyList<ProjectMemorySource>? memorySources) =>
+        ResolveAssistant(project, profile) is { } assistant && !_Brain(assistant, memorySources).IsBrain ? AssistantNote(assistant) : null;
 
     // AC-714: names the project, not the operator — a bound shared project's `BehaviorPrompt` can come from a
     // colleague's definition (see `SharedProjectBindingDialogViewModel`/`DepotSharedProjectSource`). Bounded to
