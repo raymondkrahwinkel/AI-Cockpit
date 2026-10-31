@@ -111,6 +111,8 @@ internal sealed class ClaudeStreamJson
                     ParentToolUseId = _NullableString(task, "tool_use_id") ?? previous?.ParentToolUseId,
                     LastTool = previous?.LastTool,
                     Tokens = previous?.Tokens,
+                    AgentType = _NullableString(task, "subagent_type") ?? _NullableString(task, "agent_type") ?? previous?.AgentType,
+                    DurationMilliseconds = _Duration(task) ?? previous?.DurationMilliseconds,
                 });
             }
         }
@@ -163,6 +165,15 @@ internal sealed class ClaudeStreamJson
     private static string? _NullableString(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
+    private static long? _Duration(JsonElement root) => _UsageMetric(root, "duration_ms");
+
+    private static long? _UsageMetric(JsonElement root, string name)
+    {
+        var source = root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object ? usage : root;
+        return source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt64(out var duration) && duration >= 0 ? duration : null;
+    }
+
     private IEnumerable<PluginSessionEvent> _ParseTask(JsonElement root, string? sessionId, string? subtype)
     {
         var id = _NullableString(root, "agent_id") ?? _NullableString(root, "task_id");
@@ -190,7 +201,7 @@ internal sealed class ClaudeStreamJson
         {
             if (previous is { Kind: PluginBackgroundTaskKind.SubAgent })
             {
-                _history[id] = previous with { State = status };
+                _history[id] = previous with { State = status, DurationMilliseconds = _Duration(patch) ?? previous.DurationMilliseconds };
             }
             _finished[id] = run ?? previous?.RunId;
             _tasks.Remove(id);
@@ -216,6 +227,8 @@ internal sealed class ClaudeStreamJson
             ParentToolUseId = _NullableString(root, "tool_use_id") ?? _NullableString(root, "parent_tool_use_id") ?? previous?.ParentToolUseId,
             LastTool = _NullableString(patch, "last_tool_name") ?? previous?.LastTool,
             Tokens = tokens ?? previous?.Tokens,
+            AgentType = _NullableString(root, "subagent_type") ?? _NullableString(root, "agent_type") ?? previous?.AgentType,
+            DurationMilliseconds = _Duration(patch) ?? previous?.DurationMilliseconds,
         };
         yield return _Snapshot(sessionId);
     }
@@ -247,6 +260,12 @@ internal sealed class ClaudeStreamJson
             yield break;
         }
 
+        var known = current ?? _history.GetValueOrDefault(id);
+        if (known?.RunId is { } knownRun && run is not null && knownRun != run)
+        {
+            yield break;
+        }
+
         yield return new PluginBackgroundTaskNotification
         {
             SessionId = sessionId,
@@ -260,10 +279,25 @@ internal sealed class ClaudeStreamJson
         {
             if (task.Kind == PluginBackgroundTaskKind.SubAgent)
             {
-                _history[id] = task with { State = status == PluginBackgroundTaskStatus.Completed ? "completed" : "failed" };
+                _history[id] = task with
+                {
+                    State = status == PluginBackgroundTaskStatus.Completed ? "completed" : "failed",
+                    DurationMilliseconds = _Duration(root) ?? task.DurationMilliseconds,
+                    Tokens = _UsageMetric(root, "total_tokens") ?? task.Tokens,
+                };
             }
             _finished[id] = run ?? task.RunId;
             _tasks.Remove(id);
+            yield return _Snapshot(sessionId);
+        }
+        else if (known is { Kind: PluginBackgroundTaskKind.SubAgent } && status != PluginBackgroundTaskStatus.Unknown)
+        {
+            _history[id] = known with
+            {
+                State = status == PluginBackgroundTaskStatus.Completed ? "completed" : "failed",
+                DurationMilliseconds = _Duration(root) ?? known.DurationMilliseconds,
+                Tokens = _UsageMetric(root, "total_tokens") ?? known.Tokens,
+            };
             yield return _Snapshot(sessionId);
         }
     }

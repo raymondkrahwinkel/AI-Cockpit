@@ -23,11 +23,13 @@ public class CodexAppServerSessionDriverTests
         await start;
         await _NextEventAsync(driver);
         await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"parent","turn":{"id":"parent-run"}}}""");
-        await fake.PushStdoutAsync("""{"method":"item/started","params":{"threadId":"parent","turnId":"parent-run","item":{"type":"subAgentActivity","id":"spawn","kind":"started","agentThreadId":"child","agentPath":"/root/tiny"}}}""");
+        await fake.PushStdoutAsync("""{"method":"item/started","params":{"threadId":"parent","turnId":"parent-run","startedAtMs":1793391947675,"item":{"type":"subAgentActivity","id":"spawn","kind":"started","agentThreadId":"child","agentPath":"/root/tiny"}}}""");
         var initial = await _NextEventOfTypeAsync<PluginBackgroundTasksChanged>(driver);
         Assert.Equal("/root/tiny", Assert.Single(initial.Tasks).Description);
         Assert.Equal("child", initial.Tasks[0].AgentId);
         Assert.Equal("parent", initial.Tasks[0].ParentTaskId);
+        Assert.Equal(1793391947675, initial.Children[0].StartedAtUnixMilliseconds);
+        Assert.Null(initial.Children[0].AgentType);
         await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"parent","delta":"PARENT"}}""");
         await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"child","turn":{"id":"child-run"}}}""");
         await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"child","delta":"CHILD_OK"}}""");
@@ -35,6 +37,7 @@ public class CodexAppServerSessionDriverTests
         await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"threadId":"child","tokenUsage":{"total":{"totalTokens":12}}}}""");
         await fake.PushStdoutAsync("""{"method":"item/started","params":{"threadId":"parent","item":{"type":"collabAgentToolCall","id":"wait","tool":"wait","receiverThreadIds":["child"],"agentsStates":{},"status":"inProgress"}}}""");
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"child","turn":{"status":"completed"}}}""");
+        await fake.PushStdoutAsync("""{"method":"item/started","params":{"threadId":"parent","completedAtMs":1793392019675,"item":{"type":"subAgentActivity","id":"finished","kind":"completed","agentThreadId":"child"}}}""");
         await fake.PushStdoutAsync("""{"method":"item/agentMessage/delta","params":{"threadId":"parent","delta":"_OK"}}""");
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"parent","turn":{"status":"completed"}}}""");
         var events = await _CollectUntilTurnCompletedAsync(driver);
@@ -46,6 +49,7 @@ public class CodexAppServerSessionDriverTests
         Assert.Contains(events.OfType<PluginBackgroundTasksChanged>(), e => e.Tasks.Any(t => t.LastTool == "shell" && t.Tokens == 12));
         Assert.Empty(events.OfType<PluginBackgroundTasksChanged>().Last().Tasks);
         Assert.Equal("completed", Assert.Single(events.OfType<PluginBackgroundTasksChanged>().Last().Children).State);
+        Assert.Equal(72000, Assert.Single(events.OfType<PluginBackgroundTasksChanged>().Last().Children).DurationMilliseconds);
         await fake.PushStdoutAsync("""{"method":"item/started","params":{"threadId":"parent","turnId":"resume","item":{"type":"subAgentActivity","id":"resume","kind":"started","agentThreadId":"child","agentPath":"/root/tiny"}}}""");
         var resumed = await _NextEventOfTypeAsync<PluginBackgroundTasksChanged>(driver);
         Assert.Equal(initial.Tasks[0].TaskId, Assert.Single(resumed.Tasks).TaskId);

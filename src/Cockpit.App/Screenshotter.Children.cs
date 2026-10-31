@@ -18,6 +18,7 @@ internal static partial class Screenshotter
             var running = new BackgroundTask("running-id", BackgroundTaskKind.SubAgent, "Review the parser change")
             {
                 AgentId = "running-id", RunId = owner.PaneId, LastTool = "Grep", Tokens = 18400,
+                AgentType = "general-purpose", DurationMilliseconds = 72000,
             };
             owner.Apply(new BackgroundTasksChanged
             {
@@ -26,6 +27,10 @@ internal static partial class Screenshotter
                 Children = [running, new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Draft the release notes")
                 {
                     AgentId = "same-id", RunId = owner.PaneId, State = "completed", LastTool = "Write", Tokens = 31200,
+                    AgentType = "general-purpose", DurationMilliseconds = 160000,
+                }, new BackgroundTask("unknown-id", BackgroundTaskKind.SubAgent, "Check the CI log")
+                {
+                    AgentId = "unknown-id", RunId = owner.PaneId, State = "unknown", AgentType = "Explore",
                 }],
             });
         }

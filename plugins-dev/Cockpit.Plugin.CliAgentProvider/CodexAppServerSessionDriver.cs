@@ -451,7 +451,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 if (isChild)
                 {
                     var childStatus = _TryGetNestedString(notification.Params, "turn", "status", out var terminal) ? terminal : "unknown";
-                    _FinishChild(source, childStatus);
+                    _FinishChild(source, childStatus, _TryGetLong(notification.Params, "completedAtMs"));
                 }
                 else
                 {
@@ -523,13 +523,15 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 {
                     AgentId = childId, ParentTaskId = source, ParentToolUseId = childId,
                     RunId = _StringOrEmpty(parameters, "turnId"),
+                    AgentType = _TryGetString(item, "agent_type", out var agentType) ? agentType : _TryGetString(item, "subagent_type", out var subagentType) ? subagentType : null,
+                    StartedAtUnixMilliseconds = _TryGetLong(item, "startedAtMs") ?? _TryGetLong(parameters, "startedAtMs"),
                 };
                 _events.Publish(new PluginToolUseRequested { SessionId = sessionId, ToolUseId = childId, ToolName = "agent", InputJson = item.GetRawText() });
                 _PublishChildren();
             }
             else if (kind is "completed" or "failed" or "stopped")
             {
-                _FinishChild(childId, kind);
+                _FinishChild(childId, kind, _TryGetLong(item, "completedAtMs") ?? _TryGetLong(parameters, "completedAtMs"));
             }
 
             return;
@@ -626,11 +628,19 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _events.Publish(new PluginBackgroundTasksChanged { SessionId = _threadId, Tasks = [.. _children.Values], Children = _knownChildren });
     }
 
-    private void _FinishChild(string childId, string state)
+    private void _FinishChild(string childId, string state, long? completedAt = null)
     {
+        if (!_children.ContainsKey(childId) && _childHistory.TryGetValue(childId, out var known)
+            && known.StartedAtUnixMilliseconds is >= 0 and { } started && completedAt is { } ended && ended >= started)
+        {
+            _childHistory[childId] = known with { DurationMilliseconds = ended - started };
+            _PublishChildren();
+            return;
+        }
         if (_children.Remove(childId, out var child))
         {
-            _childHistory[childId] = child with { State = state };
+            var duration = child.StartedAtUnixMilliseconds is >= 0 and { } start && completedAt is { } end && end >= start ? end - start : child.DurationMilliseconds;
+            _childHistory[childId] = child with { State = state, DurationMilliseconds = duration };
             _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = childId, Content = "Agent finished", IsError = false });
             _PublishChildren();
         }

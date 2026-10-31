@@ -217,7 +217,7 @@ public class ClaudeStreamJsonTests
     public void TaskLifecycle_Captured314Lines_KeepIdentityAndRejectLateUpdates()
     {
         var mapper = new ClaudeStreamJson();
-        var started = _Tasks(mapper, """{"type":"system","subtype":"task_started","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","tool_use_id":"toolu_01JQC5fVX21zsh9nYsHGthVu","description":"Echo protocol check","task_type":"local_agent"}""");
+        var started = _Tasks(mapper, """{"type":"system","subtype":"task_started","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","tool_use_id":"toolu_01JQC5fVX21zsh9nYsHGthVu","description":"Echo protocol check","task_type":"local_agent","subagent_type":"general-purpose"}""");
         var first = Assert.Single(started.Tasks);
         Assert.Equal("a6f9e61056d8b3a4b", first.AgentId);
         Assert.Equal("0mvvfau5u-59e932a3", first.RunId);
@@ -225,6 +225,8 @@ public class ClaudeStreamJsonTests
         var progress = _Tasks(mapper, """{"type":"system","subtype":"task_progress","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","description":"Running Echo CHILD_OK marker","usage":{"total_tokens":5798,"tool_uses":1,"duration_ms":1294},"last_tool_name":"Bash"}""");
         Assert.Equal(5798, Assert.Single(progress.Tasks).Tokens);
         Assert.Equal("Bash", Assert.Single(progress.Tasks).LastTool);
+        Assert.Equal("general-purpose", Assert.Single(progress.Children).AgentType);
+        Assert.Equal(1294, Assert.Single(progress.Children).DurationMilliseconds);
         var other = _Tasks(mapper, """{"type":"system","subtype":"task_progress","task_id":"a6f9e61056d8b3a4b","agent_id":"other","run_id":"other-run","parent_task_id":"parent","last_tool_name":"Read"}""");
         Assert.Equal(2, other.Tasks.Count);
         Assert.Equal("parent", other.Tasks[1].ParentTaskId);
@@ -233,6 +235,12 @@ public class ClaudeStreamJsonTests
         Assert.Equal("other", Assert.Single(ended.Tasks).AgentId);
         Assert.Equal("completed", Assert.Single(ended.Children, child => child.AgentId == first.AgentId).State);
         Assert.Equal(2, ended.Children.Count);
+        var final = Assert.Single(mapper.Parse("""{"type":"system","subtype":"task_notification","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","status":"completed","usage":{"duration_ms":2718,"total_tokens":6447}}""").OfType<PluginBackgroundTasksChanged>());
+        var finished = Assert.Single(final.Children, child => child.AgentId == first.AgentId);
+        Assert.Equal("general-purpose", finished.AgentType);
+        Assert.Equal(2718, finished.DurationMilliseconds);
+        Assert.Equal(6447, finished.Tokens);
+        Assert.Null(Assert.Single(final.Children, child => child.AgentId == "other").DurationMilliseconds);
         Assert.Empty(mapper.Parse("""{"type":"system","subtype":"task_updated","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","patch":{"status":"running"}}"""));
         var resumed = _Tasks(mapper, """{"type":"system","subtype":"task_started","task_id":"new-tool-task","agent_id":"a6f9e61056d8b3a4b","run_id":"resume","tool_use_id":"new-tool"}""");
         var sameAgent = Assert.Single(resumed.Tasks, task => task.AgentId == first.AgentId);

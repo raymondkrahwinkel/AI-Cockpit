@@ -370,6 +370,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.
     public void RefreshBackgroundTaskAges()
     {
+        foreach (var child in ChildAgents)
+        {
+            child.RefreshTime();
+        }
         foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
         {
             row.RaiseAgeChanged();

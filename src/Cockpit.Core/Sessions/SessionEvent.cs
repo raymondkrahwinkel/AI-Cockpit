@@ -168,6 +168,9 @@ public enum BackgroundTaskKind
 public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description)
 {
     public string State { get; init; } = "running";
+    public string? AgentType { get; init; }
+    public long? DurationMilliseconds { get; init; }
+    public long? StartedAtUnixMilliseconds { get; init; }
     public string? AgentId { get; init; }
     public string? RunId { get; init; }
     public string? ParentTaskId { get; init; }

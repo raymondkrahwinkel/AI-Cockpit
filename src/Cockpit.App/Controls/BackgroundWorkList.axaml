@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
              x:Class="Cockpit.App.Controls.BackgroundWorkList"
              x:DataType="vm:SessionViewModel">
 
@@ -33,16 +34,26 @@
                             <Button Command="{Binding OpenCommand}" Classes="Subtle" Padding="8,6" Margin="6,1,6,3"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                     Background="{DynamicResource CockpitSecondaryBgBrush}">
-                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                                    <TextBlock Text="Sub-agent · type unknown" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11.5"/>
-                                    <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="Open ›" Margin="8,0,0,0"/>
-                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
-                                        <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                        <TextBlock Text="Time: unknown" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                                        <TextBlock Text="{Binding TokensText, StringFormat='Tokens: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
+                                    <Grid Width="8" Height="8" Margin="0,4,8,0" VerticalAlignment="Top">
+                                        <Ellipse StrokeThickness="1" Stroke="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                        <Ellipse Opacity="{Binding DotFillOpacity}" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                    </Grid>
+                                    <Grid Grid.Column="1" ColumnDefinitions="Auto,*" Margin="0,0,10,0">
+                                        <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,6,0" VerticalAlignment="Top">
+                                            <TextBlock Text="{Binding TypeText}" FontSize="10.5" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="1">
+                                        <TextBlock Text="{Binding TimeText}" FontSize="11.5" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="{Binding StatusText}" FontSize="10" HorizontalAlignment="Right" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                     </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                        <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding TokensText, StringFormat='· Tokens: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Open ›" FontSize="11" Margin="8,4,0,0" HorizontalAlignment="Right" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
                                 </Grid>
                             </Button>
                         </DataTemplate>
