@@ -45,7 +45,7 @@ internal static class GitCredentialEndpoints
         {
             if (signIns().Find(flowId) is not { Status: "running" } signIn)
             {
-                return _UnknownFlow();
+                return BackendApiRoutes.Error(StatusCodes.Status404NotFound, "no_sign_in", body.Text);
             }
 
             if (string.IsNullOrWhiteSpace(body.Text) || body.Text.Length > 4096 || body.Text.Any(char.IsWhiteSpace) || body.Text.Any(char.IsControl))
