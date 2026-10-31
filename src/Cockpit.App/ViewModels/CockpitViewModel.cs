@@ -523,10 +523,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         foreach (var workspaceId in workspaceIds)
         {
             await CloseWorkspaceAsync(workspaceId);
-            if (Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == workspaceId))
-            {
-                return;
-            }
         }
     }
 
