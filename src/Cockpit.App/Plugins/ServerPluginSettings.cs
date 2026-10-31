@@ -27,6 +27,7 @@ internal sealed class ServerPluginSettings
 
     // AC-1547: a plugin's own screen has no Save of the host's, so each write it makes goes to the server at once.
     private readonly bool _writeThrough;
+    private readonly SemaphoreSlim _persisting = new(1, 1);
 
     // `_sync` keeps the view's writes, a reread's takeover and Save's diff apart: a reread runs on a pool thread while
     // the view commits on the UI thread. Rereads run one at a time, so an older answer never lands after a newer one.
@@ -178,11 +179,20 @@ internal sealed class ServerPluginSettings
         }
     }
 
+    // One save at a time, so two quick writes of a key reach the server in the order they were made.
     private async Task _WriteThroughAsync()
     {
-        if (await PersistAsync() is { } failure)
+        await _persisting.WaitAsync();
+        try
         {
-            _local.ShowToast(failure, PluginToastSeverity.Warning);
+            if (await PersistAsync() is { } failure)
+            {
+                _local.ShowToast(failure, PluginToastSeverity.Warning);
+            }
+        }
+        finally
+        {
+            _persisting.Release();
         }
     }
 

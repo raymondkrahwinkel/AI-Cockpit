@@ -16,8 +16,7 @@ internal sealed class PluginEventsBridge(PluginChannelHub hub, IBackendEventLog 
 
     private static readonly JsonElement NoPayload = JsonDocument.Parse("null").RootElement.Clone();
 
-    private readonly Lock _gate = new();
-    private readonly Dictionary<(string PluginId, string Name), string> _last = [];
+    private int _listeners;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -31,11 +30,22 @@ internal sealed class PluginEventsBridge(PluginChannelHub hub, IBackendEventLog 
         return Task.CompletedTask;
     }
 
-    // ponytail: an event equal to the last one of its plugin and name is skipped, so a status a plugin repeats every tick
-    // does not push session events out of the log's ring; a reader that needs the state reads it from the plugin.
+    // Held by each open admin stream: only then do plugin events go into the log, so a plugin's chatty events (a CI
+    // run's output lines) never push session rows out of its ring or flood the local readers nobody remote watches.
+    public IDisposable Listen()
+    {
+        Interlocked.Increment(ref _listeners);
+        return new Listener(this);
+    }
+
     // Named by its folder, as a desktop addresses the plugin's channel route; a plugin not loaded from a folder has no reader.
     private void _OnPublished(string pluginId, PluginChannelEvent channelEvent)
     {
+        if (Volatile.Read(ref _listeners) == 0)
+        {
+            return;
+        }
+
         var folderId = services.GetService<PluginManager>()?.LoadedParts
             .Select(part => part.Discovered)
             .FirstOrDefault(discovered => string.Equals(discovered.Manifest.Id, pluginId, StringComparison.Ordinal))?.FolderId;
@@ -44,19 +54,21 @@ internal sealed class PluginEventsBridge(PluginChannelHub hub, IBackendEventLog 
             return;
         }
 
-        var raw = channelEvent.Payload.ValueKind == JsonValueKind.Undefined ? "null" : channelEvent.Payload.GetRawText();
-        lock (_gate)
-        {
-            if (_last.TryGetValue((pluginId, channelEvent.Name), out var last) && last == raw)
-            {
-                return;
-            }
-
-            _last[(pluginId, channelEvent.Name)] = raw;
-        }
-
         var payload = channelEvent.Payload.ValueKind == JsonValueKind.Undefined ? NoPayload : channelEvent.Payload;
         log.Append(EventKind, null, new { folder = folderId, name = channelEvent.Name, payload });
+    }
+
+    private sealed class Listener(PluginEventsBridge bridge) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                Interlocked.Decrement(ref bridge._listeners);
+            }
+        }
     }
 }
 

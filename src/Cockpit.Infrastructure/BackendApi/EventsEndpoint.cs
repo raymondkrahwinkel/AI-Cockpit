@@ -51,6 +51,8 @@ internal static class EventsEndpoint
             await audit.RecordAsync(NodeAccessAuditEntry.By(caller, time.GetUtcNow(), "api:events", "connected"), context.RequestAborted).ConfigureAwait(false);
         }
 
+        // AC-1547: an admin's open stream is what lets plugin events into the log at all.
+        using var listening = caller.Capability == ConnectKeyCapability.Admin ? services.GetService<PluginEventsBridge>()?.Listen() : null;
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         using var heartbeat = new PeriodicTimer(TimeSpan.FromSeconds(15), time);
         await using var events = log.ReadFromAsync(afterSeq, stop.Token).GetAsyncEnumerator(stop.Token);

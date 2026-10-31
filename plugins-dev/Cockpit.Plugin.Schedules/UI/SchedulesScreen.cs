@@ -28,6 +28,8 @@ internal sealed class SchedulesScreen : UserControl
     private SchedulesSource _source;
     private Views _views;
     private int _switching;
+    private bool _settingSwitch;
+    private string? _chosen;
 
     public SchedulesScreen(
         SchedulesState state,
@@ -50,7 +52,13 @@ internal sealed class SchedulesScreen : UserControl
             VerticalAlignment = VerticalAlignment.Center,
         };
         ToolTip.SetTip(server, _servers.Count > 0 ? "Manage the schedules of this computer or of a connected server." : "No server is connected to this computer.");
-        server.SelectionChanged += async (_, _) => await SwitchAsync(server.SelectedIndex);
+        server.SelectionChanged += async (_, _) =>
+        {
+            if (!_settingSwitch)
+            {
+                await SwitchAsync(server.SelectedIndex);
+            }
+        };
         var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
         bar.Children.Add(Ui.Docked(server, Dock.Right));
         var title = Ui.Title("Schedules");
@@ -70,14 +78,19 @@ internal sealed class SchedulesScreen : UserControl
                 _overlay,
             },
         };
-        DetachedFromVisualTree += (_, _) => _Release(_source);
+        DetachedFromVisualTree += (_, _) =>
+        {
+            // A server still opening when the screen closes is released when it lands, not bound.
+            _switching++;
+            _Release(_source);
+        };
         Show(tab);
     }
 
     public string Tab { get; private set; } = TasksTab;
 
     // The server the screen manages, or null for this computer.
-    public string? Server => _source.Server;
+    public string? Server => _chosen;
 
     // Why the chosen server cannot be managed, as the page says it; null while a source is shown.
     public string? Unavailable { get; private set; }
@@ -109,20 +122,23 @@ internal sealed class SchedulesScreen : UserControl
     {
         if (_server.SelectedIndex != index)
         {
-            // The switch shows what the screen manages; its change comes back here.
+            // The switch shows what the screen manages, also when the switch comes from code.
+            _settingSwitch = true;
             _server.SelectedIndex = index;
-            return;
+            _settingSwitch = false;
         }
 
         var attempt = ++_switching;
         Unavailable = null;
         if (index <= 0 || index > _servers.Count)
         {
+            _chosen = null;
             _Bind(_local, _localViews);
             return;
         }
 
         var target = _servers[index - 1];
+        _chosen = target.Name;
         SchedulesSource? source = null;
         var failure = target.Unavailable ?? "The server gave no host for Schedules.";
         if (target.Host is { } host)
@@ -205,6 +221,7 @@ internal sealed class SchedulesScreen : UserControl
             if (ReferenceEquals(source, _source))
             {
                 _RenderTabs();
+                _banner.Content = source.Server is { } server ? _Banner(server, source.State) : null;
             }
         };
         return new Views(new TasksView(source.State, source.Host, _overlay, Edit), new RunsView(source.State, source.Host), new SettingsView(source.State, source.Host, source.Profiles));

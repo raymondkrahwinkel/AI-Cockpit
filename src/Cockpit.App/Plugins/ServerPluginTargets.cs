@@ -15,13 +15,8 @@ internal static class ServerPluginTargets
 {
     public static async Task<IReadOnlyList<PluginServerTarget>> ForAsync(IRemoteServers servers, ICockpitUiHost local, string pluginId, string pluginName, string localVersion)
     {
-        List<PluginServerTarget> targets = [];
-        foreach (var server in servers.Servers)
-        {
-            targets.Add(await _TargetAsync(server, local, pluginId, pluginName, localVersion));
-        }
-
-        return targets;
+        // All at once, so one slow server holds the screen no longer than its own answer.
+        return await Task.WhenAll(servers.Servers.Select(server => _TargetAsync(server, local, pluginId, pluginName, localVersion)));
     }
 
     private static async Task<PluginServerTarget> _TargetAsync(IRemoteServer server, ICockpitUiHost local, string pluginId, string pluginName, string localVersion)

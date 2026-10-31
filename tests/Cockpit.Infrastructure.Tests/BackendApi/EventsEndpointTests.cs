@@ -137,6 +137,7 @@ public sealed class EventsEndpointTests
             .BuildServiceProvider();
         var bridge = new PluginEventsBridge(hub, log, services);
         await bridge.StartAsync(CancellationToken.None);
+        using var admin = bridge.Listen();
         hub.Publish("schedules", "run-recorded", JsonDocument.Parse("""{"id":"run-1"}""").RootElement);
         var first = log.LastSeq;
         log.Append("row", "assistant-pane", new { value = "assistant" }, "profile-a", "project-a");
