@@ -386,6 +386,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 }
 
                 // A prompt going out reopens the door the cancel closed: a permission request is a real question again.
+                _cancelling = false;
                 var prompt = new object[] { new { type = "text", text } };
                 result = await _connection.SendRequestAsync("session/prompt", new { sessionId, prompt }, cancellationToken).ConfigureAwait(false);
             }
