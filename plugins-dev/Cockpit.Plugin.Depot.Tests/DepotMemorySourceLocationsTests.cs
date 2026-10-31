@@ -45,6 +45,9 @@ public class DepotMemorySourceLocationsTests
         Assert.Contains("bootstrap tool for the brain \"acme/zyra\"", instruction);
         Assert.Contains("https://depot.acme.example", instruction);
         Assert.Null(load(otherBrain.Value));
+        var withSecret = RegistrationFor(new("c5", "Acme", "https://user:s3cret@depot.acme.example/?token=s3cret"), new(HttpStatusCode.OK, _Brains));
+        Assert.DoesNotContain("s3cret", (withSecret.BrainInstruction ?? throw new InvalidOperationException("No brain instruction."))(acmeBrain.Value));
+        Assert.NotEqual(acme, RegistrationFor(new("c1", "Acme", "https://depot.moved.example"), new(HttpStatusCode.OK, _Brains)));
 
         var failed = RegistrationFor(new("c4", "Down", "https://depot.down.example"), new(HttpStatusCode.OK, "connection reset", throws: true));
         var refused = RegistrationFor(new("c3", "Refused", "https://depot.refused.example"), new(HttpStatusCode.Unauthorized, string.Empty));

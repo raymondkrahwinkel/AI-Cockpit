@@ -131,11 +131,15 @@ public class KimiAcpSessionDriverTests
             await _RespondAsync(fresh, "session/new", """{"sessionId":"session_1","configOptions":[]}""");
             await start;
             await driver.SendUserMessageAsync("the task");
-            await _RespondAsync(fresh, "session/prompt", """{"stopReason":"end_turn"}""");
+            await _RespondAsync(fresh, "session/prompt", """{"stopReason":"refusal"}""");
             await _WaitForNthRequestAsync(fresh, "session/prompt", occurrence: 2);
 
             Assert.Equal([Brain, "the task"], PromptTexts(fresh));
             Assert.DoesNotContain(fresh.WrittenLines, line => line.Contains(Hidden));
+
+            // The brain turn's own end (a refusal here) is never reported: the first turn end is the task's.
+            await _RespondAsync(fresh, "session/prompt", """{"stopReason":"end_turn"}""");
+            Assert.False((await _NextEventOfTypeAsync<PluginTurnCompleted>(driver)).IsError);
         }
 
         var resumed = new FakeCliSubprocess();

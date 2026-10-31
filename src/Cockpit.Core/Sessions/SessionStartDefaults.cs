@@ -134,9 +134,9 @@ public sealed record SessionStartDefaults(
         $"so the cockpit cannot have it loaded; {ClaudeMdBrainChoiceLapses} Tell the operator rather than loading a " +
         $"different brain. {ExplicitBrainWins}";
 
-    // Whether `assistant` is a brain reference (`<scheme>:<value>`, the scheme a brain source's own or the value one a
-    // brain source claims), and the note that goes with it. The scheme's own source is asked first; another may still
-    // own the value when connections were reordered, since a value names its server itself.
+    // Whether `assistant` is a brain reference and the note that goes with it. The scheme's own source is asked first;
+    // another may still own the value when connections were reordered, since a value names its server itself. One no
+    // source loads, or with no source here at all, is unavailable — never the assistant sentence, which loads CLAUDE.md's.
     private static (bool IsBrain, string? Note) _Brain(string assistant, IReadOnlyList<ProjectMemorySource>? memorySources)
     {
         if (!ProjectMemoryRef.TryParse(assistant.Trim(), out var scheme, out var value))
@@ -156,7 +156,8 @@ public sealed record SessionStartDefaults(
             return (true, BrainNote(value, load));
         }
 
-        return brainSources.Any(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+        var ownedScheme = brainSources.Any(source => string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase));
+        return ownedScheme || ProjectMemoryRef.IsBrainReference(assistant)
             ? (true, UnavailableBrainNote(value))
             : (false, null);
     }

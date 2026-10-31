@@ -101,7 +101,10 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     /// <remarks>
     /// Null means this source has no brains, and no picker shows for it. Only brains belong in the list, never the
     /// ordinary locations <see cref="ListLocationsAsync"/> offers. A value must identify the brain on its own, the
-    /// server included, so a stored choice can never resolve to a same-named brain elsewhere. Called lazily, never
+    /// server included, so a stored choice can never resolve to a same-named brain elsewhere: give it the shape
+    /// <c>&lt;address&gt;@&lt;server&gt;</c> without whitespace, which is how the host still knows a stored choice is a
+    /// brain when no source for it is installed, and says it is unavailable rather than leaving it to the provider's
+    /// own instruction files. Called lazily, never
     /// at registration time; a failed call answers <see cref="ProjectMemorySourceLocationsOutcome.Failed"/>, not an
     /// empty success.
     /// </remarks>
@@ -119,9 +122,19 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public Func<string, string?>? BrainInstruction { get; init; }
 
     /// <summary>
-    /// Compares <see cref="Scheme"/>, <see cref="Title"/>, <see cref="Instruction"/>, <see cref="FamilyKey"/> and
-    /// <see cref="InstanceTitle"/> — never the delegate members — deliberately overriding the record-generated
-    /// equality that would otherwise include them.
+    /// What this registration's delegates are bound to (AC-1992) — the server address of the connection they close
+    /// over, say — so a registration rebuilt after that target moved compares unequal and is replaced.
+    /// </summary>
+    /// <remarks>
+    /// Compared by <see cref="Equals(ProjectMemorySourceRegistration?)"/>, never shown and never put in a prompt, so
+    /// it must carry no secret: no user info or query. Null (the default) leaves equality as it was.
+    /// </remarks>
+    public string? Identity { get; init; }
+
+    /// <summary>
+    /// Compares <see cref="Scheme"/>, <see cref="Title"/>, <see cref="Instruction"/>, <see cref="FamilyKey"/>,
+    /// <see cref="InstanceTitle"/> and <see cref="Identity"/> — never the delegate members — deliberately overriding
+    /// the record-generated equality that would otherwise include them.
     /// </summary>
     /// <remarks>
     /// Two delegates freshly built for the same connection are never reference-equal even when they close over
@@ -137,8 +150,9 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
         && string.Equals(Title, other.Title, StringComparison.Ordinal)
         && string.Equals(Instruction, other.Instruction, StringComparison.Ordinal)
         && string.Equals(FamilyKey, other.FamilyKey, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(InstanceTitle, other.InstanceTitle, StringComparison.Ordinal);
+        && string.Equals(InstanceTitle, other.InstanceTitle, StringComparison.Ordinal)
+        && string.Equals(Identity, other.Identity, StringComparison.Ordinal);
 
     public override int GetHashCode() =>
-        HashCode.Combine(Scheme.ToUpperInvariant(), Title, Instruction, FamilyKey?.ToUpperInvariant(), InstanceTitle);
+        HashCode.Combine(Scheme.ToUpperInvariant(), Title, Instruction, FamilyKey?.ToUpperInvariant(), InstanceTitle, Identity);
 }

@@ -70,6 +70,12 @@ public class ManageProfilesDialogViewModelTests
         Assert.Equal(new BrainChoice("Zyra", "Zyra", "Not available here"), legacy.BrainPicker.Selected);
         legacy.BrainPicker.Selected = BrainPickerViewModel.None;
         Assert.Null(legacy.ToProfile().Assistant);
+
+        // A brain stored under a scheme that moved is still found by its value, and opening it rewrites nothing.
+        var moved = new EditableProfileViewModel(new SessionProfile("old", new ClaudeConfig("/c")) { Assistant = "depot.old:acme/zyra@depot.acme.example" }, isLoggedIn: true, pluginProviderRegistry: plugins);
+        await moved.BrainPicker.LoadAsync();
+        Assert.Equal(Brain, moved.BrainPicker.Selected?.Reference);
+        Assert.Equal("depot.old:acme/zyra@depot.acme.example", moved.ToProfile().Assistant);
         Assert.False(new EditableProfileViewModel(new SessionProfile("bare", new ClaudeConfig("/c")), isLoggedIn: true).BrainPicker.IsAvailable);
     }
 

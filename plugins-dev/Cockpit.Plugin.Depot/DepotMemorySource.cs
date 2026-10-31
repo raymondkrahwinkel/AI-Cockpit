@@ -70,6 +70,7 @@ internal static class DepotMemorySource
             {
                 FamilyKey = Scheme,
                 InstanceTitle = connection.Name,
+                Identity = _Identity(connection),
             };
         }
 
@@ -91,6 +92,7 @@ internal static class DepotMemorySource
             BrainInstruction = value => _BrainInstruction(connection, value),
             FamilyKey = Scheme,
             InstanceTitle = connection.Name,
+            Identity = _Identity(connection),
         };
     }
 
@@ -99,8 +101,19 @@ internal static class DepotMemorySource
     private static string _BrainValue(DepotConnectionRegistration connection, DepotProjectListing brain) =>
         $"{brain.Key}@{_ServerOf(connection)}";
 
+    // Host and port only: never the user info or query a hand-typed Url can carry, since this lands in a prompt.
     private static string _ServerOf(DepotConnectionRegistration connection) =>
-        Uri.TryCreate(connection.Url, UriKind.Absolute, out var uri) ? uri.Authority : connection.Url.Trim();
+        Uri.TryCreate(connection.Url, UriKind.Absolute, out var uri) ? uri.Authority : connection.Id;
+
+    private static string? _Origin(DepotConnectionRegistration connection) =>
+        Uri.TryCreate(connection.Url, UriKind.Absolute, out var uri) ? uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.UriEscaped) : null;
+
+    // AC-1992: the server and path the delegates close over, so an edited Url replaces the registration instead of
+    // comparing equal and leaving its closures on the old server. No user info or query, like `_ServerOf`.
+    private static string _Identity(DepotConnectionRegistration connection) =>
+        Uri.TryCreate(connection.Url, UriKind.Absolute, out var uri)
+            ? uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped)
+            : connection.Id;
 
     // Brains only, from the same shared REST listing and ETag cache the location picker reads.
     private static async Task<ProjectMemorySourceLocationsResult> _ListBrainsAsync(
@@ -129,9 +142,11 @@ internal static class DepotMemorySource
             return null;
         }
 
-        return $"Load it through the \"{connection.McpServerName}\" MCP server (Depot instance \"{connection.Name}\" at "
-            + $"{connection.Url}): call its bootstrap tool for the brain \"{value[..at]}\" and follow the instructions it "
-            + "returns. If that MCP server is not available in this session, say so rather than working without the brain.";
+        static string Quoted(string text) => $"\"{text.Replace('"', '\'')}\"";
+        var atServer = _Origin(connection) is { } origin ? $" at {origin}" : string.Empty;
+        return $"Load it through the {Quoted(connection.McpServerName)} MCP server (Depot instance {Quoted(connection.Name)}{atServer}): "
+            + $"call its bootstrap tool for the brain {Quoted(value[..at])} and follow the instructions it returns. If that MCP "
+            + "server is not available in this session, say so rather than working without the brain.";
     }
 
     // The answer for a listing that produced no rows to offer, or null when it did.

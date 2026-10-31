@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.App.ViewModels;
@@ -74,12 +75,26 @@ public partial class BrainPickerViewModel : ViewModelBase
     {
         var generation = ++_loadGeneration;
         IsLoading = true;
+        try
+        {
+            await _LoadAsync(generation, cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            if (generation == _loadGeneration)
+            {
+                IsLoading = false;
+            }
+        }
+    }
+
+    private async Task _LoadAsync(int generation, CancellationToken cancellationToken)
+    {
         var listed = new List<BrainChoice>();
         var errors = new List<string>();
         var awaitingSignIn = new List<ProjectMemorySourceRegistration>();
         foreach (var source in _sources)
         {
-            var title = string.IsNullOrWhiteSpace(source.InstanceTitle) ? source.Title : source.InstanceTitle;
             ProjectMemorySourceLocationsResult result;
             try
             {
@@ -105,7 +120,7 @@ public partial class BrainPickerViewModel : ViewModelBase
                     awaitingSignIn.Add(source);
                     break;
                 default:
-                    errors.Add($"{title}: {(string.IsNullOrWhiteSpace(result.Error) ? "the brains could not be listed." : result.Error)}");
+                    errors.Add($"{_TitleOf(source)}: {(string.IsNullOrWhiteSpace(result.Error) ? "the brains could not be listed." : result.Error)}");
                     break;
             }
         }
@@ -121,34 +136,54 @@ public partial class BrainPickerViewModel : ViewModelBase
         NeedsSignIn = awaitingSignIn.Count > 0;
         ErrorMessage = errors.Count == 0 ? null : string.Join("\n", errors);
         HasLoaded = true;
-        IsLoading = false;
     }
+
+    private static string? _ValueOf(string? reference) =>
+        ProjectMemoryRef.TryParse(reference, out _, out var value) ? value : null;
+
+    private static string _TitleOf(ProjectMemorySourceRegistration source) =>
+        string.IsNullOrWhiteSpace(source.InstanceTitle) ? source.Title : source.InstanceTitle;
 
     [RelayCommand]
     private Task Refresh() => LoadAsync();
 
+    // A sign-in that throws is said under the picker beside whatever the reload reports, never lost.
     [RelayCommand]
     private async Task SignIn()
     {
+        var failures = new List<string>();
         foreach (var source in _awaitingSignIn.ToList())
         {
-            if (source.SignInAsync is { } signIn)
+            try
             {
-                await signIn(CancellationToken.None).ConfigureAwait(true);
+                if (source.SignInAsync is { } signIn)
+                {
+                    await signIn(CancellationToken.None).ConfigureAwait(true);
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"{_TitleOf(source)}: {exception.Message}");
             }
         }
 
         await LoadAsync().ConfigureAwait(true);
+        if (failures.Count > 0)
+        {
+            ErrorMessage = string.Join("\n", ErrorMessage is null ? failures : failures.Prepend(ErrorMessage));
+        }
     }
 
-    // The stored reference keeps its row whatever the list says: matched to a listed brain when one is there, else
-    // kept as it was, marked unavailable only when every source answered and none listed it.
+    // The stored reference keeps its row whatever the list says: matched to a listed brain when one is there — by the
+    // same value under a moved scheme too, as a session start resolves it — else kept, marked unavailable only when
+    // every source answered and none listed it. A match never rewrites what is stored; only a pick does.
     private void _Show(List<BrainChoice> listed, bool everySourceListed)
     {
         var current = _selected.Reference;
         var match = current is null
             ? None
             : listed.FirstOrDefault(choice => string.Equals(choice.Reference, current, StringComparison.OrdinalIgnoreCase))
+                ?? listed.FirstOrDefault(choice => _ValueOf(choice.Reference) is { } value && string.Equals(value, _ValueOf(current), StringComparison.OrdinalIgnoreCase))
                 ?? new BrainChoice(current, current, everySourceListed ? "Not available here" : null);
         Choices = listed.Contains(match) || match == None ? [None, .. listed] : [None, match, .. listed];
         _selected = match;

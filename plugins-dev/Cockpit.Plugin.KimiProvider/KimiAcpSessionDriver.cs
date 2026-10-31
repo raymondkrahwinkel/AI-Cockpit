@@ -334,7 +334,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             : null;
         if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
         {
-            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token));
+            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token, operatorTurn: false));
         }
     }
 
@@ -363,7 +363,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
         try
         {
@@ -379,7 +379,12 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 _promptGate.Release();
             }
 
-            _EmitTurnCompleted(result);
+            // AC-1992: the brain turn is no turn of the operator's, so its end raises no idle, "done" or queued send —
+            // the host never started it, and the operator's first message may already wait behind it.
+            if (operatorTurn)
+            {
+                _EmitTurnCompleted(result);
+            }
 
             // AC-274: right after a real turn settles is the one sober moment to poll /usage — no independent
             // timer, and never while this same gate has a turn's own prompt outstanding. Fire-and-forget: the

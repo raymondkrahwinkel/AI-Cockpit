@@ -35,6 +35,21 @@ public static class ProjectMemoryRef
         return true;
     }
 
+    // AC-1992: whether `reference` has the shape a picked brain is stored in, `<scheme>:<address>@<server>` without
+    // whitespace — recognisable with no source installed, so a missing plugin never turns a brain into a persona
+    // name. A typed name ("Zyra", "depot: Aura") never has that shape.
+    public static bool IsBrainReference(string? reference)
+    {
+        var trimmed = reference?.Trim() ?? string.Empty;
+        if (trimmed.Any(char.IsWhiteSpace) || !TryParse(trimmed, out var scheme, out var value) || !IsUsableScheme(scheme))
+        {
+            return false;
+        }
+
+        var at = value.LastIndexOf('@');
+        return at > 0 && at < value.Length - 1;
+    }
+
     // AC-1013: True when `scheme` is one TryParse can ever hand back. Four conditions: non-blank, >= 2 chars
     // (mirrors TryParse's floor), no colon (TryParse splits on the first one), equal to its own Trim()
     // (session trims before parsing, editor doesn't — mismatched whitespace would offer-then-fail-silently).

@@ -122,6 +122,13 @@ public class SessionBaseInstructionTests
         Assert.DoesNotContain("This session runs as", SessionStartDefaults.Resolve(project, profile, memorySources: memory).SystemPrompt ?? string.Empty);
         Assert.Null(SessionStartDefaults.ResolveBrainInstruction(null, profile with { Assistant = "Zyra" }, memory));
         Assert.StartsWith("This session runs as Zyra.", SessionStartDefaults.Resolve(null, profile with { Assistant = "Zyra" }, memorySources: memory).SystemPrompt);
+
+        // No source with brains here at all (plugin off, connection gone, another machine): still a brain, unavailable.
+        var bare = new SessionStartComposer(projectStore, Substitute.For<IMcpServerCatalog>());
+        Assert.Equal(SessionStartDefaults.UnavailableBrainNote("acme/zyra@depot.acme.example"), await bare.BrainInstructionAsync(Composed(null, profile)));
+        Assert.DoesNotContain("This session runs as", SessionStartDefaults.Resolve(null, profile).SystemPrompt ?? string.Empty);
+        Assert.Null(SessionStartDefaults.ResolveBrainInstruction(null, profile with { Assistant = "depot: Aura" }, null));
+        Assert.StartsWith("This session runs as depot: Aura.", SessionStartDefaults.Resolve(null, profile with { Assistant = "depot: Aura" }).SystemPrompt);
     }
 
     // AC-1942 (L2 data loss): a scratch directory without a marker is set aside intact, not a permanent block.
