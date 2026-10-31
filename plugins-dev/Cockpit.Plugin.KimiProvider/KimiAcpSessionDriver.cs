@@ -330,7 +330,7 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
         // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-273).
         var brain = string.IsNullOrWhiteSpace(resumeSessionId)
-            ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
+            ? _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, fallback: null)
             : null;
         if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
         {
