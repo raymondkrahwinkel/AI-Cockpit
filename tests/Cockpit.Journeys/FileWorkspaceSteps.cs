@@ -1,5 +1,6 @@
 using Avalonia.Threading;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
