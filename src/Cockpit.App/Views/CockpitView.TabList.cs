@@ -11,7 +11,7 @@ namespace Cockpit.App.Views;
 // One line of the all-tabs list. Built when the list opens, so it can say which tabs are scrolled out of view.
 public sealed record WorkspaceTabListRow(WorkspaceTabViewModel Tab, bool IsHidden, bool CanClose)
 {
-    public FontWeight Weight => Tab.IsActive ? FontWeight.SemiBold : FontWeight.Normal;
+    public FontWeight Weight => FontWeight.Normal;
 
     public FontStyle Style => Tab.IsPreview ? FontStyle.Italic : FontStyle.Normal;
 
