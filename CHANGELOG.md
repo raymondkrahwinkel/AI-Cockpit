@@ -36,6 +36,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
 
+- Running the test suite no longer wipes the scratch folders (`C:\ck\…`) of the sessions that are open in your Cockpit: every test run now uses a scratch root of its own.
+
 - On a laptop with two GPUs, dictation now transcribes on the dedicated GPU instead of the integrated one that drives the screen; Options › Voice offers each GPU by name, Auto names the one it picks, and the calibration says which GPU it measured.
 
 - Model Intelligence no longer mixes up the quota of two Claude subscriptions used side by side, and unchanged quota readings are no longer stored over and over.
