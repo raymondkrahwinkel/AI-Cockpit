@@ -73,8 +73,7 @@ internal static class EventsEndpoint
                     var evt = events.Current;
                     // AC-263: the assistant is the holder's only, as its routes are; any other pane only within the key's scope,
                     // as the pane had it when the event was written: a closed pane's last rows still reach its readers.
-                    // AC-1472: a clone's outcome names its project and folder, which are an admin's to read.
-                    // AC-1547: a plugin's events go to whoever may call its channel, an admin.
+                    // AC-1472/AC-1547: a clone's outcome and a plugin's events are an admin's, as the clone and channel routes are.
                     if ((evt.PaneId is { } paneId
                             && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
                                 ? !caller.HoldsAssistant
