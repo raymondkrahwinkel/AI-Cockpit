@@ -113,6 +113,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             await _startGate.WaitAsync();
             try
             {
+                if (Session is not null && _takeover is not null)
+                {
+                    await _takeover.StepDownAsync();
+                }
                 if (_ReplaceSession(null) is { } previous) await _DisposeQuietlyAsync(previous);
             }
             finally { _startGate.Release(); }
@@ -516,7 +520,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
         // than a retention rule invented here.
-        var standby = !startFresh ? _takeover?.ReadForStart() : null;
+        var standby = !startFresh ? _takeover?.TakeForStart() : null;
         var resume = standby is not null || startFresh
             ? SessionResume.New
             : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true);
@@ -527,7 +531,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _takeover?.BeginTakeover(standby);
             _takeover?.RestoreReceipts(standby);
-            if (_memory is AssistantMemoryFile file) file.RestoreStandby(standby.NoteState, standby.Behaviour);
+            if (_memory is AssistantMemoryFile file)
+            {
+                file.RestoreStandby(standby.NoteState, standby.Behaviour, standby.NoteStateAt);
+            }
             session.RestoreStandbyTranscript(standby.Transcript);
         }
         else await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);
@@ -670,6 +677,44 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _ = ClearConversationAsync();
         }
+
+        // AC-1929: a merge parked while a turn ran is applied at the same gate, so no turn is cut off.
+        if (_RunExclusive(() => _TakePendingMergeRestart(session, reading)))
+        {
+            MergeRestart = RestartAsync();
+        }
+    }
+
+    // AC-1929: the restart that folds a stepped-down leader's conversation in, now when idle, else at the turn's end.
+    // The parked copy is a file, so a session that dies first leaves it for whichever start comes next.
+    internal void RequestMergeRestart()
+    {
+        var session = _RunExclusive(() =>
+        {
+            _pendingMergeRestart = true;
+            return Session;
+        });
+        if (session is null || _RunExclusive(() => _TakePendingMergeRestart(session, SessionReading.Of(session))))
+        {
+            _RunExclusive(() => _pendingMergeRestart = false);
+            MergeRestart = RestartAsync();
+        }
+    }
+
+    internal Task<IAssistantSession?> MergeRestart { get; private set; } = Task.FromResult<IAssistantSession?>(null);
+
+    private bool _pendingMergeRestart;
+
+    private bool _TakePendingMergeRestart(IAssistantSession session, SessionReading reading)
+    {
+        var idle = ShouldHandOver(double.PositiveInfinity, reading.IsBusy, reading.IsWaitingOnOperator);
+        if (!_pendingMergeRestart || !ReferenceEquals(session, Session) || !idle)
+        {
+            return false;
+        }
+
+        _pendingMergeRestart = false;
+        return true;
     }
 
     // AC-1261 criterion 7 (V2): marks a request rather than clearing now — clearing mid-turn would tear down the
@@ -1031,6 +1076,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             {
                 _session = value;
                 _pendingConversationClear = false;
+                _pendingMergeRestart = false;
             }
 
             return current;

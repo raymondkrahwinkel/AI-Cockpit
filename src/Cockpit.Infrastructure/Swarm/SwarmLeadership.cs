@@ -33,6 +33,51 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
     public bool IsSelf => Current?.Id == identity.MemberId;
     public SwarmTakeover? PendingTakeover => _state.Pending;
     public event EventHandler? Changed;
+    private string? _mergeNotice;
+    public string? MergeNotice => Volatile.Read(ref _mergeNotice);
+
+    private SwarmMergeQuestion? _mergeQuestion;
+    public SwarmMergeQuestion? MergeQuestion => Volatile.Read(ref _mergeQuestion);
+
+    internal void SetMergeQuestion(SwarmMergeQuestion? question)
+    {
+        if (Interlocked.Exchange(ref _mergeQuestion, question) != question)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    internal void SetMerging(bool merging)
+    {
+        var notice = merging ? ConversationMerge.MergingNotice : null;
+        if (Interlocked.Exchange(ref _mergeNotice, notice) != notice)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    // AC-1929: a peer reports a rank equal to ours; the member added last draws again, signs and lets propagation carry it.
+    internal async Task ResolveRankCollisionAsync(SwarmMember seen, CancellationToken ct)
+    {
+        await store.Gate.WaitAsync(ct);
+        try
+        {
+            var register = await store.LoadAsync(ct);
+            if (SwarmLeaderElection.ResolveRankCollision(register, identity.MemberId, [seen]) is not { } change)
+            {
+                return;
+            }
+            if (register.Accept(identity.Sign(SwarmMembership.ToPayload(change))) != SwarmMembershipVerdict.Accepted)
+            {
+                throw new InvalidDataException("Swarm rank change refused.");
+            }
+            store.Save(register);
+        }
+        finally
+        {
+            store.Gate.Release();
+        }
+    }
 
     internal void Observe(SwarmMemberId peer, SwarmMemberId? leader, SwarmTakeoverDecision? decision)
     {
@@ -79,7 +124,11 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
             }
             else if (previous.Current.Id == identity.MemberId && previous.Pending is null)
             {
-                var holder = register.Members.Where(member => member.Rank > previous.Current.Rank
+                // AC-1929: two leaders seen. With an announced takeover the higher rank steps down at once; joining at
+                // the back moves the lower rank behind instead (AC-1920), after which it is the higher one.
+                var own = previous.Current.Rank;
+                var join = mode == SwarmLowerRankReturn.JoinAtBack;
+                var holder = register.Members.Where(member => (join ? member.Rank > own : member.Rank < own)
                     && Presence(member.Id).Status == SwarmPresence.Online
                     && _leaders.TryGetValue(member.Id, out var leader) && leader == member.Id).MinBy(member => member.Rank);
                 if (holder is not null)

@@ -55,6 +55,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- When two swarm leaders meet again after a network split, the higher rank steps down and both assistant conversations are merged without losing a message; a note state changed on both sides keeps the other version and asks once whether to compare or keep the newest.
+
 - Options has a Swarm page for pairing your own Cockpits, checking machines and their leader, and setting internal network ranges and returning-machine behaviour.
 
 - The sidebar has a "Waiting for you" filter above the sessions: it counts every session that needs you, on this machine and on connected servers, and when switched on lists them flat with a machine badge per row. Its state is kept across restarts.

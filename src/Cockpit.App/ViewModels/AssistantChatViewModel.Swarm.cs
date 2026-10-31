@@ -65,6 +65,15 @@ public sealed partial class AssistantChatViewModel
         }
     }
 
+    // AC-1929: the leader's open merge question goes on the divider of the conversation shown here.
+    internal void ShowMergeQuestion()
+    {
+        if (Session is { } session)
+        {
+            session.MergeQuestion = _cockpit?.SwarmLeadership?.MergeQuestion;
+        }
+    }
+
     private void _SetSession(SessionViewModel? session)
     {
         if (ReferenceEquals(_observedSession, session)) return;
@@ -72,6 +81,7 @@ public sealed partial class AssistantChatViewModel
         _observedSession = session;
         _WatchTranscript(previous, session);
         _WatchThreads(previous, session);
+        ShowMergeQuestion();
         OnPropertyChanged(nameof(Session));
         OnPropertyChanged(nameof(HasSession));
         OnPropertyChanged(nameof(HasMessages));

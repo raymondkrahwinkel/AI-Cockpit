@@ -28,7 +28,7 @@ internal sealed class SwarmHeartbeat(
     SwarmReachability reachability,
     SwarmLeadership leadership,
     SwarmManualAddress manual,
-    ILogger<SwarmHeartbeat> logger, SwarmKick? kick = null) : BackgroundService, ISingletonService
+    ILogger<SwarmHeartbeat> logger, SwarmKick? kick = null, SwarmMerge? merge = null) : BackgroundService, ISingletonService
 {
     private readonly SemaphoreSlim _tick = new(1, 1);
     private readonly Lock _gate = new();
@@ -47,7 +47,8 @@ internal sealed class SwarmHeartbeat(
         var local = await settings.LoadAsync(ct);
         var update = new SwarmHeartbeatUpdate("heartbeat", identity.MemberId,
             [NodeReachableAddress.Resolve() ?? "127.0.0.1"], local.Port, asleep, membership.Sequence,
-            SwarmPropagation.Prefix(membership.Log), Time.GetUtcNow(), leadership.Current?.Id, leadership.Decision);
+            SwarmPropagation.Prefix(membership.Log), Time.GetUtcNow(), leadership.Current?.Id, leadership.Decision,
+            membership.Members.FirstOrDefault(member => member.Id == identity.MemberId)?.Rank);
         return identity.Sign(JsonSerializer.SerializeToElement(update, SwarmRecordJson.Options));
     }
 
@@ -82,6 +83,10 @@ internal sealed class SwarmHeartbeat(
         reachability.Answer(peer, HttpStatusCode.OK, update.Asleep);
         leadership.Observe(peer, update.Leader, update.Decision is { } decision
             && decision.At <= update.At && decision.At >= update.At - SwarmReachability.Stabilization ? decision : null);
+        if (update.Rank is { } rank && rank != member.Rank)
+        {
+            await leadership.ResolveRankCollisionAsync(member with { Rank = rank }, ct);
+        }
         return update;
     }
 
@@ -222,6 +227,10 @@ internal sealed class SwarmHeartbeat(
                 }
             }));
             await leadership.RefreshAsync(ct: ct, asleep: asleep);
+            if (merge is not null && !asleep)
+            {
+                await merge.FlushAsync(ct);
+            }
         }
         finally
         {
@@ -288,7 +297,8 @@ internal sealed class SwarmHeartbeat(
 }
 
 internal sealed record SwarmHeartbeatUpdate(string Kind, SwarmMemberId Member, IReadOnlyList<string> Addresses, int Port,
-    bool Asleep, long Sequence, string? Prefix, DateTimeOffset At, SwarmMemberId? Leader = null, SwarmTakeoverDecision? Decision = null);
+    bool Asleep, long Sequence, string? Prefix, DateTimeOffset At, SwarmMemberId? Leader = null, SwarmTakeoverDecision? Decision = null,
+    long? Rank = null);
 
 [Tmds.DBus.DBusInterface("org.freedesktop.login1.Manager")]
 public interface ISwarmSleepManager : Tmds.DBus.IDBusObject

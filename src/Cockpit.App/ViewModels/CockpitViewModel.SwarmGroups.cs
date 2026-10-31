@@ -19,7 +19,7 @@ public partial class CockpitViewModel
     internal ISwarmLeadership? SwarmLeadership => _swarmLeadership;
     internal INodeSessionsClient? SwarmSessions => _swarmSessions;
     public string? AssistantLeadershipLabel => _swarmLeadership?.IsActive != true ? null
-        : LocalLeads ? "You lead" : _swarmLeadership.Current is { } leader ? $"Led by {leader.Name}" : "Waiting for a leader";
+        : _swarmLeadership.MergeNotice ?? (LocalLeads ? "You lead" : null) ?? (_swarmLeadership.Current is { } leader ? $"Led by {leader.Name}" : "Waiting for a leader");
     public string? AssistantLocationLabel => _swarmLeadership?.IsActive != true ? null
         : $"You are on {_swarmSelfName ?? Environment.MachineName}. The assistant runs on {_swarmLeadership.Current?.Name ?? "the leader"}.";
     public bool AssistantLeaderIsServer => _swarmLeadership?.Current?.HostKind == SwarmHostKind.Server;
