@@ -19,6 +19,13 @@ namespace Cockpit.Plugin.CliAgentProvider;
 // signal.
 internal sealed class CodexTranscriptReader : IPluginTranscriptReader
 {
+    private readonly TtyChildSnapshot _children = new();
+    public Task<IReadOnlyList<PluginBackgroundTask>> ReadChildrenAsync(string configJson, string? statusFile, CancellationToken cancellationToken = default) =>
+        Task.Run<IReadOnlyList<PluginBackgroundTask>>(() => [.. _children.Read(_ResolveStateDirectory(configJson), statusFile, codex: true).Select(source => source.Task)], cancellationToken);
+
+    public Task<PluginChildTranscriptPage> ReadChildTranscriptAsync(string configJson, string? statusFile, string agentId, string? revision, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.Run(() => _children.ReadPage(_ResolveStateDirectory(configJson), statusFile, true, agentId, revision, cursor, cancellationToken), cancellationToken);
+
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>

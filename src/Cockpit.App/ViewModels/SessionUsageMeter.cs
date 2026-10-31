@@ -45,7 +45,7 @@ internal sealed class SessionUsageMeter
         $" · {Turns} turn{(Turns == 1 ? string.Empty : "s")}";
 
     // 950 → "950", 45210 → "45.2k", 2_300_000 → "2.30M": one glanceable number that never runs long.
-    internal static string FormatTokens(int tokens) => tokens switch
+    internal static string FormatTokens(long tokens) => tokens switch
     {
         < 1_000 => tokens.ToString(CultureInfo.InvariantCulture),
         < 1_000_000 => (tokens / 1_000.0).ToString("0.0", CultureInfo.InvariantCulture) + "k",

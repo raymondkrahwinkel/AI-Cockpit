@@ -22,6 +22,8 @@ namespace Cockpit.App.ViewModels;
 // title, selection, coarse status, and profile label, plus disposal.
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable, ISimpleComposerTarget
 {
+    public ObservableCollection<ChildAgentViewModel> ChildAgents { get; } = [];
+    protected virtual bool CanReceiveOperatorInput => !IsReadingChild;
     // Running token/cost total for the session (#8), folded from each completed turn's result usage.
     private protected readonly SessionUsageMeter _usage = new();
     // Taken at the launch rather than at construction: an isolated session is built, then waits on a `git worktree add`
@@ -1560,7 +1562,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // progress (the underlying service's own key-repeat guard).
     public bool BeginVoiceHold()
     {
-        if (!VoiceEnabled || _voicePushToTalk is null)
+        if (!CanReceiveOperatorInput || !VoiceEnabled || _voicePushToTalk is null)
         {
             return false;
         }
@@ -1886,6 +1888,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     public async ValueTask DisposeAsync()
     {
+        ReturnToParentCommand.Execute(null);
         // Disposing the scope below disposes what it handed out, which is this pane again — and the close paths in
         // CockpitViewModel are not the only caller either.
         if (_disposed)

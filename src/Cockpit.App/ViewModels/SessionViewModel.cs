@@ -211,32 +211,32 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Outstanding sub-agents, shells and unrecognised-kind tasks (AC-531), grouped the way the approved mockup
     // groups them. Built from the same `_backgroundTasks` list `HasOutstandingBackgroundShells`
     // already reads — the pop-out's own view of the identical, provider-neutral ledger, not a second one.
-    public ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
+    public override ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
 
-    public ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
+    public override ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
 
     // A task kind this build does not recognise — carried rather than dropped, same reasoning as the
     // provider's own wire parser (see `BackgroundTaskKind.Unknown`).
-    public ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
+    public override ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
 
-    public bool HasBackgroundSubAgents => BackgroundSubAgents.Count > 0;
+    public override bool HasBackgroundSubAgents => BackgroundSubAgents.Count > 0;
 
-    public bool HasBackgroundShells => BackgroundShells.Count > 0;
+    public override bool HasBackgroundShells => BackgroundShells.Count > 0;
 
-    public bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
+    public override bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
 
     // True while at least one background task is outstanding. This gates the pop-out's own contents (list vs.
     // "no background work"); the button itself is always shown, and only its count badge follows this too
     // (AC-531 #2 — no badge at all at zero, not a "0" badge).
-    public bool HasBackgroundTasks => _backgroundTasks.Count > 0;
+    public override bool HasBackgroundTasks => _backgroundTasks.Count > 0;
 
     // The button's badge digit — every outstanding task counts, including a kind this build does not
     // recognise (AC-531 #2).
-    public int BackgroundTaskCount => _backgroundTasks.Count;
+    public override int BackgroundTaskCount => _backgroundTasks.Count;
 
     // "2 sub-agents · 1 shell" — the pop-out's own total line, segments joined the same way AC-532's activity
     // band joins its own. "nothing" when the list is empty (AC-531 #3, the mockup's empty state).
-    public string BackgroundTaskSummary
+    public override string BackgroundTaskSummary
     {
         get
         {
@@ -308,6 +308,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(HasBackgroundShells));
         OnPropertyChanged(nameof(HasBackgroundOtherTasks));
         OnPropertyChanged(nameof(HasBackgroundTasks));
+        OnPropertyChanged(nameof(HasBackgroundWorkEntries));
+        OnPropertyChanged(nameof(ShowsLegacySubAgents));
         OnPropertyChanged(nameof(BackgroundTaskCount));
         OnPropertyChanged(nameof(BackgroundTaskSummary));
 
@@ -368,6 +370,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.
     public void RefreshBackgroundTaskAges()
     {
+        foreach (var child in ChildAgents)
+        {
+            child.RefreshTime();
+        }
         foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
         {
             row.RaiseAgeChanged();
@@ -1917,6 +1923,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // empty context is a figure that actively lies (decision 3). The transcript is deliberately not among them.
     private void _ResetForNewConversation()
     {
+        ReturnToParentCommand.Execute(null);
+        ChildAgents.Clear();
         _control.ClearQueue();
         _control.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
@@ -2332,7 +2340,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Auto-submit: sends the input box the transcript was just appended to — the same path Enter/Send takes, so a busy session queues it (T8) rather than erroring.
     protected override void OnVoiceSubmitRequested()
     {
-        if (SendCommand.CanExecute(null))
+        if (!IsReadingChild && SendCommand.CanExecute(null))
         {
             SendCommand.Execute(null);
         }
@@ -2907,6 +2915,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
     private void _OnLiveStateChanged(SessionLiveState state)
     {
+        UpdateChildAgents(state.Children);
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
         {

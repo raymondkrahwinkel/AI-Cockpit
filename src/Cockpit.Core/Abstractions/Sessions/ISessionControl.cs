@@ -15,6 +15,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionControl : IAsyncDisposable
 {
+    Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ChildTranscriptPage.Unavailable("session is unavailable"));
+
     /// <summary>
     /// Whether this control can start a session at all; false for one built without a backend (the design-time graph).
     /// </summary>

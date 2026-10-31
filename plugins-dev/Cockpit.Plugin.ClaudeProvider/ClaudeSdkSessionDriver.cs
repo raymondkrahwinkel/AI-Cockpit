@@ -39,6 +39,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private readonly string _executablePath;
     private readonly PluginSessionEventPublisher _events = new();
     private readonly ClaudeStreamJson _mapper = new();
+    private string? _childWorkingDirectory;
     private readonly CancellationTokenSource _lifetime = new();
 
     // tool_use_id -> the pending can_use_tool request the CLI is blocking on. Keyed on tool_use_id because that is what
@@ -156,6 +157,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         var resolvedWorkingDirectory = Path.GetFullPath(string.IsNullOrWhiteSpace(workingDirectory)
             ? Environment.CurrentDirectory
             : workingDirectory);
+        _childWorkingDirectory = resolvedWorkingDirectory;
         var configJsonDirectory = ClaudeConfigPaths.ResolveConfigJsonDirectory(_config.ConfigDir, userHome);
 
         // Trust must land before the process starts, or the headless CLI blocks on its interactive trust dialog with
@@ -344,6 +346,18 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     // AC-664: the CLI summarises the conversation and carries on under the same session id. It rides the user-message
     // line because the control protocol has no compaction subtype (claude.exe 2.1.226) — the CLI parses `/compact`
     // out of the stream-json input itself; measured against a live spawn in this mode, see the ticket.
+    public Task<PluginChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default)
+    {
+        if (_sessionId is not { } owner || _childWorkingDirectory is not { } cwd
+            || !_mapper.Children.Any(child => child.AgentId == agentId && child.RunId == runId))
+        {
+            return Task.FromResult(PluginChildTranscriptPage.Unavailable("child does not belong to this owner/run"));
+        }
+        var state = ClaudeConfigPaths.ResolveStateDirectory(_config.ConfigDir,
+            Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        return Task.Run(() => ClaudeChildTranscript.Read(state, cwd, owner, agentId, cursor, cancellationToken), cancellationToken);
+    }
+
     public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
         _SendUserMessageAsync("/compact", images: null, cancellationToken);
 

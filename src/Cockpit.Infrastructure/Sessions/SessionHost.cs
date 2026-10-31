@@ -704,6 +704,10 @@ public sealed class SessionHost : ISessionTurnGate, ISessionTranscript, ISession
 
     public Task SetAutoApproveToolsAsync(bool autoApprove) => Runtime?.SetAutoApproveToolsAsync(autoApprove) ?? Task.CompletedTask;
 
+    public Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
+        Runtime?.ReadChildTranscriptAsync(agentId, runId, cursor, cancellationToken)
+        ?? Task.FromResult(ChildTranscriptPage.Unavailable("owner has stopped"));
+
     public Task CompactContextAsync() => Runtime?.CompactContextAsync() ?? Task.CompletedTask;
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, string? answersJson)

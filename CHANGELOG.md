@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
+
 - On a laptop with two GPUs, dictation now transcribes on the dedicated GPU instead of the integrated one that drives the screen; Options › Voice offers each GPU by name, Auto names the one it picks, and the calibration says which GPU it measured.
 
 - Model Intelligence no longer mixes up the quota of two Claude subscriptions used side by side, and unchanged quota readings are no longer stored over and over.
@@ -62,6 +64,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 - changed: OpenAI-compatible provider plugins now ask models to verify tool-backed task results before ending a turn.
 
 ### Added
+
+- Provider sub-agents are visible in Background and Agents, with isolated read-only transcripts and requests through the existing parent. Claude 0.30.0, Codex 0.11.1 and the additive plugin SDK 3.60.0 carry the new child identity and transcript contracts.
 
 - added: **a sync choice per profile.** On Options › Sync the Profiles row opens to one row per profile, and the profile page has a "Synchronise this profile" field: tick the servers a profile goes to, or leave it on "Same as Profiles". Nothing ticked keeps that profile on this machine; unticking never removes anything from a server (AC-1847).
 - added: **Options › Sync.** One page decides which server each category of settings (profiles, plugins, notifications, shortcuts, session behaviour, usage, appearance, updates) is kept in step with: tick one or more per category, nothing ticked stays on this machine. A card per server shows what it receives and when it last synced; unticking never removes anything from the server. A settings conflict between two servers now shows one card per server (AC-1846).
