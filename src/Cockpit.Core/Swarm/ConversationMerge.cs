@@ -28,7 +28,7 @@ public static class ConversationMerge
         var loserIds = loser.Rows.Select(row => row.Id).ToHashSet(StringComparer.Ordinal);
         var common = winner.Rows.Where(row => loserIds.Contains(row.Id)).ToArray();
         var splitAt = common.Length == 0 ? DateTimeOffset.MinValue : common.Max(row => row.Timestamp);
-        var fromLoser = loser.Rows.Where(row => !winnerIds.Contains(row.Id)).ToArray();
+        var fromLoser = loser.Rows.ToArray();
         var rows = winner.Rows;
         if (fromLoser.Length > 0)
         {
