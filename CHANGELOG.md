@@ -63,6 +63,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Schedules can manage a connected server: the switch right of its tabs picks This computer or a server, a banner says which server you are managing and its time, runs started there show live as Running…, and the editor offers that server's profiles and project folders. A server without Schedules, or with another version, says "Schedules not available" with the reason. Plugins can offer the same through the new host call for their server hosts.
 
+- On Windows 11 24H2 or later, the encrypted keys and tokens can be unlocked with Windows Hello (face, fingerprint or PIN): turn it on under Options › Security, and the startup and screen-lock unlock offer it next to the password, which keeps working.
+
 - Live notes mark an outside agent's changed lines with their name for up to ten minutes, show their saved version and temporary presence, and send the launching profile name to MCP servers that opt in.
 
 - added: **a live Depot note opens in the editor as a tab.** Join in the Notes tab and Open in Cockpit in the new meeting note dialog now open the note
