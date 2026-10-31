@@ -150,7 +150,7 @@ internal sealed class ClaudeStreamJson
 
     private IEnumerable<PluginSessionEvent> _ParseTask(JsonElement root, string? sessionId, string? subtype)
     {
-        var id = _NullableString(root, "task_id");
+        var id = _NullableString(root, "agent_id") ?? _NullableString(root, "task_id");
         if (string.IsNullOrEmpty(id))
         {
             yield break;
