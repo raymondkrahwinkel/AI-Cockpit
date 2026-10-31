@@ -562,7 +562,8 @@ internal static class ProfileEndpoints
 
     internal const string BrainsListRefusal = "The server could not list these brains.";
 
-    // AC-1995 (review B1): how long one source may take before it reads as not listed, so a slow one never holds the page.
+    // AC-1995 (review B1): how long one source that honours cancellation may take before it reads as not listed;
+    // sources are asked in turn, so an unfiltered list can take this once per source.
     internal static readonly TimeSpan BrainSourceBudget = TimeSpan.FromSeconds(10);
 
     // `scheme` narrows the list to that one source, as each source of the picker asks for its own.
