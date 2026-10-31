@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- The Claude and CLI agent provider plugins can be published to the store again: their hook relay now carries the Windows manifest the store's package check asks for. Claude provider 0.30.2, CLI agent provider 0.11.3.
+
 - Sub-agents no longer keep a Running status after their owner fails, is interrupted or stops. Finished sub-agents keep their recorded status and details.
 
 - Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
