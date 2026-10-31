@@ -14,8 +14,8 @@ internal static class ClaudeChildTranscript
         }
         try
         {
-            var project = Regex.Replace(Path.GetFullPath(workingDirectory), "[^a-zA-Z0-9]", "-");
-            var path = Path.Combine(stateDirectory, "projects", project, owner, "subagents", $"agent-{agent}.jsonl");
+            string project = Regex.Replace(Path.GetFullPath(workingDirectory), "[^a-zA-Z0-9]", "-");
+            string path = Path.Combine(stateDirectory, "projects", project, owner, "subagents", $"agent-{agent}.jsonl");
             return TtyChildSnapshot.SafePath(path, stateDirectory)
                 ? JsonlChildTranscript.Read(path, agent, owner, cursor, cancellationToken)
                 : PluginChildTranscriptPage.Unavailable("invalid or linked transcript source");

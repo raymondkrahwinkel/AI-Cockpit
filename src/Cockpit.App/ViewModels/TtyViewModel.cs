@@ -704,10 +704,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return;
         }
         _childrenPolling = true;
-        var status = StatusFile;
+        string? status = StatusFile;
         try
         {
-            var children = await _transcriptReader.ReadChildrenAsync(_configuredProfile, status, _statusTailCancellation?.Token ?? CancellationToken.None);
+            IReadOnlyList<BackgroundTask> children = await _transcriptReader.ReadChildrenAsync(_configuredProfile, status, _statusTailCancellation?.Token ?? CancellationToken.None);
             if (!_statusTrackingStopped && status == StatusFile)
             {
                 UpdateChildAgents(children);

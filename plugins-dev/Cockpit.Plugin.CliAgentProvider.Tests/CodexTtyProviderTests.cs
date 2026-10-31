@@ -74,8 +74,8 @@ public class CodexTtyProviderTests
 
         Assert.Contains("""mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""", spec.Arguments);
         Assert.DoesNotContain("COCKPIT_MCP_KEY", spec.EnvironmentOverlay);
-        var second = new CodexTtyProvider().BuildLaunch(context);
-        var hook = Assert.Single(spec.Arguments, argument => argument.StartsWith("hooks.SubagentStart="));
+        PluginTtyLaunchSpec second = new CodexTtyProvider().BuildLaunch(context);
+        string hook = Assert.Single(spec.Arguments, argument => argument.StartsWith("hooks.SubagentStart="));
         Assert.Contains(hook, second.Arguments);
         Assert.DoesNotContain("dangerously-bypass-hook-trust", string.Join(" ", spec.Arguments));
         Assert.NotEqual(spec.EnvironmentOverlay["COCKPIT_SUBAGENT_FILE"], second.EnvironmentOverlay["COCKPIT_SUBAGENT_FILE"]);

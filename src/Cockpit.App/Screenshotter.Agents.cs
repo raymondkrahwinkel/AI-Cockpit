@@ -31,7 +31,7 @@ internal static partial class Screenshotter
             },
         ]);
         first.SessionStatus = SessionStatus.Busy;
-        var second = cockpit.Sessions[1];
+        SessionPanelViewModel second = cockpit.Sessions[1];
         second.UpdateChildAgents([
             new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Review the parser change")
             {
@@ -44,8 +44,8 @@ internal static partial class Screenshotter
 
     private static void _OpenAgentChild(Window window)
     {
-        var overview = window.GetVisualDescendants().OfType<AgentsOverviewView>().Single();
-        var button = overview.GetVisualDescendants().OfType<Button>().First(button =>
+        AgentsOverviewView overview = window.GetVisualDescendants().OfType<AgentsOverviewView>().Single();
+        Button button = overview.GetVisualDescendants().OfType<Button>().First(button =>
             button.DataContext is ChildAgentViewModel child && child.Owner.Title == "atlas · parser cleanup"
             && child.Reference.AgentId == "same-id" && button.Command is not null);
         var selected = button.DataContext as ChildAgentViewModel

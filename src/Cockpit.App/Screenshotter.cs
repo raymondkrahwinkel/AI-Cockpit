@@ -3783,8 +3783,8 @@ internal static partial class Screenshotter
         });
         cockpit.IsZoomed = true;
         _SeedAgentsOverviewChildren(cockpit);
-        var panel = panels.Panels.Single(panel => panel.Id == AgentsOverviewViewModel.DockPanelId);
-        var overview = panels.ViewFor(panel);
+        Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration panel = panels.Panels.Single(panel => panel.Id == AgentsOverviewViewModel.DockPanelId);
+        Control overview = panels.ViewFor(panel);
         if (overview.DataContext is AgentsOverviewViewModel agents)
         {
             foreach (var card in agents.Columns.SelectMany(column => column.Cards))

@@ -13,28 +13,28 @@ public class ClaudeTranscriptReaderTests : IDisposable
 {
     private async Task _AssertTtyChildrenUseOwnedMetadataAsync()
     {
-        var cwd = Path.Combine(_configDir, "work");
-        var project = System.Text.RegularExpressions.Regex.Replace(Path.GetFullPath(cwd), "[^a-zA-Z0-9]", "-");
-        var folder = Directory.CreateDirectory(Path.Combine(_configDir, "projects", project)).FullName;
-        var parent = Path.Combine(folder, "owner.jsonl");
+        string cwd = Path.Combine(_configDir, "work");
+        string project = System.Text.RegularExpressions.Regex.Replace(Path.GetFullPath(cwd), "[^a-zA-Z0-9]", "-");
+        string folder = Directory.CreateDirectory(Path.Combine(_configDir, "projects", project)).FullName;
+        string parent = Path.Combine(folder, "owner.jsonl");
         File.WriteAllText(parent, "{}\n");
-        var children = Directory.CreateDirectory(Path.Combine(folder, "owner", "subagents")).FullName;
-        var child = Path.Combine(children, "agent-child.jsonl");
+        string children = Directory.CreateDirectory(Path.Combine(folder, "owner", "subagents")).FullName;
+        string child = Path.Combine(children, "agent-child.jsonl");
         File.WriteAllText(child, """{"uuid":"one","agentId":"child","sessionId":"owner","isSidechain":true,"type":"assistant","message":{"content":[{"type":"text","text":"owned"}]}}""" + "\n");
         File.WriteAllText(Path.Combine(children, "agent-child.meta.json"), """{"agentType":"Explore","toolUseId":"tool-1","finished":true}""");
-        var status = Path.Combine(_configDir, "status.json");
+        string status = Path.Combine(_configDir, "status.json");
         File.WriteAllText(status, JsonSerializer.Serialize(new { session_id = "owner", transcript_path = parent, cwd }));
         File.WriteAllText(status + ".children.json", JsonSerializer.Serialize(new { session_id = "owner", entries = new[] { new { agent_id = "child", revision = "r1", started_at_ms = 1000, stopped_at_ms = 3000 } } }));
         IPluginTranscriptReader reader = new ClaudeTranscriptReader();
-        var entry = Assert.Single(await reader.ReadChildrenAsync(ConfigJson, status));
+        PluginBackgroundTask entry = Assert.Single(await reader.ReadChildrenAsync(ConfigJson, status));
         Assert.Equal("Explore", entry.AgentType);
         Assert.Equal("completed", entry.State);
         Assert.Equal(2000, entry.DurationMilliseconds);
-        var page = await reader.ReadChildTranscriptAsync(ConfigJson, status, "child", entry.SourceRevision, null);
+        PluginChildTranscriptPage page = await reader.ReadChildTranscriptAsync(ConfigJson, status, "child", entry.SourceRevision, null);
         Assert.Equal("owned", Assert.Single(page.Entries).Text);
         Assert.StartsWith("Not available", (await reader.ReadChildTranscriptAsync(ConfigJson, status, "child", "stale", null)).Status);
         File.Delete(status + ".children.json");
-        var recovered = Assert.Single(await new ClaudeTranscriptReader().ReadChildrenAsync(ConfigJson, status));
+        PluginBackgroundTask recovered = Assert.Single(await new ClaudeTranscriptReader().ReadChildrenAsync(ConfigJson, status));
         Assert.Equal("completed", recovered.State);
         Assert.Null(recovered.DurationMilliseconds);
         Assert.NotEqual(entry.SourceRevision, recovered.SourceRevision);
@@ -46,29 +46,29 @@ public class ClaudeTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ChildHistory_PagesCompleteRecords_ResetsTruncation_AndRejectsForeignSources()
     {
-        var cwd = Path.Combine(_configDir, "work");
-        var project = System.Text.RegularExpressions.Regex.Replace(Path.GetFullPath(cwd), "[^a-zA-Z0-9]", "-");
-        var directory = Directory.CreateDirectory(Path.Combine(_configDir, "projects", project, "owner", "subagents")).FullName;
-        var path = Path.Combine(directory, "agent-child.jsonl");
+        string cwd = Path.Combine(_configDir, "work");
+        string project = System.Text.RegularExpressions.Regex.Replace(Path.GetFullPath(cwd), "[^a-zA-Z0-9]", "-");
+        string directory = Directory.CreateDirectory(Path.Combine(_configDir, "projects", project, "owner", "subagents")).FullName;
+        string path = Path.Combine(directory, "agent-child.jsonl");
         const string line = """{"uuid":"one","agentId":"child","type":"assistant","message":{"content":[{"type":"text","text":"child answer"}]}}""";
         File.WriteAllText(path, line[..40]);
-        var partial = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
+        PluginChildTranscriptPage partial = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
         Assert.Empty(partial.Entries);
         File.AppendAllText(path, line[40..] + "\n");
-        var complete = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", partial.Cursor, default);
+        PluginChildTranscriptPage complete = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", partial.Cursor, default);
         Assert.Equal("child answer", Assert.Single(complete.Entries).Text);
-        var replay = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", partial.Cursor, default);
+        PluginChildTranscriptPage replay = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", partial.Cursor, default);
         Assert.Equal(complete.Entries[0].Id, replay.Entries[0].Id);
         Assert.Empty(ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", complete.Cursor, default).Entries);
         File.WriteAllText(path, line.Replace("child answer", "new") + "\n");
-        var rotated = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", complete.Cursor, default);
+        PluginChildTranscriptPage rotated = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", complete.Cursor, default);
         Assert.True(rotated.Reset);
         Assert.Equal("new", Assert.Single(rotated.Entries).Text);
         Assert.StartsWith("Not available", ClaudeChildTranscript.Read(_configDir, cwd, "other-owner", "child", null, default).Status);
         File.WriteAllText(path, line.Replace("\"agentId\":\"child\"", "\"agentId\":\"foreign\"") + "\n");
         Assert.Empty(ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default).Entries);
         File.WriteAllText(path, string.Concat(Enumerable.Repeat(line.Replace("child answer", new string('x', 10000)) + "\n", 600)));
-        var bounded = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
+        PluginChildTranscriptPage bounded = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
         Assert.Equal(64, bounded.Entries.Count);
         Assert.NotNull(bounded.Cursor);
         await _AssertTtyChildrenUseOwnedMetadataAsync();

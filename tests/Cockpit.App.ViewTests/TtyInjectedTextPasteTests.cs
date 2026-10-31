@@ -60,7 +60,7 @@ public class TtyInjectedTextPasteTests
             vm.ReturnToParentCommand.Execute(null);
             _InvokeWriteToPty(view, prompt + "\r");
             await _LetPostedWorkRunAsync();
-            var activePty = typeof(TtyView).GetField("_pty", BindingFlags.NonPublic | BindingFlags.Instance);
+            FieldInfo? activePty = typeof(TtyView).GetField("_pty", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(activePty);
             activePty.SetValue(view, new FakePty());
             await Task.Delay(TtyViewModel.AutoSubmitDelay(prompt.Length) + TimeSpan.FromMilliseconds(100));

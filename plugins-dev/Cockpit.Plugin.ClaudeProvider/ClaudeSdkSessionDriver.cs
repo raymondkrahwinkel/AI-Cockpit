@@ -353,7 +353,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         {
             return Task.FromResult(PluginChildTranscriptPage.Unavailable("child does not belong to this owner/run"));
         }
-        var state = ClaudeConfigPaths.ResolveStateDirectory(_config.ConfigDir,
+        string state = ClaudeConfigPaths.ResolveStateDirectory(_config.ConfigDir,
             Environment.GetEnvironmentVariable(ClaudeConfigPaths.EnvironmentVariable), Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         return Task.Run(() => ClaudeChildTranscript.Read(state, cwd, owner, agentId, cursor, cancellationToken), cancellationToken);
     }

@@ -5,33 +5,33 @@ using System.Text.RegularExpressions;
 
 try
 {
-    var target = args.Length == 2 && args[0] == "--environment" ? Environment.GetEnvironmentVariable("COCKPIT_SUBAGENT_FILE") : args.FirstOrDefault();
+    string? target = args.Length == 2 && args[0] == "--environment" ? Environment.GetEnvironmentVariable("COCKPIT_SUBAGENT_FILE") : args.FirstOrDefault();
     if (args.Length != 2 || target is null || !Path.IsPathFullyQualified(target))
     {
         return;
     }
     var input = new char[65536];
-    var count = Console.In.ReadBlock(input, 0, input.Length);
+    int count = Console.In.ReadBlock(input, 0, input.Length);
     if (count == input.Length || JsonNode.Parse(new string(input, 0, count)) is not JsonObject data)
     {
         return;
     }
     string? Text(string key) => data[key]?.GetValueKind() == System.Text.Json.JsonValueKind.String ? data[key]?.GetValue<string>() : null;
-    var agent = Text("agent_id");
-    var owner = Text("session_id");
-    var kind = Text("hook_event_name");
+    string? agent = Text("agent_id");
+    string? owner = Text("session_id");
+    string? kind = Text("hook_event_name");
     if (agent is null || owner is null || !Regex.IsMatch(agent, "^[a-zA-Z0-9_-]{1,128}$")
         || !Regex.IsMatch(owner, "^[a-zA-Z0-9_-]{1,128}$") || kind is not ("SubagentStart" or "SubagentStop"))
     {
         return;
     }
-    var parentPath = Text("transcript_path");
+    string? parentPath = Text("transcript_path");
     if (args[1] == "codex")
     {
         using var parentFile = new FileStream(parentPath ?? "", FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var bytes = new byte[(int)Math.Min(parentFile.Length, 262144)];
         parentFile.ReadExactly(bytes);
-        var end = Array.IndexOf(bytes, (byte)'\n');
+        int end = Array.IndexOf(bytes, (byte)'\n');
         var metadata = end < 0 ? null : JsonNode.Parse(bytes.AsSpan(0, end)) as JsonObject;
         var payload = metadata?["payload"] as JsonObject;
         if (payload?["id"]?.GetValue<string>() != owner || payload?["parent_thread_id"]?.GetValueKind() == System.Text.Json.JsonValueKind.String)
@@ -44,7 +44,7 @@ try
     {
         return;
     }
-    var journal = target;
+    string journal = target;
     using var mutex = new Mutex(false, "cockpit-child-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(journal))));
     var acquired = false;
     try
@@ -70,8 +70,8 @@ try
         snapshot["cwd"] = Text("cwd");
         var entries = snapshot["entries"] as JsonArray ?? new JsonArray();
         snapshot["entries"] = entries;
-        var entry = entries.OfType<JsonObject>().FirstOrDefault(item => item["agent_id"]?.GetValue<string>() == agent);
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        JsonObject? entry = entries.OfType<JsonObject>().FirstOrDefault(item => item["agent_id"]?.GetValue<string>() == agent);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (entry is null)
         {
             entry = new JsonObject { ["agent_id"] = agent, ["revision"] = Guid.NewGuid().ToString("N") };
@@ -95,7 +95,7 @@ try
         entry["observed_at_ms"] = now;
         while (entries.Count > 128)
         {
-            var oldest = entries.OfType<JsonObject>().MinBy(item => item["observed_at_ms"]?.GetValue<long>() ?? 0);
+            JsonObject? oldest = entries.OfType<JsonObject>().MinBy(item => item["observed_at_ms"]?.GetValue<long>() ?? 0);
             entries.Remove(oldest);
         }
         void Save(string path, JsonObject value)
@@ -110,7 +110,7 @@ try
         Save(journal, snapshot);
         if (args[1] == "codex")
         {
-            var status = journal[..^".children.json".Length];
+            string status = journal[..^".children.json".Length];
             Save(status, new JsonObject { ["session_id"] = owner, ["transcript_path"] = Text("transcript_path"), ["cwd"] = Text("cwd") });
         }
     }

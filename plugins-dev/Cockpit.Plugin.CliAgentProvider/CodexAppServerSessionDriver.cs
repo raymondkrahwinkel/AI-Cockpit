@@ -126,14 +126,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         try
         {
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(10));
-            var metadata = await _connection.SendRequestAsync("thread/read", new { threadId = agentId, includeTurns = false }, deadline.Token).ConfigureAwait(false);
+            JsonElement metadata = await _connection.SendRequestAsync("thread/read", new { threadId = agentId, includeTurns = false }, deadline.Token).ConfigureAwait(false);
             if (!metadata.TryGetProperty("thread", out var thread) || _StringOrEmpty(thread, "id") != agentId)
             {
                 return PluginChildTranscriptPage.Unavailable("provider returned a different thread");
             }
-            var page = await _connection.SendRequestAsync("thread/items/list", new { threadId = agentId, cursor, limit = 64, sortDirection = "asc" }, deadline.Token).ConfigureAwait(false);
+            JsonElement page = await _connection.SendRequestAsync("thread/items/list", new { threadId = agentId, cursor, limit = 64, sortDirection = "asc" }, deadline.Token).ConfigureAwait(false);
             var entries = new List<PluginChildTranscriptEntry>();
             if (!page.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
             {
@@ -145,10 +145,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 {
                     continue;
                 }
-                var id = _StringOrEmpty(item, "id");
-                var type = _StringOrEmpty(item, "type");
-                var kind = type switch { "agentMessage" => "assistant", "userMessage" => "user", "reasoning" => "thinking", _ => "tool_result" };
-                var text = type == "agentMessage" ? _StringOrEmpty(item, "text") : item.GetRawText();
+                string id = _StringOrEmpty(item, "id");
+                string type = _StringOrEmpty(item, "type");
+                string kind = type switch { "agentMessage" => "assistant", "userMessage" => "user", "reasoning" => "thinking", _ => "tool_result" };
+                string text = type == "agentMessage" ? _StringOrEmpty(item, "text") : item.GetRawText();
                 entries.Add(new(_StringOrEmpty(record, "turnId") + ":" + id, kind, text.Length > 16384 ? text[..16384] + "\n[Entry truncated]" : text));
             }
             return new(entries, _TryGetString(page, "nextCursor", out var next) ? next : null, entries.Count == 0 ? "No entries" : "Read-only");
@@ -457,7 +457,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "turn/completed":
                 if (isChild)
                 {
-                    var childStatus = _TryGetNestedString(notification.Params, "turn", "status", out var terminal) ? terminal : "unknown";
+                    string childStatus = _TryGetNestedString(notification.Params, "turn", "status", out var terminal) ? terminal : "unknown";
                     _FinishChild(source, childStatus, _TryGetLong(notification.Params, "completedAtMs"));
                 }
                 else
@@ -618,7 +618,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         if (_children.Remove(childId, out var child))
         {
-            var duration = child.StartedAtUnixMilliseconds is >= 0 and { } start && completedAt is { } end && end >= start ? end - start : child.DurationMilliseconds;
+            long? duration = child.StartedAtUnixMilliseconds is >= 0 and { } start && completedAt is { } end && end >= start ? end - start : child.DurationMilliseconds;
             _childHistory[childId] = child with { State = state, DurationMilliseconds = duration };
             _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = childId, Content = "Agent finished", IsError = false });
             _PublishChildren();

@@ -47,7 +47,7 @@ internal static partial class Screenshotter
             sdk.QueuedMessages.Add(new QueuedMessageViewModel(new QueuedPrompt("Existing queued request", []), null, _ => { }));
         }
         owner.ChildAgents[0].OpenCommand.Execute(null);
-        var page = owner.ChildTranscript ?? throw new InvalidOperationException("The fixture must open its child.");
+        ChildTranscriptViewModel page = owner.ChildTranscript ?? throw new InvalidOperationException("The fixture must open its child.");
         page.Status = "";
         page.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "Review the parser change and report the result to the parent."));
         page.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "The parser review is in progress. This is fixture content; no provider turn was started."));
@@ -59,7 +59,7 @@ internal static partial class Screenshotter
     private static void _ExerciseChildSteering(Window window, string action)
     {
         var fixture = window.Tag as SteeringFixture ?? throw new InvalidOperationException("Missing steering fixture.");
-        var owner = fixture.Owner;
+        SessionPanelViewModel owner = fixture.Owner;
         if (action == "stopped" && owner is ChildSteeringOwner stopped)
         {
             stopped.StopForFixture();

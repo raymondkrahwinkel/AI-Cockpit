@@ -58,14 +58,14 @@ public class CodexAppServerSessionDriverTests
         Assert.Single(resumed.Children);
         Assert.Null(resumed.Children[0].RunId);
         await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"child","turn":{"id":"child-resumed-run"}}}""");
-        var resumedTurn = await _NextEventOfTypeAsync<PluginBackgroundTasksChanged>(driver);
+        PluginBackgroundTasksChanged resumedTurn = await _NextEventOfTypeAsync<PluginBackgroundTasksChanged>(driver);
         Assert.Equal("child-resumed-run", Assert.Single(resumedTurn.Tasks).RunId);
         Assert.StartsWith("Not available", (await driver.ReadChildTranscriptAsync("foreign", "r", null)).Status);
-        var history = driver.ReadChildTranscriptAsync("child", resumedTurn.Children[0].RunId, null);
-        var read = await _RespondAsync(fake, "thread/read", """{"thread":{"id":"child"}}""");
+        Task<PluginChildTranscriptPage> history = driver.ReadChildTranscriptAsync("child", resumedTurn.Children[0].RunId, null);
+        JsonElement read = await _RespondAsync(fake, "thread/read", """{"thread":{"id":"child"}}""");
         Assert.Equal("child", read.GetProperty("params").GetProperty("threadId").GetString());
         await _RespondAsync(fake, "thread/items/list", """{"data":[{"turnId":"child-run","item":{"type":"agentMessage","id":"msg","text":"CHILD_HISTORY"}}],"nextCursor":"next"}""");
-        var page = await history;
+        PluginChildTranscriptPage page = await history;
         Assert.Equal("CHILD_HISTORY", Assert.Single(page.Entries).Text);
         Assert.Equal("next", page.Cursor);
         await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"parent","turn":{"status":"interrupted"}}}""");

@@ -25,7 +25,7 @@ internal sealed class SessionTranscriptReader(
         {
             return [];
         }
-        var children = await reader.ReadChildrenAsync(config, statusFile, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<PluginBackgroundTask> children = await reader.ReadChildrenAsync(config, statusFile, cancellationToken).ConfigureAwait(false);
         return [.. children.Select(child => new BackgroundTask(child.TaskId, BackgroundTaskKind.SubAgent, child.Description)
         {
             AgentId = child.AgentId, RunId = child.RunId, SourceRevision = child.SourceRevision,
@@ -42,7 +42,7 @@ internal sealed class SessionTranscriptReader(
         {
             return ChildTranscriptPage.Unavailable("provider has no child reader");
         }
-        var page = await reader.ReadChildTranscriptAsync(config, statusFile, agentId, revision, cursor, cancellationToken).ConfigureAwait(false);
+        PluginChildTranscriptPage page = await reader.ReadChildTranscriptAsync(config, statusFile, agentId, revision, cursor, cancellationToken).ConfigureAwait(false);
         return new([.. page.Entries.Select(entry => new ChildTranscriptEntry(entry.Id, entry.Kind, entry.Text))], page.Cursor, page.Status, page.Reset);
     }
     public IReadOnlySet<string> SnapshotTranscripts(SessionProfile? profile) =>
@@ -139,11 +139,11 @@ internal sealed class SessionTranscriptReader(
         {
             return (create(services), configJson);
         }
-        var key = providerId + ":" + statusFile;
-        var reader = _childReaders.GetOrAdd(key, _ => create(services));
+        string key = providerId + ":" + statusFile;
+        IPluginTranscriptReader reader = _childReaders.GetOrAdd(key, _ => create(services));
         while (_childReaders.Count > 128)
         {
-            var stale = _childReaders.Keys.FirstOrDefault(candidate => candidate != key);
+            string? stale = _childReaders.Keys.FirstOrDefault(candidate => candidate != key);
             if (stale is null)
             {
                 break;

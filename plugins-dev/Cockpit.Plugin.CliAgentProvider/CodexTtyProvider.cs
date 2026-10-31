@@ -52,7 +52,7 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         // line. Claude's TTY provider does the equivalent via --mcp-config; without this the Codex TUI only ever
         // sees its own ~/.codex servers, never the cockpit's. Empty when the session resolved no servers.
         var mcpLaunch = CodexMcpConfig.Build(context.McpServers);
-        var statusFile = Path.Combine(Path.GetTempPath(), "cockpit-codex-" + Guid.NewGuid().ToString("N") + ".json");
+        string statusFile = Path.Combine(Path.GetTempPath(), "cockpit-codex-" + Guid.NewGuid().ToString("N") + ".json");
         if (context.Resume?.SessionId is { Length: > 0 } ownerId)
         {
             File.WriteAllText(statusFile, JsonSerializer.Serialize(new { session_id = ownerId, cwd = context.WorkingDirectory }));
@@ -62,7 +62,7 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
             }
         }
         var environment = new Dictionary<string, string?>(BuildEnvironmentOverlay(config, mcpLaunch.EnvironmentVariables));
-        var hooks = JsonSerializer.SerializeToElement(TtyChildHooks.Settings(statusFile, "codex", environment));
+        JsonElement hooks = JsonSerializer.SerializeToElement(TtyChildHooks.Settings(statusFile, "codex", environment));
         var hookArguments = new List<string>(mcpLaunch.ConfigArgs);
         foreach (var hook in hooks.EnumerateObject())
         {

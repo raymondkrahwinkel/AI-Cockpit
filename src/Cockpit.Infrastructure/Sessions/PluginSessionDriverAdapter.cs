@@ -467,7 +467,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public async Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default)
     {
-        var page = await inner.ReadChildTranscriptAsync(agentId, runId, cursor, cancellationToken).ConfigureAwait(false);
+        PluginChildTranscriptPage page = await inner.ReadChildTranscriptAsync(agentId, runId, cursor, cancellationToken).ConfigureAwait(false);
         return new ChildTranscriptPage([.. page.Entries.Select(entry => new ChildTranscriptEntry(entry.Id, entry.Kind, entry.Text))], page.Cursor, page.Status, page.Reset);
     }
 

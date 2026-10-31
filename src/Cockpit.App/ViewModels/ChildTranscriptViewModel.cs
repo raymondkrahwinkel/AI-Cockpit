@@ -85,9 +85,9 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
             SteeringStatus = SteeringExplanation;
             return;
         }
-        var name = JsonSerializer.Serialize(_reference.Description ?? Child.Title);
-        var agent = JsonSerializer.Serialize(_reference.AgentId ?? _reference.TaskId);
-        var run = JsonSerializer.Serialize(_reference.RunId ?? "unknown");
+        string name = JsonSerializer.Serialize(_reference.Description ?? Child.Title);
+        string agent = JsonSerializer.Serialize(_reference.AgentId ?? _reference.TaskId);
+        string run = JsonSerializer.Serialize(_reference.RunId ?? "unknown");
         var request = $"Request to parent about sub-agent {name}\nProvider agent/thread: {agent}\nRun: {run}\n\n"
             + "Please steer this exact child with the following request:\n[Write your request here.]\n\n"
             + "If this child or run is unavailable or cannot resume, explain that. Do not choose another child or start a replacement. Do not retry automatically after uncertain delivery.";
@@ -128,8 +128,8 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
     {
         try
         {
-            var reference = _reference;
-            var page = await _read(reference, _cursor, _lifetime.Token);
+            BackgroundTask reference = _reference;
+            ChildTranscriptPage page = await _read(reference, _cursor, _lifetime.Token);
             if (_lifetime.IsCancellationRequested)
             {
                 return;
@@ -145,7 +145,7 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
                 {
                     continue;
                 }
-                var kind = entry.Kind switch
+                TranscriptEntryKind kind = entry.Kind switch
                 {
                     "assistant" => TranscriptEntryKind.AssistantText,
                     "user" => TranscriptEntryKind.UserText,

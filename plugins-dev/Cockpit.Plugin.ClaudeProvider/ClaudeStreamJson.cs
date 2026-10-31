@@ -143,7 +143,7 @@ internal sealed class ClaudeStreamJson
 
     private static long? _UsageMetric(JsonElement root, string name)
     {
-        var source = root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object ? usage : root;
+        JsonElement source = root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object ? usage : root;
         return source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
             && value.TryGetInt64(out var duration) && duration >= 0 ? duration : null;
     }
@@ -234,7 +234,7 @@ internal sealed class ClaudeStreamJson
             yield break;
         }
 
-        var known = current ?? _history.GetValueOrDefault(id);
+        PluginBackgroundTask? known = current ?? _history.GetValueOrDefault(id);
         if (known?.RunId is { } knownRun && run is not null && knownRun != run)
         {
             yield break;

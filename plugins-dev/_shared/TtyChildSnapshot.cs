@@ -4,8 +4,6 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugins.Shared;
 
-internal sealed record TtyChildSource(PluginBackgroundTask Task, string Path, string OwnerId, string WorkingDirectory);
-
 internal sealed class TtyChildSnapshot
 {
     private readonly Lock _gate = new();
@@ -17,12 +15,12 @@ internal sealed class TtyChildSnapshot
     {
         lock (_gate)
         {
-            var source = Read(root, status, codex).FirstOrDefault(source => source.Task.AgentId == agent && source.Task.SourceRevision == revision);
+            TtyChildSource? source = Read(root, status, codex).FirstOrDefault(source => source.Task.AgentId == agent && source.Task.SourceRevision == revision);
             if (source is null)
             {
                 return PluginChildTranscriptPage.Unavailable("child source or revision changed");
             }
-            var page = JsonlChildTranscript.Read(source.Path, agent, source.OwnerId, cursor, cancellationToken);
+            PluginChildTranscriptPage page = JsonlChildTranscript.Read(source.Path, agent, source.OwnerId, cursor, cancellationToken);
             return Read(root, status, codex).Any(current => current.Task.AgentId == agent && current.Task.SourceRevision == revision)
                 ? page : PluginChildTranscriptPage.Unavailable("child source or revision changed during read");
         }
@@ -50,19 +48,19 @@ internal sealed class TtyChildSnapshot
         {
             return [];
         }
-        using var ownerDocument = _Json(status);
-        using var journalDocument = _Json(TtyChildHooks.Journal(status));
-        var ownerData = ownerDocument?.RootElement ?? journalDocument?.RootElement ?? default;
-        var parentPath = Text(ownerData, "transcript_path");
-        var owner = Text(ownerData, "session_id") ?? (parentPath is null ? null : Path.GetFileNameWithoutExtension(parentPath));
-        var codexPaths = codex && Directory.Exists(Path.Combine(root, "sessions"))
+        using JsonDocument? ownerDocument = _Json(status);
+        using JsonDocument? journalDocument = _Json(TtyChildHooks.Journal(status));
+        JsonElement ownerData = ownerDocument?.RootElement ?? journalDocument?.RootElement ?? default;
+        string? parentPath = Text(ownerData, "transcript_path");
+        string? owner = Text(ownerData, "session_id") ?? (parentPath is null ? null : Path.GetFileNameWithoutExtension(parentPath));
+        string[] codexPaths = codex && Directory.Exists(Path.Combine(root, "sessions"))
             ? Directory.EnumerateFiles(Path.Combine(root, "sessions"), "rollout-*.jsonl", new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true }).OrderByDescending(File.GetLastWriteTimeUtc).Take(256).ToArray()
             : [];
         if (codex && parentPath is null && owner is not null)
         {
             foreach (var candidate in codexPaths.Where(path => SafePath(path, root)))
             {
-                using var metadata = FirstRecord(candidate);
+                using JsonDocument? metadata = FirstRecord(candidate);
                 if (metadata?.RootElement.TryGetProperty("payload", out var payload) == true && Text(payload, "id") == owner && Text(payload, "parent_thread_id") is null)
                 {
                     parentPath = candidate;
@@ -74,7 +72,7 @@ internal sealed class TtyChildSnapshot
         {
             return [];
         }
-        using var parentRecord = FirstRecord(parentPath);
+        using JsonDocument? parentRecord = FirstRecord(parentPath);
         if (codex && (parentRecord?.RootElement.TryGetProperty("payload", out var parentPayload) != true || Text(parentPayload, "id") != owner || Text(parentPayload, "parent_thread_id") is not null))
         {
             return [];
@@ -88,7 +86,7 @@ internal sealed class TtyChildSnapshot
             _ledger.Clear();
             _owner = owner;
         }
-        var journal = journalDocument?.RootElement ?? default;
+        JsonElement journal = journalDocument?.RootElement ?? default;
         var entries = new Dictionary<string, JsonElement>();
         if (Text(journal, "session_id") == owner && journal.TryGetProperty("entries", out var list) && list.ValueKind == JsonValueKind.Array)
         {
@@ -103,7 +101,7 @@ internal sealed class TtyChildSnapshot
         var paths = new Dictionary<string, string>();
         if (!codex)
         {
-            var directory = Path.Combine(Path.GetDirectoryName(parentPath) ?? "", owner, "subagents");
+            string directory = Path.Combine(Path.GetDirectoryName(parentPath) ?? "", owner, "subagents");
             if (Directory.Exists(directory) && SafePath(directory, root))
             {
                 foreach (var meta in Directory.EnumerateFiles(directory, "agent-*.meta.json").OrderByDescending(File.GetLastWriteTimeUtc).Take(128))
@@ -118,7 +116,7 @@ internal sealed class TtyChildSnapshot
         }
         else
         {
-            var sessions = Path.Combine(root, "sessions");
+            string sessions = Path.Combine(root, "sessions");
             if (Directory.Exists(sessions))
             {
                 foreach (var path in codexPaths)
@@ -127,7 +125,7 @@ internal sealed class TtyChildSnapshot
                     {
                         continue;
                     }
-                    using var record = FirstRecord(path);
+                    using JsonDocument? record = FirstRecord(path);
                     if (record?.RootElement.TryGetProperty("payload", out var payload) == true && Text(payload, "parent_thread_id") == owner && Text(payload, "id") is { } id)
                     {
                         paths[id] = path;
@@ -138,29 +136,29 @@ internal sealed class TtyChildSnapshot
         var sources = new List<TtyChildSource>();
         foreach (var pair in paths.Take(128))
         {
-            var id = pair.Key;
-            var path = pair.Value;
+            string id = pair.Key;
+            string path = pair.Value;
             if (!Regex.IsMatch(id, "^[a-zA-Z0-9_-]{1,128}$") || !SafePath(path, root))
             {
                 continue;
             }
-            using var record = FirstRecord(path);
-            var first = record?.RootElement ?? default;
+            using JsonDocument? record = FirstRecord(path);
+            JsonElement first = record?.RootElement ?? default;
             if (!codex && (Text(first, "agentId") != id || Text(first, "sessionId") != owner || !Flag(first, "isSidechain")))
             {
                 continue;
             }
             entries.TryGetValue(id, out var observed);
-            using var metaDocument = codex ? null : _Json(path[..^6] + ".meta.json");
-            var meta = metaDocument?.RootElement ?? default;
-            var start = Number(observed, "started_at_ms");
-            var stop = Number(observed, "stopped_at_ms");
-            var finished = !codex && Flag(meta, "finished") && (start is null || new DateTimeOffset(File.GetLastWriteTimeUtc(path[..^6] + ".meta.json")).ToUnixTimeMilliseconds() >= start);
+            using JsonDocument? metaDocument = codex ? null : _Json(path[..^6] + ".meta.json");
+            JsonElement meta = metaDocument?.RootElement ?? default;
+            long? start = Number(observed, "started_at_ms");
+            long? stop = Number(observed, "stopped_at_ms");
+            bool finished = !codex && Flag(meta, "finished") && (start is null || new DateTimeOffset(File.GetLastWriteTimeUtc(path[..^6] + ".meta.json")).ToUnixTimeMilliseconds() >= start);
             if (codex)
             {
                 finished = _CodexFinished(path) && (start is null || new DateTimeOffset(File.GetLastWriteTimeUtc(path)).ToUnixTimeMilliseconds() >= start);
             }
-            var state = finished ? "completed" : start is not null && stop is null ? "running" : "unknown";
+            string state = finished ? "completed" : start is not null && stop is null ? "running" : "unknown";
             var task = new PluginBackgroundTask(id, PluginBackgroundTaskKind.SubAgent, Text(meta, "description") ?? id)
             {
                 AgentId = id, ParentTaskId = owner, ParentToolUseId = Text(meta, "toolUseId"), State = state,
@@ -172,7 +170,7 @@ internal sealed class TtyChildSnapshot
             _ledger.Remember(task);
             sources.Add(new(task, path, owner, Text(ownerData, "cwd") ?? Path.GetDirectoryName(parentPath) ?? ""));
         }
-        var snapshot = _ledger.Snapshot([.. sources.Where(source => source.Task.State == "running").Select(source => source.Task)]);
+        IReadOnlyList<PluginBackgroundTask> snapshot = _ledger.Snapshot([.. sources.Where(source => source.Task.State == "running").Select(source => source.Task)]);
         _sources = [.. sources.Select(source => source with { Task = snapshot.First(task => task.TaskId == source.Task.TaskId) })];
         return _sources;
     }
@@ -182,17 +180,17 @@ internal sealed class TtyChildSnapshot
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         file.Position = Math.Max(0, file.Length - 65536);
         using var reader = new StreamReader(file);
-        var tail = reader.ReadToEnd();
+        string tail = reader.ReadToEnd();
         var finished = false;
         foreach (var line in tail.Split('\n').Skip(file.Length > 65536 ? 1 : 0).SkipLast(1))
         {
             try
             {
-                using var document = JsonDocument.Parse(line);
-                var value = document.RootElement;
+                using JsonDocument document = JsonDocument.Parse(line);
+                JsonElement value = document.RootElement;
                 if (Text(value, "type") == "event_msg" && value.TryGetProperty("payload", out var payload))
                 {
-                    var type = Text(payload, "type");
+                    string? type = Text(payload, "type");
                     if (type is "task_started" or "task_complete" or "turn_complete")
                     {
                         finished = type != "task_started";
@@ -209,8 +207,8 @@ internal sealed class TtyChildSnapshot
         {
             return false;
         }
-        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var full = Path.GetFullPath(path);
+        string fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string full = Path.GetFullPath(path);
         if (!full.StartsWith(fullRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
         {
             return false;
@@ -235,7 +233,7 @@ internal sealed class TtyChildSnapshot
         using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         var buffer = new byte[(int)Math.Min(file.Length, 262144)];
         file.ReadExactly(buffer);
-        var end = Array.IndexOf(buffer, (byte)'\n');
+        int end = Array.IndexOf(buffer, (byte)'\n');
         return end < 0 ? null : JsonDocument.Parse(buffer.AsMemory(0, end));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)

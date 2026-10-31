@@ -22,7 +22,7 @@ internal sealed class ProviderChildLedger
     }
     public IReadOnlyList<PluginBackgroundTask> Snapshot(IReadOnlyList<PluginBackgroundTask> active)
     {
-        var ids = active.Select(child => child.TaskId).ToHashSet();
+        HashSet<string> ids = active.Select(child => child.TaskId).ToHashSet();
         foreach (var old in _known.Values.ToArray())
         {
             if (!ids.Contains(old.TaskId) && old.State == "running")
@@ -36,7 +36,7 @@ internal sealed class ProviderChildLedger
         }
         while (_known.Count > 128)
         {
-            var oldest = _known.Values.Where(child => !ids.Contains(child.TaskId)).MinBy(child => _order[child.TaskId]);
+            PluginBackgroundTask? oldest = _known.Values.Where(child => !ids.Contains(child.TaskId)).MinBy(child => _order[child.TaskId]);
             if (oldest is null)
             {
                 break;

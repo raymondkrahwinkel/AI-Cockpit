@@ -46,7 +46,7 @@ internal static partial class Screenshotter
     private static Window _ChildHistoryScene(string state)
     {
         var cockpit = new CockpitViewModel { GlobalSingleSessionLayout = true, SidebarWidth = 260 };
-        var owners = cockpit.Sessions.OfType<SessionViewModel>().Take(2).ToArray();
+        SessionViewModel[] owners = cockpit.Sessions.OfType<SessionViewModel>().Take(2).ToArray();
         foreach (var owner in owners)
         {
             var running = new BackgroundTask("running-id", BackgroundTaskKind.SubAgent, "Review the parser change")

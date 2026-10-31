@@ -204,13 +204,13 @@ public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisp
         });
         OpenChildCommand = new AsyncRelayCommand<ChildAgentViewModel>(async child =>
         {
-            var owner = _Owner;
+            SessionPanelViewModel? owner = _Owner;
             if (child is null || owner is null || !ReferenceEquals(child.Owner, owner) || !owner.ChildAgents.Contains(child))
             {
                 return;
             }
-            var run = child.Reference.RunId;
-            var revision = child.Reference.SourceRevision;
+            string? run = child.Reference.RunId;
+            string? revision = child.Reference.SourceRevision;
             await OpenCommand.ExecuteAsync(null);
             if (ReferenceEquals(owner, _Owner) && owner.ChildAgents.Contains(child)
                 && run == child.Reference.RunId && revision == child.Reference.SourceRevision)
@@ -229,8 +229,8 @@ public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisp
     {
         get
         {
-            var running = Children.Count(child => child.Reference.State == "running");
-            var unknown = Children.Count(child => child.Reference.State == "unknown");
+            int running = Children.Count(child => child.Reference.State == "running");
+            int unknown = Children.Count(child => child.Reference.State == "unknown");
             return $"{running} running · {Children.Count - running - unknown} other · {unknown} unknown";
         }
     }

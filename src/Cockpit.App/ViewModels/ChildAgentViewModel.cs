@@ -28,7 +28,7 @@ public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundT
     {
         get
         {
-            var milliseconds = _reference.State == "running" && _reference.StartedAtUnixMilliseconds is { } start && start >= 0
+            long? milliseconds = _reference.State == "running" && _reference.StartedAtUnixMilliseconds is { } start && start >= 0
                 ? Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - start) : _reference.DurationMilliseconds;
             return milliseconds is >= 0 ? $"{milliseconds.Value / 60000}:{milliseconds.Value / 1000 % 60:00}" : "unknown";
         }

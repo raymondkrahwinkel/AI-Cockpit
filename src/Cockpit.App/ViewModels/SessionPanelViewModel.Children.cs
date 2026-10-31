@@ -81,7 +81,7 @@ public abstract partial class SessionPanelViewModel
         }
         foreach (var child in children)
         {
-            var row = ChildAgents.FirstOrDefault(row => (row.Reference.AgentId ?? row.Reference.TaskId) == (child.AgentId ?? child.TaskId));
+            ChildAgentViewModel? row = ChildAgents.FirstOrDefault(row => (row.Reference.AgentId ?? row.Reference.TaskId) == (child.AgentId ?? child.TaskId));
             if (row is null)
             {
                 ChildAgents.Add(new ChildAgentViewModel(this, child));
