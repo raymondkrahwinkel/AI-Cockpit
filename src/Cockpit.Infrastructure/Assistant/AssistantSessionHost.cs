@@ -584,7 +584,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 consentCardAsks: !settings.ConsentBypassAll,
                 orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true),
                 // AC-1994: the slot's brain, resolved the way every other start resolves one; the assistant has no project.
-                brainInstruction: SessionStartDefaults.ResolveBrainInstruction(null, profile, _memorySources?.Sources.ToMemorySources())),
+                brainInstruction: SessionStartDefaults.ResolveBrainInstruction(null, profile with { Assistant = null }, _memorySources?.Sources.ToMemorySources())),
             settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
