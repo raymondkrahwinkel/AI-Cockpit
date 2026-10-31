@@ -578,13 +578,13 @@ internal static class ProfileEndpoints
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                result = ProjectMemorySourceLocationsResult.Failed(BrainsListRefusal);
+                result = ProjectMemorySourceLocationsResult.Failed(exception.Message);
             }
 
             listed.Add(result.Outcome == ProjectMemorySourceLocationsOutcome.Success
                 ? new RemoteBrainSource(source.Scheme, source.Title, source.InstanceTitle, [.. result.Locations.Select(brain => new RemoteBrainSource.Brain(brain.Value, brain.Name, brain.Detail))], null)
                 : new RemoteBrainSource(source.Scheme, source.Title, source.InstanceTitle, [],
-                    result.Outcome == ProjectMemorySourceLocationsOutcome.AuthorizationRequired ? BrainsSignInRefusal : BrainsListRefusal));
+                    result.Outcome == ProjectMemorySourceLocationsOutcome.AuthorizationRequired ? BrainsSignInRefusal : result.Error));
         }
 
         return listed;
