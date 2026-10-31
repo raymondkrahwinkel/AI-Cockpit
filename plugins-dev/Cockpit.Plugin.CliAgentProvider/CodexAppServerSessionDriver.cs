@@ -676,6 +676,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             Model = _model,
             Quota = quota,
+            Profile = _config.ProfileKey,
         });
 
     private static bool _IsRateLimitRefusal(JsonElement parameters) =>

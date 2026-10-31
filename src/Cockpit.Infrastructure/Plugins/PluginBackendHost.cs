@@ -497,7 +497,7 @@ public class PluginBackendHost(
         };
         if (value is { } measured)
         {
-            services.GetService<IModelObservationStore>()?.Record(new ModelObservation(observation.ProviderId, observation.Model, Enum.Parse<ModelObservationKind>(observation.Kind.ToString()), observation.At, measured, observation.Quota?.Label));
+            services.GetService<IModelObservationStore>()?.Record(new ModelObservation(observation.ProviderId, observation.Model, Enum.Parse<ModelObservationKind>(observation.Kind.ToString()), observation.At, measured, observation.Quota?.Label, observation.Profile));
         }
     }
 

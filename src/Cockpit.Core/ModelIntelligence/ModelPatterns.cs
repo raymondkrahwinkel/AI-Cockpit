@@ -20,7 +20,8 @@ public sealed record DerivedPattern(
     int N,
     double Confidence,
     DateTimeOffset From,
-    DateTimeOffset To);
+    DateTimeOffset To,
+    string? Profile = null);
 
 // AC-1812: patterns from our own measurements. No window or threshold is fixed: hour-of-week buckets with too few samples
 // are left out, the rest are split into high and low by the best two-group split of their own values, and a metric with
@@ -35,9 +36,16 @@ public static class ModelPatterns
             var ordered = group.OrderBy(observation => observation.At).ToArray();
             foreach (var metric in Enum.GetValues<ModelPatternMetric>())
             {
-                if (_Derive(group.Key.Provider, group.Key.Model, metric, _Points(ordered, metric), zone, minimumSamples) is { } pattern)
+                // AC-1982: quota is per profile (rows without one do not count); refusals and latency stay per provider/model.
+                var scopes = metric == ModelPatternMetric.QuotaDrainPercentPerHour
+                    ? ordered.Where(observation => observation.Kind == ModelObservationKind.QuotaReading && observation.Profile is not null).GroupBy(observation => observation.Profile).Select(profile => (profile.Key, Rows: profile.ToArray()))
+                    : [((string?)null, ordered)];
+                foreach (var (profile, rows) in scopes)
                 {
-                    result.Add(pattern);
+                    if (_Derive(group.Key.Provider, group.Key.Model, metric, _Points(rows, metric), zone, minimumSamples, profile) is { } pattern)
+                    {
+                        result.Add(pattern);
+                    }
                 }
             }
         }
@@ -76,7 +84,7 @@ public static class ModelPatterns
         }
     }
 
-    private static DerivedPattern? _Derive(string provider, string? model, ModelPatternMetric metric, List<(DateTimeOffset At, double Value)> points, TimeZoneInfo zone, int minimumSamples)
+    private static DerivedPattern? _Derive(string provider, string? model, ModelPatternMetric metric, List<(DateTimeOffset At, double Value)> points, TimeZoneInfo zone, int minimumSamples, string? profile)
     {
         var buckets = points
             .GroupBy(point => { var local = TimeZoneInfo.ConvertTime(point.At, zone); return (local.DayOfWeek, local.Hour); })
@@ -109,7 +117,7 @@ public static class ModelPatterns
 
         // Shrinks towards 0 while the data is thin, and by how cleanly high and low separate.
         var confidence = used / (double)(used + minimumSamples) * explained;
-        return new DerivedPattern(provider, model, metric, zone.Id, peaks, used, confidence, points.Min(point => point.At), points.Max(point => point.At));
+        return new DerivedPattern(provider, model, metric, zone.Id, peaks, used, confidence, points.Min(point => point.At), points.Max(point => point.At), profile);
     }
 
     private static IEnumerable<(DayOfWeek Day, int Start, int End)> _Runs(DayOfWeek day, (DayOfWeek DayOfWeek, int Hour, int N, double Value)[] hours)

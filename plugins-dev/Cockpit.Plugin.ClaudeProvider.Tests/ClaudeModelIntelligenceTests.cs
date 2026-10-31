@@ -5,42 +5,31 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
 public class ClaudeModelIntelligenceTests
 {
-    public static IEnumerable<object[]> QuotaCases =>
-    [
-        [false],
-        [true],
-    ];
-
-    [Theory]
-    [MemberData(nameof(QuotaCases))]
-    public void QuotaStateAndObservations_KeepUnknownDistinctFromALiveRateLimitReading(bool reportsRateLimit)
+    [Fact]
+    public void Read_KeepsEachProfilesQuotaApartAndNeverLendsOneToAnother()
     {
         var observations = new List<PluginModelObservation>();
         var intelligence = new ClaudeModelIntelligence();
-        var usage = new ClaudeSdkUsage(intelligence, observations.Add);
+        var keyA = ClaudeConfigPaths.ProfileKey(Path.Combine(Path.GetTempPath(), "profile-a"), Path.GetTempPath());
+        var keyB = ClaudeConfigPaths.ProfileKey(Path.Combine(Path.GetTempPath(), "profile-b"), Path.GetTempPath());
+        var sdkUsageB = new ClaudeSdkUsage(intelligence, observations.Add, keyB);
+        PluginRateLimitWindow Window(double used) => new("5h", used, null, null);
 
-        if (reportsRateLimit)
+        intelligence.ObserveWindows([Window(10)], "test", DateTimeOffset.UtcNow, observations.Add, profile: keyA);
+        using (var document = JsonDocument.Parse("""
+            {"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","utilization":1,"resetsAt":1785574800}}
+            """))
         {
-            using var document = JsonDocument.Parse("""
-                {"type":"rate_limit_event","rate_limit_info":{"status":"rejected","rateLimitType":"five_hour","utilization":1,"resetsAt":1785574800}}
-                """);
-            usage.Observe(document.RootElement);
+            sdkUsageB.Observe(document.RootElement);
         }
+        intelligence.ObserveWindows([Window(20)], "test", DateTimeOffset.UtcNow, observations.Add, profile: keyA);
 
-        var quota = intelligence.Read().Quota;
-        var asOf = quota.SingleOrDefault()?.Source.AsOf;
-
-        if (!reportsRateLimit)
-        {
-            Assert.Empty(quota);
-            Assert.Null(asOf);
-            Assert.Empty(observations);
-            return;
-        }
-
-        Assert.Equal(100d, Assert.Single(quota).Window.UsedPercent, precision: 10);
-        Assert.NotNull(asOf);
-        var refusal = Assert.Single(observations, observation => observation.Kind == PluginModelObservationKind.RateLimitRefusal);
-        Assert.NotEqual(default, refusal.At);
+        Assert.NotEqual(keyA, keyB);
+        Assert.Equal(20d, Assert.Single(intelligence.Read(keyA).Quota).Window.UsedPercent);
+        Assert.Equal(keyA, intelligence.Read(keyA).Profile);
+        Assert.Equal(100d, Assert.Single(intelligence.Read(keyB).Quota).Window.UsedPercent, precision: 10);
+        Assert.Empty(intelligence.Read(Path.Combine(Path.GetTempPath(), "never-seen")).Quota);
+        Assert.Equal(keyB, Assert.Single(observations, observation => observation.Kind == PluginModelObservationKind.RateLimitRefusal).Profile);
+        Assert.Equal([keyA, keyB, keyA], observations.Where(observation => observation.Kind == PluginModelObservationKind.QuotaReading).Select(observation => observation.Profile));
     }
 }

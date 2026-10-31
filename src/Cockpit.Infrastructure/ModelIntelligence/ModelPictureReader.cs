@@ -127,7 +127,8 @@ internal sealed class ModelPictureReader(
 
         // Our own measurements of this model; a pattern without a model speaks for the whole provider.
         var own = derived
-            .Where(pattern => string.Equals(pattern.Provider, providerName, StringComparison.OrdinalIgnoreCase) && (pattern.Model is null || pattern.Model == model))
+            .Where(pattern => string.Equals(pattern.Provider, providerName, StringComparison.OrdinalIgnoreCase) && (pattern.Model is null || pattern.Model == model)
+                && (pattern.Metric != ModelPatternMetric.QuotaDrainPercentPerHour || (reading?.Profile is { } key && pattern.Profile == key)))
             .Select(pattern => new ModelDerivedFact(pattern, new Sourced("own measurement", pattern.To, ModelObservationDefaults.Retention)))
             .ToArray();
 
