@@ -400,6 +400,8 @@ public class SecretProtectionTests : IDisposable
     {
         private readonly Dictionary<string, byte[]> _keys = [];
 
+        public string? LastFailure => null;
+
         public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
         public Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default)

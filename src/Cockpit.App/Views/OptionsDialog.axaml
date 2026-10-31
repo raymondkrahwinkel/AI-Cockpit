@@ -1241,6 +1241,9 @@
                                       IsChecked="{Binding Security.HelloEnabled, Mode=OneWay}" Command="{Binding Security.ToggleHelloCommand}"/>
                             <TextBlock Text="{Binding Security.HelloStatus}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBlock Text="{Binding Security.HelloError}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
+                                       IsVisible="{Binding Security.HelloError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="2. TERMINAL ACCESS"/>

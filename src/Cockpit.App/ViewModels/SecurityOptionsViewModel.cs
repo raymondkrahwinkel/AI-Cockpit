@@ -1472,6 +1472,10 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _helloStatus = "";
 
+    // Why turning Hello on or off did not go through, shown under the checkbox; empty when it did.
+    [ObservableProperty]
+    private string _helloError = "";
+
     // Called when the Options window opens and hands over its signer; only the Hello row is read again.
     [RelayCommand]
     private async Task RefreshHelloAsync() =>
@@ -1520,17 +1524,27 @@ public sealed partial class SecurityOptionsViewModel(
             return;
         }
 
-        Status = null;
+        HelloError = "";
         try
         {
             if (!await protection.EnableHelloAsync(password, signer).ConfigureAwait(true))
             {
-                Status = "Windows Hello was not turned on: the Windows prompt was cancelled.";
+                HelloError = $"Windows Hello was not turned on: {signer.LastFailure ?? "the Windows prompt was cancelled"}.";
             }
         }
         catch (SecretProtectionException exception)
         {
-            Status = exception.Message;
+            HelloError = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            Logging.LifecycleLog.Write($"Turning Windows Hello on failed: {exception}");
+            HelloError = "Windows Hello was not turned on: something went wrong; the cockpit log has the details.";
+        }
+
+        if (HelloError.Length > 0)
+        {
+            Logging.LifecycleLog.Write(HelloError);
         }
 
         await RefreshAsync().ConfigureAwait(true);

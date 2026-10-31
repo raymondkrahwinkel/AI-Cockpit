@@ -132,7 +132,13 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
         Notice = null;
         try
         {
-            switch (await protection.UnlockWithHelloAsync(signer, hello.Token).ConfigureAwait(true))
+            var result = await protection.UnlockWithHelloAsync(signer, hello.Token).ConfigureAwait(true);
+            if (result is not HelloUnlockResult.Unlocked)
+            {
+                LifecycleLog.Write($"Unlock with Windows Hello: {result} ({signer.LastFailure ?? "no reason given"})");
+            }
+
+            switch (result)
             {
                 case HelloUnlockResult.Unlocked:
                     LifecycleLog.Write("Unlocked with Windows Hello; no password key derivation ran.");

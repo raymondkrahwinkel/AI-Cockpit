@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Avalonia.Controls;
+using Cockpit.App.Logging;
 using Cockpit.Core.Abstractions.Secrets;
 
 namespace Cockpit.App.Services;
@@ -21,11 +22,13 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
     // Answered once per run: the OS and its Hello setup do not change while the cockpit is open.
     private static Task<bool>? _available;
 
+    public string? LastFailure { get; private set; }
+
     public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) =>
         _available ??= _IsAvailableAsync();
 
     public async Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["create", name, _owner], cancellationToken).ConfigureAwait(false) switch
+        _Note("create", await _RunAsync(["create", name, _owner], cancellationToken).ConfigureAwait(false)) switch
         {
             "ok tpm" => SecretKeyStorage.Hardware,
             "ok software" => SecretKeyStorage.Software,
@@ -33,16 +36,39 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
         };
 
     public async Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["exists", name], cancellationToken, NoPromptTimeout).ConfigureAwait(false) == "ok";
+        _Note("exists", await _RunAsync(["exists", name], cancellationToken, NoPromptTimeout).ConfigureAwait(false)) == "ok";
 
     public async Task<byte[]?> SignAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
     {
         var line = await _RunAsync(["sign", name, _owner, Convert.ToBase64String(challenge)], cancellationToken).ConfigureAwait(false);
+        _Note("sign", line is { } answer && answer.StartsWith("ok ", StringComparison.Ordinal) ? "ok" : line);
         return line is { } ok && ok.StartsWith("ok ", StringComparison.Ordinal) ? Convert.FromBase64String(ok[3..]) : null;
     }
 
     public async Task DeleteAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["delete", name], cancellationToken, NoPromptTimeout).ConfigureAwait(false);
+        _Note("delete", await _RunAsync(["delete", name], cancellationToken, NoPromptTimeout).ConfigureAwait(false));
+
+    // Every answer that is not a success is logged and kept as the reason the operator is shown. The signature
+    // itself never passes through here: `sign` hands only "ok" or the failure.
+    private string? _Note(string verb, string? answer)
+    {
+        if (answer is not null && answer.StartsWith("ok", StringComparison.Ordinal))
+        {
+            LastFailure = null;
+            return answer;
+        }
+
+        LastFailure = answer switch
+        {
+            null => "the Windows Hello helper did not answer",
+            "UserCanceled" => "the Windows prompt was cancelled",
+            "NotFound" => "the Windows Hello key is not on this computer",
+            _ when answer.StartsWith("error ", StringComparison.Ordinal) => $"Windows refused it ({answer[6..]})",
+            _ => $"Windows Hello answered {answer}",
+        };
+        LifecycleLog.Write($"Windows Hello {verb}: {LastFailure}");
+        return answer;
+    }
 
     private static async Task<bool> _IsAvailableAsync() =>
         OperatingSystem.IsWindows() && File.Exists(HelperPath)

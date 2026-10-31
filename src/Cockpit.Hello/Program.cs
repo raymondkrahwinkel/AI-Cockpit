@@ -49,7 +49,15 @@ try
             return 0;
 
         case ["delete", var name]:
-            await KeyCredentialManager.DeleteAsync(name);
+            try
+            {
+                await KeyCredentialManager.DeleteAsync(name);
+            }
+            catch (System.Runtime.InteropServices.COMException exception) when (exception.HResult == unchecked((int)0x8009000D))
+            {
+                // NTE_BAD_KEYSET: the key is already gone, which is what delete was for.
+            }
+
             Console.WriteLine("ok");
             return 0;
 
@@ -61,7 +69,7 @@ try
 catch (Exception exception)
 {
     // DeleteAsync on a key that is gone, an older Windows build, a remote session: the cockpit falls back to the password.
-    Console.WriteLine("error " + exception.GetType().Name);
+    Console.WriteLine($"error {exception.GetType().Name} 0x{exception.HResult:X8} {exception.Message.ReplaceLineEndings(" ")}");
     return 1;
 }
 

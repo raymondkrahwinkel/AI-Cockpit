@@ -393,8 +393,9 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
     }
 
     // One OS key per state root, so a second cockpit (another state root) on the same account cannot overwrite it.
+    // No "/" or "\": Windows refuses such a name with NTE_INVALID_PARAMETER before any prompt (measured, AC-1879).
     internal static string HelloCredentialName(string configFilePath) =>
-        "AI-Cockpit/" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(configFilePath).ToUpperInvariant())))[..16];
+        "AI-Cockpit-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(configFilePath).ToUpperInvariant())))[..16];
 
     private static byte[] HelloKek(byte[] signature, byte[] challenge) =>
         HKDF.DeriveKey(HashAlgorithmName.SHA256, signature, 32, challenge, "cockpit-hello-v1"u8.ToArray());

@@ -6,6 +6,9 @@ namespace Cockpit.Core.Abstractions.Secrets;
 /// </summary>
 public interface ISecretKeySigner
 {
+    /// <summary>Why the last call did not succeed, in words for the operator; null after a success.</summary>
+    string? LastFailure { get; }
+
     /// <summary>Whether this machine can hold such a key at all (OS version, Hello set up, no remote session).</summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
 
