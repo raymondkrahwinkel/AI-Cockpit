@@ -15,6 +15,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Infrastructure.Swarm;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -256,6 +257,12 @@ internal sealed class CockpitMcpEndpointHost
             if (connectKeys is not null)
             {
                 BackendApiRoutes.Map(app, _services);
+                if (_services.GetService<SwarmNetworkPolicy>() is not null
+                    && _services.GetService<SwarmMembershipStore>() is not null)
+                {
+                    SwarmSessionEventsEndpoint.Map(app, _services);
+                    SwarmAssistantRelay.Map(app, _services);
+                }
             }
 
             _apps.Add(app);

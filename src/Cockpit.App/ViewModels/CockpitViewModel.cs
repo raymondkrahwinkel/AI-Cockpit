@@ -3237,6 +3237,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Workspaces = new WorkspacesViewModel(null, workspaceTypes: workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
+        _WireWaitingSessions();
 
         if (withSamples)
         {
@@ -3270,6 +3271,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.
     public SecurityOptionsViewModel Security { get; init; }
+
+    public SwarmOptionsViewModel Swarm { get; init; } = new();
 
     // The Options → Voice "Assistant" block (AC-543): the master switch, the Assistant Profile slot, the hotkey, and
     // read-replies-aloud.
@@ -3456,6 +3459,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IOrgPolicy? orgPolicy = null,
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
         IModelIntelligenceOptions? modelIntelligenceOptions = null,
+        Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
         // AC-1943: pauses and disconnects of the paired nodes; absent in the design-time/unit-test graph.
         INodeLinkGate? nodeLinkGate = null)
     {
@@ -3467,6 +3472,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
         _WireWorkspaceVisibility();
         _MirrorSessionsIntoGrid();
+        _WireWaitingSessions();
 
         // AC-951: the dock rail's tab strip reads `DockPanels` off the registry directly; the panel registered here is
         // host-internal, so — unlike the widget/workspace-type registries above — there is no late-arriving plugin to
@@ -3497,12 +3503,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             nodeSessionsClient,
             nodeInboxRelay,
             // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
-            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session),
+            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session,
+                () => swarmLeadership?.IsActive != true || swarmLeadership.IsSelf),
             behaviourSync,
             remoteServers,
             orgPolicy,
             nodeLinkGate);
         _ = Security.RefreshAsync();
+
+        Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership, ConfirmAsync);
+        if (swarmOptions is not null)
+        {
+            swarmOptions.RemovalRequested += member => _OnUiThread(() => _ = Swarm.RequestRemovalAsync(member));
+        }
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
         // it closed nothing was listening at all, so a pairing request reached no screen.
@@ -3578,6 +3591,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sdkPaneOver = sdkPaneOver;
         _sessionLauncher = sessionLauncher;
         _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient, serverSignIns);
+        if (swarmOptions is not null && swarmLeadership is not null && nodeSessionsClient is not null)
+        {
+            ShowSwarm(swarmOptions, swarmLeadership, nodeSessionsClient);
+        }
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;
@@ -5544,6 +5561,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         SidebarWidth = settings.SidebarWidth;
         SidebarCollapsed = settings.SidebarCollapsed;
+        ShowOnlyWaiting = settings.WaitingFilterOn;
         GlobalFocusRailWeight = settings.FocusRailWeight;
         DockRailWidth = settings.DockRailWidth;
         OpenDockPanelId = settings.OpenDockPanelId;
@@ -5578,6 +5596,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         SidebarWidth = SidebarWidth,
         SidebarCollapsed = SidebarCollapsed,
+        WaitingFilterOn = ShowOnlyWaiting,
         FocusRailWeight = GlobalFocusRailWeight,
         DockRailWidth = DockRailWidth,
         OpenDockPanelId = OpenDockPanelId,
@@ -7036,6 +7055,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task OptionsAsync() => _ShowOptionsAsync();
 
+    [RelayCommand]
+    private Task OpenSwarmOptionsAsync() => _ShowOptionsAsync("swarm");
+
     // Opens the projects manager (AC-161) — its own window, not a corner of Options.
     // Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
     // so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
@@ -7069,6 +7091,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _MarkOptionsOpen("mcp");
         }
 
+        if (!_optionsStaged)
+        {
+            await Swarm.LoadSettingsAsync();
+        }
         await _dialogService.ShowOptionsDialogAsync(this, category);
     }
 
@@ -7398,6 +7424,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         HasPendingOptionChanges = false;
         PropertyChanged += _OnStagedPropertyChanged;
         Security.PropertyChanged += _OnStagedPropertyChanged;
+        Swarm.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
         _RebuildPluginOptionsRows();
@@ -7530,6 +7557,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         measurement.Mark("security");
+
+        await Swarm.SaveStagedAsync();
+        if (Swarm.CidrError.Length > 0 || Swarm.PersistError.Length > 0)
+        {
+            failures.Add(("Swarm", Swarm.CidrError.Length > 0 ? Swarm.CidrError : Swarm.PersistError, "swarm"));
+        }
 
         // AC-1108: Commit() below re-commits every plugin's settings, not only the tab opened — measured 51+
         // separate cockpit.json writes here on top of SaveAllSettingsAsync's thirteen; batched to one round-trip.
@@ -7667,6 +7700,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1286: the one refresh that is meant to overwrite what the operator staged — Cancel keeps
         // SuspendPersistence up across the re-seed, and every other refresh now leaves those values alone.
         await Security.RefreshAsync(reseedStagedValues: true);
+        await Swarm.LoadSettingsAsync();
         await AssistantOptions.RefreshAsync();
         await ModelIntelligence.LoadAsync();
 
@@ -7793,6 +7827,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _chosenChannel = updates.Channel;
 
         Security.RestoreDefaults();
+        Swarm.RestoreDefaults();
         AssistantOptions.RestoreDefaults();
         UsageThresholdSettings?.RestoreDefaults();
     }
@@ -7801,6 +7836,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         PropertyChanged -= _OnStagedPropertyChanged;
         Security.PropertyChanged -= _OnStagedPropertyChanged;
+        Swarm.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
         _optionsStaged = false;
@@ -10137,6 +10173,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _disposed = true;
+        _StopSwarmSidebar();
 
         // The shutdown gives this a bounded budget and then hard-exits (Program.DisposeCockpit), so where it got to
         // is the one thing worth knowing when something it should have cleaned up is still there afterwards. Three

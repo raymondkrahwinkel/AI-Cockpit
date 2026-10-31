@@ -89,6 +89,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     public void Start()
     {
         _assistant.PropertyChanged += _OnSourceChanged;
+        _cockpit.PropertyChanged += _OnCockpitChanged;
         _openMic.PropertyChanged += _OnSourceChanged;
         _overlay.Overlay.PropertyChanged += _OnSourceChanged;
 
@@ -151,6 +152,14 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _OnSourceChanged(object? sender, PropertyChangedEventArgs e) =>
         Dispatcher.UIThread.Post(_Refresh);
 
+    private void _OnCockpitChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CockpitViewModel.AssistantLeadershipLabel))
+        {
+            Dispatcher.UIThread.Post(_Refresh);
+        }
+    }
+
     // Capture runs off the UI thread, and the chip's line is a bound collection — marshalled like every other source.
     private void _OnLevelSampled(object? sender, double level) =>
         Dispatcher.UIThread.Post(() => Indicator.PushLevel(level));
@@ -168,6 +177,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
 
     private void _Refresh()
     {
+        Indicator.LeadershipLabel = _cockpit.AssistantLeadershipLabel;
         Indicator.Activity = _ResolveActivity();
         Indicator.UnavailableReason = _assistant.UnavailableReason;
         Indicator.PreparationStatus = _assistant.PreparationStatus;
@@ -178,7 +188,8 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         Indicator.ListeningMode = _openMic.IsListening ? AssistantListeningMode.AlwaysOn : AssistantListeningMode.Off;
 
         // Assistant threads: the session files its rows by project, and only the cockpit knows the projects.
-        if (_assistant.View() is { Threads: null } session)
+        var visibleSession = _cockpit.SwarmLeadership is { IsActive: true, IsSelf: false } ? _chatViewModel?.Session : _assistant.View();
+        if (visibleSession is { Threads: null } session)
         {
             session.Threads = new ThreadLookup(
                 projectId => _cockpit.Projects.Projects.FirstOrDefault(project => project.Id == projectId)?.Name,
@@ -198,7 +209,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
             };
         }
 
-        _WatchQuestions(_assistant.View());
+        _WatchQuestions(visibleSession);
     }
 
     // The tab's count and the chip's, read off the one list of open questions the session keeps.
@@ -416,6 +427,7 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
         }
 
         var chat = new AssistantChatViewModel(_assistant, _settings, _playbackQueue, _spawnAuditLog, Indicator, cockpit: _cockpit);
+        chat.PropertyChanged += _OnSourceChanged;
         chat.DockToggleRequested += (_, _) => _ = _ToggleDockAsync();
         _chatViewModel = chat;
         return chat;

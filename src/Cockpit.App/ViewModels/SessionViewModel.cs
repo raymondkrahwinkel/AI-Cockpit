@@ -843,6 +843,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             SenderTitle = entry.SenderTitle,
             MessageKind = entry.MessageKind,
             SubjectPaneId = entry.SubjectPaneId,
+            WrittenWhileApartOn = entry.WrittenWhileApartOn,
         };
 
         if (entry.StartsReply)
@@ -1161,6 +1162,21 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     // AC-1533: a replay runs no turn end and the log holds no green block, so each turn's block is built again here —
     // not for a turn whose failure row says it failed, as live; a turn broken off by Stop leaves no row to tell by.
+    internal void RestoreStandbyTranscript(IReadOnlyList<TranscriptSnapshotEntry> rows)
+    {
+        _replayingRecordedTranscript = true;
+        try
+        {
+            Transcript.Clear();
+            foreach (var row in _WithTurnResults(TranscriptSnapshot.Restore(rows)))
+            {
+                Transcript.Add(row);
+            }
+            _control.SeedTranscript(rows);
+        }
+        finally { _replayingRecordedTranscript = false; }
+    }
+
     private IEnumerable<TranscriptEntryViewModel> _WithTurnResults(IEnumerable<TranscriptEntryViewModel> rows)
     {
         var turn = new List<TranscriptEntryViewModel>();

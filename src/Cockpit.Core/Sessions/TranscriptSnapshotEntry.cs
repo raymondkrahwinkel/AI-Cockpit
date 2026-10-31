@@ -76,6 +76,9 @@ public sealed record TranscriptSnapshotEntry(
 
     public string? SubjectPaneId { get; init; }
 
+    // AC-1929: the member a row was written on while two leaders were apart; null for every row not merged after a split.
+    public string? WrittenWhileApartOn { get; init; }
+
     // AC-1377: what the live view draws and a restore does not read — how a streamed reply was split over rows
     // (AC-1238/1265/1272), a waiting prompt, a clamp. Never written to the log, so it stays byte-equal to what it was.
     [TranscriptViewOnly]

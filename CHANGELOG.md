@@ -57,10 +57,17 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Changed
 
+- Headless server management is now named Servers, beside Swarm in Options. Searching for Admin still finds it.
+
 - changed: OpenAI-compatible provider plugins now ask models to verify tool-backed task results before ending a turn.
 
 ### Added
 
+- When two swarm leaders meet again after a network split, the higher rank steps down and both assistant conversations are merged without losing a message; a note state changed on both sides keeps the other version and asks once whether to compare or keep the newest.
+
+- Options has a Swarm page for pairing your own Cockpits, checking machines and their leader, and setting internal network ranges and returning-machine behaviour.
+
+- The sidebar has a "Waiting for you" filter above the sessions: it counts every session that needs you, on this machine and on connected servers, and when switched on lists them flat with a machine badge per row. Its state is kept across restarts.
 - Schedules can manage a connected server: the switch right of its tabs picks This computer or a server, a banner says which server you are managing and its time, runs started there show live as Running…, and the editor offers that server's profiles and project folders. A server without Schedules, or with another version, says "Schedules not available" with the reason. Plugins can offer the same through the new host call for their server hosts.
 
 - Live notes mark an outside agent's changed lines with their name for up to ten minutes, show their saved version and temporary presence, and send the launching profile name to MCP servers that opt in.

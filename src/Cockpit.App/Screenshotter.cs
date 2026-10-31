@@ -314,6 +314,17 @@ internal static partial class Screenshotter
         // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
         // controller's assistant may do here render nowhere else.
         ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
+        ["options-swarm"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-kicked"] = (_, _) => _OptionsSwarm(removal: "Laptop removed this machine from the swarm. Your sessions here keep running. Join again with confirmation on both screens and a new rank. removed_from_swarm"),
+        ["options-swarm-removal-pending"] = (_, _) => _OptionsSwarm(removal: "Kicked · removal_pending: sleeping members learn the signed removal at their next contact."),
+        ["options-swarm-no-answer"] = (_, _) => _OptionsSwarm(failure: "no_answer"),
+        ["options-swarm-refused"] = (_, _) => _OptionsSwarm(failure: "connection_refused"),
+        ["options-swarm-certificate"] = (_, _) => _OptionsSwarm(failure: "certificate_changed"),
+        ["options-swarm-public"] = (_, _) => _OptionsSwarm(failure: "address_not_internal"),
+        ["options-swarm-empty"] = (_, _) => _OptionsSwarm(empty: true),
+        ["options-swarm-invalid-cidr"] = (_, _) => _OptionsSwarm(invalidCidr: true),
+        ["options-swarm-settings"] = (_, _) => _OptionsSwarm(),
+        ["options-swarm-incoming"] = (_, _) => _OptionsSwarm(incoming: true),
         // AC-1458: the connect form after a connect that went through — they match, and Connected; and the four
         // connection statuses beside the four outcomes, each drawn by the same view the Nodes page uses.
         ["options-nodes-connect"] = (_, _) => _OptionsNodesConnect(),
@@ -322,6 +333,11 @@ internal static partial class Screenshotter
         // AC-1762: the sidebar's foldable sections, open and with This laptop and the server folded, beside mockup v8.
         ["sidebar"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: false),
         ["sidebar-collapsed"] = (width, height) => ServerGroupScene.Sidebar(width, height, collapsed: true),
+        ["sidebar-waiting"] = ServerGroupScene.SidebarWaiting,
+        ["swarm-sidebar"] = (width, height) => _SwarmSidebar(width, height),
+        ["swarm-sidebar-asleep"] = (width, height) => _SwarmSidebar(width, height, asleep: true),
+        ["swarm-sidebar-start"] = (width, height) => _SwarmSidebar(width, height, start: true),
+        ["swarm-sidebar-empty"] = (width, height) => _SwarmSidebar(width, height, empty: true),
         ["server-group"] = ServerGroupScene.Admin,
         ["server-group-operate"] = ServerGroupScene.Operate,
         ["server-start-refused"] = ServerGroupScene.StartRefused,
@@ -686,6 +702,12 @@ internal static partial class Screenshotter
         ["assistant-chat-empty"] = (_, _) => _AssistantChat(withConversation: false),
         ["assistant-chat-speak-off"] = (_, _) => _AssistantChat(withConversation: true, speakReplies: false),
         ["assistant-chat-always-on"] = (_, _) => _AssistantChat(withConversation: true, alwaysOn: true),
+        ["assistant-swarm-follower"] = (_, _) => _AssistantSwarm(),
+        ["assistant-swarm-leader"] = (_, _) => _AssistantSwarm(selfLeads: true),
+        ["assistant-swarm-server"] = (_, _) => _AssistantSwarm(serverLeads: true),
+        ["assistant-swarm-takeover"] = (_, _) => _AssistantSwarm(selfLeads: true, takeover: true),
+        ["assistant-swarm-merge"] = (_, _) => _AssistantSwarm(merging: true),
+        ["assistant-swarm-merge-question"] = (_, _) => _AssistantSwarm(selfLeads: true, merging: true, question: true),
         // AC-953: the same chat surface in its other host — docked into the right-hand rail, inside MainWindow,
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
@@ -1336,6 +1358,9 @@ internal static partial class Screenshotter
         // on Height alone to make it fit.
         ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
         ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
+        ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-swarm-invalid-cidr"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
+        ["options-swarm-incoming"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-plugin-declared"] = window => ((OptionsDialog)window).SelectCategory("plugin:claude-provider"),
         ["options-backup-depot"] = _ChooseSceneDepot,
         ["options-backup-status"] = window => _ScrollIntoView(window, "backup", "2. SCHEDULED BACKUP"),
@@ -1951,6 +1976,63 @@ internal static partial class Screenshotter
         return dialog;
     }
 
+    private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false, string? failure = null, string? removal = null)
+    {
+        var swarm = new SwarmOptionsViewModel
+        {
+            ExtraInternalCidrsText = invalidCidr ? "100.64.0.0/99" : "100.64.0.0/10",
+            Address = "nuc-garage:20382",
+            RemovalStatus = removal ?? "",
+            Incoming = incoming ? new("scene-pairing", "Desktop", "482 193", DateTimeOffset.UtcNow.AddMinutes(2)) : null,
+        };
+        if (!empty)
+        {
+            swarm.Machines.Add(new("Desktop", "192.168.1.10:20382", "Discovered", "1042", "Leader", "Now", false, true) { IsPaired = true });
+            swarm.Machines.Add(new("Laptop", "192.168.1.23:20382", "This machine", "5789", "Online", "Now", true, true) { IsPaired = true });
+            swarm.Machines.Add(new("Studio", "studio:20382", "Manual address", "8931", "Online", "Now", false, true) { IsPaired = true });
+            swarm.Machines.Add(new("NUC", "192.168.1.44:20382", "Discovered", "15237", "Asleep", "Today, 14:32", false, false) { IsPaired = true });
+            swarm.Machines.Add(new("Workshop", "workshop:20382", "Manual address", "18004", "Not reachable", "Yesterday, 18:04", false, false) { IsPaired = true });
+            swarm.LeaderLine = "Leader: Desktop · Lowest rank of the 3 reachable";
+            swarm.RankOrder = "Desktop (1042) → Laptop (5789) → Studio (8931) → NUC (15237) → Workshop (18004)";
+            swarm.PairingCode = "482 193";
+            swarm.PairingCaption = "Compare with NUC-garage on the other screen. Confirm there too, then continue here.";
+        }
+        if (removal?.Contains("removed_from_swarm", StringComparison.Ordinal) == true)
+        {
+            swarm.Machines.Clear();
+            swarm.PairingCode = "";
+            swarm.LeaderLine = "This machine works on its own";
+        }
+        if (failure is not null)
+        {
+            swarm.Machines.Clear();
+            var exception = failure switch
+            {
+                "connection_refused" => (Exception)new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused),
+                "certificate_changed" => new NodeCertificatePinMismatchException("AABB", "CCDD"),
+                "address_not_internal" => NodePairingException.For("address_not_internal", "nuc.local is not on the internal network, so this cockpit will not connect to it. A VPN's range can be added as an internal range."),
+                _ => new TaskCanceledException(),
+            };
+            swarm.Machines.Add(new("NUC", "nuc.local:20382", "Manual address", "8931", failure switch
+            {
+                "connection_refused" => "Connection refused", "certificate_changed" => "Certificate changed",
+                "no_answer" => "No answer", _ => "Not reachable",
+            }, "Not yet seen", false, false)
+            {
+                ErrorCode = failure,
+                ErrorMessage = exception is NodePairingException ? exception.Message : NodeConnectionFailure.Describe("nuc.local:20382", exception, NodeConnectionFailure.DefaultBudget),
+            });
+            swarm.PairingCode = "";
+            swarm.LeaderLine = "Leader: this machine · No other machine online";
+            swarm.RankOrder = "NUC (8931)";
+        }
+        var cockpit = new CockpitViewModel { Swarm = swarm };
+        cockpit.Security.NodeEndpointEnabled = true;
+        var dialog = new OptionsDialog { DataContext = cockpit, Width = 1100, Height = 1700 };
+        dialog.SelectCategory("swarm");
+        return dialog;
+    }
+
     // A made-up fingerprint with the mockup's first and last four bytes; nothing here is a real certificate.
     private const string SceneFingerprint = "4F9A21C7000000000000000000000000000000000000000000000000E03B58D2";
 
@@ -2065,6 +2147,11 @@ internal static partial class Screenshotter
     // The node a scene connects to: answers a probe and a read as told, and whoami with the mockup's key.
     private sealed class _SceneNodeSessions : INodeSessionsClient
     {
+        public Func<string, string, Cockpit.Core.Abstractions.Sessions.ISessionHandle?>? OpenHandle { get; init; }
+        public Task<Cockpit.Core.Abstractions.Sessions.ISessionHandle?> OpenSessionAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(OpenHandle?.Invoke(nodeName, paneId));
+        public Func<string, NodeSessionsSnapshot>? ReadSnapshot { get; init; }
+        public Func<string, string, string?, NodeStartResult>? StartSession { get; init; }
         public Exception? ProbeFailure { get; init; }
 
         public string? ReadError { get; init; }
@@ -2083,12 +2170,12 @@ internal static partial class Screenshotter
             Task.FromResult<IReadOnlyList<string>>([]);
 
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
+            Task.FromResult(ReadSnapshot?.Invoke(nodeName) ?? new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
 
         public (NodeSessionsSnapshot Snapshot, DateTimeOffset AtUtc)? TryGetLastSnapshot(string nodeName) => null;
 
         public Task<NodeStartResult> StartAsync(string nodeName, string profileLabel, string? projectId = null, string? prompt = null, string? sessionName = null, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            Task.FromResult(StartSession?.Invoke(nodeName, profileLabel, projectId) ?? throw new NotSupportedException());
 
         public Task<string?> StopAsync(string nodeName, string paneId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 

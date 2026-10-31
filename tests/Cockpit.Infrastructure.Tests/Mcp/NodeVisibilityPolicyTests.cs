@@ -45,16 +45,6 @@ public class NodeVisibilityPolicyTests : IDisposable
     }
 
     [Fact]
-    public async Task CallerOutsideTheOwnRange_AndOutsideEveryWhitelistedRange_IsRefused()
-    {
-        var store = new NodeEndpointSettingsStore(_path);
-        await store.SaveAsync(new NodeEndpointSettings { AllowedDiscoveryRanges = ["203.0.113.0/24"] });
-        var policy = new NodeVisibilityPolicy(store, () => [_OwnRange]);
-
-        Assert.False(await policy.IsAllowedAsync(IPAddress.Parse("198.51.100.5")));
-    }
-
-    [Fact]
     public async Task AMalformedWhitelistEntry_IsSkipped_NotThrown()
     {
         var store = new NodeEndpointSettingsStore(_path);

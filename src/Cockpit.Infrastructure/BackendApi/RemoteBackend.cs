@@ -113,6 +113,8 @@ public sealed class RemoteBackend : ISessionLauncher, ISessionRegistry, IBackend
     // AC-1456: true once the backend turned the key away; the stream then stays down until someone connects anew.
     public bool KeyRefused { get; private set; }
 
+    internal Task Completion => _reader;
+
     // The list and every session's rows as they stand, then the stream from the list's seq on. The caller keeps the client.
     public static async Task<RemoteBackend> ConnectAsync(BackendApiClient client, Action<bool>? connectionChanged = null, Action<BackendEvent>? projectEvent = null, Action<BackendEvent>? pluginEvent = null)
     {

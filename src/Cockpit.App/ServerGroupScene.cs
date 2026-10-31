@@ -72,6 +72,15 @@ internal static class ServerGroupScene
         return new MainWindow { DataContext = cockpit, Width = width, Height = height };
     }
 
+    // AC-1925 (Swarm mockup screen 3): the "Waiting for you" filter on, over this laptop's three sessions (one waiting)
+    // and the stand-in server's one waiting session.
+    public static MainWindow SidebarWaiting(int width, int height)
+    {
+        var cockpit = new CockpitViewModel { SidebarWidth = 240, ShowOnlyWaiting = true };
+        cockpit.ShowServers(new SceneServers(_Server(admin: true)), SessionViewModel.OverRemoteAsync, new SceneSignIns());
+        return new MainWindow { DataContext = cockpit, Width = width, Height = height };
+    }
+
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 
@@ -83,10 +92,11 @@ internal static class ServerGroupScene
         var group = cockpit.ServerGroups[0];
         if (health)
         {
-            group.Health.IsOpen = true;
+            var groupHealth = group.Health ?? throw new InvalidOperationException("The scene group has no server health.");
+            groupHealth.IsOpen = true;
             if (admin)
             {
-                group.Health.StartSignInCommand.Execute(null);
+                groupHealth.StartSignInCommand.Execute(null);
             }
 
             return new MainWindow { DataContext = cockpit, Width = width, Height = height };

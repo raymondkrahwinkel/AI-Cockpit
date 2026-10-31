@@ -145,6 +145,7 @@ public sealed class CockpitBackend
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
         services.AddCore();
+        services.AddSingleton(new Core.Swarm.SwarmHost(frontend is null ? Core.Swarm.SwarmHostKind.Server : Core.Swarm.SwarmHostKind.Desktop));
         _AddNoFrontendDefaults(services);
         services.AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,

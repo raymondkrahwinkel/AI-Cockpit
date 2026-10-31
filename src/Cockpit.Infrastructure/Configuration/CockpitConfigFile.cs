@@ -70,6 +70,10 @@ internal sealed class CockpitConfigFile
     // by `ConnectKeyVerifier`. A section of its own so the pairing's whole-section writes can never drop a revocation.
     public NodeConnectKeysEntry? NodeConnectKeys { get; set; }
 
+    // AC-1916: the swarm's settings; owned by the swarm-settings store. Absent means only the built-in internal ranges.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SwarmSettingsEntry? Swarm { get; set; }
+
     // The workspaces and which one is active; owned by the workspace-settings store.
     public WorkspaceSettingsEntry? Workspaces { get; set; }
 

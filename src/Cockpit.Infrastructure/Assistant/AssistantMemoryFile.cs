@@ -1,6 +1,9 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Swarm;
+using Cockpit.Infrastructure.Mcp;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -22,15 +25,17 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
     private readonly string _machinePath;
 
     private readonly string _orgRulesPath;
+    private readonly IServiceProvider? _services;
 
-    public AssistantMemoryFile()
-        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory)
+    public AssistantMemoryFile(IServiceProvider services)
+        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory, services)
     {
     }
 
     // Test seam: point the memory at arbitrary files.
-    internal AssistantMemoryFile(string filePath, string statePath, string? machinePath = null)
+    internal AssistantMemoryFile(string filePath, string statePath, string? machinePath = null, IServiceProvider? services = null)
     {
+        _services = services;
         _filePath = filePath;
         _statePath = statePath;
         _machinePath = machinePath ?? Path.Combine(Path.GetDirectoryName(filePath)!, "assistant-machine.md");
@@ -60,6 +65,10 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             _statePath,
             $"{StateHeading}{Environment.NewLine}{Environment.NewLine}{state}{Environment.NewLine}",
             cancellationToken).ConfigureAwait(false);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken);
+        }
     }
 
     private static async Task<string> _ReadAsync(string path, CancellationToken cancellationToken)
@@ -93,6 +102,28 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             path,
             isNew ? $"{_HeadingFor(scope)}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
             cancellationToken).ConfigureAwait(false);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken);
+        }
+    }
+
+    // AC-1929: when the note state last changed, which a merge after a split compares; a restore carries it over.
+    internal DateTimeOffset NoteStateChangedAt() =>
+        File.Exists(_statePath) ? new DateTimeOffset(File.GetLastWriteTimeUtc(_statePath)) : DateTimeOffset.MinValue;
+
+    internal void RestoreStandby(string noteState, string behaviour, DateTimeOffset noteStateAt = default)
+    {
+        var existing = File.Exists(_filePath) ? File.ReadAllText(_filePath) : "";
+        var carried = BehaviourMemorySync._Entries(behaviour).Select(BehaviourMemorySync._StripOrigin).ToHashSet(StringComparer.Ordinal);
+        var localOnly = BehaviourMemorySync._Entries(existing).Where(line => !carried.Contains(BehaviourMemorySync._StripOrigin(line)));
+        var merged = string.Join(Environment.NewLine, localOnly.Select(line => "- " + line));
+        CockpitConfigPath.ReplaceAtomicallyPrivate(_statePath, noteState);
+        if (noteStateAt != default)
+        {
+            File.SetLastWriteTimeUtc(_statePath, noteStateAt.UtcDateTime);
+        }
+        CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, string.IsNullOrEmpty(merged) ? behaviour : behaviour + Environment.NewLine + merged);
     }
 
     private string _PathFor(AssistantMemoryScope scope) => scope == AssistantMemoryScope.Machine ? _machinePath : _filePath;

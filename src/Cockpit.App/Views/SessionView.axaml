@@ -45,8 +45,12 @@
     <DockPanel Margin="6,6,6,8" Classes.simpleColumn="{Binding IsShownInSimpleStand}">
 
         <!-- AC-1456: a remote pane's blue band, so it never reads as one of this laptop's. -->
-        <Border DockPanel.Dock="Top" Height="3" Margin="0,0,0,4" CornerRadius="2"
-                Background="{DynamicResource CockpitAccentBrush}" IsVisible="{Binding IsRemote}"/>
+        <Border DockPanel.Dock="Top" Padding="10,5" Margin="0,0,0,4"
+                CornerRadius="{StaticResource CockpitControlRadius}"
+                Background="{DynamicResource CockpitAccentRingTintBrush}" IsVisible="{Binding IsRemote}">
+            <TextBlock Text="{Binding RemoteServer, StringFormat='Running on {0}'}" FontSize="11"
+                       Foreground="{DynamicResource CockpitAccentBrush}"/>
+        </Border>
 
         <!-- Compact one-row session header (AC-37): the shared SessionHeaderBar (identity · activity · cwd · branch
              · token meter · usage pill) flexes, and this view's live controls dock right. The session is started

@@ -6,13 +6,13 @@ namespace Cockpit.App.Services;
 // AC-1324: the controller's end of a node session's Allow/Deny — each open question on a paired node becomes a row
 // in the assistant's own conversation, the same row a local session shows, with the machine on it; the click goes
 // back over the line. Runs on the 20s poll, so a question gone from the node is closed here. No state but the rows.
-public sealed class NodePermissionRelay(INodeSessionsClient nodes, Func<SessionViewModel?> assistant)
+public sealed class NodePermissionRelay(INodeSessionsClient nodes, Func<SessionViewModel?> assistant, Func<bool>? mayRelay = null)
 {
     // UI thread: it adds to and closes rows in the assistant's transcript. With no assistant conversation to draw on
     // — not started yet, or off — there is nothing to do; the question stays on the node, and the next poll tries again.
     public void Reconcile(NodeSessionsSnapshot snapshot)
     {
-        if (assistant() is not { } chat)
+        if (mayRelay?.Invoke() == false || assistant() is not { } chat)
         {
             return;
         }
