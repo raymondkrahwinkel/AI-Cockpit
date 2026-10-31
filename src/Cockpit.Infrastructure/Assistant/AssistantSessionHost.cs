@@ -8,10 +8,13 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Core.Swarm;
+using Cockpit.Infrastructure.Swarm;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -34,6 +37,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly IMcpServerCatalog _mcpServers;
     private readonly IAssistantMemory _memory;
     private readonly ILogger<AssistantSessionHost> _logger;
+    private readonly ISwarmAssistantRelay? _swarmRelay;
+    private readonly ISwarmLeadership? _leadership;
+    private readonly SwarmTakeoverCoordinator? _takeover;
+    internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
+    internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
@@ -60,7 +68,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         SessionStateRecorder sessionStateRecorder,
         IMcpServerCatalog mcpServers,
         IAssistantMemory memory,
-        ILogger<AssistantSessionHost> logger)
+        ILogger<AssistantSessionHost> logger,
+        ISwarmAssistantRelay? swarmRelay = null,
+        ISwarmLeadership? leadership = null,
+        SwarmTakeoverCoordinator? takeover = null)
     {
         _sessions = sessions;
         _presence = presence;
@@ -71,6 +82,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         _mcpServers = mcpServers;
         _memory = memory;
         _logger = logger;
+        _swarmRelay = swarmRelay;
+        _leadership = leadership;
+        _takeover = takeover;
+        if (leadership is not null) leadership.Changed += (_, _) =>
+            LeadershipTransition = _sessions.OnOwnerThreadAsync(_FollowLeadershipAsync);
 
         // AC-1321: a controller appearing or going away is re-read through the same path a settings save takes,
         // so the takeover is one more reason on the existing off state and not a second one.
@@ -90,6 +106,32 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     }
 
     private bool _restartWhenReleased;
+
+    private async Task<bool> _FollowLeadershipAsync()
+    {
+        _ApplyTurnHold();
+        if (_leadership is { IsActive: true, IsSelf: false })
+        {
+            await _startGate.WaitAsync();
+            try
+            {
+                if (Session is not null && _takeover is not null)
+                {
+                    await _takeover.StepDownAsync();
+                }
+                if (_ReplaceSession(null) is { } previous)
+                {
+                    await _DisposeQuietlyAsync(previous);
+                }
+            }
+            finally { _startGate.Release(); }
+        }
+        else if (_leadership?.IsSelf == true && _takeover?.ReadForStart() is not null)
+        {
+            await EnsureLocalStartedAsync(CancellationToken.None);
+        }
+        return true;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -241,8 +283,18 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // AC-1013: Brings the assistant up if not already (idempotent, replaces a dead instance). Never throws — the
     // callers are hotkey/click handlers with nowhere to put an exception; a failed start instead leaves
     // `Activity` on `Unavailable` with the reason set, so the chip says what the log used to say alone.
-    public Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default) =>
-        _StartOrReplaceAsync(replaceALiveInstance: false, startFresh: false, cancellationToken);
+    public async Task<IAssistantSession?> EnsureStartedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken) && _leadership?.IsSelf != true)
+        {
+            await _swarmRelay.EnsureStartedAsync(cancellationToken);
+            return null;
+        }
+        return await EnsureLocalStartedAsync(cancellationToken);
+    }
+
+    internal Task<IAssistantSession?> EnsureLocalStartedAsync(CancellationToken ct) =>
+        _StartOrReplaceAsync(replaceALiveInstance: false, startFresh: false, ct);
 
     // AC-1013: Stands the assistant down and brings it straight back up on the same conversation, so a start-time
     // setting (e.g. `bypassPermissions`, choosable only at a start — bug #15) takes effect without closing the
@@ -272,6 +324,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         await _startGate.WaitAsync(cancellationToken).ConfigureAwait(true);
         try
         {
+            if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken) && _leadership?.IsSelf != true)
+            {
+                _SetUnavailable("Waiting for the swarm leader.");
+                return null;
+            }
             // AC-1321: no new turn while a controller holds the line — before the live-instance shortcut, since a
             // running conversation is allowed to finish its turn but not to take another.
             if (_presence.Current is { } controller)
@@ -288,6 +345,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
             // A dead instance is dropped before a new one is built, so a start that fails does not leave the
             // corpse in place looking reachable.
+            if (!startFresh && Session is not null && _takeover is not null)
+            {
+                await _takeover.PublishAsync(cancellationToken);
+            }
             if (_ReplaceSession(null) is { } previous)
             {
                 _logger.LogInformation(
@@ -319,6 +380,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
     public async Task SendAsync(string text, IReadOnlyList<byte[]> pngImages, CancellationToken cancellationToken = default)
     {
+        if (_swarmRelay is not null && await _swarmRelay.IsEnabledAsync(cancellationToken))
+        {
+            await _swarmRelay.SendAsync(text, pngImages, cancellationToken);
+            return;
+        }
         // An image with no words is a message too (AC-630) — a pasted or captured attachment waiting on the
         // composer is reason enough to send, and refusing here left it hanging with no way out.
         if (string.IsNullOrWhiteSpace(text) && pngImages.Count == 0 && Session is not { HasPendingAttachments: true })
@@ -461,13 +527,27 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
         // than a retention rule invented here.
-        var resume = startFresh
+        var standby = !startFresh ? _takeover?.TakeForStart() : null;
+        var resume = standby is not null || startFresh
             ? SessionResume.New
             : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true);
 
         // AC-684: replay before the launch so the window shows the earlier conversation the moment it attaches,
         // not after — a resume the provider ends up refusing (below) throws this whole session away anyway.
-        await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);
+        if (standby is not null)
+        {
+            _takeover?.BeginTakeover(standby);
+            _takeover?.RestoreReceipts(standby);
+            if (_memory is AssistantMemoryFile file)
+            {
+                file.RestoreStandby(standby.NoteState, standby.Behaviour, standby.NoteStateAt);
+            }
+            session.RestoreStandbyTranscript(standby.Transcript);
+        }
+        else
+        {
+            await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);
+        }
 
         // AC-1089: fixed rather than inherited from Environment.CurrentDirectory — an AppImage's mount folder is a
         // fresh random name every launch, so a saved conversation id resumed from there never matches the folder
@@ -489,7 +569,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             _LaunchOptions(
                 profile,
                 slot.ReplacesStandingInstruction,
-                await _memory.ReadAsync(AssistantMemoryScope.Behaviour, cancellationToken).ConfigureAwait(true),
+                (await _memory.ReadAsync(AssistantMemoryScope.Behaviour, cancellationToken).ConfigureAwait(true))
+                    + (standby is null ? "" : SwarmTakeoverCoordinator.HistoryPrompt(standby)),
                 await _memory.ReadCurrentStateAsync(cancellationToken).ConfigureAwait(true),
                 await _memory.ReadAsync(AssistantMemoryScope.Machine, cancellationToken).ConfigureAwait(true),
                 _SdkAsksPermission(profile),
@@ -507,6 +588,13 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             _logger.LogWarning("The assistant session was not running right after its start: {Reason}", reason);
             await _DisposeQuietlyAsync(session).ConfigureAwait(true);
             _SetUnavailable($"The assistant could not start: {reason}");
+            return null;
+        }
+
+        if (_leadership is { IsActive: true, IsSelf: false })
+        {
+            await _DisposeQuietlyAsync(session);
+            _SetUnavailable("Waiting for the swarm leader.");
             return null;
         }
 
@@ -543,6 +631,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
         _RunExclusive(() => _askedTheProviderToCompact = false);
         Session = session;
+        if (standby is not null)
+        {
+            _takeover?.Announce(standby, session);
+        }
 
         // AC-1013: The wire that makes Thinking end — only the session knows when a turn finishes, not the host's
         // own hold/send/start/failure moments. Without it the chip is set on the way in but never on the way
@@ -550,6 +642,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         session.StateChanged += _OnSessionStateChanged;
 
         var reading = SessionReading.Of(session);
+        if (!reading.IsBusy && _takeover is not null)
+        {
+            StandbyPublication = _takeover.PublishAsync();
+        }
         _RunExclusive(() => _SyncActivityWithSession(reading));
         return session;
     }
@@ -577,6 +673,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // The session refreshes the provider's limits after it has published IsBusy false, so the busy transition
         // arrives with the previous turn's figure still standing. Why that matters: _ShouldRelieveTheFullContext.
         var reading = SessionReading.Of(session);
+        if (!reading.IsBusy && _takeover is not null)
+        {
+            StandbyPublication = _takeover.PublishAsync();
+        }
         var relieve = _RunExclusive(() =>
         {
             _SyncActivityWithSession(reading);
@@ -596,6 +696,44 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _ = ClearConversationAsync();
         }
+
+        // AC-1929: a merge parked while a turn ran is applied at the same gate, so no turn is cut off.
+        if (_RunExclusive(() => _TakePendingMergeRestart(session, reading)))
+        {
+            MergeRestart = RestartAsync();
+        }
+    }
+
+    // AC-1929: the restart that folds a stepped-down leader's conversation in, now when idle, else at the turn's end.
+    // The parked copy is a file, so a session that dies first leaves it for whichever start comes next.
+    internal void RequestMergeRestart()
+    {
+        var session = _RunExclusive(() =>
+        {
+            _pendingMergeRestart = true;
+            return Session;
+        });
+        if (session is null || _RunExclusive(() => _TakePendingMergeRestart(session, SessionReading.Of(session))))
+        {
+            _RunExclusive(() => _pendingMergeRestart = false);
+            MergeRestart = RestartAsync();
+        }
+    }
+
+    internal Task<IAssistantSession?> MergeRestart { get; private set; } = Task.FromResult<IAssistantSession?>(null);
+
+    private bool _pendingMergeRestart;
+
+    private bool _TakePendingMergeRestart(IAssistantSession session, SessionReading reading)
+    {
+        var idle = ShouldHandOver(double.PositiveInfinity, reading.IsBusy, reading.IsWaitingOnOperator);
+        if (!_pendingMergeRestart || !ReferenceEquals(session, Session) || !idle)
+        {
+            return false;
+        }
+
+        _pendingMergeRestart = false;
+        return true;
     }
 
     // AC-1261 criterion 7 (V2): marks a request rather than clearing now — clearing mid-turn would tear down the
@@ -832,7 +970,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ).ConfigureAwait(true);
     }
 
-    // The assistant defaults to its own tools and the always-mounted core.
+    // The assistant uses the ordinary default set plus its own tools.
     private async Task<IReadOnlySet<string>> _McpSelectionAsync(
         Cockpit.Core.Profiles.SessionProfile profile, CancellationToken cancellationToken)
     {
@@ -872,7 +1010,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they
         // ticked it deliberately. The filter is about what an assistant gets when nobody said.
-        selection.UnionWith(profile.EnabledMcpServerNames ?? []);
+        // Orchestration requires an explicit choice: delegate_task bypasses the assistant's pane/spawn trail.
+        selection.UnionWith(profile.EnabledMcpServerNames
+            ?? McpServerRegistryFilter.OfferedToOperator(catalog)
+                .Where(server => !string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase))
+                .Select(server => server.Name).ToArray());
         selection.UnionWith(catalog.Where(server => server.AlwaysMounted).Select(server => server.Name));
         return selection;
     }
@@ -920,7 +1062,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     {
         if (Session is { } live)
         {
-            live.TurnsHeldBecause = _presence.Current is { } controller ? controller.TakeoverReason() : null;
+            live.TurnsHeldBecause = _leadership is { IsActive: true, IsSelf: false }
+                ? "The assistant runs on the swarm leader."
+                : _presence.Current is { } controller ? controller.TakeoverReason() : null;
         }
     }
 
@@ -941,6 +1085,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             {
                 _session = value;
                 _pendingConversationClear = false;
+                _pendingMergeRestart = false;
             }
 
             return current;

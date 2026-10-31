@@ -255,10 +255,11 @@ public class TtyLauncherTests
     [Fact]
     public void Launch_WithAPaneId_PutsThatPanesKeyringTokenInTheEnvironment_NeverTheSharedAppKey()
     {
-        var (launcher, ptyHostFactory, authKey, keyring) = CreateLauncherWithKeyring();
+        var logger = Substitute.For<ILogger<TtyLauncher>>();
+        var (launcher, ptyHostFactory, authKey, keyring) = CreateLauncherWithKeyring(logger);
         var provider = Provider(new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []));
 
-        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
+        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
 
         ptyHostFactory.Received().Start(
             Arg.Any<string>(),
@@ -271,26 +272,14 @@ public class TtyLauncherTests
                 && env["TMP"] == env["TEMP"] && env["TMPDIR"] == env["TEMP"]),
             Arg.Any<short>(),
             Arg.Any<short>());
+
+        process.Dispose();
+        Assert.DoesNotContain(logger.ReceivedCalls(), call =>
+            call.GetArguments().OfType<object>().Any(argument => _ContainsAHexToken(argument == null ? null : argument.ToString())));
     }
 
     // Iron Law #8 (no secret in a log/error message): the pane id is safe to log (it is not the secret), but the
     // minted bearer token itself must never appear in a log line anywhere on this teardown path.
-    [Fact]
-    public void Launch_WithAPaneId_TheMintedTokenNeverAppearsInALogMessage()
-    {
-        var logger = Substitute.For<ILogger<TtyLauncher>>();
-        var (launcher, _, _, _) = CreateLauncherWithKeyring(logger);
-        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
-        var provider = Provider(spec);
-
-        var process = launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24, paneId: "tty-pane-under-test");
-        process.Dispose();
-
-        // The keyring mints a 64-character hex string (32 random bytes); no log call's rendered message anywhere
-        // in this path may contain a substring shaped like one.
-        Assert.DoesNotContain(logger.ReceivedCalls(), call =>
-            call.GetArguments().OfType<object>().Any(argument => _ContainsAHexToken(argument == null ? null : argument.ToString())));
-    }
 
     /// <summary>Whether <paramref name="text"/> contains a run of 64 hex characters — the shape of a minted keyring token.</summary>
     private static bool _ContainsAHexToken(string? text)

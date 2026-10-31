@@ -37,8 +37,6 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private IReadOnlyDictionary<string, string> _deskNameByPaneId = new Dictionary<string, string>(StringComparer.Ordinal);
 
-    // Session is exposed only through the property below, not as [ObservableProperty] on a field, because it is never
-    // assigned locally — it always reads straight through to the host.
     private SessionViewModel? _observedSession;
 
     // Set while _LoadSpeakRepliesAsync is applying a freshly loaded value to SpeakReplies, so that assignment does not
@@ -127,7 +125,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         _mentionFileSource = mentionFileSource;
         _cockpit = cockpit;
         MentionPicker = new MentionPickerViewModel(_MentionPathsAsync, () => Session?.WorkingDirectory ?? _host.DefaultWorkingDirectory);
-        _observedSession = _host.View();
+        _observedSession = IsFollowingLeader ? null : _host.View();
         _WatchTranscript(previous: null, _observedSession);
         _host.PropertyChanged += _OnHostPropertyChanged;
 
@@ -165,7 +163,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     public CockpitViewModel? Cockpit => _cockpit;
 
     // The assistant's own session, bound straight through to the existing SDK transcript view.
-    public SessionViewModel? Session => _host.View();
+    public SessionViewModel? Session => _observedSession;
 
     // Whether there is anything to show yet — a fresh install, or a window opened before the first message, both read
     // as "no session" rather than an empty transcript on a phantom one.
@@ -183,7 +181,7 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // True while the assistant cannot be reached at all (criterion 1: feature off, no profile, or a failed start) —
     // paired with `UnavailableReason` so the window says why instead of just sitting empty. AC-1321: a controller
     // holding the line is read off the cockpit as well as the host, so a scene without the real host says it too.
-    public bool IsUnavailable => _host.Activity == AssistantActivity.Unavailable || _cockpit?.ActiveController is not null;
+    public bool IsUnavailable => !IsFollowingLeader && (_host.Activity == AssistantActivity.Unavailable || _cockpit?.ActiveController is not null);
 
     public string? UnavailableReason => _cockpit?.ActiveController is { } controller
         ? controller.TakeoverReason()
@@ -243,6 +241,21 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private void _OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(CockpitViewModel.AssistantLeadershipLabel))
+        {
+            OnPropertyChanged(nameof(LeadershipLabel));
+            OnPropertyChanged(nameof(IsUnavailable));
+            OnPropertyChanged(nameof(LocationLabel));
+            OnPropertyChanged(nameof(LeaderIsServer));
+            OnPropertyChanged(nameof(CanClearConversation));
+            ClearConversationCommand.NotifyCanExecuteChanged();
+            ShowMergeQuestion();
+            if (_opened && (_leaderId != _cockpit?.SwarmLeadership?.Current?.Id.Value || IsFollowingLeader && Session is null))
+            {
+                LeaderSessionRefresh = RefreshLeaderSessionAsync();
+            }
+        }
+
         if (e.PropertyName is null or nameof(CockpitViewModel.SimpleView))
         {
             OnPropertyChanged(nameof(IsInSimpleStand));
@@ -303,7 +316,8 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     public async Task EnsureOpenedAsync(CancellationToken cancellationToken = default)
     {
         await _LoadSpeakRepliesAsync(cancellationToken).ConfigureAwait(true);
-        await _host.EnsureStartedAsync(cancellationToken).ConfigureAwait(true);
+        _opened = true;
+        await RefreshLeaderSessionAsync(cancellationToken).ConfigureAwait(true);
     }
 
     // Re-reads the settings this window mirrors, for an Options save that landed while it was open — the same
@@ -375,11 +389,36 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         }
 
         InputText = string.Empty;
+        var remoteSession = IsFollowingLeader ? Session : null;
+        var attachments = remoteSession?.PendingAttachments.ToArray() ?? [];
 
         // Goes through the host, not Session.SendCommand: Session can still be null here (nothing typed yet since
         // this instance came up), and the host's SendAsync is what performs the lazy start — the first message
         // typed into an unstarted assistant is exactly what starts it (criterion 1).
-        await _host.SendAsync(text);
+        try
+        {
+            if (remoteSession is null)
+            {
+                await _host.SendAsync(text);
+            }
+            else
+            {
+                await _host.SendAsync(text, attachments.Select(attachment => attachment.PngBytes).ToArray());
+                foreach (var attachment in attachments)
+                {
+                    remoteSession.PendingAttachments.Remove(attachment);
+                    attachment.Dispose();
+                }
+            }
+        }
+        catch
+        {
+            if (InputText.Length == 0)
+            {
+                InputText = text;
+            }
+            throw;
+        }
 
         // AC-1316: the host comes back unavailable (switched off, no profile, a failed start — or, AC-1321, stood
         // down for a controller with the conversation still on screen) without having sent anything, so the words
@@ -409,10 +448,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // AC-1261: confirms, stops a running turn first (criterion 6 — the operator asked for clear, not for a wait),
     // then clears through the host's one entry point (criterion 1). `_cockpit` is only null in tests/screenshots,
     // where nothing is wiped rather than risking a clear with nobody to confirm it (criterion 5).
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanClearConversation))]
     private async Task ClearConversationAsync()
     {
-        if (_cockpit is null)
+        if (_cockpit is null || !CanClearConversation)
         {
             return;
         }
@@ -516,18 +555,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
 
     private void _OnHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is null or nameof(IAssistantSessionHost.Session))
+        if (!IsFollowingLeader && (e.PropertyName is null or nameof(IAssistantSessionHost.Session)))
         {
-            var session = _host.View();
-            if (!ReferenceEquals(_observedSession, session))
-            {
-                _WatchTranscript(_observedSession, session);
-                _WatchThreads(_observedSession, session);
-                _observedSession = session;
-                OnPropertyChanged(nameof(Session));
-                OnPropertyChanged(nameof(HasSession));
-                OnPropertyChanged(nameof(HasMessages));
-            }
+            _SetSession(_host.View());
         }
 
         if (e.PropertyName is null or nameof(IAssistantSessionHost.Activity))
@@ -574,6 +604,12 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     // never end the assistant's conversation (criterion 7).
     public void Dispose()
     {
+        _disposed = true;
+        ++_leaderVersion;
+        if (_observedSession?.RemoteServer is not null)
+        {
+            _ = _observedSession.DisposeAsync();
+        }
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _WatchTranscript(_observedSession, next: null);
         _WatchThreads(_observedSession, next: null);

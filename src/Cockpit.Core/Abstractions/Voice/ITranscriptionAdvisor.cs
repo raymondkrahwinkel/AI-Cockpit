@@ -28,6 +28,9 @@ public interface ITranscriptionAdvisor
     /// Best-effort; a field the host would not reveal stays at its neutral default. Cached after the first probe.</summary>
     GpuHardware DetectGpu();
 
+    /// <summary>Every hardware GPU, deduplicated (AC-1881). <see cref="DetectGpu"/> is the one Auto picks from these.</summary>
+    IReadOnlyList<GpuHardware> DetectGpus();
+
     /// <summary>The hardware-aware model + backend pick for this machine, with the reason and badges (AC-68 slice 2).
     /// This is what "Auto" resolves to.</summary>
     TranscriptionRecommendation Recommend();

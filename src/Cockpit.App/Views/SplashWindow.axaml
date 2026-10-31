@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Cockpit.App.ViewModels"
@@ -92,13 +93,29 @@
                 <TextBlock Text="{Binding Detail}" FontSize="11" TextWrapping="Wrap" MinHeight="16" Margin="0,4,0,10"
                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <StackPanel IsVisible="{Binding IsUnlocking}">
+                    <!-- AC-1879: Windows Hello first, the password beside it; only while Hello can open this configuration here. -->
+                    <StackPanel IsVisible="{Binding Unlock.OffersHello}" Spacing="6" Margin="0,0,0,8" IsEnabled="{Binding !Unlock.IsBusy}">
+                        <Button Classes.Accent="{Binding !Unlock.HelloTried}" HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center" Command="{Binding Unlock.TryHelloCommand}" IsEnabled="{Binding !Unlock.IsWaitingForHello}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <materialIcons:MaterialIcon Kind="FaceRecognition" Width="16" Height="16" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Unlock.HelloButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="or type your password" FontSize="11" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
                     <Grid ColumnDefinitions="*,104" ColumnSpacing="8" IsEnabled="{Binding !Unlock.IsBusy}">
                         <TextBox x:Name="PasswordBox" PasswordChar="•" PlaceholderText="Password" Classes.unlockError="{Binding HasUnlockError}"
                                  Text="{Binding Unlock.Password, Mode=TwoWay}" KeyDown="OnPasswordKeyDown"/>
-                        <Button Grid.Column="1" Classes="Accent" Content="Unlock" HorizontalAlignment="Stretch" Click="OnUnlock"/>
+                        <Button Grid.Column="1" Classes.Accent="{Binding Unlock.UnlockIsPrimary}" Content="Unlock" HorizontalAlignment="Stretch" Click="OnUnlock"/>
                     </Grid>
-                    <TextBlock Text="{Binding Unlock.Error}" FontSize="11" MinHeight="30" Padding="0,4,0,0"
+                    <TextBlock Text="{Binding Unlock.Error}" FontSize="11" MinHeight="30" Padding="0,4,0,0" TextWrapping="Wrap"
+                               IsVisible="{Binding Unlock.Notice, Converter={x:Static ObjectConverters.IsNull}}"
                                Foreground="{DynamicResource CockpitStatusErrorBrush}"/>
+                    <TextBlock Text="{Binding Unlock.Notice}" FontSize="11" MinHeight="30" Padding="0,4,0,0" TextWrapping="Wrap"
+                               IsVisible="{Binding Unlock.Notice, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"/>
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding Segments}">
                     <ItemsControl.ItemsPanel>

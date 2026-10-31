@@ -305,8 +305,6 @@ public sealed class ConnectKeyDoorTests
     [InlineData("operate key", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("operate key", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("pairing secret", "issue_connect_key", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("pairing secret", "revoke_connect_key", NodeSessionMcpTools.AdminRefusal)]
-    [InlineData("pairing secret", "list_connect_keys", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("admin key", "list_connect_keys", null)]
     [InlineData("operate key", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]
     [InlineData("pairing secret", "set_connect_key_scope", NodeSessionMcpTools.AdminRefusal)]

@@ -203,6 +203,9 @@ internal sealed class ServerPluginUiHost(
 
     public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => projects();
 
+    // Already the server's: a screen opened here manages only this server.
+    public Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() => Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
+
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     public Task InsertIntoSessionAsync(string paneId, string text) => Task.CompletedTask;

@@ -48,7 +48,7 @@ public sealed class AgentsOverviewViewModel
 
     private void _Reconcile()
     {
-        var catalogs = _cockpit.ServerGroups.Select(group => group.Server.Projects).ToList();
+        var catalogs = _cockpit.ServerGroups.Select(group => group.Server?.Projects).OfType<IServerProjects>().ToList();
         foreach (var catalog in _serverProjects.Where(catalog => !catalogs.Contains(catalog)).ToList())
         {
             catalog.Changed -= _OnProjectsChanged;
@@ -241,7 +241,7 @@ public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisp
     public string Project => (_session?.ProjectId ?? _serverSession?.Handle.ProjectId) is { } id
         ? (_serverGroup is null
             ? _cockpit.Projects.Projects.FirstOrDefault(project => project.Id == id)?.Name
-            : _serverGroup.Server.Projects.Current.Settings.Projects.FirstOrDefault(project => project.Id == id)?.Name) ?? "Project unavailable"
+            : _serverGroup.Server?.Projects.Current.Settings.Projects.FirstOrDefault(project => project.Id == id)?.Name) ?? "Project unavailable"
         : "No project";
     public bool TerminalOnly => _session is TtyViewModel || _serverSession?.Handle.IsTerminal == true;
     public SessionStatus Status => _session?.SessionStatus ?? _serverSession!.Status;

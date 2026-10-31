@@ -28,6 +28,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
     private readonly ILogger<NodePairingHost> _logger;
     private readonly NodeLanOnboarding _lanOnboarding;
     private readonly System.Net.IPAddress _listenAddress;
+    private readonly Swarm.SwarmJoinHost? _swarm;
+    private readonly IServiceProvider? _services;
 
     private WebApplication? _app;
 
@@ -38,7 +40,9 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         INodeVisibilityPolicy visibility,
         ILoggerFactory loggerFactory,
         NodeLanOnboarding? lanOnboarding = null,
-        NodeListenAddress? listenAddress = null)
+        NodeListenAddress? listenAddress = null,
+        Swarm.SwarmJoinHost? swarm = null,
+        IServiceProvider? services = null)
     {
         _settings = settings;
         _broker = broker;
@@ -48,6 +52,8 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
         _logger = loggerFactory.CreateLogger<NodePairingHost>();
         _lanOnboarding = lanOnboarding ?? new NodeLanOnboarding();
         _listenAddress = listenAddress?.Value ?? System.Net.IPAddress.Any;
+        _swarm = swarm;
+        _services = services;
     }
 
     public string? Address { get; private set; }
@@ -73,10 +79,21 @@ internal sealed class NodePairingHost : IHostedService, INodePairingEndpoint, IS
             // AC-1284: the configured port, not 0 — a controller stores this address and never hears about a new
             // one, so an OS-assigned port made the node's first restart break the pairing permanently.
             builder.WebHost.ConfigureKestrel(options =>
-                options.Listen(_listenAddress, settings.Port, listenOptions => listenOptions.UseHttps(_certificate.Value)));
+                options.Listen(_listenAddress, settings.Port, listenOptions => listenOptions.UseHttps(https =>
+                {
+                    https.ServerCertificate = _certificate.Value;
+                    https.ClientCertificateMode = Microsoft.AspNetCore.Server.Kestrel.Https.ClientCertificateMode.AllowCertificate;
+                    // /swarm/connect checks this key against the signed membership.
+                    https.ClientCertificateValidation = (_, _, _) => true;
+                })));
 
             var app = builder.Build();
             _MapRoutes(app);
+            if (_swarm is not null && _services is not null)
+            {
+                _swarm.MapRoutes(app, _services);
+            }
+            _services?.GetService<Swarm.SwarmHeartbeat>()?.MapRoutes(app, _services);
 
             await app.StartAsync(cancellationToken).ConfigureAwait(false);
             _app = app;

@@ -71,7 +71,7 @@ public class DiagramObjectEditTests
     }
 
     [Fact]
-    public void Connect_AppendsTheConnection_AndRefusesTheSameOneTwice()
+    public void Connect_AppendsOnceAndDisconnectRestoresTheSource()
     {
         var first = DiagramObjectEdit.Connect(Source, "B", "A", label: null);
         Assert.EndsWith("\n    B --> A", first.Text);
@@ -79,18 +79,12 @@ public class DiagramObjectEditTests
         var again = DiagramObjectEdit.Connect(first.Text!, "B", "A", label: null);
         Assert.Null(again.Text);
         Assert.Contains("already connected", again.Refusal);
-    }
-
-    [Fact]
-    public void Disconnect_RemovesOnlyThatConnection()
-    {
-        var edit = DiagramObjectEdit.Disconnect(Source, "A", "B");
-
+        Assert.Equal(Source.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(first.Text ?? throw new InvalidOperationException("Connect produced no text."), "B", "A").Text);
         Assert.Equal("""
             flowchart LR
                 A["Start"]
                 B{Choose}
-            """.ReplaceLineEndings("\n"), edit.Text);
+            """.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(Source, "A", "B").Text);
     }
 
     [Fact]

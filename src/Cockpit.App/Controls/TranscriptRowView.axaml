@@ -35,6 +35,9 @@
         <Style Selector="ItemsControl.threadTags.user">
             <Setter Property="HorizontalAlignment" Value="Right"/>
         </Style>
+        <Style Selector="TextBlock.mergeOrigin.user">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
         <!-- The row being dragged stays where it is, dimmed, so the drop reads as moving it (§ 9.6). -->
         <Style Selector="SelectableTextBlock.otherPart">
             <Setter Property="Foreground" Value="{DynamicResource CockpitTextFaintBrush}"/>
@@ -83,6 +86,11 @@
                     </MultiBinding>
                 </TextBlock.IsVisible>
             </TextBlock>
+
+            <!-- AC-1929: a row merged after a split; the divider's toggle adds the member it was written on. -->
+            <TextBlock Text="{Binding MergeOriginLabel}" Classes="mergeOrigin" Classes.user="{Binding IsUserRow}" FontSize="11"
+                       Foreground="{DynamicResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding MergeOriginLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
             <!-- Assistant threads: in All, the project a row is in; the tooltip says how it got there. -->
             <ItemsControl Classes="threadTags" Classes.user="{Binding IsUserRow}" ItemsSource="{Binding ThreadTags}"
@@ -342,6 +350,18 @@
             <ContentControl Content="{Binding DividerBranch}" IsVisible="{Binding IsDivider}">
               <ContentControl.DataTemplates>
                 <DataTemplate DataType="vm:TranscriptEntryViewModel">
+            <StackPanel>
+            <!-- AC-1929: a merge that kept two versions asks once, neutral: a split is a state, not an error. -->
+            <Border Classes="errorCard informational" Padding="12,10" Margin="0,8,0,0"
+                    IsVisible="{Binding MergeQuestion, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding MergeQuestion.Text, FallbackValue={x:Null}}" TextWrapping="Wrap" FontSize="12"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="Compact" Content="Compare" Command="{Binding CompareMergeCommand}"/>
+                        <Button Classes="Accent Compact" Content="Keep the newest" Command="{Binding KeepNewestMergeCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
             <Grid ColumnDefinitions="*,Auto,*" Margin="0,8">
                 <Border Grid.Column="0" Height="1" VerticalAlignment="Center"
                         Background="{DynamicResource CockpitHairlineBrush}"/>
@@ -351,6 +371,11 @@
                 <Border Grid.Column="2" Height="1" VerticalAlignment="Center"
                         Background="{DynamicResource CockpitHairlineBrush}"/>
             </Grid>
+            <Button Classes="Subtle" Padding="0" HorizontalAlignment="Center" IsVisible="{Binding IsMergeDivider}"
+                    Command="{Binding ToggleMergeOriginsCommand}">
+                <TextBlock Text="{Binding MergeToggleLabel}" FontSize="11" Foreground="{DynamicResource CockpitClickablePathFgBrush}"/>
+            </Button>
+            </StackPanel>
                 </DataTemplate>
               </ContentControl.DataTemplates>
             </ContentControl>
@@ -743,6 +768,9 @@
                                 <TextBlock Text="{Binding ToolHeader}"/>
                             </StackPanel>
                         </Button>
+                        <TextBlock Text="{Binding ToolOriginLabel}" FontSize="11" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding ToolOriginLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <!-- AC-1056: a call the session let go of instead of waiting on, and how that task is
                              doing — the one thing that told a blocking call from a background one apart was
                              the raw input JSON, which is folded away until the operator expands the row. -->

@@ -174,6 +174,9 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
 
     private AgentMessageDelivery _Deliver(ActiveController? holder, string fromPaneId, string toPaneId, string kind, string body, string? senderProfile, string? senderProjectId, bool profileWide, string? subjectPaneId)
     {
+        if (toPaneId is AssistantIdentity.PaneId or AssistantIdentity.ControllerInboxPaneId
+            && _services?.GetService<Cockpit.Core.Swarm.ISwarmLeadership>() is { IsActive: true, IsSelf: false })
+            toPaneId = Cockpit.Infrastructure.Swarm.SwarmAssistantRelay.Outbox;
         lock (_lock)
         {
             // AC-1405: first, so mail queued for a holder no longer live neither dedups nor crowds out mail for the next.
@@ -319,6 +322,29 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         lock (_lock)
         {
             return _inboxes.TryGetValue(paneId, out var waiting) && waiting.Count > 0 ? waiting[0] : null;
+        }
+    }
+
+    internal AgentMessage[] CaptureAssistantStandby()
+    {
+        lock (_lock)
+            return [.. _inFlight.GetValueOrDefault(AssistantIdentity.PaneId, []), .. _inboxes.GetValueOrDefault(AssistantIdentity.PaneId, [])];
+    }
+
+    internal void RestoreAssistantStandby(IEnumerable<AgentMessage> messages)
+    {
+        lock (_lock)
+        {
+            if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var waiting))
+            {
+                _inboxes[AssistantIdentity.PaneId] = waiting = [];
+            }
+            var known = waiting.Concat(_inFlight.GetValueOrDefault(AssistantIdentity.PaneId, [])).Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var message in messages)
+                if (message.ToPaneId == AssistantIdentity.PaneId && known.Add(message.Id))
+                {
+                    waiting.Add(message);
+                }
         }
     }
 

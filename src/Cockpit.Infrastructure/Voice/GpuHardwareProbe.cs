@@ -4,33 +4,31 @@ using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
-// AC-68 slice 2: Identifies the display GPU beyond "can a runtime load" — brand, whether it also drives a
-// monitor (transcribing on the display GPU stutters the desktop), and dedicated VRAM. Windows uses DXGI
-// (accurate), Linux is best-effort sysfs; every path degrades to GpuHardware.None rather than throwing.
+// AC-68 slice 2: Identifies the host GPUs beyond "can a runtime load" — brand, whether one drives a monitor
+// (transcribing on the display GPU stutters the desktop), and VRAM. AC-1881: Vulkan is the GPU list, enriched by
+// DXGI (Windows, via LUID) or sysfs (Linux); every path degrades to fewer facts rather than throwing.
 internal static class GpuHardwareProbe
 {
     private const uint DxgiAdapterFlagSoftware = 2;
     private const int DxgiErrorNotFound = unchecked((int)0x887A0002);
 
-    public static GpuHardware Detect()
+    public static IReadOnlyList<GpuHardware> DetectAll()
     {
         try
         {
             if (OperatingSystem.IsWindows())
             {
-                return _DetectWindows();
+                return _Merge(VulkanDeviceProbe.Enumerate(), _DetectWindows(), vk => vk.Luid is { } luid ? gpu => gpu.Luid == luid : null);
             }
 
             if (OperatingSystem.IsLinux())
             {
-                return _DetectLinux();
+                return _Merge(VulkanDeviceProbe.Enumerate(), _DetectLinux(), vk => gpu => gpu.VendorId == vk.VendorId && gpu.PciDeviceId == vk.PciDeviceId);
             }
 
-            if (OperatingSystem.IsMacOS())
+            if (OperatingSystem.IsMacOS() && RuntimeInformation.OSArchitecture == Architecture.Arm64)
             {
-                return RuntimeInformation.OSArchitecture == Architecture.Arm64
-                    ? new GpuHardware(GpuVendor.Apple, "Apple Silicon", DrivesDisplay: true, VideoMemoryBytes: 0)
-                    : GpuHardware.None;
+                return [new GpuHardware(GpuVendor.Apple, "Apple Silicon", DrivesDisplay: true, VideoMemoryBytes: 0)];
             }
         }
         catch
@@ -38,8 +36,40 @@ internal static class GpuHardwareProbe
             // A probe is a nice-to-have; never let a driver quirk or a missing library take down the dialog.
         }
 
-        return GpuHardware.None;
+        return [];
     }
+
+    // AC-1881: One entry per Vulkan device (deduplicated on UUID: DXGI can list one iGPU twice), with "drives display"
+    // and VRAM from the OS probe that matches it. Without Vulkan the OS probe's own list stands, unselectable.
+    // ponytail: Linux matches on PCI vendor/device id, so two identical cards share one display flag; add pci_bus_info if that bites.
+    private static IReadOnlyList<GpuHardware> _Merge(
+        IReadOnlyList<VulkanDevice> vulkan,
+        IReadOnlyList<OsAdapter> os,
+        Func<VulkanDevice, Func<OsAdapter, bool>?> matcher)
+    {
+        if (vulkan.Count == 0)
+        {
+            return os.Select(adapter => adapter.Gpu).ToList();
+        }
+
+        var gpus = new List<GpuHardware>();
+        foreach (var device in vulkan.DistinctBy(device => device.Uuid ?? $"index:{device.Index}"))
+        {
+            var match = matcher(device) is { } predicate ? os.FirstOrDefault(predicate) : null;
+            var vram = match?.Gpu.VideoMemoryBytes is > 0 and var osVram ? osVram : device.Kind is GpuKind.Discrete ? device.LocalHeapBytes : 0;
+            gpus.Add(new GpuHardware(_Vendor(device.VendorId), match?.Gpu.Description ?? device.Name, match?.Gpu.DrivesDisplay ?? false, vram)
+            {
+                Kind = device.Kind,
+                DeviceId = device.Uuid,
+                VulkanIndex = device.Index,
+            });
+        }
+
+        return gpus;
+    }
+
+    // One adapter as the OS reports it, with the keys used to match it to a Vulkan device.
+    private sealed record OsAdapter(GpuHardware Gpu, long? Luid, uint VendorId, uint PciDeviceId);
 
     private static GpuVendor _Vendor(uint vendorId) => vendorId switch
     {
@@ -53,18 +83,18 @@ internal static class GpuHardwareProbe
     // ── Windows: DXGI ────────────────────────────────────────────────────────────────────────────────────────
 
     [SupportedOSPlatform("windows")]
-    private static GpuHardware _DetectWindows()
+    private static IReadOnlyList<OsAdapter> _DetectWindows()
     {
         var iid = typeof(IDXGIFactory1).GUID;
         if (CreateDXGIFactory1(ref iid, out var factoryPtr) != 0 || factoryPtr == IntPtr.Zero)
         {
-            return GpuHardware.None;
+            return [];
         }
 
         var factory = (IDXGIFactory1)Marshal.GetObjectForIUnknown(factoryPtr);
         Marshal.Release(factoryPtr);
 
-        var candidates = new List<GpuHardware>();
+        var candidates = new List<OsAdapter>();
         try
         {
             for (uint index = 0; ; index++)
@@ -91,11 +121,15 @@ internal static class GpuHardwareProbe
                         Marshal.Release(outputPtr);
                     }
 
-                    candidates.Add(new GpuHardware(
-                        _Vendor(desc.VendorId),
-                        string.IsNullOrWhiteSpace(desc.Description) ? null : desc.Description.Trim(),
-                        drivesDisplay,
-                        (long)(ulong)desc.DedicatedVideoMemory));
+                    candidates.Add(new OsAdapter(
+                        new GpuHardware(
+                            _Vendor(desc.VendorId),
+                            string.IsNullOrWhiteSpace(desc.Description) ? null : desc.Description.Trim(),
+                            drivesDisplay,
+                            (long)(ulong)desc.DedicatedVideoMemory),
+                        desc.AdapterLuid,
+                        desc.VendorId,
+                        desc.DeviceId));
                 }
                 finally
                 {
@@ -108,12 +142,7 @@ internal static class GpuHardwareProbe
             Marshal.ReleaseComObject(factory);
         }
 
-        // Prefer the adapter that actually drives a monitor (that is the one transcription would fight); among
-        // ties, the one with the most VRAM. If nothing drives a display, fall back to the largest card.
-        return candidates
-            .OrderByDescending(gpu => gpu.DrivesDisplay)
-            .ThenByDescending(gpu => gpu.VideoMemoryBytes)
-            .FirstOrDefault() ?? GpuHardware.None;
+        return candidates;
     }
 
     [DllImport("dxgi.dll", PreserveSig = true)]
@@ -167,14 +196,15 @@ internal static class GpuHardwareProbe
 
     // ── Linux: sysfs (best-effort) ───────────────────────────────────────────────────────────────────────────
 
-    private static GpuHardware _DetectLinux()
+    private static IReadOnlyList<OsAdapter> _DetectLinux()
     {
         const string drm = "/sys/class/drm";
         if (!Directory.Exists(drm))
         {
-            return GpuHardware.None;
+            return [];
         }
 
+        var adapters = new List<OsAdapter>();
         foreach (var card in Directory.EnumerateDirectories(drm, "card?"))
         {
             var vendorFile = Path.Combine(card, "device", "vendor");
@@ -183,11 +213,15 @@ internal static class GpuHardwareProbe
                 continue;
             }
 
-            var vendor = _Vendor(_ParseHex(File.ReadAllText(vendorFile)));
+            var vendorId = _ParseHex(File.ReadAllText(vendorFile));
+            var vendor = _Vendor(vendorId);
             if (vendor is GpuVendor.Unknown)
             {
                 continue;
             }
+
+            var deviceFile = Path.Combine(card, "device", "device");
+            var deviceId = File.Exists(deviceFile) ? _ParseHex(File.ReadAllText(deviceFile)) : 0;
 
             // A connected connector under this card means it is driving a display.
             var cardName = Path.GetFileName(card);
@@ -195,10 +229,10 @@ internal static class GpuHardwareProbe
                 .Select(connector => Path.Combine(connector, "status"))
                 .Any(status => File.Exists(status) && File.ReadAllText(status).Trim() == "connected");
 
-            return new GpuHardware(vendor, Description: null, drivesDisplay, VideoMemoryBytes: 0);
+            adapters.Add(new OsAdapter(new GpuHardware(vendor, Description: null, drivesDisplay, VideoMemoryBytes: 0), Luid: null, vendorId, deviceId));
         }
 
-        return GpuHardware.None;
+        return adapters;
     }
 
     private static uint _ParseHex(string raw)

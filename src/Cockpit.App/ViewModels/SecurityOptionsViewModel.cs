@@ -3,19 +3,14 @@ using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Shell;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Mcp;
-using Cockpit.Core.Profiles;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Shell;
 using Cockpit.Core.Terminal;
@@ -34,31 +29,14 @@ public sealed partial class SecurityOptionsViewModel(
     IShellAccessSettingsStore? shellAccessSettings = null,
     INodeEndpointSettingsStore? nodeEndpointSettings = null,
     IEnumerable<ICockpitInternalMcpProvider>? mcpEndpointHosts = null,
-    INodePairingBroker? nodePairing = null,
-    INodePairingClient? nodePairingClient = null,
     INodePairingEndpoint? nodePairingEndpoint = null,
     IMcpServerStore? mcpServers = null,
-    INodeDiscoveryClient? nodeDiscoveryClient = null,
-    // AC-794: what the scope checklist below offers to tick. Absent in the design-time/unit-test graph, same as
-    // every other store above — the checklist then simply stays empty rather than the tab failing to open.
-    ISessionProfileStore? sessionProfileStore = null,
-    IProjectStore? projectStore = null,
-    // AC-795: the other direction — the sessions on the nodes *this* cockpit is the controller of. Absent in the
-    // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
+    // AC-1984: only connected server cards remain on the Nodes page.
     INodeSessionsClient? nodeSessions = null,
-    // AC-1322: rides each node card's poll to collect what agents there sent their assistant. Absent in the
-    // design-time/unit-test graph like the client above. AC-1324: the permission relay rides the same poll.
-    INodeInboxRelay? nodeInboxRelay = null,
-    NodePermissionRelay? nodePermissionRelay = null,
-    // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
-    // design-time/unit-test graph like the relays above.
-    IBehaviourMemorySync? behaviourSync = null,
     // AC-1456: the connect servers the session list shows as groups; their cards follow those instead of polling.
     IRemoteServers? remoteServers = null,
     // AC-1593: what the organisation's policy forbids; absent in the design-time/unit-test graph, where nothing is.
-    IOrgPolicy? orgPolicy = null,
-    // AC-1943: what a paused or disconnected node's card tells the rest of the cockpit.
-    INodeLinkGate? nodeLinkGate = null) : ObservableObject
+    IOrgPolicy? orgPolicy = null) : ObservableObject
 {
     public bool TerminalAccessEditable => !OrgPolicyCeilings.TerminalForbidden(orgPolicy?.Current);
 
@@ -93,7 +71,6 @@ public sealed partial class SecurityOptionsViewModel(
 
     // The writes this tab has in flight, chained end to end. A chain rather than a lock: these all read-modify-write
     // the same section of cockpit.json, and a gate held across an await that needs the UI thread is how the dialog
-    // would deadlock instead of merely losing an update. Nothing here ever waits synchronously.
 
     // Chained from the UI thread only — every caller is a bound property's handler or Apply. Two threads chaining
     // at once would read the same predecessor and run side by side, which is the update loss this exists to stop.
@@ -196,89 +173,13 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _allowedDiscoveryRangesText = "";
 
-    // The pairing prompt lives on this tab rather than in an app-wide notification, and that is a real ceiling: a
-    // request that arrives while the Options window is shut is never seen and expires after two minutes (AC-792).
-
-    // The address a second cockpit types here to start a pairing with this one. One address, not one per endpoint:
-    // the grant carries the endpoint list.
+    // AC-1984: Swarm still shows this listener address for joining by address.
     [ObservableProperty]
     private string _nodePairingAddress = "";
 
-    [ObservableProperty]
-    private bool _hasIncomingPairing;
-
-    // The six digits this cockpit derived. The operator compares them with the other screen; they are never sent.
-    [ObservableProperty]
-    private string _incomingPairingCode = "";
-
-    [ObservableProperty]
-    private string _incomingPairingCaption = "";
-
-    [ObservableProperty]
-    private bool _isPaired;
-
-    [ObservableProperty]
-    private string _pairedControllerText = "";
-
-    // Both rebuild on every `RefreshAsync` (the dialog is rebuilt each time it opens, same reasoning as the pairing
-    // subscription above) rather than trying to diff the previous set against a changed profile/project list (AC-794).
-
-    public ObservableCollection<NodeScopeRowViewModel> ScopedProfiles { get; } = [];
-
-    public ObservableCollection<NodeScopeRowViewModel> ScopedProjects { get; } = [];
-
-    // One card per paired node, and no local session in any of them — see `NodeSessionsViewModel` for why that
-    // separation is structural rather than a badge (AC-795).
+    // AC-1984: connected server cards follow their session-list groups.
 
     public ObservableCollection<NodeSessionsViewModel> PairedNodes { get; } = [];
-
-    // True only while a row's IsAllowed is being seeded from the current grant, so ticking a box for real is the
-    // only path that writes back to the broker — the same shape as _loadingNodeEndpoint above.
-    private bool _loadingScope;
-
-    // ── AC-792, this cockpit as a controller ───────────────────────────────────────────────────────────────────
-
-    // What the operator types: the pairing address read off the other machine's Security tab.
-    [ObservableProperty]
-    private string _pairWithNodeAddress = "";
-
-    // A second entrance to the same handshake above, not a separate one: picking a row here only fills
-    // `PairWithNodeAddress` (`UseFoundNodeCommand`) — the pairing code, the certificate pin, everything from
-    // `StartPairingCommand` onward is unaware whether the address it received was typed or found (AC-793).
-
-    public ObservableCollection<NodeDiscoveryFound> FoundNodes { get; } = [];
-
-    [ObservableProperty]
-    private bool _isDiscoveringNodes;
-
-    [ObservableProperty]
-    private string _discoveryStatus = "";
-
-    // Set between "start" and "the codes match": the handshake exists, nothing is granted, and both screens are
-    // showing a number. Null at every other moment, which is what the two buttons key on.
-    private NodePairingHandshake? _handshake;
-
-    // Cancels the claim poll. Without one, Cancel would only forget the handshake locally while the poll ran on to
-    // completion and wrote the node's servers into the registry anyway — a button that says it stopped something
-    // it did not.
-    private CancellationTokenSource? _pairingCancellation;
-
-    [ObservableProperty]
-    private bool _isComparingPairingCode;
-
-    [ObservableProperty]
-    private string _outgoingPairingCode = "";
-
-    [ObservableProperty]
-    private string _outgoingPairingCaption = "";
-
-    [ObservableProperty]
-    private bool _isPairingBusy;
-
-    [ObservableProperty]
-    private string _pairingStatus = "";
-
-    private bool _subscribedToPairing;
 
     [ObservableProperty]
     private bool _isMigrating;
@@ -317,6 +218,7 @@ public sealed partial class SecurityOptionsViewModel(
         var status = await protection.GetStatusAsync().ConfigureAwait(true);
         IsEncrypted = status.Enabled;
         ShowUnprotectedBanner = status.ShouldWarnUnprotected;
+        await _ShowHelloAsync(status).ConfigureAwait(true);
 
         if (screenLockSettings is not null && seedStaged)
         {
@@ -376,39 +278,15 @@ public sealed partial class SecurityOptionsViewModel(
             _ApplyNodeEndpointAddresses(NodeEndpointEnabled);
         }
 
-        // AC-792: subscribe once, not per refresh — this tab is rebuilt every time the dialog opens, and a
-        // handler added on each one would fire as many times as the operator has opened Options this run.
-        if (nodePairing is not null && !_subscribedToPairing)
-        {
-            // AC-794: a pairing/unpairing changes who the scope checklist is even for, so it reloads here too —
-            // not just IsPaired/PairedControllerText. An unpair, in particular, has to clear the checklist rather
-            // than leave stale rows an operator could still tick against a coupling that no longer exists.
-            nodePairing.Changed += (_, _) => Dispatcher.UIThread.Post(() =>
-            {
-                _ReadPairingState();
-                _ = _LoadScopeRowsAsync();
-            });
-            _subscribedToPairing = true;
-        }
-
-        // Without this the broker only reads its pairing off disk when something acts on it, so a node that was
-        // paired before this launch would show as unpaired here — and offer no way to unpair.
-        if (nodePairing is not null)
-        {
-            await nodePairing.EnsureLoadedAsync().ConfigureAwait(true);
-        }
-
         // The MCP listener owns the shared message when both ports are unavailable.
         var pairingAddress = nodePairingEndpoint?.Address;
         var mcpListenerError = mcpEndpointHosts?.Select(host => host.NodeListenerError).FirstOrDefault(error => error is not null);
-        var pairingError = nodePairingEndpoint?.Error;
         NodePairingAddress = pairingAddress ?? "";
         if (pairingAddress is null && mcpListenerError is null)
         {
-            NodePairingAddress = pairingError ?? "";
+            NodePairingAddress = nodePairingEndpoint?.Error ?? "";
         }
-        _ReadPairingState();
-        await _LoadScopeRowsAsync().ConfigureAwait(true);
+
         await _LoadPairedNodesAsync().ConfigureAwait(true);
     }
 
@@ -417,61 +295,13 @@ public sealed partial class SecurityOptionsViewModel(
     // top of the first's rather than replacing them, leaving the first call's cards (AC-796).
     private readonly SemaphoreSlim _pairedNodesGate = new(1, 1);
 
-    // AC-1458: the nodes the operator disconnected this run, so rebuilding the cards does not reconnect them.
-    private readonly Dictionary<string, DateTimeOffset> _disconnectedNodes = new(StringComparer.Ordinal);
-
-    // AC-1458: a key the server renewed or replaced, written through the same row path a connect uses.
-    private async Task _StoreKeyExpiryAsync(string node, DateTimeOffset? expiresAt)
-    {
-        if (mcpServers is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var existing = await mcpServers.LoadAsync().ConfigureAwait(true);
-            var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
-            var prefix = NodeServerName.PrefixFor(node);
-            if (!existing.Any(server => string.Equals(server.Name, wanted, StringComparison.Ordinal) && server.KeyExpiresAt != expiresAt))
-            {
-                return;
-            }
-
-            var rows = existing
-                .Where(server => server.Name.StartsWith(prefix, StringComparison.Ordinal))
-                .Select(server => string.Equals(server.Name, wanted, StringComparison.Ordinal) ? server with { KeyExpiresAt = expiresAt } : server)
-                .ToList();
-            await _StoreNodeRowsAsync(node, rows, existing).ConfigureAwait(true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // Left as it was: the next poll reads the same expiry and writes it then.
-        }
-    }
-
-    private void _NoteDisconnected(string node, DateTimeOffset? at)
-    {
-        if (at is { } since)
-        {
-            _disconnectedNodes[node] = since;
-        }
-        else
-        {
-            _disconnectedNodes.Remove(node);
-        }
-    }
-
-    // Each card reads its own node when it is built, so a node that is off costs this tab a timeout and not the other
-    // nodes' contents — and the cards appear at once rather than after the slowest one (AC-795, AC-796).
     private async Task _LoadPairedNodesAsync()
     {
         await _pairedNodesGate.WaitAsync().ConfigureAwait(true);
         try
         {
-            // The old cards' polls would otherwise keep ticking after `Clear()` drops them from this collection —
-            // nothing else references them, so nothing else would ever stop them.
-            StopPairedNodePolling();
+            // Release subscriptions before replacing the cards.
+            DisposeNodeCards();
             PairedNodes.Clear();
             if (nodeSessions is null)
             {
@@ -491,42 +321,19 @@ public sealed partial class SecurityOptionsViewModel(
             {
                 var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
                 var row = rows.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal));
-                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync, nodeLinkGate)
+                if (remoteServers?.Knows(node) != true)
+                {
+                    continue;
+                }
+
+                var card = new NodeSessionsViewModel(node)
                 {
                     Url = row?.Url,
                     KeyExpiresAt = row?.KeyExpiresAt,
                     EnterNewKey = row is null ? null : () => _PrefillConnect(node, row),
-                    DisconnectedChanged = at => _NoteDisconnected(node, at),
-                    KeyExpiryChanged = expiresAt => _StoreKeyExpiryAsync(node, expiresAt),
                 };
-                if (remoteServers?.Knows(node) == true)
-                {
-                    card.FollowServer(remoteServers);
-                    PairedNodes.Add(card);
-                    continue;
-                }
-
-                if (_disconnectedNodes.TryGetValue(node, out var disconnectedAt))
-                {
-                    card.ShowDisconnected(disconnectedAt);
-                    PairedNodes.Add(card);
-                    continue;
-                }
-
-                if (nodeLinkGate?.IsPaused(node) == true)
-                {
-                    card.ShowPaused();
-                    PairedNodes.Add(card);
-                    continue;
-                }
-
+                card.FollowServer(remoteServers);
                 PairedNodes.Add(card);
-                card.StartPolling();
-
-                // Deliberately not awaited: `RefreshAsync` on a node that is asleep sits out its whole budget, and
-                // the Options window must not wait on that — the card fills in when its node answers, or shows why
-                // not.
-                _ = card.RefreshAsync();
             }
         }
         finally
@@ -535,10 +342,8 @@ public sealed partial class SecurityOptionsViewModel(
         }
     }
 
-    // Stops every paired-node card's poll (AC-796) without touching the collection itself — reached both before
-    // this tab rebuilds `PairedNodes` and from `CockpitViewModel.DisposeAsync`, so a card's `DispatcherTimer` never
-    // outlives the cockpit it reports on.
-    public void StopPairedNodePolling()
+    // Release server subscriptions when rebuilding the cards or disposing the cockpit.
+    public void DisposeNodeCards()
     {
         foreach (var card in PairedNodes)
         {
@@ -546,145 +351,6 @@ public sealed partial class SecurityOptionsViewModel(
         }
     }
 
-    // Mirrors the broker onto the tab. The broker is the source of truth for both halves — an incoming request and
-    // the pairing it became — so this reads rather than tracks: a pairing that expired while the dialog sat open
-    // reads as gone here for exactly the same reason the claim would refuse it.
-    private void _ReadPairingState()
-    {
-        var pending = nodePairing?.Pending;
-        HasIncomingPairing = pending is not null;
-        IncomingPairingCode = pending?.Code ?? "";
-        // AC-1323: what is being consented to, said where the consent is given — a controller's assistant runs the
-        // sessions here, not merely sees them. The same profile/project scope bounds it, checked on every call.
-        IncomingPairingCaption = pending is null
-            ? ""
-            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} wants to pair with this cockpit as its controller. "
-                + "While it is connected, its assistant is the assistant here: it sees, starts, stops and steers sessions on this machine and reads their transcripts — "
-                + "only under the profiles and projects you allow on this page, checked on every call. "
-                + "Confirm only if the code below is the one that cockpit is showing.";
-
-        var pairing = nodePairing?.Pairing;
-        IsPaired = pairing is not null;
-        PairedControllerText = pairing is null
-            ? ""
-            : $"Paired with \"{pairing.ControllerName}\" ({pairing.ControllerAddress}) since {pairing.PairedAtUtc.ToLocalTime():g}. "
-                + "Its assistant can start and stop sessions here, hand them prompts and messages, rename them and read their transcripts — "
-                + "within the profiles and projects below, checked on every call.";
-    }
-
-    // AC-1292: "every profile, including ones made later" against "only the ones ticked below". The two kinds are
-    // independent — all projects with a narrow profile list is a real answer.
-    [ObservableProperty]
-    private bool _allowAllProfiles;
-
-    [ObservableProperty]
-    private bool _allowAllProjects;
-
-    partial void OnAllowAllProfilesChanged(bool value) => _PersistScopeIfEdited();
-
-    partial void OnAllowAllProjectsChanged(bool value) => _PersistScopeIfEdited();
-
-    private void _PersistScopeIfEdited()
-    {
-        if (!_loadingScope)
-        {
-            _ = _PersistScopeAsync();
-        }
-    }
-
-    // AC-794: rebuilds both checklists from the current pairing and the profile/project stores, and seeds each row's
-    // IsAllowed from NodePairing.AllowedProfileLabels/AllowedProjectIds.
-    private async Task _LoadScopeRowsAsync()
-    {
-        _UnsubscribeScopeRows();
-        ScopedProfiles.Clear();
-        ScopedProjects.Clear();
-
-        if (!IsPaired || sessionProfileStore is null || projectStore is null)
-        {
-            return;
-        }
-
-        var allowedProfiles = nodePairing?.Pairing?.AllowedProfileLabels ?? [];
-        var allowedProjects = nodePairing?.Pairing?.AllowedProjectIds ?? [];
-
-        _loadingScope = true;
-        AllowAllProfiles = nodePairing?.Pairing?.AllowAllProfiles ?? false;
-        AllowAllProjects = nodePairing?.Pairing?.AllowAllProjects ?? false;
-        try
-        {
-            // Neither load depends on the other — run them side by side rather than paying their latency twice.
-            var profilesTask = sessionProfileStore.LoadAsync();
-            var projectSettingsTask = projectStore.LoadAsync();
-            await Task.WhenAll(profilesTask, projectSettingsTask).ConfigureAwait(true);
-
-            foreach (var profile in profilesTask.Result)
-            {
-                var row = new NodeScopeRowViewModel(profile.Label, profile.Label, UnsupervisedProfile.SkipsApprovals(profile.Defaults))
-                {
-                    IsAllowed = allowedProfiles.Contains(profile.Label, StringComparer.Ordinal),
-                };
-                row.PropertyChanged += _OnScopeRowChanged;
-                ScopedProfiles.Add(row);
-            }
-
-            foreach (var project in projectSettingsTask.Result.Projects)
-            {
-                var row = new NodeScopeRowViewModel(project.Id, project.Name)
-                {
-                    IsAllowed = allowedProjects.Contains(project.Id, StringComparer.Ordinal),
-                };
-                row.PropertyChanged += _OnScopeRowChanged;
-                ScopedProjects.Add(row);
-            }
-        }
-        finally
-        {
-            _loadingScope = false;
-        }
-    }
-
-    private void _UnsubscribeScopeRows()
-    {
-        foreach (var row in ScopedProfiles.Concat(ScopedProjects))
-        {
-            row.PropertyChanged -= _OnScopeRowChanged;
-        }
-    }
-
-    // Fires for any row's IsAllowed flip — seeding included, which is exactly what _loadingScope exists to filter
-    // out, the same shape _loadingNodeEndpoint takes for the toggle above.
-    private void _OnScopeRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (_loadingScope || e.PropertyName != nameof(NodeScopeRowViewModel.IsAllowed))
-        {
-            return;
-        }
-
-        _ = _PersistScopeAsync();
-    }
-
-    // Writes the whole checklist back, not just the row that changed — SetScopeAsync replaces the grant wholesale
-    // (see its own remarks), so a partial write here would silently drop whatever the other rows already held.
-    private Task _PersistScopeAsync()
-    {
-        if (nodePairing is null)
-        {
-            return Task.CompletedTask;
-        }
-
-        // Written even while the matching "all" flag is on: the ticks stay the operator's own selection, ready for
-        // the moment they switch back to "only these" (AC-1292).
-        var allowedProfiles = ScopedProfiles.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
-        var allowedProjects = ScopedProjects.Where(row => row.IsAllowed).Select(row => row.Key).ToList();
-
-        // AC-1286: through the same chain as every other write on this tab. It is an operator's choice like the
-        // rest, so it may not be a detached task whose failure nobody ever sees.
-        return _PersistAsync("what this controller may use here", "nodes", () =>
-            nodePairing.SetScopeAsync(allowedProfiles, allowedProjects, AllowAllProfiles, AllowAllProjects));
-    }
-
-    // Node binding off: normally nothing to show.
     private string _ResolveNodeEndpointAddressText(bool enabled)
     {
         var addresses = _NodeAddresses();
@@ -728,7 +394,6 @@ public sealed partial class SecurityOptionsViewModel(
     }
 
     // Writes the three staged toggles in one pass, for the Options dialog's Apply (AC-999). Everything else on
-    // this tab — encryption, pairing, the MCP server list — acts on the spot and is not part of this.
 
     // AC-1286: through the same chain as the unstaged path, in two steps so a failure names its own tab. Apply
     // therefore follows anything the operator's last click still had in flight rather than racing it, and never
@@ -895,239 +560,7 @@ public sealed partial class SecurityOptionsViewModel(
         });
     }
 
-    // ── AC-792 commands, node side ─────────────────────────────────────────────────────────────────────────────
 
-    // The operator says the two screens show the same number. This is the moment a shared secret comes into
-    // being — before it, a pairing request has changed nothing about this cockpit.
-    [RelayCommand]
-    private async Task ConfirmIncomingPairingAsync()
-    {
-        if (nodePairing?.Pending is not { } pending)
-        {
-            return;
-        }
-
-        try
-        {
-            await nodePairing.ConfirmAsync(pending.PairingId).ConfigureAwait(true);
-            PairingStatus = "Pairing confirmed.";
-        }
-        catch (NodePairingException ex)
-        {
-            PairingStatus = ex.Message;
-        }
-
-        await RefreshAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private void RefuseIncomingPairing()
-    {
-        if (nodePairing?.Pending is { } pending)
-        {
-            nodePairing.Refuse(pending.PairingId);
-        }
-    }
-
-    // Ends the coupling from this side. The shared secret goes with it, which is what makes the controller stop
-    // being able to call in rather than merely stop being listed.
-    [RelayCommand]
-    private async Task UnpairNodeAsync()
-    {
-        if (nodePairing is null)
-        {
-            return;
-        }
-
-        await nodePairing.UnpairAsync().ConfigureAwait(true);
-        PairingStatus = "Unpaired. The key that controller was given no longer works.";
-        await RefreshAsync().ConfigureAwait(true);
-    }
-
-    // ── AC-792 commands, controller side ───────────────────────────────────────────────────────────────────────
-
-    // Step one: ask the node for a pairing and derive the code from the certificate that address actually
-    // presented. Nothing is stored yet — the operator has a number to compare and a way out.
-    [RelayCommand]
-    private async Task StartPairingAsync()
-    {
-        if (nodePairingClient is null || string.IsNullOrWhiteSpace(PairWithNodeAddress))
-        {
-            return;
-        }
-
-        // AC-1325: no chains — before any network call, refuse when this cockpit is itself already a node.
-        if (_AlreadyControlledRefusal() is { } refusal)
-        {
-            PairingStatus = refusal;
-            return;
-        }
-
-        IsPairingBusy = true;
-        PairingStatus = "";
-        try
-        {
-            _handshake = await nodePairingClient.BeginAsync(PairWithNodeAddress, Environment.MachineName).ConfigureAwait(true);
-            OutgoingPairingCode = _handshake.Code;
-            OutgoingPairingCaption =
-                $"\"{_handshake.NodeName}\" should be showing this same code. Continue only if it matches — a different number means something else is answering at that address.";
-            IsComparingPairingCode = true;
-        }
-        catch (NodePairingException ex)
-        {
-            PairingStatus = ex.Message;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or UriFormatException or ArgumentException or TaskCanceledException
-            or NotSupportedException or System.Text.Json.JsonException)
-        {
-            // The last two are what a mistyped address produces when it lands on some other HTTPS service that
-            // answers 200 with HTML: `ReadFromJsonAsync` throws rather than returning null, and an escaping
-            // exception out of an async RelayCommand is an unhandled one.
-            PairingStatus = $"Could not reach a Cockpit node at {PairWithNodeAddress}: {ex.Message}";
-        }
-        finally
-        {
-            IsPairingBusy = false;
-        }
-    }
-
-    // Step two: this operator has compared the codes. Now wait for the node's operator to do the same — which is
-    // the second of the two confirmations the pairing needs — and store what comes back.
-    [RelayCommand]
-    private async Task ConfirmPairingCodeAsync()
-    {
-        if (nodePairingClient is null || _handshake is not { } handshake)
-        {
-            return;
-        }
-
-        IsPairingBusy = true;
-        PairingStatus = $"Waiting for \"{handshake.NodeName}\" to confirm the same code…";
-
-        using var cancellation = new CancellationTokenSource();
-        _pairingCancellation = cancellation;
-        try
-        {
-            var grant = await nodePairingClient.CompleteAsync(handshake, cancellation.Token).ConfigureAwait(true);
-            var added = await _StoreNodeServersAsync(handshake, grant).ConfigureAwait(true);
-            PairingStatus = added == 0
-                ? $"Paired with \"{handshake.NodeName}\", but it offered no endpoints — turn its node switch on and restart it."
-                : $"Paired with \"{handshake.NodeName}\". Added {added} MCP server(s), pinned to that machine's certificate.";
-        }
-        catch (OperationCanceledException)
-        {
-            PairingStatus = "Pairing cancelled.";
-        }
-        catch (NodePairingException ex)
-        {
-            PairingStatus = ex.Message;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or NotSupportedException or System.Text.Json.JsonException)
-        {
-            // A pin mismatch arrives here wrapped in an HttpRequestException, more than one level deep — the
-            // reason worth showing, because "that is not the machine you paired with" is not a network problem.
-            PairingStatus = NodeConnectionFailure.Find<NodeCertificatePinMismatchException>(ex) is { } mismatch ? mismatch.Message : ex.Message;
-        }
-        finally
-        {
-            _pairingCancellation = null;
-            IsPairingBusy = false;
-            _ClearHandshake();
-        }
-    }
-
-    [RelayCommand]
-    private void CancelPairing()
-    {
-        // Cancel before clearing: a poll already in flight has to be told to stop, not merely forgotten.
-        _pairingCancellation?.Cancel();
-        _ClearHandshake();
-    }
-
-    // AC-1325: shared by both entrances a controller opens against a node — StartPairingAsync and, below,
-    // ConnectToServerAsync — so the refusal can never drift into two different sentences for one actual state.
-    private string? _AlreadyControlledRefusal()
-    {
-        if (nodePairing?.Pairing is not { } controlledBy)
-        {
-            return null;
-        }
-
-        return $"This cockpit is already controlled by \"{controlledBy.ControllerName}\" ({controlledBy.ControllerAddress}). "
-            + "Unpair it on the Nodes page first — a cockpit cannot be both a node and a controller.";
-    }
-
-    private void _ClearHandshake()
-    {
-        _handshake = null;
-        IsComparingPairingCode = false;
-        OutgoingPairingCode = "";
-        OutgoingPairingCaption = "";
-    }
-
-    // ── AC-793 commands, finding a node ────────────────────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    private async Task DiscoverNodesAsync()
-    {
-        if (nodeDiscoveryClient is null)
-        {
-            return;
-        }
-
-        IsDiscoveringNodes = true;
-        DiscoveryStatus = "";
-        FoundNodes.Clear();
-        try
-        {
-            var found = await nodeDiscoveryClient.FindAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(true);
-            foreach (var node in found)
-            {
-                FoundNodes.Add(node);
-            }
-
-            // An empty result is not an error — so this reads as guidance rather than a failure. AC-1284: the
-            // restart leads, because the node switch alone changes nothing until then, and the operator who has
-            // just ticked it is the likeliest reader of this line.
-            DiscoveryStatus = found.Count == 0
-                ? "Nothing answered. A cockpit only becomes findable after it is restarted with its node switch on — turn the switch on there and restart it. If it already was, check that it is on this network's own range or in your whitelist."
-                : "";
-        }
-        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
-        {
-            // The same posture `StartPairingAsync` takes for its own network call: a failure here is something
-            // to tell the operator, not an unhandled exception out of a button press.
-            DiscoveryStatus = $"Could not search for nodes on this network: {ex.Message}";
-        }
-        finally
-        {
-            IsDiscoveringNodes = false;
-        }
-    }
-
-    // Picking a row only fills the address field — starting the pairing itself is still `StartPairingCommand`,
-    // so a discovered address and a typed one go through the exact same handshake from here on.
-    [RelayCommand]
-    private void UseFoundNode(NodeDiscoveryFound node) => PairWithNodeAddress = node.Address;
-
-    // Turns the grant into ordinary registry rows — one per endpoint, all built by the shared _BuildNodeRow
-    // below (AC-1352) and saved together, so a node with more than one endpoint keeps every row.
-    private async Task<int> _StoreNodeServersAsync(NodePairingHandshake handshake, NodePairingGrant grant)
-    {
-        if (mcpServers is null || grant.Endpoints.Count == 0)
-        {
-            return 0;
-        }
-
-        var rows = grant.Endpoints.Select(endpoint =>
-            _BuildNodeRow(handshake.NodeName, endpoint.ServerName, endpoint.Url, grant.SharedSecret, handshake.Fingerprint));
-        await _StoreNodeRowsAsync(handshake.NodeName, rows).ConfigureAwait(true);
-        return grant.Endpoints.Count;
-    }
-
-    // AC-1352: the row shape both a pairing and a manual connect produce — one shape, one naming rule, so
-    // nothing downstream can tell which entrance produced it. AC-795 reads the name back to find a node's
-    // session server again, hence building it through `NodeServerName` rather than inline here and parsed there.
     private static McpServerConfig _BuildNodeRow(string nodeName, string serverName, string url, string bearer, string fingerprint) =>
         new()
         {
@@ -1161,10 +594,7 @@ public sealed partial class SecurityOptionsViewModel(
         await mcpServers.SaveAsync(kept).ConfigureAwait(true);
     }
 
-    // ── AC-1352, connect to a headless server with a connect key ──────────────────────────────────────────────
-
-    // What the operator types on the counterpart of the pairing block above: no handshake, because there is
-    // nobody at the other end to confirm one. AC-1458: host and port apart, the port prefilled.
+    // AC-1458: host and port apart, with the default port prefilled.
 
     private static readonly string DefaultConnectPort =
         (NodeEndpointSettings.DefaultPort + NodeEndpointSettings.McpPortOffset).ToString(CultureInfo.InvariantCulture);
@@ -1239,8 +669,7 @@ public sealed partial class SecurityOptionsViewModel(
     public string ConnectFingerprintHint =>
         $"From the server's startup log or docker logs {(string.IsNullOrWhiteSpace(ConnectNodeName) ? "<name>" : ConnectNodeName.Trim())}.";
 
-    // Writes the same row a pairing would, only after ProbeAsync proves the address, key and pin actually work
-    // together — a typo here must never leave a dead row for NodeSessionsClient to poll forever.
+    // AC-1352: save only after the address, key and certificate pin pass the probe.
     [RelayCommand]
     private async Task ConnectToServerAsync()
     {
@@ -1253,13 +682,6 @@ public sealed partial class SecurityOptionsViewModel(
         }
 
         _ShowConnectOutcome(ConnectOutcome.None, "", "");
-
-        // AC-1325: no chains — the same refusal StartPairingAsync gives, before any network call.
-        if (_AlreadyControlledRefusal() is { } refusal)
-        {
-            _ShowConnectOutcome(ConnectOutcome.Other, refusal, "");
-            return;
-        }
 
         if (!int.TryParse(ConnectPort.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var typedPort) || typedPort is < 1 or > 65535)
         {
@@ -1458,6 +880,123 @@ public sealed partial class SecurityOptionsViewModel(
         await protection.DismissUnprotectedWarningAsync().ConfigureAwait(true);
     }
 
+    // AC-1879: Windows Hello as a second way to unlock; the Options window sets the signer, which owns the prompt.
+    public ISecretKeySigner? HelloSigner { get; set; }
+
+    // Only on Windows 11 24H2+ with Hello set up, and only while encryption is on.
+    [ObservableProperty]
+    private bool _helloOffered;
+
+    [ObservableProperty]
+    private bool _helloEnabled;
+
+    [ObservableProperty]
+    private string _helloStatus = "";
+
+    // While Hello is being set up or removed: the checkbox waits and a bar shows that it is working (Raymond 31-10).
+    [ObservableProperty]
+    private bool _isHelloBusy;
+
+    // Why turning Hello on or off did not go through, shown under the checkbox; empty when it did.
+    [ObservableProperty]
+    private string _helloError = "";
+
+    // Called when the Options window opens and hands over its signer; only the Hello row is read again.
+    [RelayCommand]
+    private async Task RefreshHelloAsync() =>
+        await _ShowHelloAsync(await protection.GetStatusAsync().ConfigureAwait(true)).ConfigureAwait(true);
+
+    private async Task _ShowHelloAsync(SecretProtectionStatus status)
+    {
+        HelloOffered = status.Enabled && HelloSigner is { } signer && await signer.IsAvailableAsync().ConfigureAwait(true);
+
+        // A PIN reset or a cleared TPM took the key: the box shows that, and ticking it sets Hello up again. The stored
+        // entry stays, as at the unlock, for a computer that does still hold the key (AC-1879).
+        var keyGone = status.HelloEnabled && HelloOffered && HelloSigner is { } holder
+            && status.HelloKeyName is { } keyName && !await holder.ExistsAsync(keyName).ConfigureAwait(true);
+        HelloEnabled = status.HelloEnabled && !keyGone;
+        HelloError = keyGone
+            ? "The Windows Hello key is no longer on this computer. Tick the box to set Windows Hello up again."
+            : HelloError;
+        HelloStatus = !HelloEnabled
+            ? "Off. Turn it on to unlock with your face, fingerprint or PIN instead of typing the password."
+            : status.HelloInSoftware
+                ? "On — no security chip found, so Windows keeps the key in software and only your Windows PIN protects it. Your password keeps working."
+                : "On — bound to this computer’s security chip (TPM). Your password keeps working.";
+    }
+
+    // The Options window asks for the password, a view's job; null means the operator cancelled.
+    public Func<Task<string?>>? AskHelloPassword { get; set; }
+
+    // The checkbox: on asks the password, then Windows once; off removes the key. The box then mirrors what is stored.
+    [RelayCommand]
+    private async Task ToggleHelloAsync()
+    {
+        try
+        {
+            if (HelloEnabled)
+            {
+                IsHelloBusy = true;
+                await DisableHelloAsync().ConfigureAwait(true);
+            }
+            else if (AskHelloPassword is { } ask && await ask().ConfigureAwait(true) is { } password)
+            {
+                IsHelloBusy = true;
+                await EnableHelloAsync(password).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            IsHelloBusy = false;
+            OnPropertyChanged(nameof(HelloEnabled));
+        }
+    }
+
+    // Runs straight away, like the other encryption actions. A wrong password reads as at the unlock.
+    public async Task EnableHelloAsync(string password)
+    {
+        if (HelloSigner is not { } signer)
+        {
+            return;
+        }
+
+        HelloError = "";
+        try
+        {
+            // Off the UI thread: checking the password derives the key (210k PBKDF2 rounds), which froze the window.
+            if (!await Task.Run(() => protection.EnableHelloAsync(password, signer)).ConfigureAwait(true))
+            {
+                HelloError = $"Windows Hello was not turned on: {signer.LastFailure ?? "the Windows prompt was cancelled"}.";
+            }
+        }
+        catch (SecretProtectionException exception)
+        {
+            HelloError = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            Logging.LifecycleLog.Write($"Turning Windows Hello on failed: {exception}");
+            HelloError = "Windows Hello was not turned on: something went wrong; the cockpit log has the details.";
+        }
+
+        if (HelloError.Length > 0)
+        {
+            Logging.LifecycleLog.Write(HelloError);
+        }
+
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    public async Task DisableHelloAsync()
+    {
+        if (HelloSigner is { } signer)
+        {
+            await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+        }
+
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
     public async Task EnableAsync(string password)
     {
         await RunMigrationAsync(
@@ -1469,6 +1008,12 @@ public sealed partial class SecurityOptionsViewModel(
 
     public async Task DisableAsync()
     {
+        // The Hello key wraps the key that is about to stop existing (AC-1879).
+        if (HelloSigner is { } signer)
+        {
+            await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+        }
+
         await RunMigrationAsync(
             "Writing your credentials back in the clear…",
             progress => protection.DisableAsync(progress)).ConfigureAwait(true);
@@ -1483,6 +1028,12 @@ public sealed partial class SecurityOptionsViewModel(
             await RunMigrationAsync(
                 "Re-encrypting your credentials…",
                 progress => protection.ChangePasswordAsync(currentPassword, newPassword, progress)).ConfigureAwait(true);
+
+            // The password change dropped the Hello wrap; the OS key that made it goes too (AC-1879).
+            if (HelloSigner is { } signer)
+            {
+                await protection.DisableHelloAsync(signer).ConfigureAwait(true);
+            }
 
             Status = "Your password has been changed.";
         }

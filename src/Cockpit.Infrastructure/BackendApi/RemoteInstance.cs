@@ -78,7 +78,7 @@ public sealed class LocalRegistry
         var registry = new OneRow(row);
         return new RemoteInstanceConnection(
             new RemoteServers(registry, new NotificationSettingsStore(_configFilePath), loggers.CreateLogger<RemoteServers>()),
-            new NodeSessionsClient(registry, new NoDiscovery(), new NodeLinkGate(string.Empty), loggers.CreateLogger<NodeSessionsClient>()));
+            new NodeSessionsClient(registry, new NoDiscovery(), loggers.CreateLogger<NodeSessionsClient>()));
     }
 
     private SecretProtectionEntry? _Security() => _document?["Security"]?.Deserialize<SecretProtectionEntry>(SecurityOptions);

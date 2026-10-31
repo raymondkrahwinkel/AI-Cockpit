@@ -446,6 +446,7 @@
     <Style Selector="Border.rowRoot.compact TextBlock.dividerLabel">
         <Setter Property="MaxWidth" Value="220"/>
         <Setter Property="TextAlignment" Value="Center"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
 
     <!-- AC-720: driver-reported error row — one card, three severities via Classes, reusing the exact
@@ -1340,6 +1341,11 @@
     </Style>
     <Style Selector="Button.chip.on :is(TextBlock)">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+    <!-- AC-1925: the sidebar's "Waiting for you" filter, on, wears the waiting amber instead of the accent. -->
+    <Style Selector="Button.chip.waitingFilter.on /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitStatusWaitingRowTintBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
     </Style>
     <Style Selector="TextBlock.columnHead">
         <Setter Property="FontSize" Value="11"/>

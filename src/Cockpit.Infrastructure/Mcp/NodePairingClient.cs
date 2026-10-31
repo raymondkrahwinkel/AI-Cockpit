@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using ConnectCallback = System.Func<System.Net.Http.SocketsHttpConnectionContext, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<System.IO.Stream>>;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -16,16 +17,19 @@ internal sealed class NodePairingClient : INodePairingClient, ISingletonService
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
 
     private readonly TimeProvider _time;
+    private readonly ConnectCallback? _connect;
 
     public NodePairingClient()
         : this(TimeProvider.System)
     {
     }
 
-    // Test seam: a controllable clock, so the poll loop can be driven without real waiting.
-    internal NodePairingClient(TimeProvider time)
+    // Test seam: a controllable clock, so the poll loop can be driven without real waiting. AC-1916: the swarm
+    // passes `SwarmNetworkPolicy.ConnectAsync` as `connect`, so every connection re-resolves and dials only inside.
+    internal NodePairingClient(TimeProvider time, ConnectCallback? connect = null)
     {
         _time = time;
+        _connect = connect;
     }
 
     public async Task<NodePairingHandshake> BeginAsync(string address, string controllerName, CancellationToken cancellationToken = default)
@@ -33,7 +37,7 @@ internal sealed class NodePairingClient : INodePairingClient, ISingletonService
         var baseAddress = NormalizeAddress(address);
 
         string? seen = null;
-        using var client = new HttpClient(NodeCertificatePin.Observe(fingerprint => seen = fingerprint));
+        using var client = new HttpClient(NodeCertificatePin.Observe(fingerprint => seen = fingerprint, _connect));
         client.BaseAddress = baseAddress;
 
         using var response = await client.PostAsJsonAsync("pair/request", new NodePairingRequest(controllerName), NodePairingJson.Options, cancellationToken).ConfigureAwait(false);
@@ -60,7 +64,7 @@ internal sealed class NodePairingClient : INodePairingClient, ISingletonService
 
     public async Task<NodePairingGrant> CompleteAsync(NodePairingHandshake handshake, CancellationToken cancellationToken = default)
     {
-        using var client = new HttpClient(NodeCertificatePin.Require(handshake.Fingerprint));
+        using var client = new HttpClient(NodeCertificatePin.Require(handshake.Fingerprint, _connect));
         client.BaseAddress = new Uri(handshake.Address);
 
         while (true)
@@ -82,7 +86,7 @@ internal sealed class NodePairingClient : INodePairingClient, ISingletonService
 
     public async Task UnpairAsync(string address, string sharedSecret, string certificateFingerprint, CancellationToken cancellationToken = default)
     {
-        using var client = new HttpClient(NodeCertificatePin.Require(certificateFingerprint));
+        using var client = new HttpClient(NodeCertificatePin.Require(certificateFingerprint, _connect));
         client.BaseAddress = NormalizeAddress(address);
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sharedSecret);
 

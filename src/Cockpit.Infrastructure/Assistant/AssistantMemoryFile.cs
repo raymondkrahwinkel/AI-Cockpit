@@ -1,6 +1,9 @@
+using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Infrastructure.Configuration;
+using Cockpit.Infrastructure.Swarm;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.Assistant;
 
@@ -9,6 +12,31 @@ namespace Cockpit.Infrastructure.Assistant;
 // settings change, and a growing block of free text would ride along with every one of those writes.
 internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 {
+    private static readonly Regex _OriginSuffix = new(
+        @" \(from (?<machine>[^,()]+), (?<date>\d{4}-\d{2}-\d{2})\)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex _DatePrefix = new(
+        @"^- \d{4}-\d{2}-\d{2} — ", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    internal static List<string> _Entries(string text) =>
+        [.. text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
+            .Select(_StripDatePrefix)];
+
+    private static string _StripDatePrefix(string entry)
+    {
+        var match = _DatePrefix.Match(entry);
+        return match.Success ? entry[match.Length..] : entry;
+    }
+
+    internal static string _StripOrigin(string line)
+    {
+        var match = _OriginSuffix.Match(line);
+        return match.Success ? line[..match.Index] : line;
+    }
+
     private const string Heading = "# What the operator asked me to remember";
 
     private const string MachineHeading = "# What I know about this machine";
@@ -22,15 +50,17 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
     private readonly string _machinePath;
 
     private readonly string _orgRulesPath;
+    private readonly IServiceProvider? _services;
 
-    public AssistantMemoryFile()
-        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory)
+    public AssistantMemoryFile(IServiceProvider services)
+        : this(CockpitConfigPath.AssistantMemory, CockpitConfigPath.AssistantCurrentState, CockpitConfigPath.AssistantMachineMemory, services)
     {
     }
 
     // Test seam: point the memory at arbitrary files.
-    internal AssistantMemoryFile(string filePath, string statePath, string? machinePath = null)
+    internal AssistantMemoryFile(string filePath, string statePath, string? machinePath = null, IServiceProvider? services = null)
     {
+        _services = services;
         _filePath = filePath;
         _statePath = statePath;
         _machinePath = machinePath ?? Path.Combine(Path.GetDirectoryName(filePath)!, "assistant-machine.md");
@@ -60,6 +90,10 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             _statePath,
             $"{StateHeading}{Environment.NewLine}{Environment.NewLine}{state}{Environment.NewLine}",
             cancellationToken).ConfigureAwait(false);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken);
+        }
     }
 
     private static async Task<string> _ReadAsync(string path, CancellationToken cancellationToken)
@@ -93,6 +127,28 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             path,
             isNew ? $"{_HeadingFor(scope)}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
             cancellationToken).ConfigureAwait(false);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken);
+        }
+    }
+
+    // AC-1929: when the note state last changed, which a merge after a split compares; a restore carries it over.
+    internal DateTimeOffset NoteStateChangedAt() =>
+        File.Exists(_statePath) ? new DateTimeOffset(File.GetLastWriteTimeUtc(_statePath)) : DateTimeOffset.MinValue;
+
+    internal void RestoreStandby(string noteState, string behaviour, DateTimeOffset noteStateAt = default)
+    {
+        var existing = File.Exists(_filePath) ? File.ReadAllText(_filePath) : "";
+        var carried = _Entries(behaviour).Select(_StripOrigin).ToHashSet(StringComparer.Ordinal);
+        var localOnly = _Entries(existing).Where(line => !carried.Contains(_StripOrigin(line)));
+        var merged = string.Join(Environment.NewLine, localOnly.Select(line => "- " + line));
+        CockpitConfigPath.ReplaceAtomicallyPrivate(_statePath, noteState);
+        if (noteStateAt != default)
+        {
+            File.SetLastWriteTimeUtc(_statePath, noteStateAt.UtcDateTime);
+        }
+        CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, string.IsNullOrEmpty(merged) ? behaviour : behaviour + Environment.NewLine + merged);
     }
 
     private string _PathFor(AssistantMemoryScope scope) => scope == AssistantMemoryScope.Machine ? _machinePath : _filePath;

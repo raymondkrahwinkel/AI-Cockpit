@@ -146,6 +146,8 @@
                          in the component's own roomier scene. -->
                     <StackPanel Grid.Column="1" Margin="10,0,6,0" Spacing="1" VerticalAlignment="Center">
                         <TextBlock Classes="assistantIndicatorLabel" Text="{Binding Label}" TextWrapping="Wrap"/>
+                        <TextBlock Classes="assistantIndicatorDetail" Text="{Binding LeadershipLabel}" TextWrapping="Wrap"
+                                   IsVisible="{Binding LeadershipLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <!-- The detail line carries the meter beside it. The meter is a live-capture cue, shown
                              only while something is actually moving through the mic or the speaker — Listening,
                              Speaking, Dictating. Thinking has no audio to meter, and ListeningContinuously is a

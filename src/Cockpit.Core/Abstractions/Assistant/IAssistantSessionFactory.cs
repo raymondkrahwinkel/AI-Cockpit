@@ -6,6 +6,9 @@ namespace Cockpit.Core.Abstractions.Assistant;
 /// </summary>
 public interface IAssistantSessionFactory
 {
+    /// <summary>Runs work on the thread that owns the assistant session.</summary>
+    Task<T> OnOwnerThreadAsync<T>(Func<Task<T>> action) => action();
+
     /// <summary>
     /// The assistant's session as the registry's <c>Assistant</c>; null when this cockpit cannot start sessions.
     /// The caller starts it and holds the only reference.

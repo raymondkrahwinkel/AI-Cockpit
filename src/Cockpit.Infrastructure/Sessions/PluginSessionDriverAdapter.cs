@@ -658,6 +658,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         {
             _ReportConversationIfChanged();
 
+            if (pluginEvent is PluginSessionError error)
+            {
+                logger?.LogWarning("Session {PaneId} failed: {Reason}", _paneId, error.Message);
+            }
+
             // AC-971: a delegated session's permission requests are decided here, never published as a prompt with
             // nobody to answer it. The tool row and its (error) result still flow, so a denial stays visible.
             if (pluginEvent is PluginPermissionRequested permission && _delegatedCeiling is { } ceiling)

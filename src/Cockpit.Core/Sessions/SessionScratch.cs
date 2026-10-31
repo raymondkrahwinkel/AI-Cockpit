@@ -2,6 +2,7 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
+using System.Runtime.InteropServices;
 using Cockpit.Core.Configuration;
 
 namespace Cockpit.Core.Sessions;
@@ -26,6 +27,7 @@ public static class SessionScratch
         {
             if (OwnerOf(path) == paneId)
             {
+                _ShareWithAgentGroup(path);
                 return path;
             }
             if (!_HasNoValidMarker(path))
@@ -53,6 +55,7 @@ public static class SessionScratch
         else
         {
             Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            _ShareWithAgentGroup(path);
         }
 
         using var stream = new FileStream(marker, FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -74,8 +77,27 @@ public static class SessionScratch
             _Probe(basis);
         }
 
+        _ShareWithAgentGroup(basis);
         return basis;
     }
+
+    private static void _ShareWithAgentGroup(string path)
+    {
+        if (OperatingSystem.IsWindows()
+            || !int.TryParse(Environment.GetEnvironmentVariable("COCKPIT_AGENT_GROUP"), out var gid) || gid < 0)
+        {
+            return;
+        }
+        if (chown(path, -1, gid) != 0)
+        {
+            throw new IOException($"Cannot share scratch directory '{path}' with agent group {gid} (errno {Marshal.GetLastPInvokeError()}).");
+        }
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+    }
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int chown([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int owner, int group);
 
     public static string Instruction(string path) =>
         $"Je tijdelijke map is $COCKPIT_SCRATCH ({path}). Zet tijdelijke bestanden, scripts, renders en clones alleen daar of in je worktree, nooit in de home-map of de root van een schijf. Cockpit ruimt die map op als je sessie sluit; wat bewaard moet blijven, hoort in de repo of in Depot.";

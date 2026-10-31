@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Core.Swarm;
+using Cockpit.Core.Abstractions.Mcp;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -27,7 +29,76 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
         _uptimeTimer = _time.CreateTimer(_ => OnPropertyChanged(nameof(HeaderDetail)), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
 
-    public IRemoteServer Server { get; }
+    internal ServerGroupViewModel(SwarmMachine machine, TimeProvider? time = null)
+    {
+        Name = machine.Member.Name;
+        MemberId = machine.Member.Id;
+        _time = time ?? TimeProvider.System;
+        _state = new(false, null, null);
+        Start = new ServerStartViewModel(Name);
+        _uptimeTimer = _time.CreateTimer(_ => OnPropertyChanged(nameof(LastSeenLabel)), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        UpdatePresence(machine.Presence);
+    }
+
+    public IRemoteServer? Server { get; }
+
+    public SwarmMemberId? MemberId { get; }
+
+    public bool IsSwarmMember => MemberId is not null;
+
+    public bool IsConnectServer => !IsSwarmMember;
+
+    [ObservableProperty] private bool _leads;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsConnected), nameof(StatusLabel), nameof(SidebarStatus), nameof(LastSeenLabel), nameof(RowsOpacity), nameof(ShowStart))]
+    private SwarmMemberPresence? _presence;
+
+    public double RowsOpacity => Presence is { Status: not SwarmPresence.Online } ? 0.5 : 1;
+    public bool ShowStart => IsExpanded && (!IsSwarmMember || IsConnected);
+
+    public string LastSeenLabel => Presence is { Status: not SwarmPresence.Online } presence
+        ? presence.LastSeen is { } at ? $"Last seen {at.ToLocalTime():HH:mm}" : "Last seen unknown"
+        : "";
+
+    internal void UpdatePresence(SwarmMemberPresence presence)
+    {
+        Presence = presence;
+        foreach (var row in Sessions)
+        {
+            row.LastSeenLabel = LastSeenLabel;
+        }
+    }
+
+    internal IReadOnlyList<ServerSessionRowViewModel> Reconcile(NodeSessionsSnapshot snapshot)
+    {
+        var gone = Sessions.Where(row => !snapshot.Sessions.Any(item => item.PaneId == row.Handle.PaneId)).ToList();
+        foreach (var row in gone)
+        {
+            Sessions.Remove(row);
+        }
+        for (var index = 0; index < snapshot.Sessions.Count; index++)
+        {
+            var item = snapshot.Sessions[index];
+            var row = Sessions.FirstOrDefault(candidate => candidate.Handle.PaneId == item.PaneId);
+            if (row is null)
+            {
+                row = new ServerSessionRowViewModel(new SwarmSessionHandle(item));
+                Sessions.Insert(index, row);
+            }
+            else
+            {
+                ((SwarmSessionHandle)row.Handle).Snapshot = item;
+                if (Sessions.IndexOf(row) != index)
+                {
+                    Sessions.Move(Sessions.IndexOf(row), index);
+                }
+            }
+            row.LastSeenLabel = LastSeenLabel;
+            row.Refresh();
+        }
+        return gone;
+    }
 
     public string Name { get; }
 
@@ -35,10 +106,11 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
 
     public ServerStartViewModel Start { get; }
 
-    public ServerHealthViewModel Health { get; }
+    public ServerHealthViewModel? Health { get; }
 
     // While open, the server's header line stands above the grid (variant A, decided 2026-10-01).
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowStart))]
     private bool _isExpanded = true;
 
     [ObservableProperty]
@@ -62,9 +134,14 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(AssistantTitle))]
     private string _assistantName = "The assistant";
 
-    public bool IsConnected => State.IsConnected;
+    public bool IsConnected => IsSwarmMember ? Presence?.Status == SwarmPresence.Online : State.IsConnected;
 
-    public string StatusLabel => State switch
+    public string StatusLabel => IsSwarmMember ? Presence?.Status switch
+    {
+        SwarmPresence.Online => "online",
+        SwarmPresence.Asleep => "asleep",
+        _ => "unreachable",
+    } : State switch
     {
         { KeyRefused: true } => "Key refused",
         { IsConnected: true, LatencyMs: { } latency } => $"Connected · {latency} ms",
@@ -73,7 +150,7 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
     };
 
     // The sidebar row is narrower: the latency alone while connected, the state's word otherwise.
-    public string SidebarStatus => State is { IsConnected: true, LatencyMs: { } latency } ? $"{latency} ms" : StatusLabel;
+    public string SidebarStatus => !IsSwarmMember && State is { IsConnected: true, LatencyMs: { } latency } ? $"{latency} ms" : StatusLabel;
 
     public string StatusBarLabel => $"{Name}: {StatusLabel.ToLowerInvariant()}";
 
@@ -116,8 +193,8 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
     // Returns the rows whose session is gone, so the cockpit can close their panes.
     public IReadOnlyList<ServerSessionRowViewModel> Reconcile()
     {
-        AssistantName = Server.Sessions?.Assistant?.Title is { Length: > 0 } title ? title : "The assistant";
-        var handles = Server.Sessions?.All.Where(handle => !handle.IsEmbedded).ToList() ?? [];
+        AssistantName = Server?.Sessions?.Assistant?.Title is { Length: > 0 } title ? title : "The assistant";
+        var handles = Server?.Sessions?.All.Where(handle => !handle.IsEmbedded).ToList() ?? [];
         var gone = Sessions.Where(row => !handles.Contains(row.Handle)).ToList();
         foreach (var row in gone)
         {
@@ -171,6 +248,10 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
 
     public ISessionHandle Handle { get; }
 
+    // The machine badge the flat "Waiting for you" list shows on this row; null while the grouped list is showing.
+    [ObservableProperty]
+    private string? _machineBadge;
+
     [ObservableProperty]
     private string _title = "";
 
@@ -183,16 +264,27 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
     private string _profile = "";
 
     [ObservableProperty]
-    private string _statusline = "";
-
-    [ObservableProperty]
     private SessionPanelViewModel? _pane;
 
-    public string Detail => $"{Profile} · {StatusLabel}";
+    public string Detail => $"{Profile} · {(LastSeenLabel.Length > 0 ? LastSeenLabel : StatusLabel)}";
 
     public string StatusLabel => _StatusWord(Status);
 
-    public string StatusBrushKey => Status switch
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowStatusline))]
+    private string _statusline = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowAttention))]
+    private bool _needsAttention;
+    [ObservableProperty] private string _activityBadge = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Detail), nameof(ShowAttention), nameof(ShowStatusline), nameof(StatusBrushKey))]
+    private string _lastSeenLabel = "";
+
+    public bool ShowAttention => NeedsAttention && LastSeenLabel.Length == 0;
+    public bool ShowStatusline => Statusline.Length > 0 && LastSeenLabel.Length == 0;
+
+    public string StatusBrushKey => LastSeenLabel.Length > 0 ? "CockpitTextFaintBrush" : Status switch
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
         SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
@@ -207,6 +299,8 @@ public sealed partial class ServerSessionRowViewModel : ObservableObject
         Status = Handle.SessionStatus;
         Profile = Handle.ActiveProfileLabel ?? "";
         Statusline = Handle.Statusline;
+        NeedsAttention = Handle is SwarmSessionHandle remote ? remote.Snapshot.NeedsYou || Status == SessionStatus.NeedsAttention : Status == SessionStatus.NeedsAttention;
+        ActivityBadge = Handle is SwarmSessionHandle member && member.Snapshot.HasOutstandingWork ? "Background work" : "";
         if (Pane is { } pane)
         {
             pane.Title = Title;
@@ -237,6 +331,8 @@ public sealed partial class ServerStartViewModel(string server) : ObservableObje
     public string StartLabel => $"Start on {Server}";
 
     public string SidebarLabel => $"+ Start on {Server}";
+
+    public string HelpText => $"Runs on {Server}. Profiles and projects are this machine's own. Choose No project to use its scratch directory.";
 
     [ObservableProperty]
     private bool _isOpen;

@@ -16,8 +16,21 @@ public sealed class BackendApiClient : IDisposable
     private static readonly TimeSpan SilenceLimit = TimeSpan.FromSeconds(45);
     private readonly HttpClient _http;
     private readonly TimeProvider _time;
+    private readonly string _eventsPath;
+    internal bool IsSwarm => _eventsPath == "swarm/session-events";
 
     public BackendApiClient(Uri baseAddress, string key, string fingerprint, TimeProvider time)
+        : this(baseAddress, key, fingerprint, time, null, "api/v1/events")
+    {
+    }
+
+    internal BackendApiClient(
+        Uri baseAddress,
+        string key,
+        string fingerprint,
+        TimeProvider time,
+        Func<SocketsHttpConnectionContext, CancellationToken, ValueTask<Stream>>? connect,
+        string eventsPath)
     {
         if (!string.Equals(baseAddress.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
@@ -25,11 +38,19 @@ public sealed class BackendApiClient : IDisposable
         }
 
         _time = time;
-        _http = new HttpClient(NodeCertificatePin.Require(fingerprint))
+        _eventsPath = eventsPath;
+        _http = new HttpClient(NodeCertificatePin.Require(fingerprint, connect))
         {
             BaseAddress = baseAddress,
         };
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+    }
+
+    internal BackendApiClient(HttpClient http, TimeProvider time, string eventsPath)
+    {
+        _http = http;
+        _time = time;
+        _eventsPath = eventsPath;
     }
 
     public Task<BackendWhoAmI> WhoAmIAsync(CancellationToken cancellationToken = default) =>
@@ -128,7 +149,7 @@ public sealed class BackendApiClient : IDisposable
         Action opened,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/events");
+        using var request = new HttpRequestMessage(HttpMethod.Get, _eventsPath);
         if (cursor is { } lastEventId)
         {
             request.Headers.TryAddWithoutValidation("Last-Event-ID", lastEventId.ToString(CultureInfo.InvariantCulture));

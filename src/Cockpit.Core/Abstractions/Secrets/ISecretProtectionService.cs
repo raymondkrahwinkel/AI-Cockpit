@@ -2,14 +2,16 @@ namespace Cockpit.Core.Abstractions.Secrets;
 
 // AC-1013 (AC-41): what the cockpit knows pre-unlock — `Enabled`, `Unlocked`, and `ShouldWarnUnprotected`
 // (banner shows when encryption is off, a credential is in the clear, and it wasn't dismissed for this field
-// set; defaults off so tests/stand-ins don't nag).
-public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false);
+// set; defaults off so tests/stand-ins don't nag). AC-1879: `HelloEnabled` = a Hello-wrapped key is on file.
+public readonly record struct SecretProtectionStatus(
+    bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false, bool HelloEnabled = false, bool HelloInSoftware = false, string? HelloKeyName = null);
 
 // How far a migration has come, so the operator watches it happen instead of watching nothing happen.
 // `Completed`/`Total`: fields converted so far / to convert.
 public readonly record struct SecretMigrationProgress(int Completed, int Total);
 
 /// <summary>
+/// The Hello members default to "not offered", which is what the password-only remote window and test stand-ins mean.
 /// Turning credential encryption on and off, and unlocking it at startup. Every operation that rewrites the
 /// config does so atomically and keeps a backup: a migration interrupted halfway — a crash, the power going —
 /// must leave the operator with their credentials, not with half a file.
@@ -50,4 +52,22 @@ public interface ISecretProtectionService
     /// password. Profiles, layout and shortcuts survive; tokens must be typed again. Without this a forgotten password would brick the app, and a promise with no way out is one people route around.
     /// </summary>
     Task ResetForgottenPasswordAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lets <paramref name="signer"/> unlock instead of the password (AC-1879). Checks the password, has the OS key
+    /// sign one challenge twice and refuses a signer whose signatures differ. False: the prompt was cancelled.
+    /// </summary>
+    Task<bool> EnableHelloAsync(string password, ISecretKeySigner signer, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Windows Hello is only offered by the local cockpit.");
+
+    /// <summary>
+    /// Unlocks with the OS key instead of the password; any result but Unlocked means: ask for the password.
+    /// </summary>
+    Task<HelloUnlockResult> UnlockWithHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default) =>
+        Task.FromResult(HelloUnlockResult.NotOffered);
+
+    /// <summary>
+    /// Forgets the wrapped key and removes the OS key. Safe without the key in hand and when Hello is already off.
+    /// </summary>
+    Task DisableHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -182,6 +182,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
     private readonly BackendApiClient _client;
     private readonly RemoteServerHealthReader _health;
     private readonly RemoteProjects _projects;
+    private readonly RemotePluginAdministration _plugins;
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _gate = new();
@@ -207,7 +208,8 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
         Profiles = new RemoteServerProfiles(_client);
         AssistantAdministration = new RemoteAssistantAdministration(_client);
             _health = new RemoteServerHealthReader(_client, name, settingsStore, logger);
-        Plugins = new RemotePluginAdministration(_client, logger);
+        _plugins = new RemotePluginAdministration(_client, logger);
+        Plugins = _plugins;
         _projects = new RemoteProjects(_client);
     }
 
@@ -291,7 +293,7 @@ internal sealed class RemoteServer : IRemoteServer, IRemoteServerSignIn, IAsyncD
             {
                 await _ReadKeyAsync().ConfigureAwait(false);
                 // Connected is the stream's word, raised when its headers come back; this only hands the registry over.
-                var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection, _projects.OnEvent).ConfigureAwait(false);
+                var backend = await RemoteBackend.ConnectAsync(_client, _OnConnection, _projects.OnEvent, _plugins.OnEvent).ConfigureAwait(false);
                 bool stopped;
                 lock (_gate)
                 {

@@ -6,10 +6,41 @@ namespace Cockpit.App.ViewModels;
 // AC-68 presentation helpers turn capabilities into host-safe choices, badges and advice without Avalonia.
 public static class TranscriptionOptions
 {
-    // The backend choices to offer on this host: always Auto and CPU, plus a single jargon-free "GPU" entry
-    // only when a GPU runtime actually loads here — CUDA preferred over Vulkan when both are present. A
-    // CPU-only host is never shown a GPU option, so a non-NVIDIA machine cannot be handed CUDA.
-    public static IReadOnlyList<VoiceBackendPreferenceOption> BackendChoices(TranscriptionCapabilities capabilities)
+    // The backend choices to offer on this host: always Auto and CPU, plus a jargon-free "GPU" entry only when
+    // a GPU runtime actually loads here — CUDA preferred over Vulkan. AC-1881: with several selectable GPUs, one
+    // "GPU <name>" entry each, and Auto names the GPU it picks. A CPU-only host is never shown a GPU option.
+    public static IReadOnlyList<VoiceBackendPreferenceOption> BackendChoices(
+        TranscriptionCapabilities capabilities, IReadOnlyList<GpuHardware>? gpus = null)
+    {
+        var selectable = capabilities.GpuUsable
+            ? (gpus ?? []).Where(gpu => gpu.DeviceId is not null).ToList()
+            : [];
+        if (selectable.Count > 1)
+        {
+            var choices = new List<VoiceBackendPreferenceOption>
+            {
+                new($"Auto (recommended) — {_Name(GpuHardware.PickAuto(selectable))}", VoiceBackendPreference.Auto),
+            };
+            choices.AddRange(selectable.Select(gpu =>
+                new VoiceBackendPreferenceOption($"GPU {_Name(gpu)}", GpuHardware.BackendFor(capabilities, gpu), gpu.DeviceId ?? "")));
+            choices.Add(new("CPU", VoiceBackendPreference.Cpu));
+            return choices;
+        }
+
+        return _SingleGpuChoices(capabilities);
+    }
+
+    // The saved choice as a dropdown entry: the exact GPU, else (a choice saved before GPUs were named) the first
+    // entry on that backend, else Auto — so a GPU or runtime that is gone shows Auto rather than a dead entry.
+    public static VoiceBackendPreferenceOption Find(
+        IReadOnlyList<VoiceBackendPreferenceOption> choices, VoiceBackendPreference backend, string gpuDeviceId) =>
+        choices.FirstOrDefault(option => option.Value == backend && option.GpuDeviceId == gpuDeviceId)
+        ?? (string.IsNullOrEmpty(gpuDeviceId) ? choices.FirstOrDefault(option => option.Value == backend) : null)
+        ?? choices[0];
+
+    private static string _Name(GpuHardware gpu) => gpu.Description ?? gpu.Vendor.ToString();
+
+    private static List<VoiceBackendPreferenceOption> _SingleGpuChoices(TranscriptionCapabilities capabilities)
     {
         var choices = new List<VoiceBackendPreferenceOption>
         {

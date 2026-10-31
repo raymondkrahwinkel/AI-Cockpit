@@ -472,6 +472,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     public bool ShowsLocalChip => ShowsWhereItRuns && !IsRemote;
 
+    // The machine badge the flat "Waiting for you" list shows on this row; null while the grouped list is showing.
+    [ObservableProperty]
+    private string? _machineBadge;
+
     public string ServerChipLabel => RemoteServer ?? "this laptop";
 
     // The remote stop asks in the pane itself; a local close keeps its inline prompt in the sidebar row.

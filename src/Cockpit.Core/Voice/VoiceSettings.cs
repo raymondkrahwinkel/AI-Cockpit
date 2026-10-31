@@ -15,6 +15,9 @@ public sealed record VoiceSettings
 
     public VoiceBackendPreference BackendPreference { get; init; } = VoiceBackendPreference.Auto;
 
+    // AC-1881: The Vulkan device UUID of the GPU to transcribe on. Empty = Auto; a GPU that is gone falls back to Auto.
+    public string GpuDeviceId { get; init; } = "";
+
     // Avalonia `Key` enum name for the push-to-talk hotkey, e.g. "F9".
     public string PushToTalkKeyName { get; init; } = "F9";
 

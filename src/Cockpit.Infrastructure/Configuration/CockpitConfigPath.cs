@@ -81,8 +81,8 @@ internal static class CockpitConfigPath
     // found" list does not grow a new row per query. Owner-only anyway, like everything beside it.
     public static string NodeDiscoveryId => Path.Combine(Root, "node-discovery-id.txt");
 
-    // AC-1943: the paired nodes the operator paused, one name per line. Not a credential, but owner-only like its neighbours.
-    public static string PausedNodes => Path.Combine(Root, "paused-nodes.txt");
+    // AC-1917: the swarm membership log, signed records rather than secrets, owner-only like everything beside it.
+    public static string SwarmMembers => Path.Combine(Root, "swarm-members.json");
 
     // Creates `directory` if needed and restricts it to its owner. Idempotent.
     public static void EnsurePrivateDirectory(string directory)

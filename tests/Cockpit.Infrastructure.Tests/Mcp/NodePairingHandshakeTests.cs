@@ -52,7 +52,7 @@ public class NodePairingHandshakeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task BothSidesDeriveTheSameCode_WithoutEitherSendingIt()
+    public async Task Pairing_DerivesTheSameCode_AndGoesLiveOnlyAfterBothSidesConfirm()
     {
         var client = new NodePairingClient();
 
@@ -64,13 +64,6 @@ public class NodePairingHandshakeTests : IAsyncLifetime
         Assert.Equal(_broker.Pending!.Code, handshake.Code);
         Assert.Equal(NodePairingCode.Digits, handshake.Code.Length);
         Assert.Equal(_certificate.Fingerprint, handshake.Fingerprint);
-    }
-
-    [Fact]
-    public async Task Pairing_GoesLiveOnlyAfterBothSidesConfirm()
-    {
-        var client = new NodePairingClient();
-        var handshake = await client.BeginAsync(_address, "the controller");
 
         // The controller's operator has compared the codes; the node's has not answered yet. Nothing exists.
         Assert.Equal("", (await _store.LoadAsync()).SharedSecret);
@@ -132,6 +125,11 @@ public class NodePairingHandshakeTests : IAsyncLifetime
         await _broker.ConfirmAsync(_broker.Pending!.PairingId);
         var grant = await claiming;
 
+        var refusal = await Assert.ThrowsAsync<NodePairingException>(
+            () => client.UnpairAsync(_address, "not-the-secret", handshake.Fingerprint));
+        Assert.Equal(NodePairingError.InvalidToken, refusal.Error);
+        Assert.NotNull((await _store.LoadAsync()).Pairing);
+
         await client.UnpairAsync(_address, grant.SharedSecret, handshake.Fingerprint);
 
         // Criterion 5, the far half: unpairing reaches the same broker call the node's own screen does, so the
@@ -139,24 +137,6 @@ public class NodePairingHandshakeTests : IAsyncLifetime
         var settings = await _store.LoadAsync();
         Assert.Equal("", settings.SharedSecret);
         Assert.Null(settings.Pairing);
-    }
-
-    [Fact]
-    public async Task Unpair_WithoutTheSharedSecret_IsRefused()
-    {
-        var client = new NodePairingClient();
-        var handshake = await client.BeginAsync(_address, "the controller");
-        var claiming = client.CompleteAsync(handshake);
-        await _broker.ConfirmAsync(_broker.Pending!.PairingId);
-        await claiming;
-
-        // The one route here that takes a credential must actually take it: ending somebody else's coupling is not
-        // something an unauthenticated caller may do.
-        var refusal = await Assert.ThrowsAsync<NodePairingException>(
-            () => client.UnpairAsync(_address, "not-the-secret", handshake.Fingerprint));
-
-        Assert.Equal(NodePairingError.InvalidToken, refusal.Error);
-        Assert.NotNull((await _store.LoadAsync()).Pairing);
     }
 
     [Fact]

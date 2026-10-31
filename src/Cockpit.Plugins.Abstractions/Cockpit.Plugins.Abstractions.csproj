@@ -650,6 +650,8 @@
          implements it sets minHostVersion 0.151.0. Additive; still v3. -->
     <!-- 3.55.0 (AC-1938): ICockpitHost.IsHeadless, so a plugin can avoid a desktop-only capability. A plugin that
          reads it sets minHostVersion 0.152.0. Additive; still v3. -->
+    <!-- 3.58.0 (AC-1547): PluginProjectInfo.SourceDirectory, the project's folder on the machine whose project it is.
+         A plugin that reads it sets minHostVersion 0.153.0; an older host leaves it null. Additive; still v3. -->
     <Version>3.60.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
