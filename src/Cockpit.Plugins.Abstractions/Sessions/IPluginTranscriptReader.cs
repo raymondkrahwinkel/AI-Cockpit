@@ -13,11 +13,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </remarks>
 public interface IPluginTranscriptReader
 {
-    /// <summary>Reads bounded child references belonging to this TTY launch's stated owner.</summary>
+    /// <summary>
+    /// Reads bounded child references belonging to this TTY launch's stated owner.
+    /// </summary>
     Task<IReadOnlyList<PluginBackgroundTask>> ReadChildrenAsync(string configJson, string? statusFile, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<PluginBackgroundTask>>([]);
 
-    /// <summary>Reads one bounded child window, refusing a changed owner or source revision.</summary>
+    /// <summary>
+    /// Reads one bounded child window, refusing a changed owner or source revision.
+    /// </summary>
     Task<PluginChildTranscriptPage> ReadChildTranscriptAsync(string configJson, string? statusFile, string agentId, string? revision, string? cursor, CancellationToken cancellationToken = default) =>
         Task.FromResult(PluginChildTranscriptPage.Unavailable("provider does not support child history"));
 

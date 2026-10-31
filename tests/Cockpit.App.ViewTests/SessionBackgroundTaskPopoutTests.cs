@@ -1,16 +1,11 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Sessions;
 using Cockpit.App.Composition;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewTests;
 
-/// <summary>
-/// The background-work button and pop-out (AC-531): a count/collection built on top of AC-276's own
-/// <c>BackgroundTasksChanged</c> ledger, not a second one. The one fact these tests exist to pin down is the gap
-/// this ticket closed — AC-532's review confirmed that <see cref="SessionViewModel.TurnCompleted"/> clears the
-/// composer's tool-activity band unconditionally, but a detached sub-agent or shell does not end with the turn,
-/// so this surface must survive exactly the event that clears everything else.
-/// </summary>
+// AC-531: detached work survives a normal turn, but a stopped owner cannot retain a running child.
 [Collection("avalonia")]
 public class SessionBackgroundTaskPopoutTests
 {
@@ -200,13 +195,17 @@ public class SessionBackgroundTaskPopoutTests
     });
 
     [Fact]
-    public void ASessionError_ClearsTheBackgroundList_SoACrashedSessionDoesNotShowPhantomWork() => HeadlessAvalonia.Run(() =>
+    public Task ASessionError_ClearsTheBackgroundList_SoACrashedSessionDoesNotShowPhantomWork() => HeadlessAvalonia.RunAsync(async () =>
     {
         var session = new SessionViewModel();
         session.IsBusy = true;
-        session.Apply(Outstanding(
-            new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1"),
-            new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")));
+        var running = new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1");
+        var finished = new BackgroundTask("a2", BackgroundTaskKind.SubAgent, "Finished review") { State = "completed", Tokens = 42 };
+        BackgroundTasksChanged outstanding = Outstanding(running, new BackgroundTask("b1", BackgroundTaskKind.Shell, "npm run dev")) with
+        {
+            Children = [running, finished],
+        };
+        session.Apply(outstanding);
 
         session.Apply(new SessionError { SessionId = "s1", Message = "the driver died" });
 
@@ -214,6 +213,28 @@ public class SessionBackgroundTaskPopoutTests
         Assert.Equal(0, session.BackgroundTaskCount);
         Assert.Empty(session.BackgroundSubAgents);
         Assert.Empty(session.BackgroundShells);
+        Assert.Equal("unknown", session.ChildAgents[0].Reference.State);
+        Assert.Same(finished, session.ChildAgents[1].Reference);
+
+        var fold = new SessionLiveStateFold();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        fold.Apply(outstanding, default, interruptRequested: false, now);
+        fold.Apply(Turn(), default, interruptRequested: false, now);
+        Assert.Same(running, fold.Snapshot(isBusy: false).Children[0]);
+        fold.Apply(Turn(), default, interruptRequested: true, now);
+        Assert.Equal("unknown", fold.Snapshot(isBusy: false).Children[0].State);
+        Assert.Same(finished, fold.Snapshot(isBusy: false).Children[1]);
+
+        session.Apply(outstanding);
+        await session.DisposeAsync();
+        Assert.Equal("unknown", session.ChildAgents[0].Reference.State);
+        Assert.Same(finished, session.ChildAgents[1].Reference);
+
+        var tty = new TtyViewModel();
+        tty.UpdateChildAgents([running, finished]);
+        await tty.DisposeAsync();
+        Assert.Equal("unknown", tty.ChildAgents[0].Reference.State);
+        Assert.Same(finished, tty.ChildAgents[1].Reference);
     });
 
     // --- Selection / click-through (AC-531 #4) ---

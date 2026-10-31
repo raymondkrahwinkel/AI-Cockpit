@@ -767,6 +767,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private void _StopStatusTracking()
     {
         _statusTrackingStopped = true;
+        MarkChildWorkUnknown();
         _statusTailCancellation?.Cancel();
         _statusTailCancellation?.Dispose();
         _statusTailCancellation = null;

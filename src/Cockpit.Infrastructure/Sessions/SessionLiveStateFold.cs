@@ -81,7 +81,7 @@ internal sealed class SessionLiveStateFold
                 _ClearActiveToolCalls();
                 if (interruptRequested)
                 {
-                    _backgroundTasks = [];
+                    _ClearBackgroundTasks();
                 }
                 // AC-1529: a turn broken off by Stop did not finish, so the session stands Idle, not Done.
                 _hasCompletedATurn = !interruptRequested;
@@ -98,7 +98,7 @@ internal sealed class SessionLiveStateFold
             // Whatever was outstanding died with the session (AC-276): no ToolResult or task update will clear it now.
             case SessionError error:
                 _ClearActiveToolCalls();
-                _backgroundTasks = [];
+                _ClearBackgroundTasks();
                 _lastTurnFailed = true;
                 return (new SessionTurnEnd(
                     IsError: true,
@@ -145,6 +145,12 @@ internal sealed class SessionLiveStateFold
         _hasCompletedATurn = false;
         _lastTurnFailed = false;
         _usage = SessionUsageTotals.None;
+    }
+
+    private void _ClearBackgroundTasks()
+    {
+        _backgroundTasks = [];
+        _children = [.. _children.Select(child => child.State == "running" ? child with { State = "unknown" } : child)];
     }
 
     private void _ClearActiveToolCalls()

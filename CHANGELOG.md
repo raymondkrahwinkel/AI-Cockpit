@@ -32,6 +32,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Sub-agents no longer keep a Running status after their owner fails, is interrupted or stops. Finished sub-agents keep their recorded status and details.
+
 - Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
 
 - On a laptop with two GPUs, dictation now transcribes on the dedicated GPU instead of the integrated one that drives the screen; Options › Voice offers each GPU by name, Auto names the one it picks, and the calibration says which GPU it measured.

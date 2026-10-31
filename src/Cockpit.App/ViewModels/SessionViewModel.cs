@@ -3235,6 +3235,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         {
             _backgroundTasks = [];
             _RebuildBackgroundTaskRows();
+            MarkChildWorkUnknown();
         });
     }
 }

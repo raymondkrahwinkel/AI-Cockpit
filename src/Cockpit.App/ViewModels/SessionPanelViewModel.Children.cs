@@ -65,6 +65,10 @@ public abstract partial class SessionPanelViewModel
     protected virtual Task<ChildTranscriptPage> ReadChildAsync(BackgroundTask reference, string? cursor, CancellationToken cancellationToken) =>
         Task.FromResult(ChildTranscriptPage.Unavailable("owner has no child reader"));
 
+    protected void MarkChildWorkUnknown() =>
+        UpdateChildAgents([.. ChildAgents.Select(child => child.Reference.State == "running"
+            ? child.Reference with { State = "unknown" } : child.Reference)]);
+
     internal void UpdateChildAgents(IReadOnlyList<BackgroundTask> children)
     {
         foreach (var removed in ChildAgents.Where(row => !children.Any(child => (child.AgentId ?? child.TaskId) == (row.Reference.AgentId ?? row.Reference.TaskId))).ToArray())
