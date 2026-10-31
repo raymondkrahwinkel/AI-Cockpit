@@ -7,7 +7,7 @@
     <DockPanel>
         <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,10">
             <TextBlock Text="{Binding Child.Detail}" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-            <TextBlock Text="Read-only · This child shares its parent's process and permissions."
+            <TextBlock Text="Read-only · This child has no separate Cockpit session or permissions."
                        TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
             <TextBlock Text="{Binding Status}" TextWrapping="Wrap"/>
         </StackPanel>

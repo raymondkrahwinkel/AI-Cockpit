@@ -188,6 +188,7 @@ internal static partial class Screenshotter
     {
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         ["child-history-sidebar"] = (_, _) => _ChildHistoryScene("sidebar"),
+        ["child-history-popout"] = (_, _) => _ChildHistoryPopout(),
         ["child-history-finished"] = (_, _) => _ChildHistoryScene("finished"),
         ["child-history-empty"] = (_, _) => _ChildHistoryScene("empty"),
         ["child-history-unavailable"] = (_, _) => _ChildHistoryScene("unavailable"),
@@ -1292,6 +1293,7 @@ internal static partial class Screenshotter
             Dispatcher.UIThread.RunJobs();
         },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),

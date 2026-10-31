@@ -492,7 +492,7 @@
                              at the left edge of the composer, so a 410-wide pop-out centred on it hangs off the left
                              of the session pane and over the sidebar (Raymond, live test 2026-07-31). Aligning the
                              left edges instead makes it open rightwards, into the pane it belongs to. -->
-                        <Flyout Placement="TopEdgeAlignedLeft">
+                        <Flyout Placement="TopEdgeAlignedLeft" IsOpen="{Binding IsBackgroundWorkOpen, Mode=TwoWay}">
                             <controls:BackgroundWorkList/>
                         </Flyout>
                     </Button.Flyout>

@@ -8,28 +8,33 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
+    private static Window _ChildHistoryPopout() => _ChildHistoryScene("sidebar");
     private static Window _ChildHistoryScene(string state)
     {
         var cockpit = new CockpitViewModel { GlobalSingleSessionLayout = true, SidebarWidth = 260 };
         var owners = cockpit.Sessions.OfType<SessionViewModel>().Take(2).ToArray();
         foreach (var owner in owners)
         {
+            var running = new BackgroundTask("running-id", BackgroundTaskKind.SubAgent, "Review the parser change")
+            {
+                AgentId = "running-id", RunId = owner.PaneId, LastTool = "Grep", Tokens = 18400,
+            };
             owner.Apply(new BackgroundTasksChanged
             {
                 SessionId = owner.PaneId,
-                Tasks = [],
-                Children = [new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Review the session driver")
+                Tasks = [running],
+                Children = [running, new BackgroundTask("same-id", BackgroundTaskKind.SubAgent, "Draft the release notes")
                 {
-                    AgentId = "same-id", RunId = owner.PaneId, State = "completed", Tokens = 1400,
+                    AgentId = "same-id", RunId = owner.PaneId, State = "completed", LastTool = "Write", Tokens = 31200,
                 }],
             });
         }
         if (owners.FirstOrDefault() is { } selected && state != "sidebar")
         {
-            cockpit.OpenChildTranscriptCommand.Execute(selected.ChildAgents[0]);
+            selected.ChildAgents[1].OpenCommand.Execute(null);
             if (selected.ChildTranscript is { } transcript)
             {
-                transcript.Status = state == "unavailable" ? "Not available: owner connection has stopped" : state == "empty" ? "No entries" : "Read-only";
+                transcript.Status = state == "unavailable" ? "Not available: owner connection has stopped" : state == "empty" ? "No entries" : "";
                 if (state == "finished")
                 {
                     transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "Review the session driver and report your findings."));

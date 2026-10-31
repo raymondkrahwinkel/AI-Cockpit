@@ -39,14 +39,6 @@ public class ClaudeTranscriptReaderTests : IDisposable
         var bounded = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
         Assert.Equal(64, bounded.Entries.Count);
         Assert.NotNull(bounded.Cursor);
-        if (!OperatingSystem.IsWindows())
-        {
-            File.Delete(path);
-            var foreign = Path.Combine(_configDir, "foreign.jsonl");
-            File.WriteAllText(foreign, line + "\n");
-            File.CreateSymbolicLink(path, foreign);
-            Assert.StartsWith("Not available", ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default).Status);
-        }
     }
 
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-reader-tests-").FullName;

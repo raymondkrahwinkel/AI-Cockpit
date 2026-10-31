@@ -10,6 +10,12 @@ public partial class SessionViewModel
     private ChildTranscriptViewModel? _childTranscript;
     public bool IsReadingChild => ChildTranscript is not null;
     protected override bool CanReceiveOperatorInput => !IsReadingChild;
+    public bool HasChildAgents => ChildAgents.Count > 0;
+    public bool HasBackgroundWorkEntries => HasBackgroundTasks || HasChildAgents;
+    public bool ShowsLegacySubAgents => !HasChildAgents && HasBackgroundSubAgents;
+
+    [ObservableProperty]
+    private bool _isBackgroundWorkOpen;
 
     public void OpenChild(ChildAgentViewModel child)
     {
@@ -18,6 +24,7 @@ public partial class SessionViewModel
             return;
         }
         ReturnToParent();
+        IsBackgroundWorkOpen = false;
         ChildTranscript = new ChildTranscriptViewModel(child, _control);
         ChildTranscript.LoadMoreCommand.Execute(null);
     }

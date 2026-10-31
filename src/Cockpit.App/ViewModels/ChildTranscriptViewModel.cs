@@ -57,7 +57,7 @@ public sealed partial class ChildTranscriptViewModel(ChildAgentViewModel child, 
             }
             _cursor = page.Cursor;
             IsReadComplete = page.Cursor is null;
-            Status = page.Status;
+            Status = page.Status == "Read-only" ? "" : page.Status;
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {

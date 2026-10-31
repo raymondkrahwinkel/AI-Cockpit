@@ -308,6 +308,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(HasBackgroundShells));
         OnPropertyChanged(nameof(HasBackgroundOtherTasks));
         OnPropertyChanged(nameof(HasBackgroundTasks));
+        OnPropertyChanged(nameof(HasBackgroundWorkEntries));
+        OnPropertyChanged(nameof(ShowsLegacySubAgents));
         OnPropertyChanged(nameof(BackgroundTaskCount));
         OnPropertyChanged(nameof(BackgroundTaskSummary));
 
@@ -2952,6 +2954,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 row.Update(child);
             }
         }
+        OnPropertyChanged(nameof(HasChildAgents));
+        OnPropertyChanged(nameof(HasBackgroundWorkEntries));
+        OnPropertyChanged(nameof(ShowsLegacySubAgents));
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
         {

@@ -21,15 +21,40 @@
         <TextBlock Text="No background work." FontSize="12.5" Margin="10,16"
                    HorizontalAlignment="Center"
                    Foreground="{DynamicResource CockpitTextFaintBrush}"
-                   IsVisible="{Binding !HasBackgroundTasks}"/>
+                   IsVisible="{Binding !HasBackgroundWorkEntries}"/>
 
-        <StackPanel IsVisible="{Binding HasBackgroundTasks}" Margin="0,4,0,0">
+        <StackPanel IsVisible="{Binding HasBackgroundWorkEntries}" Margin="0,4,0,0">
+            <TextBlock Text="SUB-AGENTS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
+                       Foreground="{DynamicResource CockpitTextFaintBrush}" IsVisible="{Binding HasChildAgents}"/>
+            <ScrollViewer MaxHeight="350" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding ChildAgents}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ChildAgentViewModel">
+                            <Button Command="{Binding OpenCommand}" Classes="Subtle" Padding="8,6" Margin="6,1,6,3"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                    Background="{DynamicResource CockpitSecondaryBgBrush}">
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                    <TextBlock Text="Sub-agent · type unknown" FontSize="11.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11.5"/>
+                                    <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="12.5" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="Open ›" Margin="8,0,0,0"/>
+                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="12" Margin="0,4,0,0">
+                                        <TextBlock Text="{Binding LastToolText, StringFormat='Last tool: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="Time: unknown" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding TokensText, StringFormat='Tokens: {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
             <TextBlock Text="SUB-AGENTS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
                        Foreground="{DynamicResource CockpitTextFaintBrush}"
-                       IsVisible="{Binding HasBackgroundSubAgents}"/>
+                       IsVisible="{Binding ShowsLegacySubAgents}"/>
             <ItemsControl ItemsSource="{Binding BackgroundSubAgents}"
                           ItemTemplate="{StaticResource BackgroundTaskRowTemplate}"
-                          IsVisible="{Binding HasBackgroundSubAgents}"/>
+                          IsVisible="{Binding ShowsLegacySubAgents}"/>
 
             <TextBlock Text="SHELLS" FontSize="10" FontWeight="SemiBold" Margin="10,4,10,2"
                        Foreground="{DynamicResource CockpitTextFaintBrush}"
@@ -50,8 +75,8 @@
         </StackPanel>
 
         <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
-                Padding="10,7" IsVisible="{Binding HasBackgroundTasks}">
-            <TextBlock Text="Disappears from the list once the work finishes." FontSize="10.5"
+                Padding="10,7" IsVisible="{Binding HasBackgroundWorkEntries}">
+            <TextBlock Text="The badge counts active work. Known sub-agents remain available here after finishing." TextWrapping="Wrap" FontSize="10.5"
                        Foreground="{DynamicResource CockpitTextFaintBrush}"/>
         </Border>
     </StackPanel>
