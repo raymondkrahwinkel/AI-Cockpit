@@ -325,9 +325,6 @@ internal static partial class Screenshotter
         // sharing one page-wide ScrollViewer.
         ["options-profiles"] = (_, _) => _OptionsProfilesPage(),
         ["options-profiles-focus"] = (_, _) => _OptionsProfilesPage(focusProfile: true),
-        // AC-1323: the Nodes page with a controller paired and a second one asking — both texts that say what a
-        // controller's assistant may do here render nowhere else.
-        ["options-nodes-paired"] = (_, _) => _OptionsNodesPaired(),
         ["options-swarm"] = (_, _) => _OptionsSwarm(),
         ["options-swarm-kicked"] = (_, _) => _OptionsSwarm(removal: "Laptop removed this machine from the swarm. Your sessions here keep running. Join again with confirmation on both screens and a new rank. removed_from_swarm"),
         ["options-swarm-removal-pending"] = (_, _) => _OptionsSwarm(removal: "Kicked · removal_pending: sleeping members learn the signed removal at their next contact."),
@@ -1365,11 +1362,8 @@ internal static partial class Screenshotter
         ["assistant-threads-docked-280-closed"] = window => _OpenFlyout(window, "ThreadPickerClosed"),
         ["assistant-threads-docked-280-picker"] = window => _Named<ComboBox>(window, "ThreadPicker").IsDropDownOpen = true,
         ["simple-view-conversation-details"] = window => _OpenFlyout(window.GetVisualDescendants().OfType<Controls.SimpleConversationHeader>().First(header => header.IsEffectivelyVisible), "DetailsButton"),
-        // AC-1352: the headless renderer clamps a window's captured height well short of what the Nodes page
-        // actually needs, so this scrolls the new "Connect to a server" section into view instead of relying
-        // on Height alone to make it fit.
-        ["options-nodes-paired"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
-        ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "3. CONNECT TO A SERVER"),
+        // AC-1984: show Accept and Connect together after removing the desktop-pairing block.
+        ["options-nodes-connect"] = window => _ScrollIntoView(window, "nodes", "1. ACCEPT CONNECTIONS FROM A SECOND COCKPIT"),
         ["options-swarm-settings"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-swarm-invalid-cidr"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
         ["options-swarm-incoming"] = window => _ScrollIntoView(window, "swarm", "Internal network only"),
@@ -1970,23 +1964,6 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static OptionsDialog _OptionsNodesPaired()
-    {
-        var security = new SecurityOptionsViewModel(
-            new UnprotectedSecrets(),
-            nodePairing: new _FakePairingBroker(),
-            sessionProfileStore: new _FakeSessionProfileStore(),
-            projectStore: new _FakeProjectStore());
-        var cockpit = new ViewModels.CockpitViewModel { Security = security };
-        security.RefreshAsync().GetAwaiter().GetResult();
-        security.NodeEndpointEnabled = true;
-
-        // AC-1352: taller than before (1000) — the connect block sits between the pairing panel and the
-        // paired-node cards, and a render that crops it proves nothing about the part this change touched.
-        var dialog = new OptionsDialog { DataContext = cockpit, Height = 1500 };
-        dialog.SelectCategory("nodes");
-        return dialog;
-    }
 
     private static OptionsDialog _OptionsSwarm(bool empty = false, bool invalidCidr = false, bool incoming = false, string? failure = null, string? removal = null)
     {
@@ -2078,6 +2055,10 @@ internal static partial class Screenshotter
     private static OptionsDialog _OptionsNodesConnect()
     {
         var security = _ConnectedSecurity();
+        security.NodeEndpointEnabled = true;
+        security.NodeEndpointAddressText = "cockpit-agents: https://huis-cockpit.tailnet.ts.net:20383/mcp";
+        security.NodeEndpointSharedSecret = "scene-shared-key";
+        security.NodeEndpointHasNoListener = false;
         var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel { Security = security }, Height = 1500 };
         dialog.SelectCategory("nodes");
         return dialog;
@@ -2103,27 +2084,11 @@ internal static partial class Screenshotter
     private static Window _NodesConnectionStatus(int width, int height)
     {
         const string url = "https://huis-cockpit.tailnet.ts.net:20383/mcp";
-        var connected = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
-        connected.RefreshAsync().GetAwaiter().GetResult();
-
-        var reconnecting = new NodeSessionsViewModel(new _SceneNodeSessions { ReadError = "No answer." }, "huis-cockpit") { Url = url };
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            reconnecting.RefreshAsync().GetAwaiter().GetResult();
-        }
-
-        var expired = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url, KeyExpiresAt = DateTimeOffset.Now.AddDays(-4) };
-        expired.RefreshAsync().GetAwaiter().GetResult();
-
-        var disconnected = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
-        disconnected.RefreshAsync().GetAwaiter().GetResult();
-        disconnected.DisconnectCommand.Execute(null);
-
         // AC-1456: a connect server's card follows its session-list group, connected and with the stream lost.
         var key = new Core.Abstractions.Remote.RemoteServerKey("laptop-raymond", "admin", true, "laptop-raymond", "0.66.0", null);
-        var streamed = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        var streamed = new NodeSessionsViewModel("huis-cockpit") { Url = url };
         streamed.FollowServer(ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(true, 38, key)));
-        var streamLost = new NodeSessionsViewModel(new _SceneNodeSessions(), "huis-cockpit") { Url = url };
+        var streamLost = new NodeSessionsViewModel("huis-cockpit") { Url = url };
         streamLost.FollowServer(ServerGroupScene.StandIn("huis-cockpit", new Core.Abstractions.Remote.RemoteServerState(false, 38, key)));
 
         var mismatch = new NodeCertificatePinMismatchException(SceneFingerprint, "B1076E3D000000000000000000000000000000000000000000000000" + "9C11A40F");
@@ -2137,11 +2102,6 @@ internal static partial class Screenshotter
 
         var panel = new StackPanel { Spacing = 8, Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "Connection status", FontWeight = Avalonia.Media.FontWeight.SemiBold });
-        foreach (var card in new[] { connected, reconnecting, expired, disconnected })
-        {
-            panel.Children.Add(new NodeConnectionStatusView { DataContext = card });
-        }
-
         panel.Children.Add(new TextBlock { Text = "A connect server, as its session-list group reports it", FontWeight = Avalonia.Media.FontWeight.SemiBold });
         foreach (var card in new[] { streamed, streamLost })
         {
@@ -2211,56 +2171,6 @@ internal static partial class Screenshotter
         public Task SaveAsync(ProjectSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    // A node paired to "DESK" with a second cockpit asking — the two states the Nodes page describes control in.
-    private sealed class _FakePairingBroker : INodePairingBroker
-    {
-        public NodePairing? Pairing { get; } = new()
-        {
-            ControllerName = "DESK",
-            ControllerAddress = "192.168.1.5",
-            PairedAtUtc = new DateTimeOffset(2026, 9, 15, 12, 0, 0, TimeSpan.Zero),
-            AllowAllProfiles = true,
-            AllowAllProjects = true,
-        };
-
-        public NodePairingPending? Pending { get; } = new()
-        {
-            PairingId = "pairing-1",
-            ControllerName = "LAPTOP",
-            ControllerAddress = "192.168.1.7",
-            Code = "482 913",
-            ExpiresAtUtc = DateTimeOffset.MaxValue,
-        };
-
-        public event EventHandler? Changed { add { } remove { } }
-
-        public Task EnsureLoadedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task<NodePairingOffer> RequestAsync(string controllerName, string controllerAddress, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task ConfirmAsync(string pairingId, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public void Refuse(string pairingId)
-        {
-        }
-
-        public Task<NodePairingGrant> ClaimAsync(string pairingId, string claimToken, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task UnpairAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public bool IsProfileAllowed(string profileLabel) => true;
-
-        public bool IsProjectAllowed(string projectId) => true;
-
-        public Task SetScopeAsync(
-            IReadOnlyList<string> allowedProfileLabels,
-            IReadOnlyList<string> allowedProjectIds,
-            bool allowAllProfiles,
-            bool allowAllProjects,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
 
     // A main window with one session running, so `ShowSessionGrid` shows the toolbar the workspace ⚙ lives in.
     private static MainWindow _MainWindowWithOneSession(int width, int height)

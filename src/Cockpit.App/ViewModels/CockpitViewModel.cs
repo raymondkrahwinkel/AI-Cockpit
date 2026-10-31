@@ -158,8 +158,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAppRestartService? _appRestart;
     private readonly IUpdateService? _updates;
     private readonly IUpdateSettingsStore? _updateSettingsStore;
-    // AC-1291: the source the incoming-pairing banner reads back, subscribed to from the constructor.
-    private readonly INodePairingBroker? _nodePairingBroker;
     // A static singleton, so the subscription is unwired in DisposeAsync — a view model that outlived its window would
     // otherwise be kept alive by it, and refresh a dead Security tab (AC-41).
     private readonly ISecretKeyHolder _secretKeyHolder = SecretKeyHolder.Shared;
@@ -612,16 +610,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPendingApprovals;
 
-    // AC-1291: a pairing request from another cockpit, shown here rather than only on the Nodes page — the offer
-    // lives two minutes, and nothing else on screen said it had arrived. Not dismissible: an offer the operator
-    // clicked away still refuses every retry from the other machine with a 409 nobody can see.
-    [ObservableProperty]
-    private string _incomingPairingBanner = string.Empty;
-
-    // True while a pairing offer is still waiting for an answer.
-    [ObservableProperty]
-    private bool _hasIncomingPairing;
-
     // Keep the safe-mode banner visible for the whole plugin-free run; restarting exits safe mode (AC-478).
     public bool IsSafeMode => _safeMode;
 
@@ -705,19 +693,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         presence.Changed += (_, _) => _OnUiThread(() => ActiveController = presence.Current);
     }
 
-    // AC-1291: reads the broker rather than tracking it, the same way the Nodes page does — an offer that expired
-    // while nobody looked reads as gone here for exactly the reason the claim would refuse it.
-    internal void RefreshIncomingPairing()
-    {
-        var pending = _nodePairingBroker?.Pending;
-        HasIncomingPairing = pending is not null;
-        IncomingPairingBanner = pending is null
-            ? string.Empty
-            : $"\"{pending.ControllerName}\" at {pending.ControllerAddress} is asking to pair with this cockpit and control the sessions on it.";
-    }
-
-    [RelayCommand]
-    private Task ShowIncomingPairing() => _ShowOptionsAsync("nodes");
 
     void IPluginContributionSink.AddPluginSideSection(string pluginId, string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(pluginId, title, createView)));
@@ -3414,18 +3389,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // off-loopback addresses the Security tab reads to show the operator what to type into a second Cockpit.
         INodeEndpointSettingsStore? nodeEndpointSettingsStore = null,
         IEnumerable<ICockpitInternalMcpProvider>? internalMcpProviders = null,
-        // Absent in the design-time/unit-test graph, where the pairing controls stay inert rather than the dialog
-        // failing (AC-792).
-        INodePairingBroker? nodePairingBroker = null,
-        INodePairingClient? nodePairingClient = null,
         INodePairingEndpoint? nodePairingEndpoint = null,
         IMcpServerStore? mcpServerStore = null,
-        // AC-793: the second entrance to the same handshake — finding a node on the network instead of typing
-        // its address. Absent in the design-time/unit-test graph the same way the pairing pair above is; the
-        // Security tab's Discover button then does nothing rather than the dialog failing to open.
-        INodeDiscoveryClient? nodeDiscoveryClient = null,
-        // AC-795: the controller's reach into a paired node's sessions. Absent in the design-time/unit-test graph
-        // like the pairing halves above, and the node cards on the Security tab then do not appear at all.
+        // AC-1984: session operations for connected headless servers.
         INodeSessionsClient? nodeSessionsClient = null,
         // AC-927: where the launch routes say which MCP servers a session really got, so its header can name
         // those. Absent in the design-time/unit-test graph, where the header keeps showing the selection alone.
@@ -3454,9 +3420,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
         IModelIntelligenceOptions? modelIntelligenceOptions = null,
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
-        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
-        // AC-1943: pauses and disconnects of the paired nodes; absent in the design-time/unit-test graph.
-        INodeLinkGate? nodeLinkGate = null)
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3487,31 +3451,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             shellAccessSettingsStore,
             nodeEndpointSettingsStore,
             internalMcpProviders,
-            nodePairingBroker,
-            nodePairingClient,
             nodePairingEndpoint,
             mcpServerStore,
-            nodeDiscoveryClient,
-            sessionProfileStore,
-            projectStore,
             nodeSessionsClient,
             remoteServers,
-            orgPolicy,
-            nodeLinkGate);
+            orgPolicy);
         _ = Security.RefreshAsync();
 
         Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership, ConfirmAsync);
         if (swarmOptions is not null)
         {
             swarmOptions.RemovalRequested += member => _OnUiThread(() => _ = Swarm.RequestRemovalAsync(member));
-        }
-
-        // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
-        // it closed nothing was listening at all, so a pairing request reached no screen.
-        _nodePairingBroker = nodePairingBroker;
-        if (nodePairingBroker is not null)
-        {
-            nodePairingBroker.Changed += (_, _) => _OnUiThread(RefreshIncomingPairing);
         }
 
         // Options → Voice → Assistant (AC-543). Absent in the design-time/unit-test graph the same way Security is,
@@ -10176,7 +10126,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The paired-node cards' polls (AC-796) outlive the Options window on purpose, but not this view model —
         // without this, each one's `DispatcherTimer` keeps itself (and the card, and `INodeSessionsClient`)
         // reachable and ticking against the network long after everything else here has been torn down.
-        Security.StopPairedNodePolling();
+        Security.DisposeNodeCards();
 
         // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
         // past its window (AC-41). The worktree manager is one too, and its notice handler holds this view model

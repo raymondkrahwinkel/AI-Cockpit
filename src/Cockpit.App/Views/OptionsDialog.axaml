@@ -414,7 +414,7 @@
                     <StackPanel Margin="24,20" MaxWidth="900" Spacing="8">
                         <TextBlock Text="Servers" FontSize="20" FontWeight="Bold"/>
                         <TextBlock Text="Manage headless Cockpit servers: connect keys, plugins, profiles, projects and audit log. Use an admin key to manage a server." Classes="optionsHint"/>
-                        <TextBlock Text="Pair your own desktops in Swarm. Connect to a headless server on the Nodes page." Classes="optionsHint"/>
+                        <TextBlock Text="Connect your desktops in Swarm. For a headless server, use Connect to a server on the Nodes page." Classes="optionsHint"/>
                         <TextBlock Text="No server connected. Connect to a server on the Nodes page first." Classes="optionsHint" IsVisible="{Binding !ServerGroups.Count}"/>
                         <ItemsControl ItemsSource="{Binding ServerGroups}">
                             <ItemsControl.ItemTemplate>
@@ -1737,7 +1737,7 @@
                         <StackPanel x:Name="NodesHelp" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Nodes" FontSize="20" FontWeight="Bold"/>
                         </StackPanel>
-                        <TextBlock Text="Pair with another Cockpit to share MCP access, and run sessions on its machine." Classes="optionsHint"/>
+                        <TextBlock Text="Manage shared MCP access and headless server connections. Connect your desktops in Swarm." Classes="optionsHint"/>
                         <Border Height="1" Background="{DynamicResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Classes="optionsHint" TextWrapping="Wrap"
@@ -1757,8 +1757,6 @@
                                        IsVisible="{Binding Security.NodeEndpointHasNoListener}"
                                        Text="{Binding Security.NodeEndpointNoListenerText}"/>
                             <StackPanel Spacing="4" IsVisible="{Binding !Security.NodeEndpointHasNoListener}">
-                                <TextBlock Text="Pairing address — type this into the other Cockpit" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                <TextBox Text="{Binding Security.NodePairingAddress}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
                                 <TextBlock Text="Address" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
                                 <TextBox Text="{Binding Security.NodeEndpointAddressText}" IsReadOnly="True" FontFamily="Consolas,monospace" FontSize="11.5"/>
                             </StackPanel>
@@ -1773,122 +1771,13 @@
                             <TextBox Text="{Binding Security.AllowedDiscoveryRangesText, UpdateSourceTrigger=LostFocus}" PlaceholderText="e.g. 203.0.113.0/24"
                                      FontFamily="Consolas,monospace" FontSize="11.5"/>
 
-                            <Border IsVisible="{Binding Security.IsPaired}" Margin="0,8,0,0" Padding="10"
-                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Security.PairedControllerText}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <Button Content="Unpair" HorizontalAlignment="Left" Command="{Binding Security.UnpairNodeCommand}"/>
-
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,8,0,0">
-                                        <TextBlock Text="What this controller may see and control here" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                        <materialIcons:MaterialIcon Classes="hint"
-                                            ToolTip.Tip="A fresh pairing starts able to reach every profile and every project, including ones you make later. Switch either kind to &quot;only these&quot; and it reaches nothing but what you tick below. Reach means see and control: a session under a profile you have not ticked is invisible to the controller and cannot be stopped or steered from there, and a project you have not ticked is refused when it tries to start work on it. Both take effect immediately, without unpairing."/>
-                                    </StackPanel>
-                                    <TextBlock Text="Profiles" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                    <CheckBox Content="All profiles, including ones made later" IsChecked="{Binding Security.AllowAllProfiles}"/>
-                                    <!-- Disabled, not hidden: with "all" on, the ticks mean nothing but the list still says what is there. -->
-                                    <ItemsControl ItemsSource="{Binding Security.ScopedProfiles}" IsEnabled="{Binding !Security.AllowAllProfiles}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
-                                                    <!-- AC-1292: what this profile explicitly sets, not what its provider does by default. -->
-                                                    <TextBlock Text="skips approvals" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
-                                                               Foreground="{DynamicResource CockpitStatusWaitingBrush}"
-                                                               IsVisible="{Binding SkipsApprovals}"/>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <TextBlock Text="No profiles saved yet." FontSize="11" FontStyle="Italic"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding !Security.ScopedProfiles.Count}"/>
-
-                                    <TextBlock Text="Projects" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                                    <CheckBox Content="All projects, including ones made later" IsChecked="{Binding Security.AllowAllProjects}"/>
-                                    <ItemsControl ItemsSource="{Binding Security.ScopedProjects}" IsEnabled="{Binding !Security.AllowAllProjects}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsAllowed}"/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <TextBlock Text="No projects saved yet." FontSize="11" FontStyle="Italic"
-                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                               IsVisible="{Binding !Security.ScopedProjects.Count}"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border IsVisible="{Binding Security.HasIncomingPairing}" Margin="0,8,0,0" Padding="10"
-                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Security.IncomingPairingCaption}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <TextBlock Text="{Binding Security.IncomingPairingCode}" FontFamily="Consolas,monospace" FontSize="24" FontWeight="Bold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="The codes match — pair" Command="{Binding Security.ConfirmIncomingPairingCommand}"/>
-                                        <Button Content="Refuse" Command="{Binding Security.RefuseIncomingPairingCommand}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <TextBlock Classes="optionsSectionHeader" Text="2. PAIR WITH ANOTHER COCKPIT"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Pair with another Cockpit" FontWeight="SemiBold"/>
-                            <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="Type the pairing address the other Cockpit shows on its own Security tab. Both screens then show the same six digits: check they match before continuing, because a different number means something other than that machine is answering. The pairing goes live only after both of you have confirmed, and this cockpit remembers that machine's certificate so nothing else can take its place later."/>
-                        </StackPanel>
-                        <StackPanel Spacing="6" Margin="24,4,0,0">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Discover nodes on this network" Command="{Binding Security.DiscoverNodesCommand}"
-                                        IsEnabled="{Binding !Security.IsDiscoveringNodes}"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding Security.DiscoveryStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                       IsVisible="{Binding Security.DiscoveryStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                            <ItemsControl ItemsSource="{Binding Security.FoundNodes}" IsVisible="{Binding Security.FoundNodes.Count}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2">
-                                            <TextBlock Text="{Binding Address}" FontFamily="Consolas,monospace" FontSize="11.5" VerticalAlignment="Center"/>
-                                            <Button Content="Use" Command="{Binding $parent[ItemsControl].DataContext.Security.UseFoundNodeCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBox Text="{Binding Security.PairWithNodeAddress}" PlaceholderText="192.168.1.20:20382" Width="240"
-                                         FontFamily="Consolas,monospace" FontSize="11.5"
-                                         IsEnabled="{Binding !Security.IsComparingPairingCode}"/>
-                                <Button Content="Start pairing" Command="{Binding Security.StartPairingCommand}"
-                                        IsEnabled="{Binding !Security.IsPairingBusy}"/>
-                            </StackPanel>
-
-                            <Border IsVisible="{Binding Security.IsComparingPairingCode}" Padding="10"
-                                    CornerRadius="9" Background="{DynamicResource CockpitInsetBgBrush}">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Security.OutgoingPairingCaption}" TextWrapping="Wrap" FontSize="11.5"/>
-                                    <TextBlock Text="{Binding Security.OutgoingPairingCode}" FontFamily="Consolas,monospace" FontSize="24" FontWeight="Bold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="The codes match — continue" Command="{Binding Security.ConfirmPairingCodeCommand}"
-                                                IsEnabled="{Binding !Security.IsPairingBusy}"/>
-                                        <Button Content="Cancel" Command="{Binding Security.CancelPairingCommand}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-
-                            <TextBlock Text="{Binding Security.PairingStatus}" TextWrapping="Wrap" FontSize="11.5"
-                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"
-                                       IsVisible="{Binding Security.PairingStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
 
                         <TextBlock Classes="optionsSectionHeader" Text="3. CONNECT TO A SERVER"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="For a headless Cockpit with nobody there to approve a pairing. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. This writes the same kind of row a pairing would, and only once the three actually work together."/>
+                                ToolTip.Tip="For a headless Cockpit server. The fingerprint is not trusted on first use: you confirm it here against the one in the server's own startup log, and the key is only sent once they match. The connection is saved only once the address, key and fingerprint work together."/>
                         </StackPanel>
                         <StackPanel Spacing="4" Margin="24,4,0,0" MaxWidth="560" HorizontalAlignment="Left">
                             <StackPanel.Styles>
@@ -1943,13 +1832,13 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="4. SESSIONS ON YOUR NODES"
+                        <TextBlock Classes="optionsSectionHeader" Text="4. CONNECTED SERVERS"
                                     IsVisible="{Binding Security.PairedNodes.Count}"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding Security.PairedNodes.Count}">
-                            <TextBlock Text="Sessions on your nodes" FontWeight="SemiBold"/>
+                            <TextBlock Text="Connected servers" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
-                                ToolTip.Tip="These run on the other machine, under its account and on its bill — nothing here is a session on this computer. You can start one only under a profile or project that machine's operator has ticked for you, and what you start keeps running there after you close this window, lose the network or unpair. Stopping is the only thing that ends it."/>
+                                ToolTip.Tip="Server sessions appear in the session list under their server name and keep running when you disconnect."/>
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding Security.PairedNodes}" Margin="24,4,0,0">
                             <ItemsControl.ItemTemplate>
@@ -1960,56 +1849,10 @@
                                                 <TextBlock Text="{Binding NodeName}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                 <TextBlock Text="another machine" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"
-                                                        IsVisible="{Binding !IsServerGroup}"/>
-                                                <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}"
-                                                        ToolTip.Tip="Stop polling and relaying for this node, keeping the pairing. Survives a restart."/>
-                                                <Button Content="Resume" Command="{Binding ResumeCommand}" IsVisible="{Binding IsPaused}"/>
                                                 <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
                                             </StackPanel>
 
                                             <views:NodeConnectionStatusView/>
-
-                                            <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !IsServerGroup}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,2" VerticalAlignment="Center">
-                                                            <TextBlock Text="{Binding Name}" FontSize="11.5" VerticalAlignment="Center"/>
-                                                            <TextBlock Text="{Binding Profile}" FontSize="11" VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                            <TextBlock Text="{Binding Statusline}" FontSize="11" VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                                                            <Button Content="Stop" Command="{Binding $parent[ItemsControl].DataContext.StopCommand}"
-                                                                    CommandParameter="{Binding}"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-
-                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="{Binding !IsServerGroup}">
-                                                <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
-                                                          MinWidth="180" PlaceholderText="Profile">
-                                                    <ComboBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <TextBlock Text="{Binding Display}"/>
-                                                        </DataTemplate>
-                                                    </ComboBox.ItemTemplate>
-                                                </ComboBox>
-                                                <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
-                                                          MinWidth="160" PlaceholderText="Project">
-                                                    <ComboBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <TextBlock Text="{Binding Name}"/>
-                                                        </DataTemplate>
-                                                    </ComboBox.ItemTemplate>
-                                                </ComboBox>
-                                                <TextBox Text="{Binding NewSessionName}" PlaceholderText="Name it" Width="150" FontSize="11.5"/>
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding !IsServerGroup}">
-                                                <TextBox Text="{Binding NewSessionPrompt}" PlaceholderText="What it should do (optional)"
-                                                         Width="320" FontSize="11.5"/>
-                                                <Button Content="Start there" Command="{Binding StartCommand}" IsEnabled="{Binding !IsBusy}"/>
-                                            </StackPanel>
 
                                             <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="11.5"
                                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"
