@@ -169,11 +169,11 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Equal(0, _space.WriteCount);
         Assert.Empty(machine.Sync.Conflicts);
 
-        migrated["Profiles"]!.AsArray().Add(new JsonObject { ["Label"] = "later", ["Purpose"] = "later" });
+        Assert.IsType<JsonArray>(migrated["Profiles"]).Add(new JsonObject { ["Label"] = "later", ["Purpose"] = "later" });
         _Write(machine, migrated.ToJsonString());
         await machine.Sync.RunOnceAsync();
 
-        Assert.Equal("later", Assert.IsType<JsonObject>(Assert.Single(_Remote()["Profiles"]!.AsArray(), profile => profile?["Label"]?.GetValue<string>() == "later"))["Purpose"]?.GetValue<string>());
+        Assert.Equal("later", Assert.IsType<JsonObject>(Assert.Single(Assert.IsType<JsonArray>(_Remote()["Profiles"]), profile => profile?["Label"]?.GetValue<string>() == "later"))["Purpose"]?.GetValue<string>());
     }
 
     // AC-1861: each direction uses separate state roots and exercises an older carrier and pending state.
