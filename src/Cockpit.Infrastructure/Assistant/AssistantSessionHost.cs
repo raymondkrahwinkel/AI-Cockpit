@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
@@ -1009,8 +1010,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they
         // ticked it deliberately. The filter is about what an assistant gets when nobody said.
+        // Orchestration requires an explicit choice: delegate_task bypasses the assistant's pane/spawn trail.
         selection.UnionWith(profile.EnabledMcpServerNames
-            ?? McpServerRegistryFilter.OfferedToOperator(catalog).Select(server => server.Name).ToArray());
+            ?? McpServerRegistryFilter.OfferedToOperator(catalog)
+                .Where(server => !string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase))
+                .Select(server => server.Name).ToArray());
         selection.UnionWith(catalog.Where(server => server.AlwaysMounted).Select(server => server.Name));
         return selection;
     }

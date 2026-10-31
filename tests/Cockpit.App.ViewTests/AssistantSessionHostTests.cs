@@ -350,16 +350,18 @@ public class AssistantSessionHostTests
     [Fact]
     public void McpSelection_WithNoSavedSelection_LeavesOutTheServersTheAssistantIsNotGivenByDefault()
     {
-        var excluded = new[] { "cockpit-orchestrator", "cockpit-elevated" };
-        var catalog = excluded
-            .Select(name => new McpServerConfig { Name = name, Enabled = true, Internal = true })
-            .Append(new McpServerConfig { Name = "depot", Enabled = true })
-            .Append(new McpServerConfig { Name = "youtrack", Enabled = true, ProjectLinked = false })
-            .ToList();
+        McpServerConfig[] catalog =
+        [
+            new() { Name = "cockpit-orchestrator", Enabled = true },
+            new() { Name = "cockpit-elevated", Enabled = true, Internal = true },
+            new() { Name = "depot", Enabled = true },
+            new() { Name = "youtrack", Enabled = true, ProjectLinked = false },
+        ];
 
         var selection = AssistantSessionHost.McpSelection(_Profile(), catalog);
 
-        Assert.All(excluded, name => Assert.DoesNotContain(name, selection));
+        Assert.DoesNotContain("cockpit-orchestrator", selection);
+        Assert.DoesNotContain("cockpit-elevated", selection);
 
         Assert.Contains("depot", selection);
         Assert.Contains("youtrack", selection);
