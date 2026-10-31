@@ -13,7 +13,7 @@ public partial class SessionViewModel
             return false;
         }
         ReturnToParentCommand.Execute(null);
-        InputText = request;
+        InputText = string.IsNullOrEmpty(InputText) ? request : InputText + "\n\n" + request;
         return true;
     }
 
