@@ -10,6 +10,10 @@ internal sealed class ClaudeStreamJson
 {
     private readonly Dictionary<string, PluginBackgroundTask> _tasks = new();
     private readonly Dictionary<string, string?> _finished = new();
+    private readonly Dictionary<string, PluginBackgroundTask> _history = new();
+    private readonly Dictionary<string, long> _historyOrder = new();
+    private long _historySequence;
+    public IReadOnlyList<PluginBackgroundTask> Children { get; private set; } = [];
 
     public static IEnumerable<PluginSessionEvent> ParseLine(string line) => new ClaudeStreamJson().Parse(line);
 
@@ -107,6 +111,8 @@ internal sealed class ClaudeStreamJson
                     ParentToolUseId = _NullableString(task, "tool_use_id") ?? previous?.ParentToolUseId,
                     LastTool = previous?.LastTool,
                     Tokens = previous?.Tokens,
+                    AgentType = _NullableString(task, "subagent_type") ?? _NullableString(task, "agent_type") ?? previous?.AgentType,
+                    DurationMilliseconds = _Duration(task) ?? previous?.DurationMilliseconds,
                 });
             }
         }
@@ -125,10 +131,48 @@ internal sealed class ClaudeStreamJson
         return _Snapshot(sessionId);
     }
 
-    private PluginBackgroundTasksChanged _Snapshot(string? sessionId) => new() { SessionId = sessionId, Tasks = [.. _tasks.Values] };
+    private PluginBackgroundTasksChanged _Snapshot(string? sessionId)
+    {
+        foreach (var child in _history.Values.ToArray())
+        {
+            if (!_tasks.ContainsKey(child.TaskId) && child.State == "running")
+            {
+                _history[child.TaskId] = child with { State = "unknown" };
+            }
+        }
+        foreach (var child in _tasks.Values.Where(task => task.Kind == PluginBackgroundTaskKind.SubAgent))
+        {
+            if (!_history.TryGetValue(child.TaskId, out var known) || known.RunId != child.RunId || known.State != "running")
+            {
+                _historyOrder[child.TaskId] = ++_historySequence;
+            }
+            _history[child.TaskId] = child;
+        }
+        while (_history.Count > 128)
+        {
+            var oldest = _history.Values.Where(child => !_tasks.ContainsKey(child.TaskId)).MinBy(child => _historyOrder.GetValueOrDefault(child.TaskId));
+            if (oldest is null)
+            {
+                break;
+            }
+            _history.Remove(oldest.TaskId);
+            _historyOrder.Remove(oldest.TaskId);
+        }
+        Children = [.. _history.Values];
+        return new() { SessionId = sessionId, Tasks = [.. _tasks.Values], Children = Children };
+    }
 
     private static string? _NullableString(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    private static long? _Duration(JsonElement root) => _UsageMetric(root, "duration_ms");
+
+    private static long? _UsageMetric(JsonElement root, string name)
+    {
+        var source = root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object ? usage : root;
+        return source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt64(out var duration) && duration >= 0 ? duration : null;
+    }
 
     private IEnumerable<PluginSessionEvent> _ParseTask(JsonElement root, string? sessionId, string? subtype)
     {
@@ -155,6 +199,10 @@ internal sealed class ClaudeStreamJson
         var status = _NullableString(patch, "status");
         if (status is "completed" or "failed" or "stopped" or "cancelled")
         {
+            if (previous is { Kind: PluginBackgroundTaskKind.SubAgent })
+            {
+                _history[id] = previous with { State = status, DurationMilliseconds = _Duration(patch) ?? previous.DurationMilliseconds };
+            }
             _finished[id] = run ?? previous?.RunId;
             _tasks.Remove(id);
             yield return _Snapshot(sessionId);
@@ -179,6 +227,8 @@ internal sealed class ClaudeStreamJson
             ParentToolUseId = _NullableString(root, "tool_use_id") ?? _NullableString(root, "parent_tool_use_id") ?? previous?.ParentToolUseId,
             LastTool = _NullableString(patch, "last_tool_name") ?? previous?.LastTool,
             Tokens = tokens ?? previous?.Tokens,
+            AgentType = _NullableString(root, "subagent_type") ?? _NullableString(root, "agent_type") ?? previous?.AgentType,
+            DurationMilliseconds = _Duration(patch) ?? previous?.DurationMilliseconds,
         };
         yield return _Snapshot(sessionId);
     }
@@ -210,6 +260,12 @@ internal sealed class ClaudeStreamJson
             yield break;
         }
 
+        var known = current ?? _history.GetValueOrDefault(id);
+        if (known?.RunId is { } knownRun && run is not null && knownRun != run)
+        {
+            yield break;
+        }
+
         yield return new PluginBackgroundTaskNotification
         {
             SessionId = sessionId,
@@ -221,8 +277,27 @@ internal sealed class ClaudeStreamJson
         };
         if (status != PluginBackgroundTaskStatus.Unknown && _tasks.TryGetValue(id, out var task) && (run is null || task.RunId is null || task.RunId == run))
         {
+            if (task.Kind == PluginBackgroundTaskKind.SubAgent)
+            {
+                _history[id] = task with
+                {
+                    State = status == PluginBackgroundTaskStatus.Completed ? "completed" : "failed",
+                    DurationMilliseconds = _Duration(root) ?? task.DurationMilliseconds,
+                    Tokens = _UsageMetric(root, "total_tokens") ?? task.Tokens,
+                };
+            }
             _finished[id] = run ?? task.RunId;
             _tasks.Remove(id);
+            yield return _Snapshot(sessionId);
+        }
+        else if (known is { Kind: PluginBackgroundTaskKind.SubAgent } && status != PluginBackgroundTaskStatus.Unknown)
+        {
+            _history[id] = known with
+            {
+                State = status == PluginBackgroundTaskStatus.Completed ? "completed" : "failed",
+                DurationMilliseconds = _Duration(root) ?? known.DurationMilliseconds,
+                Tokens = _UsageMetric(root, "total_tokens") ?? known.Tokens,
+            };
             yield return _Snapshot(sessionId);
         }
     }

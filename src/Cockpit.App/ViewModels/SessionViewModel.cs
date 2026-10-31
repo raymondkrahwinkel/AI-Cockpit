@@ -308,6 +308,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         OnPropertyChanged(nameof(HasBackgroundShells));
         OnPropertyChanged(nameof(HasBackgroundOtherTasks));
         OnPropertyChanged(nameof(HasBackgroundTasks));
+        OnPropertyChanged(nameof(HasBackgroundWorkEntries));
+        OnPropertyChanged(nameof(ShowsLegacySubAgents));
         OnPropertyChanged(nameof(BackgroundTaskCount));
         OnPropertyChanged(nameof(BackgroundTaskSummary));
 
@@ -368,6 +370,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // count up instead of freezing at whatever they read on first render. A no-op with nothing outstanding.
     public void RefreshBackgroundTaskAges()
     {
+        foreach (var child in ChildAgents)
+        {
+            child.RefreshTime();
+        }
         foreach (var row in BackgroundSubAgents.Concat(BackgroundShells).Concat(BackgroundOtherTasks))
         {
             row.RaiseAgeChanged();
@@ -1901,6 +1907,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // empty context is a figure that actively lies (decision 3). The transcript is deliberately not among them.
     private void _ResetForNewConversation()
     {
+        ReturnToParentCommand.Execute(null);
+        ChildAgents.Clear();
         _control.ClearQueue();
         _control.ResetTranscriptStreaming();
         _currentTurnAssistantEntries.Clear();
@@ -2316,7 +2324,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Auto-submit: sends the input box the transcript was just appended to — the same path Enter/Send takes, so a busy session queues it (T8) rather than erroring.
     protected override void OnVoiceSubmitRequested()
     {
-        if (SendCommand.CanExecute(null))
+        if (!IsReadingChild && SendCommand.CanExecute(null))
         {
             SendCommand.Execute(null);
         }
@@ -2926,6 +2934,33 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
     private void _OnLiveStateChanged(SessionLiveState state)
     {
+        foreach (var removed in ChildAgents.Where(row => !state.Children.Any(child => (child.AgentId ?? child.TaskId) == (row.Reference.AgentId ?? row.Reference.TaskId))).ToArray())
+        {
+            ChildAgents.Remove(removed);
+            if (ReferenceEquals(ChildTranscript?.Child, removed))
+            {
+                ReturnToParentCommand.Execute(null);
+            }
+        }
+        foreach (var child in state.Children)
+        {
+            var row = ChildAgents.FirstOrDefault(row => (row.Reference.AgentId ?? row.Reference.TaskId) == (child.AgentId ?? child.TaskId));
+            if (row is null)
+            {
+                ChildAgents.Add(new ChildAgentViewModel(this, child));
+            }
+            else
+            {
+                if (row.Reference.RunId != child.RunId && ReferenceEquals(ChildTranscript?.Child, row))
+                {
+                    ReturnToParentCommand.Execute(null);
+                }
+                row.Update(child);
+            }
+        }
+        OnPropertyChanged(nameof(HasChildAgents));
+        OnPropertyChanged(nameof(HasBackgroundWorkEntries));
+        OnPropertyChanged(nameof(ShowsLegacySubAgents));
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
         {

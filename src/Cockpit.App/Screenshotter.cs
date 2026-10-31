@@ -187,6 +187,11 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
+        ["child-history-sidebar"] = (_, _) => _ChildHistoryScene("sidebar"),
+        ["child-history-popout"] = (_, _) => _ChildHistoryPopout(),
+        ["child-history-finished"] = (_, _) => _ChildHistoryScene("finished"),
+        ["child-history-empty"] = (_, _) => _ChildHistoryScene("empty"),
+        ["child-history-unavailable"] = (_, _) => _ChildHistoryScene("unavailable"),
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
         // AC-1829: the real window while projects and sessions are still loading.
         ["main-loading"] = (_, _) => _MainWhileLoading(),
@@ -1288,6 +1293,7 @@ internal static partial class Screenshotter
             Dispatcher.UIThread.RunJobs();
         },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),

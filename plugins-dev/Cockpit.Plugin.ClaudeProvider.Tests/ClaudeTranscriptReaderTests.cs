@@ -11,6 +11,36 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 // only difference is the reader is keyed by the plugin's own config JSON rather than a host-supplied path.
 public class ClaudeTranscriptReaderTests : IDisposable
 {
+    [Fact]
+    public void ChildHistory_PagesCompleteRecords_ResetsTruncation_AndRejectsForeignSources()
+    {
+        var cwd = Path.Combine(_configDir, "work");
+        var project = System.Text.RegularExpressions.Regex.Replace(Path.GetFullPath(cwd), "[^a-zA-Z0-9]", "-");
+        var directory = Directory.CreateDirectory(Path.Combine(_configDir, "projects", project, "owner", "subagents")).FullName;
+        var path = Path.Combine(directory, "agent-child.jsonl");
+        const string line = """{"uuid":"one","agentId":"child","type":"assistant","message":{"content":[{"type":"text","text":"child answer"}]}}""";
+        File.WriteAllText(path, line[..40]);
+        var partial = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
+        Assert.Empty(partial.Entries);
+        File.AppendAllText(path, line[40..] + "\n");
+        var complete = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", partial.Cursor, default);
+        Assert.Equal("child answer", Assert.Single(complete.Entries).Text);
+        var replay = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", partial.Cursor, default);
+        Assert.Equal(complete.Entries[0].Id, replay.Entries[0].Id);
+        Assert.Empty(ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", complete.Cursor, default).Entries);
+        File.WriteAllText(path, line.Replace("child answer", "new") + "\n");
+        var rotated = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", complete.Cursor, default);
+        Assert.True(rotated.Reset);
+        Assert.Equal("new", Assert.Single(rotated.Entries).Text);
+        Assert.StartsWith("Not available", ClaudeChildTranscript.Read(_configDir, cwd, "other-owner", "child", null, default).Status);
+        File.WriteAllText(path, line.Replace("\"agentId\":\"child\"", "\"agentId\":\"foreign\"") + "\n");
+        Assert.Empty(ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default).Entries);
+        File.WriteAllText(path, string.Concat(Enumerable.Repeat(line.Replace("child answer", new string('x', 10000)) + "\n", 600)));
+        var bounded = ClaudeChildTranscript.Read(_configDir, cwd, "owner", "child", null, default);
+        Assert.Equal(64, bounded.Entries.Count);
+        Assert.NotNull(bounded.Cursor);
+    }
+
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-reader-tests-").FullName;
 
     // The reader resolves its state directory from the plugin's opaque config JSON, so pin the temp dir there.

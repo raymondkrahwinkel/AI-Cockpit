@@ -12,6 +12,10 @@ namespace Cockpit.Infrastructure.Sessions;
 // (#67) polls `EventsSince` — one session implementation serving both watchers.
 internal sealed class SessionRuntime : ISessionRuntime
 {
+    public Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
+        _driver?.ReadChildTranscriptAsync(agentId, runId, cursor, cancellationToken)
+        ?? Task.FromResult(ChildTranscriptPage.Unavailable("owner has stopped"));
+
     // How many events the log keeps. A long-running session would otherwise grow without bound, since every
     // text delta is an event. Dropping the oldest costs a late consumer some early detail; status,
     // capabilities and `LastAssistantText` are folded as events arrive and stay correct.

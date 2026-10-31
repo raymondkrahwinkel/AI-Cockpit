@@ -13,6 +13,9 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </remarks>
 public interface IPluginSessionDriver : IAsyncDisposable
 {
+    Task<PluginChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.FromResult(PluginChildTranscriptPage.Unavailable("provider does not support child history"));
+
     /// <summary>
     /// What this driver supports, so the UI renders/hides controls per provider.
     /// </summary>

@@ -42,7 +42,7 @@
     <!-- Tight against the pane's own border on purpose: the pane already draws a frame and sits in a 4px grid
          gutter, so a wide inset here was a second margin inside the first — space the transcript and the composer
          can use better than the background can. -->
-    <DockPanel Margin="6,6,6,8" Classes.simpleColumn="{Binding IsShownInSimpleStand}">
+    <DockPanel Margin="6,6,6,8" Classes.simpleColumn="{Binding IsShownInSimpleStand}" IsVisible="{Binding !IsReadingChild}">
 
         <!-- AC-1456: a remote pane's blue band, so it never reads as one of this laptop's. -->
         <Border DockPanel.Dock="Top" Height="3" Margin="0,0,0,4" CornerRadius="2"
@@ -492,7 +492,7 @@
                              at the left edge of the composer, so a 410-wide pop-out centred on it hangs off the left
                              of the session pane and over the sidebar (Raymond, live test 2026-07-31). Aligning the
                              left edges instead makes it open rightwards, into the pane it belongs to. -->
-                        <Flyout Placement="TopEdgeAlignedLeft">
+                        <Flyout Placement="TopEdgeAlignedLeft" IsOpen="{Binding IsBackgroundWorkOpen, Mode=TwoWay}">
                             <controls:BackgroundWorkList/>
                         </Flyout>
                     </Button.Flyout>
@@ -637,10 +637,19 @@
         </Grid>
 
     </DockPanel>
+    <Grid IsVisible="{Binding IsReadingChild}" RowDefinitions="Auto,*" Margin="8">
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <Button Content="← Parent" Classes="Subtle Compact" Command="{Binding ReturnToParentCommand}"/>
+            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+            <TextBlock Text="›" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <TextBlock Text="{Binding ChildTranscript.Child.Title}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <views:ChildTranscriptView Grid.Row="1" DataContext="{Binding ChildTranscript}"/>
+    </Grid>
 
     <!-- Consent overlay (#AC-47): dims the whole pane and centres the Approve/Deny card when a request
          is waiting on this session, so it plainly takes over rather than a banner that shifted the
          transcript and was easy to miss. Collapsed and hit-transparent while idle. -->
-    <controls:ConsentBannerHost/>
+    <controls:ConsentBannerHost IsVisible="{Binding !IsReadingChild}"/>
     </Grid>
 </UserControl>

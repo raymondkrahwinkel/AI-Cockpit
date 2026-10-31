@@ -12,6 +12,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionRuntime : IAsyncDisposable
 {
+    Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ChildTranscriptPage.Unavailable("session is unavailable"));
+
     /// <summary>
     /// Identifies this runtime in the <see cref="ISessionManager"/> register; stable for its lifetime.
     /// </summary>
