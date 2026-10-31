@@ -1132,7 +1132,7 @@ internal static partial class Screenshotter
         if (openProviderList)
         {
             dialog.Opened += (_, _) => dialog.GetLogicalDescendants().OfType<ComboBox>()
-                .Single(combo => combo.ItemsSource?.Cast<SessionProviderOption>().Any() == true)
+                .Single(combo => combo.ItemsSource is IEnumerable<SessionProviderOption> providers && providers.Any())
                 .IsDropDownOpen = true;
         }
 
