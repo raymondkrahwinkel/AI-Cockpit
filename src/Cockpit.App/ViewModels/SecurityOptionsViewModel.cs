@@ -1488,6 +1488,30 @@ public sealed partial class SecurityOptionsViewModel(
                 : "On — bound to this computer’s security chip (TPM). Your password keeps working.";
     }
 
+    // The Options window asks for the password, a view's job; null means the operator cancelled.
+    public Func<Task<string?>>? AskHelloPassword { get; set; }
+
+    // The checkbox: on asks the password, then Windows once; off removes the key. The box then mirrors what is stored.
+    [RelayCommand]
+    private async Task ToggleHelloAsync()
+    {
+        try
+        {
+            if (HelloEnabled)
+            {
+                await DisableHelloAsync().ConfigureAwait(true);
+            }
+            else if (AskHelloPassword is { } ask && await ask().ConfigureAwait(true) is { } password)
+            {
+                await EnableHelloAsync(password).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            OnPropertyChanged(nameof(HelloEnabled));
+        }
+    }
+
     // Runs straight away, like the other encryption actions. A wrong password reads as at the unlock.
     public async Task EnableHelloAsync(string password)
     {

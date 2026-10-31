@@ -1237,8 +1237,8 @@
                         <!-- AC-1879: beside the screen-lock row, since with Hello on the screen-lock unlock offers it too.
                              Runs straight away like the encryption buttons; absent off Windows and without Hello. -->
                         <StackPanel IsVisible="{Binding Security.HelloOffered}" Spacing="2">
-                            <CheckBox x:Name="HelloCheckBox" Content="Unlock with Windows Hello (face, fingerprint or PIN)"
-                                      IsChecked="{Binding Security.HelloEnabled, Mode=OneWay}" Click="OnToggleHello"/>
+                            <CheckBox Content="Unlock with Windows Hello (face, fingerprint or PIN)"
+                                      IsChecked="{Binding Security.HelloEnabled, Mode=OneWay}" Command="{Binding Security.ToggleHelloCommand}"/>
                             <TextBlock Text="{Binding Security.HelloStatus}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         </StackPanel>

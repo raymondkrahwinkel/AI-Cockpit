@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Logging;
 using Cockpit.Core.Abstractions.Secrets;
 
@@ -162,6 +163,35 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
         }
 
         PasswordFocusRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    // The Hello button. A failure leaves the password row, which is all the operator needs.
+    [RelayCommand]
+    private async Task TryHelloAsync()
+    {
+        try
+        {
+            await UnlockWithHelloAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            LifecycleLog.Write($"Unlock with Windows Hello failed: {exception}");
+            Error = "Could not unlock. Try again, or type your password.";
+        }
+    }
+
+    // The screen-lock window offers the button once it is open, without prompting by itself.
+    [RelayCommand]
+    private async Task ShowHelloAsync()
+    {
+        try
+        {
+            await OfferHelloAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            LifecycleLog.Write($"Offering Windows Hello failed: {exception}");
+        }
     }
 
     public void RequestReset() => ResetRequested?.Invoke(this, EventArgs.Empty);

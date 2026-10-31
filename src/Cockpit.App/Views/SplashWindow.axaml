@@ -96,7 +96,7 @@
                     <!-- AC-1879: Windows Hello first, the password beside it; only while Hello can open this configuration here. -->
                     <StackPanel IsVisible="{Binding Unlock.OffersHello}" Spacing="6" Margin="0,0,0,8" IsEnabled="{Binding !Unlock.IsBusy}">
                         <Button Classes.Accent="{Binding !Unlock.HelloTried}" HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center" Click="OnHello" IsEnabled="{Binding !Unlock.IsWaitingForHello}">
+                                HorizontalContentAlignment="Center" Command="{Binding Unlock.TryHelloCommand}" IsEnabled="{Binding !Unlock.IsWaitingForHello}">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <materialIcons:MaterialIcon Kind="FaceRecognition" Width="16" Height="16" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding Unlock.HelloButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>

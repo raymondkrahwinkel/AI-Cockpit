@@ -34,7 +34,7 @@
 
         <!-- AC-1879: the screen-lock unlock offers the same Hello button as the splash; the prompt waits for a click here. -->
         <Button Classes.Accent="{Binding !HelloTried}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                IsVisible="{Binding OffersHello}" IsEnabled="{Binding !IsWaitingForHello}" Click="OnHello">
+                IsVisible="{Binding OffersHello}" IsEnabled="{Binding !IsWaitingForHello}" Command="{Binding TryHelloCommand}">
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <materialIcons:MaterialIcon Kind="FaceRecognition" Width="16" Height="16" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding HelloButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>

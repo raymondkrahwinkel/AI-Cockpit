@@ -81,6 +81,7 @@ public partial class OptionsDialog : Window
                 cockpit.Diagnostics.Refresh();
                 cockpit.ModelIntelligence.LoadCommand.Execute(null);
                 cockpit.Security.HelloSigner = new Services.WindowsHelloSigner(this);
+                cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
                 cockpit.Security.RefreshHelloCommand.Execute(null);
                 _BuildPluginCategories(cockpit);
                 _ApplySearch(cockpit.OptionsSearchText);
@@ -798,42 +799,20 @@ public partial class OptionsDialog : Window
         }
     }
 
-    // AC-1879: on asks the password first (it wraps the key), then Windows asks once; off removes the Hello key.
-    private async void OnToggleHello(object? sender, RoutedEventArgs e)
+    // AC-1879: turning Windows Hello on needs the password first, since it wraps the key.
+    private async Task<string?> _AskHelloPasswordAsync()
     {
-        if (DataContext is not CockpitViewModel cockpit)
+        var dialog = new PasswordDialog
         {
-            return;
-        }
+            DataContext = new PasswordDialogViewModel(
+                "Turn on Windows Hello",
+                "Confirm with your encryption password. Windows then asks for your face, fingerprint or PIN once, "
+                + "to bind the key to this computer.",
+                requiresCurrent: false,
+                confirmOnlyNote: "Your password keeps working. Change it later and Windows Hello is turned off until you turn it on again."),
+        };
 
-        try
-        {
-            if (cockpit.Security.HelloEnabled)
-            {
-                await cockpit.Security.DisableHelloAsync();
-                return;
-            }
-
-            var dialog = new PasswordDialog
-            {
-                DataContext = new PasswordDialogViewModel(
-                    "Turn on Windows Hello",
-                    "Confirm with your encryption password. Windows then asks for your face, fingerprint or PIN once, "
-                    + "to bind the key to this computer.",
-                    requiresCurrent: false,
-                    confirmOnlyNote: "Your password keeps working. Change it later and Windows Hello is turned off until you turn it on again."),
-            };
-
-            if (await dialog.ShowDialog<PasswordDialogViewModel?>(this) is { } password)
-            {
-                await cockpit.Security.EnableHelloAsync(password.NewPassword);
-            }
-        }
-        finally
-        {
-            // The box mirrors what is stored, never the click: a cancel or a refusal leaves it as it was.
-            HelloCheckBox.IsChecked = cockpit.Security.HelloEnabled;
-        }
+        return (await dialog.ShowDialog<PasswordDialogViewModel?>(this))?.NewPassword;
     }
 
     private async void OnChangePassword(object? sender, RoutedEventArgs e)
