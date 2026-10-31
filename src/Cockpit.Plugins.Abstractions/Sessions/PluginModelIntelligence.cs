@@ -36,4 +36,10 @@ public sealed record PluginModelIntelligence
     /// How far each usage window stood at its last reading.
     /// </summary>
     public IReadOnlyList<PluginQuotaState> Quota { get; init; } = [];
+
+    /// <summary>
+    /// The key this read is about, the same one the provider puts on <see cref="PluginModelObservation.Profile"/> (AC-1982),
+    /// so the host can match what it learned over time to this profile. <see langword="null"/> when the provider cannot tell.
+    /// </summary>
+    public string? Profile { get; init; }
 }

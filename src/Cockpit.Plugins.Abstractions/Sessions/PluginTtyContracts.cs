@@ -200,6 +200,12 @@ public sealed record TtyProviderRegistration(
     public Func<string, IReadOnlyList<PluginUsageReading>>? ReadUsage { get; init; }
 
     /// <summary>
+    /// <see cref="ReadUsage"/> for a provider with several accounts (AC-1982): handed the profile's config JSON first,
+    /// then the file text, so readings from two subscriptions stay apart. The host prefers this one when it is set.
+    /// </summary>
+    public Func<string, string, IReadOnlyList<PluginUsageReading>>? ReadProfileUsage { get; init; }
+
+    /// <summary>
     /// Builds the provider's transcript reader for the host's status (#39) — the piece that tails this provider's
     /// own on-disk conversation record, keeping the host free of any transcript format.
     /// </summary>
