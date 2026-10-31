@@ -613,11 +613,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        if (!await Workspaces.ConfirmCloseAsync(workspaceId).ConfigureAwait(true))
-        {
-            return;
-        }
-
         // A plugin workspace's embedded sessions are not in Sessions, so the loop below never sees them — close
         // them here or their pty and child process would outlive the desk they belonged to (AC-122).
         CloseForWorkspace(workspaceId);
