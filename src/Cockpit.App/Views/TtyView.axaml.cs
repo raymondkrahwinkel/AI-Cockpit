@@ -407,7 +407,7 @@ public partial class TtyView : UserControl
             {
                 DispatcherTimer.RunOnce(() =>
                 {
-                    if (ReferenceEquals(_pty, pty))
+                    if (_viewModel?.IsReadingChild != true && ReferenceEquals(_pty, pty))
                     {
                         _WriteToPty(pty, [(byte)'\r']);
                     }
