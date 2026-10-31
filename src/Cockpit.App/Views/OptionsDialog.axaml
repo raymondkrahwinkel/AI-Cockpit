@@ -1234,6 +1234,15 @@
                                   IsVisible="{Binding Security.IsEncrypted}" Margin="0,8,0,0"
                                   ToolTip.Tip="When your screen locks, the cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
 
+                        <!-- AC-1879: beside the screen-lock row, since with Hello on the screen-lock unlock offers it too.
+                             Runs straight away like the encryption buttons; absent off Windows and without Hello. -->
+                        <StackPanel IsVisible="{Binding Security.HelloOffered}" Spacing="2">
+                            <CheckBox x:Name="HelloCheckBox" Content="Unlock with Windows Hello (face, fingerprint or PIN)"
+                                      IsChecked="{Binding Security.HelloEnabled, Mode=OneWay}" Click="OnToggleHello"/>
+                            <TextBlock Text="{Binding Security.HelloStatus}" FontSize="11" TextWrapping="Wrap" Margin="28,0,0,0"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+
                         <TextBlock Classes="optionsSectionHeader" Text="2. TERMINAL ACCESS"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>

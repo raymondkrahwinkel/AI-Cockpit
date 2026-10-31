@@ -262,7 +262,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         {
             if (!VerifierMatches(_protectorFactory(key), security))
             {
-                throw new SecretProtectionException("The password is not correct.");
+                throw new SecretProtectionException("That password does not open this configuration.");
             }
 
             // The prompts run before the write gate is taken, so a slow gesture never holds up other settings writes.

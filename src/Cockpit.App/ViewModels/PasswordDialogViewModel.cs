@@ -12,12 +12,21 @@ public sealed partial class PasswordDialogViewModel : ObservableObject
     {
     }
 
-    public PasswordDialogViewModel(string title, string message, bool requiresCurrent)
+    public PasswordDialogViewModel(string title, string message, bool requiresCurrent, string? confirmOnlyNote = null)
     {
         Title = title;
         Message = message;
         RequiresCurrent = requiresCurrent;
+        ConfirmOnlyNote = confirmOnlyNote;
     }
+
+    // AC-1879: set when the existing password is only being confirmed (turning on Windows Hello): one field, no
+    // "again" box and no no-recovery warning, since nothing new is being chosen. The note stands under the field.
+    public string? ConfirmOnlyNote { get; }
+
+    public bool ConfirmOnly => ConfirmOnlyNote is not null;
+
+    public bool ChoosesPassword => !ConfirmOnly;
 
     public string Title { get; }
 
@@ -43,6 +52,6 @@ public sealed partial class PasswordDialogViewModel : ObservableObject
 
     public bool CanConfirm =>
         NewPassword.Length > 0
-        && NewPassword == Confirmation
+        && (ConfirmOnly || NewPassword == Confirmation)
         && (!RequiresCurrent || CurrentPassword.Length > 0);
 }
