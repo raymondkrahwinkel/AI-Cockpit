@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
@@ -969,7 +970,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ).ConfigureAwait(true);
     }
 
-    // The assistant defaults to its own tools and the always-mounted core.
+    // The assistant uses the ordinary default set plus its own tools.
     private async Task<IReadOnlySet<string>> _McpSelectionAsync(
         Cockpit.Core.Profiles.SessionProfile profile, CancellationToken cancellationToken)
     {
@@ -1009,7 +1010,11 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they
         // ticked it deliberately. The filter is about what an assistant gets when nobody said.
-        selection.UnionWith(profile.EnabledMcpServerNames ?? []);
+        // Orchestration requires an explicit choice: delegate_task bypasses the assistant's pane/spawn trail.
+        selection.UnionWith(profile.EnabledMcpServerNames
+            ?? McpServerRegistryFilter.OfferedToOperator(catalog)
+                .Where(server => !string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase))
+                .Select(server => server.Name).ToArray());
         selection.UnionWith(catalog.Where(server => server.AlwaysMounted).Select(server => server.Name));
         return selection;
     }
