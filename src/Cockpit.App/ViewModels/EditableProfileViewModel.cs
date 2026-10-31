@@ -616,7 +616,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             pluginProviderRegistry?.MemorySourceRegistrations ?? [],
             profile.Assistant,
             brainHint ?? "None names no brain, so the provider's own instruction files decide. A project's own brain goes first.");
-        BrainPicker.ValueChanged += reference => Assistant = reference ?? string.Empty;
+        BrainPicker.ValueChanged += reference => { };
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.
