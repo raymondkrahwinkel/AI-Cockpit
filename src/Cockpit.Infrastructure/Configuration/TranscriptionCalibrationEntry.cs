@@ -18,6 +18,9 @@ internal sealed class TranscriptionCalibrationEntry
 
     public string Model { get; set; } = "large-v3-turbo";
 
+    // AC-1881: Which GPU the GPU row was measured on; null for a calibration from before this was recorded.
+    public string? GpuName { get; set; }
+
     public static TranscriptionCalibrationEntry FromDomain(TranscriptionCalibration calibration) => new()
     {
         Measurements = calibration.Measurements.Select(BackendMeasurementEntry.FromDomain).ToList(),
@@ -25,6 +28,7 @@ internal sealed class TranscriptionCalibrationEntry
         ModelLadder = calibration.ModelLadder.Select(ModelMeasurementEntry.FromDomain).ToList(),
         RecommendedModel = calibration.RecommendedModel,
         Model = calibration.Model,
+        GpuName = calibration.GpuName,
     };
 
     public TranscriptionCalibration ToDomain() => new(
@@ -32,7 +36,8 @@ internal sealed class TranscriptionCalibrationEntry
         ChosenBackend,
         ModelLadder.Select(measurement => measurement.ToDomain()).ToList(),
         RecommendedModel,
-        Model);
+        Model,
+        GpuName);
 }
 
 // On-disk shape of one `ModelMeasurement` (AC-68).
