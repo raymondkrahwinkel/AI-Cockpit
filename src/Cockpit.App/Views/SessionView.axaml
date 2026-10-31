@@ -641,15 +641,9 @@
         </Grid>
 
     </DockPanel>
-    <Grid IsVisible="{Binding IsReadingChild}" RowDefinitions="Auto,*" Margin="8">
-        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-            <Button Content="← Parent" Classes="Subtle Compact" Command="{Binding ReturnToParentCommand}"/>
-            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
-            <TextBlock Text="›" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-            <TextBlock Text="{Binding ChildTranscript.Child.Title}" VerticalAlignment="Center"/>
-        </StackPanel>
-        <views:ChildTranscriptView Grid.Row="1" DataContext="{Binding ChildTranscript}"/>
-    </Grid>
+    <Border IsVisible="{Binding IsReadingChild}" Margin="8">
+        <views:ChildTranscriptView DataContext="{Binding ChildTranscript}"/>
+    </Border>
 
     <!-- Consent overlay (#AC-47): dims the whole pane and centres the Approve/Deny card when a request
          is waiting on this session, so it plainly takes over rather than a banner that shifted the

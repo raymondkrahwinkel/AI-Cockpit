@@ -195,6 +195,7 @@ internal static partial class Screenshotter
         ["tty-codex-child-popout"] = (_, _) => _TtyChildHistoryScene("Codex", false),
         ["tty-child-reading"] = (_, _) => _TtyChildHistoryScene("Claude", true),
         ["child-history-finished"] = (_, _) => _ChildHistoryScene("finished"),
+        ["child-history-running"] = (_, _) => _ChildHistoryScene("running"),
         ["child-history-empty"] = (_, _) => _ChildHistoryScene("empty"),
         ["child-history-unavailable"] = (_, _) => _ChildHistoryScene("unavailable"),
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.

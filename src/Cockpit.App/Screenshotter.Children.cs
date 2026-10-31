@@ -70,15 +70,24 @@ internal static partial class Screenshotter
         }
         if (owners.FirstOrDefault() is { } selected && state != "sidebar")
         {
-            selected.ChildAgents[1].OpenCommand.Execute(null);
+            selected.ChildAgents[state == "running" ? 0 : 1].OpenCommand.Execute(null);
             if (selected.ChildTranscript is { } transcript)
             {
                 transcript.Status = state == "unavailable" ? "Not available: owner connection has stopped" : state == "empty" ? "No entries" : "";
-                if (state == "finished")
+                if (state is "finished" or "running")
                 {
                     transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "Review the session driver and report your findings."));
                     transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolResult, "Read · src/Sessions/Driver.cs\nThe driver routes child events by owner and run."));
-                    transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "The review is complete. Child events remain isolated from the parent transcript."));
+                    transcript.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, state == "running" ? "The review is in progress. Child events remain isolated from the parent transcript." : "The review is complete. Child events remain isolated from the parent transcript."));
+                    if (transcript.ParentPrompt != "Review the session driver and report your findings." || transcript.TranscriptRows.Count() != 2)
+                    {
+                        throw new InvalidOperationException("The parent prompt must appear once in its own card, before the child entries.");
+                    }
+                    transcript.Rows.RemoveAt(0);
+                    if (transcript.ParentPrompt != "Review the session driver and report your findings." || transcript.TranscriptRows.Count() != 2)
+                    {
+                        throw new InvalidOperationException("Sliding the transcript window must preserve the original parent prompt.");
+                    }
                 }
             }
         }

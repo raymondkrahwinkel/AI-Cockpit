@@ -49,6 +49,7 @@ internal static partial class Screenshotter
         owner.ChildAgents[0].OpenCommand.Execute(null);
         var page = owner.ChildTranscript ?? throw new InvalidOperationException("The fixture must open its child.");
         page.Status = "";
+        page.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "Review the parser change and report the result to the parent."));
         page.Rows.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "The parser review is in progress. This is fixture content; no provider turn was started."));
         var window = new MainWindow { DataContext = cockpit, Tag = new SteeringFixture(cockpit, owner, sibling, page) };
         window.DataTemplates.Add(new FuncDataTemplate<ChildSteeringOwner>((value, _) => new SessionView { DataContext = value }));

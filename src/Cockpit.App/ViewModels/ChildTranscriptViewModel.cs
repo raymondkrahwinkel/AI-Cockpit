@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,6 +15,8 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
     private readonly CancellationTokenSource _lifetime = new();
     private readonly HashSet<string> _ids = [];
     private string? _cursor;
+    private string? _parentPromptId;
+    private bool _hasFirstEntry;
     public ChildAgentViewModel Child { get; }
     public ChildTranscriptViewModel(ChildAgentViewModel child, Func<BackgroundTask, string?, CancellationToken, Task<ChildTranscriptPage>> read)
     {
@@ -21,8 +24,37 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
         _reference = child.Reference;
         _read = read;
         child.Owner.PropertyChanged += _OnOwnerChanged;
+        child.PropertyChanged += _OnChildChanged;
+        Rows.CollectionChanged += _OnRowsChanged;
     }
     public ObservableCollection<TranscriptEntryViewModel> Rows { get; } = [];
+    [ObservableProperty] private string _parentPrompt = "unknown";
+    public IEnumerable<TranscriptEntryViewModel> TranscriptRows => Rows.Where(row => row.Id != _parentPromptId);
+    public string ReadingStatus => Child.Reference.State switch { "completed" => "Finished", "running" => "Running", "unknown" => "Unknown", _ => Child.StatusText };
+    public string ReadingExplanation => $"You are reading a sub-agent. It has no pane, no process and no permission settings of its own — it runs inside {Child.Owner.Title}. To steer it, ask the parent.";
+    public string AgentIdentity => Child.Reference.AgentId ?? Child.Reference.TaskId;
+    public string SourceText => IsTerminalOwner ? "provider transcript" : "provider history";
+    public string TerminalExplanation => IsTerminalOwner ? SteeringExplanation : "Chat session: no terminal to open.";
+
+    private void _OnRowsChanged(object? sender, NotifyCollectionChangedEventArgs args)
+    {
+        if (args.Action == NotifyCollectionChangedAction.Reset)
+        {
+            _hasFirstEntry = false;
+            _parentPromptId = null;
+            ParentPrompt = "unknown";
+        }
+        if (!_hasFirstEntry && Rows.FirstOrDefault() is { } first)
+        {
+            _hasFirstEntry = true;
+            if (first.Kind == TranscriptEntryKind.UserText)
+            {
+                _parentPromptId = first.Id;
+                ParentPrompt = first.Text;
+            }
+        }
+        OnPropertyChanged(nameof(TranscriptRows));
+    }
     [ObservableProperty] private string _status = "Loading…";
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoadMoreCommand))]
@@ -76,11 +108,19 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
 
     private void _OnOwnerChanged(object? sender, PropertyChangedEventArgs args)
     {
+        OnPropertyChanged(nameof(ReadingExplanation));
+        OnPropertyChanged(nameof(TerminalExplanation));
         OnPropertyChanged(nameof(CanPrepareParentRequest));
         OnPropertyChanged(nameof(CanOpenTerminal));
         OnPropertyChanged(nameof(SteeringExplanation));
         PrepareParentRequestCommand.NotifyCanExecuteChanged();
         OpenOriginalTerminalCommand.NotifyCanExecuteChanged();
+    }
+
+    private void _OnChildChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        OnPropertyChanged(nameof(ReadingStatus));
+        OnPropertyChanged(nameof(AgentIdentity));
     }
 
     [RelayCommand(CanExecute = nameof(CanLoadMore))]
@@ -149,6 +189,8 @@ public sealed partial class ChildTranscriptViewModel : ObservableObject, IDispos
     public void Dispose()
     {
         Child.Owner.PropertyChanged -= _OnOwnerChanged;
+        Child.PropertyChanged -= _OnChildChanged;
+        Rows.CollectionChanged -= _OnRowsChanged;
         _lifetime.Cancel();
     }
 }
