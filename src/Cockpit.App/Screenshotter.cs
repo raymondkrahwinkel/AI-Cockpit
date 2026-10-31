@@ -4581,6 +4581,10 @@ internal static partial class Screenshotter
             new PluginScenes.SceneStorage(),
             NullCockpitSessionObserver.Instance);
         var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        foreach (var session in cockpit.Sessions)
+        {
+            session.WorkspaceId = cockpit.Workspaces.Tabs[0].Id;
+        }
         cockpit.Workspaces.CreateSessionsWorkspaceAsync("Research").GetAwaiter().GetResult();
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Conventions.md", "Conventions.md")).GetAwaiter().GetResult();
         cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Roadmap.md", "Roadmap.md", Preview: true)).GetAwaiter().GetResult();
