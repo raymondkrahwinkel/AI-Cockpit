@@ -1,6 +1,7 @@
 using System.Text;
 using Avalonia.Threading;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
@@ -22,6 +23,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private readonly ITtyLauncher? _launcher;
     private readonly ITtySessionProviderResolver? _providerResolver;
     private readonly ISessionTranscriptReader? _transcriptReader;
+    private readonly ILogger<TtyViewModel>? _logger;
     private SessionProfile? _configuredProfile;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
@@ -180,12 +182,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IOptions<CockpitOptions>? options = null,
         IOpenMicState? openMicState = null,
         IUsageHistory? usageHistory = null,
-        VoiceOverlayCoordinator? voiceOverlay = null)
+        VoiceOverlayCoordinator? voiceOverlay = null,
+        ILogger<TtyViewModel>? logger = null)
         : base(usageHistory)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
+        _logger = logger;
         KindLabel = "TTY";
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -712,7 +716,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         catch (OperationCanceledException) { }
         catch (Exception exception)
         {
-            System.Diagnostics.Debug.WriteLine($"Child history read failed: {exception.Message}");
+            _logger?.LogWarning(exception, "Reading child history for pane {PaneId} failed.", PaneId);
         }
         finally { _childrenPolling = false; }
     }

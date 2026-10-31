@@ -24,7 +24,12 @@ public abstract partial class SessionPanelViewModel
     public virtual bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
     public virtual bool HasBackgroundTasks => BackgroundTaskCount > 0;
     public virtual int BackgroundTaskCount => ChildAgents.Count(child => child.Reference.State == "running");
-    public virtual string BackgroundTaskSummary => BackgroundTaskCount == 0 ? "nothing" : $"{BackgroundTaskCount} sub-agents";
+    public virtual string BackgroundTaskSummary => BackgroundTaskCount switch
+    {
+        0 => "nothing",
+        1 => "1 sub-agent",
+        _ => $"{BackgroundTaskCount} sub-agents",
+    };
 
     public void OpenChild(ChildAgentViewModel child)
     {
