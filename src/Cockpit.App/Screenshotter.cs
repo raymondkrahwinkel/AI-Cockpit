@@ -409,7 +409,10 @@ internal static partial class Screenshotter
         ["assistant-profile"] = (_, _) => new AssistantProfileDialog
         {
             DataContext = new ViewModels.AssistantProfileDialogViewModel(
-                new _FakeAssistantSessionHost(), new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry()), _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
+                new _FakeAssistantSessionHost(),
+                // AC-1994: one Depot server with brains, so the shared picker shows on the slot's stored brain.
+                new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry(), memorySources: new _MemorySourceRegistry([_BrainServer("depot", "Acme", "depot.acme.example")])),
+                _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
             Height = 1220,
         },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with the

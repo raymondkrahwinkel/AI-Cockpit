@@ -90,8 +90,7 @@ public sealed class SessionStartComposer(
     }
 
     // AC-544: the standing statusline instruction rides after the profile's own words, never instead of them; AC-490
-    // adds the job report for a job's run; AC-1705's base instruction goes ahead of both. AC-1992: the brain leads,
-    // and also rides alone under its own key for a provider that has no system prompt to put it in.
+    // adds the job report for a job's run; AC-1705's base instruction goes ahead of both.
     public static IReadOnlyDictionary<string, string> WithInstructions(
         IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun, string? brainInstruction = null)
     {
@@ -101,15 +100,21 @@ public sealed class SessionStartComposer(
         var standing = SessionBaseInstruction.Text + "\n\n" + (isJobRun
             ? AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun
             : AgentStatusSystemPrompt.Default);
-        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
-            new[] { brainInstruction, systemPrompt, standing }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
-        merged.Remove(WellKnownPluginSessionOptions.BrainInstruction);
+        PutSystemPrompt(merged, string.IsNullOrWhiteSpace(systemPrompt) ? standing : systemPrompt.Trim() + "\n\n" + standing, brainInstruction);
+        return merged;
+    }
+
+    // AC-1992: the brain leads the system prompt once, and also rides alone under its own key for a provider that has
+    // no system prompt to put it in. AC-1994: the assistant's own launch puts its brain through here as well.
+    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
+    {
+        options[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
+            new[] { brainInstruction, systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
+        options.Remove(WellKnownPluginSessionOptions.BrainInstruction);
         if (!string.IsNullOrWhiteSpace(brainInstruction))
         {
-            merged[WellKnownPluginSessionOptions.BrainInstruction] = brainInstruction.Trim();
+            options[WellKnownPluginSessionOptions.BrainInstruction] = brainInstruction.Trim();
         }
-
-        return merged;
     }
 
     // A Cockpit-managed worktree is an isolation boundary, not only a different cwd. The provider receives the

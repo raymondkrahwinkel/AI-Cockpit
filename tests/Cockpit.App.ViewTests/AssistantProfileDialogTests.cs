@@ -7,7 +7,9 @@ using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using NSubstitute;
 
@@ -42,7 +44,7 @@ public class AssistantProfileDialogTests
     }
 
     [Fact]
-    public void Loading_OpensOnTheAssistantsOwnRecord()
+    public async Task Loading_OpensOnTheAssistantsOwnRecord()
     {
         var slot = new AssistantProfileSlot(_Record("Claude (assistant)", permissionMode: "bypassPermissions"));
         var slotStore = _SlotStore(slot);
@@ -54,8 +56,12 @@ public class AssistantProfileDialogTests
         Assert.False(viewModel.Profile.RestrictMcpServers);
         Assert.Null(viewModel.Profile.ToProfile().EnabledMcpServerNames);
 
+        // AC-1994: the shared brain picker sits on the slot's own record, and a pick is what it writes.
+        Assert.True(viewModel.Profile.BrainPicker.IsAvailable);
+        await Dispatcher.UIThread.InvokeAsync(() => viewModel.Profile.BrainPicker.LoadAsync());
         Dispatcher.UIThread.Invoke(() =>
         {
+            viewModel.Profile.BrainPicker.Selected = viewModel.Profile.BrainPicker.Choices.Single(choice => choice.Reference == _Brain);
             viewModel.Profile.RestrictMcpServers = true;
             viewModel.Profile.RestrictMcpServers = false;
             viewModel.SaveCommand.Execute(null);
@@ -65,11 +71,30 @@ public class AssistantProfileDialogTests
             .Single(call => call.GetMethodInfo().Name == nameof(IAssistantProfileStore.RepointAsync))
             .GetArguments()[0]);
         Assert.Null(saved.EnabledMcpServerNames);
+        Assert.Equal(_Brain, saved.Assistant);
         slotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantProfileSlot(saved));
         Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
 
         Assert.False(viewModel.Profile.RestrictMcpServers);
+        Assert.Equal(_Brain, viewModel.Profile.BrainPicker.Selected?.Reference);
+        Assert.Equal(_Brain, viewModel.Profile.ToProfile().Assistant);
+
+        // None writes no brain, and reopening reads it back as None.
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            viewModel.Profile.BrainPicker.Selected = BrainPickerViewModel.None;
+            viewModel.SaveCommand.Execute(null);
+        });
+        var cleared = Assert.IsType<SessionProfile>(slotStore.ReceivedCalls()
+            .Last(call => call.GetMethodInfo().Name == nameof(IAssistantProfileStore.RepointAsync))
+            .GetArguments()[0]);
+        Assert.Null(cleared.Assistant);
+        slotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantProfileSlot(cleared));
+        await Dispatcher.UIThread.InvokeAsync(() => viewModel.LoadAsync());
+        Assert.Same(BrainPickerViewModel.None, viewModel.Profile.BrainPicker.Selected);
     }
+
+    private const string _Brain = "depot:acme/zyra@depot.acme.example";
 
     /// <summary>
     /// A slot that has never been set up opens on a blank record rather than refusing: this dialog is where an
@@ -278,7 +303,7 @@ public class AssistantProfileDialogTests
             slotStore ?? _SlotStore(slot ?? new AssistantProfileSlot(null, "No assistant profile has been set up yet.")),
             sessionProfiles,
             assistant,
-            pluginProviderRegistry: new PluginRegistrations(_Registry()),
+            pluginProviderRegistry: new PluginRegistrations(_Registry(), memorySources: _BrainSources()),
             pluginConfigViews: _ConfigViews(),
             setup: setup);
     }
@@ -308,6 +333,17 @@ public class AssistantProfileDialogTests
         var registry = Substitute.For<IPluginProviderRegistry>();
         registry.Resolve(ClaudePluginProfile.ProviderId).Returns(registration);
         registry.Registrations.Returns([registration]);
+        return registry;
+    }
+
+    // One source that lists one brain, so the dialog shows the shared picker rather than nothing.
+    private static IProjectMemorySourceRegistry _BrainSources()
+    {
+        var registry = Substitute.For<IProjectMemorySourceRegistry>();
+        registry.Sources.Returns([new ProjectMemorySourceRegistration("depot", "Depot project", "Read it.")
+        {
+            ListBrainsAsync = _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([new("acme/zyra@depot.acme.example", "Zyra", "acme/zyra · Acme")])),
+        }]);
         return registry;
     }
 
