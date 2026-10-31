@@ -37,7 +37,7 @@ public static class ProjectMemoryRef
 
     // AC-1992: whether `reference` has the shape a picked brain is stored in, `<scheme>:<address>@<server>` without
     // whitespace — recognisable with no source installed, so a missing plugin never turns a brain into a persona
-    // name. A typed name ("Zyra", "depot: Aura") never has that shape.
+    // name. A typed name ("Zyra", "depot: Aura") normally doesn't have that shape.
     public static bool IsBrainReference(string? reference)
     {
         var trimmed = reference?.Trim() ?? string.Empty;
