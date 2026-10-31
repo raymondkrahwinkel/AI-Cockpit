@@ -42,44 +42,25 @@ public class SecretProtectionTests : IDisposable
     };
 
     [Fact]
-    public async Task Enabling_LeavesNoReadableTokenInTheFile()
+    public async Task Enabling_LeavesNoReadableToken_RefusesTheWrongPassword_AndTheRightOneReadsItBack()
     {
         await Store().SaveAsync([Server(Token)]);
         Assert.Contains(Token, RawConfig());
-
         await Service().EnableAsync(Password);
-
         Assert.DoesNotContain(Token, RawConfig());
         Assert.Contains(SecretProtector.Prefix, RawConfig());
-    }
-
-    [Fact]
-    public async Task AnUnlockedApp_ReadsTheCredentialBack()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().EnableAsync(Password);
 
         // A fresh process: the key is gone, the file is ciphertext.
         var restarted = new SecretKeyHolder();
         var afterRestart = new SecretProtectionService(_configPath, restarted);
         Assert.Equal(new SecretProtectionStatus(Enabled: true, Unlocked: false), await afterRestart.GetStatusAsync());
+        Assert.False(await afterRestart.UnlockAsync("not the password"));
+        Assert.Null(restarted.Protector);
 
         Assert.True(await afterRestart.UnlockAsync(Password));
 
         var servers = await new McpServerStore(_configPath, restarted).LoadAsync();
         Assert.Equal(Token, servers.Single().ApiKey);
-    }
-
-    [Fact]
-    public async Task TheWrongPassword_IsRefusedRatherThanReturningNonsense()
-    {
-        await Store().SaveAsync([Server(Token)]);
-        await Service().EnableAsync(Password);
-
-        var restarted = new SecretKeyHolder();
-
-        Assert.False(await new SecretProtectionService(_configPath, restarted).UnlockAsync("not the password"));
-        Assert.Null(restarted.Protector);
     }
 
     [Fact]
@@ -345,7 +326,7 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
-    public async Task Enabling_AbortsAndLeavesTheFileByteIdentical_WhenAValueWillNotRoundTrip()
+    public async Task Enabling_AbortsAndLeavesTheFileByteIdentical_WhenAValueWillNotRoundTrip_AndTheBannerReturns()
     {
         await Store().SaveAsync([Server(Token)]);
         var before = RawConfig();
@@ -359,18 +340,91 @@ public class SecretProtectionTests : IDisposable
         Assert.Equal(before, RawConfig());
         Assert.DoesNotContain("Security", RawConfig());
         Assert.Null(_keyHolder.Protector);
+        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "nothing was encrypted, so the banner is due again");
+    }
+
+    // AC-1879: Windows Hello stands in for the password through a wrap of the key; the fake signs like a TPM key would.
+    [Fact]
+    public async Task Hello_UnlocksWithItsOwnKey_ButNotWithAnotherOne_AndNeverWritesTheKeyInTheClear()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().EnableAsync(Password);
+        var hello = new FakeSigner();
+
+        Assert.True(await Service().EnableHelloAsync(Password, hello));
+
+        var security = JsonNode.Parse(RawConfig())?["Security"] ?? throw new InvalidOperationException("No Security section.");
+        var key = SecretKey.Derive(Password, Convert.FromBase64String((string?)security["Salt"] ?? ""), (int?)security["Iterations"] ?? 0);
+        Assert.DoesNotContain(Convert.ToBase64String(key), RawConfig());
+        var otherMachine = new SecretKeyHolder();
+        Assert.False(await new SecretProtectionService(_configPath, otherMachine).UnlockWithHelloAsync(new FakeSigner()));
+        Assert.Null(otherMachine.Protector);
+        var restarted = new SecretKeyHolder();
+        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
+        Assert.Equal(Token, (await new McpServerStore(_configPath, restarted).LoadAsync()).Single().ApiKey);
     }
 
     [Fact]
-    public async Task AnAbortedMigration_LeavesThePlaintextIntact_AndTheBannerReturns()
+    public async Task Hello_IsRefused_WhenTheOsKeySignsDifferentlyEachTime()
     {
-        await Store().SaveAsync([Server(Token)]);
+        await Service().EnableAsync(Password);
 
-        var service = new SecretProtectionService(_configPath, _keyHolder, _ => new BrokenRoundTripProtector());
-        await Assert.ThrowsAnyAsync<SecretProtectionException>(() => service.EnableAsync(Password));
+        await Assert.ThrowsAsync<SecretProtectionException>(() => Service().EnableHelloAsync(Password, new FakeSigner(randomised: true)));
 
-        Assert.Contains(Token, RawConfig());
-        Assert.True((await Service().GetStatusAsync()).ShouldWarnUnprotected, "nothing was encrypted, so the banner is due again");
+        Assert.DoesNotContain("Hello", RawConfig());
+    }
+
+    [Fact]
+    public async Task ChangingThePassword_TurnsHelloOff_AndAnOldWrapPutBackDoesNotUnlock()
+    {
+        await Service().EnableAsync(Password);
+        var hello = new FakeSigner();
+        await Service().EnableHelloAsync(Password, hello);
+        var oldHello = JsonNode.Parse(RawConfig())?["Security"]?["Hello"]?.DeepClone();
+
+        await Service().ChangePasswordAsync(Password, "a-different-good-passphrase");
+        Assert.False((await Service().GetStatusAsync()).HelloEnabled);
+        var document = JsonNode.Parse(RawConfig()) ?? throw new InvalidOperationException("No config.");
+        var security = document["Security"] as JsonObject ?? throw new InvalidOperationException("No Security section.");
+        security["Hello"] = oldHello;
+        File.WriteAllText(_configPath, document.ToJsonString());
+
+        var restarted = new SecretKeyHolder();
+        Assert.False(await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
+        Assert.Null(restarted.Protector);
+    }
+
+    // Signs with an HMAC over a per-instance secret, like an OS key held in a TPM; `randomised` mimics RSA-PSS.
+    private sealed class FakeSigner(bool randomised = false) : ISecretKeySigner
+    {
+        private readonly Dictionary<string, byte[]> _keys = [];
+
+        public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+
+        public Task<bool> CreateAsync(string name, CancellationToken cancellationToken = default)
+        {
+            _keys[name] = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+            return Task.FromResult(true);
+        }
+
+        public Task<byte[]?> SignAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
+        {
+            if (!_keys.TryGetValue(name, out var secret))
+            {
+                _keys[name] = secret = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+            }
+
+            var signature = randomised
+                ? System.Security.Cryptography.RandomNumberGenerator.GetBytes(256)
+                : System.Security.Cryptography.HMACSHA256.HashData(secret, challenge);
+            return Task.FromResult<byte[]?>(signature);
+        }
+
+        public Task DeleteAsync(string name, CancellationToken cancellationToken = default)
+        {
+            _keys.Remove(name);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

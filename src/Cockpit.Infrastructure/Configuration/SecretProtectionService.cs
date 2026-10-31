@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions;
@@ -43,7 +45,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
     public async Task<SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
         var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
-        var enabled = document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions)?.Enabled ?? false;
+        var security = document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions);
+        var enabled = security?.Enabled ?? false;
         var unlocked = _keyHolder.Protector is not null;
 
         // Review #7 (2026-07-19): banner shows only while encryption is off and at least one credential
@@ -61,7 +64,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
             }
         }
 
-        return new SecretProtectionStatus(enabled, unlocked, shouldWarn);
+        return new SecretProtectionStatus(enabled, unlocked, shouldWarn, HelloEnabled: enabled && security?.Hello is not null);
     }
 
     public async Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default)
@@ -245,6 +248,139 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         });
         Save(document);
     }
+
+    public async Task<bool> EnableHelloAsync(string password, ISecretKeySigner signer, CancellationToken cancellationToken = default)
+    {
+        var security = await ReadSecurityAsync(cancellationToken).ConfigureAwait(false);
+        if (security is not { Enabled: true })
+        {
+            throw new SecretProtectionException("Encryption is not on, so there is nothing for Windows Hello to unlock.");
+        }
+
+        var key = SecretKey.Derive(password, Convert.FromBase64String(security.Salt), security.Iterations, security.Kdf);
+        try
+        {
+            if (!VerifierMatches(_protectorFactory(key), security))
+            {
+                throw new SecretProtectionException("The password is not correct.");
+            }
+
+            // The prompts run before the write gate is taken, so a slow gesture never holds up other settings writes.
+            var name = HelloCredentialName(_configFilePath);
+            if (!await signer.CreateAsync(name, cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            var challenge = RandomNumberGenerator.GetBytes(32);
+            var first = await signer.SignAsync(name, challenge, cancellationToken).ConfigureAwait(false);
+            var second = first is null ? null : await signer.SignAsync(name, challenge, cancellationToken).ConfigureAwait(false);
+            if (first is null || second is null)
+            {
+                await signer.DeleteAsync(name, cancellationToken).ConfigureAwait(false);
+                return false;
+            }
+
+            // A randomised signature (RSA-PSS) cannot be turned back into the same key at the next unlock.
+            if (!CryptographicOperations.FixedTimeEquals(first, second))
+            {
+                await signer.DeleteAsync(name, cancellationToken).ConfigureAwait(false);
+                throw new SecretProtectionException("Windows Hello cannot hold a key on this version of Windows.");
+            }
+
+            var hello = new HelloEntry
+            {
+                CredentialName = name,
+                Challenge = Convert.ToBase64String(challenge),
+                WrappedKey = new SecretProtector(HelloKek(first, challenge)).Protect(HelloEntry.WrappedKeyPath, Convert.ToBase64String(key)),
+            };
+
+            using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
+            var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
+            var current = document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions);
+
+            // The password changed while the prompt was up: this wrap holds the old key, so it is not stored.
+            if (current is not { Enabled: true } || current.Salt != security.Salt)
+            {
+                await signer.DeleteAsync(name, cancellationToken).ConfigureAwait(false);
+                throw new SecretProtectionException("The password changed meanwhile; turn Windows Hello on again.");
+            }
+
+            current.Hello = hello;
+            WriteSecurity(document, current);
+            Save(document);
+
+            return true;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+
+    public async Task<bool> UnlockWithHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default)
+    {
+        var security = await ReadSecurityAsync(cancellationToken).ConfigureAwait(false);
+        if (security is not { Enabled: true, Hello: { } hello })
+        {
+            return false;
+        }
+
+        var challenge = Convert.FromBase64String(hello.Challenge);
+        var signature = await signer.SignAsync(hello.CredentialName, challenge, cancellationToken).ConfigureAwait(false);
+        if (signature is null)
+        {
+            return false;
+        }
+
+        byte[] key;
+        try
+        {
+            key = Convert.FromBase64String(new SecretProtector(HelloKek(signature, challenge)).Unprotect(HelloEntry.WrappedKeyPath, hello.WrappedKey));
+        }
+        catch (Exception exception) when (exception is SecretProtectionException or FormatException)
+        {
+            // Another machine's TPM, a re-created Hello key, or a signature that changed after an update: the password still works.
+            return false;
+        }
+
+        // Not zeroed: the protector keeps this array as the key for the rest of the run.
+        var protector = _protectorFactory(key);
+
+        // A wrap of a key from before a password change unwraps fine but no longer opens the verifier.
+        if (!VerifierMatches(protector, security))
+        {
+            return false;
+        }
+
+        _keyHolder.Unlock(protector);
+        await ScrubPlaintextSidecarsAsync(protector, cancellationToken).ConfigureAwait(false);
+
+        return true;
+    }
+
+    public async Task DisableHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default)
+    {
+        using (var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false))
+        {
+            var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
+            if (document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions) is { Hello: not null } security)
+            {
+                security.Hello = null;
+                WriteSecurity(document, security);
+                Save(document);
+            }
+        }
+
+        await signer.DeleteAsync(HelloCredentialName(_configFilePath), cancellationToken).ConfigureAwait(false);
+    }
+
+    // One OS key per state root, so a second cockpit (another state root) on the same account cannot overwrite it.
+    internal static string HelloCredentialName(string configFilePath) =>
+        "AI-Cockpit/" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(configFilePath).ToUpperInvariant())))[..16];
+
+    private static byte[] HelloKek(byte[] signature, byte[] challenge) =>
+        HKDF.DeriveKey(HashAlgorithmName.SHA256, signature, 32, challenge, "cockpit-hello-v1"u8.ToArray());
 
     // Rewrites every credential in the document, reporting progress. All-or-nothing: one field that will not
     // convert (a wrong key, an altered value) aborts the whole migration with the file untouched, rather than
