@@ -16,7 +16,9 @@ public sealed class WorkspaceInstanceTests
 
     private readonly Dictionary<string, IWorkspaceContext> _contexts = new(StringComparer.Ordinal);
 
-    private WorkspacesViewModel _Workspaces()
+    private WorkspacesViewModel _Workspaces() => new(store: null, workspaceTypes: _Registry());
+
+    private WorkspaceTypeRegistry _Registry()
     {
         var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
         registry.Register(
@@ -27,8 +29,47 @@ public sealed class WorkspaceInstanceTests
             }),
             new NoStorage(),
             NullCockpitSessionObserver.Instance);
-        return new WorkspacesViewModel(store: null, workspaceTypes: registry);
+        return registry;
     }
+
+    // Strip: Sessions (3 sample sessions) · Projects · Empty · dirty.md (unsaved) · preview.md (preview).
+    private async Task<CockpitViewModel> _BulkStripAsync()
+    {
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: _Registry());
+        foreach (var session in cockpit.Sessions)
+        {
+            session.WorkspaceId = _IdOf(cockpit, "Sessions");
+        }
+        await cockpit.Workspaces.CreateSessionsWorkspaceAsync("Empty");
+        await cockpit.Workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("dirty.md", "dirty.md"));
+        _contexts["dirty.md"].SetMarker(WorkspaceMarker.Unsaved);
+        await cockpit.Workspaces.OpenWorkspaceAsync(TypeId, new WorkspaceOpenOptions("preview.md", "preview.md", Preview: true));
+        return cockpit;
+    }
+
+    private static string _IdOf(CockpitViewModel cockpit, string name) =>
+        cockpit.Workspaces.Settings.Workspaces.Single(workspace => workspace.Name == name).Id;
+
+    // AC-1972, layer 2, data loss: each bulk close takes its own set, never Projects, and counts neither the preview
+    // nor the empty desk.
+    [Theory]
+    [InlineData(BulkClose.Others, "Empty", "Sessions,dirty.md,preview.md", 2)]
+    [InlineData(BulkClose.ToTheRight, "Sessions", "Empty,dirty.md,preview.md", 1)]
+    [InlineData(BulkClose.All, "Empty", "Sessions,Empty,dirty.md,preview.md", 2)]
+    public Task BulkClose_TakesItsOwnSet_SkipsWhatCannotClose_AndCountsOnlyTabsWithSomethingToLose(
+        BulkClose action, string clicked, string expectedClosing, int expectedCount) => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var cockpit = await _BulkStripAsync();
+
+        var plan = cockpit.PlanBulkClose(action, _IdOf(cockpit, clicked));
+
+        Assert.Equal(expectedClosing.Split(','), plan.WorkspaceIds.Select(id => cockpit.Workspaces.Settings.Workspaces.Single(workspace => workspace.Id == id).Name));
+        Assert.Equal(expectedCount, plan.Count);
+        Assert.Equal($"Close {expectedCount} workspace{(expectedCount == 1 ? "" : "s")}?", plan.Title);
+        Assert.Contains("dirty.md has unsaved changes. You will be asked about it before it closes.", plan.Message);
+        Assert.Contains("Projects stays open. It cannot be closed.", plan.Message);
+        Assert.DoesNotContain("preview.md", plan.Message);
+    });
 
     private static List<string?> _KeyedTabs(WorkspacesViewModel workspaces) =>
         [.. workspaces.Settings.Workspaces.Where(workspace => workspace.Type.Id == TypeId).Select(workspace => workspace.InstanceKey)];
@@ -89,6 +130,19 @@ public sealed class WorkspaceInstanceTests
         _contexts["three.md"].SetCloseGuard(() => Task.FromResult(true));
         await workspaces.CloseWorkspaceCommand.ExecuteAsync(guarded.Id);
         Assert.DoesNotContain(workspaces.Settings.Workspaces, workspace => workspace.Id == guarded.Id);
+
+        // AC-1972: Cancel on the bulk question (no dialog answers no) closes nothing; after it, every guard runs and
+        // a refusing one keeps only its own tab.
+        var cockpit = await _BulkStripAsync();
+        var before = cockpit.Workspaces.Settings.Workspaces.Count;
+        await cockpit.CloseWorkspacesWithConfirmationAsync(BulkClose.All, _IdOf(cockpit, "Empty"));
+        Assert.Equal(before, cockpit.Workspaces.Settings.Workspaces.Count);
+        _contexts["dirty.md"].SetCloseGuard(() => Task.FromResult(false));
+        var previewAsked = false;
+        _contexts["preview.md"].SetCloseGuard(() => Task.FromResult(previewAsked = true));
+        await cockpit.CloseWorkspacesAsync(cockpit.PlanBulkClose(BulkClose.All, _IdOf(cockpit, "Empty")).WorkspaceIds);
+        Assert.True(previewAsked);
+        Assert.Equal(["Projects", "dirty.md"], cockpit.Workspaces.Settings.Workspaces.Select(workspace => workspace.Name));
     });
 
     private sealed class NoStorage : IPluginStorage

@@ -28,7 +28,7 @@ namespace Cockpit.App.ViewTests;
 public class CloseSessionWorktreeReleaseTests
 {
     [Fact]
-    public void CloseSession_ReleasesTheWorktreeEvenWhenWorktreeBranchWasNeverSet()
+    public void CloseSession_AndCloseEmbeddedSession_ReleaseTheWorktreeEvenWhenWorktreeBranchWasNeverSet()
     {
         var worktreeManager = Substitute.For<IWorktreeManager>();
         var (cockpit, session) = Dispatcher.UIThread.Invoke(() =>
@@ -43,15 +43,12 @@ public class CloseSessionWorktreeReleaseTests
         Dispatcher.UIThread.Invoke(() => cockpit.CloseSessionCommand.ExecuteAsync(session).GetAwaiter().GetResult());
 
         worktreeManager.Received(1).ReleaseAsync(session.PaneId, Arg.Any<CancellationToken>());
-    }
 
-    [Fact]
-    public void CloseEmbeddedSession_ReleasesTheWorktreeEvenWhenWorktreeBranchWasNeverSet()
-    {
-        var worktreeManager = Substitute.For<IWorktreeManager>();
-        var (cockpit, embedded) = Dispatcher.UIThread.Invoke(() =>
+        // The embedded close path, on a fresh cockpit.
+        var embeddedManager = Substitute.For<IWorktreeManager>();
+        var (_, embedded) = Dispatcher.UIThread.Invoke(() =>
         {
-            var c = _NewCockpit(worktreeManager);
+            var c = _NewCockpit(embeddedManager);
             var grid = new SessionViewModel { WorkspaceId = "plugin-desk" };
             c.Sessions.Add(grid);
 
@@ -61,7 +58,7 @@ public class CloseSessionWorktreeReleaseTests
 
         Dispatcher.UIThread.Invoke(() => embedded.CloseAsync().GetAwaiter().GetResult());
 
-        worktreeManager.Received(1).ReleaseAsync(embedded.PaneId, Arg.Any<CancellationToken>());
+        embeddedManager.Received(1).ReleaseAsync(embedded.PaneId, Arg.Any<CancellationToken>());
     }
 
     // Mirrors WorkspaceAgentGatewayTests._NewEmbeddingCapableCockpit: enough of a graph for Embed(...) to work, plus

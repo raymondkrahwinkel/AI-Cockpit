@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
@@ -5,6 +6,9 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Files;
+using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
+using Cockpit.Core.Workspaces;
 using Cockpit.App.ViewTests;
 
 namespace Cockpit.Journeys;
@@ -95,6 +99,22 @@ internal static class FileWorkspaceSteps
             await body.Ready;
             body.BeginEdit();
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length - 1, ", edited");
+            // AC-1972: Close others from Projects asks once for the set, then the file asks itself; Cancel keeps it.
+            var asked = new List<string>();
+            using (Window.WindowOpenedEvent.AddClassHandler<ConfirmationDialog>((dialog, _) =>
+            {
+                asked.Add((dialog.DataContext as ConfirmationDialogViewModel)?.Title ?? "");
+                var answer = asked.Count == 1;
+                Dispatcher.UIThread.Post(() => dialog.Close(answer));
+            }))
+            {
+                var projects = workspaces.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects).Id;
+                await cockpit.Cockpit.CloseWorkspacesWithConfirmationAsync(BulkClose.Others, projects).WaitAsync(Until.Ceiling);
+            }
+            Assert.Equal(2, asked.Count);
+            Assert.Matches(@"^Close [0-9]+ workspaces?\?$", asked[0]);
+            Assert.Equal("Discard unsaved changes?", asked[1]);
+            Assert.Contains(workspaces.Settings.Workspaces, workspace => workspace.Id == entry.Id);
             changeFromOutside();
             await body.SaveAsync();
             Assert.True(body.HasConflict);

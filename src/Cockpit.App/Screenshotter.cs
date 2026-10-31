@@ -267,7 +267,9 @@ internal static partial class Screenshotter
             DataContext = new ConfirmationDialogViewModel("Discard unsaved changes?",
                 "Close md-editor-in-cockpit.md without saving? Your changes will be lost.", "Discard changes"),
         },
-        ["markdown-editor-table"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
+        // AC-1972: Close all on a strip with sessions, an unsaved file, an empty desk and a preview — one question.
+        ["workspace-bulk-close"] = (_, _) => _WorkspaceBulkCloseScene(),
+        ["markdown-editor-table"] =(width, height) => _MarkdownEditorScene(width, height, editor => editor.EditLine(27, atEnd: true)),
         ["markdown-editor-source"] = (width, height) => _MarkdownEditorScene(width, height, editor => editor.ShowSource = true),
         ["markdown-editor-readonly"] = (width, height) => _MarkdownEditorScene(width, height, editor =>
         {
@@ -4561,6 +4563,29 @@ internal static partial class Screenshotter
         window.MouseDown(position, Avalonia.Input.MouseButton.Right);
         window.MouseUp(position, Avalonia.Input.MouseButton.Right);
         Dispatcher.UIThread.RunJobs();
+    }
+
+    private static Window _WorkspaceBulkCloseScene()
+    {
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(
+            new Cockpit.Plugins.Abstractions.Workspaces.WorkspaceTypeRegistration("scene.markdown", "Markdown", context =>
+            {
+                if (context.InstanceKey == "Conventions.md")
+                {
+                    context.SetMarker(Cockpit.Plugins.Abstractions.Workspaces.WorkspaceMarker.Unsaved);
+                }
+
+                return new TextBlock { Text = context.InstanceKey };
+            }),
+            new PluginScenes.SceneStorage(),
+            NullCockpitSessionObserver.Instance);
+        var cockpit = new CockpitViewModel(workspaceTypeRegistry: registry);
+        cockpit.Workspaces.CreateSessionsWorkspaceAsync("Research").GetAwaiter().GetResult();
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Conventions.md", "Conventions.md")).GetAwaiter().GetResult();
+        cockpit.Workspaces.OpenWorkspaceAsync("scene.markdown", new("Roadmap.md", "Roadmap.md", Preview: true)).GetAwaiter().GetResult();
+        var plan = cockpit.PlanBulkClose(BulkClose.All, cockpit.Workspaces.Tabs[0].Id);
+        return new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(plan.Title, plan.Message, $"Close {plan.Count}") };
     }
 
     private static Window _WorkspacePreviewTabScene(bool overflow = false)

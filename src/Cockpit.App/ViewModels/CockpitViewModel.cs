@@ -479,12 +479,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Counted apart rather than folded into "sessions", which is the drift this method used to warn about in
             // its own comment: "3 sessions, which will be stopped" reads as a lie the moment one of the three never
             // started (AC-410).
-            var onDesk = Sessions.Where(session => session.WorkspaceId == workspace.Id).ToList();
-            var started = onDesk.Count(session => !session.HasRestoreOffer)
-                // Embedded sessions are never restored-but-unstarted (AC-410's "Niet" list), so they always belong on
-                // the started side.
-                + _EmbeddedSessionCount(workspace.Id);
-            var notStarted = onDesk.Count(session => session.HasRestoreOffer);
+            var (started, notStarted) = _SessionCounts(workspace.Id);
 
             message = (started, notStarted) switch
             {
@@ -500,6 +495,101 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await CloseWorkspaceAsync(workspaceId);
         }
     }
+
+    private (int Started, int NotStarted) _SessionCounts(string workspaceId)
+    {
+        var onDesk = Sessions.Where(session => session.WorkspaceId == workspaceId).ToList();
+        // Embedded sessions are never restored-but-unstarted (AC-410's "Niet" list), so they always belong on the
+        // started side.
+        return (onDesk.Count(session => !session.HasRestoreOffer) + _EmbeddedSessionCount(workspaceId),
+            onDesk.Count(session => session.HasRestoreOffer));
+    }
+
+    // AC-1972: Close others / to the right / all ask once for the whole set, then close each workspace through the
+    // ordinary route, so every close guard still runs; a guard that refuses keeps only its own tab.
+    public async Task CloseWorkspacesWithConfirmationAsync(BulkClose action, string workspaceId)
+    {
+        var plan = PlanBulkClose(action, workspaceId);
+        if (plan.Count > 0 && !await ConfirmAsync(plan.Title, plan.Message, $"Close {plan.Count}"))
+        {
+            return;
+        }
+
+        await CloseWorkspacesAsync(plan.WorkspaceIds);
+    }
+
+    internal async Task CloseWorkspacesAsync(IReadOnlyList<string> workspaceIds)
+    {
+        foreach (var workspaceId in workspaceIds)
+        {
+            await CloseWorkspaceAsync(workspaceId);
+        }
+    }
+
+    // AC-1972: what a bulk close would close, and the one question for it. Count is the tabs with something to lose
+    // (sessions, widgets, unsaved changes); preview and empty tabs close along without being counted or named.
+    internal BulkClosePlan PlanBulkClose(BulkClose action, string workspaceId)
+    {
+        var (closing, staying) = Workspaces.BulkCloseScope(action, workspaceId);
+        int losing = 0, widgets = 0, started = 0, notStarted = 0;
+        var unsaved = new List<string>();
+        foreach (var workspace in closing)
+        {
+            var (onDesk, offered) = workspace.Type == WorkspaceType.Dashboard ? (0, 0) : _SessionCounts(workspace.Id);
+            var panes = workspace.Type == WorkspaceType.Dashboard ? workspace.Panes.Count : 0;
+            var isUnsaved = Workspaces.IsUnsaved(workspace.Id);
+            if (onDesk + offered + panes == 0 && !isUnsaved)
+            {
+                continue;
+            }
+
+            losing++;
+            widgets += panes;
+            started += onDesk;
+            notStarted += offered;
+            if (isUnsaved)
+            {
+                unsaved.Add(workspace.Name);
+            }
+        }
+
+        var paragraphs = new List<string>();
+        var holds = new[]
+        {
+            _Count(widgets, "widget"),
+            _Count(started, "session") is { } stopped ? $"{stopped}, which will be stopped" : null,
+            _Count(notStarted, "restored session") is { } idle ? $"{idle} that never started" : null,
+        }.OfType<string>().ToList();
+        if (holds.Count > 0)
+        {
+            paragraphs.Add($"{(losing == 1 ? "It holds" : "They hold")} {_JoinWithAnd(holds)}. This cannot be undone.");
+        }
+
+        if (unsaved.Count > 0)
+        {
+            paragraphs.Add(unsaved.Count == 1
+                ? $"{unsaved[0]} has unsaved changes. You will be asked about it before it closes."
+                : $"{_JoinWithAnd(unsaved)} have unsaved changes. You will be asked about each before it closes.");
+        }
+
+        if (staying.Count > 0)
+        {
+            var names = _JoinWithAnd([.. staying.Select(workspace => workspace.Name)]);
+            paragraphs.Add(staying.Count == 1 ? $"{names} stays open. It cannot be closed." : $"{names} stay open. They cannot be closed.");
+        }
+
+        return new BulkClosePlan(
+            [.. closing.Select(workspace => workspace.Id)],
+            losing,
+            losing == 1 ? "Close 1 workspace?" : $"Close {losing} workspaces?",
+            string.Join("\n\n", paragraphs));
+    }
+
+    // "a", "a and b", "a, b and c" — with ", and" once a part already carries its own comma.
+    private static string _JoinWithAnd(IReadOnlyList<string> parts) =>
+        parts.Count == 1
+            ? parts[0]
+            : $"{string.Join(", ", parts.Take(parts.Count - 1))}{(parts.Count > 2 || parts[^2].Contains(',') ? ", and " : " and ")}{parts[^1]}";
 
     // "3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what
     // it holds.
