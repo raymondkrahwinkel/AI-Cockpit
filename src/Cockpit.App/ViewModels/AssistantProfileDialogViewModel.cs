@@ -42,6 +42,12 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         "instructions, never instead of them, from the next start or Save and restart; Kimi and opencode load it with " +
         "the next new conversation.";
 
+    // AC-1995: on a server's slot every save restarts the assistant, so there is no Save and restart to point at.
+    private const string _ServerBrainHint =
+        "None names no brain, so the provider's own instruction files decide. A brain is loaded beside the built-in " +
+        "instructions, never instead of them, as the server restarts its assistant on save; Kimi and opencode load it " +
+        "with the next new conversation.";
+
     // Raised when the dialog should close (after a save, or on cancel).
     public event Action? CloseRequested;
 
@@ -309,7 +315,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         _tokenEstimator,
         _ttyProviderResolver,
         pluginConfigViews: _pluginConfigViews,
-        brainHint: _BrainHint);
+        brainHint: _assistant is null && !_canChooseProvider ? _ServerBrainHint : _BrainHint);
 
     // The label starts as "<provider> (assistant)", the shape a saved assistant profile carries in Options.
     private static SessionProfile _EmptyProfile(SessionProviderOption? preferred) => new(

@@ -20,12 +20,6 @@ public interface IAssistantAdministration
     Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes the fields <paramref name="patch"/> names and restarts the assistant on them. Throws
-    /// <see cref="ArgumentException"/> with the server's reason when it refuses.
-    /// </summary>
-    Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Writes the slot's whole profile as the shared Assistant Profile editor holds it (AC-1995) and restarts the assistant;
     /// each secret that reads as the server's mask stays as the server holds it. Throws <see cref="ArgumentException"/>
     /// with the server's reason when it refuses, a new credential included.

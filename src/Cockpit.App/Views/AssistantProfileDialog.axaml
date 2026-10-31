@@ -82,16 +82,14 @@
                         <TextBox Text="{Binding Label}"/>
                     </StackPanel>
 
-                    <!-- AC-1994: the shared brain picker on the slot's own Assistant value, shown once a source has
-                         brains. The brain is a part of its own at the start, so replacing the built-in instructions
-                         below does not take it away, and choosing one does not replace them. -->
-                    <!-- Without a brain source the picker hides; the stored value stays visible and clearable here, as in
-                         the profile editor, since the assistant acts on it from its next start. -->
+                    <!-- AC-1994: the slot's Assistant value; a plain field until a source has brains, then the shared
+                         picker. The brain rides beside the built-in instructions below: replacing those keeps it, and
+                         choosing one replaces nothing. -->
                     <StackPanel Spacing="4" IsVisible="{Binding !BrainPicker.IsAvailable, FallbackValue=True}">
                         <TextBlock Text="Brain" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Assistant}" HorizontalAlignment="Stretch"
-                                 PlaceholderText="None. Connect Depot to choose a brain"/>
+                                 PlaceholderText="None. Add a brain source under Plugins to choose a brain"/>
                     </StackPanel>
 
                     <StackPanel Spacing="4" IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">

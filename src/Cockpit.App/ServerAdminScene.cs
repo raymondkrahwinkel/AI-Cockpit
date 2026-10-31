@@ -402,9 +402,6 @@ internal static class ServerAdminScene
 
         public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => GetAsync(cancellationToken);
 
-        public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) => Task.FromResult(
-            new RemoteAssistantSettings(true, true, null, false, Profile, null, Instructions, false, true, Bypass));
-
         // "saved": the server holds the profile the dialog sent, and the assistant runs on it.
         public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) => Task.FromResult(
             new RemoteAssistantSettings(true, true, null, false, Profile with { Full = profile }, null, profile.SystemPrompt, replacesStandingInstruction, true, Bypass));
