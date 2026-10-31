@@ -34,7 +34,7 @@ public static class SwarmLeaderElection
     {
         var own = register.Members.FirstOrDefault(member => member.Id == self);
         var rivals = seen.Where(member => member.Id != self && member.Rank == own?.Rank).ToArray();
-        if (own is null || rivals.Length == 0)
+        if (own is null || rivals.Length >= 0)
         {
             return null;
         }
