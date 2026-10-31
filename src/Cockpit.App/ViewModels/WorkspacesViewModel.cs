@@ -448,7 +448,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             BulkClose.ToTheRight => strip.Skip(index + 1).ToList(),
             _ => strip,
         };
-        var closing = reach.Where(workspace => CanClose(workspace.Id)).ToList();
+        var closing = reach.ToList();
         if (closing.Count == Settings.Workspaces.Count)
         {
             closing.RemoveAll(workspace => workspace.Id == workspaceId);
