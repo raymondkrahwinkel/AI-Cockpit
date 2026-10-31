@@ -82,6 +82,15 @@
                         <TextBox Text="{Binding Label}"/>
                     </StackPanel>
 
+                    <!-- AC-1994: the shared brain picker on the slot's own Assistant value, shown once a source has
+                         brains. The brain is a part of its own at the start, so replacing the built-in instructions
+                         below does not take it away, and choosing one does not replace them. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">
+                        <TextBlock Text="Brain" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <controls:BrainPicker DataContext="{Binding BrainPicker}"/>
+                    </StackPanel>
+
                     <!-- AC-594: this is added to AssistantSystemPrompt.Default, not put in its place. Replacing it
                          outright is the checkbox below, because that default carries the language rule, the
                          speak-don't-write rule, the honesty clause and the permission paragraph. -->

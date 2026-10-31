@@ -409,7 +409,10 @@ internal static partial class Screenshotter
         ["assistant-profile"] = (_, _) => new AssistantProfileDialog
         {
             DataContext = new ViewModels.AssistantProfileDialogViewModel(
-                new _FakeAssistantSessionHost(), new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry()), _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
+                new _FakeAssistantSessionHost(),
+                // AC-1994: one Depot server with brains, so the shared picker shows on the slot's stored brain.
+                new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry(), memorySources: new _MemorySourceRegistry([_BrainServer("depot", "Acme", "depot.acme.example")])),
+                _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
             Height = 1220,
         },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with the
@@ -1999,19 +2002,20 @@ internal static partial class Screenshotter
         return dialog;
     }
 
+    private static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration _BrainServer(string scheme, string name, string host, bool fails = false) =>
+        new(scheme, $"Depot project — {name}", "Read it through the Depot MCP.")
+        {
+            InstanceTitle = name,
+            ListBrainsAsync = _ => Task.FromResult(fails
+                ? Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed("Depot could not be reached.")
+                : Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+                    [new($"{name.ToLowerInvariant()}/zyra@{host}", "Zyra", $"{name.ToLowerInvariant()}/zyra · {name}")])),
+        };
+
     private static ManageProfilesDialog _ManageProfilesBrainPicker()
     {
-        static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration Server(string scheme, string name, string host, bool fails = false) =>
-            new(scheme, $"Depot project — {name}", "Read it through the Depot MCP.")
-            {
-                InstanceTitle = name,
-                ListBrainsAsync = _ => Task.FromResult(fails
-                    ? Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed("Depot could not be reached.")
-                    : Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
-                        [new($"{name.ToLowerInvariant()}/zyra@{host}", "Zyra", $"{name.ToLowerInvariant()}/zyra · {name}")])),
-            };
         var registry = new _MemorySourceRegistry(
-            [Server("depot", "Acme", "depot.acme.example"), Server("depot.other", "Other", "depot.other.example"), Server("depot.down", "Down", "depot.down.example", fails: true)]);
+            [_BrainServer("depot", "Acme", "depot.acme.example"), _BrainServer("depot.other", "Other", "depot.other.example"), _BrainServer("depot.down", "Down", "depot.down.example", fails: true)]);
         var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model")
         {
             Assistant = "depot:acme/zyra@depot.acme.example",

@@ -33,6 +33,11 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
     private IReadOnlyList<string> _availableMcpServerNames = [];
 
+    // AC-1994: the assistant has no project, and its brain rides beside the built-in instructions rather than in them.
+    private const string _BrainHint =
+        "None names no brain, so the provider's own instruction files decide. A brain is loaded beside the built-in " +
+        "instructions, never instead of them, from the next start or Save and restart.";
+
     // Raised when the dialog should close (after a save, or on cancel).
     public event Action? CloseRequested;
 
@@ -102,12 +107,14 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
             new SessionProfile("Claude (assistant)", ClaudePluginProfile.Create("/home/raymond/.claude", null))
             {
                 SystemPrompt = "You are the cockpit's assistant. Answer briefly; you are usually being listened to, not read.",
+                Assistant = "depot:acme/zyra@depot.acme.example",
             },
             isLoggedIn: true,
             canChooseProvider: false,
             _providers,
             pluginProviderRegistry,
-            pluginConfigViews: pluginConfigViews);
+            pluginConfigViews: pluginConfigViews,
+            brainHint: _BrainHint);
 
         // The session-default rows are not staged here: the editor builds them from the provider's own declaration,
         // so a registry that resolves already produces them and adding a set by hand rendered every one of them
@@ -277,7 +284,8 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         _availableMcpServerNames,
         _tokenEstimator,
         _ttyProviderResolver,
-        pluginConfigViews: _pluginConfigViews);
+        pluginConfigViews: _pluginConfigViews,
+        brainHint: _BrainHint);
 
     // The label starts as "<provider> (assistant)", the shape a saved assistant profile carries in Options.
     private static SessionProfile _EmptyProfile(SessionProviderOption? preferred) => new(

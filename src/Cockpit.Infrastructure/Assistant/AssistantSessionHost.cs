@@ -11,6 +11,7 @@ using Cockpit.Core.Configuration;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Swarm;
@@ -40,6 +41,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly ISwarmAssistantRelay? _swarmRelay;
     private readonly ISwarmLeadership? _leadership;
     private readonly SwarmTakeoverCoordinator? _takeover;
+    private readonly IProjectMemorySourceRegistry? _memorySources;
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
     private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
@@ -71,7 +73,8 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ILogger<AssistantSessionHost> logger,
         ISwarmAssistantRelay? swarmRelay = null,
         ISwarmLeadership? leadership = null,
-        SwarmTakeoverCoordinator? takeover = null)
+        SwarmTakeoverCoordinator? takeover = null,
+        IProjectMemorySourceRegistry? memorySources = null)
     {
         _sessions = sessions;
         _presence = presence;
@@ -85,6 +88,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         _swarmRelay = swarmRelay;
         _leadership = leadership;
         _takeover = takeover;
+        _memorySources = memorySources;
         if (leadership is not null) leadership.Changed += (_, _) =>
             LeadershipTransition = _sessions.OnOwnerThreadAsync(_FollowLeadershipAsync);
 
@@ -578,7 +582,9 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 // describes the general expectation, and the per-call `approval` field (AssistantAgentMcpTools)
                 // corrects it when only one source was switched off individually.
                 consentCardAsks: !settings.ConsentBypassAll,
-                orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true)),
+                orgRules: await _memory.ReadOrgRulesAsync(cancellationToken).ConfigureAwait(true),
+                // AC-1994: the slot's brain, resolved the way every other start resolves one; the assistant has no project.
+                brainInstruction: SessionStartDefaults.ResolveBrainInstruction(null, profile, _memorySources?.Sources.ToMemorySources())),
             settings.ReadingLevel)).ConfigureAwait(true);
 
         // Dropped, never assigned to `Session`: that change rebuilt the Simple stand's chat view, whose attach started the assistant again — a loop per layout pass when the start cannot succeed.
@@ -1030,14 +1036,17 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         string? machineMemory = null,
         bool sdkAsksPermission = true,
         bool consentCardAsks = true,
-        string? orgRules = null)
+        string? orgRules = null,
+        string? brainInstruction = null)
     {
         var options = profile.Defaults?.OptionDefaults is { Count: > 0 } defaults
             ? new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        options[WellKnownPluginSessionOptions.AppendSystemPrompt] = AssistantStandingInstruction.Compose(
-            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks, orgRules);
+        // AC-1994: the brain goes ahead of the standing instruction, which it adds to and never replaces.
+        SessionStartComposer.PutSystemPrompt(options, AssistantStandingInstruction.Compose(
+            profile.SystemPrompt, replacesStandingInstruction, memory, currentState, machineMemory, sdkAsksPermission, consentCardAsks, orgRules),
+            brainInstruction);
 
         return options;
     }
