@@ -84,7 +84,7 @@ public sealed record SessionStartDefaults(
     // AC-1071: the assistant this session runs as — the project's own overrides the profile's, the same
     // precedence `WorkingDirectory` and `ProfileLabel` above already resolve by. Null when neither names one.
     public static string? ResolveAssistant(Project? project, SessionProfile? profile) =>
-        _FirstNonBlank(project?.Assistant, profile?.Assistant);
+        _FirstNonBlank(profile?.Assistant, project?.Assistant);
 
     // AC-1071: naming the assistant is only half of it — a bare "Gebruik Zyra" left the question an instruction
     // file asks first standing, and sessions stalled on it unseen (AC-920: a prose question reads as Idle). The
