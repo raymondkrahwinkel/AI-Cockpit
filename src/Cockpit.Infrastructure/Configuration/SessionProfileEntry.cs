@@ -67,7 +67,7 @@ internal sealed class SessionProfileEntry
         EnabledMcpServers = profile.EnabledMcpServerNames is { } names ? [.. names] : null,
         DefaultWorkingDirectory = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory) ? null : profile.DefaultWorkingDirectory,
         SystemPrompt = string.IsNullOrWhiteSpace(profile.SystemPrompt) ? null : profile.SystemPrompt,
-        Assistant = string.IsNullOrWhiteSpace(profile.Assistant) ? null : profile.Assistant,
+        Assistant = null,
         DefaultKind = profile.DefaultKind?.ToString(),
         MemoryCapMegabytes = profile.MemoryCapMegabytes,
     };
