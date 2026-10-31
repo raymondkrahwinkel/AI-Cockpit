@@ -75,7 +75,7 @@ internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerPro
             var path = scheme is null ? "api/v1/profiles/brains" : $"api/v1/profiles/brains?scheme={Uri.EscapeDataString(scheme)}";
             return await _CallAsync<IReadOnlyList<RemoteBrainSource>>(HttpMethod.Get, path, null, cancellationToken).ConfigureAwait(false);
         }
-        catch (BackendApiException exception) when (exception.Status is HttpStatusCode.NotFound)
+        catch (BackendApiException exception) when (exception.Status is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
         {
             return [];
         }
