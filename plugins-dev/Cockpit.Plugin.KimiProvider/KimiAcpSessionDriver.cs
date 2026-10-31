@@ -367,11 +367,11 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
 
     private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
-        var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
         try
         {
             JsonElement result;
             await _promptGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
             try
             {
                 // AC-2000: stopped while it waited at the gate, so it never goes out and the host still sees its end.
