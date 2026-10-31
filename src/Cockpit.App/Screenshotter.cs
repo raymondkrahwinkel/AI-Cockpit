@@ -427,6 +427,8 @@ internal static partial class Screenshotter
         // The project editor and the projects window, both of which show a project's own information rows
         // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
         ["project-editor"] = (_, _) => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
+        // AC-1993: the shared Brain picker where the project's Assistant field sits.
+        ["project-editor-brain-picker"] = (_, _) => _ProjectEditorWithBrainPicker(),
         // The same editor once a plugin contributes a memory source (AC-165/166). Its own scene because the Memory
         // row only grows its picker when something is registered, and nothing is in a plain render: without this the
         // one state the operator sees differently is the one state that cannot be looked at.
@@ -1999,24 +2001,42 @@ internal static partial class Screenshotter
         return dialog;
     }
 
+    private static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration[] _BrainServers() =>
+    [
+        _BrainServer("depot", "Acme", "depot.acme.example"),
+        _BrainServer("depot.other", "Other", "depot.other.example"),
+        _BrainServer("depot.down", "Down", "depot.down.example", fails: true),
+    ];
+
+    private static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration _BrainServer(string scheme, string name, string host, bool fails = false) =>
+        new(scheme, $"Depot project — {name}", "Read it through the Depot MCP.")
+        {
+            InstanceTitle = name,
+            ListBrainsAsync = _ => Task.FromResult(fails
+                ? Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed("Depot could not be reached.")
+                : Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+                    [new($"{name.ToLowerInvariant()}/zyra@{host}", "Zyra", $"{name.ToLowerInvariant()}/zyra · {name}")])),
+        };
+
     private static ManageProfilesDialog _ManageProfilesBrainPicker()
     {
-        static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration Server(string scheme, string name, string host, bool fails = false) =>
-            new(scheme, $"Depot project — {name}", "Read it through the Depot MCP.")
-            {
-                InstanceTitle = name,
-                ListBrainsAsync = _ => Task.FromResult(fails
-                    ? Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed("Depot could not be reached.")
-                    : Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
-                        [new($"{name.ToLowerInvariant()}/zyra@{host}", "Zyra", $"{name.ToLowerInvariant()}/zyra · {name}")])),
-            };
-        var registry = new _MemorySourceRegistry(
-            [Server("depot", "Acme", "depot.acme.example"), Server("depot.other", "Other", "depot.other.example"), Server("depot.down", "Down", "depot.down.example", fails: true)]);
+        var registry = new _MemorySourceRegistry(_BrainServers());
         var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model")
         {
             Assistant = "depot:acme/zyra@depot.acme.example",
         };
         return _ManageProfilesEditing(profile, new Composition.PluginRegistrations(new _FakeCodexProviderRegistry(), memorySources: registry));
+    }
+
+    // AC-1993: the same picker on a project whose own brain overrides the profile's, loaded before the frame is taken.
+    private static ProjectDialog _ProjectEditorWithBrainPicker()
+    {
+        var project = new Project("proj-cockpit", "Cockpit") { Assistant = "depot:acme/zyra@depot.acme.example" };
+        // On a pool thread for the reason _ProjectEditorWithOwnership gives; the picker lists itself once shown.
+        var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
+            project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), memorySources: _BrainServers())).Result;
+
+        return new ProjectDialog { DataContext = viewModel, Height = 3200 };
     }
 
     private sealed class _MemorySourceRegistry(IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration> sources)

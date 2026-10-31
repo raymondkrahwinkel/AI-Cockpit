@@ -19,7 +19,7 @@ public class SettingsCarrierWhitelistTests
                 "Delegation": { "MaxConcurrent": 2, "AllowedWorkingDirs": [ "C:\\src" ] }
               } ],
               "Projects": [ {
-                "Id": "p1", "SourceDirectory": "C:\\src\\p1", "SourceDirectories": [ { "Path": "C:\\src\\p1" } ],
+                "Id": "p1", "Assistant": "depot:acme/aura@depot.acme.example", "SourceDirectory": "C:\\src\\p1", "SourceDirectories": [ { "Path": "C:\\src\\p1" } ],
                 "Resources": [ { "Reference": "depot://x" } ], "MemoryRef": "depot://m"
               } ],
               "Plugins": { "kubernetes": { "Enabled": true, "SomeNewFlag": true, "Data": { "KubeconfigPath": "C:\\kube" } } },

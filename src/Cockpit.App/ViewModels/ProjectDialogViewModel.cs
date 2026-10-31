@@ -67,6 +67,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer.
     public ProjectDialogViewModel()
     {
+        BrainPicker = _BrainPickerOver([], null);
         Profiles.Add("personal");
         SelectedProfileLabel = "personal";
         Name = "Cockpit";
@@ -76,6 +77,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     private ProjectDialogViewModel(Project? project, IWorktreeManager? worktreeManager)
     {
+        BrainPicker = _BrainPickerOver([], project?.Assistant);
         _projectId = project?.Id;
         _originalProject = project;
         _worktreeManager = worktreeManager;
@@ -172,6 +174,8 @@ public partial class ProjectDialogViewModel : ViewModelBase
                 registration,
                 project is null ? null : ProjectLinkValues.Join(project.LinkedAsAll(registration.Key))));
         }
+
+        viewModel.BrainPicker = viewModel._BrainPickerOver(memorySources ?? [], viewModel.Assistant);
 
         // AC-499: "Folder" is offered unconditionally, not only once a plugin registered something — the doorless
         // dead end this ticket exists to close. ShowsMemorySourcePicker is true for every Memory row from here on,
@@ -387,6 +391,20 @@ public partial class ProjectDialogViewModel : ViewModelBase
     // origin badge and no `_Carry{T}` — a colleague binding this project keeps their own assistant.
     [ObservableProperty]
     private string _assistant = string.Empty;
+
+    // AC-1993: the shared brain picker over `Assistant`, shown instead of the text field once a source has brains.
+    // A pick writes the reference there; None writes empty, which saves as null and leaves the profile's brain in force.
+    public BrainPickerViewModel BrainPicker { get; private set; }
+
+    private BrainPickerViewModel _BrainPickerOver(IReadOnlyList<ProjectMemorySourceRegistration> sources, string? current)
+    {
+        var picker = new BrainPickerViewModel(
+            sources,
+            current,
+            "None falls back to the profile's brain, and a project brain overrides it. The profile's own choice is not changed.");
+        picker.ValueChanged += reference => Assistant = reference ?? string.Empty;
+        return picker;
+    }
 
     // Which category this project sits under in the manager's list (AC-618). Always local — never one of the six
     // claimable `HostProjectField`s, so unlike Name/Description above there is no origin badge and no

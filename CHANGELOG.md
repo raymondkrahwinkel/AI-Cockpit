@@ -69,6 +69,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Added
 
+- **Choose a brain per project.** The project editor's Assistant field becomes the same Brain dropdown once Depot is connected. None makes the project follow its profile's brain, a brain you pick goes before the profile's, and a name typed before stays as it was. It stays on this machine: it is never shared with a project and never comes along when someone else binds it.
+
 - **Choose a brain per profile.** Once Depot is connected, the profile editor offers a Brain dropdown with None and every Depot brain, each with its address and server, so two brains with one name on two servers read apart. A new session loads exactly that brain and the brain choice in your own CLAUDE.md no longer applies; a project's own brain still goes first. A name typed before stays as it was. Kimi and opencode, which take no system prompt, get the brain as the first message of a new session. Depot 0.47.0 needs host 0.154.0.
 - Provider sub-agents are visible in Background and Agents, with isolated read-only transcripts and requests through the existing parent. Claude 0.30.0, Codex 0.11.1 and the additive plugin SDK 3.60.0 carry the new child identity and transcript contracts.
 

@@ -84,7 +84,8 @@ public class SharedProjectBindingDialogViewModelTests
     [Fact]
     public void SharedProjectBinding_CarriesNoAssistant_SinceTheAssistantNeverTravels()
     {
-        var names = typeof(SharedProjectBinding).GetProperties().Select(property => property.Name).ToArray();
+        var names = new[] { typeof(SharedProjectBinding), typeof(SharedProjectDefinitionEdit), typeof(SharedProjectPublishDefinition) }
+            .SelectMany(type => type.GetProperties()).Select(property => property.Name).ToArray();
 
         Assert.DoesNotContain(names, name => name.Contains("Assistant", StringComparison.OrdinalIgnoreCase));
     }
