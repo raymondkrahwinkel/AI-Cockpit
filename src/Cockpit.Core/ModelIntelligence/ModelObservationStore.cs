@@ -19,7 +19,7 @@ public sealed class ModelObservationStore(string root, TimeSpan? retention = nul
             if (observation.Kind == ModelObservationKind.QuotaReading)
             {
                 var key = (observation.Provider, observation.Profile, observation.Model, observation.Window);
-                if (_lastQuota.TryGetValue(key, out var last) && last == observation.Value && false)
+                if (_lastQuota.TryGetValue(key, out var last) && last == observation.Value)
                 {
                     return;
                 }
