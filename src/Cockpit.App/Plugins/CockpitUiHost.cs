@@ -444,6 +444,14 @@ internal sealed partial class CockpitUiHost(
 
     public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => host.GetProjectsAsync();
 
+    // AC-1547: none without a server registry or a plugin loaded from a folder, whose version a server's copy must match.
+    public Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() =>
+        services.GetService<Cockpit.Core.Abstractions.Remote.IRemoteServers>() is { } servers
+        && services.GetService<PluginManager>()?.LoadedParts.Select(part => part.Discovered)
+            .FirstOrDefault(discovered => string.Equals(discovered.Manifest.Id, pluginId, StringComparison.Ordinal)) is { } own
+            ? ServerPluginTargets.ForAsync(servers, this, pluginId, pluginName, own.Manifest.Version, contributionSink.OpenServerPluginsAsync)
+            : Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
+
     public Task SendToSessionAsync(string paneId, string text) => host.SendToSessionAsync(paneId, text);
 
     // AC-1397: what PluginActions.InjectIntoActiveSessionAsync does for the selected pane, for a named one — placed, not sent.

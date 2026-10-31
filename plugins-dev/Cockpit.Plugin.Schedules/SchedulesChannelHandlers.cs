@@ -52,7 +52,8 @@ internal sealed class SchedulesChannelHandlers(
             views,
             [.. runs.Load()],
             [.. delivery.Choices()],
-            new SchedulesSettingsView(settings.MaxConcurrentRuns, settings.DefaultTimeZone, (int)RunStore.Keep.TotalDays));
+            new SchedulesSettingsView(settings.MaxConcurrentRuns, settings.DefaultTimeZone, (int)RunStore.Keep.TotalDays),
+            now);
     }
 
     private SchedulesResult _Save(ScheduledTask task)
