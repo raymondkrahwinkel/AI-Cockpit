@@ -82,6 +82,22 @@
                         <TextBox Text="{Binding Label}"/>
                     </StackPanel>
 
+                    <!-- AC-1994: the slot's Assistant value; a plain field until a source has brains, then the shared
+                         picker. The brain rides beside the built-in instructions below: replacing those keeps it, and
+                         choosing one replaces nothing. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding !BrainPicker.IsAvailable, FallbackValue=True}">
+                        <TextBlock Text="Brain" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Assistant}" HorizontalAlignment="Stretch"
+                                 PlaceholderText="None. Add a brain source under Plugins to choose a brain"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">
+                        <TextBlock Text="Brain" FontSize="11"
+                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        <controls:BrainPicker DataContext="{Binding BrainPicker}"/>
+                    </StackPanel>
+
                     <!-- AC-594: this is added to AssistantSystemPrompt.Default, not put in its place. Replacing it
                          outright is the checkbox below, because that default carries the language rule, the
                          speak-don't-write rule, the honesty clause and the permission paragraph. -->
@@ -94,11 +110,11 @@
                         <CheckBox Content="Advanced: replace the built-in instructions instead of adding to them"
                                   FontSize="11"
                                   IsChecked="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ReplacesStandingInstruction}"
-                                  ToolTip.Tip="On: the assistant runs on your text alone. It then loses the built-in instructions to answer in your language, to speak rather than write a screen, to say when it could not check something, and never to treat a spoken yes as approval."/>
+                                  ToolTip.Tip="On: your text takes the place of the built-in instructions. It then loses the built-in rules to answer in your language, to speak rather than write a screen, to say when it could not check something, and never to treat a spoken yes as approval. The brain you chose, your organisation's rules and what the assistant remembers are still added."/>
                         <TextBlock FontSize="11" TextWrapping="Wrap"
                                    Foreground="{DynamicResource CockpitTextFaintBrush}"
                                    IsVisible="{Binding $parent[Window].((vm:AssistantProfileDialogViewModel)DataContext).ReplacesStandingInstruction}"
-                                   Text="The assistant now runs on your text alone: how it speaks, which language it answers in, that it says when a check could not be made, and that a spoken yes is never an approval are all yours to state."/>
+                                   Text="The assistant now runs on your text in place of the built-in instructions: how it speaks, which language it answers in, that it says when a check could not be made, and that a spoken yes is never an approval are all yours to state. A chosen brain still loads beside it."/>
                     </StackPanel>
 
                     <!-- Switchable, unlike the profile list's fixed dropdown: this record is replaced whole on every
@@ -108,7 +124,8 @@
                         <TextBlock Text="Provider" FontSize="11"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                         <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
-                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"
+                                  IsEnabled="{Binding CanChooseProvider}"/>
                     </StackPanel>
 
                     <!-- Claude-CLI (legacy, non-plugin) provider fields. -->

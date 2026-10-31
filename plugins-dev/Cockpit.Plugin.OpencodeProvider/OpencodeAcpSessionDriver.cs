@@ -44,9 +44,15 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
     // ones; this driver has no such poll (see the class remarks, point 1).
     private readonly SemaphoreSlim _promptGate = new(1, 1);
 
-    // True from the moment a cancel goes out until the next turn starts. Written on the caller's thread in
-    // InterruptAsync/SendUserMessageAsync and read on the server-request pump's own task, hence volatile.
+    // True from the moment a cancel goes out until the next prompt actually goes out. Written in InterruptAsync
+    // and _SendPromptAsync, read on the server-request pump's own task, hence volatile.
     private volatile bool _cancelling;
+
+    // AC-2000: raised by every Stop. A prompt still waiting at _promptGate compares it with the value it saw when
+    // it was queued, so a Stop also ends the prompts behind the one that is outstanding.
+    private int _stopGeneration;
+
+    private static readonly JsonElement _StoppedBeforeSending = JsonSerializer.SerializeToElement(new { stopReason = "cancelled" });
 
     // Read from Status (any thread the host polls from) and written from the notification pump's own task —
     // volatile so a reader never sees a stale reference.
@@ -255,6 +261,17 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
                 throw new OpencodeAcpException($"opencode does not offer the model {effectiveModel}, so the session does not start.");
             }
         }
+
+        // AC-1992: the brain is the one hidden instruction that reaches opencode, as the first visible turn of a new
+        // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
+        // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-783).
+        var brain = string.IsNullOrWhiteSpace(resumeSessionId)
+            ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
+            : null;
+        if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
+        {
+            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token, operatorTurn: false));
+        }
     }
 
     // The permission policy forced onto every spawn via OPENCODE_CONFIG_CONTENT (see StartAsync). Only
@@ -281,10 +298,6 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} was called before the session started.");
         }
 
-        // A new turn reopens the door the cancel closed: from here on a permission request is a real question
-        // again, not the tail of a turn the operator already stopped.
-        _cancelling = false;
-
         // Fire-and-forget: session/prompt only settles at turn end, so awaiting it here would block the caller
         // for the whole turn. The turn's content streams through the notification pump instead. Tracked so
         // DisposeAsync can await it before disposing _promptGate.
@@ -292,14 +305,28 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
+        var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
         try
         {
             JsonElement result;
             await _promptGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // AC-2000: stopped while it waited at the gate, so it never goes out and the host still sees its end.
+                if (queuedAtGeneration != Volatile.Read(ref _stopGeneration))
+                {
+                    if (operatorTurn)
+                    {
+                        _EmitTurnCompleted(_StoppedBeforeSending);
+                    }
+
+                    return;
+                }
+
+                // A prompt going out reopens the door the cancel closed: a permission request is a real question again.
+                _cancelling = false;
                 var prompt = new object[] { new { type = "text", text } };
                 result = await _connection.SendRequestAsync("session/prompt", new { sessionId, prompt }, cancellationToken).ConfigureAwait(false);
             }
@@ -308,7 +335,17 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
                 _promptGate.Release();
             }
 
-            _EmitTurnCompleted(result);
+            // AC-1992: the brain turn is no turn of the operator's, so its end raises no idle, "done" or queued send —
+            // the host never started it, and the operator's first message may already wait behind it.
+            if (operatorTurn)
+            {
+                _EmitTurnCompleted(result);
+            }
+            else if (_MapStopReason(result).IsError)
+            {
+                // AC-2000: without a turn end of its own, a refused brain would otherwise go unnoticed.
+                _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = "opencode refused the brain instruction, so this session runs without the brain." });
+            }
         }
         catch (OperationCanceledException)
         {
@@ -353,6 +390,8 @@ internal sealed class OpencodeAcpSessionDriver : IPluginSessionDriver
         {
             return;
         }
+
+        Interlocked.Increment(ref _stopGeneration);
 
         // session/cancel is a notification: the already-outstanding session/prompt settles later with
         // stopReason "cancelled", handled by _SendPromptAsync/_EmitTurnCompleted when it arrives.

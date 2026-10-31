@@ -2,11 +2,13 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
@@ -30,8 +32,21 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
     private readonly AssistantProfileSetup? _setup;
+    private readonly bool _canChooseProvider = true;
 
     private IReadOnlyList<string> _availableMcpServerNames = [];
+
+    // AC-1994: the assistant has no project, and its brain rides beside the built-in instructions rather than in them.
+    private const string _BrainHint =
+        "None names no brain, so the provider's own instruction files decide. A brain is loaded beside the built-in " +
+        "instructions, never instead of them, from the next start or Save and restart; Kimi and opencode load it with " +
+        "the next new conversation.";
+
+    // AC-1995: on a server's slot every save restarts the assistant, so there is no Save and restart to point at.
+    private const string _ServerBrainHint =
+        "None names no brain, so the provider's own instruction files decide. A brain is loaded beside the built-in " +
+        "instructions, never instead of them, as the server restarts its assistant on save; Kimi and opencode load it " +
+        "with the next new conversation.";
 
     // Raised when the dialog should close (after a save, or on cancel).
     public event Action? CloseRequested;
@@ -102,12 +117,14 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
             new SessionProfile("Claude (assistant)", ClaudePluginProfile.Create("/home/raymond/.claude", null))
             {
                 SystemPrompt = "You are the cockpit's assistant. Answer briefly; you are usually being listened to, not read.",
+                Assistant = "depot:acme/zyra@depot.acme.example",
             },
             isLoggedIn: true,
             canChooseProvider: false,
             _providers,
             pluginProviderRegistry,
-            pluginConfigViews: pluginConfigViews);
+            pluginConfigViews: pluginConfigViews,
+            brainHint: _BrainHint);
 
         // The session-default rows are not staged here: the editor builds them from the provider's own declaration,
         // so a registry that resolves already produces them and adding a set by hand rendered every one of them
@@ -128,7 +145,7 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
     public AssistantProfileDialogViewModel(
         IAssistantProfileStore slotStore,
-        ISessionProfileStore sessionProfileStore,
+        ISessionProfileStore? sessionProfileStore,
         IAssistantSessionHost? assistant = null,
         IProfileLoginChecker? loginChecker = null,
         IPluginRegistrations? pluginProviderRegistry = null,
@@ -136,9 +153,11 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         IMcpToolTokenEstimator? tokenEstimator = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
-        AssistantProfileSetup? setup = null)
+        AssistantProfileSetup? setup = null,
+        bool canChooseProvider = true)
     {
         _setup = setup;
+        _canChooseProvider = canChooseProvider;
         _pluginConfigViews = pluginConfigViews;
         _slotStore = slotStore;
         _sessionProfileStore = sessionProfileStore;
@@ -248,7 +267,9 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // Writes the slot, or says why it could not. Returns whether anything was persisted.
     private async Task<bool> _PersistAsync(CancellationToken cancellationToken)
     {
-        if (!Profile.IsValid)
+        // AC-1995: with the provider fixed, one whose own view this desktop lacks keeps its settings as stored, so a server's
+        // slot still takes a brain or instructions; every other check still holds.
+        if (!(Profile.IsPluginProviderMissing && !Profile.CanChooseProvider ? Profile.IsValidBesidesProviderSettings : Profile.IsValid))
         {
             StatusMessage = "This profile is missing something its provider needs — check the label and the provider settings.";
             return false;
@@ -261,7 +282,23 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
 
         // That is what keeps SessionProfile's own "a record never changes provider" invariant true while the assistant
         // stays switchable between Claude, Codex and a local model (AC-543).
-        await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
+        try
+        {
+            await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            // AC-1995: a server's slot refused the key; its own words, as its page says them.
+            StatusMessage = exception.Message;
+            return false;
+        }
+        catch (Exception exception) when (exception is ArgumentException or HttpRequestException or IOException or TaskCanceledException or JsonException or IRemoteCallFailure)
+        {
+            // AC-1995: a server's slot refuses, fails or goes unanswered; the form stays open with its edits, saying why.
+            StatusMessage = $"Not saved: {exception.Message}";
+            return false;
+        }
+
         StatusMessage = "Saved.";
         return true;
     }
@@ -270,14 +307,15 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         profile,
         _loginChecker?.IsLoggedIn(profile) ?? true,
         // Unlike the profile list, where a provider is fixed after creation so credentials can never describe a backend
-        // the profile no longer talks to (AC-543).
-        canChooseProvider: true,
+        // the profile no longer talks to (AC-543). A server's slot keeps its provider (AC-1995), as its profiles do.
+        canChooseProvider: _canChooseProvider,
         _providers,
         _pluginProviderRegistry,
         _availableMcpServerNames,
         _tokenEstimator,
         _ttyProviderResolver,
-        pluginConfigViews: _pluginConfigViews);
+        pluginConfigViews: _pluginConfigViews,
+        brainHint: _assistant is null && !_canChooseProvider ? _ServerBrainHint : _BrainHint);
 
     // The label starts as "<provider> (assistant)", the shape a saved assistant profile carries in Options.
     private static SessionProfile _EmptyProfile(SessionProviderOption? preferred) => new(

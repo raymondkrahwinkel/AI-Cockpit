@@ -197,11 +197,17 @@ public class AssistantProfileStoreTests : IDisposable
             SystemPrompt = "Your name is Zyra.",
         };
 
-        await store.RepointAsync(record, replacesStandingInstruction: true);
-        Assert.True((await store.LoadAsync()).ReplacesStandingInstruction);
+        // AC-1994: the slot's brain, and None, read back exactly as written.
+        const string Brain = "depot:acme/zyra@depot.acme.example";
+        await store.RepointAsync(record with { Assistant = Brain }, replacesStandingInstruction: true);
+        var withBrain = await store.LoadAsync();
+        Assert.True(withBrain.ReplacesStandingInstruction);
+        Assert.Equal(Brain, withBrain.Profile?.Assistant);
 
         await store.RepointAsync(record, replacesStandingInstruction: false);
-        Assert.False((await store.LoadAsync()).ReplacesStandingInstruction);
+        var withoutBrain = await store.LoadAsync();
+        Assert.False(withoutBrain.ReplacesStandingInstruction);
+        Assert.Null(Assert.IsType<SessionProfile>(withoutBrain.Profile).Assistant);
 
         // A config written before this setting existed: the key is gone entirely, and that has to read as adding
         // rather than as an assistant whose built-in instructions were replaced by whatever is in the box.

@@ -1,11 +1,12 @@
 using System.Net;
 using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Assistant;
+using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
-// AC-1475: a server's own assistant over its backend API. A change goes out as the fields it names; the server keeps
-// the rest, secrets and the consent bypass included.
+// AC-1475: a server's own assistant over its backend API. AC-1995: the profile goes out whole with each secret masked,
+// and the server puts every masked secret and the consent bypass back.
 internal sealed class RemoteAssistantAdministration(BackendApiClient client) : IAssistantAdministration
 {
     private const string Route = "api/v1/assistant/settings";
@@ -16,8 +17,12 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
     public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) =>
         _CallAsync(HttpMethod.Put, $"{Route}/enabled", new { enabled }, cancellationToken);
 
-    public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) =>
-        _CallAsync(HttpMethod.Patch, $"{Route}/profile", patch, cancellationToken);
+    public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
+        _CallAsync(HttpMethod.Patch, $"{Route}/profile", new RemoteAssistantProfilePatch
+        {
+            ReplacesStandingInstruction = replacesStandingInstruction,
+            Profile = new RemoteProfilePatch { Profile = RemoteProfileWire.ToJson(profile) },
+        }, cancellationToken);
 
     public async Task<RemoteAssistantSettings?> CopyProfileFromAsync(string label, CancellationToken cancellationToken = default)
     {
@@ -36,7 +41,8 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
     {
         try
         {
-            return await client.SendAsync<RemoteAssistantSettings>(method, path, body, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+            var settings = await client.SendAsync<RemoteAssistantSettings>(method, path, body, ConnectKeyEndpoints.Json, cancellationToken).ConfigureAwait(false);
+            return settings.Profile is { } profile ? settings with { Profile = RemoteServerProfiles.Read(profile) } : settings;
         }
         catch (BackendApiException exception) when (exception.Status is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
         {

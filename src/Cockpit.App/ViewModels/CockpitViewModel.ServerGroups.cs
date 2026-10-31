@@ -14,7 +14,6 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
-using Cockpit.Infrastructure.BackendApi;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -454,13 +453,15 @@ public partial class CockpitViewModel
             }
         }
 
-        var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles);
         var plugins = group.Server.Plugins;
+        // AC-1995: a services instance of its own, so the assistant's dialog and the Profiles page each read the server afresh.
+        var assistant = new ServerAssistantViewModel(group.Name, group.Server.AssistantAdministration, group.Server.Profiles,
+            new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart));
         await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
             InitialCategory = category,
-            GitHubCredentials = group.Server as IRemoteGitHubCredentials,
+            GitHubCredentials = Composition.RemoteServerGitHubCredentials.For(group.Server),
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),

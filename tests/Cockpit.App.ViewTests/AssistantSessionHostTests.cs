@@ -14,8 +14,10 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Tests.Shared;
 using NSubstitute;
@@ -572,6 +574,16 @@ public class AssistantSessionHostTests
         Assert.StartsWith(AssistantSystemPrompt.Default, instruction, StringComparison.Ordinal);
         Assert.Contains("Your name is Zyra.", instruction, StringComparison.Ordinal);
         _AssertMachineMemorySuffix(instruction);
+        Assert.False(options.ContainsKey(WellKnownPluginSessionOptions.BrainInstruction));
+
+        // AC-1994: a brain is added ahead of that same instruction, replacing neither it nor the advanced option's text.
+        foreach (var replaces in new[] { false, true })
+        {
+            var standing = AssistantSessionHost._LaunchOptions(profile, replaces, memory: null)[WellKnownPluginSessionOptions.AppendSystemPrompt];
+            var withBrain = AssistantSessionHost._LaunchOptions(profile, replaces, memory: null, brainInstruction: "Use brain Zyra.");
+            Assert.Equal("Use brain Zyra.\n\n" + standing, withBrain[WellKnownPluginSessionOptions.AppendSystemPrompt]);
+            Assert.Equal("Use brain Zyra.", withBrain[WellKnownPluginSessionOptions.BrainInstruction]);
+        }
     }
 
     [Fact]
@@ -981,15 +993,33 @@ public class AssistantSessionHostTests
     /// <summary>
     /// Criterion 2 (AC-947): a launch that will not replay the saved rows into the new session — no resumable
     /// conversation id — archives the file that held them first, before the first new row can overwrite it.
+    /// AC-1994: the same start carries the slot's brain to the driver exactly once, ahead of a standing instruction
+    /// it leaves as it was, and alone under its own key for a provider without a system prompt.
     /// </summary>
     [Fact]
     public void StartingWithNoResumableConversation_ArchivesTheSavedTranscript()
     {
         var transcript = Substitute.For<ISessionTranscriptStore>();
+        const string Brain = "acme/zyra@depot.acme.example";
+        var profile = _Profile() with { Assistant = "depot:" + Brain, SystemPrompt = "Your name is Zyra." };
+        var sources = Substitute.For<IProjectMemorySourceRegistry>();
+        sources.Sources.Returns([new ProjectMemorySourceRegistration("depot", "Depot project", "Read it.") { BrainInstruction = value => $"Bootstrap {value}." }]);
 
-        _StartedAssistantOn(SessionCapabilities.ClaudeCli, transcript: transcript);
+        var (_, _, driver) = _StartedAssistantOn(
+            SessionCapabilities.ClaudeCli, transcript: transcript, slot: new AssistantProfileSlot(profile), memorySources: sources);
 
         transcript.Received(1).ArchiveAsync(AssistantSessionHost.AssistantPaneId, Arg.Any<CancellationToken>());
+        var options = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(driver.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(ISessionDriver.StartAsync)).GetArguments()[6]);
+        var brainNote = SessionStartDefaults.BrainNote(Brain, $"Bootstrap {Brain}.");
+        var appended = options[WellKnownPluginSessionOptions.AppendSystemPrompt];
+        Assert.Equal(brainNote, options[WellKnownPluginSessionOptions.BrainInstruction]);
+        Assert.StartsWith(brainNote + "\n\n", appended, StringComparison.Ordinal);
+        Assert.Equal(1, appended.Split(brainNote).Length - 1);
+        // The consent paragraph follows the settings' own bypass, as it did before a brain was chosen.
+        var standing = AssistantStandingInstruction.Compose(
+            profile.SystemPrompt, replacesDefault: false, memory: null, consentCardAsks: !new AssistantSettings().ConsentBypassAll);
+        Assert.Contains(standing, appended, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1033,7 +1063,7 @@ public class AssistantSessionHostTests
 
     private static (AssistantSessionHost Host, SessionViewModel Session, ISessionDriver Driver) _StartedAssistantOn(
         SessionCapabilities capabilities, ISessionStateStore? sessionState = null, ISessionTranscriptStore? transcript = null,
-        double contextCompactionPercent = 80)
+        double contextCompactionPercent = 80, AssistantProfileSlot? slot = null, IProjectMemorySourceRegistry? memorySources = null)
     {
         // AC-1090: the transcript layer hangs off the pane now, not off the host — the host only asks the pane it
         // just made to replay it or roll it aside. Passed in here the way the container passes it in production.
@@ -1047,8 +1077,8 @@ public class AssistantSessionHostTests
         var cockpit = Dispatcher.UIThread.Invoke(() => _CockpitWithSessionFactory(
             () => TestSessions.Pane(new SessionManager(factory), transcriptStore: transcript)));
         var host = Dispatcher.UIThread.Invoke(() => _Host(
-            enabled: true, slot: _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState,
-            contextCompactionPercent: contextCompactionPercent));
+            enabled: true, slot: slot ?? _ConfiguredSlot(), cockpit: cockpit, sessionState: sessionState,
+            contextCompactionPercent: contextCompactionPercent, memorySources: memorySources));
 
         var session = Dispatcher.UIThread.Invoke(() => _Pane(host.EnsureStartedAsync().GetAwaiter().GetResult()));
         Assert.NotNull(session);
@@ -1455,7 +1485,8 @@ public class AssistantSessionHostTests
         CockpitViewModel? cockpit = null,
         IAssistantMemory? memory = null,
         NodeControllerPresence? presence = null,
-        double contextCompactionPercent = 80)
+        double contextCompactionPercent = 80,
+        IProjectMemorySourceRegistry? memorySources = null)
     {
         var settings = Substitute.For<IAssistantSettingsStore>();
         settings.LoadAsync(Arg.Any<CancellationToken>())
@@ -1488,7 +1519,7 @@ public class AssistantSessionHostTests
             new DesktopSessionSeams(() => desktop), presence ?? new NodeControllerPresence(), settings, profiles,
             sessionState, sessionStateRecorder,
             catalog ?? _Catalog(), memory ?? Substitute.For<IAssistantMemory>(),
-            NullLogger<AssistantSessionHost>.Instance);
+            NullLogger<AssistantSessionHost>.Instance, memorySources: memorySources);
     }
 
     private static ISessionTranscriptStore _EmptyTranscriptStore()

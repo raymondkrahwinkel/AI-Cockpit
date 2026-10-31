@@ -1,13 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
-             xmlns:views="using:Cockpit.App.Views"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="Cockpit.App.Views.ServerAssistantPage"
              x:DataType="vm:ServerAssistantViewModel">
 
-    <!-- AC-1475: Options › Assistant on a server (mockup v1-final). The availability line is the server's own reason, the
-         profile is edited field by field with the Profiles page's editor, and the consent bypass only reads. -->
+    <!-- AC-1475: Options › Assistant on a server (mockup v1-final). The availability line is the server's own reason and the
+         consent bypass only reads. AC-1995: Edit… opens Options › Assistant's own Assistant Profile dialog over the server. -->
     <StackPanel Margin="24,16,24,20" MaxWidth="900" Spacing="10" HorizontalAlignment="Left">
         <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="Assistant" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
@@ -91,39 +90,6 @@
                     </Grid>
                     <TextBlock Classes="optionsHint" TextWrapping="Wrap"
                                Text="The server copies it once, secrets included — they never leave the server. Later changes to that profile do not follow."/>
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <Border IsVisible="{Binding IsEditing}" Padding="14,12" MaxWidth="620" HorizontalAlignment="Left"
-                CornerRadius="{StaticResource CockpitControlRadius}" BorderThickness="1"
-                BorderBrush="{DynamicResource CockpitHairlineBrush}" Background="{DynamicResource CockpitPanelBgBrush}">
-            <StackPanel Spacing="4">
-                <DockPanel Margin="0,0,0,4">
-                    <TextBlock DockPanel.Dock="Right" Text="saved field by field" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                    <TextBlock Text="Edit the assistant's profile" FontWeight="SemiBold"/>
-                </DockPanel>
-                <TextBlock Text="Label" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
-                <TextBox Text="{Binding EditorLabel}"/>
-                <TextBlock Text="Provider" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                <TextBlock Text="{Binding ProviderText}" FontSize="12">
-                    <ToolTip.Tip>configured on the server</ToolTip.Tip>
-                </TextBlock>
-                <TextBlock Text="API key · set on the server" FontSize="12" IsVisible="{Binding HasApiKey}"
-                           Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-                <TextBlock Text="Extra instructions (added to the assistant's built-in ones)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                <TextBox Text="{Binding Instructions}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64"/>
-                <CheckBox IsChecked="{Binding ReplacesStandingInstruction}" Content="Advanced: replace the built-in instructions instead of adding to them"/>
-                <TextBlock Classes="optionsHint" TextWrapping="Wrap" Text="Read when the assistant starts. Saving restarts it."/>
-
-                <views:ServerProfileEditor DataContext="{Binding Editor}"/>
-
-                <TextBlock Text="Executable" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}" Margin="0,4,0,0"/>
-                <TextBlock Text="set on the server" FontSize="12" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
-
-                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
-                    <Button Content="Discard" Command="{Binding DiscardCommand}"/>
-                    <Button Classes="Accent" Content="Save and restart the assistant" Command="{Binding SaveCommand}"/>
                 </StackPanel>
             </StackPanel>
         </Border>

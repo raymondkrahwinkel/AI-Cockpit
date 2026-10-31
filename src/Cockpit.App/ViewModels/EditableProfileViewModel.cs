@@ -52,6 +52,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _assistant;
 
+    // AC-1992: the shared brain picker over `Assistant`, shown instead of the text field once a source has brains.
+    // A pick writes the reference here; None writes empty, which saves as null.
+    public BrainPickerViewModel BrainPicker { get; }
+
     // How much a session under this profile may hold before the OS cuts it off (AC-661). Null means the app
     // default. Numeric rather than text (AC-666): a typed "4096xcxc" used to parse back to null, so the editor
     // silently dropped the cap it appeared to show.
@@ -460,15 +464,19 @@ public partial class EditableProfileViewModel : ViewModelBase
     // Whether this row has the fields its provider needs to launch — a label always, plus a config
     // directory (Claude), a base URL and model (local), or a plugin config view that validates (#45).
     public bool IsValid =>
-        !string.IsNullOrWhiteSpace(Label)
-        && _AreEnvironmentVariablesValid()
-        && (!IsLmStudioProvider || LmStudioLoadOptionsError is null)
+        IsValidBesidesProviderSettings
         && SelectedProvider.Value switch
         {
             SessionProvider.ClaudeCli => !string.IsNullOrWhiteSpace(ConfigDir),
             SessionProvider.Plugin => PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out _),
             _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model) && ContextTokens > 0,
         };
+
+    // AC-1995: what IsValid checks apart from the provider's own settings, for a fixed provider whose view this desktop lacks.
+    public bool IsValidBesidesProviderSettings =>
+        !string.IsNullOrWhiteSpace(Label)
+        && _AreEnvironmentVariablesValid()
+        && (!IsLmStudioProvider || LmStudioLoadOptionsError is null);
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
     // Case-insensitive, because the spawn composition is (TtyEnvironment, the Claude driver's environment): two
@@ -591,7 +599,8 @@ public partial class EditableProfileViewModel : ViewModelBase
         ISessionLoginFlows? loginStarter = null,
         IPluginProviderConfigViews? pluginConfigViews = null,
         ProvisionPolicy? orgPolicy = null,
-        bool hostRunsTty = true)
+        bool hostRunsTty = true,
+        string? brainHint = null)
     {
         _orgPolicy = orgPolicy;
         _storedProfile = profile;
@@ -607,6 +616,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
         _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
         _assistant = profile.Assistant ?? string.Empty;
+        BrainPicker = new BrainPickerViewModel(
+            pluginProviderRegistry?.MemorySourceRegistrations ?? [],
+            profile.Assistant,
+            brainHint ?? "None names no brain, so the provider's own instruction files decide. A project's own brain goes first.");
+        BrainPicker.ValueChanged += reference => Assistant = reference ?? string.Empty;
         _memoryCapMegabytes = profile.MemoryCapMegabytes;
         // Absent/no-restriction is TTY, the same long-standing hard default SessionKindDefaults.ResolveDefaultKind
         // falls back to for the New-session dialog itself.

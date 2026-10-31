@@ -39,6 +39,8 @@ become free rein over the disk.
    the `_meta` it accepts on `session/new` is never read, and `--agent-file` only exists on an engine the ACP
    path does not use. Rather than let it vanish, the session says so once in the transcript when a prompt was
    supplied — put what the agent must know in your first message instead.
+   The one exception is a brain chosen for the profile, project or assistant (`cockpit.brain-instruction`): it goes to
+   Kimi as the first message of a new session, on its own, and never again on a resumed one.
 
 ## Distribution
 

@@ -83,9 +83,15 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
     // Written on the poll's own task alongside _capturingUsageResponse, read on the notification pump's.
     private long _usageCaptureDeadline;
 
-    // True from the moment a cancel goes out until the next turn starts. Written on the caller's thread in
-    // InterruptAsync/SendUserMessageAsync and read on the server-request pump's own task, hence volatile.
+    // True from the moment a cancel goes out until the next prompt actually goes out. Written in InterruptAsync
+    // and _SendPromptAsync, read on the server-request pump's own task, hence volatile.
     private volatile bool _cancelling;
+
+    // AC-2000: raised by every Stop. A prompt still waiting at _promptGate compares it with the value it saw when
+    // it was queued, so a Stop also ends the prompts behind the one that is outstanding.
+    private int _stopGeneration;
+
+    private static readonly JsonElement _StoppedBeforeSending = JsonSerializer.SerializeToElement(new { stopReason = "cancelled" });
 
     // P1-11: read from Status (any thread the host polls from) and written from the notification pump's own
     // task — volatile, matching _capturingUsageResponse/_disposing above and the Codex driver template, so a
@@ -325,6 +331,17 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 throw new KimiAcpException($"Kimi does not offer the model {effectiveModel}, so the session does not start.");
             }
         }
+
+        // AC-1992: the brain is the one hidden instruction that reaches Kimi, as the first visible turn of a new
+        // conversation. Its prompt takes the gate before this returns, so the operator's first message queues behind
+        // it; a resumed conversation already holds it. Nothing else from the append prompt goes with it (AC-273).
+        var brain = string.IsNullOrWhiteSpace(resumeSessionId)
+            ? _ResolveOption(options, WellKnownPluginSessionOptions.BrainInstruction, fallback: null)
+            : null;
+        if (brain is not null && _sessionId is { Length: > 0 } startedSessionId)
+        {
+            _launchedTasks.Add(_SendPromptAsync(startedSessionId, brain, _lifetime.Token, operatorTurn: false));
+        }
     }
 
     // The snapshot's own spelling of `model`, matched case-insensitively; the model itself when the snapshot has no
@@ -341,10 +358,6 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} was called before the session started.");
         }
 
-        // A new turn reopens the door the cancel closed: from here on a permission request is a real question
-        // again, not the tail of a turn the operator already stopped.
-        _cancelling = false;
-
         // Fire-and-forget: session/prompt only settles at turn end (protocol §3), so awaiting it here would
         // block the caller for the whole turn. The turn's content streams through the notification pump instead.
         // Tracked (P1-6) so DisposeAsync can await it before disposing _promptGate.
@@ -352,14 +365,28 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
-    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken)
+    private async Task _SendPromptAsync(string sessionId, string text, CancellationToken cancellationToken, bool operatorTurn = true)
     {
+        var queuedAtGeneration = Volatile.Read(ref _stopGeneration);
         try
         {
             JsonElement result;
             await _promptGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                // AC-2000: stopped while it waited at the gate, so it never goes out and the host still sees its end.
+                if (queuedAtGeneration != Volatile.Read(ref _stopGeneration))
+                {
+                    if (operatorTurn)
+                    {
+                        _EmitTurnCompleted(_StoppedBeforeSending);
+                    }
+
+                    return;
+                }
+
+                // A prompt going out reopens the door the cancel closed: a permission request is a real question again.
+                _cancelling = false;
                 var prompt = new object[] { new { type = "text", text } };
                 result = await _connection.SendRequestAsync("session/prompt", new { sessionId, prompt }, cancellationToken).ConfigureAwait(false);
             }
@@ -368,7 +395,17 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
                 _promptGate.Release();
             }
 
-            _EmitTurnCompleted(result);
+            // AC-1992: the brain turn is no turn of the operator's, so its end raises no idle, "done" or queued send —
+            // the host never started it, and the operator's first message may already wait behind it.
+            if (operatorTurn)
+            {
+                _EmitTurnCompleted(result);
+            }
+            else if (_MapStopReason(result).IsError)
+            {
+                // AC-2000: without a turn end of its own, a refused brain would otherwise go unnoticed.
+                _events.Publish(new PluginSessionError { SessionId = _sessionId, Message = "Kimi refused the brain instruction, so this session runs without the brain." });
+            }
 
             // AC-274: right after a real turn settles is the one sober moment to poll /usage — no independent
             // timer, and never while this same gate has a turn's own prompt outstanding. Fire-and-forget: the
@@ -462,6 +499,8 @@ internal sealed class KimiAcpSessionDriver : IPluginSessionDriver
         {
             return;
         }
+
+        Interlocked.Increment(ref _stopGeneration);
 
         // session/cancel is a notification (protocol §7): the already-outstanding session/prompt settles later
         // with stopReason "cancelled", handled by _SendPromptAsync/_EmitTurnCompleted when it arrives.

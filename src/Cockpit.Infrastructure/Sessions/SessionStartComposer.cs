@@ -55,7 +55,8 @@ public sealed class SessionStartComposer(
         var profileOnly = SessionStartDefaults.Resolve(
             project: null,
             profile: profile,
-            globalWorkingDirectory: CockpitBuild.DefaultWorkingDirectory);
+            globalWorkingDirectory: CockpitBuild.DefaultWorkingDirectory,
+            memorySources: memorySources?.Sources.ToMemorySources());
         var lookupDirectory = string.IsNullOrWhiteSpace(request.WorkingDirectory) ? profileOnly.WorkingDirectory : request.WorkingDirectory;
         var projectId = request.ProjectId is { Length: > 0 } given ? given : await ProjectIdForDirectoryAsync(lookupDirectory).ConfigureAwait(false);
         var project = projectId is null ? null : await FindProjectAsync(projectId).ConfigureAwait(false);
@@ -80,10 +81,18 @@ public sealed class SessionStartComposer(
         };
     }
 
+    // AC-1992: the brain this start loads, decided here for every start, composed or not, so neither the dialog nor
+    // a caller's own system prompt can step around it. The project is the one the request names.
+    public async Task<string?> BrainInstructionAsync(SessionLaunchRequest request)
+    {
+        var project = request.ProjectId is { Length: > 0 } projectId ? await FindProjectAsync(projectId).ConfigureAwait(false) : null;
+        return SessionStartDefaults.ResolveBrainInstruction(project, request.Profile, memorySources?.Sources.ToMemorySources());
+    }
+
     // AC-544: the standing statusline instruction rides after the profile's own words, never instead of them; AC-490
     // adds the job report for a job's run; AC-1705's base instruction goes ahead of both.
     public static IReadOnlyDictionary<string, string> WithInstructions(
-        IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun)
+        IReadOnlyDictionary<string, string>? options, string? systemPrompt, bool isJobRun, string? brainInstruction = null)
     {
         var merged = options is null
             ? new Dictionary<string, string>(StringComparer.Ordinal)
@@ -91,10 +100,21 @@ public sealed class SessionStartComposer(
         var standing = SessionBaseInstruction.Text + "\n\n" + (isJobRun
             ? AgentStatusSystemPrompt.Default + "\n\n" + AgentStatusSystemPrompt.JobRun
             : AgentStatusSystemPrompt.Default);
-        merged[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.IsNullOrWhiteSpace(systemPrompt)
-            ? standing
-            : systemPrompt.Trim() + "\n\n" + standing;
+        PutSystemPrompt(merged, string.IsNullOrWhiteSpace(systemPrompt) ? standing : systemPrompt.Trim() + "\n\n" + standing, brainInstruction);
         return merged;
+    }
+
+    // AC-1992: the brain leads the system prompt once, and also rides alone under its own key for a provider that has
+    // no system prompt to put it in. AC-1994: the assistant's own launch puts its brain through here as well.
+    internal static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
+    {
+        options[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
+            new[] { brainInstruction, systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
+        options.Remove(WellKnownPluginSessionOptions.BrainInstruction);
+        if (!string.IsNullOrWhiteSpace(brainInstruction))
+        {
+            options[WellKnownPluginSessionOptions.BrainInstruction] = brainInstruction.Trim();
+        }
     }
 
     // A Cockpit-managed worktree is an isolation boundary, not only a different cwd. The provider receives the

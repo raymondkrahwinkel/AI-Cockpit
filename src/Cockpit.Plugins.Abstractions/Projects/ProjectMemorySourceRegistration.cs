@@ -94,9 +94,46 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public string? InstanceTitle { get; init; }
 
     /// <summary>
-    /// Compares <see cref="Scheme"/>, <see cref="Title"/>, <see cref="Instruction"/>, <see cref="FamilyKey"/> and
-    /// <see cref="InstanceTitle"/> — never the delegate members — deliberately overriding the record-generated
-    /// equality that would otherwise include them.
+    /// Optionally lists the brains this source can load (AC-1992), for the host's brain picker (profiles, projects, the assistant and a server's own). Each
+    /// location's <see cref="ProjectMemorySourceLocation.Value"/> is what the host stores after
+    /// <see cref="Scheme"/> and later hands to <see cref="BrainInstruction"/>.
+    /// </summary>
+    /// <remarks>
+    /// Null means this source has no brains, and no picker shows for it. Only brains belong in the list, never the
+    /// ordinary locations <see cref="ListLocationsAsync"/> offers. A value must identify the brain on its own, the
+    /// server included, so a stored choice can never resolve to a same-named brain elsewhere: give it the shape
+    /// <c>&lt;address&gt;@&lt;server&gt;</c> without whitespace, which is how the host still knows a stored choice is a
+    /// brain when no source for it is installed, and says it is unavailable rather than leaving it to the provider's
+    /// own instruction files. Called lazily, never at registration time; a failed call answers <see cref="ProjectMemorySourceLocationsOutcome.Failed"/>, not an
+    /// empty success.
+    /// </remarks>
+    public Func<CancellationToken, Task<ProjectMemorySourceLocationsResult>>? ListBrainsAsync { get; init; }
+
+    /// <summary>
+    /// How a session loads the brain a stored value names (AC-1992): the sentence naming the exact instance, the
+    /// brain's address and the tool to load it with. Null when this source does not own that value.
+    /// </summary>
+    /// <remarks>
+    /// Called while a session start is composed, so it must not block or do I/O. The host adds the framing (that
+    /// this brain replaces any brain the provider's own instruction files choose); this text says only how to load
+    /// it. Null (the default) on the property means this source has no brains.
+    /// </remarks>
+    public Func<string, string?>? BrainInstruction { get; init; }
+
+    /// <summary>
+    /// What this registration's delegates are bound to (AC-1992) — the server address of the connection they close
+    /// over, say — so a registration rebuilt after that target moved compares unequal and is replaced.
+    /// </summary>
+    /// <remarks>
+    /// Compared by <see cref="Equals(ProjectMemorySourceRegistration?)"/>, never shown and never put in a prompt, so
+    /// it must carry no secret: no user info or query. Null (the default) leaves equality as it was.
+    /// </remarks>
+    public string? Identity { get; init; }
+
+    /// <summary>
+    /// Compares <see cref="Scheme"/>, <see cref="Title"/>, <see cref="Instruction"/>, <see cref="FamilyKey"/>,
+    /// <see cref="InstanceTitle"/> and <see cref="Identity"/> — never the delegate members — deliberately overriding
+    /// the record-generated equality that would otherwise include them.
     /// </summary>
     /// <remarks>
     /// Two delegates freshly built for the same connection are never reference-equal even when they close over
@@ -112,8 +149,9 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
         && string.Equals(Title, other.Title, StringComparison.Ordinal)
         && string.Equals(Instruction, other.Instruction, StringComparison.Ordinal)
         && string.Equals(FamilyKey, other.FamilyKey, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(InstanceTitle, other.InstanceTitle, StringComparison.Ordinal);
+        && string.Equals(InstanceTitle, other.InstanceTitle, StringComparison.Ordinal)
+        && string.Equals(Identity, other.Identity, StringComparison.Ordinal);
 
     public override int GetHashCode() =>
-        HashCode.Combine(Scheme.ToUpperInvariant(), Title, Instruction, FamilyKey?.ToUpperInvariant(), InstanceTitle);
+        HashCode.Combine(Scheme.ToUpperInvariant(), Title, Instruction, FamilyKey?.ToUpperInvariant(), InstanceTitle, Identity);
 }

@@ -346,6 +346,9 @@ internal static partial class Screenshotter
         // AC-1662: the scheduled backup's status line after a successful run.
         ["options-backup-status"] = (_, _) => _OptionsBackupStatus(),
         ["profiles"] = (_, _) => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+        // AC-1992: the Brain picker on a profile whose brain is listed by one of two servers that both have a "Zyra",
+        // with a third server whose listing failed, said under the picker rather than shown as an empty list.
+        ["profiles-brain-picker"] = (_, _) => _ManageProfilesBrainPicker(),
         // AC-1019: Options → Profiles at a resting height much shorter than the selected profile's detail form, so
         // the list column (with Add/Remove) and the detail column can be seen scrolling independently rather than
         // sharing one page-wide ScrollViewer.
@@ -406,7 +409,10 @@ internal static partial class Screenshotter
         ["assistant-profile"] = (_, _) => new AssistantProfileDialog
         {
             DataContext = new ViewModels.AssistantProfileDialogViewModel(
-                new _FakeAssistantSessionHost(), new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry()), _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
+                new _FakeAssistantSessionHost(),
+                // AC-1994: one Depot server with brains, so the shared picker shows on the slot's stored brain.
+                new Composition.PluginRegistrations(new _FakeClaudeProviderRegistry(), memorySources: new _MemorySourceRegistry([_BrainServer("depot", "Acme", "depot.acme.example")])),
+                _ConfigViews(ClaudePluginProfile.ProviderId, _ => new _PlaceholderConfigView())),
             Height = 1220,
         },
         // The Default kind editor (AC-139) in each of its three states: a Claude profile (has a TTY route) with the
@@ -424,6 +430,8 @@ internal static partial class Screenshotter
         // The project editor and the projects window, both of which show a project's own information rows
         // (AC-295) — the editor as key/value boxes, the window as the label-over-value block a card shows.
         ["project-editor"] = (_, _) => new ProjectDialog { DataContext = new ViewModels.ProjectDialogViewModel() },
+        // AC-1993: the shared Brain picker where the project's Assistant field sits.
+        ["project-editor-brain-picker"] = (_, _) => _ProjectEditorWithBrainPicker(),
         // The same editor once a plugin contributes a memory source (AC-165/166). Its own scene because the Memory
         // row only grows its picker when something is registered, and nothing is in a plain render: without this the
         // one state the operator sees differently is the one state that cannot be looked at.
@@ -1124,7 +1132,7 @@ internal static partial class Screenshotter
         if (openProviderList)
         {
             dialog.Opened += (_, _) => dialog.GetLogicalDescendants().OfType<ComboBox>()
-                .Single(combo => combo.ItemsSource?.Cast<SessionProviderOption>().Any() == true)
+                .Single(combo => combo.ItemsSource is IEnumerable<SessionProviderOption> providers && providers.Any())
                 .IsDropDownOpen = true;
         }
 
@@ -1996,10 +2004,62 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile)
+    private static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration[] _BrainServers() =>
+    [
+        _BrainServer("depot", "Acme", "depot.acme.example"),
+        _BrainServer("depot.other", "Other", "depot.other.example"),
+        _BrainServer("depot.down", "Down", "depot.down.example", fails: true),
+    ];
+
+    private static Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration _BrainServer(string scheme, string name, string host, bool fails = false) =>
+        new(scheme, $"Depot project — {name}", "Read it through the Depot MCP.")
+        {
+            InstanceTitle = name,
+            ListBrainsAsync = _ => Task.FromResult(fails
+                ? Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Failed("Depot could not be reached.")
+                : Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceLocationsResult.Success(
+                    [new($"{name.ToLowerInvariant()}/zyra@{host}", "Zyra", $"{name.ToLowerInvariant()}/zyra · {name}")])),
+        };
+
+    private static ManageProfilesDialog _ManageProfilesBrainPicker()
+    {
+        var registry = new _MemorySourceRegistry(_BrainServers());
+        var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null), Purpose: "cheap local model")
+        {
+            Assistant = "depot:acme/zyra@depot.acme.example",
+        };
+        return _ManageProfilesEditing(profile, new Composition.PluginRegistrations(new _FakeCodexProviderRegistry(), memorySources: registry));
+    }
+
+    // AC-1993: the same picker on a project whose own brain overrides the profile's, loaded before the frame is taken.
+    private static ProjectDialog _ProjectEditorWithBrainPicker()
+    {
+        var project = new Project("proj-cockpit", "Cockpit") { Assistant = "depot:acme/zyra@depot.acme.example" };
+        // On a pool thread for the reason _ProjectEditorWithOwnership gives; the picker lists itself once shown.
+        var viewModel = Task.Run(() => ProjectDialogViewModel.CreateAsync(
+            project, new _FakeSessionProfileStore(), new _FakeMcpServerCatalog(), memorySources: _BrainServers())).Result;
+
+        return new ProjectDialog { DataContext = viewModel, Height = 3200 };
+    }
+
+    private sealed class _MemorySourceRegistry(IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration> sources)
+        : Cockpit.Infrastructure.Plugins.IProjectMemorySourceRegistry
+    {
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration> Sources => sources;
+
+        public IReadOnlyList<Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceFamily> Families => [];
+
+        public bool Register(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceRegistration registration) => false;
+
+        public bool Remove(string scheme) => false;
+
+        public bool RegisterFamily(Cockpit.Plugins.Abstractions.Projects.ProjectMemorySourceFamily family) => false;
+    }
+
+    private static ManageProfilesDialog _ManageProfilesEditing(SessionProfile profile, Services.IPluginRegistrations? plugins = null)
     {
         var viewModel = new ViewModels.ManageProfilesDialogViewModel();
-        var editable = new ViewModels.EditableProfileViewModel(profile, isLoggedIn: true);
+        var editable = new ViewModels.EditableProfileViewModel(profile, isLoggedIn: true, pluginProviderRegistry: plugins);
         viewModel.Profiles.Clear();
         viewModel.Profiles.Add(editable);
         viewModel.SelectedProfile = editable;

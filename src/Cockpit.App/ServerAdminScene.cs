@@ -1,5 +1,6 @@
 using System.Buffers.Text;
 using System.Security.Cryptography;
+using Avalonia.Controls;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -13,7 +14,6 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
@@ -45,7 +45,8 @@ internal static class ServerAdminScene
         return dialog;
     }
 
-    // AC-1585: Profiles on the server in the editor Options › Profiles uses; the dialog loads them when it opens.
+    // AC-1585: Profiles on the server in the editor Options › Profiles uses; the dialog loads them when it opens. AC-1995:
+    // with the server's own brains in the picker.
     public static OptionsDialog Profiles(int width, int height)
     {
         var admin = _Admin(profiles: new ServerProfilesViewModel(new ServerProfileServices("homelab", new SceneProfiles())));
@@ -55,20 +56,20 @@ internal static class ServerAdminScene
         return dialog;
     }
 
-    // AC-1475: Assistant held by a desktop key, the profile's editor open with an unsaved model change.
-    public static OptionsDialog Assistant(int width, int height)
+    // AC-1995: Edit… on a server's Assistant page: Options › Assistant's own dialog over the server's slot, its brain picker
+    // listing the server's brains and the provider fixed.
+    public static Window Assistant(int width, int height)
     {
-        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("held"), new SceneProfiles());
-        assistant.LoadCommand.Execute(null);
-        assistant.EditCommand.Execute(null);
-        assistant.Editor.Model = "opus";
-        return _AssistantDialog(assistant, width, height);
+        var assistant = _Assistant("held");
+        var dialog = new AssistantProfileDialog { Width = width, Height = Math.Max(height, 1220) };
+        dialog.Opened += async (_, _) => dialog.DataContext = await assistant.CreateProfileDialogAsync(new ServerAssistantSlotStore("huis-cockpit", new SceneAssistant("held")));
+        return dialog;
     }
 
     // AC-1475: a fresh server: the switch off and greyed, the slot empty and a server profile offered to copy in.
     public static OptionsDialog AssistantFresh(int width, int height)
     {
-        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("fresh"), new SceneProfiles());
+        var assistant = _Assistant("fresh");
         assistant.LoadCommand.Execute(null);
         return _AssistantDialog(assistant, width, height);
     }
@@ -76,27 +77,30 @@ internal static class ServerAdminScene
     // AC-1475: a sign-in that expired: the server's reason on the line, and the way to Server health.
     public static OptionsDialog AssistantSignIn(int width, int height)
     {
-        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("expired"), new SceneProfiles());
+        var assistant = _Assistant("expired");
         assistant.LoadCommand.Execute(null);
         return _AssistantDialog(assistant, width, height);
     }
 
-    // AC-1475: a save of the model while another key changed the instructions, which the server kept (state H).
+    // AC-1995: the page after the Assistant Profile dialog saved on the server and the assistant restarted.
     public static OptionsDialog AssistantSaved(int width, int height)
     {
-        var assistant = new ServerAssistantViewModel("huis-cockpit", new SceneAssistant("saved"), new SceneProfiles());
+        var assistant = _Assistant("saved");
         assistant.LoadCommand.Execute(null);
         var dialog = _AssistantDialog(assistant, width, height);
 
-        // After the dialog's own load on opening, which would otherwise read the page back over the save.
+        // After the dialog's own load on opening, which would otherwise read the page back over the save, and after the
+        // page set its own window opener: the stand-in saves the dialog unseen instead.
         dialog.Opened += (_, _) =>
         {
+            assistant.ShowProfileDialog = profile => profile.SaveCommand.ExecuteAsync(null);
             assistant.EditCommand.Execute(null);
-            assistant.Editor.Model = "opus";
-            assistant.SaveCommand.Execute(null);
         };
         return dialog;
     }
+
+    private static ServerAssistantViewModel _Assistant(string state) =>
+        new("huis-cockpit", new SceneAssistant(state), new SceneProfiles(), new ServerProfileServices("huis-cockpit", new SceneProfiles()));
 
     public static IAssistantAdministration AssistantStandIn() => new SceneAssistant("fresh");
 
@@ -185,14 +189,14 @@ internal static class ServerAdminScene
         GitHubCredentials = projects is null ? null : new SceneGitHubCredentials(),
     };
 
-    private sealed class SceneGitHubCredentials : IRemoteGitHubCredentials
+    private sealed class SceneGitHubCredentials : IServerGitHubCredentials
     {
-        public Task<RemoteGitHubStatus> GetGitHubStatusAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new RemoteGitHubStatus(true, true, "raymondkrahwinkel", "gh", "Signed in as raymondkrahwinkel"));
+        public Task<ServerGitHubStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ServerGitHubStatus(true, true, "raymondkrahwinkel", "gh", "Signed in as raymondkrahwinkel"));
 
-        public ILoginFlow StartGitHubSignIn(bool useToken, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public ILoginFlow StartSignIn(bool useToken, CancellationToken cancellationToken) => throw new NotSupportedException();
 
-        public Task SignOutGitHubAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SignOutAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     // Two projects already cloned, and a clone of cockpit that lands where the image's clone root puts it.
@@ -275,7 +279,7 @@ internal static class ServerAdminScene
                 {
                     EnabledMcpServerNames = ["depot", "youtrack"],
                     DefaultWorkingDirectory = "/data/projects",
-                    Assistant = "Zyra",
+                    Assistant = "depot:acme/zyra@depot.acme.example",
                     SystemPrompt = "Your memory lives in the Depot MCP; look yourself up there before answering.",
                     MemoryCapMegabytes = 8192,
                     EnvironmentVariables = [new ProfileEnvironmentVariable("TZ", "Europe/Amsterdam"), new ProfileEnvironmentVariable("DEPOT_TOKEN", "(set on the server)", IsSecret: true)],
@@ -345,6 +349,14 @@ internal static class ServerAdminScene
         public Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<string>>([]);
 
+        // The server's one Depot connection, with two brains of its own.
+        public Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(string? scheme = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<RemoteBrainSource>>(
+            [
+                new("depot", "Depot project — Acme", "Acme",
+                    [new("acme/zyra@depot.acme.example", "Zyra", "acme/zyra · Acme"), new("acme/olaf@depot.acme.example", "Olaf", "acme/olaf · Acme")], null),
+            ]);
+
         private static RemoteProfile _Profile(string label, string provider, string? model, ProfileSignInKind? signIn, IReadOnlyList<string>? mcp, IReadOnlyList<RemoteProfileVariable> environment) =>
             new(label, provider, model, null, mcp, null, DelegationPolicy.None, environment, false, true, signIn);
     }
@@ -356,16 +368,26 @@ internal static class ServerAdminScene
         ["permission-mode"] = [new("default", "Ask"), new("acceptEdits", "Accept edits"), new("plan", "Plan")],
     };
 
-    // The mockup's assistant, per `state`: "held" by a desktop key, "fresh", sign-in "expired", or "saved" while another
-    // key changed the instructions; with a secret variable and two bypassed sources.
+    // The mockup's assistant, per `state`: "held" by a desktop key, "fresh", sign-in "expired", or "saved" by the dialog;
+    // with a secret variable, a brain and two bypassed sources.
     private sealed class SceneAssistant(string state) : IAssistantAdministration
     {
         private const string Instructions = "You are Zyra. Load ~/Nextcloud/Notes/AI-OS/Me.md as your own instruction file and follow it. Answer in Dutch unless asked otherwise.";
 
-        private static readonly RemoteProfile Profile = new(
+        private static readonly RemoteProfile Profile = new RemoteProfile(
             "server-assistant", "claude", "sonnet", "acceptEdits", ["depot", "youtrack"], null, DelegationPolicy.None,
             [new RemoteProfileVariable("CLAUDE_CONFIG_DIR", "/data/claude/assistant"), new RemoteProfileVariable("DEPOT_TOKEN", null, true), new RemoteProfileVariable("TZ", "Europe/Amsterdam")],
-            false, true, ProfileSignInKind.SignedIn, ClaudeChoices);
+            false, true, ProfileSignInKind.SignedIn, ClaudeChoices) with
+        {
+            Full = new SessionProfile("server-assistant", ClaudePluginProfile.Create("/data/claude/assistant", null), null,
+                new ProfileDefaults("", "", "") { OptionDefaults = new Dictionary<string, string> { ["model"] = "sonnet", ["permission-mode"] = "acceptEdits" } })
+            {
+                EnabledMcpServerNames = ["depot", "youtrack"],
+                Assistant = "depot:acme/zyra@depot.acme.example",
+                SystemPrompt = Instructions,
+                EnvironmentVariables = [new ProfileEnvironmentVariable("DEPOT_TOKEN", "(set on the server)", IsSecret: true), new ProfileEnvironmentVariable("TZ", "Europe/Amsterdam")],
+            },
+        };
 
         private static readonly RemoteConsentBypass Bypass = new(false, ["discord-dm", "scheduler"]);
 
@@ -379,9 +401,9 @@ internal static class ServerAdminScene
 
         public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => GetAsync(cancellationToken);
 
-        // "saved": the model this side sent, and instructions telefoon-raymond changed in the meantime.
-        public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) => Task.FromResult(
-            new RemoteAssistantSettings(true, true, null, false, Profile with { Model = patch.Profile?.Model ?? Profile.Model }, null, Instructions + " Keep replies short.", false, true, Bypass));
+        // "saved": the server holds the profile the dialog sent, and the assistant runs on it.
+        public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) => Task.FromResult(
+            new RemoteAssistantSettings(true, true, null, false, Profile with { Full = profile }, null, profile.SystemPrompt, replacesStandingInstruction, true, Bypass));
 
         public Task<RemoteAssistantSettings?> CopyProfileFromAsync(string label, CancellationToken cancellationToken = default) =>
             Task.FromResult<RemoteAssistantSettings?>(null);

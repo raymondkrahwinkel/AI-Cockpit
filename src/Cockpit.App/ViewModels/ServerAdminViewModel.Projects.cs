@@ -5,7 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Avalonia.Threading;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
-using Cockpit.Infrastructure.BackendApi;
+using Cockpit.App.Services;
 
 namespace Cockpit.App.ViewModels;
 
@@ -13,7 +13,7 @@ namespace Cockpit.App.ViewModels;
 // its own git credentials. The URL is sent as typed; the server refuses one that carries a credential.
 public sealed partial class ServerAdminViewModel
 {
-    public IRemoteGitHubCredentials? GitHubCredentials { get; init; }
+    public IServerGitHubCredentials? GitHubCredentials { get; init; }
 
     public bool HasGitHubCredentials => GitHubCredentials is not null;
 
@@ -42,7 +42,7 @@ public sealed partial class ServerAdminViewModel
 
         try
         {
-            var status = await credentials.GetGitHubStatusAsync();
+            var status = await credentials.GetStatusAsync();
             GitHubStatus = status.SignedIn && status.Source == "gh" && !string.IsNullOrWhiteSpace(status.User)
                 ? $"Signed in as {status.User}"
                 : status.Message;
@@ -71,7 +71,7 @@ public sealed partial class ServerAdminViewModel
             return;
         }
 
-        var flow = new LoginFlowRowViewModel(credentials.StartGitHubSignIn(useToken, CancellationToken.None), _time)
+        var flow = new LoginFlowRowViewModel(credentials.StartSignIn(useToken, CancellationToken.None), _time)
         {
             IsSecretInput = useToken,
             InputPlaceholder = "Paste a GitHub token",
@@ -100,7 +100,7 @@ public sealed partial class ServerAdminViewModel
         await CloseGitHubSignInAsync();
         if (GitHubCredentials is { } credentials)
         {
-            await credentials.SignOutGitHubAsync();
+            await credentials.SignOutAsync();
             await RefreshGitHubAsync();
         }
     });

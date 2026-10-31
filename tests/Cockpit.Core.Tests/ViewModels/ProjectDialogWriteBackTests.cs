@@ -5,6 +5,8 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions.Projects;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -96,9 +98,10 @@ public class ProjectDialogWriteBackTests
     }
 
     private static async Task<ProjectDialogViewModel> ViewModelAsync(
-        Project project, ISharedProjectSource source, SharedProjectBinding baseline, IMcpServerCatalog? catalog = null) =>
+        Project project, ISharedProjectSource source, SharedProjectBinding baseline, IMcpServerCatalog? catalog = null,
+        IReadOnlyList<ProjectMemorySourceRegistration>? memorySources = null) =>
         await ProjectDialogViewModel.CreateAsync(
-            project, ProfileStore("personal"), catalog ?? Catalog(),
+            project, ProfileStore("personal"), catalog ?? Catalog(), memorySources: memorySources,
             fieldOwnership: EditableName(),
             sharedWriteBack: new ProjectSharedWriteBackContext(source, "depot:cockpit", baseline));
 
@@ -182,11 +185,22 @@ public class ProjectDialogWriteBackTests
         // Baseline opened with Name="Cockpit", Description=null. The operator edits only Name. Remote moved
         // Description (a field the operator never touched) but left Name alone on its own side. The retry must
         // keep the operator's Name and adopt the remote's Description — never the reverse.
-        var project = Project.Create("Cockpit");
+        // AC-1993: the project also holds a local brain the shared definition has no field for; the merge must leave it be.
+        const string brain = "depot:acme/aura@depot.acme.example";
+        var brains = new[]
+        {
+            new ProjectMemorySourceRegistration("depot", "Depot project", "Read it.")
+            {
+                ListBrainsAsync = _ => Task.FromResult(ProjectMemorySourceLocationsResult.Success([new("acme/aura@depot.acme.example", "Aura", "Brain")])),
+                BrainInstruction = value => $"Bootstrap {value}.",
+            },
+        };
+        var project = Project.Create("Cockpit") with { Assistant = brain };
         var conflict = SharedProjectWriteBackResult.Conflict(
             Baseline(name: "Cockpit", description: "Remote description", checksum: "chk-now"));
         var source = new _FakeSource(conflict, SharedProjectWriteBackResult.Success("chk-final"));
-        var viewModel = await ViewModelAsync(project, source, Baseline(name: "Cockpit", description: null));
+        var viewModel = await ViewModelAsync(project, source, Baseline(name: "Cockpit", description: null), memorySources: brains);
+        await viewModel.BrainPicker.LoadAsync();
         viewModel.ConflictRequested += (_, _) => Task.FromResult<ProjectDefinitionConflictResolution?>(new(TakeTheirs: false));
         viewModel.Name = "My edited name";
 
@@ -207,6 +221,31 @@ public class ProjectDialogWriteBackTests
         // Depot disagree on Description from the moment this Save returns.
         Assert.Equal("Remote description", closed!.Description);
         Assert.Equal("Remote description", viewModel.Description);
+
+        // AC-1993: the listed brain was matched, not rewritten, by an unrelated save; the shared edit has nowhere to carry it.
+        Assert.Equal(brain, closed.Assistant);
+        Assert.DoesNotContain(typeof(SharedProjectDefinitionEdit).GetProperties(), property => property.Name.Contains("Assistant", StringComparison.Ordinal));
+        Assert.Equal(brain, (await ViewModelAsync(closed, source, Baseline(), memorySources: brains)).BrainPicker.Selected?.Reference);
+
+        // None saves null, which hands the session to the profile's brain; a pick saves the reference, which then wins over it.
+        var profile = new SessionProfile("work", new ClaudeConfig("~/.claude")) { Assistant = "depot:acme/zyra@depot.acme.example" };
+        var memory = brains.ToMemorySources();
+        viewModel.BrainPicker.Selected = BrainPickerViewModel.None;
+        Assert.Null(viewModel.ToProject().Assistant);
+        Assert.Equal(
+            SessionStartDefaults.BrainNote("acme/zyra@depot.acme.example", "Bootstrap acme/zyra@depot.acme.example."),
+            SessionStartDefaults.ResolveBrainInstruction(viewModel.ToProject(), profile, memory));
+        viewModel.BrainPicker.Selected = viewModel.BrainPicker.Choices.Single(choice => choice.Reference == brain);
+        Assert.Equal(
+            SessionStartDefaults.BrainNote("acme/aura@depot.acme.example", "Bootstrap acme/aura@depot.acme.example."),
+            SessionStartDefaults.ResolveBrainInstruction(viewModel.ToProject(), profile, memory));
+
+        // A legacy name keeps its row and its value through opening and an unrelated edit.
+        var legacy = await ViewModelAsync(closed with { Assistant = "Zyra" }, source, Baseline(), memorySources: brains);
+        await legacy.BrainPicker.LoadAsync();
+        legacy.Name = "Renamed";
+        Assert.Equal("Zyra", legacy.ToProject().Assistant);
+        Assert.Equal("Zyra", legacy.BrainPicker.Selected?.Reference);
     }
 
 }

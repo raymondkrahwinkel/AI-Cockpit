@@ -174,7 +174,7 @@ internal sealed class DepotSharedProjectSource(
 
         foreach (var project in projects)
         {
-            if (string.IsNullOrWhiteSpace(project.Slug) || string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(project.Slug) || project.IsBrain)
             {
                 continue;
             }
@@ -409,7 +409,7 @@ internal sealed class DepotSharedProjectSource(
         // create_project fallback, so a Viewer's row would dead-end. AC-699: CanWrite answers that, not a
         // repeated role list — the earlier list missed "Admin" and emptied the dropdown.
         var targets = listing.Projects
-            .Where(project => !string.Equals(project.Kind, "Brain", StringComparison.OrdinalIgnoreCase))
+            .Where(project => !project.IsBrain)
             .Select(project => (Key: project.Key, project.Name, Role: DepotProjectRoleParser.Parse(project.Role)))
             .Where(entry => entry.Role.CanWrite())
             .Select(entry => new SharedProjectPublishTarget(
