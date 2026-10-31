@@ -1484,7 +1484,7 @@ public sealed partial class SecurityOptionsViewModel(
         HelloStatus = !status.HelloEnabled
             ? "Off. Turn it on to unlock with your face, fingerprint or PIN instead of typing the password."
             : status.HelloInSoftware
-                ? "On — no security chip found; Windows protects the key in software. Your password keeps working."
+                ? "On — no security chip found, so Windows keeps the key in software and only your Windows PIN protects it. Your password keeps working."
                 : "On — bound to this computer’s security chip (TPM). Your password keeps working.";
     }
 
