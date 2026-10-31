@@ -9,6 +9,12 @@ namespace Cockpit.Core.Abstractions.Voice;
 /// </summary>
 public interface ISessionTranscriptReader
 {
+    Task<IReadOnlyList<Cockpit.Core.Sessions.BackgroundTask>> ReadChildrenAsync(SessionProfile? profile, string? statusFile, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Cockpit.Core.Sessions.BackgroundTask>>([]);
+
+    Task<Cockpit.Core.Sessions.ChildTranscriptPage> ReadChildTranscriptAsync(SessionProfile? profile, string? statusFile, string agentId, string? revision, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Cockpit.Core.Sessions.ChildTranscriptPage.Unavailable("provider does not support child history"));
+
     /// <summary>
     /// Snapshots the transcript artifacts that already exist for <paramref name="profile"/> at launch, so the
     /// tailers can single out the one new record the session produces. Call once, before the session is spawned.

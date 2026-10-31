@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:conv="using:Cockpit.App.Converters"
+             x:Class="Cockpit.App.Views.ChildTranscriptView"
+             x:DataType="vm:ChildTranscriptViewModel">
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <WrapPanel VerticalAlignment="Center">
+                    <Button Content="{Binding Child.Owner.Title}" Command="{Binding Child.Owner.ReturnToParentCommand}" Classes="Subtle Compact"/>
+                    <TextBlock Text="›" Margin="6,0" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Child.TypeText}" FontSize="10.5" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                    </Border>
+                    <TextBlock Text="{Binding Child.Title}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Border Background="{DynamicResource CockpitStatusBackgroundChipTintBrush}" CornerRadius="8" Padding="7,2" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ReadingStatus}" FontSize="10.5" Foreground="{Binding Child.StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                    </Border>
+                    <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="8" Padding="7,2" VerticalAlignment="Center">
+                        <TextBlock Text="Read-only" FontSize="10.5" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    </Border>
+                </WrapPanel>
+                <WrapPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ReadingStatus}" Margin="0,0,4,0" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding Child.TimeText}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding Child.LastToolText, StringFormat=' · last tool {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding Child.TokensText, StringFormat=' · tokens {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </WrapPanel>
+            </Grid>
+            <Border Background="{DynamicResource CockpitSecondaryBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="3,1,1,1" CornerRadius="6" Padding="12,8">
+                <TextBlock Text="{Binding ReadingExplanation}" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}" FontSize="12"/>
+            </Border>
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,10,0,0">
+            <Border BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="0,1,0,1" Padding="8,7">
+                <WrapPanel>
+                    <TextBlock Text="{Binding Child.TypeText}" Foreground="{DynamicResource CockpitStatusBackgroundBrush}" FontSize="11"/>
+                    <TextBlock Text="{Binding Child.Title, StringFormat=' · {0}'}" FontSize="11"/>
+                    <TextBlock Text="{Binding ReadingStatus, StringFormat=' · {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding Child.LastToolText, StringFormat=' · last tool {0}'}" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </WrapPanel>
+            </Border>
+            <Grid ColumnDefinitions="*,Auto">
+                <WrapPanel>
+                    <Button Content="Ask the parent to steer…" Classes="Accent Compact" Command="{Binding PrepareParentRequestCommand}" Margin="0,0,8,0"/>
+                    <Button Content="Open in terminal" Classes="Compact" Command="{Binding OpenOriginalTerminalCommand}" ToolTip.Tip="{Binding TerminalExplanation}"/>
+                </WrapPanel>
+                <WrapPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <TextBlock Text="{Binding AgentIdentity, StringFormat='Agent id {0}'}" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding SourceText, StringFormat=' · source: {0}'}" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                </WrapPanel>
+            </Grid>
+            <TextBlock Text="{Binding TerminalExplanation}" TextWrapping="Wrap" FontSize="10.5" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <TextBlock Text="{Binding SteeringExplanation}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+            <TextBlock Text="{Binding SteeringStatus}" TextWrapping="Wrap"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Read next window" Classes="Subtle Compact" Command="{Binding LoadMoreCommand}"/>
+                <Button Content="Refresh" Classes="Subtle Compact" Command="{Binding RefreshCommand}"/>
+            </StackPanel>
+        </StackPanel>
+        <ScrollViewer>
+            <StackPanel Spacing="12">
+                <Border Background="{DynamicResource CockpitPanelBgBrush}" BorderBrush="{DynamicResource CockpitHairlineBrush}" BorderThickness="1" CornerRadius="8" Padding="14,12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="PROMPT FROM THE PARENT" FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                        <TextBlock Text="{Binding ParentPrompt}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                <ItemsControl ItemsSource="{Binding TranscriptRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                            <controls:TranscriptRowView/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

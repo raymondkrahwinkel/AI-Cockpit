@@ -44,6 +44,7 @@
                     <Color x:Key="CockpitStatusWaitingColor">#E0A33E</Color>
                     <Color x:Key="CockpitStatusDoneColor">#5AA576</Color>
                     <Color x:Key="CockpitStatusBackgroundColor">#A67CD8</Color>
+                    <Color x:Key="CockpitStatusBackgroundChipTintColor">#20A67CD8</Color>
                     <Color x:Key="CockpitStatusErrorColor">#D64545</Color>
 
                     <!-- Alpha echoes: same RGB as the base above, only the alpha differs (AC-381). -->
@@ -121,6 +122,7 @@
                     <Color x:Key="CockpitStatusWaitingColor">#A35F02</Color>
                     <Color x:Key="CockpitStatusDoneColor">#2B7546</Color>
                     <Color x:Key="CockpitStatusBackgroundColor">#7A46C8</Color>
+                    <Color x:Key="CockpitStatusBackgroundChipTintColor">#147A46C8</Color>
                     <Color x:Key="CockpitStatusErrorColor">#C62F2F</Color>
 
                     <!-- Alpha echoes, same alphas as dark, the RGB following this variant's base. -->
@@ -212,6 +214,7 @@
             <SolidColorBrush x:Key="CockpitStatusWaitingBrush" Color="{DynamicResource CockpitStatusWaitingColor}"/>
             <SolidColorBrush x:Key="CockpitStatusDoneBrush" Color="{DynamicResource CockpitStatusDoneColor}"/>
             <SolidColorBrush x:Key="CockpitStatusBackgroundBrush" Color="{DynamicResource CockpitStatusBackgroundColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusBackgroundChipTintBrush" Color="{DynamicResource CockpitStatusBackgroundChipTintColor}"/>
             <SolidColorBrush x:Key="CockpitStatusErrorBrush" Color="{DynamicResource CockpitStatusErrorColor}"/>
 
             <!-- Washes: the accent at 16% behind a selected row (a solid would make the list one loud band), at 25%

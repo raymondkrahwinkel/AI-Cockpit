@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Shared;
 
 namespace Cockpit.Plugin.CliAgentProvider;
 
@@ -116,6 +117,51 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     public IReadOnlyList<PluginSessionLaunchOption> LiveOptions => _liveOptions;
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Events;
+
+    public async Task<PluginChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default)
+    {
+        if (!_knownChildren.Any(child => child.AgentId == agentId && child.RunId == runId))
+        {
+            return PluginChildTranscriptPage.Unavailable("child does not belong to this owner/run");
+        }
+        try
+        {
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(10));
+            JsonElement metadata = await _connection.SendRequestAsync("thread/read", new { threadId = agentId, includeTurns = false }, deadline.Token).ConfigureAwait(false);
+            if (!metadata.TryGetProperty("thread", out var thread) || _StringOrEmpty(thread, "id") != agentId)
+            {
+                return PluginChildTranscriptPage.Unavailable("provider returned a different thread");
+            }
+            JsonElement page = await _connection.SendRequestAsync("thread/items/list", new { threadId = agentId, cursor, limit = 64, sortDirection = "asc" }, deadline.Token).ConfigureAwait(false);
+            var entries = new List<PluginChildTranscriptEntry>();
+            if (!page.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            {
+                return PluginChildTranscriptPage.Unavailable("unsupported history response");
+            }
+            foreach (var record in data.EnumerateArray().Take(64))
+            {
+                if (!record.TryGetProperty("item", out var item))
+                {
+                    continue;
+                }
+                string id = _StringOrEmpty(item, "id");
+                string type = _StringOrEmpty(item, "type");
+                string kind = type switch { "agentMessage" => "assistant", "userMessage" => "user", "reasoning" => "thinking", _ => "tool_result" };
+                string text = type == "agentMessage" ? _StringOrEmpty(item, "text") : item.GetRawText();
+                entries.Add(new(_StringOrEmpty(record, "turnId") + ":" + id, kind, text.Length > 16384 ? text[..16384] + "\n[Entry truncated]" : text));
+            }
+            return new(entries, _TryGetString(page, "nextCursor", out var next) ? next : null, entries.Count == 0 ? "No entries" : "Read-only");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return PluginChildTranscriptPage.Unavailable("history request timed out");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or JsonException or CodexAppServerException)
+        {
+            return PluginChildTranscriptPage.Unavailable("connection stopped or history is not supported");
+        }
+    }
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
         StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, mcpServers: null, cancellationToken);
@@ -348,6 +394,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "turn/started":
                 if (isChild)
                 {
+                    if (_children.TryGetValue(source, out var child)
+                        && _TryGetNestedString(notification.Params, "turn", "id", out var childTurnId))
+                    {
+                        _children[source] = child with { RunId = childTurnId };
+                        _PublishChildren();
+                    }
                     break;
                 }
                 // A new turn clears leftover usage so one that reports no tokenUsage carries none, rather than
@@ -405,7 +457,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "turn/completed":
                 if (isChild)
                 {
-                    _FinishChild(source);
+                    string childStatus = _TryGetNestedString(notification.Params, "turn", "status", out var terminal) ? terminal : "unknown";
+                    _FinishChild(source, childStatus, _TryGetLong(notification.Params, "completedAtMs"));
                 }
                 else
                 {
@@ -436,7 +489,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "error":
                 if (isChild)
                 {
-                    _FinishChild(source);
+                    _FinishChild(source, "failed");
                     break;
                 }
                 if (_IsRateLimitRefusal(notification.Params))
@@ -476,14 +529,15 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 _children[childId] = new PluginBackgroundTask(childId, PluginBackgroundTaskKind.SubAgent, _StringOrEmpty(item, "agentPath"))
                 {
                     AgentId = childId, ParentTaskId = source, ParentToolUseId = childId,
-                    RunId = _StringOrEmpty(parameters, "turnId"),
+                    AgentType = _TryGetString(item, "agent_type", out var agentType) ? agentType : _TryGetString(item, "subagent_type", out var subagentType) ? subagentType : null,
+                    StartedAtUnixMilliseconds = _TryGetLong(item, "startedAtMs") ?? _TryGetLong(parameters, "startedAtMs"),
                 };
                 _events.Publish(new PluginToolUseRequested { SessionId = sessionId, ToolUseId = childId, ToolName = "agent", InputJson = item.GetRawText() });
                 _PublishChildren();
             }
             else if (kind is "completed" or "failed" or "stopped")
             {
-                _FinishChild(childId);
+                _FinishChild(childId, kind, _TryGetLong(item, "completedAtMs") ?? _TryGetLong(parameters, "completedAtMs"));
             }
 
             return;
@@ -544,12 +598,28 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
     }
 
-    private void _PublishChildren() => _events.Publish(new PluginBackgroundTasksChanged { SessionId = _threadId, Tasks = [.. _children.Values] });
+    private readonly ProviderChildLedger _childHistory = new();
+    private IReadOnlyList<PluginBackgroundTask> _knownChildren = [];
 
-    private void _FinishChild(string childId)
+    private void _PublishChildren()
     {
-        if (_children.Remove(childId))
+        _knownChildren = _childHistory.Snapshot([.. _children.Values]);
+        _events.Publish(new PluginBackgroundTasksChanged { SessionId = _threadId, Tasks = [.. _children.Values], Children = _knownChildren });
+    }
+
+    private void _FinishChild(string childId, string state, long? completedAt = null)
+    {
+        if (!_children.ContainsKey(childId) && _childHistory.TryGetValue(childId, out var known)
+            && known.StartedAtUnixMilliseconds is >= 0 and { } started && completedAt is { } ended && ended >= started)
         {
+            _childHistory[childId] = known with { DurationMilliseconds = ended - started };
+            _PublishChildren();
+            return;
+        }
+        if (_children.Remove(childId, out var child))
+        {
+            long? duration = child.StartedAtUnixMilliseconds is >= 0 and { } start && completedAt is { } end && end >= start ? end - start : child.DurationMilliseconds;
+            _childHistory[childId] = child with { State = state, DurationMilliseconds = duration };
             _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = childId, Content = "Agent finished", IsError = false });
             _PublishChildren();
         }

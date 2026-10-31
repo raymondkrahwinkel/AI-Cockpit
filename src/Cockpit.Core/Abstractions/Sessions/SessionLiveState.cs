@@ -14,6 +14,8 @@ public sealed record SessionLiveState(
     string? Model = null,
     string? PermissionMode = null)
 {
+    public IReadOnlyList<BackgroundTask> Children { get; init; } = [];
+
     public static SessionLiveState None { get; } = new(SessionStatus.Idle, [], [], SessionUsageTotals.None, Connection: null, CliSessionId: null);
 }
 

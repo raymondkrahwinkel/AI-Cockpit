@@ -5,7 +5,7 @@
 unit	cases
 plugins-dev/Cockpit.Plugin.Autopilot.Tests	95
 plugins-dev/Cockpit.Plugin.Browser.Tests	10
-plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	172
+plugins-dev/Cockpit.Plugin.ClaudeProvider.Tests	171
 plugins-dev/Cockpit.Plugin.CliAgentProvider.Tests	100
 plugins-dev/Cockpit.Plugin.Depot.Tests	220
 plugins-dev/Cockpit.Plugin.Diagram.Tests	115

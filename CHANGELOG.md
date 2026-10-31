@@ -32,6 +32,12 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 ### Fixed
 
+- Sub-agents no longer keep a Running status after their owner fails, is interrupted or stops. Finished sub-agents keep their recorded status and details.
+
+- Codex sub-agent steering requests identify the child's own turn, including resumed turns, instead of the parent's turn.
+
+- Running the test suite no longer wipes the scratch folders (`C:\ck\…`) of the sessions that are open in your Cockpit: every test run now uses a scratch root of its own.
+
 - On a laptop with two GPUs, dictation now transcribes on the dedicated GPU instead of the integrated one that drives the screen; Options › Voice offers each GPU by name, Auto names the one it picks, and the calibration says which GPU it measured.
 
 - Model Intelligence no longer mixes up the quota of two Claude subscriptions used side by side, and unchanged quota readings are no longer stored over and over.
@@ -64,6 +70,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 ### Added
 
 - **Choose a brain per profile.** Once Depot is connected, the profile editor offers a Brain dropdown with None and every Depot brain, each with its address and server, so two brains with one name on two servers read apart. A new session loads exactly that brain and the brain choice in your own CLAUDE.md no longer applies; a project's own brain still goes first. A name typed before stays as it was. Kimi and opencode, which take no system prompt, get the brain as the first message of a new session. Depot 0.47.0 needs host 0.154.0.
+- Provider sub-agents are visible in Background and Agents, with isolated read-only transcripts and requests through the existing parent. Claude 0.30.0, Codex 0.11.1 and the additive plugin SDK 3.60.0 carry the new child identity and transcript contracts.
+
 - added: **a sync choice per profile.** On Options › Sync the Profiles row opens to one row per profile, and the profile page has a "Synchronise this profile" field: tick the servers a profile goes to, or leave it on "Same as Profiles". Nothing ticked keeps that profile on this machine; unticking never removes anything from a server (AC-1847).
 - added: **Options › Sync.** One page decides which server each category of settings (profiles, plugins, notifications, shortcuts, session behaviour, usage, appearance, updates) is kept in step with: tick one or more per category, nothing ticked stays on this machine. A card per server shows what it receives and when it last synced; unticking never removes anything from the server. A settings conflict between two servers now shows one card per server (AC-1846).
 - When two swarm leaders meet again after a network split, the higher rank steps down and both assistant conversations are merged without losing a message; a note state changed on both sides keeps the other version and asks once whether to compare or keep the newest.

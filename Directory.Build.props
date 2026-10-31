@@ -434,7 +434,7 @@
     <!-- 0.150.0: live-file recovery banners, Retry and Sign in again (AC-1582, Abstractions 3.53.0). -->
     <!-- 0.152.0: ICockpitHost.IsHeadless lets plugins avoid desktop-only capabilities (AC-1938, Abstractions 3.55.0).
          A plugin that reads it sets minHostVersion 0.152.0. -->
-    <!-- 0.154.0: Depot brains in the profile editor and the brain instruction at session start (AC-1992, Abstractions 3.59.0).
+    <!-- 0.154.0: Depot brains in the profile editor and the brain instruction at session start (AC-1992, Abstractions 3.61.0).
          A plugin that sets ProjectMemorySourceRegistration.ListBrainsAsync or BrainInstruction sets minHostVersion 0.154.0. -->
     <VersionPrefix>0.154.0</VersionPrefix>
 
@@ -458,6 +458,11 @@
          unresolvable cref), not about the code. We generate the doc file for IDE0005's sake, not to publish it. -->
     <NoWarn>$(NoWarn);CS1591;CS1570;CS1573;CS1574;CS1734;CS0419</NoWarn>
   </PropertyGroup>
+
+  <!-- AC-1999: every test process gets its own COCKPIT_SCRATCH_ROOT, so no test can sweep live sessions' C:\ck. -->
+  <ItemGroup Condition="$([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Tests.csproj'))">
+    <Compile Include="$(MSBuildThisFileDirectory)tests\Shared\TestScratchRoot.cs" Link="Shared\TestScratchRoot.cs" />
+  </ItemGroup>
 
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Tests.csproj')) Or $([System.String]::Copy('$(MSBuildProjectFullPath)').EndsWith('Cockpit.Journeys.csproj'))">
     <UseAppHost>false</UseAppHost>
