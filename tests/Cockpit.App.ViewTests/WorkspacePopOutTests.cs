@@ -24,6 +24,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Input;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.ViewTests;
 
@@ -31,6 +32,46 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class WorkspacePopOutTests
 {
+    public static TheoryData<string, bool, bool, bool, bool> TabKinds => new()
+    {
+        { "file", true, true, true, true },
+        { "workspace", false, false, false, true },
+        { "projects", false, false, false, false },
+        { "last", false, false, false, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(TabKinds))]
+    public Task TabMenuAvailability(string kind, bool keep, bool pop, bool copy, bool close) => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+        var client = new FileSourceChannelClient(new Channel(hub));
+        var options = new FileWorkspaceOpenOptions(new FileRef("c1", "doc", "draft.md"), "draft", "draft.md", "Depot / Work", CreateNew: true);
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("test.file", "Markdown", context =>
+            new MarkdownFileWorkspace(context, options, client, () => Task.FromResult(true))) { CanFloat = true },
+            new NoStorage(), NullCockpitSessionObserver.Instance);
+        var workspaces = new WorkspacesViewModel(null, workspaceTypes: registry);
+        if (kind == "file")
+        {
+            await workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("draft", "draft.md", Preview: true));
+        }
+        else if (kind == "projects")
+        {
+            await workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Projects).Id);
+        }
+        else if (kind == "last")
+        {
+            var workspace = workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Sessions);
+            workspaces.Settings = new WorkspaceSettings { Workspaces = [workspace], ActiveWorkspaceId = workspace.Id };
+        }
+        var tab = workspaces.Tabs.Single(t => t.IsActive);
+        Assert.Equal(keep, tab.CanKeepOpen);
+        Assert.Equal(pop, tab.CanPopOut);
+        Assert.Equal(copy, tab.CanCopyPath);
+        Assert.Equal(close, tab.CanClose);
+    });
+
     private const string TypeId = "test.markdown";
 
     private readonly Dictionary<string, IWorkspaceContext> _contexts = new(StringComparer.Ordinal);

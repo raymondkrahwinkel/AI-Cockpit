@@ -67,6 +67,10 @@ internal sealed partial class CockpitUiHost
         {
             _fileWorkspaceTypes.Remove(id);
         }
+        else
+        {
+            _Service<CockpitViewModel>()?.Workspaces.RegisterFileWorkspaceType(id);
+        }
     }
 
     public Task OpenFileWorkspaceAsync(string workspaceTypeId, FileWorkspaceOpenOptions options) =>

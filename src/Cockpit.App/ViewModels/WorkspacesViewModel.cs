@@ -5,6 +5,7 @@ using Material.Icons;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
+using Cockpit.App.Files;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Secrets;
@@ -28,6 +29,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // surface — and the same embedded session — rather than building a second one. Cleared for a workspace when
     // it is gone from the settings (see `_RefreshPluginBody`).
     private readonly Dictionary<string, Control> _pluginBodies = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _fileWorkspaceTypes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IWorkspaceContext> _pluginContexts = new(StringComparer.Ordinal);
 
     // AC-1750: the marks bodies put on their tabs, by workspace id. Not persisted: a body sets its own again once built.
@@ -75,6 +77,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
                 OnPropertyChanged(nameof(HasAvailablePluginWorkspaceTypes));
                 OnPropertyChanged(nameof(WorkspaceMenuOptions));
                 _RefreshPluginBody();
+                _RefreshTabCapabilities();
                 OnPropertyChanged(nameof(ActivePluginBody));
                 OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));
                 OnPropertyChanged(nameof(ActiveHeaderActions));
@@ -240,6 +243,24 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     // AC-1751: the body a floating workspace's window shows, the same instance its tab showed; null while its plugin is not registered.
     internal Control? BodyFor(Workspace workspace) => _EnsureBody(workspace) ? _pluginBodies[workspace.Id] : null;
+
+    internal MarkdownFileWorkspace? FileBodyFor(Workspace workspace) =>
+        _pluginBodies.GetValueOrDefault(workspace.Id) as MarkdownFileWorkspace
+        ?? (_fileWorkspaceTypes.Contains(workspace.Type.Id) ? BodyFor(workspace) as MarkdownFileWorkspace : null);
+
+    internal void RegisterFileWorkspaceType(string id)
+    {
+        _fileWorkspaceTypes.Add(id);
+        _RefreshTabCapabilities();
+    }
+
+    private void _RefreshTabCapabilities()
+    {
+        foreach (var tab in Tabs)
+        {
+            tab.RefreshCapabilities();
+        }
+    }
 
     // AC-1013: Loads the saved workspaces. Called once at startup; a no-op without a store (design time).
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -903,7 +924,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         Tabs.Clear();
         foreach (var workspace in Settings.Workspaces.Where(workspace => !workspace.IsFloating))
         {
-            Tabs.Add(new WorkspaceTabViewModel(workspace, isActive: workspace.Id == Active?.Id, icon: _IconFor(workspace))
+            Tabs.Add(new WorkspaceTabViewModel(workspace, isActive: workspace.Id == Active?.Id, owner: this, icon: _IconFor(workspace))
             {
                 Marker = _markers.TryGetValue(workspace.Id, out var marker) ? marker : null,
             });

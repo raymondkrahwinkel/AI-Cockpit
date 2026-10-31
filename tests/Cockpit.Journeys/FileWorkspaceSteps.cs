@@ -1,4 +1,8 @@
 using Avalonia.Threading;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
+using Cockpit.App.ViewModels;
 using Cockpit.App.Files;
 using Cockpit.App.ViewTests;
 
@@ -20,7 +24,16 @@ internal static class FileWorkspaceSteps
             body.Editor.TextEditor.Document.Insert(body.Editor.Text.Length, "Written in Cockpit.");
             var document = body.Editor.TextEditor.Document;
             var undo = document.UndoStack;
-            await workspaces.PopOutAsync(entry.Id);
+            await workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Tabs.First(tab => tab.Id != entry.Id).Id);
+            cockpit.Window.UpdateLayout();
+            var tab = cockpit.Window.GetVisualDescendants().OfType<Border>()
+                .Single(border => border.Classes.Contains("workspaceTab") && border.DataContext is WorkspaceTabViewModel model && model.Id == entry.Id);
+            var menu = tab.ContextMenu ?? throw new InvalidOperationException("The tab menu is missing.");
+            menu.Open(tab);
+            menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Pop out"))
+                .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await HeadlessAvalonia.SettleAsync();
+            Assert.True(workspaces.Settings.Workspaces.Single(workspace => workspace.Id == entry.Id).IsFloating);
             Dispatcher.UIThread.RunJobs();
             await workspaces.DockBackAsync(entry.Id);
             Dispatcher.UIThread.RunJobs();
@@ -49,6 +62,17 @@ internal static class FileWorkspaceSteps
             await open("notes/b.md", true);
             Assert.Equal(1, FileTabs());
             Assert.Equal("b.md", workspaces.Active?.Name);
+            cockpit.Window.UpdateLayout();
+            var tab = cockpit.Window.GetVisualDescendants().OfType<Border>()
+                .Single(border => border.Classes.Contains("workspaceTab") && border.DataContext is WorkspaceTabViewModel { IsPreview: true });
+            var menu = tab.ContextMenu ?? throw new InvalidOperationException("The tab menu is missing.");
+            menu.Open(tab);
+            var copy = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "Copy path"));
+            copy.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            await HeadlessAvalonia.SettleAsync();
+            var clipboard = cockpit.Window.Clipboard ?? throw new InvalidOperationException("The clipboard is missing.");
+            Assert.Equal("Depot / Journey / acme/cockpit / notes/b.md", await clipboard.TryGetTextAsync());
+            menu.Close();
             await open("notes/b.md", false);
             await open("notes/c.md", true);
             Assert.Equal(2, FileTabs());

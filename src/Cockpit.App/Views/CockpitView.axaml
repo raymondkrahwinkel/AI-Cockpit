@@ -1270,8 +1270,12 @@
                                          own (Raymond). Same menu shape as the session rows' own. -->
                                     <Border.ContextMenu>
                                         <ContextMenu>
+                                            <MenuItem Header="Keep open" Click="OnKeepWorkspaceOpenRequested" IsVisible="{Binding CanKeepOpen}"/>
                                             <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested" IsVisible="{Binding CanRename}"/>
-                                            <MenuItem Header="Close" Click="OnCloseWorkspaceRequested"/>
+                                            <MenuItem Header="Pop out" Click="OnPopOutWorkspaceRequested" IsVisible="{Binding CanPopOut}"/>
+                                            <MenuItem Header="Copy path" Click="OnCopyWorkspacePathRequested" IsVisible="{Binding CanCopyPath}"/>
+                                            <Separator IsVisible="{Binding CanClose}"/>
+                                            <MenuItem Header="Close" Click="OnCloseWorkspaceRequested" IsVisible="{Binding CanClose}"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <DockPanel>
@@ -1280,9 +1284,14 @@
                                              hit by accident. -->
                                         <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace"
                                                 Padding="4,0" Margin="6,0,0,0"
-                                                IsVisible="{Binding !IsRenaming}"
                                                 Click="OnCloseWorkspaceRequested"
                                                 ToolTip.Tip="Close workspace">
+                                            <Button.IsVisible>
+                                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                    <Binding Path="CanClose"/>
+                                                    <Binding Path="!IsRenaming"/>
+                                                </MultiBinding>
+                                            </Button.IsVisible>
                                             <materialIcons:MaterialIcon Kind="Close" Width="10" Height="10"/>
                                         </Button>
                                         <Ellipse DockPanel.Dock="Right" Width="7" Height="7" Margin="7,0,0,0" VerticalAlignment="Center"
