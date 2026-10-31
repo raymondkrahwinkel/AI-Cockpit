@@ -83,7 +83,10 @@ internal sealed class SwarmHeartbeat(
         reachability.Answer(peer, HttpStatusCode.OK, update.Asleep);
         leadership.Observe(peer, update.Leader, update.Decision is { } decision
             && decision.At <= update.At && decision.At >= update.At - SwarmReachability.Stabilization ? decision : null);
-        if (update.Rank is { } rank && rank != member.Rank) await leadership.ResolveRankCollisionAsync(member with { Rank = rank }, ct);
+        if (update.Rank is { } rank && rank != member.Rank)
+        {
+            await leadership.ResolveRankCollisionAsync(member with { Rank = rank }, ct);
+        }
         return update;
     }
 
@@ -224,7 +227,10 @@ internal sealed class SwarmHeartbeat(
                 }
             }));
             await leadership.RefreshAsync(ct: ct, asleep: asleep);
-            if (merge is not null && !asleep) await merge.FlushAsync(ct);
+            if (merge is not null && !asleep)
+            {
+                await merge.FlushAsync(ct);
+            }
         }
         finally
         {

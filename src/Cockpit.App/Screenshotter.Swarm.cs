@@ -62,7 +62,9 @@ internal static partial class Screenshotter
         {
             leadership.Merge(ConversationMerge.MergingNotice);
             if (reportedLeader != ConversationMerge.MergingNotice)
+            {
                 throw new InvalidOperationException("The assistant chip must say a merge is running.");
+            }
         }
         chat.PropertyChanged -= changed;
         chat.EnsureOpenedAsync().GetAwaiter().GetResult();

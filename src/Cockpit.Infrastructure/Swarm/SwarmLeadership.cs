@@ -39,7 +39,10 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
     internal void SetMerging(bool merging)
     {
         var notice = merging ? ConversationMerge.MergingNotice : null;
-        if (Interlocked.Exchange(ref _mergeNotice, notice) != notice) Changed?.Invoke(this, EventArgs.Empty);
+        if (Interlocked.Exchange(ref _mergeNotice, notice) != notice)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     // AC-1929: a peer reports a rank equal to ours; the member added last draws again, signs and lets propagation carry it.
@@ -49,7 +52,10 @@ internal sealed class SwarmLeadership(SwarmMembershipStore store, SwarmSettingsS
         try
         {
             var register = await store.LoadAsync(ct);
-            if (SwarmLeaderElection.ResolveRankCollision(register, identity.MemberId, [seen]) is not { } change) return;
+            if (SwarmLeaderElection.ResolveRankCollision(register, identity.MemberId, [seen]) is not { } change)
+            {
+                return;
+            }
             if (register.Accept(identity.Sign(SwarmMembership.ToPayload(change))) != SwarmMembershipVerdict.Accepted)
             {
                 throw new InvalidDataException("Swarm rank change refused.");

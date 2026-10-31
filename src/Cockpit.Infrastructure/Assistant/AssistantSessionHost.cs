@@ -113,7 +113,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             await _startGate.WaitAsync();
             try
             {
-                if (Session is not null && _takeover is not null) await _takeover.StepDownAsync();
+                if (Session is not null && _takeover is not null)
+                {
+                    await _takeover.StepDownAsync();
+                }
                 if (_ReplaceSession(null) is { } previous) await _DisposeQuietlyAsync(previous);
             }
             finally { _startGate.Release(); }
@@ -528,7 +531,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _takeover?.BeginTakeover(standby);
             _takeover?.RestoreReceipts(standby);
-            if (_memory is AssistantMemoryFile file) file.RestoreStandby(standby.NoteState, standby.Behaviour, standby.NoteStateAt);
+            if (_memory is AssistantMemoryFile file)
+            {
+                file.RestoreStandby(standby.NoteState, standby.Behaviour, standby.NoteStateAt);
+            }
             session.RestoreStandbyTranscript(standby.Transcript);
         }
         else await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);

@@ -44,7 +44,10 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
         await _publish.WaitAsync(ct);
         try
         {
-            if (!leadership.IsSelf || await CaptureAsync(ct) is not { } snapshot) return;
+            if (!leadership.IsSelf || await CaptureAsync(ct) is not { } snapshot)
+            {
+                return;
+            }
             services.GetRequiredService<SwarmStandbyCopy>().Save(snapshot);
             var identity = services.GetRequiredService<SwarmIdentity>();
             var members = (await services.GetRequiredService<SwarmMembershipStore>().LoadAsync(ct)).Members;
@@ -79,7 +82,10 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
     internal async Task<SwarmStandbySnapshot?> CaptureAsync(CancellationToken ct)
     {
         var session = services.GetRequiredService<AssistantSessionHost>().Session;
-        if (session is null) return null;
+        if (session is null)
+        {
+            return null;
+        }
         var memory = services.GetRequiredService<IAssistantMemory>();
         var pending = (services.GetService<IAgentMessageInbox>() as AgentMessageInbox)?.CaptureAssistantStandby() ?? [];
         var rows = session.Rows.ToArray();
@@ -98,7 +104,10 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
         var merge = services.GetRequiredService<SwarmMerge>();
         try
         {
-            if (await CaptureAsync(ct) is { } own) merge.Park(own);
+            if (await CaptureAsync(ct) is { } own)
+            {
+                merge.Park(own);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

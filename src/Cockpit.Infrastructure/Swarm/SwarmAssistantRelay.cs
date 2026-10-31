@@ -225,10 +225,16 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
         members.MapPost("/merge", (Func<HttpContext, Task<IResult>>)(async context =>
         {
             var caller = McpRequestContext.CurrentNodeCaller;
-            if (caller is not { ByConnectKey: true, Capability: ConnectKeyCapability.Admin }) return Results.Unauthorized();
+            if (caller is not { ByConnectKey: true, Capability: ConnectKeyCapability.Admin })
+            {
+                return Results.Unauthorized();
+            }
             var member = (await services.GetRequiredService<SwarmMembershipStore>().LoadAsync(context.RequestAborted))
                 .Members.SingleOrDefault(member => SwarmKick.KeyLabel(member) == caller.Label);
-            if (member is null) return Results.StatusCode(403);
+            if (member is null)
+            {
+                return Results.StatusCode(403);
+            }
             try
             {
                 var snapshot = SwarmStandbyCopy.Validated(await JsonSerializer.DeserializeAsync<SwarmStandbySnapshot>(context.Request.Body,

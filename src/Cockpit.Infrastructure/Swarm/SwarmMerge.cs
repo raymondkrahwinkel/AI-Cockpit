@@ -32,21 +32,30 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
 
     internal void Park(SwarmStandbySnapshot own)
     {
-        lock (_files) CockpitConfigPath.ReplaceAtomicallyPrivate(Outbox, stream => JsonSerializer.Serialize(stream, own, SwarmStandbyCopy.Json));
+        lock (_files)
+        {
+            CockpitConfigPath.ReplaceAtomicallyPrivate(Outbox, stream => JsonSerializer.Serialize(stream, own, SwarmStandbyCopy.Json));
+        }
         (leadership as SwarmLeadership)?.SetMerging(true);
     }
 
     internal async Task FlushAsync(CancellationToken ct)
     {
-        SwarmStandbySnapshot? parked;
-        lock (_files) parked = File.Exists(Outbox) ? JsonSerializer.Deserialize<SwarmStandbySnapshot>(File.ReadAllText(Outbox), SwarmStandbyCopy.Json) : null;
-        if (parked is null || leadership.Current is not { } leader) return;
+        var parked = _ReadOutbox();
+        if (parked is null || leadership.Current is not { } leader)
+        {
+            return;
+        }
+
         try
         {
             var delivered = leadership.IsSelf
                 ? await ReceiveAsync(parked, ct)
                 : await services.GetRequiredService<SwarmTakeoverCoordinator>().PostAsync(leader, "swarm/merge", parked, ct);
-            if (!delivered) return;
+            if (!delivered)
+            {
+                return;
+            }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or IOException or OperationCanceledException)
         {
@@ -54,11 +63,15 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
             services.GetRequiredService<ILogger<SwarmMerge>>().LogWarning(ex, "The merge copy did not reach {Member} yet.", leader.Name);
             return;
         }
+
         lock (_files)
         {
             // A copy parked again while this one travelled stays for the next round.
-            var now = File.Exists(Outbox) ? JsonSerializer.Deserialize<SwarmStandbySnapshot>(File.ReadAllText(Outbox), SwarmStandbyCopy.Json) : null;
-            if (now?.Generation != parked.Generation || now.Revision != parked.Revision) return;
+            var now = _ReadOutbox();
+            if (now?.Generation != parked.Generation || now.Revision != parked.Revision)
+            {
+                return;
+            }
             File.Delete(Outbox);
         }
         (leadership as SwarmLeadership)?.SetMerging(false);
@@ -66,7 +79,11 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
 
     internal async Task<bool> ReceiveAsync(SwarmStandbySnapshot loser, CancellationToken ct)
     {
-        if (!leadership.IsSelf || !SwarmMemberId.TryParse(loser.LeaderId, out var from)) return false;
+        if (!leadership.IsSelf || !SwarmMemberId.TryParse(loser.LeaderId, out var from))
+        {
+            return false;
+        }
+
         await _gate.WaitAsync(ct);
         try
         {
@@ -76,8 +93,15 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
                 members.FirstOrDefault(member => member.Id == self)?.Name ?? self.Value, loser);
             var own = await services.GetRequiredService<SwarmTakeoverCoordinator>().CaptureAsync(ct)
                 ?? services.GetRequiredService<SwarmStandbyCopy>().Read();
-            if (own is not null && !_Merge(own, input).Changed) return true;
-            lock (_files) CockpitConfigPath.ReplaceAtomicallyPrivate(Inbox(from), stream => JsonSerializer.Serialize(stream, input, SwarmStandbyCopy.Json));
+            if (own is not null && !_Merge(own, input).Changed)
+            {
+                return true;
+            }
+
+            lock (_files)
+            {
+                CockpitConfigPath.ReplaceAtomicallyPrivate(Inbox(from), stream => JsonSerializer.Serialize(stream, input, SwarmStandbyCopy.Json));
+            }
             (leadership as SwarmLeadership)?.SetMerging(true);
             try
             {
@@ -116,22 +140,39 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
                 services.GetRequiredService<SwarmStandbyCopy>().Save(standby);
                 CockpitConfigPath.ReplaceAtomicallyPrivate(KeptPath, stream => JsonSerializer.Serialize(stream, result.Kept, SwarmStandbyCopy.Json));
                 File.Delete(path);
-                if (result.Asks) _Ask(input.Name);
+                if (result.Asks)
+                {
+                    _Ask(input.Name);
+                }
             }
             return standby;
+        }
+    }
+
+    private SwarmStandbySnapshot? _ReadOutbox()
+    {
+        lock (_files)
+        {
+            return File.Exists(Outbox) ? JsonSerializer.Deserialize<SwarmStandbySnapshot>(File.ReadAllText(Outbox), SwarmStandbyCopy.Json) : null;
+        }
+    }
+
+    private KeptVersion[] _ReadKept()
+    {
+        lock (_files)
+        {
+            return File.Exists(KeptPath) ? JsonSerializer.Deserialize<KeptVersion[]>(File.ReadAllText(KeptPath), SwarmStandbyCopy.Json) ?? [] : [];
         }
     }
 
     private (SwarmStandbySnapshot Snapshot, ConversationMergeResult Result, bool Changed) _Merge(SwarmStandbySnapshot own, SwarmMergeInput input)
     {
         var self = services.GetRequiredService<SwarmIdentity>().MemberId;
-        var kept = File.Exists(KeptPath)
-            ? JsonSerializer.Deserialize<KeptVersion[]>(File.ReadAllText(KeptPath), SwarmStandbyCopy.Json) ?? [] : [];
         static Dictionary<string, MergeField> Fields(SwarmStandbySnapshot snapshot) =>
             new() { [NoteStateField] = new(snapshot.NoteState, snapshot.NoteStateAt) };
         var result = ConversationMerge.Merge(new(self, input.WinnerName, own.Transcript, Fields(own)),
             new(SwarmMemberId.TryParse(input.Snapshot.LeaderId, out var loser) ? loser : self, input.Name, input.Snapshot.Transcript,
-                Fields(input.Snapshot)), kept);
+                Fields(input.Snapshot)), _ReadKept());
         var carried = BehaviourMemorySync._Entries(own.Behaviour).Select(BehaviourMemorySync._StripOrigin).ToHashSet(StringComparer.Ordinal);
         var extra = BehaviourMemorySync._Entries(input.Snapshot.Behaviour).Where(line => !carried.Contains(BehaviourMemorySync._StripOrigin(line)))
             .Select(line => "- " + line).ToArray();
@@ -166,9 +207,10 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
         {
             var text = new StringBuilder("# Newest (in use)").AppendLine().AppendLine()
                 .AppendLine(services.GetRequiredService<SwarmStandbyCopy>().Read()?.NoteState);
-            lock (_files)
-                foreach (var kept in File.Exists(KeptPath) ? JsonSerializer.Deserialize<KeptVersion[]>(File.ReadAllText(KeptPath), SwarmStandbyCopy.Json) ?? [] : [])
-                    text.AppendLine().AppendLine($"# Kept from {kept.Origin}").AppendLine().AppendLine(kept.Version.Value);
+            foreach (var kept in _ReadKept())
+            {
+                text.AppendLine().AppendLine($"# Kept from {kept.Origin}").AppendLine().AppendLine(kept.Version.Value);
+            }
             var path = Path.Combine(Root, "swarm-merge-compare.md");
             CockpitConfigPath.ReplaceAtomicallyPrivate(path, text.ToString());
             using var _ = Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
@@ -181,6 +223,9 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
 
     private void _KeepNewest()
     {
-        lock (_files) File.Delete(KeptPath);
+        lock (_files)
+        {
+            File.Delete(KeptPath);
+        }
     }
 }

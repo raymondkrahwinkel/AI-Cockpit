@@ -55,7 +55,10 @@ internal sealed class SwarmStandbyCopy : ISingletonService
 
     internal static SwarmStandbySnapshot Validated(SwarmStandbySnapshot? snapshot, SwarmMemberId source)
     {
-        if (snapshot is null) throw new InvalidDataException("Empty standby copy.");
+        if (snapshot is null)
+        {
+            throw new InvalidDataException("Empty standby copy.");
+        }
         if (snapshot.LeaderId != source.Value || snapshot.Generation == Guid.Empty || snapshot.Revision < 1
             || snapshot.Transcript is null || snapshot.NoteState is null || snapshot.Behaviour is null || snapshot.Receipts is null || snapshot.PendingInbox is null
             || snapshot.Transcript.Any(row => row is null || string.IsNullOrWhiteSpace(row.Id))

@@ -113,7 +113,10 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
         var localOnly = BehaviourMemorySync._Entries(existing).Where(line => !carried.Contains(BehaviourMemorySync._StripOrigin(line)));
         var merged = string.Join(Environment.NewLine, localOnly.Select(line => "- " + line));
         CockpitConfigPath.ReplaceAtomicallyPrivate(_statePath, noteState);
-        if (noteStateAt != default) File.SetLastWriteTimeUtc(_statePath, noteStateAt.UtcDateTime);
+        if (noteStateAt != default)
+        {
+            File.SetLastWriteTimeUtc(_statePath, noteStateAt.UtcDateTime);
+        }
         CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, string.IsNullOrEmpty(merged) ? behaviour : behaviour + Environment.NewLine + merged);
     }
 
