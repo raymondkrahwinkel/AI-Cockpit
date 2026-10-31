@@ -85,7 +85,7 @@ public partial class SessionView : UserControl
             ComposerBorder,
             tryGetPastedBitmap: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetBitmapAsync() ?? Task.FromResult<Bitmap?>(null),
             tryGetPastedText: () => TopLevel.GetTopLevel(this)?.Clipboard?.TryGetTextAsync() ?? Task.FromResult<string?>(null),
-            hasComposer: () => DataContext is SessionViewModel,
+            hasComposer: () => DataContext is SessionViewModel { IsReadingChild: false },
             mentionPicker: () => (DataContext as SessionViewModel)?.MentionPicker,
             recallLastQueuedMessage: () => DataContext is SessionViewModel recallVm && recallVm.RecallLastQueuedMessage(),
             resolveStopIfBusy: () => DataContext is SessionViewModel { IsBusy: true } busyVm ? busyVm.StopCommand : null,
@@ -128,7 +128,7 @@ public partial class SessionView : UserControl
         // not for a non-selected pane, else a restore burst tears focus from pane to pane.
         Dispatcher.UIThread.Post(() =>
         {
-            if (DataContext is SessionPanelViewModel { IsSelected: false })
+            if (DataContext is SessionPanelViewModel { IsSelected: false } or SessionViewModel { IsReadingChild: true })
             {
                 return;
             }
@@ -415,7 +415,7 @@ public partial class SessionView : UserControl
     // No-ops when global push-to-talk is active (PushToTalkKeyGate) to avoid firing twice.
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is SessionViewModel vm
+        if (DataContext is SessionViewModel { IsReadingChild: false } vm
             && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
             && vm.BeginVoiceHold())
         {

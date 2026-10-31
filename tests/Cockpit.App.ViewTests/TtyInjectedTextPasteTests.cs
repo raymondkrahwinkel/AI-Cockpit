@@ -46,6 +46,26 @@ public class TtyInjectedTextPasteTests
             Assert.Equal("\r"u8.ToArray(), pty.WriteCalls[1]);
             var written = Encoding.UTF8.GetString(pty.Written);
             Assert.Equal($"{BracketedPasteStart}{prompt}{BracketedPasteEnd}\r", written);
+
+            _InvokeWriteToPty(view, prompt + "\r");
+            await _LetPostedWorkRunAsync();
+            var vm = Assert.IsType<TtyViewModel>(view.DataContext);
+            vm.UpdateChildAgents([new Cockpit.Core.Sessions.BackgroundTask("child", Cockpit.Core.Sessions.BackgroundTaskKind.SubAgent, "Review")]);
+            vm.ChildAgents[0].OpenCommand.Execute(null);
+            Assert.True(vm.IsReadingChild);
+            await Task.Delay(TtyViewModel.AutoSubmitDelay(prompt.Length) + TimeSpan.FromMilliseconds(100));
+            await _LetPostedWorkRunAsync();
+            Assert.Equal(3, pty.WriteCalls.Count);
+
+            vm.ReturnToParentCommand.Execute(null);
+            _InvokeWriteToPty(view, prompt + "\r");
+            await _LetPostedWorkRunAsync();
+            FieldInfo? activePty = typeof(TtyView).GetField("_pty", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(activePty);
+            activePty.SetValue(view, new FakePty());
+            await Task.Delay(TtyViewModel.AutoSubmitDelay(prompt.Length) + TimeSpan.FromMilliseconds(100));
+            await _LetPostedWorkRunAsync();
+            Assert.Equal(4, pty.WriteCalls.Count);
         });
 
     [Fact]

@@ -50,4 +50,5 @@
     <InternalsVisibleTo Include="Cockpit.Plugin.ClaudeProvider.Tests" />
   </ItemGroup>
 
+  <Import Project="../_shared/HookRelay.targets" />
 </Project>

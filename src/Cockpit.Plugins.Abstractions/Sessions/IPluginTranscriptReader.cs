@@ -14,6 +14,18 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 public interface IPluginTranscriptReader
 {
     /// <summary>
+    /// Reads bounded child references belonging to this TTY launch's stated owner.
+    /// </summary>
+    Task<IReadOnlyList<PluginBackgroundTask>> ReadChildrenAsync(string configJson, string? statusFile, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<PluginBackgroundTask>>([]);
+
+    /// <summary>
+    /// Reads one bounded child window, refusing a changed owner or source revision.
+    /// </summary>
+    Task<PluginChildTranscriptPage> ReadChildTranscriptAsync(string configJson, string? statusFile, string agentId, string? revision, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.FromResult(PluginChildTranscriptPage.Unavailable("provider does not support child history"));
+
+    /// <summary>
     /// Snapshots the transcript artifacts that already exist for <paramref name="configJson"/> at launch, so
     /// a later tail can single out the one new artifact this session produces. Call once, before the session
     /// is spawned. The returned set is opaque to the host — it only hands it back to the reader unchanged.

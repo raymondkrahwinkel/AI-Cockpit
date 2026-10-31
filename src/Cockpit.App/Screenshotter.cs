@@ -189,6 +189,15 @@ internal static partial class Screenshotter
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
         ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
+        ["child-history-sidebar"] = (_, _) => _ChildHistoryScene("sidebar"),
+        ["child-history-popout"] = (_, _) => _ChildHistoryPopout(),
+        ["tty-claude-child-popout"] = (_, _) => _TtyChildHistoryScene("Claude", false),
+        ["tty-codex-child-popout"] = (_, _) => _TtyChildHistoryScene("Codex", false),
+        ["tty-child-reading"] = (_, _) => _TtyChildHistoryScene("Claude", true),
+        ["child-history-finished"] = (_, _) => _ChildHistoryScene("finished"),
+        ["child-history-running"] = (_, _) => _ChildHistoryScene("running"),
+        ["child-history-empty"] = (_, _) => _ChildHistoryScene("empty"),
+        ["child-history-unavailable"] = (_, _) => _ChildHistoryScene("unavailable"),
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
         // AC-1829: the real window while projects and sessions are still loading.
         ["main-loading"] = (_, _) => _MainWhileLoading(),
@@ -740,6 +749,15 @@ internal static partial class Screenshotter
         ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
         ["agents-docked"] = (_, _) => _AgentsOverview(floating: false),
         ["agents-undocked"] = (_, _) => _AgentsOverview(floating: true),
+        ["agents-docked-expanded"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
+        ["agents-undocked-expanded"] = (_, _) => _AgentsOverview(floating: true, expanded: true),
+        ["agents-child-open"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
+        ["child-steering-sdk"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-prepared"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-stopped"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-stale"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-tty"] = (_, _) => _ChildSteeringScene(terminal: true),
+        ["child-steering-terminal-open"] = (_, _) => _ChildSteeringScene(terminal: true),
         // AC-960 criterion 15: a plugin-registered panel (a stand-in for GitHubPullRequestsWidget — Cockpit.App
         // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
         // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
@@ -1358,6 +1376,14 @@ internal static partial class Screenshotter
             Dispatcher.UIThread.RunJobs();
         },
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
+        ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
+        ["agents-child-open"] = _OpenAgentChild,
+        ["child-steering-prepared"] = window => _ExerciseChildSteering(window, "prepared"),
+        ["child-steering-stopped"] = window => _ExerciseChildSteering(window, "stopped"),
+        ["child-steering-stale"] = window => _ExerciseChildSteering(window, "stale"),
+        ["child-steering-terminal-open"] = window => _ExerciseChildSteering(window, "terminal"),
+        ["tty-claude-child-popout"] = window => _OpenFlyout(window, "TtyBackgroundWorkButton"),
+        ["tty-codex-child-popout"] = window => _OpenFlyout(window, "TtyBackgroundWorkButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["workspace-layout-flyout"] = window => _OpenFlyout(window, "WorkspaceLayoutButton"),
         ["help-menu"] = window => _OpenFlyout(window, "HelpButton"),
@@ -3724,7 +3750,7 @@ internal static partial class Screenshotter
         }
     }
 
-    private static Window _AgentsOverview(bool floating)
+    private static Window _AgentsOverview(bool floating, bool expanded = false)
     {
         var panels = new Docking.DockPanelRegistry();
         var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
@@ -3734,11 +3760,11 @@ internal static partial class Screenshotter
         };
         cockpit.Projects.Projects.Add(new Project("cockpit", "cockpit"));
         cockpit.Projects.Projects.Add(new Project("depot", "depot"));
-        cockpit.Sessions[0].Title = "AC-1805 notification center";
+        cockpit.Sessions[0].Title = "atlas · parser cleanup";
         cockpit.Sessions[0].ActiveProfileLabel = "Coder";
         cockpit.Sessions[0].Statusline = "Review the PR comments";
         cockpit.Sessions[0].ProjectId = "cockpit";
-        cockpit.Sessions[1].Title = "Depot docs";
+        cockpit.Sessions[1].Title = "harbor · docs pass";
         cockpit.Sessions[1].ActiveProfileLabel = "Writer";
         cockpit.Sessions[1].Statusline = "Drafting the sync section";
         cockpit.Sessions[1].ProjectId = "depot";
@@ -3756,10 +3782,23 @@ internal static partial class Screenshotter
             Title = "Docs review", ActiveProfileLabel = "Reviewer", ProjectId = "depot", SessionStatus = SessionStatus.Idle,
         });
         cockpit.IsZoomed = true;
+        _SeedAgentsOverviewChildren(cockpit);
+        Cockpit.Plugins.Abstractions.Docking.DockPanelRegistration panel = panels.Panels.Single(panel => panel.Id == AgentsOverviewViewModel.DockPanelId);
+        Control overview = panels.ViewFor(panel);
+        if (overview.DataContext is AgentsOverviewViewModel agents)
+        {
+            foreach (var card in agents.Columns.SelectMany(column => column.Cards))
+            {
+                card.AreChildrenExpanded = expanded;
+            }
+        }
+        if (!ReferenceEquals(overview, panels.ViewFor(panel)))
+        {
+            throw new InvalidOperationException("The Agents panel must keep the same view when it floats.");
+        }
         if (floating)
         {
-            var panel = panels.Panels.Single(panel => panel.Id == AgentsOverviewViewModel.DockPanelId);
-            return new Docking.DockPanelWindow(panel, panels.ViewFor(panel), boundsStore: null);
+            return new Docking.DockPanelWindow(panel, overview, boundsStore: null) { Width = 1400, Height = 1000 };
         }
 
         return new MainWindow { DataContext = cockpit };

@@ -652,7 +652,7 @@
          reads it sets minHostVersion 0.152.0. Additive; still v3. -->
     <!-- 3.58.0 (AC-1547): PluginProjectInfo.SourceDirectory, the project's folder on the machine whose project it is.
          A plugin that reads it sets minHostVersion 0.153.0; an older host leaves it null. Additive; still v3. -->
-    <Version>3.58.0</Version>
+    <Version>3.60.0</Version>
     <AssemblyVersion>1.17.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

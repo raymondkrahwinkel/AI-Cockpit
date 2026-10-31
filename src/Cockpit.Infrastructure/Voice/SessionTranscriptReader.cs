@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
@@ -15,6 +16,35 @@ internal sealed class SessionTranscriptReader(
     IServiceProvider services,
     IPluginTtyProviderRegistry ttyProviderRegistry) : ISessionTranscriptReader, ISingletonService
 {
+    private readonly ConcurrentDictionary<string, IPluginTranscriptReader> _childReaders = new();
+
+    public async Task<IReadOnlyList<BackgroundTask>> ReadChildrenAsync(SessionProfile? profile, string? statusFile, CancellationToken cancellationToken = default)
+    {
+        var (reader, config) = _ResolveReader(profile, statusFile);
+        if (reader is null)
+        {
+            return [];
+        }
+        IReadOnlyList<PluginBackgroundTask> children = await reader.ReadChildrenAsync(config, statusFile, cancellationToken).ConfigureAwait(false);
+        return [.. children.Select(child => new BackgroundTask(child.TaskId, BackgroundTaskKind.SubAgent, child.Description)
+        {
+            AgentId = child.AgentId, RunId = child.RunId, SourceRevision = child.SourceRevision,
+            State = child.State, AgentType = child.AgentType, ParentTaskId = child.ParentTaskId,
+            ParentToolUseId = child.ParentToolUseId, LastTool = child.LastTool, Tokens = child.Tokens,
+            StartedAtUnixMilliseconds = child.StartedAtUnixMilliseconds, DurationMilliseconds = child.DurationMilliseconds,
+        })];
+    }
+
+    public async Task<ChildTranscriptPage> ReadChildTranscriptAsync(SessionProfile? profile, string? statusFile, string agentId, string? revision, string? cursor, CancellationToken cancellationToken = default)
+    {
+        var (reader, config) = _ResolveReader(profile, statusFile);
+        if (reader is null)
+        {
+            return ChildTranscriptPage.Unavailable("provider has no child reader");
+        }
+        PluginChildTranscriptPage page = await reader.ReadChildTranscriptAsync(config, statusFile, agentId, revision, cursor, cancellationToken).ConfigureAwait(false);
+        return new([.. page.Entries.Select(entry => new ChildTranscriptEntry(entry.Id, entry.Kind, entry.Text))], page.Cursor, page.Status, page.Reset);
+    }
     public IReadOnlySet<string> SnapshotTranscripts(SessionProfile? profile) =>
         _ResolveReader(profile) is var (reader, configJson) && reader is not null
             ? reader.SnapshotTranscripts(configJson)
@@ -91,7 +121,7 @@ internal sealed class SessionTranscriptReader(
     // The provider plugin's reader for this profile plus its config JSON, or null when the provider
     // registered none (a TUI that records nothing, or a local model with no TUI). Mapping mirrors
     // TtySessionProviderResolver: profile-less → bundled default, plugin profile → its own provider.
-    private (IPluginTranscriptReader? Reader, string ConfigJson) _ResolveReader(SessionProfile? profile)
+    private (IPluginTranscriptReader? Reader, string ConfigJson) _ResolveReader(SessionProfile? profile, string? statusFile = null)
     {
         var (providerId, configJson) = profile?.ProviderConfig switch
         {
@@ -105,7 +135,22 @@ internal sealed class SessionTranscriptReader(
             return (null, configJson);
         }
 
-        return (create(services), configJson);
+        if (statusFile is null)
+        {
+            return (create(services), configJson);
+        }
+        string key = providerId + ":" + statusFile;
+        IPluginTranscriptReader reader = _childReaders.GetOrAdd(key, _ => create(services));
+        while (_childReaders.Count > 128)
+        {
+            string? stale = _childReaders.Keys.FirstOrDefault(candidate => candidate != key);
+            if (stale is null)
+            {
+                break;
+            }
+            _childReaders.TryRemove(stale, out _);
+        }
+        return (reader, configJson);
     }
 
 #pragma warning disable CS1998 // async iterator with no awaits — an immediately-completing empty stream

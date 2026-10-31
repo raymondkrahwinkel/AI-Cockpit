@@ -3,5 +3,7 @@
   "logoAsset": "https://claude.ai/favicon.svg",
   "homepage": "https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/docs/plugins",
   "repository": "https://github.com/raymondkrahwinkel/AI-Cockpit",
-  "featured": false
+  "featured": false,
+  "runtimeIdentifiers": ["win-x64", "win-arm64", "linux-x64", "linux-arm64"],
+  "subprocess": "HookRelay/HookRelay"
 }

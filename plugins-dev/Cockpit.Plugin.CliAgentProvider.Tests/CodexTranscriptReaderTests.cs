@@ -92,6 +92,30 @@ public class CodexTranscriptReaderTests : IDisposable
         Assert.Equal(2, received.Count);
         Assert.Contains("\"token_count\"", received[0]);
         Assert.Contains("\"agent_message\"", received[1]);
+        File.WriteAllText(transcriptPath, """{"type":"session_meta","payload":{"id":"parent"}}""" + "\n");
+        string child = _CreateEmptyTranscriptFile();
+        const string message = """{"ordinal":2,"type":"response_item","payload":{"type":"message","id":"m1","role":"assistant","content":[{"type":"output_text","text":"owned child"}]}}""";
+        File.WriteAllText(child, """{"type":"session_meta","payload":{"id":"child","parent_thread_id":"parent"}}""" + "\n" + message[..40]);
+        string status = Path.Combine(_configDir, "status.json");
+        File.WriteAllText(status, JsonSerializer.Serialize(new { session_id = "parent", transcript_path = transcriptPath }));
+        File.WriteAllText(status + ".children.json", """{"session_id":"parent","entries":[{"agent_id":"child","agent_type":"default","revision":"r1","started_at_ms":1000}]}""");
+        IPluginTranscriptReader source = new CodexTranscriptReader();
+        PluginBackgroundTask reference = Assert.Single(await source.ReadChildrenAsync(ConfigJson, status));
+        Assert.Equal("running", reference.State);
+        PluginChildTranscriptPage partial = await source.ReadChildTranscriptAsync(ConfigJson, status, "child", reference.SourceRevision, null);
+        Assert.Empty(partial.Entries);
+        File.AppendAllText(child, message[40..] + "\n");
+        PluginChildTranscriptPage page = await source.ReadChildTranscriptAsync(ConfigJson, status, "child", reference.SourceRevision, partial.Cursor);
+        Assert.Equal("owned child", Assert.Single(page.Entries).Text);
+        Assert.StartsWith("Not available", (await source.ReadChildTranscriptAsync(ConfigJson, status, "child", "stale", null)).Status);
+        File.Delete(status + ".children.json");
+        File.WriteAllText(status, """{"session_id":"parent"}""");
+        File.AppendAllText(child, """{"type":"event_msg","payload":{"type":"task_complete"}}""" + "\n");
+        PluginBackgroundTask recovered = Assert.Single(await new CodexTranscriptReader().ReadChildrenAsync(ConfigJson, status));
+        Assert.Equal("completed", recovered.State);
+        Assert.Null(recovered.DurationMilliseconds);
+        File.WriteAllText(child, File.ReadAllText(child).Replace("\"parent_thread_id\":\"parent\"", "\"parent_thread_id\":\"foreign\""));
+        Assert.Empty(await source.ReadChildrenAsync(ConfigJson, status));
     }
 
     private string _CreateEmptyTranscriptFile()

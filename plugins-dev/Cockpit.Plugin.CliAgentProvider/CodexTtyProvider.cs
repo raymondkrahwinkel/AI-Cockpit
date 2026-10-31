@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -51,14 +52,37 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         // line. Claude's TTY provider does the equivalent via --mcp-config; without this the Codex TUI only ever
         // sees its own ~/.codex servers, never the cockpit's. Empty when the session resolved no servers.
         var mcpLaunch = CodexMcpConfig.Build(context.McpServers);
+        string statusFile = Path.Combine(Path.GetTempPath(), "cockpit-codex-" + Guid.NewGuid().ToString("N") + ".json");
+        if (context.Resume?.SessionId is { Length: > 0 } ownerId)
+        {
+            File.WriteAllText(statusFile, JsonSerializer.Serialize(new { session_id = ownerId, cwd = context.WorkingDirectory }));
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(statusFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
+        }
+        var environment = new Dictionary<string, string?>(BuildEnvironmentOverlay(config, mcpLaunch.EnvironmentVariables));
+        JsonElement hooks = JsonSerializer.SerializeToElement(TtyChildHooks.Settings(statusFile, "codex", environment));
+        var hookArguments = new List<string>(mcpLaunch.ConfigArgs);
+        foreach (var hook in hooks.EnumerateObject())
+        {
+            hookArguments.Add("-c");
+            hookArguments.Add("hooks." + hook.Name + "=" + _TomlGroups(hook.Value));
+        }
+        var files = new List<string> { statusFile };
+        TtyChildHooks.RegisterFiles(statusFile, files);
 
         return new PluginTtyLaunchSpec(
             executablePath,
-            BuildArguments(config, context.Options, context.Resume, mcpLaunch.ConfigArgs),
-            BuildEnvironmentOverlay(config, mcpLaunch.EnvironmentVariables),
+            BuildArguments(config, context.Options, context.Resume, hookArguments),
+            environment,
             context.WorkingDirectory,
-            SessionScopedFiles: []);
+            SessionScopedFiles: files) { StatusFile = statusFile };
     }
+
+    private static string _TomlGroups(JsonElement groups) => "[" + string.Join(",", groups.EnumerateArray().Select(group =>
+        "{hooks=[" + string.Join(",", group.GetProperty("hooks").EnumerateArray().Select(hook =>
+            "{type=\"command\",command=" + JsonSerializer.Serialize(hook.GetProperty("command").GetString()) + ",statusMessage=" + JsonSerializer.Serialize(hook.GetProperty("statusMessage").GetString()) + ",timeout=3}")) + "]}")) + "]";
 
     private static CliAgentConfig _DeserializeConfig(string configJson)
     {

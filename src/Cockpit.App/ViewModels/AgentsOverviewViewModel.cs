@@ -83,6 +83,7 @@ public sealed class AgentsOverviewViewModel
         {
             var card = _cards[source];
             source.PropertyChanged -= _OnCardChanged;
+            card.Dispose();
             foreach (var column in Columns)
             {
                 column.Cards.Remove(card);
@@ -166,12 +167,17 @@ public sealed class AgentsOverviewColumnViewModel(string title, string brushKey)
     public ObservableCollection<AgentOverviewCardViewModel> Cards { get; } = [];
 }
 
-public sealed class AgentOverviewCardViewModel : ObservableObject
+public sealed partial class AgentOverviewCardViewModel : ObservableObject, IDisposable
 {
     private readonly SessionPanelViewModel? _session;
     private readonly ServerSessionRowViewModel? _serverSession;
     private readonly CockpitViewModel _cockpit;
     private readonly ServerGroupViewModel? _serverGroup;
+    private readonly ObservableCollection<ChildAgentViewModel> _emptyChildren = [];
+    private SessionPanelViewModel? _childOwner;
+
+    [ObservableProperty]
+    private bool _areChildrenExpanded;
 
     internal AgentOverviewCardViewModel(INotifyPropertyChanged source, CockpitViewModel cockpit)
     {
@@ -196,9 +202,38 @@ public sealed class AgentOverviewCardViewModel : ObservableObject
                 WindowActivation.BringToFront(main);
             }
         });
+        OpenChildCommand = new AsyncRelayCommand<ChildAgentViewModel>(async child =>
+        {
+            SessionPanelViewModel? owner = _Owner;
+            if (child is null || owner is null || !ReferenceEquals(child.Owner, owner) || !owner.ChildAgents.Contains(child))
+            {
+                return;
+            }
+            string? run = child.Reference.RunId;
+            string? revision = child.Reference.SourceRevision;
+            await OpenCommand.ExecuteAsync(null);
+            if (ReferenceEquals(owner, _Owner) && owner.ChildAgents.Contains(child)
+                && run == child.Reference.RunId && revision == child.Reference.SourceRevision)
+            {
+                child.OpenCommand.Execute(null);
+            }
+        });
     }
 
     public IAsyncRelayCommand OpenCommand { get; }
+    public IAsyncRelayCommand<ChildAgentViewModel> OpenChildCommand { get; }
+    private SessionPanelViewModel? _Owner => _session ?? _serverSession?.Pane;
+    public ObservableCollection<ChildAgentViewModel> Children => _Owner?.ChildAgents ?? _emptyChildren;
+    public bool HasChildren => Children.Count > 0;
+    public string ChildSummary
+    {
+        get
+        {
+            int running = Children.Count(child => child.Reference.State == "running");
+            int unknown = Children.Count(child => child.Reference.State == "unknown");
+            return $"{running} running · {Children.Count - running - unknown} other · {unknown} unknown";
+        }
+    }
     public string Machine { get; }
     public string Title => _session?.Title ?? _serverSession!.Title;
     public string? Profile => _session is not null ? _session.ActiveProfileLabel : _serverSession!.Profile;
@@ -215,5 +250,35 @@ public sealed class AgentOverviewCardViewModel : ObservableObject
     public string StatusBrushKey => _session?.SessionStatusBrushKey ?? _serverSession!.StatusBrushKey;
     public string StatusLabel => _session?.SessionStatusLabel ?? _serverSession!.StatusLabel;
 
-    internal void Refresh() => OnPropertyChanged(string.Empty);
+    internal void Refresh()
+    {
+        if (!ReferenceEquals(_childOwner, _Owner))
+        {
+            Dispose();
+            _childOwner = _Owner;
+            if (_childOwner is not null)
+            {
+                _childOwner.PropertyChanged += _OnChildrenChanged;
+            }
+        }
+        OnPropertyChanged(string.Empty);
+    }
+
+    private void _OnChildrenChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(SessionPanelViewModel.HasChildAgents) or null or "")
+        {
+            OnPropertyChanged(nameof(HasChildren));
+            OnPropertyChanged(nameof(ChildSummary));
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_childOwner is not null)
+        {
+            _childOwner.PropertyChanged -= _OnChildrenChanged;
+            _childOwner = null;
+        }
+    }
 }

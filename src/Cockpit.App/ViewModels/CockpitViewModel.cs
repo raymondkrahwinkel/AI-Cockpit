@@ -8783,8 +8783,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     [RelayCommand]
+    private void OpenChildTranscript(ChildAgentViewModel child)
+    {
+        SelectSession(child.Owner);
+        child.Owner.OpenChild(child);
+    }
+
+    [RelayCommand]
     private void SelectSession(SessionPanelViewModel session)
     {
+        session.ReturnToParentCommand.Execute(null);
         // AC-1306: the sidebar tree lists sessions standing on a tab that is not showing, so picking one walks
         // there first — the strip must still never offer a session the grid then hides, which is what the removed
         // filter was for. Through `WorkspacesViewModel`, the one place the tab strip switches through too.
