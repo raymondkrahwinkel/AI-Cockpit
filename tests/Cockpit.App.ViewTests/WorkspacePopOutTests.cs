@@ -24,6 +24,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Avalonia.Input;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.ViewTests;
 
@@ -31,6 +32,34 @@ namespace Cockpit.App.ViewTests;
 [Collection("avalonia")]
 public sealed class WorkspacePopOutTests
 {
+    public static TheoryData<Func<WorkspacesViewModel, Task>, bool, bool, bool, bool> TabKinds => new()
+    {
+        { workspaces => workspaces.OpenWorkspaceAsync("test.file", new WorkspaceOpenOptions("draft", "draft.md", Preview: true)), true, true, true, true },
+        { _ => Task.CompletedTask, false, false, false, true },
+        { workspaces => workspaces.SelectWorkspaceCommand.ExecuteAsync(workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Projects).Id), false, false, false, false },
+        { workspaces => { var workspace = workspaces.Settings.Workspaces.Single(w => w.Type == WorkspaceType.Sessions); workspaces.Settings = new WorkspaceSettings { Workspaces = [workspace], ActiveWorkspaceId = workspace.Id }; return Task.CompletedTask; }, false, false, false, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(TabKinds))]
+    public Task TabMenuAvailability(Func<WorkspacesViewModel, Task> arrange, bool keep, bool pop, bool copy, bool close) => HeadlessAvalonia.RunAsync(async () =>
+    {
+        var hub = new PluginChannelHub(NullLogger<PluginChannelHub>.Instance);
+        var client = new FileSourceChannelClient(new Channel(hub));
+        var options = new FileWorkspaceOpenOptions(new FileRef("c1", "doc", "draft.md"), "draft", "draft.md", "Depot / Work", CreateNew: true);
+        var registry = new WorkspaceTypeRegistry(new ServiceCollection().BuildServiceProvider());
+        registry.Register(new WorkspaceTypeRegistration("test.file", "Markdown", context =>
+            new MarkdownFileWorkspace(context, options, client, () => Task.FromResult(true))) { CanFloat = true },
+            new NoStorage(), NullCockpitSessionObserver.Instance);
+        var workspaces = new WorkspacesViewModel(null, workspaceTypes: registry);
+        await arrange(workspaces);
+        var tab = workspaces.Tabs.Single(t => t.IsActive);
+        Assert.Equal(keep, tab.CanKeepOpen);
+        Assert.Equal(pop, tab.CanPopOut);
+        Assert.Equal(copy, tab.CanCopyPath);
+        Assert.Equal(close, tab.CanClose);
+    });
+
     private const string TypeId = "test.markdown";
 
     private readonly Dictionary<string, IWorkspaceContext> _contexts = new(StringComparer.Ordinal);

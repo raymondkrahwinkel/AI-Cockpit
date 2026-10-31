@@ -785,6 +785,13 @@ public partial class CockpitView : UserControl
     // bubbling press would select the workspace it's about to close.
     private void OnWorkspaceTabPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (sender is Border tabBorder && e.GetCurrentPoint(tabBorder).Properties.IsMiddleButtonPressed)
+        {
+            OnCloseWorkspaceRequested(sender, e);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
         {
             return;
@@ -792,15 +799,11 @@ public partial class CockpitView : UserControl
 
         if (sender is Border { DataContext: WorkspaceTabViewModel tab } border && DataContext is CockpitViewModel cockpit)
         {
-            cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
-
-            // Only the left button reorders — the same rule the session rows follow (AC-277). This strip has its own
-            // Rename in the tab context menu, so arming on a right-click left the tab following the pointer on the
-            // way to the rename box and silently reordered the workspaces. Selecting above already happened.
             if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
             {
                 return;
             }
+            cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
 
             // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did
             // what a click does, rather than the tab needing two gestures to both switch and move.
@@ -889,6 +892,30 @@ public partial class CockpitView : UserControl
         if (sender is Control { DataContext: WorkspaceTabViewModel { CanRename: true } tab })
         {
             tab.BeginRename();
+        }
+    }
+
+    private void OnKeepWorkspaceOpenRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        {
+            _ = cockpit.Workspaces.PinWorkspaceAsync(tab.Id);
+        }
+    }
+
+    private void OnPopOutWorkspaceRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        {
+            _ = cockpit.Workspaces.PopOutAsync(tab.Id);
+        }
+    }
+
+    private void OnCopyWorkspacePathRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel { FilePath: { } path } } && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            _ = clipboard.SetTextAsync(path);
         }
     }
 

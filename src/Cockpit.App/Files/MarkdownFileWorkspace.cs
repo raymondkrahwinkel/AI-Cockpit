@@ -26,6 +26,7 @@ namespace Cockpit.App.Files;
 // One document stays in this body while the workspace moves between a tab and a window.
 internal sealed partial class MarkdownFileWorkspace : UserControl
 {
+    internal string DisplayPath => _options.Location.Length == 0 ? _options.File.Path : $"{_options.Location} / {_options.File.Path}";
     private readonly IWorkspaceContext _context;
     private readonly FileWorkspaceOpenOptions _options;
     private readonly FileSourceChannelClient _client;
@@ -100,7 +101,7 @@ internal sealed partial class MarkdownFileWorkspace : UserControl
 
         var location = new TextBlock
         {
-            Text = options.Location.Length == 0 ? options.File.Path : $"{options.Location} / {options.File.Path}",
+            Text = DisplayPath,
             FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
         };
         location.Bind(TextBlock.ForegroundProperty, this.GetResourceObservable("CockpitTextSecondaryBrush"));
