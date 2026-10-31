@@ -45,7 +45,8 @@ public class AssistantProfileDialogTests
     public void Loading_OpensOnTheAssistantsOwnRecord()
     {
         var slot = new AssistantProfileSlot(_Record("Claude (assistant)", permissionMode: "bypassPermissions"));
-        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(slot));
+        var slotStore = _SlotStore(slot);
+        var viewModel = Dispatcher.UIThread.Invoke(() => _Dialog(slotStore: slotStore));
 
         Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
 
@@ -58,8 +59,14 @@ public class AssistantProfileDialogTests
             viewModel.Profile.RestrictMcpServers = true;
             viewModel.Profile.RestrictMcpServers = false;
             viewModel.SaveCommand.Execute(null);
-            viewModel.LoadAsync().GetAwaiter().GetResult();
         });
+
+        var saved = Assert.IsType<SessionProfile>(slotStore.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IAssistantProfileStore.RepointAsync))
+            .GetArguments()[0]);
+        Assert.Null(saved.EnabledMcpServerNames);
+        slotStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new AssistantProfileSlot(saved));
+        Dispatcher.UIThread.Invoke(() => viewModel.LoadAsync().GetAwaiter().GetResult());
 
         Assert.False(viewModel.Profile.RestrictMcpServers);
     }
