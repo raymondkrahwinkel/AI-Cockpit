@@ -109,7 +109,7 @@ public sealed class SessionStartComposer(
     public static void PutSystemPrompt(IDictionary<string, string> options, string systemPrompt, string? brainInstruction)
     {
         options[WellKnownPluginSessionOptions.AppendSystemPrompt] = string.Join("\n\n",
-            new[] { brainInstruction, systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
+            new[] { brainInstruction ?? systemPrompt }.Where(part => !string.IsNullOrWhiteSpace(part)).Select(part => part?.Trim()));
         options.Remove(WellKnownPluginSessionOptions.BrainInstruction);
         if (!string.IsNullOrWhiteSpace(brainInstruction))
         {
