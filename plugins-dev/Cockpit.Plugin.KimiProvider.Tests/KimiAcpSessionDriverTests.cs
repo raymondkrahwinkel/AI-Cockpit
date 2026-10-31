@@ -101,9 +101,8 @@ public class KimiAcpSessionDriverTests
         Assert.Equal("mcp-key", environmentVariables["COCKPIT_MCP_KEY"]);
     }
 
-    // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly
-    // once, ahead of the task. A resumed conversation (session/resume, never session/load) and a start without a
-    // brain send the task first: no extra turn. The /usage poll after a turn is no message of the operator's.
+    // Layer 2, provider protocol contract (AC-1992): the brain is Kimi's first visible turn, alone and exactly once,
+    // ahead of the task; a resume (never session/load) or a start without a brain sends the task first.
     // AC-2000: a Stop during the brain turn also ends the task queued behind it, before that task goes out.
     [Fact]
     public async Task BrainInstruction_IsTheFirstVisibleMessage_WithoutOtherHiddenInstructions()

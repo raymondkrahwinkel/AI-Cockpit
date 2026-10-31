@@ -85,8 +85,7 @@ public class OpencodeAcpSessionDriverTests
     }
 
     // Layer 2, provider protocol contract (AC-1992): the brain is opencode's first visible turn, alone and exactly
-    // once, ahead of the task. A resumed conversation (session/resume, never session/load) and a start without a
-    // brain send the task first: no extra turn.
+    // once, ahead of the task; a resume (never session/load) or a start without a brain sends the task first.
     // AC-2000: a Stop during the brain turn also ends the task queued behind it, before that task goes out.
     [Fact]
     public async Task BrainInstruction_IsTheFirstVisibleMessage_WithoutOtherHiddenInstructions()
