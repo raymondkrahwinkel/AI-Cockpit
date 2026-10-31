@@ -378,7 +378,7 @@ public class PluginBackendHost(
     public async Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync()
     {
         var projects = await services.GetRequiredService<IProjectStore>().LoadAsync().ConfigureAwait(false);
-        return [.. projects.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
+        return [.. projects.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name) { SourceDirectory = project.SourceDirectory })];
     }
 
     public Task<string?> GetSessionProjectIdAsync(string paneId, CancellationToken cancellationToken) =>

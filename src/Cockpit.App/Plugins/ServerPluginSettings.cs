@@ -23,6 +23,10 @@ internal sealed class ServerPluginSettings
     private readonly string _folderId;
     private readonly PluginStorage _storage;
     private readonly ServerPluginUiHost _host;
+    private readonly ICockpitUiHost _local;
+
+    // AC-1547: a plugin's own screen has no Save of the host's, so each write it makes goes to the server at once.
+    private readonly bool _writeThrough;
 
     // `_sync` keeps the view's writes, a reread's takeover and Save's diff apart: a reread runs on a pool thread while
     // the view commits on the UI thread. Rereads run one at a time, so an older answer never lands after a newer one.
@@ -41,8 +45,9 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         IReadOnlyDictionary<string, string?> managedClis,
         string serverName,
-        bool persistAfterDialog = false)
+        bool writeThrough = false)
     {
+        _writeThrough = writeThrough;
         _relay = relay;
         _folderId = folderId;
         _seed = new Dictionary<string, string>(seed, StringComparer.Ordinal);
@@ -62,8 +67,8 @@ internal sealed class ServerPluginSettings
             (name, cancellationToken) => relay.SignOutMcpServerAsync(folderId, name, cancellationToken),
             profiles,
             projects,
-            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName,
-            persistAfterDialog ? PersistAsync : null);
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName);
+        _local = local;
     }
 
     public Func<Control> CreateView => _host.CreateSettingsView ?? throw new InvalidOperationException("The plugin registered no settings view.");
@@ -88,7 +93,7 @@ internal sealed class ServerPluginSettings
         return settings._host.HasSettings ? settings : null;
     }
 
-    // AC-1547: the host the plugin's own screen gets for a server, writing what it stored there when its dialog closes.
+    // AC-1547: the host the plugin's own screen gets for a server, writing what it stores straight to the server.
     public static async Task<ICockpitUiHost> OpenScreenHostAsync(
         ICockpitUiHost local,
         IPluginChannelRelay relay,
@@ -97,7 +102,7 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         string serverName)
     {
-        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName, persistAfterDialog: true);
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName, writeThrough: true);
         return settings._host;
     }
 
@@ -170,6 +175,14 @@ internal sealed class ServerPluginSettings
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return $"The server did not save it: {exception.Message}";
+        }
+    }
+
+    private async Task _WriteThroughAsync()
+    {
+        if (await PersistAsync() is { } failure)
+        {
+            _local.ShowToast(failure, PluginToastSeverity.Warning);
         }
     }
 
@@ -251,6 +264,11 @@ internal sealed class ServerPluginSettings
             {
                 owner._written.Add(key);
                 write();
+            }
+
+            if (owner._writeThrough)
+            {
+                _ = owner._WriteThroughAsync();
             }
         }
     }

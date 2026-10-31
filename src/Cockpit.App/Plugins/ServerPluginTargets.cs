@@ -72,7 +72,7 @@ internal static class ServerPluginTargets
     public static async Task<IReadOnlyList<PluginProjectInfo>> ProjectsAsync(IServerProjects projects)
     {
         await projects.LoadAsync();
-        return [.. projects.Current.Settings.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name))];
+        return [.. projects.Current.Settings.Projects.Select(project => new PluginProjectInfo(project.Id, project.Name) { SourceDirectory = project.SourceDirectory })];
     }
 
     private static IReadOnlyList<string> _Known(RemoteProfile profile, string option) =>
