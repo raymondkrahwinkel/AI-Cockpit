@@ -348,6 +348,13 @@ public interface ICockpitUiHost
     Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => Task.FromResult<IReadOnlyList<PluginProjectInfo>>([]);
 
     /// <summary>
+    /// The servers this desktop manages (AC-1547), each with a host for this plugin there: its channel, storage, profiles
+    /// and projects are the server's, so the plugin's own screen manages the server. Host is null with the reason when the
+    /// plugin is missing there or runs another version. Empty in a view already opened for a server. Default empty.
+    /// </summary>
+    Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() => Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
+
+    /// <summary>
     /// Sends <paramref name="text"/> to the session <paramref name="paneId"/>, as if typed and submitted.
     /// </summary>
     Task SendToSessionAsync(string paneId, string text);

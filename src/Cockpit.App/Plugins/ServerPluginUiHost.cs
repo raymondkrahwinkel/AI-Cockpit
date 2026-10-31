@@ -28,7 +28,8 @@ internal sealed class ServerPluginUiHost(
     Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
     Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
     ServerManagedClis managedClis,
-    string sourceKey = "server") : ICockpitUiHost
+    string sourceKey = "server",
+    Func<Task<string?>>? persistAfterDialog = null) : ICockpitUiHost
 {
     private readonly List<Func<Task>> _saved = [];
     private readonly Dictionary<string, Func<string?, IPluginProviderConfigView>> _providerViews = new(StringComparer.Ordinal);
@@ -136,11 +137,26 @@ internal sealed class ServerPluginUiHost(
 
     public Control? CreateEmbeddedSessionView(string paneId) => null;
 
-    public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-        local.ShowDialogAsync(title, createContent, width, height);
+    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560)
+    {
+        await local.ShowDialogAsync(title, createContent, width, height);
+        await _PersistAsync();
+    }
 
-    public Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560) =>
-        local.ShowDialogAsync(title, createContent, $"server:{sourceKey}:{singleInstanceKey}", width, height);
+    public async Task ShowDialogAsync(string title, Func<Control> createContent, string singleInstanceKey, double width = 720, double height = 560)
+    {
+        await local.ShowDialogAsync(title, createContent, $"server:{sourceKey}:{singleInstanceKey}", width, height);
+        await _PersistAsync();
+    }
+
+    // AC-1547: a plugin's own screen opened for a server has no Save of the host's; what it wrote goes to the server on close.
+    private async Task _PersistAsync()
+    {
+        if (persistAfterDialog is not null && await persistAfterDialog() is { } failure)
+        {
+            local.ShowToast(failure, PluginToastSeverity.Warning);
+        }
+    }
 
     public Task ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, Action<string>? onStarted = null, Action? onCancelled = null) => Task.CompletedTask;
 
@@ -202,6 +218,9 @@ internal sealed class ServerPluginUiHost(
     public Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => profiles();
 
     public Task<IReadOnlyList<PluginProjectInfo>> GetProjectsAsync() => projects();
+
+    // Already the server's: a screen opened here manages only this server.
+    public Task<IReadOnlyList<PluginServerTarget>> GetServerTargetsAsync() => Task.FromResult<IReadOnlyList<PluginServerTarget>>([]);
 
     public Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 

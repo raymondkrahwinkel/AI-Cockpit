@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Events;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Mcp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -73,11 +74,12 @@ internal static class EventsEndpoint
                     // AC-263: the assistant is the holder's only, as its routes are; any other pane only within the key's scope,
                     // as the pane had it when the event was written: a closed pane's last rows still reach its readers.
                     // AC-1472: a clone's outcome names its project and folder, which are an admin's to read.
+                    // AC-1547: a plugin's events go to whoever may call its channel, an admin.
                     if ((evt.PaneId is { } paneId
                             && (string.Equals(sessions.Assistant?.PaneId, paneId, StringComparison.Ordinal)
                                 ? !caller.HoldsAssistant
                                 : !caller.AllowsSession(evt.ProfileLabel ?? string.Empty, evt.ProjectId, pairing)))
-                        || (evt.Kind == ProjectsEndpoints.EventKind && caller.Capability != ConnectKeyCapability.Admin))
+                        || ((evt.Kind is ProjectsEndpoints.EventKind or PluginEventsBridge.EventKind) && caller.Capability != ConnectKeyCapability.Admin))
                     {
                         next = events.MoveNextAsync().AsTask();
                         continue;

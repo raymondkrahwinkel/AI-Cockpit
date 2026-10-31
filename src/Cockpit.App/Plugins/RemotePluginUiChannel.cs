@@ -11,13 +11,7 @@ internal sealed class RemotePluginUiChannel(IPluginChannelRelay relay, string fo
     public Task<JsonElement> InvokeAsync(string action, JsonElement payload, CancellationToken cancellationToken = default) =>
         relay.InvokeChannelAsync(folderId, action, payload, cancellationToken);
 
-    // ponytail: invokes only; a server view that needs the backend's events gets them over the event stream then.
-    public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) => new Nothing();
-
-    private sealed class Nothing : IDisposable
-    {
-        public void Dispose()
-        {
-        }
-    }
+    // AC-1547: the plugin's events on the server, over the server's event stream; an admin key's only, as the channel is.
+    public IDisposable Subscribe(string name, Action<PluginChannelEvent> handler) =>
+        relay.SubscribeChannel(folderId, name, (seq, payload) => handler(new PluginChannelEvent(name, seq, payload)));
 }

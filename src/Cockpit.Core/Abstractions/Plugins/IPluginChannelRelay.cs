@@ -4,11 +4,16 @@ namespace Cockpit.Core.Abstractions.Plugins;
 
 /// <summary>
 /// Reaches a plugin's backend part on a server through its own channel (AC-1511), for the view that plugin offers an
-/// admin of that server. Invokes only; the server's events do not travel this way.
+/// admin of that server, and its events (AC-1547) over the server's event stream.
 /// </summary>
 public interface IPluginChannelRelay
 {
     Task<JsonElement> InvokeChannelAsync(string folderId, string action, JsonElement payload, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hands the plugin's events of that name on the server to the handler, with their stream seq, while the stream is up (AC-1547).
+    /// </summary>
+    IDisposable SubscribeChannel(string folderId, string name, Action<long, JsonElement> handler);
 
     /// <summary>
     /// The plugin's storage on the server as JSON text per key (AC-1571), every set credential reading as "(set on the server)".

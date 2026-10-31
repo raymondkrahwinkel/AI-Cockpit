@@ -40,7 +40,8 @@ internal sealed class ServerPluginSettings
         Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
         Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
         IReadOnlyDictionary<string, string?> managedClis,
-        string serverName)
+        string serverName,
+        bool persistAfterDialog = false)
     {
         _relay = relay;
         _folderId = folderId;
@@ -61,7 +62,8 @@ internal sealed class ServerPluginSettings
             (name, cancellationToken) => relay.SignOutMcpServerAsync(folderId, name, cancellationToken),
             profiles,
             projects,
-            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName);
+            new ServerManagedClis(relay, folderId, managedClis, message => local.ShowToast(message, PluginToastSeverity.Warning)), serverName,
+            persistAfterDialog ? PersistAsync : null);
     }
 
     public Func<Control> CreateView => _host.CreateSettingsView ?? throw new InvalidOperationException("The plugin registered no settings view.");
@@ -84,6 +86,19 @@ internal sealed class ServerPluginSettings
 
         ui.InitializeUi(settings._host);
         return settings._host.HasSettings ? settings : null;
+    }
+
+    // AC-1547: the host the plugin's own screen gets for a server, writing what it stored there when its dialog closes.
+    public static async Task<ICockpitUiHost> OpenScreenHostAsync(
+        ICockpitUiHost local,
+        IPluginChannelRelay relay,
+        string folderId,
+        Func<Task<IReadOnlyList<PluginProfileInfo>>> profiles,
+        Func<Task<IReadOnlyList<PluginProjectInfo>>> projects,
+        string serverName)
+    {
+        var settings = new ServerPluginSettings(relay, folderId, await relay.GetStorageAsync(folderId), local, profiles, projects, await ServerManagedClis.ReadAsync(relay, folderId), serverName, persistAfterDialog: true);
+        return settings._host;
     }
 
     // AC-1585: the profile config views a fresh copy of the UI part registers, each reaching the plugin on the server.
