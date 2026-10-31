@@ -1773,7 +1773,7 @@
 
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="3. CONNECT TO A SERVER"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="2. CONNECT TO A SERVER"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Connect to a server" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"
@@ -1832,8 +1832,6 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="4. CONNECTED SERVERS"
-                                    IsVisible="{Binding Security.PairedNodes.Count}"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
                                     IsVisible="{Binding Security.PairedNodes.Count}">
                             <TextBlock Text="Connected servers" FontWeight="SemiBold"/>
@@ -1863,7 +1861,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Classes="optionsSectionHeader" Text="5. IF SOMETHING GOES WRONG"/>
+                        <TextBlock Classes="optionsSectionHeader" Text="3. IF SOMETHING GOES WRONG"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,0,0">
                             <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
                             <materialIcons:MaterialIcon Classes="hint"

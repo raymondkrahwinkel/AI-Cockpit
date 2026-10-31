@@ -84,6 +84,8 @@ internal static class ServerGroupScene
     // One stand-in server, for a scene that shows what follows a group rather than the group itself.
     public static IRemoteServers StandIn(string name, RemoteServerState state) => new SceneServers(new SceneServer(name, state, []));
 
+    public static IRemoteServers StandIn() => new SceneServers(_Server(admin: true));
+
     private static MainWindow _Render(int width, int height, bool admin, bool asking = false, bool health = false)
     {
         var cockpit = new CockpitViewModel();

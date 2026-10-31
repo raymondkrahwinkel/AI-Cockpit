@@ -2054,7 +2054,8 @@ internal static partial class Screenshotter
 
     private static OptionsDialog _OptionsNodesConnect()
     {
-        var security = _ConnectedSecurity();
+        var security = _ConnectAttempt(null, ServerGroupScene.StandIn());
+        security.CancelConnectCommand.Execute(null);
         security.NodeEndpointEnabled = true;
         security.NodeEndpointAddressText = "cockpit-agents: https://huis-cockpit.tailnet.ts.net:20383/mcp";
         security.NodeEndpointSharedSecret = "scene-shared-key";
@@ -2068,9 +2069,11 @@ internal static partial class Screenshotter
 
     // One connect against a scene client, run to its outcome: `failure` null connects, anything else is thrown
     // by the probe exactly as the real client would.
-    private static SecurityOptionsViewModel _ConnectAttempt(Exception? failure)
+    private static SecurityOptionsViewModel _ConnectAttempt(Exception? failure, Cockpit.Core.Abstractions.Remote.IRemoteServers? servers = null)
     {
-        var security = new SecurityOptionsViewModel(new UnprotectedSecrets(), nodeSessions: new _SceneNodeSessions { ProbeFailure = failure })
+        var security = new SecurityOptionsViewModel(new UnprotectedSecrets(),
+            nodeSessions: new _SceneNodeSessions { ProbeFailure = failure, Nodes = servers?.Servers.Select(server => server.Name).ToArray() ?? [] },
+            remoteServers: servers)
         {
             ConnectNodeName = "huis-cockpit",
             ConnectHost = "huis-cockpit.tailnet.ts.net",
@@ -2126,6 +2129,8 @@ internal static partial class Screenshotter
         public Func<string, string, string?, NodeStartResult>? StartSession { get; init; }
         public Exception? ProbeFailure { get; init; }
 
+        public IReadOnlyList<string> Nodes { get; init; } = [];
+
         public string? ReadError { get; init; }
 
         private static NodeWhoAmI WhoAmI => new("laptop-raymond", "admin", true, DateTimeOffset.Now.AddDays(26), "0.61.0");
@@ -2139,7 +2144,7 @@ internal static partial class Screenshotter
             Task.FromResult<NodeWhoAmI?>(WhoAmI);
 
         public Task<IReadOnlyList<string>> ListNodesAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<string>>([]);
+            Task.FromResult(Nodes);
 
         public Task<NodeSessionsSnapshot> ReadAsync(string nodeName, CancellationToken cancellationToken = default) =>
             Task.FromResult(ReadSnapshot?.Invoke(nodeName) ?? new NodeSessionsSnapshot(nodeName, [], [], [], ReadError));
