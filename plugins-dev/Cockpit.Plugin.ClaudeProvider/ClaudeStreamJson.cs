@@ -10,6 +10,10 @@ internal sealed class ClaudeStreamJson
 {
     private readonly Dictionary<string, PluginBackgroundTask> _tasks = new();
     private readonly Dictionary<string, string?> _finished = new();
+    private readonly Dictionary<string, PluginBackgroundTask> _history = new();
+    private readonly Dictionary<string, long> _historyOrder = new();
+    private long _historySequence;
+    public IReadOnlyList<PluginBackgroundTask> Children { get; private set; } = [];
 
     public static IEnumerable<PluginSessionEvent> ParseLine(string line) => new ClaudeStreamJson().Parse(line);
 
@@ -125,7 +129,36 @@ internal sealed class ClaudeStreamJson
         return _Snapshot(sessionId);
     }
 
-    private PluginBackgroundTasksChanged _Snapshot(string? sessionId) => new() { SessionId = sessionId, Tasks = [.. _tasks.Values] };
+    private PluginBackgroundTasksChanged _Snapshot(string? sessionId)
+    {
+        foreach (var child in _history.Values.ToArray())
+        {
+            if (!_tasks.ContainsKey(child.TaskId) && child.State == "running")
+            {
+                _history[child.TaskId] = child with { State = "unknown" };
+            }
+        }
+        foreach (var child in _tasks.Values.Where(task => task.Kind == PluginBackgroundTaskKind.SubAgent))
+        {
+            if (!_history.TryGetValue(child.TaskId, out var known) || known.RunId != child.RunId || known.State != "running")
+            {
+                _historyOrder[child.TaskId] = ++_historySequence;
+            }
+            _history[child.TaskId] = child;
+        }
+        while (_history.Count > 128)
+        {
+            var oldest = _history.Values.Where(child => !_tasks.ContainsKey(child.TaskId)).MinBy(child => _historyOrder.GetValueOrDefault(child.TaskId));
+            if (oldest is null)
+            {
+                break;
+            }
+            _history.Remove(oldest.TaskId);
+            _historyOrder.Remove(oldest.TaskId);
+        }
+        Children = [.. _history.Values];
+        return new() { SessionId = sessionId, Tasks = [.. _tasks.Values], Children = Children };
+    }
 
     private static string? _NullableString(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
@@ -155,6 +188,10 @@ internal sealed class ClaudeStreamJson
         var status = _NullableString(patch, "status");
         if (status is "completed" or "failed" or "stopped" or "cancelled")
         {
+            if (previous is { Kind: PluginBackgroundTaskKind.SubAgent })
+            {
+                _history[id] = previous with { State = status };
+            }
             _finished[id] = run ?? previous?.RunId;
             _tasks.Remove(id);
             yield return _Snapshot(sessionId);
@@ -221,6 +258,10 @@ internal sealed class ClaudeStreamJson
         };
         if (status != PluginBackgroundTaskStatus.Unknown && _tasks.TryGetValue(id, out var task) && (run is null || task.RunId is null || task.RunId == run))
         {
+            if (task.Kind == PluginBackgroundTaskKind.SubAgent)
+            {
+                _history[id] = task with { State = status == PluginBackgroundTaskStatus.Completed ? "completed" : "failed" };
+            }
             _finished[id] = run ?? task.RunId;
             _tasks.Remove(id);
             yield return _Snapshot(sessionId);

@@ -13,4 +13,6 @@ public sealed record PluginBackgroundTasksChanged : PluginSessionEvent
     /// Everything still outstanding right now. Empty when the last of it finished.
     /// </summary>
     public required IReadOnlyList<PluginBackgroundTask> Tasks { get; init; }
+
+    public IReadOnlyList<PluginBackgroundTask> Children { get; init; } = [];
 }

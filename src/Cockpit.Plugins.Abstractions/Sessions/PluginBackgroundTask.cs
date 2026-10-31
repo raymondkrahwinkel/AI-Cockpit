@@ -20,6 +20,8 @@ public sealed record PluginBackgroundTask(string TaskId, PluginBackgroundTaskKin
     /// <summary>The current invocation of the agent.</summary>
     public string? RunId { get; init; }
 
+    public string State { get; init; } = "running";
+
     /// <summary>The owning provider task or thread.</summary>
     public string? ParentTaskId { get; init; }
 

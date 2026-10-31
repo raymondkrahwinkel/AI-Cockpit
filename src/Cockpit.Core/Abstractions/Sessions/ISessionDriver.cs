@@ -11,6 +11,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionDriver : IAsyncDisposable
 {
+    Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ChildTranscriptPage.Unavailable("provider does not support child history"));
+
     /// <summary>
     /// What this driver supports, so the UI renders/hides controls per provider.
     /// </summary>

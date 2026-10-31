@@ -9,6 +9,7 @@ internal sealed class SessionLiveStateFold
 {
     private IReadOnlyList<SessionActiveToolCall> _activeToolCalls = [];
     private IReadOnlyList<BackgroundTask> _backgroundTasks = [];
+    private IReadOnlyList<BackgroundTask> _children = [];
     private SessionUsageTotals _usage = SessionUsageTotals.None;
     private SessionConnection? _connection;
     private string? _cliSessionId;
@@ -68,6 +69,7 @@ internal sealed class SessionLiveStateFold
             // The complete set every time, so a dropped event costs one stale reading, not a desynchronised ledger.
             case BackgroundTasksChanged backgroundTasks:
                 _backgroundTasks = backgroundTasks.Tasks;
+                _children = backgroundTasks.Children;
                 break;
 
             case BackgroundTaskNotification notification:
@@ -125,7 +127,7 @@ internal sealed class SessionLiveStateFold
         _connection,
         _cliSessionId,
         _model,
-        _permissionMode);
+        _permissionMode) { Children = _children };
 
     public void SetModel(string? model) => _model = model;
 
@@ -136,6 +138,7 @@ internal sealed class SessionLiveStateFold
     // A conversation that starts over in the same pane (AC-564): the turn's state and the numbers go with it.
     public void Reset()
     {
+        _children = [];
         _ClearActiveToolCalls();
         _backgroundTasks = [];
         _needsAttention = false;

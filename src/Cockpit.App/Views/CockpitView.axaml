@@ -251,6 +251,20 @@
                     </Grid>
         
                     <!-- Inline close confirm for a busy session (L11 pattern): Close / Keep. -->
+                    <ItemsControl ItemsSource="{Binding ChildAgents}" Margin="12,0,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ChildAgentViewModel">
+                                <Button Classes="Subtle Compact" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                        Command="{Binding $parent[UserControl].((vm:CockpitViewModel)DataContext).OpenChildTranscriptCommand}"
+                                        CommandParameter="{Binding}">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Detail}" FontSize="10" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConfirmingClose}">
                         <TextBlock Text="Close?" FontSize="11" VerticalAlignment="Center"
                                    Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>

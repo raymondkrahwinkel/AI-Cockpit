@@ -465,6 +465,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         inner.InterruptAsync(cancellationToken);
 
+    public async Task<ChildTranscriptPage> ReadChildTranscriptAsync(string agentId, string? runId, string? cursor, CancellationToken cancellationToken = default)
+    {
+        var page = await inner.ReadChildTranscriptAsync(agentId, runId, cursor, cancellationToken).ConfigureAwait(false);
+        return new ChildTranscriptPage([.. page.Entries.Select(entry => new ChildTranscriptEntry(entry.Id, entry.Kind, entry.Text))], page.Cursor, page.Status, page.Reset);
+    }
+
     public Task CompactContextAsync(CancellationToken cancellationToken = default) =>
         inner.CompactContextAsync(cancellationToken);
 
@@ -806,6 +812,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         },
         PluginBackgroundTasksChanged backgroundTasks => new BackgroundTasksChanged
         {
+            Children = [.. backgroundTasks.Children.Select(task => new BackgroundTask(task.TaskId, BackgroundTaskKind.SubAgent, task.Description)
+            {
+                AgentId = task.AgentId, RunId = task.RunId, State = task.State,
+                ParentTaskId = task.ParentTaskId, ParentToolUseId = task.ParentToolUseId,
+                LastTool = task.LastTool, Tokens = task.Tokens,
+            })],
             SessionId = backgroundTasks.SessionId,
             Tasks = [.. backgroundTasks.Tasks.Select(task => new BackgroundTask(
                 task.TaskId,

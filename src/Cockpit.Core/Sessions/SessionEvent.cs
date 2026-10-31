@@ -167,6 +167,7 @@ public enum BackgroundTaskKind
 // One piece of work that outlived its turn — see `BackgroundTasksChanged`.
 public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description)
 {
+    public string State { get; init; } = "running";
     public string? AgentId { get; init; }
     public string? RunId { get; init; }
     public string? ParentTaskId { get; init; }
@@ -180,6 +181,7 @@ public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, stri
 // strand the session on "working" the first time an end went missing.
 public sealed record BackgroundTasksChanged : SessionEvent
 {
+    public IReadOnlyList<BackgroundTask> Children { get; init; } = [];
     // Everything still outstanding. Empty when the last of it finished.
     public required IReadOnlyList<BackgroundTask> Tasks { get; init; }
 }

@@ -90,16 +90,9 @@ public class ClaudeStreamJsonTests
         var initialized = Assert.IsType<PluginSessionInitialized>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
 
         Assert.Equal("claude-sonnet-4-5-20250929", initialized.Model);
-    }
-
-    [Fact]
-    public void InitEvent_WithNoModel_LeavesItNull()
-    {
-        const string line = """{"type":"system","subtype":"init","session_id":"abc","cwd":"/work","tools":[]}""";
-
-        var initialized = Assert.IsType<PluginSessionInitialized>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
-
-        Assert.Null(initialized.Model);
+        var withoutModel = Assert.IsType<PluginSessionInitialized>(Assert.Single(ClaudeStreamJson.ParseLine(
+            """{"type":"system","subtype":"init","session_id":"abc","cwd":"/work","tools":[]}""")));
+        Assert.Null(withoutModel.Model);
     }
 
     // AC-146: a sub-agent's own wire events carry parent_tool_use_id alongside session_id, naming the Task
@@ -238,6 +231,8 @@ public class ClaudeStreamJsonTests
         Assert.Equal("Bash", other.Tasks[0].LastTool);
         var ended = _Tasks(mapper, """{"type":"system","subtype":"task_updated","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","patch":{"status":"completed","end_time":1793392016590}}""");
         Assert.Equal("other", Assert.Single(ended.Tasks).AgentId);
+        Assert.Equal("completed", Assert.Single(ended.Children, child => child.AgentId == first.AgentId).State);
+        Assert.Equal(2, ended.Children.Count);
         Assert.Empty(mapper.Parse("""{"type":"system","subtype":"task_updated","task_id":"a6f9e61056d8b3a4b","run_id":"0mvvfau5u-59e932a3","patch":{"status":"running"}}"""));
         var resumed = _Tasks(mapper, """{"type":"system","subtype":"task_started","task_id":"new-tool-task","agent_id":"a6f9e61056d8b3a4b","run_id":"resume","tool_use_id":"new-tool"}""");
         var sameAgent = Assert.Single(resumed.Tasks, task => task.AgentId == first.AgentId);
