@@ -283,7 +283,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
             }
 
             // A randomised signature (RSA-PSS) cannot be turned back into the same key at the next unlock.
-            if (first.Length == 0 && !CryptographicOperations.FixedTimeEquals(first, second))
+            if (!CryptographicOperations.FixedTimeEquals(first, second))
             {
                 await signer.DeleteAsync(name, cancellationToken).ConfigureAwait(false);
                 throw new SecretProtectionException("Windows Hello cannot hold a key on this version of Windows.");
