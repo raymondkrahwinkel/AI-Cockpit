@@ -449,7 +449,7 @@ The UI host's `GetServerTargetsAsync()` (AC-1547, host 0.153.0, SDK UI 3.23.0) l
 server: one `PluginServerTarget(Name, Host, Unavailable)` per server this desktop manages. `Host` is an `ICockpitUiHost`
 whose channel, storage, profiles and projects are that server's (a storage write goes to the server at once); it is null,
 with the reason in `Unavailable`, when the server is not connected, the key is not an admin key, or the plugin is missing
-there or runs another version. Bind the same views to that host, as Schedules' server switch does. A host already opened
+there or runs another version; for the last two, `Resolve` (labelled `ResolveLabel`) opens that server's Plugins page. Bind the same views to that host, as Schedules' server switch does. A host already opened
 for a server returns an empty list.
 
 The UI host's `AddFirstStartRoute(FirstStartRoute route)` (AC-1504, host 0.94.0, SDK UI 3.4.0, namespace

@@ -13,13 +13,13 @@ namespace Cockpit.App.Plugins;
 // plugin must be on the server in the same version: another version speaks another channel, and that is said, not guessed.
 internal static class ServerPluginTargets
 {
-    public static async Task<IReadOnlyList<PluginServerTarget>> ForAsync(IRemoteServers servers, ICockpitUiHost local, string pluginId, string pluginName, string localVersion)
+    public static async Task<IReadOnlyList<PluginServerTarget>> ForAsync(IRemoteServers servers, ICockpitUiHost local, string pluginId, string pluginName, string localVersion, Func<string, Task> openPlugins)
     {
         // All at once, so one slow server holds the screen no longer than its own answer.
-        return await Task.WhenAll(servers.Servers.Select(server => _TargetAsync(server, local, pluginId, pluginName, localVersion)));
+        return await Task.WhenAll(servers.Servers.Select(server => _TargetAsync(server, local, pluginId, pluginName, localVersion, openPlugins)));
     }
 
-    private static async Task<PluginServerTarget> _TargetAsync(IRemoteServer server, ICockpitUiHost local, string pluginId, string pluginName, string localVersion)
+    private static async Task<PluginServerTarget> _TargetAsync(IRemoteServer server, ICockpitUiHost local, string pluginId, string pluginName, string localVersion, Func<string, Task> openPlugins)
     {
         if (!server.State.IsConnected)
         {
@@ -37,12 +37,12 @@ internal static class ServerPluginTargets
             var plugin = installed.Select(entry => entry.Discovered).FirstOrDefault(discovered => string.Equals(discovered.Manifest.Id, pluginId, StringComparison.Ordinal));
             if (plugin is null)
             {
-                return new PluginServerTarget(server.Name, null, $"{pluginName} is not installed on {server.Name}.");
+                return new PluginServerTarget(server.Name, null, $"{pluginName} is not installed on {server.Name}.", () => openPlugins(server.Name), "Install on server");
             }
 
             if (!string.Equals(plugin.Manifest.Version, localVersion, StringComparison.Ordinal))
             {
-                return new PluginServerTarget(server.Name, null, $"{server.Name} has {pluginName} {plugin.Manifest.Version}, this computer {localVersion}.");
+                return new PluginServerTarget(server.Name, null, $"{server.Name} has {pluginName} {plugin.Manifest.Version}, this computer {localVersion}.", () => openPlugins(server.Name), "Update on server");
             }
 
             var host = await ServerPluginSettings.OpenScreenHostAsync(local, relay, plugin.FolderId, () => ProfilesAsync(server.Profiles), () => ProjectsAsync(server.Projects), server.Name);

@@ -387,7 +387,14 @@ public partial class CockpitViewModel
     // AC-1446: the Options dialog on the server, for an admin key. The server's profiles and projects, read on the same
     // key, are what the scope editor offers; without them it still offers "all".
     [RelayCommand]
-    private async Task OpenServerAdminAsync(ServerGroupViewModel group)
+    private Task OpenServerAdminAsync(ServerGroupViewModel group) => _OpenServerAdminAsync(group, null);
+
+    public Task OpenServerPluginsAsync(string server) =>
+        ServerGroups.FirstOrDefault(group => string.Equals(group.Name, server, StringComparison.Ordinal)) is { } group
+            ? _OpenServerAdminAsync(group, "server-plugins")
+            : Task.CompletedTask;
+
+    private async Task _OpenServerAdminAsync(ServerGroupViewModel group, string? category)
     {
         var show = _showServerAdmin ?? (_dialogService is { } dialogs ? dialogs.ShowServerAdminDialogAsync : null);
         if (show is null || group.State.Key is not { } key)
@@ -416,6 +423,7 @@ public partial class CockpitViewModel
         await Plugins.LoadAsync();
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
+            InitialCategory = category,
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),

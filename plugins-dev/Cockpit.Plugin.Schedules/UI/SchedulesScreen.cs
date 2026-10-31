@@ -168,12 +168,21 @@ internal sealed class SchedulesScreen : UserControl
             _banner.Content = null;
             _status.IsVisible = false;
             _RenderTabs();
-            _page.Content = new StackPanel
+            var page = new StackPanel
             {
                 Spacing = 6,
                 Margin = new Thickness(0, 24, 0, 0),
                 Children = { Ui.Title($"Schedules not available on {target.Name}"), Ui.Hint(failure) },
             };
+            if (target.Resolve is { } resolve)
+            {
+                var action = Ui.AsyncButton(target.ResolveLabel ?? "Fix on server", resolve, exception => _source.Host.ShowToast($"Schedules: {exception.Message}", Cockpit.Plugins.Abstractions.Notifications.PluginToastSeverity.Error), "Accent");
+                action.HorizontalAlignment = HorizontalAlignment.Left;
+                action.Margin = new Thickness(0, 6, 0, 0);
+                page.Children.Add(action);
+            }
+
+            _page.Content = page;
             return;
         }
 

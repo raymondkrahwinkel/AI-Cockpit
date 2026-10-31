@@ -18,7 +18,7 @@ internal static class SchedulesScenes
     public static IReadOnlyDictionary<string, Func<Control>> Views { get; } = new Dictionary<string, Func<Control>>
     {
         ["schedules-server"] = () => _Screen(new PluginServerTarget("homeserver", SceneHost.Create(_Server(), ["ai-hub"], ["/srv/repos/ai-os"]))),
-        ["schedules-server-unavailable"] = () => _Screen(new PluginServerTarget("homeserver", null, "homeserver has Schedules 0.6.7, this computer 0.7.0.")),
+        ["schedules-server-unavailable"] = () => _Screen(new PluginServerTarget("homeserver", null, "homeserver has Schedules 0.6.7, this computer 0.7.0.", () => Task.CompletedTask, "Update on server")),
     };
 
     private static Control _Screen(PluginServerTarget server)
