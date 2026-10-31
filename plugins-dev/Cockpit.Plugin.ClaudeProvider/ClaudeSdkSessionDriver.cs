@@ -215,7 +215,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
                 throw new ArgumentException("A pane id must be a single directory name.", nameof(options));
             }
 
-            if (!environment.TryGetValue("TMPDIR", out var hostTemp) || string.IsNullOrWhiteSpace(hostTemp))
+            if (paneId.Length > 0)
             {
                 var basis = Path.Combine(Path.GetTempPath(), "cockpit");
                 var temp = Path.Combine(basis, paneId);
