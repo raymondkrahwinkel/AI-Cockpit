@@ -29,7 +29,7 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
 
     public bool CanClose => owner.CanClose(Id);
 
-    internal string? FilePath => workspace.InstanceKey;
+    internal string? FilePath => owner.FileBodyFor(workspace)?.DisplayPath;
 
     internal void RefreshCapabilities()
     {
