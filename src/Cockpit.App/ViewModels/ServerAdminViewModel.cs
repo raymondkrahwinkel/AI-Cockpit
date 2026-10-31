@@ -215,6 +215,7 @@ public sealed partial class ServerAdminViewModel : ObservableObject
                 _ShowProjects();
                 await _LoadSharedAsync(serverProjects);
             }
+            await RefreshGitHubAsync();
         });
     }
 

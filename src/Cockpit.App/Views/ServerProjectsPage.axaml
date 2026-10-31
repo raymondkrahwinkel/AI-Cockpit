@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
              x:Class="Cockpit.App.Views.ServerProjectsPage"
              x:DataType="vm:ServerAdminViewModel">
 
@@ -109,7 +110,30 @@
                         <TextBox Text="{Binding CloneName}" PlaceholderText="the repository's name"/>
                     </StackPanel>
                 </Grid>
-                <TextBlock Text="Cloned with the server's own git credentials (from its secret). None are sent from here." FontSize="12"
+                <StackPanel Spacing="8" IsVisible="{Binding HasGitHubCredentials}">
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                        <StackPanel Spacing="3" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock Text="GitHub" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding GitHubStatus}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="Refresh" Classes="Ghost Compact" VerticalAlignment="Center"
+                                Command="{Binding RefreshGitHubCommand}" IsEnabled="{Binding !IsBusy}"/>
+                        <Button Grid.Column="2" Content="Sign in…" Classes="Compact" VerticalAlignment="Center"
+                                Command="{Binding SignInGitHubCommand}" IsVisible="{Binding GitHubCanSignIn}" IsEnabled="{Binding !IsBusy}"/>
+                        <Button Grid.Column="3" Content="Sign out" Classes="Compact" VerticalAlignment="Center"
+                                Command="{Binding SignOutGitHubCommand}" IsVisible="{Binding GitHubCanSignOut}" IsEnabled="{Binding !IsBusy}"/>
+                    </Grid>
+                    <StackPanel Spacing="8" IsVisible="{Binding HasGitHubSignIn}">
+                        <controls:LoginFlowView DataContext="{Binding GitHubSignIn}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Paste a token instead" Classes="Compact" Command="{Binding PasteGitHubTokenCommand}"
+                                    IsVisible="{Binding !GitHubSignIn.Succeeded}" IsEnabled="{Binding !IsBusy}"/>
+                            <Button Content="Close sign-in" Classes="Ghost Compact" Command="{Binding CloseGitHubSignInCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+                <TextBlock Text="Cloned with the server's own git credentials." FontSize="12"
                            TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                 <Button Classes="Accent" HorizontalAlignment="Left" Content="{Binding CloneLabel}" Command="{Binding CloneCommand}"
                         IsEnabled="{Binding !IsBusy}"/>

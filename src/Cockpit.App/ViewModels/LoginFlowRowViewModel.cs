@@ -19,6 +19,14 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
 
     public bool CanRestart => RestartSignIn is not null;
 
+    public bool IsSecretInput { get; init; }
+
+    public char InputPasswordChar => IsSecretInput ? '\u25cf' : '\0';
+
+    public string InputPlaceholder { get; init; } = "Paste the code here";
+
+    public bool ShowCodexDeviceHint { get; init; } = true;
+
     [RelayCommand(CanExecute = nameof(CanRestart))]
     private async Task RestartAsync()
     {
@@ -96,8 +104,17 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
         IsSubmitting = true;
         try
         {
-            await _flow.SubmitAsync(CodeInput.Trim(), _cts.Token);
+            var input = CodeInput.Trim();
+            if (IsSecretInput)
+            {
+                CodeInput = string.Empty;
+            }
+            await _flow.SubmitAsync(input, _cts.Token);
             AwaitsInput = false;
+        }
+        catch (Exception) when (IsSecretInput)
+        {
+            ErrorMessage = "The token could not be submitted. Try again.";
         }
         finally
         {
@@ -169,7 +186,7 @@ public sealed partial class LoginFlowRowViewModel : ViewModelBase, IAsyncDisposa
         }
         catch (Exception ex)
         {
-            ErrorMessage = ex.Message;
+            ErrorMessage = IsSecretInput ? "GitHub sign-in could not finish. Try again." : ex.Message;
         }
         finally
         {

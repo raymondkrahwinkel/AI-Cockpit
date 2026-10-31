@@ -9,7 +9,8 @@ public sealed class RemoteLoginFlow : ILoginFlow
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
 
     private readonly BackendApiClient _client;
-    private readonly string _profile;
+    private readonly string _path;
+    private readonly object? _startBody;
     private readonly CancellationTokenSource _stop;
     private readonly CancellationToken _stopToken;
     private readonly Channel<LoginFlowStep> _steps = Channel.CreateUnbounded<LoginFlowStep>();
@@ -17,9 +18,15 @@ public sealed class RemoteLoginFlow : ILoginFlow
     private readonly Task<LoginFlowResult> _run;
 
     public RemoteLoginFlow(BackendApiClient client, string profile, CancellationToken cancellationToken)
+        : this(client, $"api/v1/profiles/{Uri.EscapeDataString(profile)}/sign-in", null, cancellationToken)
+    {
+    }
+
+    internal RemoteLoginFlow(BackendApiClient client, string path, object? startBody, CancellationToken cancellationToken)
     {
         _client = client;
-        _profile = profile;
+        _path = path;
+        _startBody = startBody;
         _stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _stopToken = _stop.Token;
         _run = _RunAsync(_stopToken);
@@ -35,7 +42,7 @@ public sealed class RemoteLoginFlow : ILoginFlow
         using var request = CancellationTokenSource.CreateLinkedTokenSource(_stopToken, cancellationToken);
         await _client.SendAsync<RemoteSignInState>(
             HttpMethod.Post,
-            $"{_Path}/{Uri.EscapeDataString(flowId)}/input",
+            $"{_path}/{Uri.EscapeDataString(flowId)}/input",
             new { text = value },
             request.Token).ConfigureAwait(false);
     }
@@ -60,14 +67,12 @@ public sealed class RemoteLoginFlow : ILoginFlow
         }
     }
 
-    private string _Path => $"api/v1/profiles/{Uri.EscapeDataString(_profile)}/sign-in";
-
     private async Task<LoginFlowResult> _RunAsync(CancellationToken cancellationToken)
     {
         LoginFlowStep? previous = null;
         try
         {
-            var state = await _client.SendAsync<RemoteSignInState>(HttpMethod.Post, _Path, null, cancellationToken).ConfigureAwait(false);
+            var state = await _client.SendAsync<RemoteSignInState>(HttpMethod.Post, _path, _startBody, cancellationToken).ConfigureAwait(false);
             _flowId.TrySetResult(state.FlowId);
             while (true)
             {
@@ -87,7 +92,7 @@ public sealed class RemoteLoginFlow : ILoginFlow
 
                 await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
                 state = await _client.GetAsync<RemoteSignInState>(
-                    $"{_Path}/{Uri.EscapeDataString(state.FlowId)}",
+                    $"{_path}/{Uri.EscapeDataString(state.FlowId)}",
                     cancellationToken).ConfigureAwait(false);
             }
         }

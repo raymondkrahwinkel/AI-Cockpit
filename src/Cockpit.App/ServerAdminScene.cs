@@ -13,6 +13,8 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App;
 
@@ -180,7 +182,18 @@ internal static class ServerAdminScene
         projects)
     {
         Profiles = profiles,
+        GitHubCredentials = projects is null ? null : new SceneGitHubCredentials(),
     };
+
+    private sealed class SceneGitHubCredentials : IRemoteGitHubCredentials
+    {
+        public Task<RemoteGitHubStatus> GetGitHubStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new RemoteGitHubStatus(true, true, "raymondkrahwinkel", "gh", "Signed in as raymondkrahwinkel"));
+
+        public ILoginFlow StartGitHubSignIn(bool useToken, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task SignOutGitHubAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
 
     // Two projects already cloned, and a clone of cockpit that lands where the image's clone root puts it.
     private sealed class SceneProjects : IServerProjects

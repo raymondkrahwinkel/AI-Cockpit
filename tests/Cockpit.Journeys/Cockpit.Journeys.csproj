@@ -40,6 +40,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cockpit.Server\Cockpit.Server.csproj"
                       ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="..\Cockpit.ServerSeed\Cockpit.ServerSeed.csproj"
+                      ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
+    <AssemblyMetadata Include="ServerSeedDirectory" Value="$(MSBuildThisFileDirectory)..\Cockpit.ServerSeed\bin\$(Configuration)\$(TargetFramework)\" />
     <ProjectReference Include="..\Cockpit.Plugin.EchoProvider\Cockpit.Plugin.EchoProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" SetConfiguration="Configuration=$(Configuration)" />
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Workflows\Cockpit.Plugin.Workflows.csproj"
