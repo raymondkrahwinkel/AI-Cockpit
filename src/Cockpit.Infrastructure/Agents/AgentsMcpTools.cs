@@ -23,9 +23,15 @@ internal sealed class AgentsMcpTools(
     INodeControllerPresence? presence = null,
     INodePairingBroker? pairing = null,
     ISessionRegistry? sessions = null,
-    Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
+    Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
+    Cockpit.Infrastructure.Diagnostics.DockerStorageMaintenance? storage = null)
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
+
+    [McpServerTool(Name = "acknowledge_storage_pause", ReadOnly = false, Destructive = false)]
+    [Description("Acknowledges this session's Docker pause using the inbox pauseId until storage resume arrives, without approving compaction for the operator.")]
+    public string AcknowledgeStoragePause([Description("The pauseId from this session's storage pause message.")] string pauseId) =>
+        _Serialize(new { ok = McpRequestContext.CurrentPaneId is { } caller && storage?.AcknowledgePause(caller, pauseId) == true });
 
     // AC-1013: bound is the recipient's, not the senders' — draining everything waiting would let neighbours
     // decide how much context/money the recipient spends reading mail. `remaining` in the reply avoids silent loss.
@@ -268,7 +274,7 @@ internal sealed class AgentsMcpTools(
             // After the message is safely in the inbox and after the recipient-gone retraction above, so a wake is
             // only ever started for a message that is actually waiting to be read. Nothing to wake for a message
             // queued for the controller (AC-1322): its assistant is on another machine, and its poll collects it.
-            var wake = urgent && controller is null && (!swarmAssistant || swarmLeadership!.IsSelf)
+            var wake = urgent && controller is null && (!swarmAssistant || swarmLeadership?.IsSelf == true)
                 ? await _WakeAsync(caller, addressee, label, deduplicated).ConfigureAwait(false) : (AgentWakeOutcome?)null;
 
             await notifyAudit.RecordAsync(new AgentNotifyAuditEntry(
@@ -296,7 +302,7 @@ internal sealed class AgentsMcpTools(
                 deliveredTo = message.ToPaneId,
                 // AC-1322: the machine whose assistant collects this, when it is not the one here.
                 controller = controller?.Name,
-                leader = swarmAssistant ? swarmLeadership!.Current?.Name : null,
+                leader = swarmAssistant ? swarmLeadership?.Current?.Name : null,
                 // AC-1013: whether the recipient sees this unasked, reported here (not just list_agents) at the
                 // moment a sender forms its expectation — else it waits on a reply that isn't coming.
                 deliversAtTurnStart = controller is null && _DeliversAtTurnStart(snapshot, addressee),

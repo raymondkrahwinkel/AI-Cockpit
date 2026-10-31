@@ -321,6 +321,7 @@ public class CockpitInternalMcpProviderTests
 
         await using var server = new OrchestratorMcpServer(
             Substitute.For<IDelegationService>(),
+            Cockpit.Core.Tests.Delegation.OrchestratorToolsTests.PictureReader(),
             new McpAuthKey(),
             keyring,
             store,
@@ -372,6 +373,7 @@ public class CockpitInternalMcpProviderTests
 
         var server = new OrchestratorMcpServer(
             Substitute.For<IDelegationService>(),
+            Cockpit.Core.Tests.Delegation.OrchestratorToolsTests.PictureReader(),
             new McpAuthKey(),
             new SessionMcpKeyring(),
             store,

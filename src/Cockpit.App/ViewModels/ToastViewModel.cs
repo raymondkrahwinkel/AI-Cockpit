@@ -92,12 +92,22 @@ public sealed partial class ToastViewModel
 // One button on a toast; invoking it runs the action and closes the toast.
 public sealed partial class ToastActionViewModel(string label, bool isPrimary, Action invoke)
 {
+    internal Func<bool> StillApplies { get; set; } = static () => true;
+
+    private bool CanInvoke() => StillApplies();
+
     public string Label { get; } = label;
 
     public bool IsPrimary { get; } = isPrimary;
 
-    [RelayCommand]
-    public void Invoke() => invoke();
+    [RelayCommand(CanExecute = nameof(CanInvoke))]
+    public void Invoke()
+    {
+        if (StillApplies())
+        {
+            invoke();
+        }
+    }
 }
 
 // One item named in the startup bundle: its glyph, its source in bold, and its text.

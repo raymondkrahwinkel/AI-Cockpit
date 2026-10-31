@@ -53,5 +53,6 @@ internal static class AssistantAgentGatewayGraph
             providerIntelligence ?? Substitute.For<IProviderModelIntelligence>(),
             modelIntelligenceBudget,
             worktreeManager,
-            projectFields);
+            projectFields,
+            mcpServers: mcpServerCatalog);
 }

@@ -1277,6 +1277,13 @@
                                       DisplayMemberBinding="{Binding Label}" MinWidth="150"
                                       HorizontalAlignment="Left"/>
 
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Compact context at" FontWeight="SemiBold"/>
+                                <NumericUpDown Value="{Binding AssistantOptions.ContextCompactionPercent}" Minimum="10" Maximum="95"
+                                               Increment="1" FormatString="0" Width="80"/>
+                                <TextBlock Text="%" VerticalAlignment="Center"/>
+                            </StackPanel>
+
                             <!-- Moved here from the old Voice → Read-aloud page (AC-546 follow-up, then AC-1000
                                  relocated Read-aloud's remainder here too): these settings exist because the
                                  assistant speaks, and sessions no longer do — so they belong with the rest of the
@@ -1937,6 +1944,9 @@
                                                            Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
                                                 <Button Content="Refresh" Command="{Binding RefreshCommand}" IsEnabled="{Binding !IsBusy}"
                                                         IsVisible="{Binding !IsServerGroup}"/>
+                                                <Button Content="Pause" Command="{Binding PauseCommand}" IsVisible="{Binding CanPause}"
+                                                        ToolTip.Tip="Stop polling and relaying for this node, keeping the pairing. Survives a restart."/>
+                                                <Button Content="Resume" Command="{Binding ResumeCommand}" IsVisible="{Binding IsPaused}"/>
                                                 <Button Content="Disconnect" Command="{Binding DisconnectCommand}" IsVisible="{Binding CanDisconnect}"/>
                                             </StackPanel>
 

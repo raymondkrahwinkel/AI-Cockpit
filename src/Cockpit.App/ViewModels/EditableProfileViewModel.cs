@@ -458,6 +458,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     public bool IsValid =>
         !string.IsNullOrWhiteSpace(Label)
         && _AreEnvironmentVariablesValid()
+        && (!IsLmStudioProvider || LmStudioLoadOptionsError is null)
         && SelectedProvider.Value switch
         {
             SessionProvider.ClaudeCli => !string.IsNullOrWhiteSpace(ConfigDir),
@@ -673,6 +674,13 @@ public partial class EditableProfileViewModel : ViewModelBase
             LmStudioConfig lmStudio => lmStudio.TurnLimits,
             _ => null,
         };
+        _InitializeLmStudioOptions(profile.ProviderConfig as LmStudioConfig);
+        _localReasoningEffort = profile.ProviderConfig switch
+        {
+            LmStudioConfig lmStudio => lmStudio.ReasoningEffort ?? string.Empty,
+            OllamaConfig ollama => ollama.ReasoningEffort ?? string.Empty,
+            _ => string.Empty,
+        };
 
         if (profile.ProviderConfig is PluginProviderConfig pluginConfig)
         {
@@ -813,8 +821,8 @@ public partial class EditableProfileViewModel : ViewModelBase
 
         return SelectedProvider.Value switch
         {
-            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens)),
-            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext),
+            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), _LocalReasoningEffort()),
+            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt, _turnLimits, LocalModelContext.Normalize(ContextTokens), LoadModelWithContext, _LmStudioLoadOptions(), _ToggleValue(LmStudioThinking), _LocalReasoningEffort()),
             _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }

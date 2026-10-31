@@ -11,4 +11,7 @@ public sealed record DebugSettings
     // history to read — measured cost ~2 MB/day on a 10s cadence (~8,600 lines/day), and the log already rotates.
     // The UI-thread freeze heartbeat is separate and always on regardless of this flag.
     public bool LogDiagnosticSnapshots { get; init; } = true;
+
+    public int UiFreezeThresholdSeconds { get; init; } = 5;
+    public int RenderStallThresholdSeconds { get; init; } = 15;
 }

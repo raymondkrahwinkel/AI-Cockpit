@@ -33,7 +33,8 @@ public sealed record AssistantSpawnAuditEntry(
     string? PaneId,
     string? SessionName,
     string? Refusal,
-    string? ProjectId = null);
+    string? ProjectId = null,
+    IReadOnlyList<string>? McpServers = null);
 
 // What a trail entry records having been asked for.
 public enum AssistantSpawnAction

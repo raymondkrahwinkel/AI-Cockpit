@@ -183,6 +183,12 @@
                                        IsVisible="{Binding $parent[views:ProfilesEditor].((vm:ManageProfilesDialogViewModel)DataContext).ModelFetchStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         </StackPanel>
 
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Reasoning effort (optional)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                            <TextBox Text="{Binding LocalReasoningEffort}" PlaceholderText="Blank uses the model default"
+                                     ToolTip.Tip="Use an effort supported by this model. Thinking Off takes precedence."/>
+                        </StackPanel>
+
                         <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
                             <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
                                        Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
@@ -198,8 +204,92 @@
 
                         <CheckBox Content="Model zelf laden met deze context"
                                   IsChecked="{Binding LoadModelWithContext}"
+                                  IsEnabled="{Binding !ManageLmStudioLoadOptions}"
                                   IsVisible="{Binding IsLmStudioProvider}"
                                   ToolTip.Tip="Herlaadt een te klein geladen LM Studio-model bij de start van de sessie"/>
+
+                        <StackPanel Spacing="11" IsVisible="{Binding IsLmStudioProvider}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Thinking per request" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox Name="LmStudioThinking" ItemsSource="{Binding LmStudioToggleChoices}" SelectedItem="{Binding LmStudioThinking}"/>
+                            </StackPanel>
+                            <CheckBox Name="ManageLmStudioLoadOptions" Content="Load model with profile options" IsChecked="{Binding ManageLmStudioLoadOptions}"/>
+                            <StackPanel Spacing="11" IsVisible="{Binding ManageLmStudioLoadOptions}">
+                                <TextBlock Text="Uses the context above. Reloads when a chosen option differs. Blank fields use LM Studio defaults; runtime selection stays on the server."
+                                           TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="GPU offload (0–1)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioGpuOffloadRatio" Value="{Binding LmStudioGpuOffloadRatio}" Minimum="0" Maximum="1" Increment="0.1" FormatString="0.##" PlaceholderText="Default"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="Parallel sessions" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioParallel" Value="{Binding LmStudioParallel}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="Default"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Evaluation batch size" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioEvalBatchSize" Value="{Binding LmStudioEvalBatchSize}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="LM Studio default"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="Physical batch size" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioPhysicalBatchSize" Value="{Binding LmStudioPhysicalBatchSize}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="LM Studio default"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="4">
+                                        <TextBlock Text="CPU threads" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioCpuThreads" Value="{Binding LmStudioCpuThreads}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="LM Studio default"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Flash Attention" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Name="LmStudioFlashAttention" ItemsSource="{Binding LmStudioToggleChoices}" SelectedItem="{Binding LmStudioFlashAttention}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="KV cache on GPU" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Name="LmStudioOffloadKvCacheToGpu" ItemsSource="{Binding LmStudioToggleChoices}" SelectedItem="{Binding LmStudioOffloadKvCacheToGpu}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="K cache quantization" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Name="LmStudioKCacheQuantization" ItemsSource="{Binding LmStudioCacheChoices}" SelectedItem="{Binding LmStudioKCacheQuantization}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="V cache quantization" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Name="LmStudioVCacheQuantization" ItemsSource="{Binding LmStudioCacheChoices}" SelectedItem="{Binding LmStudioVCacheQuantization}"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Speculative decoding: MTP" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Name="LmStudioDraftMtp" ItemsSource="{Binding LmStudioToggleChoices}" SelectedItem="{Binding LmStudioDraftMtp}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="Draft model (simple mode)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <TextBox Text="{Binding LmStudioDraftModel}" PlaceholderText="Optional model key"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Maximum draft tokens" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioDraftMaxTokens" Value="{Binding LmStudioDraftMaxTokens}" Minimum="1" Increment="1" FormatString="0" PlaceholderText="Default"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="Minimum draft tokens" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                        <NumericUpDown Name="LmStudioDraftMinTokens" Value="{Binding LmStudioDraftMinTokens}" Minimum="0" Increment="1" FormatString="0" PlaceholderText="Default"/>
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Draft minimum continue probability (0–1)" FontSize="11" Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                    <NumericUpDown Name="LmStudioDraftMinContinueProbability" Value="{Binding LmStudioDraftMinContinueProbability}" Minimum="0" Maximum="1" Increment="0.1" FormatString="0.##" PlaceholderText="Default"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding LmStudioLoadOptionsError}" TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource CockpitStatusWaitingBrush}"
+                                           IsVisible="{Binding LmStudioLoadOptionsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </StackPanel>
 
                         <StackPanel Spacing="4">
                             <TextBlock Text="Base system prompt (optional)" FontSize="11"

@@ -227,7 +227,7 @@ internal sealed class DepotNotesPanel : UserControl
         {
             _recent = [];
             var text = _Text(_connection is null ? "Add a Depot server in the Depot settings first."
-                : page?.State == DepotInboxState.Unreachable ? "Depot is unreachable. Retrying…" : "Sign in to Depot to load notes.", 12.5, "CockpitTextSecondaryBrush");
+                : page?.State == DepotInboxState.Unreachable ? page.Reason ?? "Depot is unreachable. Retrying…" : "Sign in to Depot to load notes.", 12.5, "CockpitTextSecondaryBrush");
             text.Margin = new(12, 16);
             _body.Children.Add(text);
             if (_connection is { } signedOut && page?.State is DepotInboxState.SignIn or DepotInboxState.Expired)

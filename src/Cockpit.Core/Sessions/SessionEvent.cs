@@ -165,7 +165,15 @@ public enum BackgroundTaskKind
 }
 
 // One piece of work that outlived its turn — see `BackgroundTasksChanged`.
-public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description);
+public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, string? Description)
+{
+    public string? AgentId { get; init; }
+    public string? RunId { get; init; }
+    public string? ParentTaskId { get; init; }
+    public string? ParentToolUseId { get; init; }
+    public string? LastTool { get; init; }
+    public long? Tokens { get; init; }
+}
 
 // The set of work outliving its turn changed (AC-276). `Tasks` is the *complete* set as of
 // this event and never a delta — a dropped event self-corrects on the next one, where a start/stop ledger would
@@ -189,6 +197,8 @@ public enum BackgroundTaskStatus
 // completed and failed are told apart; that ledger only ever says "still there or not".
 public sealed record BackgroundTaskNotification : SessionEvent
 {
+    public string? AgentId { get; init; }
+    public string? RunId { get; init; }
     public required string TaskId { get; init; }
     public string? ToolUseId { get; init; }
     public required BackgroundTaskStatus Status { get; init; }

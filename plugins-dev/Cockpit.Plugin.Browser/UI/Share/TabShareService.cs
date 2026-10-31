@@ -8,7 +8,7 @@ using static Cockpit.Plugin.Browser.TabShareContract;
 
 namespace Cockpit.Plugin.Browser.UI.Share;
 
-// Sharing one of Raymond's tabs with one agent session (AC-1714): the consent card that grants it, and the answer to
+// Sharing one of the user's tabs with one agent session (AC-1714): the consent card that grants it, and the answer to
 // every read the backend passes on. The grant is checked on the UI thread right before and right after the read, so
 // Stop sharing, closing the tab or a move to another site refuses the very next call.
 internal sealed partial class TabShareService : IDisposable

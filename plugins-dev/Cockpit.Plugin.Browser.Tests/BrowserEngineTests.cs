@@ -10,30 +10,59 @@ namespace Cockpit.Plugin.Browser.Tests;
 // AC-1711. Criterion 2 by hand as well: after a real start no port of the process tree listens (netstat, see the PR).
 public class BrowserEngineTests
 {
-    // L2b (boundary): a debugging port would open every tab of every profile in the process to the whole machine. And
-    // the view keeps only the keys that make no text (AC-1784): Avalonia drops the character of a handled key down,
-    // so a handled letter never reached the page; the real typing, YouTube included, is measured in the PR.
+    // L2b (boundary): no debugging port, which would open every tab of every profile to the whole machine; the view drops
+    // only the keys that make no text (AC-1784), so a handled letter never reaches the page (measured in the PR); AC-1869:
+    // the old "raymond" profile folder is moved once to "user" (logins and cookies kept), a present "user" is never touched.
     [Fact]
-    public void TheEngineSettings_OpenNoDebuggingPort_AndIgnoreTheProcessCommandLine_AndTheViewLetsTextKeysThrough()
+    public void TheEngineSettings_OpenNoDebuggingPort_AndIgnoreTheProcessCommandLine_AndTheViewLetsTextKeysThrough_AndMigrateTheRaymondProfileFolderToUser()
     {
-        var settings = BrowserEngine.CreateSettings("runtime", "subprocess", "cache");
-
-        Assert.Equal(0, settings.RemoteDebuggingPort);
-        Assert.True(settings.CommandLineArgsDisabled);
-        Assert.DoesNotContain(BrowserEngine.Switches, entry => entry.Key.StartsWith("remote-debugging", StringComparison.Ordinal));
-
-        var view = CefBrowserView.ForScene(BrowserEngine.ForScene(BrowserEngineState.Ready));
-        bool Handled(Key key, string? symbol, KeyModifiers modifiers = KeyModifiers.None)
+        var root = Path.Combine(Path.GetTempPath(), "browser-profile-cache-" + Guid.NewGuid().ToString("N"));
+        try
         {
-            var e = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, KeySymbol = symbol, KeyModifiers = modifiers };
-            view.RaiseEvent(e);
-            return e.Handled;
-        }
+            var settings = BrowserEngine.CreateSettings("runtime", "subprocess", "cache");
 
-        Assert.Equal(
-            (false, false, false, true, true, true, true, true),
-            (Handled(Key.A, "a"), Handled(Key.E, "ë"), Handled(Key.Space, " "), Handled(Key.Tab, "\t"), Handled(Key.Enter, "\r"),
-                Handled(Key.Left, null), Handled(Key.V, "\u0016", KeyModifiers.Control), Handled(Key.R, "\u0012", KeyModifiers.Control)));
+            Assert.Equal(0, settings.RemoteDebuggingPort);
+            Assert.True(settings.CommandLineArgsDisabled);
+            Assert.DoesNotContain(BrowserEngine.Switches, entry => entry.Key.StartsWith("remote-debugging", StringComparison.Ordinal));
+
+            var view = CefBrowserView.ForScene(BrowserEngine.ForScene(BrowserEngineState.Ready));
+            bool Handled(Key key, string? symbol, KeyModifiers modifiers = KeyModifiers.None)
+            {
+                var e = new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, KeySymbol = symbol, KeyModifiers = modifiers };
+                view.RaiseEvent(e);
+                return e.Handled;
+            }
+
+            Assert.Equal(
+                (false, false, false, true, true, true, true, true),
+                (Handled(Key.A, "a"), Handled(Key.E, "ë"), Handled(Key.Space, " "), Handled(Key.Tab, "\t"), Handled(Key.Enter, "\r"),
+                    Handled(Key.Left, null), Handled(Key.V, "\u0016", KeyModifiers.Control), Handled(Key.R, "\u0012", KeyModifiers.Control)));
+
+            var old = Path.Combine(root, "raymond");
+            var user = Path.Combine(root, "user");
+            var oldMarker = Path.Combine(old, "cookies.dat");
+            var userMarker = Path.Combine(user, "cookies.dat");
+            Directory.CreateDirectory(old);
+            File.WriteAllText(oldMarker, "logins");
+
+            Assert.Equal(user, BrowserEngine.MigrateProfileCachePath(root));
+            Assert.False(Directory.Exists(old));
+            Assert.Equal("logins", File.ReadAllText(userMarker));
+
+            // Idempotent, and never touches or deletes a present "user".
+            Directory.CreateDirectory(old);
+            Assert.Equal(user, BrowserEngine.MigrateProfileCachePath(root));
+            Assert.True(Directory.Exists(old));
+            Assert.Empty(Directory.EnumerateFiles(old));
+            Assert.Equal("logins", File.ReadAllText(userMarker));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 
     // L1 (UI): browser shortcuts stay in the shell's routed input path, never Cockpit's global shortcut dispatch.

@@ -24,6 +24,11 @@ public class McpServerRegistryFilterTests
         var result = McpServerRegistryFilter.ApplySessionSelection([ServerA, InternalServer, ServerB], enabledServerNames: null);
 
         Assert.Equal(new[] { ServerA, ServerB }, result);
+        var exact = new ExactMcpServerSelection(["SERVER-A"]);
+        var selection = McpServerRegistryFilter.WithAutoMountedServers(exact, [ServerA, InternalServer, ServerB], [InternalServer.Name]);
+        Assert.Same(exact, selection);
+        Assert.Equal([ServerA], McpServerRegistryFilter.ApplySessionSelection([ServerA, InternalServer, ServerB], selection));
+        Assert.Same(exact, McpServerRegistryFilter.EffectiveSessionSelection(exact, [ServerB.Name]));
     }
 
     // ── WithAutoMountedServers (AC-869): folding an internal endpoint's own mount rule into a selection ──────────

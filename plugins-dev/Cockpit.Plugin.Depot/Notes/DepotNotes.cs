@@ -135,17 +135,26 @@ internal sealed class DepotNotes(
     {
         try
         {
-            using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName, "depot.host")) { Timeout = TimeSpan.FromSeconds(20) };
+            // AC-1958: /cockpit/notes/live sits in Depot's bearer group, which wants the depot scope; the host-only
+            // depot.host token is refused there with 403, so this uses the connection's own token.
+            using var http = new HttpClient(host.CreateAuthorizedHandler(connection.McpServerName)) { Timeout = TimeSpan.FromSeconds(20) };
             using var api = new DepotApi(host, connection, http);
             var answer = await api.GetAsync("/cockpit/notes/live", cancellationToken).ConfigureAwait(false);
-            if (answer.Outcome is DepotApiOutcome.NotSignedIn or DepotApiOutcome.Forbidden)
+            if (answer.Outcome == DepotApiOutcome.NotSignedIn)
             {
                 return new(connection.Id, DepotInboxState.SignIn, []);
             }
 
             if (answer.Outcome != DepotApiOutcome.Success)
             {
-                return new(connection.Id, DepotInboxState.Unreachable, []);
+                var reason = answer.Outcome switch
+                {
+                    DepotApiOutcome.Forbidden => "Depot refused the live notes for this account.",
+                    DepotApiOutcome.OlderDepot => "This Depot has no live notes yet. Update the Depot server.",
+                    _ => "Depot could not list the live notes. Retrying…",
+                };
+                logger?.LogWarning("Reading live notes from {Connection} failed: {Outcome}.", connection.Name, answer.Outcome);
+                return new(connection.Id, DepotInboxState.Unreachable, [], reason);
             }
 
             var list = JsonSerializer.Deserialize<_List>(answer.Content.Span, DepotChannel.Json);

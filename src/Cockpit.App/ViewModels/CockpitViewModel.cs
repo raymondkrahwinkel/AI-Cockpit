@@ -1520,6 +1520,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _logDiagnosticSnapshots;
 
+    private DebugSettings _loadedDebugSettings = new();
+
     // Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
     // longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
     // default; the change is persisted and takes effect on the next session's servers.
@@ -3226,6 +3228,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // panel that actually opens (AC-953's docked assistant).
         _dockPanelRegistry = dockPanelRegistry ?? new DockPanelRegistry();
         _WireDockPanelChanges();
+        RegisterAgentsPanel();
 
         // First: selecting a session below raises pane-visibility, which asks which workspace is active.
         // AC-1711: a scene passes the plugin workspace types it shows (--scene plugin:<name>).
@@ -3455,7 +3458,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
         IModelIntelligenceOptions? modelIntelligenceOptions = null,
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
-        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
+        // AC-1943: pauses and disconnects of the paired nodes; absent in the design-time/unit-test graph.
+        INodeLinkGate? nodeLinkGate = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3473,6 +3478,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _dockPanelRegistry = dockPanelRegistry;
         _WireDockPanelChanges();
         RegisterNotificationsPanel();
+        RegisterAgentsPanel();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -3499,7 +3505,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 () => swarmLeadership?.IsActive != true || swarmLeadership.IsSelf),
             behaviourSync,
             remoteServers,
-            orgPolicy);
+            orgPolicy,
+            nodeLinkGate);
         _ = Security.RefreshAsync();
 
         Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership, ConfirmAsync);
@@ -3921,6 +3928,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _notificationSettingsStore.LoadAsync();
+        ToastHost.AutoDismissDelay = TimeSpan.FromSeconds(settings.ToastTimeoutSeconds > 0 ? settings.ToastTimeoutSeconds : 5);
         LocalNotificationsEnabled = settings.LocalEnabled;
         DiscordNotificationsEnabled = settings.DiscordEnabled;
         WebhookUrl = settings.WebhookUrl ?? string.Empty;
@@ -3947,7 +3955,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? IdleThresholdMinutes
             : (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
-        var settings = new NotificationSettings
+        var settings = (await _notificationSettingsStore.LoadAsync()) with
         {
             LocalEnabled = LocalNotificationsEnabled,
             DiscordEnabled = DiscordNotificationsEnabled,
@@ -4318,7 +4326,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // One warned-flag per session pane (AC-692), not one flag for the whole cockpit — a session that has already
     // been named should not silence the toast for the next one that climbs.
-    private readonly Dictionary<string, bool> _warnedAboutSessionMemory = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _sessionsOverMemoryCap = new(StringComparer.Ordinal);
 
     // Tells each session how close it is to its own OS memory cap (AC-661), so one that is about to be cut off says
     // so on its own bar first, and past the cap offers the Kill there too (AC-700). Matched back by pane id, the
@@ -4384,30 +4392,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // the automatic kill that used to happen instead (AC-692). Kept beside AC-700's bar, which outlives it.
     private void _WarnAboutSessionMemory(ResourceUsage usage)
     {
-        var stillHere = new HashSet<string>(usage.Sessions.Select(session => session.PaneId), StringComparer.Ordinal);
-        foreach (var paneId in _warnedAboutSessionMemory.Keys.Where(paneId => !stillHere.Contains(paneId)).ToList())
-        {
-            _warnedAboutSessionMemory.Remove(paneId);
-        }
+        var active = usage.Sessions
+            .Where(measured => _FindMeasured(measured) is { } session && session.MemoryCapBytes is { } cap && cap > 0
+                && SessionMemoryPressure.Decide(measured.MemoryBytes, cap,
+                    _sessionsOverMemoryCap.Contains(measured.PaneId)).Warned)
+            .Select(measured => measured.PaneId).ToArray();
+        _sessionsOverMemoryCap.Clear();
+        _sessionsOverMemoryCap.UnionWith(active);
 
         foreach (var measured in usage.Sessions)
         {
             var session = _FindMeasured(measured);
             var cap = session?.MemoryCapBytes ?? 0;
-            var warned = _warnedAboutSessionMemory.GetValueOrDefault(measured.PaneId);
-            var decision = SessionMemoryPressure.Decide(measured.MemoryBytes, cap, warned);
-            _warnedAboutSessionMemory[measured.PaneId] = decision.Warned;
-
-            if (!decision.Warn || session is null)
+            if (session is null || !_sessionsOverMemoryCap.Contains(measured.PaneId))
             {
                 continue;
             }
 
-            ToastHost.Add(
+            ToastHost.AddCondition($"memory-cap:{measured.PaneId}",
                 $"'{measured.Title}' is over its {_Megabytes(cap)} memory cap, holding {_Megabytes(measured.MemoryBytes)}. Cockpit will not close it on its own.",
                 ToastSeverity.Warning,
-                actionLabel: "Kill",
-                onAction: () => _ = CloseSessionCommand.ExecuteAsync(session));
+                [new ToastAction("Kill", () => _ = CloseSessionCommand.ExecuteAsync(session))],
+                () => Sessions.Contains(session) && _sessionsOverMemoryCap.Contains(session.PaneId));
         }
     }
 
@@ -4521,9 +4527,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _WarnAboutMemory(usage);
         _WarnAboutSessionCaps(usage);
+        _ReportSessionProcesses(usage);
         _WarnAboutSessionMemory(usage);
         _WarnAboutSessionPressure(usage);
-        _ReportSessionProcesses(usage);
+        ToastHost.RecheckConditions();
 
         ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
         ResourceMemory = _Megabytes(usage.MemoryBytes);
@@ -5510,6 +5517,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _debugSettingsStore.LoadAsync();
+        _loadedDebugSettings = settings;
         ShowDebugControls = settings.ShowDebugControls;
         LogDiagnosticSnapshots = settings.LogDiagnosticSnapshots;
     }
@@ -5523,7 +5531,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _debugSettingsStore.SaveAsync(new DebugSettings
+        await _debugSettingsStore.SaveAsync(_loadedDebugSettings with
         {
             ShowDebugControls = ShowDebugControls,
             LogDiagnosticSnapshots = LogDiagnosticSnapshots,
@@ -5774,6 +5782,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         });
         Notifications.Badge.Activated += (_, _) => OpenDockPanelId = NotificationCenterViewModel.DockPanelId;
         Notifications.PluginIcon = pluginId => PluginSideButtons.FirstOrDefault(button => button.PluginId == pluginId && button.IconKind is not null)?.IconKind;
+    }
+
+    internal void RegisterAgentsPanel()
+    {
+        _dockPanelRegistry?.Register(new DockPanelRegistration(
+            AgentsOverviewViewModel.DockPanelId, "Agents", MaterialIconKind.AccountGroupOutline,
+            () => new Views.AgentsOverviewView { DataContext = new AgentsOverviewViewModel(this) })
+        {
+            CanFloat = true,
+            KeepAlive = true,
+        });
     }
 
     // The bell. The Simple stand's rail holds the conversation, so there the panel stands in its own window.
@@ -6270,6 +6289,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // first input (AC-312).
     public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory, string? sessionName = null)
     {
+        Dispatcher.UIThread.VerifyAccess();
+
         var name = string.IsNullOrWhiteSpace(sessionName) ? $"{profile.Label} — {DateTime.Now:HH:mm}" : sessionName.Trim();
 
         // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
@@ -7768,6 +7789,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _RebuildShortcutRows();
 
         var debug = new DebugSettings();
+        _loadedDebugSettings = debug;
         ShowDebugControls = debug.ShowDebugControls;
         LogDiagnosticSnapshots = debug.LogDiagnosticSnapshots;
         OrchestratorMcpEnabled = true;

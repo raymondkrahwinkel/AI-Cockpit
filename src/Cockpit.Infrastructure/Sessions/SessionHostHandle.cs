@@ -34,6 +34,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     private readonly List<Action> _heldRaises = [];
 
     public ISessionControl Control => _host;
+    public IReadOnlyList<string>? McpServersOverride { get; private set; }
 
     public async Task<bool> UseControlAsync(Func<ISessionControl, Task> use)
     {
@@ -544,6 +545,7 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
     // AC-1439: the launcher's start; a session that did not come up goes, with the reason, since no view shows it.
     public async Task StartAsync(SessionLaunchRequest request, string? workingDirectory)
     {
+        McpServersOverride = request.McpServersOverride;
         var runtime = await _host.StartAsync(new SessionStart(
             request.Profile, request.PermissionMode, request.Model,
             McpServerRegistryFilter.EffectiveSessionSelection(request.EnabledMcpServerNames, request.Profile.EnabledMcpServerNames),
@@ -551,6 +553,12 @@ public sealed class SessionHostHandle : IHostedSession, IAssistantSession
         if (runtime is not { IsRunning: true })
         {
             throw new InvalidOperationException("The provider returned without a running session.");
+        }
+        if (McpServersOverride is { } names)
+        {
+            _host.RecordRow(new TranscriptSnapshotEntry(Guid.NewGuid().ToString("n"), "Divider",
+                $"MCP override: [{string.Join(", ", names)}] + always-mounted core",
+                null, null, null, null, false, DateTimeOffset.Now));
         }
     }
 

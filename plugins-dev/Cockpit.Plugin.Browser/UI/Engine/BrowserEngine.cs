@@ -37,7 +37,7 @@ internal sealed class BrowserEngine
     private readonly CancellationTokenSource _stopping = new();
     private Task? _start;
     private bool _cefLoaded;
-    private CefRequestContext? _raymondProfile;
+    private CefRequestContext? _userProfile;
 
     public BrowserEngine(
         Func<IProgress<CefRuntimeProgress>, CancellationToken, Task<CefRuntimeResult>> fetchRuntime,
@@ -88,10 +88,26 @@ internal sealed class BrowserEngine
 
     public event EventHandler? Changed;
 
-    // Raymond's own profile: persistent, under the root cache, apart from any agent profile (AC-1712).
-    public CefRequestContext RaymondProfile => _raymondProfile ??= CefRequestContext.CreateContext(
-        new CefRequestContextSettings { CachePath = Path.Combine(_rootCachePath, "raymond"), PersistSessionCookies = true },
+    // The user's own profile: persistent, under the root cache, apart from any agent profile (AC-1712).
+    public CefRequestContext UserProfile => _userProfile ??= CefRequestContext.CreateContext(
+        new CefRequestContextSettings { CachePath = MigrateProfileCachePath(_rootCachePath), PersistSessionCookies = true },
         null);
+
+    // AC-1869: move the profile from its "raymond" folder to "user" once, keeping its logins and cookies.
+    internal static string MigrateProfileCachePath(string rootCachePath)
+    {
+        var user = Path.Combine(rootCachePath, "user");
+        if (!Directory.Exists(user))
+        {
+            var old = Path.Combine(rootCachePath, "raymond");
+            if (Directory.Exists(old))
+            {
+                Directory.Move(old, user);
+            }
+        }
+
+        return user;
+    }
 
     // Idempotent; completes when the engine is Ready or Unavailable, and never throws.
     public Task EnsureStartedAsync() => _start ??= _StartAsync();
@@ -238,7 +254,7 @@ internal sealed class BrowserEngine
         }
 
         _views.Clear();
-        _raymondProfile = null;
+        _userProfile = null;
 
         // CefShutdown with a browser still open is what CEF forbids (Codex review AC-1711): then skip it and let the
         // process exit take CEF and its subprocesses down.

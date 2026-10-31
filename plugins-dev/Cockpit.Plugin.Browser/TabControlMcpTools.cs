@@ -51,7 +51,7 @@ internal sealed partial class TabShareMcpTools
         _ActAsync("browser_scroll", new TabShareRequest(string.Empty, string.Empty, "scroll", tabId, X: dx, Y: dy));
 
     [McpServerTool(Name = "browser_navigate", Destructive = true)]
-    [Description("Opens an address in a tab your session controls, only on the same site (scheme, host and port) control was allowed for. Another site is refused; ask the operator again for that one.")]
+    [Description("Opens an http(s) address in your own tab, including another site. Shared operator tabs stay on the site (scheme, host and port) control was allowed for; another site requires a new grant.")]
     public Task<string> Navigate([Description("The tab id.")] string tabId, [Description("An http or https address on the same site.")] string url) =>
         _ActAsync("browser_navigate", new TabShareRequest(string.Empty, string.Empty, "navigate", tabId, Text: url));
 
@@ -60,6 +60,13 @@ internal sealed partial class TabShareMcpTools
         if (_Caller() is not { } caller)
         {
             return _Refusal(NoCaller);
+        }
+
+        if (action.TabId is { } tabId && AgentOwnedTabs.IsOwnedId(tabId))
+        {
+            var result = owned is null ? new TabShareAnswer("", false, "browser_unavailable")
+                : await owned.ActAsync(caller, action).ConfigureAwait(false);
+            return result.Ok ? _Serialize(new { ok = true, done = result.Action }) : _Refusal(result.Error);
         }
 
         var answer = await bridge.AskAsync(action with { Id = Guid.NewGuid().ToString("N"), PaneId = caller }, TimeSpan.FromSeconds(15)).ConfigureAwait(false);

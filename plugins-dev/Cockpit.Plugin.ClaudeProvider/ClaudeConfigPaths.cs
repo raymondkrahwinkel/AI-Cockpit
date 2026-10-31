@@ -18,6 +18,21 @@ internal static class ClaudeConfigPaths
     public static string ResolveConfigJsonDirectory(string? configDir, string userProfileDirectory) =>
         ResolveSpawnOverride(configDir, userProfileDirectory) ?? userProfileDirectory;
 
+    // Opaque per-profile key: the directory whose .claude.json the profile spawns with, full path, no trailing separator.
+    public static string ProfileKey(string? configJson)
+    {
+        var config = ClaudeProviderConfig.Parse(configJson ?? string.Empty);
+        var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return ProfileKey(config.ConfigDir, userHome);
+    }
+
+    public static string ProfileKey(string? configDir, string userProfileDirectory)
+    {
+        var full = Path.GetFullPath(ResolveConfigJsonDirectory(configDir, userProfileDirectory))
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return OperatingSystem.IsWindows() ? full.ToUpperInvariant() : full;
+    }
+
     // The directory the CLI keeps its session state under — `projects/*/*.jsonl` transcripts and
     // `.credentials.json` both live here. A pinned profile keeps its own dir; a blank/default profile
     // resolves to `CLAUDE_CONFIG_DIR` when set, else the CLI default `~/.claude`. Unlike

@@ -88,6 +88,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // arrives only as item/agentMessage/delta chunks, folded here so LastAssistantText/Result aren't null.
     // Read/reset only from the single-threaded notification pump, so it needs no lock of its own.
     private readonly StringBuilder _turnText = new();
+    private readonly Dictionary<string, PluginBackgroundTask> _children = new();
 
     public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath, Action<PluginModelObservation>? recordObservation = null)
     {
@@ -331,6 +332,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     private void _HandleNotification(CodexNotification notification)
     {
+        var source = _StringOrEmpty(notification.Params, "threadId");
+        var isChild = source.Length > 0 && source != _threadId;
+        var parentTool = isChild ? source : null;
         switch (notification.Method)
         {
             case "thread/started":
@@ -342,6 +346,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "turn/started":
+                if (isChild)
+                {
+                    break;
+                }
                 // A new turn clears leftover usage so one that reports no tokenUsage carries none, rather than
                 // double-counting the previous turn's totals. Same reason for resetting the text accumulator
                 // (AC-126): a pure tool-use turn must not inherit the previous turn's answer as its Result.
@@ -357,8 +365,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/agentMessage/delta":
                 if (_TryGetString(notification.Params, "delta", out var delta))
                 {
-                    _turnText.Append(delta);
-                    _events.Publish(new PluginAssistantTextDelta { SessionId = _threadId, BlockIndex = 0, Text = delta });
+                    if (!isChild)
+                    {
+                        _turnText.Append(delta);
+                    }
+
+                    _events.Publish(new PluginAssistantTextDelta { SessionId = isChild ? source : _threadId, ParentToolUseId = parentTool, BlockIndex = 0, Text = delta });
                 }
 
                 break;
@@ -369,7 +381,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/reasoning/textDelta":
                 if (_TryGetString(notification.Params, "delta", out var reasoningText))
                 {
-                    _events.Publish(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 0, Thinking = reasoningText });
+                    _events.Publish(new PluginAssistantThinkingDelta { SessionId = isChild ? source : _threadId, ParentToolUseId = parentTool, BlockIndex = 0, Thinking = reasoningText });
                 }
 
                 break;
@@ -377,7 +389,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             case "item/reasoning/summaryTextDelta":
                 if (_TryGetString(notification.Params, "delta", out var reasoningSummary))
                 {
-                    _events.Publish(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 1, Thinking = reasoningSummary });
+                    _events.Publish(new PluginAssistantThinkingDelta { SessionId = isChild ? source : _threadId, ParentToolUseId = parentTool, BlockIndex = 1, Thinking = reasoningSummary });
                 }
 
                 break;
@@ -391,11 +403,30 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "turn/completed":
-                _HandleTurnCompleted(notification.Params);
+                if (isChild)
+                {
+                    _FinishChild(source);
+                }
+                else
+                {
+                    _HandleTurnCompleted(notification.Params);
+                }
                 break;
 
             case "thread/tokenUsage/updated":
-                _HandleTokenUsage(notification.Params);
+                if (isChild)
+                {
+                    if (_children.TryGetValue(source, out var child))
+                    {
+                        var usage = _ObjectOrDefault(notification.Params, "tokenUsage");
+                        _children[source] = child with { Tokens = _TryGetLong(_ObjectOrDefault(usage, "total"), "totalTokens") ?? child.Tokens };
+                        _PublishChildren();
+                    }
+                }
+                else
+                {
+                    _HandleTokenUsage(notification.Params);
+                }
                 break;
 
             case "account/rateLimits/updated":
@@ -403,6 +434,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "error":
+                if (isChild)
+                {
+                    _FinishChild(source);
+                    break;
+                }
                 if (_IsRateLimitRefusal(notification.Params))
                 {
                     _RecordObservation(PluginModelObservationKind.RateLimitRefusal);
@@ -422,23 +458,100 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             return;
         }
 
+        var source = _StringOrEmpty(parameters, "threadId");
+        var isChild = source.Length > 0 && source != _threadId;
+        var sessionId = isChild ? source : _threadId;
+        var parentTool = isChild ? source : null;
+        if (itemType == "subAgentActivity")
+        {
+            var childId = _StringOrEmpty(item, "agentThreadId");
+            var kind = _StringOrEmpty(item, "kind");
+            if (childId.Length == 0 || completed)
+            {
+                return;
+            }
+
+            if (kind == "started")
+            {
+                _children[childId] = new PluginBackgroundTask(childId, PluginBackgroundTaskKind.SubAgent, _StringOrEmpty(item, "agentPath"))
+                {
+                    AgentId = childId, ParentTaskId = source, ParentToolUseId = childId,
+                    RunId = _StringOrEmpty(parameters, "turnId"),
+                };
+                _events.Publish(new PluginToolUseRequested { SessionId = sessionId, ToolUseId = childId, ToolName = "agent", InputJson = item.GetRawText() });
+                _PublishChildren();
+            }
+            else if (kind is "completed" or "failed" or "stopped")
+            {
+                _FinishChild(childId);
+            }
+
+            return;
+        }
+
+        if (isChild && _children.TryGetValue(source, out var active) && !completed)
+        {
+            _children[source] = active with { LastTool = itemType == "commandExecution" ? "shell" : _StringOrEmpty(item, "tool") };
+            _PublishChildren();
+        }
+
         switch (itemType)
         {
             case "commandExecution" when !completed:
-                _events.Publish(new PluginToolUseRequested { SessionId = _threadId, ToolUseId = itemId, ToolName = "shell", InputJson = _RawOrEmpty(item, "command") });
+                _events.Publish(new PluginToolUseRequested { SessionId = sessionId, ParentToolUseId = parentTool, ToolUseId = itemId, ToolName = "shell", InputJson = _RawOrEmpty(item, "command") });
                 break;
 
             case "commandExecution" when completed:
-                _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = itemId, Content = _StringOrEmpty(item, "aggregatedOutput"), IsError = _IsNonZeroExit(item) });
+                _events.Publish(new PluginToolResult { SessionId = sessionId, ParentToolUseId = parentTool, ToolUseId = itemId, Content = _StringOrEmpty(item, "aggregatedOutput"), IsError = _IsNonZeroExit(item) });
                 break;
 
             case "mcpToolCall" when !completed:
-                _events.Publish(new PluginToolUseRequested { SessionId = _threadId, ToolUseId = itemId, ToolName = _StringOrEmpty(item, "tool"), InputJson = _RawOrEmpty(item, "arguments") });
+                _events.Publish(new PluginToolUseRequested { SessionId = sessionId, ParentToolUseId = parentTool, ToolUseId = itemId, ToolName = _StringOrEmpty(item, "tool"), InputJson = _RawOrEmpty(item, "arguments") });
                 break;
 
             case "mcpToolCall" when completed:
-                _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = itemId, Content = _RawOrEmpty(item, "result"), IsError = item.TryGetProperty("error", out var error) && error.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) });
+                _events.Publish(new PluginToolResult { SessionId = sessionId, ParentToolUseId = parentTool, ToolUseId = itemId, Content = _RawOrEmpty(item, "result"), IsError = item.TryGetProperty("error", out var error) && error.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) });
                 break;
+
+            case "collabAgentToolCall":
+            case "collabToolCall":
+                var recipients = new List<string>();
+                if (item.TryGetProperty("receiverThreadIds", out var receivers) && receivers.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var receiver in receivers.EnumerateArray())
+                    {
+                        if (receiver.ValueKind != JsonValueKind.String || receiver.GetString() is not { Length: > 0 } childId)
+                        {
+                            continue;
+                        }
+
+                        recipients.Add(childId);
+                    }
+                }
+
+                if (recipients.Count == 0 && sessionId is not null)
+                {
+                    recipients.Add(sessionId);
+                }
+
+                foreach (var recipient in recipients.Distinct())
+                {
+                    _events.Publish(completed
+                        ? new PluginToolResult { SessionId = recipient, ParentToolUseId = recipient == _threadId ? null : recipient, ToolUseId = itemId, Content = _RawOrEmpty(item, "agentsStates"), IsError = _StringOrEmpty(item, "status") == "failed" }
+                        : new PluginToolUseRequested { SessionId = recipient, ParentToolUseId = recipient == _threadId ? null : recipient, ToolUseId = itemId, ToolName = _StringOrEmpty(item, "tool"), InputJson = item.GetRawText() });
+                }
+                break;
+        }
+    }
+
+    private void _PublishChildren() => _events.Publish(new PluginBackgroundTasksChanged { SessionId = _threadId, Tasks = [.. _children.Values] });
+
+    private void _FinishChild(string childId)
+    {
+        if (_children.Remove(childId))
+        {
+            _events.Publish(new PluginToolResult { SessionId = _threadId, ToolUseId = childId, Content = "Agent finished", IsError = false });
+            _PublishChildren();
         }
     }
 
@@ -450,6 +563,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var status = _TryGetNestedString(parameters, "turn", "status", out var turnStatus) ? turnStatus : "completed";
         var isInterrupted = string.Equals(status, "interrupted", StringComparison.OrdinalIgnoreCase);
         var isError = !isInterrupted && !string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
+        if (isInterrupted || isError)
+        {
+            _children.Clear();
+            _PublishChildren();
+        }
         if (isError && _IsRateLimitRefusal(parameters))
         {
             _RecordObservation(PluginModelObservationKind.RateLimitRefusal);
@@ -558,6 +676,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             Model = _model,
             Quota = quota,
+            Profile = _config.ProfileKey,
         });
 
     private static bool _IsRateLimitRefusal(JsonElement parameters) =>

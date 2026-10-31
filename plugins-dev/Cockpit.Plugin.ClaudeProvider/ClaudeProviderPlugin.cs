@@ -66,10 +66,18 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             StartLogin = (configJson, ct) => ClaudeLoginFlow.Start(configJson, host.ResolveManagedCliPath, ct),
             DetectProfiles = ClaudeProfileDiscovery.Detect,
             UsageSignals = ClaudeUsageSignals.Declarations,
+            // Hosts that know ReadProfileUsage use it; for the others ReadUsage observes with a null profile, which
+            // is unknown rather than a wrong subscription.
             ReadUsage = json =>
             {
                 var readings = ClaudeUsageSignals.Read(json);
                 intelligence.ObserveStatusLine(readings, DateTimeOffset.UtcNow, host.RecordModelObservation);
+                return readings;
+            },
+            ReadProfileUsage = (configJson, json) =>
+            {
+                var readings = ClaudeUsageSignals.Read(json);
+                intelligence.ObserveStatusLine(readings, DateTimeOffset.UtcNow, host.RecordModelObservation, ClaudeConfigPaths.ProfileKey(configJson));
                 return readings;
             },
         });
@@ -116,7 +124,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // The same three things a Claude session runs out of, whichever route it opened through — an SDK
             // session already reports the figures at each turn boundary, so this only says what they are.
             UsageSignals = ClaudeUsageSignals.Declarations,
-            ReadModelIntelligenceAsync = (_, _) => Task.FromResult(intelligence.Read()),
+            ReadModelIntelligenceAsync = (configJson, _) => Task.FromResult(intelligence.Read(ClaudeConfigPaths.ProfileKey(configJson))),
 
             // Declared on both routes (AC-629). Claude is answered by the TTY one, but leaving this silent would
             // make the plugin the example that an SDK-only provider need not declare a gate.

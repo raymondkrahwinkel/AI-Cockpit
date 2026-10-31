@@ -41,6 +41,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     private readonly SwarmTakeoverCoordinator? _takeover;
     internal Task StandbyPublication { get; private set; } = Task.CompletedTask;
     internal Task LeadershipTransition { get; private set; } = Task.CompletedTask;
+    private double _contextCompactionPercent = AssistantSettings.DefaultCompactionPercent;
 
     // Serializes starts: a hotkey hold and a chip click landing together must not each build an instance.
     private readonly SemaphoreSlim _startGate = new(1, 1);
@@ -305,11 +306,6 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             cancellationToken,
             startFreshBecause: "The earlier conversation was cleared — this conversation starts here");
 
-    // AC-1013: How full the context may get before the assistant hands itself over and restarts (AC-596) — a
-    // percentage, not a token count, since the provider reports fill and knows the window.
-    // ponytail: one number for every provider, add per-provider tuning if that measurably matters.
-    internal const double RestartAboveContextPercent = 80;
-
     // AC-1013: `replaceALiveInstance` — whether a healthy instance is torn down too (false =
     // `EnsureStartedAsync`'s idempotent lazy start, true = `RestartAsync`); one body so both take the
     // same start gate. `startFresh` — resume the conversation (default) or not (AC-596's hand-over).
@@ -419,6 +415,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     public async Task ApplySettingsAsync(CancellationToken cancellationToken = default)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+        _contextCompactionPercent = _ContextCompactionPercent(settings);
 
         // AC-1013: Re-applies everything the start path applies from these settings, so a save reaches the running
         // assistant. Reuses the start path's own call rather than hand-picking fields — hand-picking is what
@@ -490,6 +487,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         bool startFresh, CancellationToken cancellationToken, string? startFreshBecause = null)
     {
         var settings = await _settings.LoadAsync(cancellationToken).ConfigureAwait(true);
+        _contextCompactionPercent = _ContextCompactionPercent(settings);
         if (!settings.IsEnabled)
         {
             // Criterion 1: with the feature off the hotkey does nothing — and says why, rather than being a key
@@ -789,14 +787,14 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // A fill that came back under the line re-arms the ask: this is the only place that can tell a compaction
         // that worked from one that did not, and the next crossing is a new episode rather than a repeat of this one.
-        if (reading.ContextUsedPercent < RestartAboveContextPercent)
+        if (reading.ContextUsedPercent < _contextCompactionPercent)
         {
             _askedTheProviderToCompact = false;
             return false;
         }
 
         // AC-1321: a compaction is a turn too; under a controller it waits for the next reading, like everything else.
-        return reading.CanTakeAPrompt && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator);
+        return reading.CanTakeAPrompt && ShouldHandOver(reading.ContextUsedPercent, reading.IsBusy, reading.IsWaitingOnOperator, _contextCompactionPercent);
     }
 
     // Whether the provider has already been asked to compact this fill. Without it, every property change above the
@@ -858,8 +856,12 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
     // The rule itself, as a pure function so it can be asserted directly — the same shape as ActivityFor above.
     // A null fill is a provider that reported nothing this turn, which says nothing about how full the context is:
     // reading it as zero would postpone the hand-over indefinitely on a provider that only reports sometimes.
-    internal static bool ShouldHandOver(double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator) =>
-        contextUsedPercent >= RestartAboveContextPercent && !isBusy && !isWaitingOnOperator;
+    internal static bool ShouldHandOver(
+        double? contextUsedPercent, bool isBusy, bool isWaitingOnOperator, double contextCompactionPercent = AssistantSettings.DefaultCompactionPercent) =>
+        contextUsedPercent >= contextCompactionPercent && !isBusy && !isWaitingOnOperator;
+
+    private static double _ContextCompactionPercent(AssistantSettings settings) =>
+        AssistantSettings.NormalizeCompactionPercent(settings.ContextCompactionPercent);
 
     // AC-1013: Maps the session's own status onto the chip. Only moves between Thinking and Ready — it never
     // overwrites Unavailable (a feature fact) or Listening (a key held right now). Written as the "working" set
@@ -947,9 +949,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         ).ConfigureAwait(true);
     }
 
-    // AC-1013: MCP servers the assistant launches with — the profile's own selection (or, if unset,
-    // `OfferedToOperator`'s full fan-out set) plus the broad read server only this launch may mount (AC-544
-    // criterion 2, exclusion by construction). A catalog read failure is logged; launch proceeds with the broad server alone.
+    // The assistant defaults to its own tools and the always-mounted core.
     private async Task<IReadOnlySet<string>> _McpSelectionAsync(
         Cockpit.Core.Profiles.SessionProfile profile, CancellationToken cancellationToken)
     {
@@ -981,34 +981,18 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // AC-1013: Both of the assistant's own Internal endpoints, named here and nowhere else — read (AC-544) and
         // acting (AC-545). Both also check the caller's pane per tool, so this mount is gate one of two. Naming only
         // the read server would leave AC-545's tools registered but mounted nowhere, silently absent.
-        var selection = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        var selection = new ExactMcpServerSelection([])
         {
             AssistantIdentity.McpServerName,
             AssistantIdentity.ActMcpServerName,
-            // AC-869: the assistant always has cockpit-github-pull-requests, regardless of working directory —
-            // the one launch other than a git-repo session that names this internal endpoint.
-            GitHubPullRequestsMcp.ServerName,
-            // AC-1911: the operator's assistant retains administrator execution after it was split away from
-            // ordinary build agents; ElevatedSessionTools still gates every call through consent and UAC.
-            "cockpit-elevated",
         };
 
         // A saved selection is the operator's own answer and is taken whole — including anything below, if they
         // ticked it deliberately. The filter is about what an assistant gets when nobody said.
-        selection.UnionWith(profile.EnabledMcpServerNames
-            ?? [.. McpServerRegistryFilter.OfferedToOperator(catalog)
-                .Select(server => server.Name)
-                .Where(name => !NotFannedOutToTheAssistant.Contains(name))]);
+        selection.UnionWith(profile.EnabledMcpServerNames ?? []);
+        selection.UnionWith(catalog.Where(server => server.AlwaysMounted).Select(server => server.Name));
         return selection;
     }
-
-    // AC-1013: Servers deliberately not handed by the no-selection fan-out (AC-545). High bar — shell/containers/
-    // cluster/worktrees/checks were dropped from an earlier draft since they raise their own Allow/Deny row.
-    // `cockpit-orchestrator` stays out: `delegate_task` starts AI work with no pane/roster/spawn trail, a side door around AC-545. Still a default (operator can opt in on the profile), not a boundary.
-    internal static readonly HashSet<string> NotFannedOutToTheAssistant = new(StringComparer.OrdinalIgnoreCase)
-    {
-        Cockpit.Core.Delegation.DelegationMcp.ServerName,
-    };
 
     // AC-1013: Launch options = profile's `OptionDefaults` (carries permission mode/model/effort — without it an
     // operator's `bypassPermissions` used to reach the driver as "default", tool calls still asked about) plus

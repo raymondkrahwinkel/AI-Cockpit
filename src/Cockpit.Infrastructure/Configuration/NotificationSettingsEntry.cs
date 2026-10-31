@@ -6,6 +6,10 @@ namespace Cockpit.Infrastructure.Configuration;
 // `TimeSpan`, so the JSON stays human-editable. Local and Discord notifications are independent switches.
 internal sealed class NotificationSettingsEntry
 {
+    public string[] IgnoredHomeFolderPatterns { get; set; } = new NotificationSettings().IgnoredHomeFolderPatterns;
+
+    public int ToastTimeoutSeconds { get; set; } = 5;
+
     public bool LocalEnabled { get; set; } = true;
 
     public bool DiscordEnabled { get; set; }
@@ -34,6 +38,8 @@ internal sealed class NotificationSettingsEntry
 
     public static NotificationSettingsEntry FromDomain(NotificationSettings settings) => new()
     {
+        IgnoredHomeFolderPatterns = settings.IgnoredHomeFolderPatterns,
+        ToastTimeoutSeconds = settings.ToastTimeoutSeconds,
         LocalEnabled = settings.LocalEnabled,
         DiscordEnabled = settings.DiscordEnabled,
         WebhookUrl = settings.WebhookUrl,
@@ -50,6 +56,8 @@ internal sealed class NotificationSettingsEntry
 
     public NotificationSettings ToDomain() => new()
     {
+        IgnoredHomeFolderPatterns = IgnoredHomeFolderPatterns,
+        ToastTimeoutSeconds = ToastTimeoutSeconds > 0 ? ToastTimeoutSeconds : 5,
         LocalEnabled = LocalEnabled,
         DiscordEnabled = DiscordEnabled,
         WebhookUrl = WebhookUrl,

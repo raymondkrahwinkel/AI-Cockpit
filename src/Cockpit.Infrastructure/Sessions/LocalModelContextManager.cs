@@ -9,16 +9,17 @@ namespace Cockpit.Infrastructure.Sessions;
 
 internal interface ILocalModelContextManager
 {
-    Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default);
+    Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default, string? sessionId = null);
+    Task ReleaseAsync(string sessionId);
 }
 
-// LM Studio's OpenAI-compatible inference endpoint cannot select a context per request. Its native v1 model API
-// can, so session startup reconciles the loaded instance with the profile before the first chat call. An old server
-// remains usable: inability to inspect or load is reported to the session as a warning, never as a startup failure.
 internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<LocalModelContextManager> logger)
     : ILocalModelContextManager, ISingletonService
 {
-    public async Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default)
+    private static readonly SemaphoreSlim _lmStudioLoadGate = new(1, 1);
+    private readonly Dictionary<string, string> _sessions = [];
+
+    public async Task<string?> PrepareAsync(ProviderConfig config, CancellationToken cancellationToken = default, string? sessionId = null)
     {
         if (config is OllamaConfig ollama)
         {
@@ -36,23 +37,79 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
         }
 
         var requested = LocalModelContext.Normalize(lmStudio.ContextTokens);
+        logger.LogInformation("Preparing LM Studio model {Model} for session {SessionId}: context {ContextTokens}, managed load {ManagedLoad}.",
+            lmStudio.Model, sessionId, requested, lmStudio.LoadModelWithContext || lmStudio.LoadOptions is not null);
+        await _lmStudioLoadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var endpoint = new UriBuilder(lmStudio.BaseUrl);
+            if (endpoint.Uri.IsLoopback)
+            {
+                endpoint.Host = "loopback";
+            }
+
+            var key = endpoint.Uri.AbsoluteUri.TrimEnd('/');
+            var inUse = _sessions.Any(session => session.Key != sessionId && session.Value == key);
+            var result = await _PrepareLmStudioAsync(lmStudio, requested, inUse, cancellationToken).ConfigureAwait(false);
+            if (sessionId is not null)
+            {
+                _sessions[sessionId] = key;
+            }
+
+            return result;
+        }
+        finally
+        {
+            _lmStudioLoadGate.Release();
+        }
+    }
+
+    public async Task ReleaseAsync(string sessionId)
+    {
+        await _lmStudioLoadGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            _sessions.Remove(sessionId);
+        }
+        finally
+        {
+            _lmStudioLoadGate.Release();
+        }
+    }
+
+    private async Task<string?> _PrepareLmStudioAsync(LmStudioConfig lmStudio, int requested, bool inUse, CancellationToken cancellationToken)
+    {
+        var managed = lmStudio.LoadModelWithContext || lmStudio.LoadOptions is not null;
         try
         {
             using var response = await _SendAsync(lmStudio, HttpMethod.Get, "/api/v1/models", null, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
+                if (managed)
+                {
+                    throw new InvalidOperationException($"LM Studio model inspection failed (HTTP {(int)response.StatusCode}); requested context/options were not applied.");
+                }
+
                 return _UnavailableWarning(lmStudio, requested, $"HTTP {(int)response.StatusCode}");
             }
 
             await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var document = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken).ConfigureAwait(false);
             var instance = _LoadedInstance(document.RootElement, lmStudio.Model);
+            if (lmStudio.LoadOptions is not null)
+            {
+                var summary = await LmStudioModelOptions.PrepareAsync(lmStudio, instance?.Id, instance?.ModelKey ?? lmStudio.Model, cancellationToken, allowReload: !inUse).ConfigureAwait(false);
+                logger.LogInformation("{LoadOptions}", summary);
+                return summary;
+            }
+
             if (instance is null)
             {
+                _RequireIdleEndpoint(inUse);
                 return await _LoadAsync(lmStudio, requested, cancellationToken).ConfigureAwait(false);
             }
 
-            if (instance.Value.ContextLength >= requested)
+            if (instance.Value.ContextLength == requested || (!managed && instance.Value.ContextLength > requested))
             {
                 return null;
             }
@@ -68,6 +125,7 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
                 return warning;
             }
 
+            _RequireIdleEndpoint(inUse);
             logger.LogInformation(
                 "Reloading LM Studio model {Model}: instance {InstanceId} has {LoadedContext} context tokens; the profile requests {RequestedContext}.",
                 lmStudio.Model,
@@ -76,7 +134,7 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
                 requested);
             if (!await _PostAsync(lmStudio, "/api/v1/models/unload", new { instance_id = instance.Value.Id }, cancellationToken).ConfigureAwait(false))
             {
-                return $"LM Studio-model {lmStudio.Model} kon niet worden herladen naar {requested} tokens: unload is geweigerd.";
+                throw new InvalidOperationException($"LM Studio-model {lmStudio.Model} kon niet worden herladen naar {requested} tokens: unload is geweigerd.");
             }
 
             return await _LoadAsync(lmStudio, requested, cancellationToken).ConfigureAwait(false);
@@ -85,18 +143,37 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
         {
             throw;
         }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException or InvalidOperationException or UriFormatException)
+        catch (Exception exception) when (!managed && (exception is HttpRequestException or JsonException or UriFormatException))
         {
             return _UnavailableWarning(lmStudio, requested, exception.Message, exception);
+        }
+    }
+
+    private static void _RequireIdleEndpoint(bool inUse)
+    {
+        if (inUse)
+        {
+            throw new InvalidOperationException("LM Studio load/reload refused: another Cockpit session uses this endpoint. Stop that session before changing model context or load options.");
         }
     }
 
     private async Task<string?> _LoadAsync(LmStudioConfig config, int contextTokens, CancellationToken cancellationToken)
     {
         logger.LogInformation("Loading LM Studio model {Model} with {ContextTokens} context tokens.", config.Model, contextTokens);
-        return await _PostAsync(config, "/api/v1/models/load", new { model = config.Model, context_length = contextTokens }, cancellationToken).ConfigureAwait(false)
-            ? null
-            : $"LM Studio-model {config.Model} kon niet met {contextTokens} tokens worden geladen; de sessie probeert de bestaande serverconfiguratie.";
+        if (!await _PostAsync(config, "/api/v1/models/load", new { model = config.Model, context_length = contextTokens }, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException($"LM Studio-model {config.Model} kon niet met {contextTokens} tokens worden geladen; sessiestart gestopt.");
+        }
+
+        using var response = await _SendAsync(config, HttpMethod.Get, "/api/v1/models", null, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+        if (_LoadedInstance(document.RootElement, config.Model)?.ContextLength != contextTokens)
+        {
+            throw new InvalidOperationException($"LM Studio did not load the requested context of {contextTokens} tokens; session startup stopped.");
+        }
+
+        return null;
     }
 
     private async Task<bool> _PostAsync(LmStudioConfig config, string path, object body, CancellationToken cancellationToken)
@@ -169,7 +246,7 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
                     continue;
                 }
 
-                var candidate = new LoadedInstance(id.GetString() ?? model, tokens);
+                var candidate = new LoadedInstance(id.GetString() ?? model, tokens, key.ValueKind == JsonValueKind.String ? key.GetString()! : model);
                 if (string.Equals(candidate.Id, model, StringComparison.OrdinalIgnoreCase))
                 {
                     return candidate;
@@ -190,5 +267,5 @@ internal sealed class LocalModelContextManager(HttpClient httpClient, ILogger<Lo
         return null;
     }
 
-    private readonly record struct LoadedInstance(string Id, int ContextLength);
+    private readonly record struct LoadedInstance(string Id, int ContextLength, string ModelKey);
 }

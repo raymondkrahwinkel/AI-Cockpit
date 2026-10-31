@@ -20,13 +20,19 @@ internal sealed class OpenAiCompatChatClientFactory : IChatClientFactory, ISingl
             _ => throw new NotSupportedException($"Provider {config.Provider} is not OpenAI-compatible."),
         };
 
-        return CreateForEndpoint(baseUrl, model, apiKey);
+        return new LocalReasoningChatClient(CreateForEndpoint(baseUrl, model, apiKey));
     }
 
     public IChatClient CreateForEndpoint(string baseUrl, string model, string? apiKey = null)
     {
-        var options = new OpenAIClientOptions { Endpoint = new Uri($"{baseUrl.TrimEnd('/')}/v1") };
+        var options = BuildClientOptions(baseUrl);
         var credential = new ApiKeyCredential(string.IsNullOrEmpty(apiKey) ? "not-needed" : apiKey);
         return new OpenAIClient(credential, options).GetChatClient(model).AsIChatClient();
     }
+
+    internal static OpenAIClientOptions BuildClientOptions(string baseUrl) => new()
+    {
+        Endpoint = new Uri($"{baseUrl.TrimEnd('/')}/v1"),
+        NetworkTimeout = Timeout.InfiniteTimeSpan,
+    };
 }

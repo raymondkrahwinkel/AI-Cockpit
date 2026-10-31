@@ -11,7 +11,10 @@ namespace Cockpit.App.ViewModels;
 // An injected scheduler makes auto-dismiss deterministic in tests without a dispatcher loop.
 public sealed class ToastHostViewModel
 {
-    private static readonly TimeSpan DefaultAutoDismissDelay = TimeSpan.FromSeconds(5);
+    public TimeSpan AutoDismissDelay { get; set; } = TimeSpan.FromSeconds(5);
+    private readonly Dictionary<string, ConditionToast> _conditions = new(StringComparer.Ordinal);
+    private readonly bool _automaticallyRecheck;
+    private DispatcherTimer? _conditionTimer;
     private const int MaxBundleLines = 3;
     private readonly Action<ToastViewModel, TimeSpan> _scheduleAutoDismiss;
     private List<StartupToast>? _startupToasts;
@@ -22,6 +25,7 @@ public sealed class ToastHostViewModel
     public ToastHostViewModel()
         : this(_ScheduleWithDispatcherTimer)
     {
+        _automaticallyRecheck = true;
     }
 
     internal ToastHostViewModel(Action<ToastViewModel, TimeSpan> scheduleAutoDismiss)
@@ -49,7 +53,11 @@ public sealed class ToastHostViewModel
         {
             Title = title,
         };
-        toast.Dismissed += (_, _) => Toasts.Remove(toast);
+        toast.Dismissed += (_, _) =>
+        {
+            Toasts.Remove(toast);
+            _startupToasts?.RemoveAll(queued => ReferenceEquals(queued.Toast, toast));
+        };
         item = Notifications.Post(toast, source, key, sourceId);
 
         if (_startupToasts is not null)
@@ -67,6 +75,79 @@ public sealed class ToastHostViewModel
 
         return toast;
     }
+
+    internal ToastViewModel AddCondition(string key, string message, ToastSeverity severity,
+        IReadOnlyList<ToastAction> actions, Func<bool> stillApplies)
+    {
+        var deadline = DateTimeOffset.UtcNow + AutoDismissDelay;
+        var visible = true;
+        if (_conditions.Remove(key, out var previous))
+        {
+            deadline = previous.Deadline;
+            visible = Toasts.Contains(previous.Toast);
+            _Resolve(previous);
+        }
+
+        var toast = Add(message, severity, actions, sticky: true, key: key);
+        var item = Notifications.Items.First(item => item.Key == key && item.SourceId is null);
+        var condition = new ConditionToast(toast, item, stillApplies, deadline);
+        _conditions[key] = condition;
+        if (_automaticallyRecheck && _conditionTimer is null)
+        {
+            _conditionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _conditionTimer.Tick += (_, _) => RecheckConditions();
+            _conditionTimer.Start();
+        }
+        foreach (var action in toast.Actions)
+        {
+            action.StillApplies = stillApplies;
+        }
+
+        if (!visible || deadline <= DateTimeOffset.UtcNow)
+        {
+            toast.CloseCommand.Execute(null);
+        }
+        else
+        {
+            _scheduleAutoDismiss(toast, deadline - DateTimeOffset.UtcNow);
+        }
+
+        RecheckConditions();
+        return toast;
+    }
+
+    internal void RecheckConditions()
+    {
+        foreach (var (key, condition) in _conditions.ToArray())
+        {
+            if (!condition.StillApplies())
+            {
+                _conditions.Remove(key);
+                _Resolve(condition);
+            }
+        }
+
+        if (_conditions.Count == 0)
+        {
+            _conditionTimer?.Stop();
+            _conditionTimer = null;
+        }
+    }
+
+    private static void _Resolve(ConditionToast condition)
+    {
+        foreach (var action in condition.Toast.Actions)
+        {
+            action.StillApplies = static () => false;
+            action.InvokeCommand.NotifyCanExecuteChanged();
+        }
+
+        condition.Item.MarkResolved();
+        condition.Toast.CloseCommand.Execute(null);
+    }
+
+    private sealed record ConditionToast(ToastViewModel Toast, NotificationItemViewModel Item,
+        Func<bool> StillApplies, DateTimeOffset Deadline);
 
     // AC-1804: a plugin's notification, kept under its id while it needs you.
     internal ToastViewModel Notify(string sourceId, string source, PluginNotification notification) =>
@@ -175,7 +256,7 @@ public sealed class ToastHostViewModel
 
         if (!sticky && toast.Actions.Count == 0 && toast.Severity is ToastSeverity.Information or ToastSeverity.Success)
         {
-            _scheduleAutoDismiss(toast, DefaultAutoDismissDelay);
+            _scheduleAutoDismiss(toast, AutoDismissDelay);
         }
     }
 

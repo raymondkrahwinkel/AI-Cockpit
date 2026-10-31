@@ -119,12 +119,14 @@ public class DepotNotesTests
         var rig = _SceneRig();
         var backendHost = Substitute.For<ICockpitHost>();
         IReadOnlyList<DepotLiveNote> listed = [_Live()];
-        var refused = false;
+        var status = HttpStatusCode.OK;
         var structuredPeople = false;
-        backendHost.CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>()).Returns(_ => new DepotBrowserModelTests.StubHandler(request =>
+        // AC-1958: like Depot's bearer group, the live list refuses the host-only depot.host token with 403.
+        backendHost.CreateAuthorizedHandler(Arg.Any<string>(), Arg.Any<string>()).Returns(_ => new DepotBrowserModelTests.StubHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)));
+        backendHost.CreateAuthorizedHandler(Arg.Any<string>()).Returns(_ => new DepotBrowserModelTests.StubHandler(request =>
         {
             Assert.Equal("/cockpit/notes/live", request.RequestUri?.AbsolutePath);
-            return new HttpResponseMessage(refused ? HttpStatusCode.Unauthorized : HttpStatusCode.OK)
+            return new HttpResponseMessage(status)
             {
                 Content = new StringContent(JsonSerializer.Serialize(new
                 {
@@ -178,7 +180,11 @@ public class DepotNotesTests
         listed = [_Live() with { Title = "Replacement", People = [new("Jithran")] }];
         await notes.ListAsync(first);
         Assert.Equal("Replacement", Assert.Single(Assert.IsType<UiAsm::Cockpit.Plugin.Depot.Contracts.DepotNotesPage>(notes.PageOf(first)).Notes).Title);
-        refused = true;
+        status = HttpStatusCode.Forbidden;
+        await notes.ListAsync(first);
+        Assert.Equal("unreachable", notes.PageOf(first)?.State);
+        Assert.Equal("Depot refused the live notes for this account.", notes.PageOf(first)?.Reason);
+        status = HttpStatusCode.Unauthorized;
         await notes.ListAsync(first);
         Assert.Empty(Assert.IsType<UiAsm::Cockpit.Plugin.Depot.Contracts.DepotNotesPage>(notes.PageOf(first)).Notes);
         Assert.Equal("sign-in", notes.PageOf(first)?.State);

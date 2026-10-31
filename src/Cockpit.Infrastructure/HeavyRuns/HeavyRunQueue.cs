@@ -27,6 +27,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
     private readonly ILiveSessionRegistry? _live;
     private readonly ILogger<HeavyRunQueue> _logger;
     private HeavyRunSettings _settings = new();
+    private Slot? _maintenance;
 
     public HeavyRunQueue(
         IMachineResources resources,
@@ -61,7 +62,7 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         };
         lock (_gate)
         {
-            if (request.Purpose == HeavyRunPurpose.Operator)
+            if (request.Purpose == HeavyRunPurpose.Operator && _maintenance is null)
             {
                 slot.Admit(_resources.Current, null, DateTimeOffset.UtcNow);
                 _running.Add(slot);
@@ -85,6 +86,75 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
 
         _ = _RefreshSettingsAsync();
         return slot;
+    }
+
+    public IHeavyRunSlot ReserveMaintenance(string workingDirectory)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var request = new HeavyRunRequest(
+            $"maintenance-{Guid.NewGuid():N}", HeavyRunKind.Gate, HeavyRunPurpose.Operator,
+            "operator", "Docker maintenance", workingDirectory);
+        var slot = new Slot(this, request, now, HeavyRunCostStore.Key(request.Kind, workingDirectory));
+        lock (_gate)
+        {
+            if (_maintenance is not null)
+            {
+                throw new InvalidOperationException("Maintenance is already reserved.");
+            }
+
+            _maintenance = slot;
+            slot.Admit(_resources.Current, null, now);
+            _running.Add(slot);
+        }
+
+        slot.Started();
+        try
+        {
+            _Pump();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "The heavy-run queue failed to refresh its maintenance reservation.");
+        }
+
+        return slot;
+    }
+
+    public async Task WaitForIdleAsync(IHeavyRunSlot reservation, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, reservation.Revoked);
+        while (true)
+        {
+            var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnChanged() => changed.TrySetResult();
+            lock (_gate)
+            {
+                linked.Token.ThrowIfCancellationRequested();
+                if (!ReferenceEquals(_maintenance, reservation))
+                {
+                    throw new InvalidOperationException("The maintenance reservation is no longer held.");
+                }
+
+                if (_running.Count == 1)
+                {
+                    return;
+                }
+
+                Changed += OnChanged;
+            }
+
+            try
+            {
+                await changed.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    Changed -= OnChanged;
+                }
+            }
+        }
     }
 
     // What `run_status` reports for a run the queue holds: "queued" with its reason, or "running"; null otherwise.
@@ -200,13 +270,35 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
             var now = DateTimeOffset.UtcNow;
             while (_waiting.Count > 0)
             {
+                if (_maintenance is not null)
+                {
+                    foreach (var waiting in _waiting)
+                    {
+                        waiting.WaitReason = "waiting: Docker maintenance";
+                    }
+
+                    break;
+                }
+
+                if (_waiting.FirstOrDefault(slot => slot.Request.Purpose == HeavyRunPurpose.Operator) is { } requested)
+                {
+                    _waiting.Remove(requested);
+                    requested.Admit(_resources.Current, null, now);
+                    _running.Add(requested);
+                    admitted.Add(requested);
+                    continue;
+                }
+
                 var candidates = _waiting.Select(slot => new HeavyRunCandidate(
                     slot.Request.Kind.ToString().ToLowerInvariant(),
                     slot.Request.Purpose == HeavyRunPurpose.PreMerge,
                     slot.EnqueuedAt,
                     _costs.Get(slot.CostKey),
                     slot.FreeDiskBytes)).ToList();
-                var decision = HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count > 0, now);
+                var diskReason = _CriticalDiskReason(_Ordered()[0].Request.WorkingDirectory);
+                var decision = diskReason is null
+                    ? HeavyRunAdmission.Next(candidates, _Projected(now), _settings, _running.Count > 0, now)
+                    : new HeavyRunDecision(null, diskReason);
                 if (decision.Admit is not { } index)
                 {
                     var ordered = _Ordered();
@@ -234,6 +326,30 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
         Changed?.Invoke();
     }
 
+    private string? _CriticalDiskReason(string workingDirectory)
+    {
+        string directory;
+        try
+        {
+            directory = Path.GetFullPath(workingDirectory).Replace('\\', '/').TrimEnd('/');
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var disk = _resources.Disks
+            .Where(disk =>
+            {
+                var mount = disk.Name.Replace('\\', '/').TrimEnd('/');
+                return directory.Equals(mount, comparison) || directory.StartsWith(mount + "/", comparison);
+            })
+            .OrderByDescending(disk => disk.Name.Length)
+            .FirstOrDefault();
+        return disk?.Pressure == DiskPressure.Critical ? $"waiting: disk {disk.Name} is critical" : null;
+    }
+
     // The measured load plus what the runs admitted within the warm-up are expected to add but cannot show yet.
     private MachineLoad _Projected(DateTimeOffset now)
     {
@@ -257,14 +373,30 @@ public sealed class HeavyRunQueue : ISupervisedActivitySource, ISingletonService
 
     private async ValueTask _ReleaseAsync(Slot slot)
     {
+        bool maintenance;
+        lock (_gate)
+        {
+            maintenance = ReferenceEquals(_maintenance, slot);
+        }
+
+        if (maintenance)
+        {
+            slot.Revoke();
+        }
+
         bool wasRunning;
         lock (_gate)
         {
             _waiting.Remove(slot);
             wasRunning = _running.Remove(slot);
+            if (ReferenceEquals(_maintenance, slot))
+            {
+                _maintenance = null;
+            }
         }
 
         slot.Abandon();
+        Changed?.Invoke();
         if (wasRunning && slot.Measured(DateTimeOffset.UtcNow, WarmUp) is { } cost)
         {
             try

@@ -23,6 +23,7 @@ public class OpenAiCompatSessionDriverTests
     [Fact]
     public async Task LmStudio_OffersCodingNatively_WithTheWorkingDirectoryInTheSystemPrompt()
     {
+        Assert.Equal(Timeout.InfiniteTimeSpan, OpenAiCompatChatClientFactory.BuildClientOptions("http://localhost:1234").NetworkTimeout);
         List<ChatMessage>? sent = null;
         ChatOptions? sentOptions = null;
         var chatClient = Substitute.For<IChatClient>();
@@ -32,10 +33,10 @@ public class OpenAiCompatSessionDriverTests
                 Arg.Any<CancellationToken>())
             .Returns(_Stream("Hello ", "world."));
         var contextManager = Substitute.For<ILocalModelContextManager>();
-        contextManager.PrepareAsync(Arg.Any<ProviderConfig>(), Arg.Any<CancellationToken>())
+        contextManager.PrepareAsync(Arg.Any<ProviderConfig>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
             .Returns("LM Studio is geladen met 8192 tokens; het profiel vraagt 32768 tokens.");
         var driver = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
-        var profile = new SessionProfile("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen3-coder"))
+        var profile = new SessionProfile("lmstudio", new LmStudioConfig("http://localhost:1234", "qwen3-coder", EnableThinking: true))
         {
             EnabledMcpServerNames = ["test-server"],
         };
@@ -51,6 +52,7 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == "shell");
         Assert.Contains(sentOptions.Tools!, tool => tool.Name == CockpitToolSearch.SearchToolName);
         Assert.DoesNotContain(sentOptions.Tools!, tool => tool.Name == "background_0");
+        Assert.Null(sentOptions.RawRepresentationFactory);
         var systemPrompt = Assert.Single(sent!, message => message.Role == ChatRole.System).Text;
         Assert.Contains(@"C:\\work\\AC-1911", systemPrompt);
         Assert.Contains(OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux", systemPrompt);
@@ -58,6 +60,112 @@ public class OpenAiCompatSessionDriverTests
         Assert.Contains("verify the requested result", systemPrompt);
         Assert.Contains(events.OfType<AssistantTextCompleted>(), completed => completed.Text.Contains("geladen met 8192", StringComparison.Ordinal));
         await LocalModelContextContract.AssertAsync();
+        var exact = new Cockpit.Core.Mcp.ExactMcpServerSelection(["Depot", "YouTrack", "cockpit-coding-shell"]);
+        var provider = _SelectionSensitiveProvider();
+        var restricted = _CreateDriver(chatClient, provider, contextManager);
+        // AC-1962: an isolated start forwards the complete selection and still vouches for its own file tools.
+        await restricted.StartAsync(profile, enabledMcpServerNames: exact, workingDirectory: "/wt/run-1",
+            launchOptions: new Dictionary<string, string> { [Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true" });
+        Assert.True(restricted.Capabilities.ConfinesFileAccessToWorkingDirectory);
+        await provider.Received(1).ConnectAsync(
+            Arg.Is<IReadOnlySet<string>?>(selection => ReferenceEquals(selection, exact)),
+            Arg.Any<string?>(), "/wt/run-1", Arg.Any<string?>(), "/wt/run-1",
+            Arg.Any<CancellationToken>(), Arg.Any<string?>());
+        await restricted.SendUserMessageAsync("hi");
+        await _CollectUntilTurnCompletedAsync(restricted);
+        foreach (var thinking in new bool?[] { false, null })
+        {
+            var alternate = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
+            await alternate.StartAsync(new SessionProfile("alternate", Assert.IsType<LmStudioConfig>(profile.ProviderConfig) with { EnableThinking = thinking }));
+            await alternate.SendUserMessageAsync("hi");
+            await _CollectUntilTurnCompletedAsync(alternate);
+            if (thinking is null)
+            {
+                Assert.Null(sentOptions!.RawRepresentationFactory);
+            }
+            else
+            {
+                var requestOptions = Assert.IsType<OpenAI.Chat.ChatCompletionOptions>(sentOptions!.RawRepresentationFactory!(chatClient));
+                using var request = System.Text.Json.JsonDocument.Parse(System.ClientModel.Primitives.ModelReaderWriter.Write(requestOptions).ToString());
+                Assert.Equal("none", request.RootElement.GetProperty("reasoning_effort").GetString());
+            }
+        }
+
+        var overrideConfig = Assert.IsType<LmStudioConfig>(profile.ProviderConfig) with
+        {
+            ContextTokens = 65_536,
+            LoadModelWithContext = true,
+            TurnLimits = System.Text.Json.JsonSerializer.SerializeToElement(new { contextWindowTokens = 32_768 }),
+        };
+        var overridden = _CreateDriver(chatClient, _SelectionSensitiveProvider(), contextManager);
+        await overridden.StartAsync(profile with { Label = "override", ProviderConfig = overrideConfig }, model: "other-model");
+        await contextManager.Received(1).PrepareAsync(
+            Arg.Is<LmStudioConfig>(config => config.Model == "other-model" && config.ContextTokens == 65_536 && config.LoadModelWithContext && config.LoadOptions == overrideConfig.LoadOptions),
+            Arg.Any<CancellationToken>(), Arg.Any<string?>());
+        await overridden.SendUserMessageAsync(new string('x', 40_000 * 4));
+        var largeTurn = await _CollectUntilTurnCompletedAsync(overridden);
+        Assert.False(Assert.Single(largeTurn.OfType<TurnCompleted>()).IsError);
+        Assert.NotEmpty(sentOptions!.Tools!);
+        Assert.Equal("other-model", sentOptions.ModelId);
+        Assert.DoesNotContain(sent!, message => message.Text == Cockpit.Plugins.OpenAiCompat.ContextGuardChatClient.ContextFullNote);
+        await overridden.DisposeAsync();
+        await contextManager.Received(1).ReleaseAsync(overridden.SessionId!);
+        var failedManager = Substitute.For<ILocalModelContextManager>();
+        failedManager.PrepareAsync(Arg.Any<ProviderConfig>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(Task.FromException<string?>(new InvalidOperationException("context could not be applied")));
+        var failedFactory = Substitute.For<IChatClientFactory>();
+        var failed = new OpenAiCompatSessionDriver(failedFactory, _SelectionSensitiveProvider(), NullLogger<OpenAiCompatSessionDriver>.Instance, failedManager);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failed.StartAsync(profile));
+        failedFactory.DidNotReceive().Create(Arg.Any<ProviderConfig>());
+        await failedManager.Received(1).ReleaseAsync(failed.SessionId!);
+        var faultedToolSession = Substitute.For<IMcpToolSession>();
+        faultedToolSession.Tools.Returns([]);
+        faultedToolSession.ConnectedServerNames.Returns([]);
+        var faultedProvider = Substitute.For<IMcpToolProvider>();
+        faultedProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(faultedToolSession);
+        var faulted = _CreateDriver(chatClient, faultedProvider, contextManager);
+        await faulted.StartAsync(profile);
+        typeof(OpenAiCompatSessionDriver).GetField("_turnTask", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(faulted, Task.FromException(new InvalidOperationException("turn cleanup failed")));
+        var cleanupError = await Assert.ThrowsAsync<InvalidOperationException>(() => faulted.DisposeAsync().AsTask());
+        Assert.Equal("turn cleanup failed", cleanupError.Message);
+        await faultedToolSession.Received(1).DisposeAsync();
+        await contextManager.Received(1).ReleaseAsync(faulted.SessionId!);
+    }
+
+    [Fact]
+    public async Task LocalProfileEffort_IsSentWhenSet_AndAbsentWhenEmpty()
+    {
+        using var handler = new LocalReasoningChatClientTests.CapturingHandler();
+        using var http = new HttpClient(handler);
+        var sdkOptions = OpenAiCompatChatClientFactory.BuildClientOptions("http://localhost:1234");
+        sdkOptions.Transport = new System.ClientModel.Primitives.HttpClientPipelineTransport(http);
+        using var sdk = new OpenAI.OpenAIClient(new System.ClientModel.ApiKeyCredential("audit"), sdkOptions).GetChatClient("model").AsIChatClient();
+        foreach (var (effort, expected) in new (string, string?)[]
+        {
+            ("medium", "medium"),
+            ("", null),
+        })
+        {
+            var entry = Cockpit.Infrastructure.Configuration.ProviderConfigEntry.FromDomain(new LmStudioConfig("http://192.0.2.10:1234", "model", ReasoningEffort: effort));
+            var effortProfile = new SessionProfile("effort", entry.ToDomain("", null));
+            var editor = new Cockpit.App.ViewModels.EditableProfileViewModel(effortProfile, isLoggedIn: false);
+            var saved = Cockpit.Infrastructure.Configuration.ProviderConfigEntry.FromDomain(editor.ToProfile().ProviderConfig);
+            Assert.Equal(expected, saved.ReasoningEffort);
+
+            await using var effortDriver = _CreateDriver(sdk, _SelectionSensitiveProvider(), null);
+            await effortDriver.StartAsync(editor.ToProfile());
+            var agent = Assert.IsAssignableFrom<IChatClient>(typeof(OpenAiCompatSessionDriver)
+                .GetField("_agent", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(effortDriver));
+            Assert.True(agent.GetService<Cockpit.Plugins.OpenAiCompat.ContextGuardChatClient>()!.PreservePrefix);
+            await effortDriver.SendUserMessageAsync("hi");
+            var effortEvents = await _CollectUntilTurnCompletedAsync(effortDriver);
+            Assert.False(Assert.Single(effortEvents.OfType<TurnCompleted>()).IsError);
+            var body = handler.Bodies[^1];
+            Assert.Equal(expected is not null, body.TryGetProperty("reasoning_effort", out var value));
+            if (expected is not null) Assert.Equal(expected, value.GetString());
+        }
     }
 
     [Fact]
@@ -68,7 +176,9 @@ public class OpenAiCompatSessionDriverTests
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(_ToolCall("read_file", ("path", "x")), _Stream("done"));
-        var driver = _CreateDriver(chatClient, AIFunctionFactory.Create((string path) => $"read {path}", "read_file"));
+        var driver = _CreateDriver(chatClient,
+            [AIFunctionFactory.Create((string path) => $"read {path}", "read_file"),
+                .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold).Select(index => AIFunctionFactory.Create(() => "unused", $"filler_{index}"))]);
         await driver.StartAsync(LocalProfile);
 
         await driver.SendUserMessageAsync("go");
@@ -192,7 +302,7 @@ public class OpenAiCompatSessionDriverTests
     {
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
-        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, localModelContext: contextManager);
+        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, contextManager ?? Substitute.For<ILocalModelContextManager>());
     }
 
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses, params AIFunction[] tools)
@@ -207,7 +317,7 @@ public class OpenAiCompatSessionDriverTests
         var toolProvider = Substitute.For<IMcpToolProvider>();
         toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>(), Arg.Any<string?>()).Returns(toolSession);
 
-        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance, Substitute.For<ILocalModelContextManager>());
     }
 
     private static IMcpToolProvider _SelectionSensitiveProvider()

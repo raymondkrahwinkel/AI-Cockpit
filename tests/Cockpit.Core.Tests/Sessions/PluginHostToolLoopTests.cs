@@ -20,7 +20,11 @@ public class PluginHostToolLoopTests
     {
         var ran = false;
         var tool = AIFunctionFactory.Create(() => { ran = true; return "did the thing"; }, "write_file");
-        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch, tool);
+        await using var session = await _StartAsync(PluginHostToolLoop.ToolsAndSearch,
+            [tool, .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold).Select(index => AIFunctionFactory.Create(() => "unused", $"filler_{index}"))]);
+        Assert.DoesNotContain(session.Toolset.Tools, descriptor => descriptor.Name == "write_file");
+        Assert.Contains("No tool called", await session.Toolset.InvokeAsync("unselected_tool", "{}"));
+        Assert.Contains("must be a JSON object", await session.Toolset.InvokeAsync("write_file", "[]"));
 
         // A plugin driver never decides this: it can only ask. The prompt has to reach the operator, and the
         // answer has to be what runs or refuses the call — nothing the plugin says can shortcut either half.
@@ -30,6 +34,9 @@ public class PluginHostToolLoopTests
 
         Assert.Equal("Tool call was denied.", await call);
         Assert.False(ran);
+        session.Toolset.Gate.SetAutoApprove(true);
+        Assert.Equal("did the thing", await session.Toolset.InvokeAsync("write_file", "{}"));
+        Assert.True(ran);
     }
 
     [Fact]
@@ -40,7 +47,7 @@ public class PluginHostToolLoopTests
         await using var session = await _StartAsync(
             PluginHostToolLoop.ToolsAndSearch,
             new Dictionary<string, ToolPermissionClass> { ["write_file"] = ToolPermissionClass.Write },
-            tool);
+            [tool, .. Enumerable.Range(0, CockpitToolSearch.PreloadThreshold).Select(index => AIFunctionFactory.Create(() => "unused", $"filler_{index}"))]);
 
         // AC-79: a delegated run has nobody to answer a prompt, so its ceiling is what decides. Before the adapter
         // forwarded SetDelegatedToolGateAsync this was a no-op on this route — the call would have hung on a prompt
@@ -67,6 +74,7 @@ public class PluginHostToolLoopTests
         string? confine = null;
         string? project = null;
         string? agent = null;
+        IReadOnlySet<string>? selection = null;
         var toolProvider = _ToolProvider(
             [],
             new Dictionary<string, ToolPermissionClass>(),
@@ -79,7 +87,7 @@ public class PluginHostToolLoopTests
 
         // Discarded rather than awaited: this is NSubstitute recording what to capture, not a call to make.
         _ = toolProvider.ConnectAsync(
-            Arg.Any<IReadOnlySet<string>?>(),
+            Arg.Do<IReadOnlySet<string>?>(value => selection = value),
             Arg.Do<string?>(value => pane = value),
             Arg.Do<string?>(value => confine = value),
             Arg.Do<string?>(value => project = value),
@@ -92,6 +100,7 @@ public class PluginHostToolLoopTests
         await driver.StartAsync(
             profile: new Cockpit.Core.Profiles.SessionProfile("Assistant", new Cockpit.Core.Profiles.PluginProviderConfig("test", "{}")),
             workingDirectory: "/tmp/worktree",
+            enabledMcpServerNames: new HashSet<string> { "Depot", "YouTrack", CodingTools.ShellEndpointName },
             launchOptions: new Dictionary<string, string>
             {
                 [WellKnownPluginSessionOptions.PaneId] = "pane-7",
@@ -105,6 +114,10 @@ public class PluginHostToolLoopTests
         Assert.Equal("/tmp/worktree", confine);
         Assert.Equal("project-3", project);
         Assert.Equal("Assistant", agent);
+        // AC-1962: the plugin host loop forwards every selected server alongside the confinement root.
+        Assert.Contains("Depot", selection!);
+        Assert.Contains("YouTrack", selection!);
+        Assert.Contains(CodingTools.ShellEndpointName, selection!);
         Assert.Contains(inner.Toolset!.Tools, tool => tool.Name == "read");
         Assert.Contains(inner.Toolset.Tools, tool => tool.Name == "shell");
         Assert.DoesNotContain(inner.Toolset.Tools, tool => tool.Name == "background_0");

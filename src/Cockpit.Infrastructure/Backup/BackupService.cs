@@ -503,13 +503,14 @@ internal sealed class BackupService(
     private async Task _RebaseRestoredPathsAsync(string root, BackupManifest manifest)
     {
         var file = Path.Combine(root, "cockpit.json");
+        using var gate = await CockpitConfigWriteGate.AcquireAsync(file, CancellationToken.None);
         if (!File.Exists(file) || JsonNode.Parse(await File.ReadAllTextAsync(file)) is not JsonObject settings)
         {
             return;
         }
 
         var unresolved = RestorePathPortability.Rebase(settings, manifest.SourceConfigRoot, root);
-        await File.WriteAllTextAsync(file, settings.ToJsonString(Json));
+        CockpitConfigPath.ReplaceAtomicallyPrivate(file, settings.ToJsonString(Json));
 
         if (unresolved.Count > 0)
         {

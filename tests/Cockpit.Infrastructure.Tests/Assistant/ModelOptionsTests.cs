@@ -8,6 +8,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Core.ModelIntelligence;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Assistant;
+using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.ModelIntelligence;
 using Cockpit.Infrastructure.Sessions;
@@ -18,7 +19,7 @@ using System.ComponentModel;
 
 namespace Cockpit.Infrastructure.Tests.Assistant;
 
-// AC-1813: model_options states the model picture for the assistant, and only for the assistant.
+// AC-1813: model_options covers the assistant tool and the orchestrator's delegation rights.
 public sealed class ModelOptionsTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 27, 12, 0, 0, TimeSpan.Zero);
@@ -48,9 +49,8 @@ public sealed class ModelOptionsTests
         _provider.ReadAsync("Prov", Arg.Any<CancellationToken>()).Returns(reading);
     }
 
-    // Security: the model picture belongs to the assistant; an ordinary session is refused before anything is read.
     [Fact]
-    public async Task ModelOptions_FromAnOrdinaryAgentSession_IsRefused_AndNothingIsRead()
+    public async Task ModelOptions_AssistantToolRefusesAgents_OrchestratorToolShowsOnlyDelegatableProfiles()
     {
         McpRequestContext.Set("pane-ordinary");
 
@@ -60,6 +60,29 @@ public sealed class ModelOptionsTests
         Assert.Contains("not available to an agent session", (string)result["error"]!);
         await _public.DidNotReceive().GetSnapshotsAsync(Arg.Any<CancellationToken>());
         await _provider.DidNotReceive().ReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        _Given(new ModelIndices(50m, null, null), new PluginModelIntelligence
+        {
+            Models = [new PluginModelCostEstimate("m1")],
+        });
+        _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new SessionProfile("Prov", new PluginProviderConfig("p", "{}")),
+            new SessionProfile("Other", new PluginProviderConfig("other", "{}")),
+        ]);
+        var delegation = Substitute.For<IDelegationService>();
+        delegation.ListTargetsAsync(Arg.Any<CancellationToken>()).Returns(
+            [new DelegationTargetView("Prov", "p", null, [], [], 1, 0, [])]);
+        var tools = new OrchestratorTools(delegation, new ModelPictureReader(_public, _provider, _profiles, new FakeClock(Now)));
+
+        var options = JsonNode.Parse(await tools.ModelOptionsAsync())!;
+
+        Assert.True((bool)options["ok"]!);
+        Assert.Equal(1, (int)options["count"]!);
+        Assert.Equal("Prov", (string)Assert.Single(options["models"]!.AsArray())!["profile"]!);
+        var tool = typeof(OrchestratorTools).GetMethod(nameof(OrchestratorTools.ModelOptionsAsync))!.GetCustomAttribute<McpServerToolAttribute>()!;
+        Assert.Equal("model_options", tool.Name);
+        Assert.True(tool.ReadOnly);
     }
 
     // AC-1855 merged two cases: the provider's price wins with its source, and a missing quota or index is unknown, never 0.
@@ -87,9 +110,42 @@ public sealed class ModelOptionsTests
         Assert.Equal("coding missing → intelligence", model["quality"]?["basis"]?.GetValue<string>());
         Assert.Equal("unknown", (string)model["quota"]!);
 
+        foreach (var (providerFilter, profileFilter, matches) in new (string?, string?, bool)[]
+        {
+            (null, null, true), ("", "", true), ("P", null, true), (null, "pROV", true),
+            ("P", "pROV", true), ("unknown", null, false), (null, "unknown", false),
+            ("P", "Pro", false), ("unknown", "Prov", false), (" ", null, false),
+        })
+        {
+            var filtered = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding", provider: providerFilter, profile: profileFilter))!;
+            Assert.True((bool)filtered["ok"]!);
+            Assert.Equal(matches ? 1 : 0, (int)filtered["count"]!);
+            Assert.Equal(matches ? 1 : 0, filtered["models"]!.AsArray().Count);
+            Assert.True(JsonNode.DeepEquals(result["attribution"], filtered["attribution"]));
+            if (matches)
+            {
+                Assert.True(JsonNode.DeepEquals(result, filtered));
+            }
+        }
+
+        _profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new SessionProfile("Prov", new PluginProviderConfig("cli-agent-provider.codex", "{}")),
+            new SessionProfile("Other", new PluginProviderConfig("other", "{}")),
+        ]);
+        var codex = JsonNode.Parse(await _Tools().ModelOptionsAsync("coding", provider: "CoDeX", profile: "pROV"))!;
+        Assert.True((bool)codex["ok"]!);
+        Assert.Equal(1, (int)codex["count"]!);
+        Assert.Equal("cli-agent-provider.codex", (string)Assert.Single(codex["models"]!.AsArray())!["provider"]!);
+        Assert.Equal("Prov", (string)codex["models"]![0]!["profile"]!);
+        var mismatch = JsonNode.Parse(await _Tools().ModelOptionsAsync(provider: "codex", profile: "Other"))!;
+        Assert.True((bool)mismatch["ok"]!);
+        Assert.Empty(mismatch["models"]!.AsArray());
+
         // AC-1813/AC-1855: the step stands in BEFORE A SPAWN, the tool in WHAT EXISTS, and it is preloaded, not deferred.
         var startAgent = typeof(AssistantAgentMcpTools).GetMethod(nameof(AssistantAgentMcpTools.StartAgentAsync))!.GetCustomAttribute<DescriptionAttribute>()!.Description;
-        Assert.Contains("model_options", startAgent);
+        Assert.Contains("promptDelivered:false", startAgent);
+        Assert.Contains("never retry the start or resend that prompt", startAgent);
         var prompt = AssistantSystemPrompt.Default;
         var start = prompt.IndexOf("BEFORE A SPAWN, CHECK THESE", StringComparison.Ordinal);
         var beforeSpawn = prompt[start..prompt.IndexOf("IN EVERY BRIEF, WHATEVER", start, StringComparison.Ordinal)];

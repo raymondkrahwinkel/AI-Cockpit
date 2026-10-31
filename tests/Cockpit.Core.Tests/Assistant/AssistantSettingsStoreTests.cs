@@ -32,6 +32,7 @@ public class AssistantSettingsStoreTests : IDisposable
         Assert.True(settings.SpeakReplies);
         Assert.Equal("F10", settings.PushToTalkKeyName);
         Assert.False(settings.AlwaysOnCostAcknowledged);
+        Assert.Equal(80, settings.ContextCompactionPercent);
         // AC-138 follow-up: the chat window's reading level defaults to the same level a fresh SDK session
         // opens at, so turning the assistant on for the first time never shows a level nobody chose.
         Assert.Equal(ReadingLevel.Developer, settings.ReadingLevel);
@@ -57,6 +58,7 @@ public class AssistantSettingsStoreTests : IDisposable
             PushToTalkKeyName = "F11",
             AlwaysOnCostAcknowledged = true,
             AlwaysOnTop = false,
+            ContextCompactionPercent = 30,
             ReadingLevel = ReadingLevel.Simple,
             ConsentBypassSources = ["Terminal MCP", "cockpit-kubernetes"],
             ConsentBypassDangerousSources = ["cockpit-kubernetes"],
@@ -71,6 +73,7 @@ public class AssistantSettingsStoreTests : IDisposable
         // AC-681: switched off against its default (true), so this round trip proves the off is stored rather
         // than re-defaulted — which is exactly what silently dropped it (see AssistantSettingsEntry).
         Assert.False(loaded.AlwaysOnTop);
+        Assert.Equal(30, loaded.ContextCompactionPercent);
         Assert.Equal(ReadingLevel.Simple, loaded.ReadingLevel);
         Assert.Equal(["Terminal MCP", "cockpit-kubernetes"], loaded.ConsentBypassSources);
         Assert.Equal(["cockpit-kubernetes"], loaded.ConsentBypassDangerousSources);

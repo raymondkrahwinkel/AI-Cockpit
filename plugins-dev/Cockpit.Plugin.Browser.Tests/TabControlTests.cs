@@ -9,7 +9,7 @@ public class TabControlTests
     // Raymond taking over, Stop, closing the tab, the session ending or a move to another site refuse the next action;
     // and the audit masks a password field (criterion 5). The review's points 1 to 4 each have a block at the end.
     [Fact]
-    public void Control_IsOneSessionOnOneTab_AndNeverFollowsFromWatching()
+    public async Task Control_IsOneSessionOnOneTab_AndNeverFollowsFromWatching()
     {
         var grants = new TabGrantRegistry();
         grants.Share("pane-a", "A", "tab-1", "https://github.com", TabShareService.Watch);
@@ -82,5 +82,13 @@ public class TabControlTests
         grants.Hold("tab-1", "POST https://github.com/merge");
         Assert.Equal("POST https://github.com/merge", grants.TakeHeld("tab-1"));
         Assert.Equal(2, changes);
+        Assert.False(ControlPolicy.SameOrigin("https://github.com:8443/", origin));
+        Assert.False(ControlPolicy.SameOrigin("http://github.com/", origin));
+        var host = System.Reflection.DispatchProxy.Create<Cockpit.Plugins.Abstractions.ICockpitHost, AppKeyHost>();
+        ((AppKeyHost)(object)host).Caller = "pane-a";
+        using var bridge = new TabShareBridge(host);
+        var tools = new TabShareMcpTools(host, bridge);
+        Assert.Contains("not_owner:", await tools.CloseTab("tab-1"));
+        Assert.Contains("not_owner:", await tools.WaitFor("tab-1", selector: "body"));
     }
 }

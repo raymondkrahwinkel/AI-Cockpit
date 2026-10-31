@@ -4,7 +4,7 @@ using Cockpit.Plugin.Browser.UI.Engine;
 
 namespace Cockpit.Plugin.Browser.UI;
 
-// One tab of Raymond's profile. Every field follows its CefBrowserView, on the UI thread.
+// One tab of the user's profile. Every field follows its CefBrowserView, on the UI thread.
 internal sealed class BrowserTab
 {
     public BrowserTab(CefBrowserView view, string address)
@@ -102,7 +102,7 @@ internal sealed class BrowserTab
     }
 }
 
-// The one set of tabs of Raymond's profile, shared by every place the browser shows (AC-1711).
+// The one set of tabs of the user's profile, shared by every place the browser shows (AC-1711).
 internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab>? createTab = null)
 {
     public const string StartAddress = "about:blank";
@@ -248,7 +248,7 @@ internal sealed class BrowserModel(BrowserEngine engine, Func<string, BrowserTab
         }
     }
 
-    private BrowserTab _CreateTab(string address) => _Wire(createTab?.Invoke(address) ?? new BrowserTab(new CefBrowserView(Engine, address, Engine.RaymondProfile), address));
+    private BrowserTab _CreateTab(string address) => _Wire(createTab?.Invoke(address) ?? new BrowserTab(new CefBrowserView(Engine, address, Engine.UserProfile), address));
 
     private BrowserTab _Wire(BrowserTab tab)
     {

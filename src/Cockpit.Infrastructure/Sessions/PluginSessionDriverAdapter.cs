@@ -815,11 +815,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                     PluginBackgroundTaskKind.Shell => BackgroundTaskKind.Shell,
                     _ => BackgroundTaskKind.Unknown,
                 },
-                task.Description))],
+                task.Description)
+            {
+                AgentId = task.AgentId, RunId = task.RunId,
+                ParentTaskId = task.ParentTaskId, ParentToolUseId = task.ParentToolUseId,
+                LastTool = task.LastTool, Tokens = task.Tokens,
+            })],
         },
         PluginBackgroundTaskNotification notification => new BackgroundTaskNotification
         {
             SessionId = notification.SessionId,
+            AgentId = notification.AgentId,
+            RunId = notification.RunId,
             TaskId = notification.TaskId,
             ToolUseId = notification.ToolUseId,
             Status = notification.Status switch

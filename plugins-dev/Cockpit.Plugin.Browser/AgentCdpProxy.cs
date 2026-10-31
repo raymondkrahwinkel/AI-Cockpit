@@ -7,14 +7,14 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.Browser;
 
-// AC-1713: A thin CDP pass-through between Playwright MCP and one session's Chromium. While Raymond drives it answers
+// AC-1713: A thin CDP pass-through between Playwright MCP and one session's Chromium. While you drive it answers
 // the session's `Input.*` commands with an error (one driver per surface, as TerminalMcpTools, AC-34); after Stop
 // agent it stays up so the session reads why.
 internal sealed class AgentCdpProxy : IDisposable
 {
-    internal const string TakenOverMessage = "Raymond has taken over the agent browser: input is paused until he hands it back";
+    internal const string TakenOverMessage = "The user has taken over the agent browser: input is paused until they hand it back";
 
-    internal const string StoppedMessage = "Raymond has stopped the agent browser";
+    internal const string StoppedMessage = "The user has stopped the agent browser";
 
     private static readonly HttpClient Http = new();
 

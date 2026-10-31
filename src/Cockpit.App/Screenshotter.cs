@@ -38,6 +38,21 @@ internal static partial class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
+    private static Window _BackgroundWorkScene()
+    {
+        var session = new SessionViewModel();
+        session.Apply(new BackgroundTasksChanged
+        {
+            SessionId = "s1",
+            Tasks =
+            [
+                new BackgroundTask("agent-1", BackgroundTaskKind.SubAgent, "Review the session driver changes"),
+                new BackgroundTask("agent-2", BackgroundTaskKind.SubAgent, "Check the Background pop-out and tests"),
+            ],
+        });
+        return new Window { Width = 450, Height = 300, Content = new Controls.BackgroundWorkList { DataContext = session } };
+    }
+
     public const string Argument = "--screenshot";
 
     // A render that has not finished by now is stuck, not slow — and a stuck render used to hold the process
@@ -171,6 +186,7 @@ internal static partial class Screenshotter
     // working from a hand-written list, and a hand-written list is blind to exactly the scene nobody remembered.
     private static readonly Dictionary<string, Func<int, int, Window>> Scenes = _WithProjectScenes(new(StringComparer.Ordinal)
     {
+        ["session-background-work"] = (_, _) => _BackgroundWorkScene(),
         // AC-1827: the splash before its step UI appears, loading, slower than usual, carried on without, and failed.
         // AC-1829: the real window while projects and sessions are still loading.
         ["main-loading"] = (_, _) => _MainWhileLoading(),
@@ -692,6 +708,8 @@ internal static partial class Screenshotter
         // with Undock where the floating window has Close. The scene that shows what "docked is ordinary cockpit
         // UI" actually looks like: in the column structure beside the session content, no chrome of its own.
         ["assistant-docked"] = (_, _) => _AssistantDockedInTheRail(),
+        ["agents-docked"] = (_, _) => _AgentsOverview(floating: false),
+        ["agents-undocked"] = (_, _) => _AgentsOverview(floating: true),
         // AC-960 criterion 15: a plugin-registered panel (a stand-in for GitHubPullRequestsWidget — Cockpit.App
         // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
         // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
@@ -3693,6 +3711,47 @@ internal static partial class Screenshotter
         public void Respond(Guid promptId, ConsentOutcome outcome, bool remember)
         {
         }
+    }
+
+    private static Window _AgentsOverview(bool floating)
+    {
+        var panels = new Docking.DockPanelRegistry();
+        var cockpit = new CockpitViewModel(dockPanelRegistry: panels)
+        {
+            OpenDockPanelId = floating ? null : AgentsOverviewViewModel.DockPanelId,
+            DockRailWidth = 372,
+        };
+        cockpit.Projects.Projects.Add(new Project("cockpit", "cockpit"));
+        cockpit.Projects.Projects.Add(new Project("depot", "depot"));
+        cockpit.Sessions[0].Title = "AC-1805 notification center";
+        cockpit.Sessions[0].ActiveProfileLabel = "Coder";
+        cockpit.Sessions[0].Statusline = "Review the PR comments";
+        cockpit.Sessions[0].ProjectId = "cockpit";
+        cockpit.Sessions[1].Title = "Depot docs";
+        cockpit.Sessions[1].ActiveProfileLabel = "Writer";
+        cockpit.Sessions[1].Statusline = "Drafting the sync section";
+        cockpit.Sessions[1].ProjectId = "depot";
+        cockpit.Sessions[2].Title = "Codex · plugin store";
+        cockpit.Sessions[2].ActiveProfileLabel = "Codex";
+        cockpit.Sessions[2].SessionStatus = SessionStatus.NeedsAttention;
+        cockpit.Sessions[2].ProjectId = "cockpit";
+        cockpit.Sessions.Add(new SessionViewModel
+        {
+            Title = "AC-1893 log writers", ActiveProfileLabel = "Fixer", ProjectId = "cockpit",
+            SessionStatus = SessionStatus.Done, Statusline = "PR merged",
+        });
+        cockpit.Sessions.Add(new SessionViewModel
+        {
+            Title = "Docs review", ActiveProfileLabel = "Reviewer", ProjectId = "depot", SessionStatus = SessionStatus.Idle,
+        });
+        cockpit.IsZoomed = true;
+        if (floating)
+        {
+            var panel = panels.Panels.Single(panel => panel.Id == AgentsOverviewViewModel.DockPanelId);
+            return new Docking.DockPanelWindow(panel, panels.ViewFor(panel), boundsStore: null);
+        }
+
+        return new MainWindow { DataContext = cockpit };
     }
 
     // AC-953: the assistant docked into the rail, built the way production builds it — the real `DockPanelRegistry`

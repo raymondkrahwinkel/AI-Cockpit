@@ -9,6 +9,7 @@ namespace Cockpit.Core.Abstractions.Sessions;
 /// </summary>
 public interface ISessionHandle
 {
+    IReadOnlyList<string>? McpServersOverride => null;
     /// <summary>
     /// The session's turn-time control, when this handle owns one.
     /// </summary>

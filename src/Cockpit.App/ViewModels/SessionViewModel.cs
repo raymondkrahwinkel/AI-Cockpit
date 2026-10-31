@@ -354,13 +354,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var existing = group.FirstOrDefault(row => row.TaskId == task.TaskId);
             if (existing is null)
             {
-                group.Add(new BackgroundTaskViewModel(
-                    task.TaskId, task.Kind, task.Description, _backgroundTaskFirstSeen[task.TaskId], ToggleBackgroundTaskSelection));
+                existing = new BackgroundTaskViewModel(
+                    task.TaskId, task.Kind, task.Description, _backgroundTaskFirstSeen[task.TaskId], ToggleBackgroundTaskSelection);
+                group.Add(existing);
             }
-            else
-            {
-                existing.UpdateDescription(task.Description);
-            }
+
+            existing.Update(task);
         }
     }
 
@@ -3247,14 +3246,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             }
         }
 
-        if (!_control.IsAttached)
+        if (_control.IsAttached)
         {
-            return;
+            var stopping = _control.StopAsync();
+            OnPropertyChanged(nameof(IsSessionReady));
+            await stopping;
         }
 
-        // The host clears its runtime before its first await, so readiness reads false by the time this is raised.
-        var stopping = _control.StopAsync();
-        OnPropertyChanged(nameof(IsSessionReady));
-        await stopping;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _backgroundTasks = [];
+            _RebuildBackgroundTaskRows();
+        });
     }
 }
