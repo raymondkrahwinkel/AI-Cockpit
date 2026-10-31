@@ -203,7 +203,7 @@ internal static class AssistantSettingsEndpoints
             return (null, refusal);
         }
 
-        return ProfileEndpoints.CopyRefusal(merged) is { } refused ? (null, refused) : (merged, Results.Empty);
+        return ProfileEndpoints.CopyRefusal(merged) is { } refused ? (null, refused) : (incoming, Results.Empty);
     }
 
     // Every outcome into the node access audit with the calling key as the actor, as `Audited` writes it, but in the
