@@ -49,6 +49,7 @@
                                 <DataTemplate x:DataType="vm:AgentOverviewCardViewModel">
                                     <Border Classes="sessionItem agentCard" Classes.active="{Binding IsSelected}" Classes.attention="{Binding NeedsAttention}"
                                             CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,6">
+                                        <StackPanel>
                                         <Button Classes="Subtle" Command="{Binding OpenCommand}" HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Stretch" Padding="10,8"
                                                 AutomationProperties.Name="{Binding Title}" ToolTip.Tip="{Binding Statusline}">
@@ -77,6 +78,59 @@
                                                     </Border>
                                             </StackPanel>
                                         </Button>
+                                        <StackPanel IsVisible="{Binding HasChildren}" Margin="8,0,8,8" Spacing="4">
+                                            <ToggleButton Classes="Collapser" IsChecked="{Binding AreChildrenExpanded, Mode=TwoWay}"
+                                                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                          AutomationProperties.Name="Provider sub-agents">
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5">
+                                                    <icons:MaterialIcon Kind="ChevronRight" Width="12" Height="12" IsVisible="{Binding !AreChildrenExpanded}"/>
+                                                    <icons:MaterialIcon Kind="ChevronDown" Width="12" Height="12" IsVisible="{Binding AreChildrenExpanded}"/>
+                                                <StackPanel Grid.Column="1" Spacing="2">
+                                                    <TextBlock Text="Provider sub-agents" FontSize="11" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding ChildSummary}" FontSize="10.5" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                </StackPanel>
+                                                </Grid>
+                                            </ToggleButton>
+                                            <StackPanel Spacing="6" IsVisible="{Binding AreChildrenExpanded}" Margin="10,0,0,0">
+                                                <ItemsControl ItemsSource="{Binding Children}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:ChildAgentViewModel">
+                                                            <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                                    Padding="4,7" CommandParameter="{Binding}"
+                                                                    Command="{Binding $parent[ItemsControl].((vm:AgentOverviewCardViewModel)DataContext).OpenChildCommand}"
+                                                                    ToolTip.Tip="Open this provider child's read-only transcript">
+                                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                                                    <Grid Width="7" Height="7" VerticalAlignment="Top" Margin="0,5,0,0">
+                                                                        <Ellipse StrokeThickness="1" Stroke="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                                        <Ellipse Opacity="{Binding DotFillOpacity}" Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                                    </Grid>
+                                                                    <StackPanel Grid.Column="1" Spacing="3">
+                                                                        <Border Classes="agentBadge" HorizontalAlignment="Left">
+                                                                            <TextBlock Text="{Binding TypeText}" FontSize="10" Foreground="{DynamicResource CockpitStatusBackgroundBrush}"/>
+                                                                        </Border>
+                                                                        <TextBlock Text="{Binding Title}" FontSize="11.5" TextWrapping="Wrap"/>
+                                                                        <TextBlock FontSize="10" Foreground="{DynamicResource CockpitTextSecondaryBrush}" TextWrapping="Wrap">
+                                                                            <Run Text="Last tool: "/><Run Text="{Binding LastToolText}"/>
+                                                                            <Run Text=" · Tokens: "/><Run Text="{Binding TokensText}"/>
+                                                                        </TextBlock>
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="2" Spacing="3" HorizontalAlignment="Right">
+                                                                        <TextBlock Text="{Binding TimeText}" FontSize="10.5" HorizontalAlignment="Right"/>
+                                                                        <TextBlock Text="{Binding StatusText}" FontSize="10" HorizontalAlignment="Right"
+                                                                                   Foreground="{DynamicResource CockpitTextSecondaryBrush}"/>
+                                                                        <TextBlock Text="Open ›" FontSize="10" HorizontalAlignment="Right"/>
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <TextBlock Text="Read-only · Child tokens are a breakdown of owner usage."
+                                                           FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
