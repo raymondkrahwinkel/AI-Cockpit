@@ -6073,7 +6073,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
             ModelAutoSelected = _transcriptionModelAuto,
             BackendPreference = SelectedVoiceBackendPreference.Value,
-            GpuDeviceId = SelectedVoiceBackendPreference.GpuDeviceId,
+
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
