@@ -3436,12 +3436,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1321: whether a paired controller holds the line to this node. Absent in the design-time/unit-test
         // graph, where the local assistant is simply never stood down for one.
         INodeControllerPresence? controllerPresence = null,
-        // AC-1322: collects, on the node cards' poll, what agents on a paired node sent their assistant. Absent in
-        // the design-time/unit-test graph, where the cards only list.
-        INodeInboxRelay? nodeInboxRelay = null,
-        // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
-        // design-time/unit-test graph like the relay above.
-        IBehaviourMemorySync? behaviourSync = null,
         ISessionRegistration? sessionRegistry = null,
         ISessionControlFactory? sessionControls = null,
         Func<ISessionControl, SessionViewModel>? sdkPaneOver = null,
@@ -3501,11 +3495,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             sessionProfileStore,
             projectStore,
             nodeSessionsClient,
-            nodeInboxRelay,
-            // AC-1324: built here rather than registered, because the conversation it draws on is this view model's.
-            nodeSessionsClient is null ? null : new NodePermissionRelay(nodeSessionsClient, () => AssistantChat?.Session,
-                () => swarmLeadership?.IsActive != true || swarmLeadership.IsSelf),
-            behaviourSync,
             remoteServers,
             orgPolicy,
             nodeLinkGate);

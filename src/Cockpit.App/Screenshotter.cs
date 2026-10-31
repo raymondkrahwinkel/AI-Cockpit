@@ -506,8 +506,6 @@ internal static partial class Screenshotter
         // the notification only exists in that state, and because two at once is the case the prototype never drew.
         ["simple-view-consent"] = (_, _) => new MainWindow { DataContext = _SimpleStandAwaitingConsent() },
 
-        // AC-1324: a node session's Allow/Deny drawn in the controller's own conversation, with the machine on it.
-        ["simple-view-node-permission"] = (_, _) => new MainWindow { DataContext = _SimpleStandNodePermission() },
         // AC-1528: Home (mockup simple-view-home-en.png) — the greeting, its own box, what waits and the projects.
         ["simple-view-home"] = (_, _) => new MainWindow { DataContext = _SimpleStandHome() },
         // AC-1824: the plugin dock panels on the Simple stand's rail — collapsed, a browser-like panel open, a file tree open.
@@ -2201,10 +2199,6 @@ internal static partial class Screenshotter
 
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
         public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -3533,20 +3527,6 @@ internal static partial class Screenshotter
         // By title, not by index: the base view model seeds design-time sessions of its own ahead of the rail's.
         _Named(cockpit, "kind→staging").PendingConsent = _OpenConsent("Delete the staging namespace", "kubectl delete namespace staging", dangerous: true);
         _Named(cockpit, "AC-1302 de boomrail").PendingConsent = _OpenConsent("Read the pods", "kubectl get pods -n invoices", dangerous: false);
-        cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
-        return cockpit;
-    }
-
-    // AC-1324: the row a controller draws for a question on a paired node — built by the same factory the poll
-    // uses, so the scene cannot show a row the poll would not. Answered in the scene by nobody; a render never clicks.
-    private static ViewModels.CockpitViewModel _SimpleStandNodePermission()
-    {
-        var cockpit = _SimpleStand(withAssistant: true);
-        cockpit.AssistantChat!.Session!.Transcript.Add(Services.NodePermissionRelay.Row(
-            "LAPTOP",
-            new NodeSessionRow("0123456789abcdef0123456789abcdef", "AC-1302 de boomrail", "personal", "", "NeedsAttention", NeedsYou: true),
-            new NodePendingPermission("toolu_node_1", "Bash", "{\"command\":\"dotnet test tests/Cockpit.App.ViewTests\"}", new DateTimeOffset(2026, 9, 15, 12, 52, 0, TimeSpan.Zero)),
-            _ => Task.FromResult(new NodePermissionAnswer(true))));
         cockpit.SimpleSelectedSession = cockpit.AssistantRootSession;
         return cockpit;
     }

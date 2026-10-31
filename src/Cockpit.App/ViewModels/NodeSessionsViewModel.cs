@@ -6,21 +6,15 @@ using System.Net.Sockets;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
 
 namespace Cockpit.App.ViewModels;
 
 // Here the separation is structural rather than typographic (AC-795, AC-561, AC-796).
-// AC-1322/AC-1324: the two relays ride the same poll — mail from the node's agents, and the node's open Allow/Deny
-// questions drawn in the assistant's conversation; absent in the design-time/unit-test graph, where the card only lists.
 public sealed partial class NodeSessionsViewModel(
     INodeSessionsClient client,
     string nodeName,
-    INodeInboxRelay? inboxRelay = null,
-    NodePermissionRelay? permissionRelay = null,
-    IBehaviourMemorySync? behaviourSync = null,
     INodeLinkGate? linkGate = null) : ObservableObject, IDisposable
 {
     // 20s: often enough that a dropout or a return shows up without feeling like a bug report, rarely enough that
@@ -125,19 +119,6 @@ public sealed partial class NodeSessionsViewModel(
     [ObservableProperty]
     private string _status = "";
 
-    // AC-1327 criterion 2: starts reachable so the very first successful refresh does not read as a "node-back"
-    // nobody asked about — only an edge after that fires a message, never a level.
-    private bool _wasReachable = true;
-
-    // AC-1327 criterion 2: one missed 20s poll is a blip, not a drop — mirrors the node-side 60s fallback, which
-    // does not tip on a single miss either. Counts consecutive failures; the second is the threshold.
-    private int _consecutiveMisses;
-
-    // AC-1330: its own flag rather than `_wasReachable` above — starting false makes this card's very first
-    // successful read count as an edge too, which is exactly the "once at launch" case, where `_wasReachable`
-    // deliberately must not (that one exists to keep the very first read from reading as a node-back message).
-    private bool _wasReachableForBehaviourSync;
-
     [RelayCommand]
     public async Task RefreshAsync()
     {
@@ -190,7 +171,6 @@ public sealed partial class NodeSessionsViewModel(
                 // swallow: the lists stay empty and the reason is on screen, so nothing here reads as "nothing is
                 // running there" when the truth is "nobody answered".
                 Status = error;
-                _NoteReachability(reachable: false, sessionCount: 0);
                 return;
             }
 
@@ -221,27 +201,6 @@ public sealed partial class NodeSessionsViewModel(
                 ?? Projects.FirstOrDefault();
             Status = Sessions.Count == 0 ? "Nothing is running on this node that you may see." : "";
 
-            permissionRelay?.Reconcile(snapshot);
-
-            // After the lists, and only once the node answered them: a node that is off costs one timeout, not two.
-            if (inboxRelay is not null)
-            {
-                await inboxRelay.PollAsync(NodeName, stop).ConfigureAwait(true);
-                if (stop.IsCancellationRequested)
-                {
-                    return;
-                }
-            }
-
-            if (_NoteReachability(reachable: true, sessionCount: Sessions.Count) && behaviourSync is not null)
-            {
-                await behaviourSync.RunAsync(NodeName, stop).ConfigureAwait(true);
-                if (stop.IsCancellationRequested)
-                {
-                    return;
-                }
-            }
-
             // Null from a pairing or an older node: the line then carries no version, and the stored expiry stands.
             var who = await client.ReadWhoAmIAsync(NodeName, stop).ConfigureAwait(true);
             if (stop.IsCancellationRequested)
@@ -269,33 +228,6 @@ public sealed partial class NodeSessionsViewModel(
         {
             IsBusy = false;
         }
-    }
-
-    // AC-1327 criterion 2: fires only on the reachable↔unreachable edge, past the second consecutive miss, using
-    // the same relay/Deliver path as the mail poll above — `InboxWakeScheduler` wakes for this post like any other.
-    // AC-1330: the bool return is that same edge, for the behaviour sync — its caller awaits it, this stays sync.
-    private bool _NoteReachability(bool reachable, int sessionCount)
-    {
-        if (reachable)
-        {
-            _consecutiveMisses = 0;
-        }
-        else if (++_consecutiveMisses < 2)
-        {
-            return false;
-        }
-
-        var syncBehaviour = reachable && !_wasReachableForBehaviourSync;
-        _wasReachableForBehaviourSync = reachable;
-
-        if (reachable == _wasReachable)
-        {
-            return syncBehaviour;
-        }
-
-        _wasReachable = reachable;
-        inboxRelay?.NotifyTransition(NodeName, reachable, sessionCount, DateTimeOffset.UtcNow);
-        return syncBehaviour;
     }
 
     // Its own method rather than constructor logic: a `DispatcherTimer` only ever ticks on the thread that constructed
@@ -408,7 +340,7 @@ public sealed partial class NodeSessionsViewModel(
         }
     }
 
-    // AC-1458: stops this card's poll, and with it the relays that ride it. For this run only; the node is told
+    // AC-1458: stops this card's poll. For this run only; the node is told
     // nothing, and what runs there keeps running.
     [RelayCommand]
     private async Task DisconnectAsync()
@@ -467,14 +399,10 @@ public sealed partial class NodeSessionsViewModel(
         _DescribeConnection();
     }
 
-    // The first read after a resume is the one behaviour-sync edge, and not a "node-back".
     [RelayCommand]
     private async Task ResumeAsync()
     {
         linkGate?.SetPaused(NodeName, false);
-        _wasReachable = true;
-        _wasReachableForBehaviourSync = false;
-        _consecutiveMisses = 0;
         ConnectionState = NodeConnectionState.Unknown;
         ConnectionDetail = "";
         StartPolling();

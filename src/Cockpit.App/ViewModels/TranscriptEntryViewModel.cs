@@ -3,7 +3,6 @@ using System.Collections.Specialized;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Sessions;
 using Material.Icons;
@@ -746,12 +745,8 @@ public partial class TranscriptEntryViewModel : ViewModelBase, Views.ISpannedCod
     // controller's screen, null for every local row.
     public string? Machine { get; init; }
 
-    // AC-1324: where the click on this row goes when it is a node's question; null for a local row.
-    public NodePermissionOrigin? NodePermission { get; init; }
-
-    // AC-1324: an always-rule is written into the session's profile, and a node's profile is its own operator's
-    // to change — so a node row offers Allow and Deny only, and so does a row of a pane on a server (AC-1469).
-    public bool CanAllowAlways => NodePermission is null && Session?.IsRemote != true;
+    // AC-1469: a server's profile is its own operator's to change, so its rows offer Allow and Deny only.
+    public bool CanAllowAlways => Session?.IsRemote != true;
 
     // The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule. Clamped on the way
     // in (AC-1088): a `Write` carries the whole file it is about to write, and this row outlives the turn.

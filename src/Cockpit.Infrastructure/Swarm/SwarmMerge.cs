@@ -8,7 +8,6 @@ using Cockpit.Core.Swarm;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.Configuration;
-using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -181,8 +180,8 @@ internal sealed class SwarmMerge(IServiceProvider services, ISwarmLeadership lea
         var result = ConversationMerge.Merge(new(self, input.WinnerName, own.Transcript, Fields(own)),
             new(SwarmMemberId.TryParse(input.Snapshot.LeaderId, out var loser) ? loser : self, input.Name, input.Snapshot.Transcript,
                 Fields(input.Snapshot)), _ReadKept());
-        var carried = BehaviourMemorySync._Entries(own.Behaviour).Select(BehaviourMemorySync._StripOrigin).ToHashSet(StringComparer.Ordinal);
-        var extra = BehaviourMemorySync._Entries(input.Snapshot.Behaviour).Where(line => !carried.Contains(BehaviourMemorySync._StripOrigin(line)))
+        var carried = AssistantMemoryFile._Entries(own.Behaviour).Select(AssistantMemoryFile._StripOrigin).ToHashSet(StringComparer.Ordinal);
+        var extra = AssistantMemoryFile._Entries(input.Snapshot.Behaviour).Where(line => !carried.Contains(AssistantMemoryFile._StripOrigin(line)))
             .Select(line => "- " + line).ToArray();
         var note = result.Fields[NoteStateField];
         var merged = own with

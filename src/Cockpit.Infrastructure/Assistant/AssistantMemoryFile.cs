@@ -1,8 +1,8 @@
+using System.Text.RegularExpressions;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Swarm;
-using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cockpit.Infrastructure.Assistant;
@@ -12,6 +12,31 @@ namespace Cockpit.Infrastructure.Assistant;
 // settings change, and a growing block of free text would ride along with every one of those writes.
 internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
 {
+    private static readonly Regex _OriginSuffix = new(
+        @" \(from (?<machine>[^,()]+), (?<date>\d{4}-\d{2}-\d{2})\)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex _DatePrefix = new(
+        @"^- \d{4}-\d{2}-\d{2} — ", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    internal static List<string> _Entries(string text) =>
+        [.. text
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
+            .Select(_StripDatePrefix)];
+
+    private static string _StripDatePrefix(string entry)
+    {
+        var match = _DatePrefix.Match(entry);
+        return match.Success ? entry[match.Length..] : entry;
+    }
+
+    internal static string _StripOrigin(string line)
+    {
+        var match = _OriginSuffix.Match(line);
+        return match.Success ? line[..match.Index] : line;
+    }
+
     private const string Heading = "# What the operator asked me to remember";
 
     private const string MachineHeading = "# What I know about this machine";
@@ -115,8 +140,8 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
     internal void RestoreStandby(string noteState, string behaviour, DateTimeOffset noteStateAt = default)
     {
         var existing = File.Exists(_filePath) ? File.ReadAllText(_filePath) : "";
-        var carried = BehaviourMemorySync._Entries(behaviour).Select(BehaviourMemorySync._StripOrigin).ToHashSet(StringComparer.Ordinal);
-        var localOnly = BehaviourMemorySync._Entries(existing).Where(line => !carried.Contains(BehaviourMemorySync._StripOrigin(line)));
+        var carried = _Entries(behaviour).Select(_StripOrigin).ToHashSet(StringComparer.Ordinal);
+        var localOnly = _Entries(existing).Where(line => !carried.Contains(_StripOrigin(line)));
         var merged = string.Join(Environment.NewLine, localOnly.Select(line => "- " + line));
         CockpitConfigPath.ReplaceAtomicallyPrivate(_statePath, noteState);
         if (noteStateAt != default)
