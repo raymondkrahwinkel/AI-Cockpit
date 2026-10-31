@@ -211,32 +211,32 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // Outstanding sub-agents, shells and unrecognised-kind tasks (AC-531), grouped the way the approved mockup
     // groups them. Built from the same `_backgroundTasks` list `HasOutstandingBackgroundShells`
     // already reads — the pop-out's own view of the identical, provider-neutral ledger, not a second one.
-    public ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
+    public override ObservableCollection<BackgroundTaskViewModel> BackgroundSubAgents { get; } = [];
 
-    public ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
+    public override ObservableCollection<BackgroundTaskViewModel> BackgroundShells { get; } = [];
 
     // A task kind this build does not recognise — carried rather than dropped, same reasoning as the
     // provider's own wire parser (see `BackgroundTaskKind.Unknown`).
-    public ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
+    public override ObservableCollection<BackgroundTaskViewModel> BackgroundOtherTasks { get; } = [];
 
-    public bool HasBackgroundSubAgents => BackgroundSubAgents.Count > 0;
+    public override bool HasBackgroundSubAgents => BackgroundSubAgents.Count > 0;
 
-    public bool HasBackgroundShells => BackgroundShells.Count > 0;
+    public override bool HasBackgroundShells => BackgroundShells.Count > 0;
 
-    public bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
+    public override bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
 
     // True while at least one background task is outstanding. This gates the pop-out's own contents (list vs.
     // "no background work"); the button itself is always shown, and only its count badge follows this too
     // (AC-531 #2 — no badge at all at zero, not a "0" badge).
-    public bool HasBackgroundTasks => _backgroundTasks.Count > 0;
+    public override bool HasBackgroundTasks => _backgroundTasks.Count > 0;
 
     // The button's badge digit — every outstanding task counts, including a kind this build does not
     // recognise (AC-531 #2).
-    public int BackgroundTaskCount => _backgroundTasks.Count;
+    public override int BackgroundTaskCount => _backgroundTasks.Count;
 
     // "2 sub-agents · 1 shell" — the pop-out's own total line, segments joined the same way AC-532's activity
     // band joins its own. "nothing" when the list is empty (AC-531 #3, the mockup's empty state).
-    public string BackgroundTaskSummary
+    public override string BackgroundTaskSummary
     {
         get
         {
@@ -2934,33 +2934,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // AC-1437: the host's fold, drawn. Status last, as it always came after what it weighs.
     private void _OnLiveStateChanged(SessionLiveState state)
     {
-        foreach (var removed in ChildAgents.Where(row => !state.Children.Any(child => (child.AgentId ?? child.TaskId) == (row.Reference.AgentId ?? row.Reference.TaskId))).ToArray())
-        {
-            ChildAgents.Remove(removed);
-            if (ReferenceEquals(ChildTranscript?.Child, removed))
-            {
-                ReturnToParentCommand.Execute(null);
-            }
-        }
-        foreach (var child in state.Children)
-        {
-            var row = ChildAgents.FirstOrDefault(row => (row.Reference.AgentId ?? row.Reference.TaskId) == (child.AgentId ?? child.TaskId));
-            if (row is null)
-            {
-                ChildAgents.Add(new ChildAgentViewModel(this, child));
-            }
-            else
-            {
-                if (row.Reference.RunId != child.RunId && ReferenceEquals(ChildTranscript?.Child, row))
-                {
-                    ReturnToParentCommand.Execute(null);
-                }
-                row.Update(child);
-            }
-        }
-        OnPropertyChanged(nameof(HasChildAgents));
-        OnPropertyChanged(nameof(HasBackgroundWorkEntries));
-        OnPropertyChanged(nameof(ShowsLegacySubAgents));
+        UpdateChildAgents(state.Children);
         _cliSessionId = state.CliSessionId;
         if (state.Connection is { } connection && !ReferenceEquals(connection, _shownConnection))
         {

@@ -4,9 +4,9 @@ using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-public sealed class ChildAgentViewModel(SessionViewModel owner, BackgroundTask reference) : ObservableObject
+public sealed class ChildAgentViewModel(SessionPanelViewModel owner, BackgroundTask reference) : ObservableObject
 {
-    public SessionViewModel Owner { get; } = owner;
+    public SessionPanelViewModel Owner { get; } = owner;
     private RelayCommand? _openCommand;
     public RelayCommand OpenCommand => _openCommand ??= new(() => Owner.OpenChild(this));
     private BackgroundTask _reference = reference;

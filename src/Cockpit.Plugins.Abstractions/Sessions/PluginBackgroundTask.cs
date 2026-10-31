@@ -22,6 +22,7 @@ public sealed record PluginBackgroundTask(string TaskId, PluginBackgroundTaskKin
 
     public string State { get; init; } = "running";
     public string? AgentType { get; init; }
+    public string? SourceRevision { get; init; }
     public long? DurationMilliseconds { get; init; }
     public long? StartedAtUnixMilliseconds { get; init; }
 

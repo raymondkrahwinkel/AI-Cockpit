@@ -3,6 +3,7 @@
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:views="using:Cockpit.App.Views"
              xmlns:term="using:Exclr8.Terminal"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -16,7 +17,7 @@
 
     <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
     <Grid>
-    <DockPanel Margin="6,6,6,8">
+    <DockPanel Margin="6,6,6,8" IsVisible="{Binding !IsReadingChild}">
 
         <!-- Compact one-row session header: the session data (TTY tag with render diagnostics on hover,
              status, profile, working directory, redraw) is left-aligned; the session title is docked right.
@@ -197,6 +198,27 @@
              separate composer, so this sits at the bottom of the pane, below the terminal. -->
         <controls:PluginSessionBannerHost DockPanel.Dock="Bottom" Margin="0,6,0,0"/>
 
+        <Button x:Name="TtyBackgroundWorkButton" DockPanel.Dock="Bottom" Classes="Compact composerAction"
+                HorizontalAlignment="Left" Margin="0,6,0,0" Padding="8,6"
+                ToolTip.Tip="Sub-agents from this terminal session">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+                <TextBlock Text="Background" FontSize="12.5" VerticalAlignment="Center"/>
+                <Border Background="{DynamicResource CockpitStatusBackgroundBrush}"
+                        CornerRadius="{StaticResource CockpitPillRadius}" Padding="6,1"
+                        IsVisible="{Binding HasBackgroundTasks}">
+                    <TextBlock Text="{Binding BackgroundTaskCount}" FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource CockpitTextOnStatusBrush}"/>
+                </Border>
+                <materialIcons:MaterialIcon Kind="ChevronUp" Width="11" Height="11"
+                                            Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+            <Button.Flyout>
+                <Flyout Placement="TopEdgeAlignedLeft" IsOpen="{Binding IsBackgroundWorkOpen, Mode=TwoWay}">
+                    <controls:BackgroundWorkList/>
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+
         <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
              PTY plumbing of its own. The code-behind hosts the ConPTY/Porta.Pty process, feeds pty
              output in via Write(...), forwards the control's Input/Output byte events to the pty, and
@@ -216,9 +238,19 @@
         </Border>
     </DockPanel>
 
+    <Grid IsVisible="{Binding IsReadingChild}" RowDefinitions="Auto,*" Margin="8">
+        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <Button Content="← Parent" Classes="Subtle Compact" Command="{Binding ReturnToParentCommand}"/>
+            <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+            <TextBlock Text="›" VerticalAlignment="Center" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
+            <TextBlock Text="{Binding ChildTranscript.Child.Title}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <views:ChildTranscriptView Grid.Row="1" DataContext="{Binding ChildTranscript}"/>
+    </Grid>
+
     <!-- Consent overlay (#AC-47): dims the whole pane and centres the Approve/Deny card when a request
          is waiting on this session, so it plainly takes over rather than a banner that shifted the TUI
          and was easy to miss. Collapsed and hit-transparent while idle. -->
-    <controls:ConsentBannerHost/>
+    <controls:ConsentBannerHost IsVisible="{Binding !IsReadingChild}"/>
     </Grid>
 </UserControl>

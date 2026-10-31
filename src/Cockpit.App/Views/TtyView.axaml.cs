@@ -337,6 +337,10 @@ public partial class TtyView : UserControl
         {
             try
             {
+                if (_viewModel?.IsReadingChild == true)
+                {
+                    return;
+                }
                 Terminal.Focus();
                 Terminal.Paste(text);
             }
@@ -361,7 +365,7 @@ public partial class TtyView : UserControl
     private void _WriteToPty(string text, bool operatorInput)
     {
         var pty = _pty;
-        if (pty is null)
+        if (pty is null || _viewModel?.IsReadingChild == true)
         {
             return;
         }
@@ -371,6 +375,10 @@ public partial class TtyView : UserControl
 
         Dispatcher.UIThread.Post(() =>
         {
+            if (_viewModel?.IsReadingChild == true)
+            {
+                return;
+            }
             if (typed.Length > 0)
             {
                 // AC-941 criterion 6: measures whether BracketedPaste is ever false on a live session (tab
@@ -397,7 +405,13 @@ public partial class TtyView : UserControl
             }
             else
             {
-                DispatcherTimer.RunOnce(() => _WriteToPty(pty, [(byte)'\r']), TtyViewModel.AutoSubmitDelay(typed.Length));
+                DispatcherTimer.RunOnce(() =>
+                {
+                    if (_viewModel?.IsReadingChild != true && ReferenceEquals(_pty, pty))
+                    {
+                        _WriteToPty(pty, [(byte)'\r']);
+                    }
+                }, TtyViewModel.AutoSubmitDelay(typed.Length));
             }
         });
     }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Shared;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -10,9 +11,7 @@ internal sealed class ClaudeStreamJson
 {
     private readonly Dictionary<string, PluginBackgroundTask> _tasks = new();
     private readonly Dictionary<string, string?> _finished = new();
-    private readonly Dictionary<string, PluginBackgroundTask> _history = new();
-    private readonly Dictionary<string, long> _historyOrder = new();
-    private long _historySequence;
+    private readonly ProviderChildLedger _history = new();
     public IReadOnlyList<PluginBackgroundTask> Children { get; private set; } = [];
 
     public static IEnumerable<PluginSessionEvent> ParseLine(string line) => new ClaudeStreamJson().Parse(line);
@@ -133,32 +132,7 @@ internal sealed class ClaudeStreamJson
 
     private PluginBackgroundTasksChanged _Snapshot(string? sessionId)
     {
-        foreach (var child in _history.Values.ToArray())
-        {
-            if (!_tasks.ContainsKey(child.TaskId) && child.State == "running")
-            {
-                _history[child.TaskId] = child with { State = "unknown" };
-            }
-        }
-        foreach (var child in _tasks.Values.Where(task => task.Kind == PluginBackgroundTaskKind.SubAgent))
-        {
-            if (!_history.TryGetValue(child.TaskId, out var known) || known.RunId != child.RunId || known.State != "running")
-            {
-                _historyOrder[child.TaskId] = ++_historySequence;
-            }
-            _history[child.TaskId] = child;
-        }
-        while (_history.Count > 128)
-        {
-            var oldest = _history.Values.Where(child => !_tasks.ContainsKey(child.TaskId)).MinBy(child => _historyOrder.GetValueOrDefault(child.TaskId));
-            if (oldest is null)
-            {
-                break;
-            }
-            _history.Remove(oldest.TaskId);
-            _historyOrder.Remove(oldest.TaskId);
-        }
-        Children = [.. _history.Values];
+        Children = _history.Snapshot([.. _tasks.Values]);
         return new() { SessionId = sessionId, Tasks = [.. _tasks.Values], Children = Children };
     }
 

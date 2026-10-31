@@ -169,6 +169,7 @@ public sealed record BackgroundTask(string TaskId, BackgroundTaskKind Kind, stri
 {
     public string State { get; init; } = "running";
     public string? AgentType { get; init; }
+    public string? SourceRevision { get; init; }
     public long? DurationMilliseconds { get; init; }
     public long? StartedAtUnixMilliseconds { get; init; }
     public string? AgentId { get; init; }

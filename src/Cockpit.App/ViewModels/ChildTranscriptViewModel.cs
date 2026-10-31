@@ -1,11 +1,11 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
-public sealed partial class ChildTranscriptViewModel(ChildAgentViewModel child, ISessionControl control) : ObservableObject, IDisposable
+public sealed partial class ChildTranscriptViewModel(ChildAgentViewModel child, Func<BackgroundTask, string?, CancellationToken, Task<ChildTranscriptPage>> read) : ObservableObject, IDisposable
 {
     private readonly Cockpit.Core.Sessions.BackgroundTask _reference = child.Reference;
     private readonly CancellationTokenSource _lifetime = new();
@@ -25,7 +25,7 @@ public sealed partial class ChildTranscriptViewModel(ChildAgentViewModel child, 
         try
         {
             var reference = _reference;
-            var page = await control.ReadChildTranscriptAsync(reference.AgentId ?? reference.TaskId, reference.RunId, _cursor, _lifetime.Token);
+            var page = await read(reference, _cursor, _lifetime.Token);
             if (_lifetime.IsCancellationRequested)
             {
                 return;

@@ -88,6 +88,14 @@ public class SessionBackgroundTaskPopoutTests
         session.Apply(Outstanding(new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")));
 
         Assert.Equal("1 sub-agent", session.BackgroundTaskSummary);
+        var tty = new TtyViewModel();
+        tty.UpdateChildAgents([new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1")]);
+        Assert.Equal("1 sub-agent", tty.BackgroundTaskSummary);
+        tty.UpdateChildAgents([
+            new BackgroundTask("a1", BackgroundTaskKind.SubAgent, "Agent 1"),
+            new BackgroundTask("a2", BackgroundTaskKind.SubAgent, "Agent 2"),
+        ]);
+        Assert.Equal("2 sub-agents", tty.BackgroundTaskSummary);
     });
 
     [Fact]

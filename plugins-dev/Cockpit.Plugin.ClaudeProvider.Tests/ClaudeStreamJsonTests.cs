@@ -285,12 +285,6 @@ public class ClaudeStreamJsonTests
         var notification = Assert.IsType<PluginBackgroundTaskNotification>(Assert.Single(ClaudeStreamJson.ParseLine(line)));
 
         Assert.Equal(PluginBackgroundTaskStatus.Unknown, notification.Status);
-    }
-
-    [Fact]
-    public void TaskNotification_SkipsANotificationWithNoId()
-    {
-        // Without a task_id there is no row to attach the outcome to.
         Assert.Empty(ClaudeStreamJson.ParseLine("""{"type":"system","subtype":"task_notification","status":"completed"}"""));
     }
 }

@@ -1,0 +1,14 @@
+<Project>
+  <ItemGroup>
+    <Compile Remove="HookRelay/**/*.cs" />
+    <ProjectReference Include="$(MSBuildProjectDirectory)/HookRelay/HookRelay.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <Compile Include="$(MSBuildThisFileDirectory)TtyChildHooks.cs" Link="TtyChildHooks.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TtyChildSnapshot.cs" Link="TtyChildSnapshot.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ProviderChildLedger.cs" Link="ProviderChildLedger.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)JsonlChildTranscript.cs" Link="JsonlChildTranscript.cs" />
+  </ItemGroup>
+  <Target Name="CopyHookRelay" AfterTargets="Build">
+    <ItemGroup><HookRelayFiles Include="$(MSBuildProjectDirectory)/HookRelay/bin/$(Configuration)/net10.0/*" Exclude="$(MSBuildProjectDirectory)/HookRelay/bin/$(Configuration)/net10.0/*.pdb" /></ItemGroup>
+    <Copy SourceFiles="@(HookRelayFiles)" DestinationFolder="$(TargetDir)HookRelay" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
