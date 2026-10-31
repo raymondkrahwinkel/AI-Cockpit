@@ -378,9 +378,8 @@ public sealed class BackendApiDoorTests
     }
 
     // AC-1475 criterion 3: a copy-in brings the server profile's secret variable and API key into the assistant's slot, and
-    // a model change over the API leaves both there, though the client never saw either. AC-1995: a brain picked in the
-    // shared editor, saved whole with every secret masked, stays after that unrelated change, and no answer or audit line
-    // carries a secret.
+    // a model change over the API leaves both there, though the client never saw either. AC-1995: a brain saved whole,
+    // secrets masked, stays after that change, and no answer or audit line carries a secret.
     [Fact]
     public async Task TheAssistantsProfile_CopiedInThenChangedOverTheApi_KeepsTheSecretVariableAndTheApiKey()
     {

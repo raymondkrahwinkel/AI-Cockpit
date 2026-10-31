@@ -60,8 +60,9 @@ internal static class ServerAdminScene
     public static Window Assistant(int width, int height)
     {
         var assistant = _Assistant("held");
-        var dialog = assistant.CreateProfileDialogAsync(new ServerAssistantSlotStore(new SceneAssistant("held"))).GetAwaiter().GetResult();
-        return new AssistantProfileDialog { DataContext = dialog, Width = width, Height = Math.Max(height, 1220) };
+        var dialog = new AssistantProfileDialog { Width = width, Height = Math.Max(height, 1220) };
+        dialog.Opened += async (_, _) => dialog.DataContext = await assistant.CreateProfileDialogAsync(new ServerAssistantSlotStore(new SceneAssistant("held")));
+        return dialog;
     }
 
     // AC-1475: a fresh server: the switch off and greyed, the slot empty and a server profile offered to copy in.
@@ -86,10 +87,14 @@ internal static class ServerAdminScene
         var assistant = _Assistant("saved");
         assistant.LoadCommand.Execute(null);
         var dialog = _AssistantDialog(assistant, width, height);
-        assistant.ShowProfileDialog = profile => profile.SaveCommand.ExecuteAsync(null);
 
-        // After the dialog's own load on opening, which would otherwise read the page back over the save.
-        dialog.Opened += (_, _) => assistant.EditCommand.Execute(null);
+        // After the dialog's own load on opening, which would otherwise read the page back over the save, and after the
+        // page set its own window opener: the stand-in saves the dialog unseen instead.
+        dialog.Opened += (_, _) =>
+        {
+            assistant.ShowProfileDialog = profile => profile.SaveCommand.ExecuteAsync(null);
+            assistant.EditCommand.Execute(null);
+        };
         return dialog;
     }
 

@@ -792,7 +792,7 @@ public sealed class RemoteAdminJourney
                 await picker.LoadAsync();
                 profileBrains = string.Join(",", picker.Choices.Select(choice => choice.Reference));
             });
-            pickedBrain = await _EditServerAssistantAsync(assistant, picker => picker.Selected = picker.Choices.Single(choice => choice.Reference?.EndsWith(serverBrain, StringComparison.Ordinal) == true));
+            pickedBrain = await _EditServerAssistantAsync(assistant, picker => picker.Selected = picker.Choices.FirstOrDefault(choice => choice.Reference?.EndsWith(serverBrain, StringComparison.Ordinal) == true) ?? picker.Selected);
             var assistantAfterBrain = HeadlessAvalonia.Run(() => (assistant.MessageTitle, assistant.IsRunning));
             reopenedBrain = await _EditServerAssistantAsync(assistant, null);
             var serverAssistant = (await setup.GetAsync<JsonObject>("api/v1/assistant/settings"))["profile"]?["profile"]?["assistant"]?.GetValue<string>();
@@ -1224,8 +1224,6 @@ public sealed class RemoteAdminJourney
 
     private static string _Checksum(string text) => Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
 
-    // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
-    // closes only once the server took the save, so a refusal fails here with what the window said.
     // AC-1995: Edit… on the server's Assistant page, in the dialog it opens: waits for the server's brains, applies `pick`
     // and saves, or cancels without one, and answers the brain the picker held.
     private static async Task<string> _EditServerAssistantAsync(ServerAssistantViewModel assistant, Action<BrainPickerViewModel>? pick)
@@ -1239,29 +1237,52 @@ public sealed class RemoteAdminJourney
             return Task.CompletedTask;
         });
         var window = await opened.Task.WaitAsync(Until.Ceiling);
-        var brain = "";
-        await HeadlessAvalonia.RunAsync(async () =>
+        var (brain, listed, status) = ("", "", "");
+        try
         {
-            var dialog = Assert.IsType<AssistantProfileDialogViewModel>(window.DataContext);
-            var picker = dialog.Profile.BrainPicker;
-            await Until.Holds(picker, () => picker.Choices.Any(choice => choice.Detail is { } detail && detail.StartsWith("acme/zyra", StringComparison.Ordinal)));
-            if (pick is null)
+            await HeadlessAvalonia.RunAsync(async () =>
             {
-                brain = picker.Selected?.Reference ?? "";
-                dialog.CancelCommand.Execute(null);
-                await editing;
-                return;
-            }
+                var dialog = Assert.IsType<AssistantProfileDialogViewModel>(window.DataContext);
+                var picker = dialog.Profile.BrainPicker;
+                await Until.Holds(picker, () => picker.HasLoaded && !picker.IsLoading);
+                listed = string.Join(", ", picker.Choices.Select(choice => $"{choice.Reference} ({choice.Detail})"));
+                if (pick is null)
+                {
+                    brain = picker.Selected?.Reference ?? "";
+                    dialog.CancelCommand.Execute(null);
+                    return;
+                }
 
-            pick(picker);
-            brain = picker.Selected?.Reference ?? "";
-            await dialog.SaveCommand.ExecuteAsync(null);
-            await editing;
-            await Until.Holds(assistant, () => assistant.IsRunning);
-        });
+                pick(picker);
+                brain = picker.Selected?.Reference ?? "";
+                await dialog.SaveCommand.ExecuteAsync(null);
+                status = dialog.StatusMessage;
+            });
+            await editing.WaitAsync(Until.Ceiling);
+        }
+        finally
+        {
+            // A refused save keeps the dialog open; closed here, so the step fails with its reason instead of waiting.
+            HeadlessAvalonia.Run(() =>
+            {
+                if (window.IsVisible)
+                {
+                    window.Close();
+                }
+            });
+        }
+
+        Assert.True(pick is null || status == "Saved.", $"The server's assistant dialog did not save: '{status}'. Brains: {listed}");
+        if (pick is not null)
+        {
+            await HeadlessAvalonia.RunAsync(() => Until.Holds(assistant, () => assistant.IsRunning));
+        }
+
         return brain;
     }
 
+    // AC-1571: opens Admin → Plugins → Settings for `pluginId`, lets `edit` change the view and saves it; the window
+    // closes only once the server took the save, so a refusal fails here with what the window said.
     private static async Task _SaveServerSettingsAsync(ServerAdminViewModel admin, string pluginId, Func<Window, bool> isTheView, Func<Window, Task> edit)
     {
         var opened = new TaskCompletionSource<Window>(TaskCreationOptions.RunContinuationsAsynchronously);

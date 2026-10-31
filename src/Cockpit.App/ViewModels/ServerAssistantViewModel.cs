@@ -229,8 +229,12 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
             return;
         }
 
-        _ = _RunAsync(async () => _Show(await assistant.SetEnabledAsync(value)));
+        SwitchCommand.Execute(value);
     }
+
+    // The switch's round trip, run as a command so it is tracked rather than dropped.
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private Task SwitchAsync(bool enabled) => _RunAsync(async () => _Show(await assistant.SetEnabledAsync(enabled)));
 
     private void _Show(RemoteAssistantSettings settings)
     {
