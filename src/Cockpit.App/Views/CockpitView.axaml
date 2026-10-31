@@ -1331,7 +1331,7 @@
                             <TextBlock Text="{Binding Workspaces.Tabs.Count}" FontSize="11" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Button.Flyout>
-                            <Flyout Placement="BottomEdgeAlignedRight" Opening="OnWorkspaceTabListOpening" Opened="OnWorkspaceTabListOpened">
+                            <Flyout Placement="BottomEdgeAlignedRight" Opening="OnWorkspaceTabListOpening" Opened="OnWorkspaceTabListOpened" Closed="OnWorkspaceTabListClosed">
                                 <StackPanel MinWidth="280" MaxHeight="420" KeyDown="OnWorkspaceTabListKeyDown">
                                     <TextBox PlaceholderText="Filter tabs" Margin="0,0,0,4" TextChanged="OnWorkspaceTabListFilterChanged"/>
                                     <ScrollViewer MaxHeight="370">

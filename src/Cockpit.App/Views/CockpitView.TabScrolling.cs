@@ -27,6 +27,10 @@ public partial class CockpitView
 
         var overflow = WorkspaceTabsScroll.Extent.Width > WorkspaceTabsHost.Bounds.Width + 0.5;
         cockpit.Workspaces.HasHiddenTabs = overflow;
+        if (!overflow && WorkspaceTabsList.Flyout is Flyout { IsOpen: true } list)
+        {
+            list.Hide();
+        }
         WorkspaceTabsLeft.IsVisible = overflow;
         WorkspaceTabsRight.IsVisible = overflow;
         var left = WorkspaceTabsScroll.Offset.X > 0.5;

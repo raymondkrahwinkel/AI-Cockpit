@@ -23,8 +23,34 @@ public partial class CockpitView
 {
     private void OnWorkspaceTabListOpening(object? sender, EventArgs e) => _FillTabList(_TabListContent(), "");
 
+    // A close from the list (or any tab change while it is open) rebuilds the rows; the list also goes away
+    // with its button once nothing overflows any more.
+    private void OnWorkspaceTabsChangedWhileListOpen(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_TabListContent() is { } content)
+            {
+                _FillTabList(content, content.Children.OfType<TextBox>().FirstOrDefault()?.Text ?? "");
+            }
+        }, DispatcherPriority.Loaded);
+    }
+
+    private void OnWorkspaceTabListClosed(object? sender, EventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.Tabs.CollectionChanged -= OnWorkspaceTabsChangedWhileListOpen;
+        }
+    }
+
     private void OnWorkspaceTabListOpened(object? sender, EventArgs e)
     {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.Tabs.CollectionChanged -= OnWorkspaceTabsChangedWhileListOpen;
+            cockpit.Workspaces.Tabs.CollectionChanged += OnWorkspaceTabsChangedWhileListOpen;
+        }
         if (_TabListContent() is { } content && content.Children.OfType<TextBox>().FirstOrDefault() is { } filter)
         {
             filter.Text = "";
