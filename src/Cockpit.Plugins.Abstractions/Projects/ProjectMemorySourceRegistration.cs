@@ -94,7 +94,7 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     public string? InstanceTitle { get; init; }
 
     /// <summary>
-    /// Optionally lists the brains this source can load (AC-1992), for the profile editor's brain picker. Each
+    /// Optionally lists the brains this source can load (AC-1992), for the host's brain picker (profiles, projects, the assistant and a server's own). Each
     /// location's <see cref="ProjectMemorySourceLocation.Value"/> is what the host stores after
     /// <see cref="Scheme"/> and later hands to <see cref="BrainInstruction"/>.
     /// </summary>
@@ -104,8 +104,7 @@ public sealed record ProjectMemorySourceRegistration(string Scheme, string Title
     /// server included, so a stored choice can never resolve to a same-named brain elsewhere: give it the shape
     /// <c>&lt;address&gt;@&lt;server&gt;</c> without whitespace, which is how the host still knows a stored choice is a
     /// brain when no source for it is installed, and says it is unavailable rather than leaving it to the provider's
-    /// own instruction files. Called lazily, never
-    /// at registration time; a failed call answers <see cref="ProjectMemorySourceLocationsOutcome.Failed"/>, not an
+    /// own instruction files. Called lazily, never at registration time; a failed call answers <see cref="ProjectMemorySourceLocationsOutcome.Failed"/>, not an
     /// empty success.
     /// </remarks>
     public Func<CancellationToken, Task<ProjectMemorySourceLocationsResult>>? ListBrainsAsync { get; init; }

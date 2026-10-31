@@ -5,8 +5,8 @@ using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
-// AC-1475: a server's own assistant over its backend API. A change goes out as the fields it names; the server keeps
-// the rest, secrets and the consent bypass included.
+// AC-1475: a server's own assistant over its backend API. AC-1995: the profile goes out whole with each secret masked,
+// and the server puts every masked secret and the consent bypass back.
 internal sealed class RemoteAssistantAdministration(BackendApiClient client) : IAssistantAdministration
 {
     private const string Route = "api/v1/assistant/settings";
@@ -17,12 +17,8 @@ internal sealed class RemoteAssistantAdministration(BackendApiClient client) : I
     public Task<RemoteAssistantSettings> SetEnabledAsync(bool enabled, CancellationToken cancellationToken = default) =>
         _CallAsync(HttpMethod.Put, $"{Route}/enabled", new { enabled }, cancellationToken);
 
-    public Task<RemoteAssistantSettings> UpdateProfileAsync(RemoteAssistantProfilePatch patch, CancellationToken cancellationToken = default) =>
-        _CallAsync(HttpMethod.Patch, $"{Route}/profile", patch, cancellationToken);
-
-    // AC-1995: the shared editor's whole profile, masked secrets and all; the server puts each one back.
     public Task<RemoteAssistantSettings> SaveProfileAsync(SessionProfile profile, bool replacesStandingInstruction, CancellationToken cancellationToken = default) =>
-        UpdateProfileAsync(new RemoteAssistantProfilePatch
+        _CallAsync(HttpMethod.Patch, $"{Route}/profile", new RemoteAssistantProfilePatch
         {
             ReplacesStandingInstruction = replacesStandingInstruction,
             Profile = new RemoteProfilePatch { Profile = RemoteProfileWire.ToJson(profile) },
