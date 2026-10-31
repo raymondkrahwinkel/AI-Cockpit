@@ -4,7 +4,8 @@ using Cockpit.Core.Abstractions.Voice;
 namespace Cockpit.Infrastructure.Voice;
 
 // One physical device as Vulkan enumerates it (AC-1881). `Index` is the position GGML_VK_VISIBLE_DEVICES selects by.
-internal sealed record VulkanDevice(int Index, string Name, GpuKind Kind, uint VendorId, uint PciDeviceId, string Uuid, long? Luid, long LocalHeapBytes);
+// `Uuid` is null when the driver reports none (all zeroes), which leaves the GPU listed but not selectable.
+internal sealed record VulkanDevice(int Index, string Name, GpuKind Kind, uint VendorId, uint PciDeviceId, string? Uuid, long? Luid, long LocalHeapBytes);
 
 // AC-1881: Lists the Vulkan devices whisper.cpp's Vulkan backend chooses from, in the same enumeration order, so a
 // chosen GPU can be handed to the child as an index. Struct fields are read at fixed offsets of the 64-bit Vulkan
@@ -20,6 +21,7 @@ internal static class VulkanDeviceProbe
     private const int DeviceTypeDiscrete = 2;
     private const int DeviceTypeCpu = 4;
     private const uint MemoryHeapDeviceLocal = 1;
+    private const int Incomplete = 5;
 
     // Offsets into VkPhysicalDeviceProperties2 / VkPhysicalDeviceIDProperties / VkPhysicalDeviceMemoryProperties.
     private const int PropsVendorId = 24;
@@ -39,6 +41,7 @@ internal static class VulkanDeviceProbe
             return [];
         }
 
+        // The loader stays loaded: some ICDs keep threads or exit hooks that crash once it is unloaded.
         try
         {
             return _Enumerate(library);
@@ -47,10 +50,6 @@ internal static class VulkanDeviceProbe
         {
             // A broken driver or loader must not cost more than the device list.
             return [];
-        }
-        finally
-        {
-            NativeLibrary.Free(library);
         }
     }
 
@@ -113,7 +112,8 @@ internal static class VulkanDeviceProbe
         }
 
         var handles = new IntPtr[count];
-        if (enumerate(instance, ref count, handles) != 0)
+        // VK_INCOMPLETE: a device appeared between the two calls; the ones returned are still valid.
+        if (enumerate(instance, ref count, handles) is not (0 or Incomplete))
         {
             return [];
         }
@@ -144,6 +144,7 @@ internal static class VulkanDeviceProbe
                 var uuid = new byte[16];
                 Marshal.Copy(ids + IdUuid, uuid, 0, uuid.Length);
                 long? luid = Marshal.ReadInt32(ids, IdLuidValid) != 0 ? Marshal.ReadInt64(ids, IdLuid) : null;
+                var hasUuid = uuid.Any(value => value != 0);
 
                 devices.Add(new VulkanDevice(
                     index,
@@ -151,7 +152,7 @@ internal static class VulkanDeviceProbe
                     type switch { DeviceTypeDiscrete => GpuKind.Discrete, DeviceTypeIntegrated => GpuKind.Integrated, _ => GpuKind.Unknown },
                     (uint)Marshal.ReadInt32(props, PropsVendorId),
                     (uint)Marshal.ReadInt32(props, PropsDeviceId),
-                    new Guid(uuid, bigEndian: true).ToString(),
+                    hasUuid ? new Guid(uuid, bigEndian: true).ToString() : null,
                     luid,
                     _LargestDeviceLocalHeap(mem)));
             }

@@ -53,7 +53,7 @@ internal static class GpuHardwareProbe
         }
 
         var gpus = new List<GpuHardware>();
-        foreach (var device in vulkan.DistinctBy(device => device.Uuid))
+        foreach (var device in vulkan.DistinctBy(device => device.Uuid ?? $"index:{device.Index}"))
         {
             var match = matcher(device) is { } predicate ? os.FirstOrDefault(predicate) : null;
             var vram = match?.Gpu.VideoMemoryBytes is > 0 and var osVram ? osVram : device.Kind is GpuKind.Discrete ? device.LocalHeapBytes : 0;
