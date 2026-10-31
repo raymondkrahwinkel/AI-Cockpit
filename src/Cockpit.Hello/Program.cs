@@ -3,9 +3,9 @@ using Windows.Foundation.Metadata;
 using Windows.Security.Credentials;
 using Windows.UI;
 
-// AC-1879: Cockpit.Hello supported | create <name> <hwnd> | sign <name> <hwnd> <challenge-base64> | delete <name>.
-// Prints one line: "ok" (sign: "ok <signature-base64>"), "no", or the KeyCredentialStatus; the prompt is owned by
-// <hwnd>, the cockpit's window, so it opens above it. The signature only ever travels over this process's stdout.
+// AC-1879: Cockpit.Hello supported | create <name> <hwnd> | exists <name> | sign <name> <hwnd> <challenge> | delete <name>.
+// Prints one line: "ok" (create: "ok tpm"/"ok software", sign: "ok <base64>"), "no", or the KeyCredentialStatus; the
+// prompt is owned by <hwnd>, the cockpit's window, so it opens above it. The signature only travels over this stdout.
 const string Manager = "Windows.Security.Credentials.KeyCredentialManager";
 
 try
@@ -20,7 +20,20 @@ try
 
         case ["create", var name, var hwnd]:
             var created = await KeyCredentialManager.RequestCreateForWindowAsync(_Window(hwnd), name, KeyCredentialCreationOption.ReplaceExisting);
-            Console.WriteLine(created.Status == KeyCredentialStatus.Success ? "ok" : created.Status.ToString());
+            if (created.Status != KeyCredentialStatus.Success)
+            {
+                Console.WriteLine(created.Status.ToString());
+                return 0;
+            }
+
+            // Without a TPM there is nothing to attest: Windows then holds the key in software.
+            var attestation = await created.Credential.GetAttestationAsync();
+            Console.WriteLine(attestation.Status == KeyCredentialAttestationStatus.NotSupported ? "ok software" : "ok tpm");
+            return 0;
+
+        case ["exists", var name]:
+            var found = await KeyCredentialManager.OpenAsync(name);
+            Console.WriteLine(found.Status == KeyCredentialStatus.Success ? "ok" : found.Status.ToString());
             return 0;
 
         case ["sign", var name, var hwnd, var challenge]:
@@ -41,7 +54,7 @@ try
             return 0;
 
         default:
-            Console.Error.WriteLine("usage: Cockpit.Hello supported | create <name> <hwnd> | sign <name> <hwnd> <challenge-base64> | delete <name>");
+            Console.Error.WriteLine("usage: Cockpit.Hello supported | create <name> <hwnd> | exists <name> | sign <name> <hwnd> <challenge-base64> | delete <name>");
             return 2;
     }
 }

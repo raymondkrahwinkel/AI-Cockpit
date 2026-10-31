@@ -64,7 +64,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
             }
         }
 
-        return new SecretProtectionStatus(enabled, unlocked, shouldWarn, HelloEnabled: enabled && security?.Hello is not null);
+        return new SecretProtectionStatus(enabled, unlocked, shouldWarn, HelloEnabled: enabled && security?.Hello is not null, HelloInSoftware: security?.Hello?.InSoftware ?? false);
     }
 
     public async Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default)
@@ -267,7 +267,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
             // The prompts run before the write gate is taken, so a slow gesture never holds up other settings writes.
             var name = HelloCredentialName(_configFilePath);
-            if (!await signer.CreateAsync(name, cancellationToken).ConfigureAwait(false))
+            var storage = await signer.CreateAsync(name, cancellationToken).ConfigureAwait(false);
+            if (storage is SecretKeyStorage.None)
             {
                 return false;
             }
@@ -293,6 +294,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
                 CredentialName = name,
                 Challenge = Convert.ToBase64String(challenge),
                 WrappedKey = new SecretProtector(HelloKek(first, challenge)).Protect(HelloEntry.WrappedKeyPath, Convert.ToBase64String(key)),
+                InSoftware = storage is SecretKeyStorage.Software,
             };
 
             using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
@@ -318,19 +320,24 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         }
     }
 
-    public async Task<bool> UnlockWithHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default)
+    public async Task<HelloUnlockResult> UnlockWithHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default)
     {
         var security = await ReadSecurityAsync(cancellationToken).ConfigureAwait(false);
-        if (security is not { Enabled: true, Hello: { } hello })
+        if (security is not { Enabled: true, Hello: { } hello } || !await signer.IsAvailableAsync(cancellationToken).ConfigureAwait(false))
         {
-            return false;
+            return HelloUnlockResult.NotOffered;
+        }
+
+        if (!await signer.ExistsAsync(hello.CredentialName, cancellationToken).ConfigureAwait(false))
+        {
+            return HelloUnlockResult.KeyGone;
         }
 
         var challenge = Convert.FromBase64String(hello.Challenge);
         var signature = await signer.SignAsync(hello.CredentialName, challenge, cancellationToken).ConfigureAwait(false);
         if (signature is null)
         {
-            return false;
+            return HelloUnlockResult.Cancelled;
         }
 
         byte[] key;
@@ -341,7 +348,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         catch (Exception exception) when (exception is SecretProtectionException or FormatException)
         {
             // Another machine's TPM, a re-created Hello key, or a signature that changed after an update: the password still works.
-            return false;
+            return HelloUnlockResult.KeyGone;
         }
 
         // Not zeroed: the protector keeps this array as the key for the rest of the run.
@@ -350,13 +357,13 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         // A wrap of a key from before a password change unwraps fine but no longer opens the verifier.
         if (!VerifierMatches(protector, security))
         {
-            return false;
+            return HelloUnlockResult.KeyGone;
         }
 
         _keyHolder.Unlock(protector);
         await ScrubPlaintextSidecarsAsync(protector, cancellationToken).ConfigureAwait(false);
 
-        return true;
+        return HelloUnlockResult.Unlocked;
     }
 
     public async Task DisableHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default)

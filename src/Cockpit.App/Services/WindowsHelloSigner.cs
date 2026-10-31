@@ -18,8 +18,16 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
     public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) =>
         _available ??= _IsAvailableAsync();
 
-    public async Task<bool> CreateAsync(string name, CancellationToken cancellationToken = default) =>
-        await _RunAsync(["create", name, _Owner()], cancellationToken).ConfigureAwait(false) == "ok";
+    public async Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default) =>
+        await _RunAsync(["create", name, _Owner()], cancellationToken).ConfigureAwait(false) switch
+        {
+            "ok tpm" => SecretKeyStorage.Hardware,
+            "ok software" => SecretKeyStorage.Software,
+            _ => SecretKeyStorage.None,
+        };
+
+    public async Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>
+        await _RunAsync(["exists", name], cancellationToken).ConfigureAwait(false) == "ok";
 
     public async Task<byte[]?> SignAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
     {

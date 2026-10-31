@@ -357,10 +357,10 @@ public class SecretProtectionTests : IDisposable
         var key = SecretKey.Derive(Password, Convert.FromBase64String((string?)security["Salt"] ?? ""), (int?)security["Iterations"] ?? 0);
         Assert.DoesNotContain(Convert.ToBase64String(key), RawConfig());
         var otherMachine = new SecretKeyHolder();
-        Assert.False(await new SecretProtectionService(_configPath, otherMachine).UnlockWithHelloAsync(new FakeSigner()));
+        Assert.Equal(HelloUnlockResult.KeyGone, await new SecretProtectionService(_configPath, otherMachine).UnlockWithHelloAsync(new FakeSigner(presentElsewhere: true)));
         Assert.Null(otherMachine.Protector);
         var restarted = new SecretKeyHolder();
-        Assert.True(await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
+        Assert.Equal(HelloUnlockResult.Unlocked, await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
         Assert.Equal(Token, (await new McpServerStore(_configPath, restarted).LoadAsync()).Single().ApiKey);
     }
 
@@ -390,22 +390,26 @@ public class SecretProtectionTests : IDisposable
         File.WriteAllText(_configPath, document.ToJsonString());
 
         var restarted = new SecretKeyHolder();
-        Assert.False(await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
+        Assert.Equal(HelloUnlockResult.KeyGone, await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
         Assert.Null(restarted.Protector);
     }
 
-    // Signs with an HMAC over a per-instance secret, like an OS key held in a TPM; `randomised` mimics RSA-PSS.
-    private sealed class FakeSigner(bool randomised = false) : ISecretKeySigner
+    // Signs with an HMAC over a per-instance secret, like an OS key held in a TPM; `randomised` mimics RSA-PSS, and
+    // `presentElsewhere` a key of the same name on another computer, which signs but with a different secret.
+    private sealed class FakeSigner(bool randomised = false, bool presentElsewhere = false) : ISecretKeySigner
     {
         private readonly Dictionary<string, byte[]> _keys = [];
 
         public Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-        public Task<bool> CreateAsync(string name, CancellationToken cancellationToken = default)
+        public Task<SecretKeyStorage> CreateAsync(string name, CancellationToken cancellationToken = default)
         {
             _keys[name] = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-            return Task.FromResult(true);
+            return Task.FromResult(SecretKeyStorage.Hardware);
         }
+
+        public Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>
+            Task.FromResult(presentElsewhere || _keys.ContainsKey(name));
 
         public Task<byte[]?> SignAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
         {

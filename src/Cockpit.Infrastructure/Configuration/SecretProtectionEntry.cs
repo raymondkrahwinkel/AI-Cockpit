@@ -43,5 +43,8 @@ internal sealed class HelloEntry
 
     public string WrappedKey { get; set; } = string.Empty;
 
+    // Shown in Settings: without a TPM, Windows keeps the key in software.
+    public bool InSoftware { get; set; }
+
     public const string WrappedKeyPath = "Security.Hello.WrappedKey";
 }
