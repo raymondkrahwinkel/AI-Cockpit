@@ -19,13 +19,9 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class NodeSessionsClient(
     IMcpServerStore servers,
     INodeDiscoveryClient discovery,
-    INodeLinkGate gate,
     ILogger<NodeSessionsClient> logger,
     IServiceProvider? services = null) : INodeSessionsClient, ISingletonService, IAsyncDisposable
 {
-    // AC-1943: a refusal before any network call — carries the gate's sentence, which is the whole answer.
-    private sealed class NodeLinkHeldException(string message) : InvalidOperationException(message);
-
     // Shared with NodeConnectionFailure.Describe, so the "did not answer within Xs" wording it produces always
     // matches the timeout this client actually used.
     private static readonly TimeSpan Budget = NodeConnectionFailure.DefaultBudget;
@@ -250,11 +246,6 @@ internal sealed class NodeSessionsClient(
 
     public async Task<NodeWhoAmI?> ReadWhoAmIAsync(string nodeName, CancellationToken cancellationToken = default)
     {
-        if (gate.RefusalFor(nodeName) is not null)
-        {
-            return null;
-        }
-
         var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
         IReadOnlyList<McpServerConfig> known;
         try
@@ -454,16 +445,11 @@ internal sealed class NodeSessionsClient(
 
     private async Task<McpClient> _ConnectAsync(string nodeName, CancellationToken cancellationToken)
     {
-        if (gate.RefusalFor(nodeName) is { } held)
-        {
-            throw new NodeLinkHeldException(held);
-        }
-
         var known = await servers.LoadAsync(cancellationToken).ConfigureAwait(false);
         var wanted = NodeServerName.For(nodeName, NodeServerName.SessionsServerName);
         var server = known.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal))
             ?? throw new InvalidOperationException(
-                $"This cockpit is not paired with a node called '{nodeName}', or that pairing predates session management. Pair with it again from Options → Security.");
+                $"No session connection is saved for '{nodeName}'. Connect to the server from Options → Nodes.");
 
         try
         {
@@ -650,5 +636,5 @@ internal sealed class NodeSessionsClient(
     // classification itself lives in NodeConnectionFailure (Core), so the connect dialog in App reads the exact
     // same sentence for the exact same failure without a friend-assembly grant onto this internal type.
     internal static string Classify(string nodeName, Exception exception) =>
-        exception is NodeLinkHeldException ? exception.Message : NodeConnectionFailure.Describe(nodeName, exception, Budget);
+        NodeConnectionFailure.Describe(nodeName, exception, Budget);
 }

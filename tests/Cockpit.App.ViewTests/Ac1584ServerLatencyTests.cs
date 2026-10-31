@@ -1,6 +1,5 @@
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Remote;
 using NSubstitute;
 
@@ -20,7 +19,7 @@ public sealed class Ac1584ServerLatencyTests
             server.Name.Returns("server");
             server.State.Returns(_ => state);
             servers.Servers.Returns([server]);
-            var view = new NodeSessionsViewModel(Substitute.For<INodeSessionsClient>(), "server") { Url = "https://server.example" };
+            var view = new NodeSessionsViewModel("server") { Url = "https://server.example" };
 
             view.FollowServer(servers);
             state = state with { LatencyMs = null };
