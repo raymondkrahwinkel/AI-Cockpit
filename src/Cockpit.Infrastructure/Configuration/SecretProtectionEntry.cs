@@ -46,5 +46,9 @@ internal sealed class HelloEntry
     // Shown in Settings: without a TPM, Windows keeps the key in software.
     public bool InSoftware { get; set; }
 
+    // An unlock with this wrap has worked once, so this Windows signs the same every time. Until then a failed unwrap
+    // means it does not, and Hello turns itself off (one prompt to turn it on, Raymond 31-10).
+    public bool Proven { get; set; }
+
     public const string WrappedKeyPath = "Security.Hello.WrappedKey";
 }

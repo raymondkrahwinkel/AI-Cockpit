@@ -356,21 +356,25 @@ public class SecretProtectionTests : IDisposable
         var security = JsonNode.Parse(RawConfig())?["Security"] ?? throw new InvalidOperationException("No Security section.");
         var key = SecretKey.Derive(Password, Convert.FromBase64String((string?)security["Salt"] ?? ""), (int?)security["Iterations"] ?? 0);
         Assert.DoesNotContain(Convert.ToBase64String(key), RawConfig());
-        var otherMachine = new SecretKeyHolder();
-        Assert.Equal(HelloUnlockResult.KeyGone, await new SecretProtectionService(_configPath, otherMachine).UnlockWithHelloAsync(new FakeSigner(presentElsewhere: true)));
-        Assert.Null(otherMachine.Protector);
         var restarted = new SecretKeyHolder();
         Assert.Equal(HelloUnlockResult.Unlocked, await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(hello));
         Assert.Equal(Token, (await new McpServerStore(_configPath, restarted).LoadAsync()).Single().ApiKey);
+        var otherMachine = new SecretKeyHolder();
+        Assert.Equal(HelloUnlockResult.KeyGone, await new SecretProtectionService(_configPath, otherMachine).UnlockWithHelloAsync(new FakeSigner(presentElsewhere: true)));
+        Assert.Null(otherMachine.Protector);
     }
 
     [Fact]
-    public async Task Hello_IsRefused_WhenTheOsKeySignsDifferentlyEachTime()
+    public async Task Hello_TurnsItselfOff_AtTheFirstUnlock_WhenTheOsKeySignsDifferentlyEachTime()
     {
         await Service().EnableAsync(Password);
+        var randomised = new FakeSigner(randomised: true);
+        Assert.True(await Service().EnableHelloAsync(Password, randomised));
 
-        await Assert.ThrowsAsync<SecretProtectionException>(() => Service().EnableHelloAsync(Password, new FakeSigner(randomised: true)));
+        var restarted = new SecretKeyHolder();
+        Assert.Equal(HelloUnlockResult.Unsupported, await new SecretProtectionService(_configPath, restarted).UnlockWithHelloAsync(randomised));
 
+        Assert.Null(restarted.Protector);
         Assert.DoesNotContain("Hello", RawConfig());
     }
 
@@ -407,9 +411,9 @@ public class SecretProtectionTests : IDisposable
         public async Task<SecretKeyEnrollment?> EnrollAsync(string name, byte[] challenge, CancellationToken cancellationToken = default)
         {
             _keys[name] = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
-            var first = await SignAsync(name, challenge, cancellationToken);
-            var second = await SignAsync(name, challenge, cancellationToken);
-            return first is null || second is null ? null : new SecretKeyEnrollment(SecretKeyStorage.Hardware, first, second);
+            return await SignAsync(name, challenge, cancellationToken) is { } signature
+                ? new SecretKeyEnrollment(SecretKeyStorage.Hardware, signature)
+                : null;
         }
 
         public Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>

@@ -148,6 +148,10 @@ public sealed partial class UnlockViewModel(ISecretProtectionService protection)
                     OffersHello = false;
                     Notice = "Windows Hello can no longer open this configuration on this computer. Use your password; you can turn Windows Hello on again in Settings.";
                     break;
+                case HelloUnlockResult.Unsupported:
+                    OffersHello = false;
+                    Notice = "Windows Hello on this computer signs differently each time, so it cannot unlock the cockpit. It has been turned off; use your password.";
+                    break;
                 case HelloUnlockResult.NotOffered:
                     OffersHello = false;
                     break;

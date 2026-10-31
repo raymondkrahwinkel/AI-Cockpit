@@ -31,7 +31,7 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
     {
         var line = await _RunAsync(["enroll", name, _owner, Convert.ToBase64String(challenge)], cancellationToken).ConfigureAwait(false);
         var parts = line?.Split(' ') ?? [];
-        if (parts is not ["ok", var storage, var first, var second])
+        if (parts is not ["ok", var storage, var signature])
         {
             _Note("enroll", line);
             return null;
@@ -40,8 +40,7 @@ public sealed class WindowsHelloSigner(Window owner) : ISecretKeySigner
         _Note("enroll", "ok");
         return new SecretKeyEnrollment(
             storage == "software" ? SecretKeyStorage.Software : SecretKeyStorage.Hardware,
-            Convert.FromBase64String(first),
-            Convert.FromBase64String(second));
+            Convert.FromBase64String(signature));
     }
 
     public async Task<bool> ExistsAsync(string name, CancellationToken cancellationToken = default) =>

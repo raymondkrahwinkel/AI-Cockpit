@@ -267,7 +267,8 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
             // The prompts run before the write gate is taken, so a slow gesture never holds up other settings writes.
             var name = HelloCredentialName(_configFilePath);
-            // One prompt: creating the key and both signatures happen on the one authorised key (AC-1879, Raymond 31-10).
+            // One prompt covers one signature (measured: a second signature asked again), so whether this Windows signs
+            // the same each time is settled at the first unlock rather than here (AC-1879, Raymond 31-10).
             var challenge = RandomNumberGenerator.GetBytes(32);
             if (await signer.EnrollAsync(name, challenge, cancellationToken).ConfigureAwait(false) is not { } enrollment)
             {
@@ -275,15 +276,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
                 return false;
             }
 
-            var (storage, first, second) = (enrollment.Storage, enrollment.FirstSignature, enrollment.SecondSignature);
-
-            // A randomised signature (RSA-PSS) cannot be turned back into the same key at the next unlock.
-            if (!CryptographicOperations.FixedTimeEquals(first, second))
-            {
-                await signer.DeleteAsync(name, cancellationToken).ConfigureAwait(false);
-                throw new SecretProtectionException("Windows Hello cannot hold a key on this version of Windows.");
-            }
-
+            var (storage, first) = (enrollment.Storage, enrollment.Signature);
             var kek = HelloKek(first, challenge);
             var hello = new HelloEntry
             {
@@ -294,7 +287,6 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
             };
             CryptographicOperations.ZeroMemory(kek);
             CryptographicOperations.ZeroMemory(first);
-            CryptographicOperations.ZeroMemory(second);
 
             using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
             var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
@@ -348,6 +340,13 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         }
         catch (Exception exception) when (exception is SecretProtectionException or FormatException)
         {
+            // Never unlocked before: this Windows signs differently each time (RSA-PSS), so Hello can never work here.
+            if (!hello.Proven)
+            {
+                await DisableHelloAsync(signer, cancellationToken).ConfigureAwait(false);
+                return HelloUnlockResult.Unsupported;
+            }
+
             // Another machine's TPM, a re-created Hello key, or a signature that changed after an update: the password still works.
             return HelloUnlockResult.KeyGone;
         }
@@ -367,8 +366,26 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
 
         _keyHolder.Unlock(protector);
         await ScrubPlaintextSidecarsAsync(protector, cancellationToken).ConfigureAwait(false);
+        if (!hello.Proven)
+        {
+            await _MarkHelloProvenAsync(hello.WrappedKey, cancellationToken).ConfigureAwait(false);
+        }
 
         return HelloUnlockResult.Unlocked;
+    }
+
+    // Only the wrap that just worked is marked: one re-made meanwhile has yet to prove itself.
+    private async Task _MarkHelloProvenAsync(string wrappedKey, CancellationToken cancellationToken)
+    {
+        using var gate = await CockpitConfigWriteGate.AcquireAsync(_configFilePath, cancellationToken).ConfigureAwait(false);
+        var document = await ReadDocumentAsync(cancellationToken).ConfigureAwait(false);
+        if (document["Security"]?.Deserialize<SecretProtectionEntry>(SerializerOptions) is { Hello: { } current } security
+            && current.WrappedKey == wrappedKey)
+        {
+            current.Proven = true;
+            WriteSecurity(document, security);
+            Save(document);
+        }
     }
 
     public async Task DisableHelloAsync(ISecretKeySigner signer, CancellationToken cancellationToken = default)
