@@ -113,7 +113,7 @@ public class ShareProjectDialogViewModelTests
     /// whether their persona is about to be imposed on everyone who binds the project.
     /// </summary>
     [Theory]
-    [InlineData("Zyra", "Zyra")]
+    [InlineData("depot:acme/zyra@depot.acme.example", "depot:acme/zyra@depot.acme.example")]
     [InlineData(null, "not set")]
     public void Rows_TheAssistant_StaysOnThisMachineAndNeverGoesToDepot(string? assistant, string expected)
     {
