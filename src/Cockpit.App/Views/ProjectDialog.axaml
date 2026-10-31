@@ -679,7 +679,12 @@
                         <TextBlock Classes="FieldLabel" Text="Assistant"/>
                         <TextBlock Classes="FieldHint" Text="Optional — which assistant this project's sessions run as, e.g. Zyra. Overrides the profile's own. Stays on this machine: it is never shared and never comes along when someone else binds this project."/>
                         <TextBox Text="{Binding Assistant}" PlaceholderText="whatever the profile says"
-                                 HorizontalAlignment="Stretch"/>
+                                 HorizontalAlignment="Stretch" IsVisible="{Binding !BrainPicker.IsAvailable, FallbackValue=True}"/>
+                        <!-- AC-1993: once a source has brains, the shared picker takes the field's place and stores
+                             the chosen brain in the same Assistant value. -->
+                        <StackPanel IsVisible="{Binding BrainPicker.IsAvailable, FallbackValue=False}">
+                            <controls:BrainPicker DataContext="{Binding BrainPicker}"/>
+                        </StackPanel>
                     </StackPanel>
 
                     <StackPanel Spacing="2">
