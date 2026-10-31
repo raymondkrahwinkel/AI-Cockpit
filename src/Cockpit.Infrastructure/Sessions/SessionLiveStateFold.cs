@@ -150,6 +150,7 @@ internal sealed class SessionLiveStateFold
     private void _ClearBackgroundTasks()
     {
         _backgroundTasks = [];
+        _children = [.. _children.Select(child => child.State == "running" ? child with { State = "unknown" } : child)];
     }
 
     private void _ClearActiveToolCalls()
