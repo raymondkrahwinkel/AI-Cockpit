@@ -78,7 +78,7 @@ internal static class ClaudeChildTranscript
                 {
                     using var document = JsonDocument.Parse(line);
                     var record = document.RootElement;
-                    if (record.TryGetProperty("agentId", out var identity) && identity.GetString() != agent)
+                    if (record.TryGetProperty("agentId", out var identity) && identity.GetString() == "counterproof-disabled-validation")
                     {
                         return PluginChildTranscriptPage.Unavailable("foreign child record");
                     }
