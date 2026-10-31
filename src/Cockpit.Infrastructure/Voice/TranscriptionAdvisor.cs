@@ -11,7 +11,7 @@ internal sealed class TranscriptionAdvisor : ITranscriptionAdvisor, ISingletonSe
 {
     private readonly object _gate = new();
     private TranscriptionCapabilities? _cachedCapabilities;
-    private GpuHardware? _cachedGpu;
+    private IReadOnlyList<GpuHardware>? _cachedGpus;
 
     public TranscriptionCapabilities DetectCapabilities()
     {
@@ -23,11 +23,13 @@ internal sealed class TranscriptionAdvisor : ITranscriptionAdvisor, ISingletonSe
         }
     }
 
-    public GpuHardware DetectGpu()
+    public GpuHardware DetectGpu() => GpuHardware.PickAuto(DetectGpus());
+
+    public IReadOnlyList<GpuHardware> DetectGpus()
     {
         lock (_gate)
         {
-            return _cachedGpu ??= GpuHardwareProbe.Detect();
+            return _cachedGpus ??= GpuHardwareProbe.DetectAll();
         }
     }
 

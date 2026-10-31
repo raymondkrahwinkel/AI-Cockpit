@@ -11,6 +11,7 @@ namespace Cockpit.Infrastructure.Voice;
 // Trimmed: the ggml_abort incident, warm-worker/IdleUnloadAfter memory behavior, CPU-backend crash retry.
 internal sealed class WhisperWorkerSpeechToTextService(
     IVoiceSettingsStore settingsStore,
+    ITranscriptionAdvisor advisor,
     ILogger<WhisperWorkerSpeechToTextService> logger)
     : ISpeechToTextService, IAsyncDisposable
 {
@@ -183,6 +184,7 @@ internal sealed class WhisperWorkerSpeechToTextService(
         startInfo.ArgumentList.Add(settings.ModelName);
         startInfo.ArgumentList.Add(DictationWorkerProtocol.LanguageArgument);
         startInfo.ArgumentList.Add(language);
+        GpuDeviceEnvironment.Apply(startInfo, backend, advisor.DetectGpus(), settings.GpuDeviceId);
 
         // Remembered, never logged directly (AC-534): whisper.cpp/CUDA stderr chatter is routine, and echoing every
         // line at any level would repeat AC-533's mistake of one noisy source drowning out the rest of the log. The
