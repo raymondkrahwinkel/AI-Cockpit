@@ -3511,7 +3511,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Swarm = new SwarmOptionsViewModel(swarmOptions, swarmLeadership, ConfirmAsync);
         if (swarmOptions is not null)
+        {
             swarmOptions.RemovalRequested += member => _OnUiThread(() => _ = Swarm.RequestRemovalAsync(member));
+        }
 
         // AC-1291: here and not on the Security tab, which only subscribes once the Options window is opened — with
         // it closed nothing was listening at all, so a pairing request reached no screen.
@@ -3588,7 +3590,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionLauncher = sessionLauncher;
         _WireServerGroups(remoteServers, remotePaneOver, nodeSessionsClient, serverSignIns);
         if (swarmOptions is not null && swarmLeadership is not null && nodeSessionsClient is not null)
+        {
             ShowSwarm(swarmOptions, swarmLeadership, nodeSessionsClient);
+        }
         if (sessionRegistry is not null)
         {
             sessionRegistry.Changed += _OnSessionRegistryChanged;
@@ -7085,7 +7089,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _MarkOptionsOpen("mcp");
         }
 
-        if (!_optionsStaged) await Swarm.LoadSettingsAsync();
+        if (!_optionsStaged)
+        {
+            await Swarm.LoadSettingsAsync();
+        }
         await _dialogService.ShowOptionsDialogAsync(this, category);
     }
 

@@ -27,7 +27,10 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
     public async Task<IReadOnlyList<SwarmMachine>> MachinesAsync(CancellationToken ct = default)
     {
         var register = await membership.LoadAsync(ct);
-        if (register.Sequence > 0 && register.PublicKeyOf(identity.MemberId) is null) return [];
+        if (register.Sequence > 0 && register.PublicKeyOf(identity.MemberId) is null)
+        {
+            return [];
+        }
         var options = await settings.LoadAsync(ct);
         return register.Members.OrderBy(member => member.Rank).Select(member => new SwarmMachine(member,
             member.Id == identity.MemberId,
@@ -58,7 +61,10 @@ internal sealed class SwarmOptions(SwarmSettingsStore settings, SwarmMembershipS
         try { await join.CompleteAsync(handshake, ct); }
         catch (Exception ex)
         {
-            if (!discovered) await manual.RememberAsync(handshake.Address, failure: ex, ct: ct);
+            if (!discovered)
+            {
+                await manual.RememberAsync(handshake.Address, failure: ex, ct: ct);
+            }
             throw;
         }
         await settings.UpdateAsync(current => current with { PairingOrigins = new Dictionary<string, string>(current.PairingOrigins)

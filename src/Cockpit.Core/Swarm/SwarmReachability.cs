@@ -20,7 +20,10 @@ public sealed class SwarmReachability(TimeProvider time)
     {
         lock (_gate)
         {
-            if (!_entries.TryGetValue(member, out var entry)) return new(SwarmPresence.NotReachable, null, false);
+            if (!_entries.TryGetValue(member, out var entry))
+            {
+                return new(SwarmPresence.NotReachable, null, false);
+            }
             var live = time.GetUtcNow() - entry.LastSeen < Lease;
             var status = entry.Asleep ? SwarmPresence.Asleep : live ? SwarmPresence.Online : SwarmPresence.NotReachable;
             return new(status, entry.LastSeen, status == SwarmPresence.Online && time.GetUtcNow() - entry.Since >= Stabilization);
@@ -29,12 +32,15 @@ public sealed class SwarmReachability(TimeProvider time)
 
     public void Answer(SwarmMemberId member, HttpStatusCode response, bool asleep = false)
     {
-        if ((int)response is < 200 or >= 300) return;
+        if ((int)response is < 200 or >= 300)
+        {
+            return;
+        }
         lock (_gate)
         {
             var now = time.GetUtcNow();
-            var continuous = _entries.TryGetValue(member, out var entry) && !entry.Asleep && now - entry.LastSeen < Lease;
-            _entries[member] = new(now, continuous ? entry!.Since : now, asleep);
+            var since = _entries.TryGetValue(member, out var entry) && !entry.Asleep && now - entry.LastSeen < Lease ? entry.Since : now;
+            _entries[member] = new(now, since, asleep);
         }
     }
 

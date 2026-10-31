@@ -251,7 +251,9 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
             ClearConversationCommand.NotifyCanExecuteChanged();
             ShowMergeQuestion();
             if (_opened && (_leaderId != _cockpit?.SwarmLeadership?.Current?.Id.Value || IsFollowingLeader && Session is null))
-                _ = RefreshLeaderSessionAsync();
+            {
+                LeaderSessionRefresh = RefreshLeaderSessionAsync();
+            }
         }
 
         if (e.PropertyName is null or nameof(CockpitViewModel.SimpleView))
@@ -395,7 +397,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         // typed into an unstarted assistant is exactly what starts it (criterion 1).
         try
         {
-            if (remoteSession is null) await _host.SendAsync(text);
+            if (remoteSession is null)
+            {
+                await _host.SendAsync(text);
+            }
             else
             {
                 await _host.SendAsync(text, attachments.Select(attachment => attachment.PngBytes).ToArray());
@@ -408,7 +413,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
         }
         catch
         {
-            if (InputText.Length == 0) InputText = text;
+            if (InputText.Length == 0)
+            {
+                InputText = text;
+            }
             throw;
         }
 
@@ -598,7 +606,10 @@ public sealed partial class AssistantChatViewModel : ObservableObject, IDisposab
     {
         _disposed = true;
         ++_leaderVersion;
-        if (_observedSession?.RemoteServer is not null) _ = _observedSession.DisposeAsync();
+        if (_observedSession?.RemoteServer is not null)
+        {
+            _ = _observedSession.DisposeAsync();
+        }
         _host.PropertyChanged -= _OnHostPropertyChanged;
         _WatchTranscript(_observedSession, next: null);
         _WatchThreads(_observedSession, next: null);

@@ -27,10 +27,13 @@ public class SwarmJoinTests
             var earlier = await pair.A.Client.BeginAsync(third.Address);
             third.Join.Confirm(earlier.Offer.PairingId);
             await pair.A.Client.CompleteAsync(earlier);
-            if (outcome == "offline") await third.StopAsync();
+            if (outcome == "offline")
+            {
+                await third.StopAsync();
+            }
         }
         var handshake = await pair.A.Client.BeginAsync(pair.B.Address);
-        Assert.Equal(pair.B.Join.Pending!.Code, handshake.Code);
+        Assert.Equal((pair.B.Join.Pending ?? throw new InvalidOperationException("Expected a value.")).Code, handshake.Code);
         Assert.Equal(6, handshake.Code.Length);
         Assert.Equal(pair.B.Identity.MemberId, SwarmMemberId.FromPublicKey(handshake.PublicKey));
         Assert.NotEqual(pair.B.Certificate.Fingerprint, pair.B.Identity.MemberId.Value);
@@ -53,8 +56,14 @@ public class SwarmJoinTests
         }
         else
         {
-            if (outcome == "refused") pair.B.Join.Refuse(handshake.Offer.PairingId);
-            else if (outcome == "expired") pair.Time.Advance(TimeSpan.FromMinutes(2));
+            if (outcome == "refused")
+            {
+                pair.B.Join.Refuse(handshake.Offer.PairingId);
+            }
+            else if (outcome == "expired")
+            {
+                pair.Time.Advance(TimeSpan.FromMinutes(2));
+            }
             var failure = await Assert.ThrowsAsync<NodePairingException>(() => pair.A.Client.CompleteAsync(handshake));
             Assert.Equal(outcome, failure.Error);
             Assert.Empty((await pair.B.Membership.LoadAsync()).Log);

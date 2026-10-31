@@ -155,7 +155,9 @@ public sealed class AssistantIndicatorCoordinator : ISingletonService
     private void _OnCockpitChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(CockpitViewModel.AssistantLeadershipLabel))
+        {
             Dispatcher.UIThread.Post(_Refresh);
+        }
     }
 
     // Capture runs off the UI thread, and the chip's line is a bound collection — marshalled like every other source.

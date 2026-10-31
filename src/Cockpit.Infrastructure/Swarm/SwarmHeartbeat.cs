@@ -56,7 +56,10 @@ internal sealed class SwarmHeartbeat(
     {
         var membership = await store.LoadAsync(ct);
         var member = membership.Members.FirstOrDefault(item => item.Id == peer);
-        if (member is null || record.Signatures is null || !record.Verify(membership.PublicKeyOf)) return null;
+        if (member is null || record.Signatures is null || !record.Verify(membership.PublicKeyOf))
+        {
+            return null;
+        }
         var update = record.Payload.Deserialize<SwarmHeartbeatUpdate>(SwarmRecordJson.Options);
         if (update is null || update.Addresses is null || update.Kind != "heartbeat" || update.Member != peer
             || !record.Signatures.Any(signature => signature.MemberId == update.Member)
@@ -66,17 +69,29 @@ internal sealed class SwarmHeartbeat(
         var transport = (await servers.LoadAsync(ct)).FirstOrDefault(server =>
             server.Name.StartsWith(NodeServerName.PrefixFor(member.Name), StringComparison.Ordinal)
             && server.PinnedCertificateFingerprint == pin);
-        if (transport is null) return null;
+        if (transport is null)
+        {
+            return null;
+        }
         var addresses = new List<string>();
         foreach (var address in update.Addresses)
         {
-            if (!IPAddress.TryParse(address, out var parsed)) continue;
+            if (!IPAddress.TryParse(address, out var parsed))
+            {
+                continue;
+            }
             var kept = await network.KeepInternalAsync(IPAddress.None, parsed, ct);
-            if (kept.Equals(parsed)) addresses.Add(address);
+            if (kept.Equals(parsed))
+            {
+                addresses.Add(address);
+            }
         }
         lock (_gate)
         {
-            if (_updates.TryGetValue(peer, out var previous) && update.At <= previous.At) return null;
+            if (_updates.TryGetValue(peer, out var previous) && update.At <= previous.At)
+            {
+                return null;
+            }
             _updates[peer] = update with { Addresses = addresses.Count == 0 ? previous?.Addresses ?? member.Addresses : addresses,
                 Port = addresses.Count == 0 ? previous?.Port ?? member.Port : update.Port };
         }
@@ -97,20 +112,30 @@ internal sealed class SwarmHeartbeat(
         group.MapPost("/heartbeat", (Delegate)((HttpContext context) => HandleAsync(context, async peer =>
         {
             var record = await context.Request.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, context.RequestAborted);
-            var pin = NodeCertificatePin.FingerprintOf((await context.Connection.GetClientCertificateAsync(context.RequestAborted))!);
-            if (record is null || await AcceptAsync(record, peer, pin, context.RequestAborted) is null) return Results.StatusCode(403);
+            var pin = NodeCertificatePin.FingerprintOf(await context.Connection.GetClientCertificateAsync(context.RequestAborted)
+                ?? throw new InvalidOperationException("The heartbeat peer presented no certificate."));
+            if (record is null || await AcceptAsync(record, peer, pin, context.RequestAborted) is null)
+            {
+                return Results.StatusCode(403);
+            }
             return Results.Json(await OwnAsync(_asleep, context.RequestAborted), SwarmRecordJson.Options);
         })));
         group.MapGet("/records", (Delegate)((HttpContext context) => HandleAsync(context, async _ =>
         {
-            if (!long.TryParse(context.Request.Query["since"], out var since)) return Results.BadRequest();
+            if (!long.TryParse(context.Request.Query["since"], out var since))
+            {
+                return Results.BadRequest();
+            }
             var delta = await propagation.RecordsAsync(since, context.Request.Query["prefix"], context.RequestAborted);
             return Results.Json(delta, SwarmRecordJson.Options);
         })));
         group.MapPost("/records", (Delegate)((HttpContext context) => HandleAsync(context, async _ =>
         {
             var delta = await context.Request.ReadFromJsonAsync<SwarmRecords>(SwarmRecordJson.Options, context.RequestAborted);
-            if (delta is null) return Results.BadRequest();
+            if (delta is null)
+            {
+                return Results.BadRequest();
+            }
             await propagation.ApplyAsync(delta, context.RequestAborted);
             return Results.Ok();
         })));
@@ -120,7 +145,10 @@ internal sealed class SwarmHeartbeat(
     {
         var ct = context.RequestAborted;
         var peer = await context.Connection.GetClientCertificateAsync(ct);
-        if (peer is null) return Results.Unauthorized();
+        if (peer is null)
+        {
+            return Results.Unauthorized();
+        }
         var id = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
         var membership = await store.LoadAsync(ct);
         var member = membership.Members.FirstOrDefault(item => item.Id == id);
@@ -129,9 +157,15 @@ internal sealed class SwarmHeartbeat(
             server.Name.StartsWith(NodeServerName.PrefixFor(member.Name), StringComparison.Ordinal) && server.PinnedCertificateFingerprint == pin))
             return Results.StatusCode(403);
         var token = context.Request.Headers.Authorization.ToString();
-        if (!token.StartsWith("Bearer ", StringComparison.Ordinal)) return Results.Unauthorized();
-        var caller = await keys.AuthenticateAsync(token[7..], null, context.Connection.RemoteIpAddress!.ToString(), ct);
-        if (caller is not { Capability: ConnectKeyCapability.Admin }) return Results.Unauthorized();
+        if (!token.StartsWith("Bearer ", StringComparison.Ordinal))
+        {
+            return Results.Unauthorized();
+        }
+        var caller = await keys.AuthenticateAsync(token[7..], null, context.Connection.RemoteIpAddress?.ToString() ?? throw new InvalidOperationException("The request has no remote address."), ct);
+        if (caller is not { Capability: ConnectKeyCapability.Admin })
+        {
+            return Results.Unauthorized();
+        }
         try
         {
             return await action(id);
@@ -152,9 +186,15 @@ internal sealed class SwarmHeartbeat(
         await _tick.WaitAsync(ct);
         try
         {
-            if (kick is not null) await kick.DeliverAsync(ct);
+            if (kick is not null)
+            {
+                await kick.DeliverAsync(ct);
+            }
             var membership = await store.LoadAsync(ct);
-            if (membership.PublicKeyOf(identity.MemberId) is null && membership.Sequence > 0) return;
+            if (membership.PublicKeyOf(identity.MemberId) is null && membership.Sequence > 0)
+            {
+                return;
+            }
             await Task.WhenAll(membership.Members.Where(member => member.Id != identity.MemberId).Select(async member =>
             {
                 try
@@ -167,7 +207,10 @@ internal sealed class SwarmHeartbeat(
                         transport = (await servers.LoadAsync(ct)).FirstOrDefault(server =>
                             server.Name.StartsWith(NodeServerName.PrefixFor(member.Name), StringComparison.Ordinal));
                     }
-                    if (transport?.PinnedCertificateFingerprint is not { } pin) return;
+                    if (transport?.PinnedCertificateFingerprint is not { } pin)
+                    {
+                        return;
+                    }
                     SwarmHeartbeatUpdate? last;
                     lock (_gate) last = _updates.GetValueOrDefault(member.Id);
                     using var handler = new SocketsHttpHandler { ConnectCallback = network.ConnectAsync };
@@ -188,14 +231,20 @@ internal sealed class SwarmHeartbeat(
                     };
                     var manualUri = await manual.ForMemberAsync(member.Id, ct);
                     var address = manualUri?.IdnHost ?? last?.Addresses.FirstOrDefault() ?? member.Addresses.FirstOrDefault();
-                    if (address is null) return;
+                    if (address is null)
+                    {
+                        return;
+                    }
                     using var client = new HttpClient(handler) { BaseAddress = manualUri ?? new UriBuilder("https", address, last?.Port ?? member.Port).Uri,
                         Timeout = NodeConnectionFailure.DefaultBudget };
                     client.DefaultRequestHeaders.Authorization = new("Bearer", transport.ApiKey);
                     using var response = await client.PostAsJsonAsync("swarm/heartbeat", await OwnAsync(asleep, ct), SwarmRecordJson.Options, ct);
                     response.EnsureSuccessStatusCode();
                     var record = await response.Content.ReadFromJsonAsync<SwarmRecord>(SwarmRecordJson.Options, ct);
-                    if (record is null || await AcceptAsync(record, member.Id, pin, ct) is not { } update) return;
+                    if (record is null || await AcceptAsync(record, member.Id, pin, ct) is not { } update)
+                    {
+                        return;
+                    }
                     if (manualUri is not null)
                     {
                         await manual.RememberAsync(manualUri.ToString(), member.Id.Value, online: true, ct: ct);
@@ -207,7 +256,10 @@ internal sealed class SwarmHeartbeat(
                         using var records = await client.GetAsync($"swarm/records?since={current.Sequence}&prefix={prefix}", ct);
                         records.EnsureSuccessStatusCode();
                         var delta = await records.Content.ReadFromJsonAsync<SwarmRecords>(SwarmRecordJson.Options, ct);
-                        if (delta is not null) await propagation.ApplyAsync(delta, ct);
+                        if (delta is not null)
+                        {
+                            await propagation.ApplyAsync(delta, ct);
+                        }
                     }
                     else
                     {
@@ -240,7 +292,10 @@ internal sealed class SwarmHeartbeat(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (OperatingSystem.IsWindows()) Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        if (OperatingSystem.IsWindows())
+        {
+            Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        }
         using var bus = OperatingSystem.IsLinux() ? new Tmds.DBus.Connection(Tmds.DBus.Address.System) : null;
         IDisposable? sleepWatch = null;
         if (bus is not null)
@@ -249,7 +304,7 @@ internal sealed class SwarmHeartbeat(
             {
                 await bus.ConnectAsync();
                 var manager = bus.CreateProxy<ISwarmSleepManager>("org.freedesktop.login1", "/org/freedesktop/login1");
-                sleepWatch = await manager.WatchPrepareForSleepAsync(asleep => _ = PowerChangedAsync(asleep));
+                sleepWatch = await manager.WatchPrepareForSleepAsync(asleep => PowerChange = PowerChangedAsync(asleep));
             }
             catch (Exception ex)
             {
@@ -261,20 +316,29 @@ internal sealed class SwarmHeartbeat(
         {
             do
             {
-                if (!_asleep) await TickAsync(ct: stoppingToken);
+                if (!_asleep)
+                {
+                    await TickAsync(ct: stoppingToken);
+                }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
         }
         finally
         {
             sleepWatch?.Dispose();
-            if (OperatingSystem.IsWindows()) Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            if (OperatingSystem.IsWindows())
+            {
+                Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            }
         }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private async void OnPowerModeChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs args) =>
         await PowerChangedAsync(args.Mode == Microsoft.Win32.PowerModes.Suspend);
+
+    // The latest power-transition announcement, kept so a fault or a test can observe it.
+    internal Task PowerChange { get; private set; } = Task.CompletedTask;
 
     private async Task PowerChangedAsync(bool asleep)
     {

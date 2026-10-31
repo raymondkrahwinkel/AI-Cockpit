@@ -21,7 +21,7 @@ public class SwarmReachabilityTests
         time.Advance(5);
         var live = service.Get(member);
         Assert.Equal(response == HttpStatusCode.OK ? SwarmPresence.Online : SwarmPresence.NotReachable, live.Status);
-        Assert.Equal(response == HttpStatusCode.OK ? first!.Value.AddSeconds(10) : first, live.LastSeen);
+        Assert.Equal(response == HttpStatusCode.OK ? first.GetValueOrDefault().AddSeconds(10) : first, live.LastSeen);
         Assert.False(live.Stable);
         time.Advance(15);
         service.Answer(member, HttpStatusCode.OK);

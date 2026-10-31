@@ -11,6 +11,9 @@ public partial class CockpitViewModel
     private ISwarmLeadership? _swarmLeadership;
     private INodeSessionsClient? _swarmSessions;
     private DispatcherTimer? _swarmSidebarTimer;
+
+    // The latest sidebar refresh, kept so a fault or a test can observe it.
+    internal Task SwarmGroupsRefresh { get; private set; } = Task.CompletedTask;
     private readonly CancellationTokenSource _swarmSidebarStop = new();
     private bool _refreshingSwarm;
     private readonly HashSet<string> _swarmMemberNames = new(StringComparer.Ordinal);
@@ -41,12 +44,12 @@ public partial class CockpitViewModel
             _swarmSidebarTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
             _swarmSidebarTimer.Tick += _SwarmSidebarTick;
             _swarmSidebarTimer.Start();
-            _ = RefreshSwarmGroupsAsync();
+            SwarmGroupsRefresh = RefreshSwarmGroupsAsync();
         }
         OnPropertyChanged(nameof(ShowLocalMachineHeading));
     }
 
-    private void _SwarmSidebarTick(object? sender, EventArgs e) => _ = RefreshSwarmGroupsAsync();
+    private void _SwarmSidebarTick(object? sender, EventArgs e) => SwarmGroupsRefresh = RefreshSwarmGroupsAsync();
 
     private void _SwarmLeaderChanged(object? sender, EventArgs e) => _OnUiThread(_UpdateSwarmLeader);
 
@@ -57,12 +60,17 @@ public partial class CockpitViewModel
         OnPropertyChanged(nameof(AssistantLocationLabel));
         OnPropertyChanged(nameof(AssistantLeaderIsServer));
         foreach (var group in ServerGroups.Where(group => group.IsSwarmMember))
+        {
             group.Leads = group.MemberId == _swarmLeadership?.Current?.Id;
+        }
     }
 
     internal async Task RefreshSwarmGroupsAsync()
     {
-        if (_refreshingSwarm || _swarmSidebar is null || _swarmSessions is null || _swarmSidebarStop.IsCancellationRequested) return;
+        if (_refreshingSwarm || _swarmSidebar is null || _swarmSessions is null || _swarmSidebarStop.IsCancellationRequested)
+        {
+            return;
+        }
         _refreshingSwarm = true;
         try
         {
@@ -70,13 +78,22 @@ public partial class CockpitViewModel
             _swarmSelfName = machines.FirstOrDefault(machine => machine.IsSelf)?.Member.Name;
             var members = machines.Where(machine => !machine.IsSelf).ToArray();
             _swarmMemberNames.Clear();
-            foreach (var member in members) _swarmMemberNames.Add(member.Member.Name);
-            if (_remoteServers is not null) _SyncServerGroups();
+            foreach (var member in members)
+            {
+                _swarmMemberNames.Add(member.Member.Name);
+            }
+            if (_remoteServers is not null)
+            {
+                _SyncServerGroups();
+            }
             foreach (var group in ServerGroups.Where(group => group.IsSwarmMember && !members.Any(machine => machine.Member.Id == group.MemberId)).ToArray())
             {
                 ServerGroups.Remove(group);
                 group.Dispose();
-                foreach (var row in group.Sessions) await _CloseRemotePaneAsync(row);
+                foreach (var row in group.Sessions)
+                {
+                    await _CloseRemotePaneAsync(row);
+                }
             }
             foreach (var machine in members)
             {
@@ -86,7 +103,10 @@ public partial class CockpitViewModel
                     group = new ServerGroupViewModel(machine);
                     group.PropertyChanged += (_, args) =>
                     {
-                        if (args.PropertyName == nameof(ServerGroupViewModel.IsExpanded)) _OnOpenServerGroupsChanged();
+                        if (args.PropertyName == nameof(ServerGroupViewModel.IsExpanded))
+                        {
+                            _OnOpenServerGroupsChanged();
+                        }
                     };
                     group.Sessions.CollectionChanged += (_, _) => _WatchWaitingRows();
                     ServerGroups.Add(group);
@@ -98,7 +118,10 @@ public partial class CockpitViewModel
                     var snapshot = await _swarmSessions.ReadAsync(group.Name, _swarmSidebarStop.Token);
                     if (snapshot.Error is null)
                     {
-                        foreach (var row in group.Reconcile(snapshot)) await _CloseRemotePaneAsync(row);
+                        foreach (var row in group.Reconcile(snapshot))
+                        {
+                            await _CloseRemotePaneAsync(row);
+                        }
                     }
                     else
                     {
@@ -142,18 +165,29 @@ public partial class CockpitViewModel
             group.Start.Error = $"Session started, but could not read it: {readError}";
             return;
         }
-        foreach (var gone in group.Reconcile(snapshot)) await _CloseRemotePaneAsync(gone);
+        foreach (var gone in group.Reconcile(snapshot))
+        {
+            await _CloseRemotePaneAsync(gone);
+        }
         group.Start.IsOpen = false;
         group.Start.Prompt = "";
         if (group.Sessions.FirstOrDefault(row => row.Handle.PaneId == started.PaneId) is { } row)
+        {
             await OpenServerSessionAsync(row);
+        }
     }
 
     private void _StopSwarmSidebar()
     {
         _swarmSidebarStop.Cancel();
-        foreach (var group in ServerGroups.Where(group => group.IsSwarmMember)) group.Dispose();
-        if (_swarmLeadership is not null) _swarmLeadership.Changed -= _SwarmLeaderChanged;
+        foreach (var group in ServerGroups.Where(group => group.IsSwarmMember))
+        {
+            group.Dispose();
+        }
+        if (_swarmLeadership is not null)
+        {
+            _swarmLeadership.Changed -= _SwarmLeaderChanged;
+        }
         if (_swarmSidebarTimer is not null)
         {
             _swarmSidebarTimer.Stop();

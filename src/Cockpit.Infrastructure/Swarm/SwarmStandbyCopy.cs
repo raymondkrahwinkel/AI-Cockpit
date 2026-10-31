@@ -35,8 +35,14 @@ internal sealed class SwarmStandbyCopy : ISingletonService
         lock (_gate)
         {
             var previous = Read();
-            if (previous?.Generation == snapshot.Generation && previous.Revision >= snapshot.Revision) return;
-            if (previous?.LeaderId == snapshot.LeaderId && previous.At > snapshot.At) return;
+            if (previous?.Generation == snapshot.Generation && previous.Revision >= snapshot.Revision)
+            {
+                return;
+            }
+            if (previous?.LeaderId == snapshot.LeaderId && previous.At > snapshot.At)
+            {
+                return;
+            }
             CockpitConfigPath.ReplaceAtomicallyPrivate(_path, stream => JsonSerializer.Serialize(stream, snapshot, Json));
         }
     }
@@ -44,10 +50,16 @@ internal sealed class SwarmStandbyCopy : ISingletonService
     internal async Task ReceiveAsync(Stream stream, SwarmMemberId source, CancellationToken ct, ISwarmLeadership? leadership = null)
     {
         var snapshot = Validated(await JsonSerializer.DeserializeAsync<SwarmStandbySnapshot>(stream, Json, ct), source);
-        if (leadership is null) Save(snapshot);
+        if (leadership is null)
+        {
+            Save(snapshot);
+        }
         else if (!leadership.WithLeader(leader =>
         {
-            if (leader?.Id != source) return false;
+            if (leader?.Id != source)
+            {
+                return false;
+            }
             Save(snapshot);
             return true;
         })) throw new InvalidOperationException("The standby sender no longer leads.");

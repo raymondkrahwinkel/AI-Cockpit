@@ -189,7 +189,10 @@ public partial class CockpitViewModel
                     _OnOpenServerGroupsChanged();
                 }
             };
-            group.Health!.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
+            if (group.Health is { } groupHealth)
+            {
+                groupHealth.OpenRequested += workflow => _OnUiThread(() => _OpenWorkflowSession(group, workflow));
+            }
             ISessionRegistry? followed = null;
             void Follow()
             {
@@ -273,7 +276,10 @@ public partial class CockpitViewModel
     [RelayCommand]
     private static void ToggleServerHealth(ServerGroupViewModel group)
     {
-        if (group.Health is { } health) health.IsOpen = !health.IsOpen;
+        if (group.Health is { } health)
+        {
+            health.IsOpen = !health.IsOpen;
+        }
     }
 
     // A run waiting for a permission is a session of the same name on that server; without one, the first session
@@ -336,11 +342,18 @@ public partial class CockpitViewModel
             if (entry.Group.IsSwarmMember && _swarmSessions is { } nodes)
             {
                 if (await nodes.StopAsync(entry.Group.Name, row.Handle.PaneId) is { } error)
+                {
                     throw new InvalidOperationException(error);
+                }
             }
             else if (entry.Group.Server?.Launcher is { } launcher)
+            {
                 await launcher.StopSessionAsync(row.Handle.PaneId);
-            else return;
+            }
+            else
+            {
+                return;
+            }
         }
         catch (Exception exception)
         {
@@ -454,7 +467,10 @@ public partial class CockpitViewModel
         assistant.OpenHealthRequested += () => _OnUiThread(() =>
         {
             group.IsExpanded = true;
-            group.Health!.IsOpen = true;
+            if (group.Health is { } groupHealth)
+            {
+                groupHealth.IsOpen = true;
+            }
         });
         await show(admin);
     }
@@ -558,7 +574,7 @@ public partial class CockpitViewModel
                     snapshot.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));
                 return;
             }
-            await group.Server!.Projects.LoadAsync();
+            await (group.Server ?? throw new InvalidOperationException("A non-swarm group has a server.")).Projects.LoadAsync();
             group.Start.Fill(
                 snapshot.Profiles.Select(profile => new NodeProfileChoice(profile.Label, profile.Purpose)),
                 group.Server.Projects.Current.Settings.Projects.Select(project => new NodeProjectChoice(project.Id, project.Name)));

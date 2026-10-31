@@ -31,7 +31,10 @@ public sealed class SwarmSessionChannelResumeTests
         await foreach (var row in source.WithCancellation(cancellationToken))
         {
             rows.Add(row);
-            if (rows.Count == count) break;
+            if (rows.Count == count)
+            {
+                break;
+            }
         }
         return rows;
     }
@@ -45,7 +48,7 @@ public sealed class SwarmSessionChannelResumeTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Cursors.Add(request.Headers.TryGetValues("Last-Event-ID", out var values) ? values.Single() : null);
-            Paths.Add(request.RequestUri!.AbsolutePath);
+            Paths.Add((request.RequestUri ?? throw new InvalidOperationException("Expected a value.")).AbsolutePath);
             var body = Interlocked.Increment(ref _request) == 1
                 ? Frame(1, "one") + Frame(2, "two")
                 : Frame(3, "three");

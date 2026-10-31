@@ -17,7 +17,10 @@ public class SwarmRecordSignatureTests
     [Fact]
     public void Verify_AcceptsOnlyThePayloadSignedByTheKeyBehindTheMemberId()
     {
-        foreach (var forgery in new[] { "tampered-payload", "foreign-key" }) VerifyForgery(forgery);
+        foreach (var forgery in new[] { "tampered-payload", "foreign-key" })
+        {
+            VerifyForgery(forgery);
+        }
     }
 
     private static void VerifyForgery(string forgery)

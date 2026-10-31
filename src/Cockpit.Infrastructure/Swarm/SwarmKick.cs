@@ -31,7 +31,10 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
             var register = await store.LoadAsync(ct);
             var record = identity.Sign(SwarmMembership.ToPayload(new SwarmTombstone(member, identity.MemberId,
                 DateTimeOffset.UtcNow, register.Sequence + 1)));
-            if (register.Accept(record) != SwarmMembershipVerdict.Accepted) throw new InvalidDataException("swarm_removal_refused");
+            if (register.Accept(record) != SwarmMembershipVerdict.Accepted)
+            {
+                throw new InvalidDataException("swarm_removal_refused");
+            }
             store.Save(register);
             await RevokeAsync(register, ct);
         }
@@ -44,14 +47,21 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
         var removed = register.Tombstones.Select(item => item.Member).ToHashSet();
         var left = removed.Contains(identity.MemberId);
         foreach (var (key, _) in await keys.ListAsync(ct))
-            if (key.RevokedAt is null && key.Label.StartsWith("swarm:", StringComparison.Ordinal)
-                && (left || !register.Members.Any(member => key.Label == KeyLabel(member))))
+        {
+            if (key.RevokedAt is null && key.Label.StartsWith("swarm:", StringComparison.Ordinal) &&
+                (left || !register.Members.Any(member => key.Label == KeyLabel(member))))
+            {
                 await keys.RevokeAsync(key.Prefix, new NodeCaller(null, "swarm removal", ConnectKeyCapability.Admin, "local", CancellationToken.None), ct);
+            }
+        }
         var names = register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
             .OfType<SwarmMember>().Where(member => left || removed.Contains(member.Id)).Select(member => NodeServerName.PrefixFor(member.Name)).ToArray();
         var known = await servers.LoadAsync(ct);
         var kept = known.Where(server => !server.IsNodeConnection || !names.Any(name => server.Name.StartsWith(name, StringComparison.Ordinal))).ToArray();
-        if (kept.Length != known.Count) await servers.SaveAsync(kept, ct);
+        if (kept.Length != known.Count)
+        {
+            await servers.SaveAsync(kept, ct);
+        }
     }
 
     internal async Task<string> StatusAsync(CancellationToken ct)
@@ -64,7 +74,10 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
                 .OfType<SwarmMember>().First(member => member.Id == tombstone.RemovedBy).Name;
             return $"{name} removed this machine from the swarm. Your sessions here keep running. Join again with confirmation on both screens and a new rank. removed_from_swarm";
         }
-        if (!register.Tombstones.Any()) return "";
+        if (!register.Tombstones.Any())
+        {
+            return "";
+        }
         return register.Members.Any(member => member.Id != identity.MemberId && _delivered.GetValueOrDefault(member.Id) < register.Sequence)
             ? "Kicked · removal_pending: sleeping members learn the signed removal at their next contact."
             : "Kicked. The signed removal reached every member.";
@@ -74,7 +87,10 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
     {
         var register = await store.LoadAsync(ct);
         await RevokeAsync(register, ct);
-        if (!register.Tombstones.Any()) return;
+        if (!register.Tombstones.Any())
+        {
+            return;
+        }
         var peers = register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
             .OfType<SwarmMember>().DistinctBy(member => member.Id).Where(member => member.Id != identity.MemberId);
         await Task.WhenAll(peers.Where(member => _delivered.GetValueOrDefault(member.Id) < register.Sequence).Select(async member =>
@@ -85,7 +101,10 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
                 handler.SslOptions.ClientCertificates = new X509CertificateCollection { certificate.Value };
                 handler.SslOptions.RemoteCertificateValidationCallback = (_, remote, _, _) =>
                 {
-                    if (remote is null) return false;
+                    if (remote is null)
+                    {
+                        return false;
+                    }
                     using var peer = X509CertificateLoader.LoadCertificate(remote.GetRawCertData());
                     return SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo()) == member.Id;
                 };
@@ -108,16 +127,25 @@ internal sealed class SwarmKick(SwarmMembershipStore store, SwarmIdentity identi
         SwarmNetworkPolicy.MapGroup(routes, services).MapPost("/removal", (Delegate)(async (HttpContext context) =>
         {
             using var peer = await context.Connection.GetClientCertificateAsync(context.RequestAborted);
-            if (peer is null) return Results.Unauthorized();
+            if (peer is null)
+            {
+                return Results.Unauthorized();
+            }
             var register = await store.LoadAsync(context.RequestAborted);
             var id = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
-            if (register.PublicKeyOf(id) is null) return Results.StatusCode(403);
+            if (register.PublicKeyOf(id) is null)
+            {
+                return Results.StatusCode(403);
+            }
             try
             {
                 var delta = await context.Request.ReadFromJsonAsync<SwarmRecords>(SwarmRecordJson.Options, context.RequestAborted);
-                if (delta is null || delta.Records is null || delta.Records.Any(record => record is null || record.Signatures is null)
-                    || !delta.Records.Any(record =>
-                    record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) is SwarmTombstone)) return Results.BadRequest();
+                if (delta is null || delta.Records is null || delta.Records.Any(record => record is null || record.Signatures is null) ||
+                    !delta.Records.Any(record =>
+                    record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) is SwarmTombstone))
+                {
+                    return Results.BadRequest();
+                }
                 await services.GetRequiredService<SwarmPropagation>().ApplyAsync(delta, context.RequestAborted);
                 return Results.Ok();
             }

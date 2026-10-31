@@ -9,6 +9,9 @@ public sealed partial class AssistantChatViewModel
     private bool _disposed;
     private int _leaderVersion;
     private string? _leaderId;
+
+    // The latest leader-session refresh, kept so a fault or a test can observe it.
+    internal Task LeaderSessionRefresh { get; private set; } = Task.CompletedTask;
     private string? _leaderSessionError;
 
     private bool IsFollowingLeader => _cockpit?.SwarmLeadership is { IsActive: true, IsSelf: false };
@@ -30,15 +33,24 @@ public sealed partial class AssistantChatViewModel
         try
         {
             await _host.EnsureStartedAsync(cancellationToken).ConfigureAwait(true);
-            if (_disposed || version != _leaderVersion) return;
+            if (_disposed || version != _leaderVersion)
+            {
+                return;
+            }
             if (!IsFollowingLeader)
             {
                 _SetSession(_host.View());
                 return;
             }
-            if (leader is null || _cockpit?.SwarmSessions is not { } nodes) return;
+            if (leader is null || _cockpit?.SwarmSessions is not { } nodes)
+            {
+                return;
+            }
             var handle = await nodes.OpenSessionAsync(leader.Name, AssistantIdentity.PaneId, cancellationToken).ConfigureAwait(true);
-            if (_disposed || version != _leaderVersion) return;
+            if (_disposed || version != _leaderVersion)
+            {
+                return;
+            }
             if (handle is null)
             {
                 _leaderSessionError = $"Waiting for the assistant on {leader.Name}. You can keep typing here.";
@@ -57,11 +69,16 @@ public sealed partial class AssistantChatViewModel
         catch (Exception exception)
         {
             if (!_disposed && version == _leaderVersion)
+            {
                 _leaderSessionError = $"Could not open the assistant on {leader?.Name ?? "the leader"}: {exception.Message}";
+            }
         }
         finally
         {
-            if (!_disposed && version == _leaderVersion) OnPropertyChanged(nameof(LeaderSessionError));
+            if (!_disposed && version == _leaderVersion)
+            {
+                OnPropertyChanged(nameof(LeaderSessionError));
+            }
         }
     }
 
@@ -76,7 +93,10 @@ public sealed partial class AssistantChatViewModel
 
     private void _SetSession(SessionViewModel? session)
     {
-        if (ReferenceEquals(_observedSession, session)) return;
+        if (ReferenceEquals(_observedSession, session))
+        {
+            return;
+        }
         var previous = _observedSession;
         _observedSession = session;
         _WatchTranscript(previous, session);
@@ -85,6 +105,9 @@ public sealed partial class AssistantChatViewModel
         OnPropertyChanged(nameof(Session));
         OnPropertyChanged(nameof(HasSession));
         OnPropertyChanged(nameof(HasMessages));
-        if (previous?.RemoteServer is not null) _ = previous.DisposeAsync();
+        if (previous?.RemoteServer is not null)
+        {
+            _ = previous.DisposeAsync();
+        }
     }
 }

@@ -13,7 +13,10 @@ internal sealed class SwarmMigration(SwarmJoinClient client, SwarmJoinHost local
         await _gate.WaitAsync(ct);
         try
         {
-            if (_finished.Contains(pin)) return;
+            if (_finished.Contains(pin))
+            {
+                return;
+            }
             try
             {
                 var handshake = await client._BeginAsync(address, credential, pin, ct);

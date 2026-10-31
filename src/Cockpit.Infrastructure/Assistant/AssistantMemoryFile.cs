@@ -65,7 +65,10 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             _statePath,
             $"{StateHeading}{Environment.NewLine}{Environment.NewLine}{state}{Environment.NewLine}",
             cancellationToken).ConfigureAwait(false);
-        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover) await takeover.PublishAsync(cancellationToken);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken);
+        }
     }
 
     private static async Task<string> _ReadAsync(string path, CancellationToken cancellationToken)
@@ -99,7 +102,10 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
             path,
             isNew ? $"{_HeadingFor(scope)}{Environment.NewLine}{Environment.NewLine}{entry}" : entry,
             cancellationToken).ConfigureAwait(false);
-        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover) await takeover.PublishAsync(cancellationToken);
+        if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover)
+        {
+            await takeover.PublishAsync(cancellationToken);
+        }
     }
 
     // AC-1929: when the note state last changed, which a merge after a split compares; a restore carries it over.

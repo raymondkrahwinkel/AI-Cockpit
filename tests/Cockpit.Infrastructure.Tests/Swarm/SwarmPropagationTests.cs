@@ -38,7 +38,7 @@ public class SwarmPropagationTests
         if (scenario == "sleep")
         {
             var machines = new[] { pair.A, pair.B, third };
-            var lowest = machines.MinBy(machine => membership.Members.Single(member => member.Id == machine.Identity.MemberId).Rank)!;
+            var lowest = (machines.MinBy(machine => membership.Members.Single(member => member.Id == machine.Identity.MemberId).Rank) ?? throw new InvalidOperationException("Expected a value."));
             var higher = machines.First(machine => machine != lowest);
             var changed = 0;
             higher.Leadership.Changed += (_, _) => changed++;
@@ -50,8 +50,12 @@ public class SwarmPropagationTests
             Assert.Equal(SwarmLowerRankReturn.JoinAtBack, (await lowest.SwarmSettings.LoadAsync()).WhenALowerRankComesBack);
             Assert.True((await lowest.Settings.LoadAsync()).Enabled);
             foreach (var machine in machines)
+            {
                 foreach (var peer in machines.Where(peer => peer != machine))
+                {
                     machine.Reachability.Answer(peer.Identity.MemberId, System.Net.HttpStatusCode.OK);
+                }
+            }
             await higher.Leadership.RefreshAsync();
             Assert.Equal(lowest.Identity.MemberId, higher.Leadership.PendingTakeover?.Member.Id);
             await higher.Leadership.StayWithCurrentAsync();
@@ -74,18 +78,20 @@ public class SwarmPropagationTests
         {
             var delta = await third.Propagation.RecordsAsync(membership.Sequence, SwarmPropagation.Prefix(membership.Log), default);
             if (scenario == "forged-record")
+            {
                 delta = delta with { Records = [delta.Records[0] with { Signatures = [] }] };
+            }
             else if (scenario == "gap")
             {
-                var proposed = delta.Records[0].Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember;
-                var gap = pair.A.Identity.Sign(SwarmMembership.ToPayload(proposed! with { Sequence = proposed.Sequence + 1 }));
+                var proposed = delta.Records[0].Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember ?? throw new InvalidOperationException("The first record is not a member.");
+                var gap = pair.A.Identity.Sign(SwarmMembership.ToPayload(proposed with { Sequence = proposed.Sequence + 1 }));
                 using var key = third.Certificate.Value.GetECDsaPrivateKey()!;
                 delta = delta with { Records = [gap.CoSign(key)] };
             }
             else
             {
-                var competing = delta.Records[0].Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember;
-                var collision = pair.A.Identity.Sign(SwarmMembership.ToPayload(competing! with { Name = "other" }));
+                var competing = delta.Records[0].Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options) as SwarmMember ?? throw new InvalidOperationException("The first record is not a member.");
+                var collision = pair.A.Identity.Sign(SwarmMembership.ToPayload(competing with { Name = "other" }));
                 using var key = third.Certificate.Value.GetECDsaPrivateKey()!;
                 Assert.Equal(SwarmMembershipVerdict.Accepted, membership.Accept(collision.CoSign(key)));
                 pair.B.Membership.Save(membership);
@@ -99,17 +105,26 @@ public class SwarmPropagationTests
         var record = await pair.B.Heartbeat.OwnAsync(scenario == "sleep", default);
         if (scenario == "external")
         {
-            var update = record.Payload.Deserialize<SwarmHeartbeatUpdate>(SwarmRecordJson.Options)!;
+            var update = (record.Payload.Deserialize<SwarmHeartbeatUpdate>(SwarmRecordJson.Options) ?? throw new InvalidOperationException("Expected a value."));
             record = pair.B.Identity.Sign(JsonSerializer.SerializeToElement(update with { Addresses = ["8.8.8.8"] }, SwarmRecordJson.Options));
         }
-        if (scenario == "wrong-signer") record = pair.A.Identity.Sign(record.Payload);
+        if (scenario == "wrong-signer")
+        {
+            record = pair.A.Identity.Sign(record.Payload);
+        }
         var accepted = await pair.A.Heartbeat.AcceptAsync(record, pair.B.Identity.MemberId,
             scenario == "wrong-pin" ? third.Certificate.Fingerprint : pair.B.Certificate.Fingerprint, default);
-        if (scenario is "wrong-signer" or "wrong-pin") Assert.Null(accepted);
+        if (scenario is "wrong-signer" or "wrong-pin")
+        {
+            Assert.Null(accepted);
+        }
         else
         {
             Assert.NotNull(accepted);
-            if (scenario == "external") Assert.DoesNotContain("8.8.8.8", pair.A.Heartbeat.Latest(pair.B.Identity.MemberId)!.Addresses);
+            if (scenario == "external")
+            {
+                Assert.DoesNotContain("8.8.8.8", (pair.A.Heartbeat.Latest(pair.B.Identity.MemberId) ?? throw new InvalidOperationException("Expected a value.")).Addresses);
+            }
             Assert.Equal(scenario == "sleep" ? SwarmPresence.Asleep : SwarmPresence.Online, pair.A.Reachability.Get(pair.B.Identity.MemberId).Status);
             Assert.Null(await pair.A.Heartbeat.AcceptAsync(record, pair.B.Identity.MemberId, pair.B.Certificate.Fingerprint, default));
         }

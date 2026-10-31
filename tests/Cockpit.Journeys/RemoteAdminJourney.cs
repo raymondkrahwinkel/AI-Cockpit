@@ -117,7 +117,10 @@ public sealed class RemoteAdminJourney
             var opened = new TaskCompletionSource<OptionsDialog>(TaskCreationOptions.RunContinuationsAsynchronously);
             using var watch = Window.WindowOpenedEvent.AddClassHandler<OptionsDialog>((dialog, _) =>
             {
-                if (dialog.Server is not null) opened.TrySetResult(dialog);
+                if (dialog.Server is not null)
+                {
+                    opened.TrySetResult(dialog);
+                }
             });
             var view = cockpit.Cockpit;
             var adminClosed = Task.CompletedTask;

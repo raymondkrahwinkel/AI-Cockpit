@@ -35,14 +35,17 @@ public sealed class SwarmSessionChannelAuthTests
         await using var app = builder.Build();
         app.Use(async (context, next) =>
         {
-            if (context.Request.Headers.ContainsKey("X-Kicked")) McpRequestContext.Set(null, kickedCaller);
+            if (context.Request.Headers.ContainsKey("X-Kicked"))
+            {
+                McpRequestContext.Set(null, kickedCaller);
+            }
             try { await next(); }
             finally { McpRequestContext.Set(null); }
         });
         SwarmSessionEventsEndpoint.Map(app, app.Services);
         await app.StartAsync();
 
-        var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses.Single() ?? throw new InvalidOperationException("The app bound no address.");
         using var client = new HttpClient { BaseAddress = new Uri(address), Timeout = TimeSpan.FromSeconds(5) };
         using var anonymous = await client.GetAsync("/swarm/session-events");
         using var request = new HttpRequestMessage(HttpMethod.Get, "/swarm/session-events");

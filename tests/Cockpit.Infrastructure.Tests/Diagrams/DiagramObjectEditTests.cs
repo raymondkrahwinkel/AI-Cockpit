@@ -79,7 +79,7 @@ public class DiagramObjectEditTests
         var again = DiagramObjectEdit.Connect(first.Text!, "B", "A", label: null);
         Assert.Null(again.Text);
         Assert.Contains("already connected", again.Refusal);
-        Assert.Equal(Source.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(first.Text!, "B", "A").Text);
+        Assert.Equal(Source.ReplaceLineEndings("\n"), DiagramObjectEdit.Disconnect(first.Text ?? throw new InvalidOperationException("Connect produced no text."), "B", "A").Text);
         Assert.Equal("""
             flowchart LR
                 A["Start"]

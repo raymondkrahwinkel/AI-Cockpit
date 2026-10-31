@@ -92,10 +92,11 @@ internal static class ServerGroupScene
         var group = cockpit.ServerGroups[0];
         if (health)
         {
-            group.Health!.IsOpen = true;
+            var groupHealth = group.Health ?? throw new InvalidOperationException("The scene group has no server health.");
+            groupHealth.IsOpen = true;
             if (admin)
             {
-                group.Health.StartSignInCommand.Execute(null);
+                groupHealth.StartSignInCommand.Execute(null);
             }
 
             return new MainWindow { DataContext = cockpit, Width = width, Height = height };

@@ -30,8 +30,10 @@ internal static partial class Screenshotter
         conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
             $"The build passed on {leader.Name}. You can continue from this machine."));
         if (takeover)
+        {
             conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider,
                 Cockpit.Infrastructure.Swarm.SwarmTakeoverCoordinator.TakeoverNotice(DateTimeOffset.Now.Date.AddHours(14).AddMinutes(31))));
+        }
         if (merging)
         {
             conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider,
@@ -53,12 +55,17 @@ internal static partial class Screenshotter
         var reportedLeader = chat.LeadershipLabel;
         System.ComponentModel.PropertyChangedEventHandler changed = (_, args) =>
         {
-            if (args.PropertyName == nameof(AssistantChatViewModel.LeadershipLabel)) reportedLeader = chat.LeadershipLabel;
+            if (args.PropertyName == nameof(AssistantChatViewModel.LeadershipLabel))
+            {
+                reportedLeader = chat.LeadershipLabel;
+            }
         };
         chat.PropertyChanged += changed;
         leadership.MoveTo(selfLeads ? options.Desktop : options.Laptop);
         if (reportedLeader != (selfLeads ? "Led by Desktop" : "You lead"))
+        {
             throw new InvalidOperationException("The assistant chip must follow the leader change immediately.");
+        }
         leadership.MoveTo(leader);
         if (merging && !question)
         {
@@ -86,7 +93,9 @@ internal static partial class Screenshotter
         }
         chat.InputText = "And check the tests next";
         if (!selfLeads && chat.Session is not { IsRemote: true, Transcript.Count: > 0 })
+        {
             throw new InvalidOperationException("A follower must draw the leader's real remote transcript.");
+        }
         return new AssistantChatWindow
         {
             DataContext = chat, Width = 960, Height = 720, Topmost = false,
@@ -114,7 +123,9 @@ internal static partial class Screenshotter
             StartSession = (name, profile, project) =>
             {
                 if (name != "Desktop" || profile != "Coder" || project != "desktop-only")
+                {
                     throw new InvalidOperationException("Swarm sidebar must start with Desktop's own project and profile.");
+                }
                 started = true;
                 return new(null, "started", "Desktop project session", "Coder");
             },
@@ -123,19 +134,29 @@ internal static partial class Screenshotter
         cockpit.RefreshSwarmGroupsAsync().GetAwaiter().GetResult();
         if (empty)
         {
-            if (cockpit.ServerGroups.Count != 0) throw new InvalidOperationException("No members must leave no empty remote group.");
+            if (cockpit.ServerGroups.Count != 0)
+            {
+                throw new InvalidOperationException("No members must leave no empty remote group.");
+            }
         }
         else
         {
             var group = cockpit.ServerGroups.Single();
-            if (!group.Leads || cockpit.LocalLeads) throw new InvalidOperationException("Desktop must lead initially.");
+            if (!group.Leads || cockpit.LocalLeads)
+            {
+                throw new InvalidOperationException("Desktop must lead initially.");
+            }
             options.Asleep = true;
             leadership.MoveTo(options.Laptop);
             if (group.Leads || !cockpit.LocalLeads)
+            {
                 throw new InvalidOperationException("The leads pill must follow ISwarmLeadership.Changed before a refresh.");
+            }
             cockpit.RefreshSwarmGroupsAsync().GetAwaiter().GetResult();
             if (group.Leads || !cockpit.LocalLeads || group.IsConnected || !group.LastSeenLabel.StartsWith("Last seen", StringComparison.Ordinal))
+            {
                 throw new InvalidOperationException("Leader change must update leads and keep Last seen rows.");
+            }
             if (!asleep)
             {
                 options.Asleep = false;
@@ -147,7 +168,9 @@ internal static partial class Screenshotter
                 {
                     cockpit.StartOnServerCommand.ExecuteAsync(group).GetAwaiter().GetResult();
                     if (!started || cockpit.SelectedSession?.RemoteServer != "Desktop")
+                    {
                         throw new InvalidOperationException("Starting on Desktop must open its Running on pane.");
+                    }
                     cockpit.OpenServerSessionCommand.ExecuteAsync(group.Sessions[0]).GetAwaiter().GetResult();
                 }
             }

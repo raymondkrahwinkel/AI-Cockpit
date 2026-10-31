@@ -71,8 +71,11 @@ internal sealed class SwarmJoinHost(
             _Desktop();
             var current = await settings.LoadAsync(context.RequestAborted);
             var token = context.Request.Headers.Authorization.ToString();
-            if (token.StartsWith("Bearer ", StringComparison.Ordinal)) token = token[7..];
-            var caller = await keys.AuthenticateAsync(token, current.SharedSecret, context.Connection.RemoteIpAddress!.ToString(), context.RequestAborted);
+            if (token.StartsWith("Bearer ", StringComparison.Ordinal))
+            {
+                token = token[7..];
+            }
+            var caller = await keys.AuthenticateAsync(token, current.SharedSecret, context.Connection.RemoteIpAddress?.ToString() ?? throw new InvalidOperationException("The request has no remote address."), context.RequestAborted);
             if (caller is null || (caller.ByConnectKey
                 ? presence.Current?.KeyPrefix != caller.KeyPrefix
                 : current.Pairing is null))
@@ -91,7 +94,10 @@ internal sealed class SwarmJoinHost(
         {
             _Desktop();
             using var peer = await context.Connection.GetClientCertificateAsync(context.RequestAborted);
-            if (peer is null) throw NodePairingException.For(NodePairingError.InvalidToken, "A member must present its TLS certificate.");
+            if (peer is null)
+            {
+                throw NodePairingException.For(NodePairingError.InvalidToken, "A member must present its TLS certificate.");
+            }
             var request = await _ReadAsync<SwarmMeshRequest>(context);
             await _gate.WaitAsync(context.RequestAborted);
             try
@@ -121,7 +127,9 @@ internal sealed class SwarmJoinHost(
     private void _Desktop()
     {
         if (host.Kind == SwarmHostKind.Server)
+        {
             throw NodePairingException.For(SwarmJoinError.IsAServer, "A server keeps its existing connection.");
+        }
     }
 
     internal async Task<NodePairingOffer> RequestAsync(SwarmJoinRequest request, bool migration, CancellationToken ct)
@@ -131,17 +139,26 @@ internal sealed class SwarmJoinHost(
         await _gate.WaitAsync(ct);
         try
         {
-            if (Pending is not null) throw NodePairingException.For(NodePairingError.PairingInProgress, "Another join is waiting.");
+            if (Pending is not null)
+            {
+                throw NodePairingException.For(NodePairingError.PairingInProgress, "Another join is waiting.");
+            }
             if (!migration)
             {
                 if ((await settings.LoadAsync(ct)).Pairing is not null)
+                {
                     throw NodePairingException.For(NodePairingError.AlreadyPaired, "Migrate the existing controller connection first.");
+                }
                 if ((await servers.LoadAsync(ct)).Any(server => server.IsNodeConnection))
+                {
                     throw NodePairingException.For(NodePairingError.IsAController, "Migrate the existing node connections first.");
+                }
             }
             var current = await membership.LoadAsync(ct);
             if (current.Sequence != 0 && !current.Tombstones.Any(item => item.Member == identity.MemberId))
+            {
                 throw NodePairingException.For(NodePairingError.AlreadyPaired, "This machine is already a swarm member.");
+            }
             var offer = new NodePairingOffer(Guid.NewGuid().ToString("N"), Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(16)), Name, Time.GetUtcNow() + NodePairingBroker.Lifetime);
             _state = new(request, offer) { Confirmed = migration, Migration = migration };
@@ -153,10 +170,22 @@ internal sealed class SwarmJoinHost(
     private State _Get(string id)
     {
         var state = _state;
-        if (state is null || state.Offer.PairingId != id) throw NodePairingException.For(NodePairingError.InvalidToken, "Unknown join.");
-        if (state.Used) throw NodePairingException.For(NodePairingError.AlreadyUsed, "Join already used.");
-        if (state.Refused) throw NodePairingException.For(NodePairingError.Refused, "Join refused on this machine.");
-        if (Time.GetUtcNow() >= state.Offer.ExpiresAtUtc) throw NodePairingException.For(NodePairingError.Expired, "Join expired.");
+        if (state is null || state.Offer.PairingId != id)
+        {
+            throw NodePairingException.For(NodePairingError.InvalidToken, "Unknown join.");
+        }
+        if (state.Used)
+        {
+            throw NodePairingException.For(NodePairingError.AlreadyUsed, "Join already used.");
+        }
+        if (state.Refused)
+        {
+            throw NodePairingException.For(NodePairingError.Refused, "Join refused on this machine.");
+        }
+        if (Time.GetUtcNow() >= state.Offer.ExpiresAtUtc)
+        {
+            throw NodePairingException.For(NodePairingError.Expired, "Join expired.");
+        }
         return state;
     }
 
@@ -164,8 +193,13 @@ internal sealed class SwarmJoinHost(
     {
         var state = _Get(claim.PairingId);
         if (!ConnectKeyVerifier.ConstantTimeEquals(state.Offer.ClaimToken, claim.ClaimToken))
+        {
             throw NodePairingException.For(NodePairingError.InvalidToken, "Invalid claim token.");
-        if (!state.Confirmed) throw NodePairingException.For(NodePairingError.Pending, "Confirm the code on this machine.");
+        }
+        if (!state.Confirmed)
+        {
+            throw NodePairingException.For(NodePairingError.Pending, "Confirm the code on this machine.");
+        }
         return state;
     }
 
@@ -179,10 +213,15 @@ internal sealed class SwarmJoinHost(
             var register = SwarmMembership.Replay(request.Log);
             var previous = await membership.LoadAsync(ct);
             if (!_ExtendsLog(previous, register) || register.Sequence < previous.Sequence)
+            {
                 throw NodePairingException.For(NodePairingError.InvalidToken, "Join must retain the signed removal history.");
+            }
             using var peer = X509CertificateLoader.LoadCertificate(state.Request.Certificate);
             var peerId = SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo());
-            if (register.PublicKeyOf(peerId) is null) throw NodePairingException.For(NodePairingError.InvalidToken, "The adding machine is not a member.");
+            if (register.PublicKeyOf(peerId) is null)
+            {
+                throw NodePairingException.For(NodePairingError.InvalidToken, "The adding machine is not a member.");
+            }
             var local = await settings.LoadAsync(ct);
             var rank = SwarmRank.Draw(register.Log.Select(record => record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options))
                 .OfType<SwarmMember>().Select(member => member.Rank));
@@ -212,7 +251,10 @@ internal sealed class SwarmJoinHost(
             var transport = await IssueTransportAsync(state.Register.Members.Single(member => member.Id == SwarmMemberId.FromPublicKey(peer.PublicKey.ExportSubjectPublicKeyInfo())), ct);
             membership.Save(state.Register);
             state.Used = true;
-            if (state.Migration) await NotifyAsync(state.Request.Name, ct);
+            if (state.Migration)
+            {
+                await NotifyAsync(state.Request.Name, ct);
+            }
             return transport;
         }
         finally { _gate.Release(); }

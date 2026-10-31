@@ -62,7 +62,10 @@ public class SwarmKickTests
             using var response = await client.GetAsync(credential.Url);
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
-        if (criterion == 1) return;
+        if (criterion == 1)
+        {
+            return;
+        }
         var current = await pair.A.Membership.LoadAsync();
         var oldMember = before.Members.Single(member => member.Id == third.Identity.MemberId);
         var replay = pair.A.Identity.Sign(SwarmMembership.ToPayload(oldMember with { Sequence = current.Sequence + 1 }));
@@ -81,7 +84,7 @@ public class SwarmKickTests
         foreach (var server in credentials)
         {
             var machine = server.PinnedCertificateFingerprint == pair.A.Certificate.Fingerprint ? pair.A : pair.B;
-            Assert.Null(await machine.Keys.AuthenticateAsync(server.ApiKey!, null, "127.0.0.1"));
+            Assert.Null(await machine.Keys.AuthenticateAsync((server.ApiKey ?? throw new InvalidOperationException("Expected a value.")), null, "127.0.0.1"));
         }
     }
 

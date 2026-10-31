@@ -7,7 +7,10 @@ public static class SwarmRank
     public static long DrawAbove(IEnumerable<long> occupied)
     {
         var maximum = occupied.Max();
-        if (maximum == long.MaxValue) throw new InvalidOperationException("No higher swarm rank is available.");
+        if (maximum == long.MaxValue)
+        {
+            throw new InvalidOperationException("No higher swarm rank is available.");
+        }
         if (maximum < 0)
         {
             long rank;

@@ -45,7 +45,7 @@ public sealed class SwarmStandbyCopyTests
         var broken = JsonSerializer.SerializeToUtf8Bytes(complete with { Revision = complete.Revision + 1 }, SwarmStandbyCopy.Json);
         await using var truncated = new MemoryStream(broken[..(broken.Length / 2)]);
         await Assert.ThrowsAsync<JsonException>(() => pair.B.Standby.ReceiveAsync(truncated, pair.A.Identity.MemberId, CancellationToken.None));
-        Assert.Equal(complete.Revision, pair.B.Standby.Read()!.Revision);
+        Assert.Equal(complete.Revision, (pair.B.Standby.Read() ?? throw new InvalidOperationException("Expected a value.")).Revision);
 
         pair.A.Sleep = true;
         desktop.Leadership.IsSelf.Returns(false);

@@ -17,6 +17,9 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     private string? _answeredPairing;
     private DispatcherTimer? _timer;
 
+    // The latest background refresh, kept so a fault or a test can observe it.
+    internal Task Refresh { get; private set; } = Task.CompletedTask;
+
     public ObservableCollection<SwarmMachineRow> Machines { get; } = [];
     public ObservableCollection<NodeDiscoveryFound> Found { get; } = [];
     public bool NoOtherMachineOnline => !Machines.Any(machine => !machine.IsSelf && machine.IsOnline);
@@ -38,17 +41,26 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
 
     public void StartListening()
     {
-        if (options is null || _timer is not null) return;
-        if (leadership is not null) leadership.Changed += _LeadershipChanged;
+        if (options is null || _timer is not null)
+        {
+            return;
+        }
+        if (leadership is not null)
+        {
+            leadership.Changed += _LeadershipChanged;
+        }
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += _Tick;
         _timer.Start();
-        _ = RefreshAsync();
+        Refresh = RefreshAsync();
     }
 
     public void StopListening()
     {
-        if (leadership is not null) leadership.Changed -= _LeadershipChanged;
+        if (leadership is not null)
+        {
+            leadership.Changed -= _LeadershipChanged;
+        }
         if (_timer is not null)
         {
             _timer.Stop();
@@ -57,12 +69,15 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
         }
     }
 
-    private void _LeadershipChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => _ = RefreshAsync());
-    private void _Tick(object? sender, EventArgs e) => _ = RefreshAsync();
+    private void _LeadershipChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => Refresh = RefreshAsync());
+    private void _Tick(object? sender, EventArgs e) => Refresh = RefreshAsync();
 
     public async Task LoadSettingsAsync()
     {
-        if (options is null) return;
+        if (options is null)
+        {
+            return;
+        }
         try
         {
             var settings = await options.LoadSettingsAsync();
@@ -86,7 +101,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     public async Task SaveStagedAsync()
     {
         var cidrs = _ValidateCidrs();
-        if (CidrError.Length > 0 || options is null) return;
+        if (CidrError.Length > 0 || options is null)
+        {
+            return;
+        }
         try
         {
             var settings = await options.LoadSettingsAsync();
@@ -108,7 +126,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
 
     public async Task RefreshAsync()
     {
-        if (options is null || _refreshing) return;
+        if (options is null || _refreshing)
+        {
+            return;
+        }
         _refreshing = true;
         try
         {
@@ -137,8 +158,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
                 });
             }
             foreach (var entry in manual.Where(item => item.MemberId is null))
+            {
                 Machines.Add(new(entry.Address, entry.Address, "Manual address", "—", entry.Status, "Not yet seen", false, false)
                 { ErrorCode = entry.ErrorCode, ErrorMessage = entry.ErrorMessage });
+            }
             var reachable = machines.Count(machine => machine.Presence.Status == SwarmPresence.Online);
             LeaderLine = leader is null ? "Leader: this machine · No other machine online"
                 : leadership?.PendingTakeover is { } pendingLeader
@@ -156,13 +179,19 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [RelayCommand]
     private async Task FindAsync()
     {
-        if (options is null || IsBusy) return;
+        if (options is null || IsBusy)
+        {
+            return;
+        }
         IsBusy = true;
         Status = "Looking for Cockpits on this network…";
         try
         {
             Found.Clear();
-            foreach (var machine in await options.FindAsync()) Found.Add(machine);
+            foreach (var machine in await options.FindAsync())
+            {
+                Found.Add(machine);
+            }
             Status = Found.Count == 0 ? "No Cockpit found. Enable accepting connections on the other machine, or add its address." : "Choose a machine to compare its pairing code.";
         }
         catch (Exception ex) { Status = $"Discovery failed. {ex.Message}"; }
@@ -171,7 +200,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
 
     public async Task KickAsync(SwarmMachineRow machine)
     {
-        if (options is null || IsBusy || machine.MemberId is not { } id) return;
+        if (options is null || IsBusy || machine.MemberId is not { } id)
+        {
+            return;
+        }
         IsBusy = true;
         try
         {
@@ -196,7 +228,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [RelayCommand]
     private async Task TryAgainAsync(SwarmMachineRow machine)
     {
-        if (options is null || IsBusy) return;
+        if (options is null || IsBusy)
+        {
+            return;
+        }
         if (!machine.IsPaired) { await _BeginAsync(machine.Address, false); return; }
         IsBusy = true;
         try { await options.RetryAsync(); }
@@ -206,7 +241,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
 
     private async Task _BeginAsync(string address, bool discovered)
     {
-        if (options is null || IsBusy) return;
+        if (options is null || IsBusy)
+        {
+            return;
+        }
         IsBusy = true;
         CancelPairing();
         try
@@ -224,7 +262,10 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
     [RelayCommand]
     private async Task ConfirmPairingAsync()
     {
-        if (options is null || _handshake is null || IsBusy) return;
+        if (options is null || _handshake is null || IsBusy)
+        {
+            return;
+        }
         IsBusy = true;
         try
         {
@@ -252,11 +293,20 @@ public sealed partial class SwarmOptionsViewModel(ISwarmOptions? options = null,
 
     private void _AnswerIncoming(bool confirm)
     {
-        if (options is null || Incoming is not { } incoming) return;
+        if (options is null || Incoming is not { } incoming)
+        {
+            return;
+        }
         try
         {
-            if (confirm) options.Confirm(incoming.PairingId);
-            else options.Refuse(incoming.PairingId);
+            if (confirm)
+            {
+                options.Confirm(incoming.PairingId);
+            }
+            else
+            {
+                options.Refuse(incoming.PairingId);
+            }
             Status = confirm ? "Confirmed here. Continue on the machine adding this one." : "Pairing refused.";
             _answeredPairing = incoming.PairingId;
             Incoming = null;

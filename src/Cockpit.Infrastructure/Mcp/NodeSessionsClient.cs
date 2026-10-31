@@ -55,7 +55,10 @@ internal sealed class NodeSessionsClient(
         try
         {
             var channel = await pending.ConfigureAwait(false);
-            if (channel.TryObserve()) _ = _EvictWhenFinishedAsync(nodeName, pending, channel);
+            if (channel.TryObserve())
+            {
+                LastEviction = _EvictWhenFinishedAsync(nodeName, pending, channel);
+            }
             return paneId == Cockpit.Core.Assistant.AssistantIdentity.PaneId ? channel.Backend.Assistant : channel.Backend.Find(paneId);
         }
         catch
@@ -64,6 +67,9 @@ internal sealed class NodeSessionsClient(
             throw;
         }
     }
+
+    // The latest watcher that evicts a finished live channel, kept so a fault or a test can observe it.
+    internal Task LastEviction { get; private set; } = Task.CompletedTask;
 
     private async Task _EvictWhenFinishedAsync(string nodeName, Task<LiveChannel> pending, LiveChannel channel)
     {
@@ -529,7 +535,9 @@ internal sealed class NodeSessionsClient(
             try
             {
                 if (services?.GetService<Swarm.SwarmMigration>() is { } migration)
+                {
                     await migration.OnConnectedAsync(server, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

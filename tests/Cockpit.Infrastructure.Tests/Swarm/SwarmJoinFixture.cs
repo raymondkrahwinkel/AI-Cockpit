@@ -20,8 +20,10 @@ namespace Cockpit.Infrastructure.Tests.Swarm;
 internal sealed class SwarmJoinFixture : IAsyncDisposable
 {
     public Clock Time { get; } = new();
-    public Machine A { get; private set; } = null!;
-    public Machine B { get; private set; } = null!;
+    private Machine? _a;
+    public Machine A { get => _a ?? throw new InvalidOperationException("A is read before CreateAsync set it."); private set => _a = value; }
+    private Machine? _b;
+    public Machine B { get => _b ?? throw new InvalidOperationException("B is read before CreateAsync set it."); private set => _b = value; }
 
     public static async Task<SwarmJoinFixture> CreateAsync(SwarmHostKind kind = SwarmHostKind.Desktop)
     {
@@ -49,30 +51,47 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
     internal sealed class Machine : IAsyncDisposable
     {
         private readonly string _root = Path.Combine(Environment.GetEnvironmentVariable("COCKPIT_SCRATCH") ?? Path.GetTempPath(), "swarm-join-" + Guid.NewGuid().ToString("N"));
-        private WebApplication _app = null!;
-        public NodeEndpointSettingsStore Settings { get; private set; } = null!;
-        public NodeSelfSignedCertificate Certificate { get; private set; } = null!;
-        public SwarmIdentity Identity { get; private set; } = null!;
-        public SwarmMembershipStore Membership { get; private set; } = null!;
-        public ConnectKeyVerifier Keys { get; private set; } = null!;
+        private WebApplication? _started;
+        private WebApplication _app { get => _started ?? throw new InvalidOperationException("The app is read before CreateAsync started it."); set => _started = value; }
+        private NodeEndpointSettingsStore? _settings;
+        public NodeEndpointSettingsStore Settings { get => _settings ?? throw new InvalidOperationException("Settings is read before CreateAsync set it."); private set => _settings = value; }
+        private NodeSelfSignedCertificate? _certificate;
+        public NodeSelfSignedCertificate Certificate { get => _certificate ?? throw new InvalidOperationException("Certificate is read before CreateAsync set it."); private set => _certificate = value; }
+        private SwarmIdentity? _identity;
+        public SwarmIdentity Identity { get => _identity ?? throw new InvalidOperationException("Identity is read before CreateAsync set it."); private set => _identity = value; }
+        private SwarmMembershipStore? _membership;
+        public SwarmMembershipStore Membership { get => _membership ?? throw new InvalidOperationException("Membership is read before CreateAsync set it."); private set => _membership = value; }
+        private ConnectKeyVerifier? _keys;
+        public ConnectKeyVerifier Keys { get => _keys ?? throw new InvalidOperationException("Keys is read before CreateAsync set it."); private set => _keys = value; }
         public MemoryServers Servers { get; } = new();
-        public SwarmJoinHost Join { get; private set; } = null!;
-        public SwarmJoinClient Client { get; private set; } = null!;
-        public SwarmHeartbeat Heartbeat { get; private set; } = null!;
-        public SwarmLeadership Leadership { get; private set; } = null!;
-        public SwarmStandbyCopy Standby { get; private set; } = null!;
-        public SwarmNetworkPolicy Network { get; private set; } = null!;
-        public SwarmSettingsStore SwarmSettings { get; private set; } = null!;
-        public SwarmPropagation Propagation { get; private set; } = null!;
-        public SwarmKick Kick { get; private set; } = null!;
+        private SwarmJoinHost? _join;
+        public SwarmJoinHost Join { get => _join ?? throw new InvalidOperationException("Join is read before CreateAsync set it."); private set => _join = value; }
+        private SwarmJoinClient? _client;
+        public SwarmJoinClient Client { get => _client ?? throw new InvalidOperationException("Client is read before CreateAsync set it."); private set => _client = value; }
+        private SwarmHeartbeat? _heartbeat;
+        public SwarmHeartbeat Heartbeat { get => _heartbeat ?? throw new InvalidOperationException("Heartbeat is read before CreateAsync set it."); private set => _heartbeat = value; }
+        private SwarmLeadership? _leadership;
+        public SwarmLeadership Leadership { get => _leadership ?? throw new InvalidOperationException("Leadership is read before CreateAsync set it."); private set => _leadership = value; }
+        private SwarmStandbyCopy? _standby;
+        public SwarmStandbyCopy Standby { get => _standby ?? throw new InvalidOperationException("Standby is read before CreateAsync set it."); private set => _standby = value; }
+        private SwarmNetworkPolicy? _network;
+        public SwarmNetworkPolicy Network { get => _network ?? throw new InvalidOperationException("Network is read before CreateAsync set it."); private set => _network = value; }
+        private SwarmSettingsStore? _swarmSettings;
+        public SwarmSettingsStore SwarmSettings { get => _swarmSettings ?? throw new InvalidOperationException("SwarmSettings is read before CreateAsync set it."); private set => _swarmSettings = value; }
+        private SwarmPropagation? _propagation;
+        public SwarmPropagation Propagation { get => _propagation ?? throw new InvalidOperationException("Propagation is read before CreateAsync set it."); private set => _propagation = value; }
+        private SwarmKick? _kick;
+        public SwarmKick Kick { get => _kick ?? throw new InvalidOperationException("Kick is read before CreateAsync set it."); private set => _kick = value; }
         public bool Sleep { get; set; }
         public bool External { get; set; }
-        public Cockpit.Core.Swarm.SwarmReachability Reachability { get; private set; } = null!;
+        private Cockpit.Core.Swarm.SwarmReachability? _reachability;
+        public Cockpit.Core.Swarm.SwarmReachability Reachability { get => _reachability ?? throw new InvalidOperationException("Reachability is read before CreateAsync set it."); private set => _reachability = value; }
         public List<string> Notices { get; } = [];
         public bool RejectConnect { get; set; }
         public string Address { get; private set; } = "";
         public Toast Toast { get; } = new();
-        public NodeControllerPresence Presence { get; private set; } = null!;
+        private NodeControllerPresence? _presence;
+        public NodeControllerPresence Presence { get => _presence ?? throw new InvalidOperationException("Presence is read before CreateAsync set it."); private set => _presence = value; }
 
         public static async Task<Machine> CreateAsync(Clock time, SwarmHostKind kind)
         {
@@ -119,10 +138,15 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
             machine._app = builder.Build();
             machine._app.Use(async (context, next) =>
             {
-                if (machine.External) context.Connection.RemoteIpAddress = IPAddress.Parse("8.8.8.8");
+                if (machine.External)
+                {
+                    context.Connection.RemoteIpAddress = IPAddress.Parse("8.8.8.8");
+                }
                 if (machine.Sleep) { context.Response.StatusCode = 503; return; }
                 if (machine.RejectConnect && context.Request.Path == "/swarm/connect")
+                {
                     await Results.Json(new NodePairingProblem(NodePairingError.InvalidToken, "Sleeping"), NodePairingJson.Options, statusCode: 403).ExecuteAsync(context);
+                }
                 else if (context.Request.Path == "/swarm/standby")
                 {
                     var token = context.Request.Headers.Authorization.ToString();
@@ -131,7 +155,10 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                     try { await next(context); }
                     finally { McpRequestContext.Set(null); }
                 }
-                else await next(context);
+                else
+                {
+                    await next(context);
+                }
             });
             SwarmAssistantRelay.Map(machine._app, machine._app.Services);
             machine.Join.MapRoutes(machine._app, machine._app.Services);
@@ -144,7 +171,7 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
                     ? Results.Ok() : Results.Unauthorized();
             });
             await machine._app.StartAsync();
-            var bound = machine._app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            var bound = machine._app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses.Single() ?? throw new InvalidOperationException("The app bound no address.");
             var port = new Uri(bound).Port;
             machine.Address = $"https://127.0.0.1:{port}";
             await machine.Settings.SaveAsync(new NodeEndpointSettings { Enabled = true, Port = port });

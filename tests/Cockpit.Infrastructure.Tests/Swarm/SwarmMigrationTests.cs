@@ -21,7 +21,10 @@ public class SwarmMigrationTests
             var issued = await pair.B.Keys.IssueAsync("controller", ConnectKeyCapability.Admin, null,
                 new NodeCaller(null, "local", ConnectKeyCapability.Admin, "local", CancellationToken.None));
             credential = issued.Secret;
-            if (scenario == "key") pair.B.Presence.Seen("controller", await pair.B.Keys.AuthenticateAsync(credential, null, "127.0.0.1"));
+            if (scenario == "key")
+            {
+                pair.B.Presence.Seen("controller", await pair.B.Keys.AuthenticateAsync(credential, null, "127.0.0.1"));
+            }
         }
         if (scenario is "secret" or "key")
         {

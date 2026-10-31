@@ -64,13 +64,19 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
     internal void UpdatePresence(SwarmMemberPresence presence)
     {
         Presence = presence;
-        foreach (var row in Sessions) row.LastSeenLabel = LastSeenLabel;
+        foreach (var row in Sessions)
+        {
+            row.LastSeenLabel = LastSeenLabel;
+        }
     }
 
     internal IReadOnlyList<ServerSessionRowViewModel> Reconcile(NodeSessionsSnapshot snapshot)
     {
         var gone = Sessions.Where(row => !snapshot.Sessions.Any(item => item.PaneId == row.Handle.PaneId)).ToList();
-        foreach (var row in gone) Sessions.Remove(row);
+        foreach (var row in gone)
+        {
+            Sessions.Remove(row);
+        }
         for (var index = 0; index < snapshot.Sessions.Count; index++)
         {
             var item = snapshot.Sessions[index];
@@ -83,7 +89,10 @@ public sealed partial class ServerGroupViewModel : ObservableObject, IDisposable
             else
             {
                 ((SwarmSessionHandle)row.Handle).Snapshot = item;
-                if (Sessions.IndexOf(row) != index) Sessions.Move(Sessions.IndexOf(row), index);
+                if (Sessions.IndexOf(row) != index)
+                {
+                    Sessions.Move(Sessions.IndexOf(row), index);
+                }
             }
             row.LastSeenLabel = LastSeenLabel;
             row.Refresh();

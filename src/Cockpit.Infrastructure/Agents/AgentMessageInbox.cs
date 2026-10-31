@@ -336,10 +336,15 @@ internal sealed class AgentMessageInbox : IAgentMessageInbox, ISingletonService
         lock (_lock)
         {
             if (!_inboxes.TryGetValue(AssistantIdentity.PaneId, out var waiting))
+            {
                 _inboxes[AssistantIdentity.PaneId] = waiting = [];
+            }
             var known = waiting.Concat(_inFlight.GetValueOrDefault(AssistantIdentity.PaneId, [])).Select(message => message.Id).ToHashSet(StringComparer.Ordinal);
             foreach (var message in messages)
-                if (message.ToPaneId == AssistantIdentity.PaneId && known.Add(message.Id)) waiting.Add(message);
+                if (message.ToPaneId == AssistantIdentity.PaneId && known.Add(message.Id))
+                {
+                    waiting.Add(message);
+                }
         }
     }
 

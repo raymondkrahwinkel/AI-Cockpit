@@ -118,12 +118,17 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
                 {
                     await _takeover.StepDownAsync();
                 }
-                if (_ReplaceSession(null) is { } previous) await _DisposeQuietlyAsync(previous);
+                if (_ReplaceSession(null) is { } previous)
+                {
+                    await _DisposeQuietlyAsync(previous);
+                }
             }
             finally { _startGate.Release(); }
         }
         else if (_leadership?.IsSelf == true && _takeover?.ReadForStart() is not null)
+        {
             await EnsureLocalStartedAsync(CancellationToken.None);
+        }
         return true;
     }
 
@@ -339,7 +344,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
             // A dead instance is dropped before a new one is built, so a start that fails does not leave the
             // corpse in place looking reachable.
-            if (!startFresh && Session is not null && _takeover is not null) await _takeover.PublishAsync(cancellationToken);
+            if (!startFresh && Session is not null && _takeover is not null)
+            {
+                await _takeover.PublishAsync(cancellationToken);
+            }
             if (_ReplaceSession(null) is { } previous)
             {
                 _logger.LogInformation(
@@ -535,7 +543,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             }
             session.RestoreStandbyTranscript(standby.Transcript);
         }
-        else await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);
+        else
+        {
+            await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);
+        }
 
         // AC-1089: fixed rather than inherited from Environment.CurrentDirectory — an AppImage's mount folder is a
         // fresh random name every launch, so a saved conversation id resumed from there never matches the folder
@@ -619,7 +630,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // never take the below-the-line reset — leaving the ask spent before this conversation had used anything.
         _RunExclusive(() => _askedTheProviderToCompact = false);
         Session = session;
-        if (standby is not null) _takeover?.Announce(standby, session);
+        if (standby is not null)
+        {
+            _takeover?.Announce(standby, session);
+        }
 
         // AC-1013: The wire that makes Thinking end — only the session knows when a turn finishes, not the host's
         // own hold/send/start/failure moments. Without it the chip is set on the way in but never on the way
@@ -627,7 +641,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         session.StateChanged += _OnSessionStateChanged;
 
         var reading = SessionReading.Of(session);
-        if (!reading.IsBusy && _takeover is not null) StandbyPublication = _takeover.PublishAsync();
+        if (!reading.IsBusy && _takeover is not null)
+        {
+            StandbyPublication = _takeover.PublishAsync();
+        }
         _RunExclusive(() => _SyncActivityWithSession(reading));
         return session;
     }
@@ -655,7 +672,10 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         // The session refreshes the provider's limits after it has published IsBusy false, so the busy transition
         // arrives with the previous turn's figure still standing. Why that matters: _ShouldRelieveTheFullContext.
         var reading = SessionReading.Of(session);
-        if (!reading.IsBusy && _takeover is not null) StandbyPublication = _takeover.PublishAsync();
+        if (!reading.IsBusy && _takeover is not null)
+        {
+            StandbyPublication = _takeover.PublishAsync();
+        }
         var relieve = _RunExclusive(() =>
         {
             _SyncActivityWithSession(reading);

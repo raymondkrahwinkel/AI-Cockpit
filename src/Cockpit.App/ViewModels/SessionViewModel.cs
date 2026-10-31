@@ -1168,7 +1168,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         try
         {
             Transcript.Clear();
-            foreach (var row in _WithTurnResults(TranscriptSnapshot.Restore(rows))) Transcript.Add(row);
+            foreach (var row in _WithTurnResults(TranscriptSnapshot.Restore(rows)))
+            {
+                Transcript.Add(row);
+            }
             _control.SeedTranscript(rows);
         }
         finally { _replayingRecordedTranscript = false; }

@@ -11,6 +11,7 @@ using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.BackendApi;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Swarm;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -79,7 +80,9 @@ public sealed class SwarmAssistantRelayTests
         app.Use(async (context, next) =>
         {
             if (context.Request.Headers.ContainsKey("X-Member"))
+            {
                 McpRequestContext.Set(null, new NodeCaller("member", SwarmKick.KeyLabel(laptop), ConnectKeyCapability.Admin, "127.0.0.1", CancellationToken.None));
+            }
             try { await next(); }
             finally { McpRequestContext.Set(null); }
         });
@@ -100,7 +103,8 @@ public sealed class SwarmAssistantRelayTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var laptopHost = new AssistantSessionHost(Substitute.For<IAssistantSessionFactory>(),
             Substitute.For<INodeControllerPresence>(), Substitute.For<IAssistantSettingsStore>(),
-            Substitute.For<IAssistantProfileStore>(), Substitute.For<ISessionStateStore>(), null!,
+            Substitute.For<IAssistantProfileStore>(), Substitute.For<ISessionStateStore>(),
+            new SessionStateRecorder(Substitute.For<ISessionStateStore>(), new SessionConversationTracker(), NullLogger<SessionStateRecorder>.Instance),
             Substitute.For<IMcpServerCatalog>(), Substitute.For<IAssistantMemory>(),
             NullLogger<AssistantSessionHost>.Instance, laptopRelay, follower);
         await laptopHost.SendAsync("Review this", timeout.Token);
@@ -149,8 +153,14 @@ public sealed class SwarmAssistantRelayTests
         transportStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(_ =>
         {
             var read = Interlocked.Increment(ref reads);
-            if (read == 1) return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
-            if (read >= 3) incompleteRetried.TrySetResult();
+            if (read == 1)
+            {
+                return Task.FromResult<IReadOnlyList<McpServerConfig>>([]);
+            }
+            if (read >= 3)
+            {
+                incompleteRetried.TrySetResult();
+            }
             return Task.FromResult<IReadOnlyList<McpServerConfig>>(
                 [new() { Name = NodeServerName.For(desktop.Name, NodeServerName.SessionsServerName) }]);
         });

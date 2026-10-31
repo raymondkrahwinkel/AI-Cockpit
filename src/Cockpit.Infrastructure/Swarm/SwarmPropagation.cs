@@ -22,13 +22,18 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
     {
         var membership = await store.LoadAsync(ct);
         if (since < 0 || since > membership.Sequence || Prefix(membership.Log.Take((int)since)) != prefix)
+        {
             throw new InvalidDataException("swarm_log_conflict");
+        }
         return new(since, prefix, membership.Log.Skip((int)since).ToArray());
     }
 
     internal async Task ApplyAsync(SwarmRecords delta, CancellationToken ct)
     {
-        if (delta.Records is null) throw new InvalidDataException("swarm_record_refused");
+        if (delta.Records is null)
+        {
+            throw new InvalidDataException("swarm_record_refused");
+        }
         await store.Gate.WaitAsync(ct);
         try
         {
@@ -40,25 +45,41 @@ internal sealed class SwarmPropagation(SwarmMembershipStore store, IToastService
             var joined = new List<SwarmMember>();
             foreach (var record in delta.Records)
             {
-                if (record is null || record.Signatures is null) throw new InvalidDataException("swarm_record_refused");
+                if (record is null || record.Signatures is null)
+                {
+                    throw new InvalidDataException("swarm_record_refused");
+                }
                 var change = record.Payload.Deserialize<SwarmChange>(SwarmRecordJson.Options);
                 if (change is not null && change.Sequence <= current.Sequence)
                 {
                     if (change.Sequence < 1 || Stamp(current.Log[(int)change.Sequence - 1]) != Stamp(record))
+                    {
                         throw new InvalidDataException("swarm_log_conflict");
+                    }
                     continue;
                 }
                 if (candidate.Accept(record) != SwarmMembershipVerdict.Accepted)
+                {
                     throw new InvalidDataException("swarm_record_refused");
-                if (change is SwarmMember member) joined.Add(member);
+                }
+                if (change is SwarmMember member)
+                {
+                    joined.Add(member);
+                }
             }
             if (candidate.Sequence == current.Sequence)
             {
-                if (kick is not null) await kick.RevokeAsync(candidate, ct);
+                if (kick is not null)
+                {
+                    await kick.RevokeAsync(candidate, ct);
+                }
                 return;
             }
             store.Save(candidate);
-            if (kick is not null) await kick.RevokeAsync(candidate, ct);
+            if (kick is not null)
+            {
+                await kick.RevokeAsync(candidate, ct);
+            }
             foreach (var member in joined)
             {
                 var adder = candidate.Members.FirstOrDefault(item => item.Id == member.AddedBy)?.Name ?? member.AddedBy.Value;

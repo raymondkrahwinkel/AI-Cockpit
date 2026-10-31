@@ -24,7 +24,10 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
 
     internal SwarmStandbySnapshot? ReadForStart()
     {
-        if (!leadership.IsSelf) return null;
+        if (!leadership.IsSelf)
+        {
+            return null;
+        }
         return services.GetRequiredService<SwarmStandbyCopy>().Read();
     }
 
@@ -35,12 +38,18 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
     internal void RestoreReceipts(SwarmStandbySnapshot snapshot)
     {
         services.GetRequiredService<SwarmAssistantRelay>().RestoreReceipts(snapshot.Receipts);
-        if (services.GetService<IAgentMessageInbox>() is AgentMessageInbox inbox) inbox.RestoreAssistantStandby(snapshot.PendingInbox);
+        if (services.GetService<IAgentMessageInbox>() is AgentMessageInbox inbox)
+        {
+            inbox.RestoreAssistantStandby(snapshot.PendingInbox);
+        }
     }
 
     internal async Task PublishAsync(CancellationToken ct = default)
     {
-        if (!leadership.IsActive || !leadership.IsSelf) return;
+        if (!leadership.IsActive || !leadership.IsSelf)
+        {
+            return;
+        }
         await _publish.WaitAsync(ct);
         try
         {
@@ -65,7 +74,10 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
 
     internal void Announce(SwarmStandbySnapshot snapshot, IAssistantSession session)
     {
-        if (snapshot.LeaderId == services.GetRequiredService<SwarmIdentity>().MemberId.Value) return;
+        if (snapshot.LeaderId == services.GetRequiredService<SwarmIdentity>().MemberId.Value)
+        {
+            return;
+        }
         var text = TakeoverNotice(snapshot.At);
         session.AddDivider(text);
     }
@@ -73,7 +85,9 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
     internal void BeginTakeover(SwarmStandbySnapshot snapshot)
     {
         if (snapshot.LeaderId != services.GetRequiredService<SwarmIdentity>().MemberId.Value)
+        {
             services.GetService<IToastService>()?.Show("Taking over the assistant — " + TakeoverNotice(snapshot.At), ToastSeverity.Information);
+        }
     }
 
     public static string TakeoverNotice(DateTimeOffset at) =>
@@ -121,8 +135,11 @@ public sealed class SwarmTakeoverCoordinator(IServiceProvider services, ISwarmLe
     {
         var server = (await services.GetRequiredService<IMcpServerStore>().LoadAsync(ct)).FirstOrDefault(item =>
             item.Name == NodeServerName.For(member.Name, NodeServerName.SessionsServerName));
-        if (server is null || string.IsNullOrWhiteSpace(server.ApiKey) || string.IsNullOrWhiteSpace(server.PinnedCertificateFingerprint)
-            || !Uri.TryCreate(server.Url, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps) return false;
+        if (server is null || string.IsNullOrWhiteSpace(server.ApiKey) || string.IsNullOrWhiteSpace(server.PinnedCertificateFingerprint) ||
+            !Uri.TryCreate(server.Url, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps)
+        {
+            return false;
+        }
         using var handler = new SocketsHttpHandler { ConnectCallback = services.GetRequiredService<SwarmNetworkPolicy>().ConnectAsync };
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
             certificate is not null && NodeCertificatePin.FingerprintOf(certificate) == server.PinnedCertificateFingerprint;

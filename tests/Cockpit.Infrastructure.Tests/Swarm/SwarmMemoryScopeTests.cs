@@ -35,7 +35,7 @@ public sealed class SwarmMemoryScopeTests
         using var external = await client.PostAsJsonAsync("swarm/standby", copy);
         Assert.Equal(HttpStatusCode.Forbidden, external.StatusCode);
         pair.B.External = false;
-        Assert.Equal(copy.Revision, pair.B.Standby.Read()!.Revision);
+        Assert.Equal(copy.Revision, (pair.B.Standby.Read() ?? throw new InvalidOperationException("Expected a value.")).Revision);
         using var laptop = new StandbyAssistant(pair.B);
         await laptop.Memory.RememberAsync("Laptop has its own paths", AssistantMemoryScope.Machine);
         laptop.Memory.RestoreStandby(copy.NoteState, copy.Behaviour);
