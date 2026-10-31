@@ -6,7 +6,6 @@ using System.Security.Cryptography;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
@@ -46,13 +45,6 @@ public sealed partial class SecurityOptionsViewModel(
     // AC-795: the other direction — the sessions on the nodes *this* cockpit is the controller of. Absent in the
     // design-time/unit-test graph like every store above, and then the node cards simply do not appear.
     INodeSessionsClient? nodeSessions = null,
-    // AC-1322: rides each node card's poll to collect what agents there sent their assistant. Absent in the
-    // design-time/unit-test graph like the client above. AC-1324: the permission relay rides the same poll.
-    INodeInboxRelay? nodeInboxRelay = null,
-    NodePermissionRelay? nodePermissionRelay = null,
-    // AC-1330: rides the same poll's reachable edge to append behaviour rules both ways. Absent in the
-    // design-time/unit-test graph like the relays above.
-    IBehaviourMemorySync? behaviourSync = null,
     // AC-1456: the connect servers the session list shows as groups; their cards follow those instead of polling.
     IRemoteServers? remoteServers = null,
     // AC-1593: what the organisation's policy forbids; absent in the design-time/unit-test graph, where nothing is.
@@ -492,7 +484,7 @@ public sealed partial class SecurityOptionsViewModel(
             {
                 var wanted = NodeServerName.For(node, NodeServerName.SessionsServerName);
                 var row = rows.FirstOrDefault(candidate => string.Equals(candidate.Name, wanted, StringComparison.Ordinal));
-                var card = new NodeSessionsViewModel(nodeSessions, node, nodeInboxRelay, nodePermissionRelay, behaviourSync, nodeLinkGate)
+                var card = new NodeSessionsViewModel(nodeSessions, node, nodeLinkGate)
                 {
                     Url = row?.Url,
                     KeyExpiresAt = row?.KeyExpiresAt,

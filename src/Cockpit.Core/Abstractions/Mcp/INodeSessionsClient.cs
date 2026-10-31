@@ -71,20 +71,6 @@ public interface INodeSessionsClient
     Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// AC-1322: the messages agents on <paramref name="nodeName"/> addressed to their assistant while this cockpit
-    /// was its controller, oldest first. <paramref name="afterMessageId"/> is the last id this cockpit already
-    /// holds: the node drops everything up to and including it and returns what follows, so a poll that fails
-    /// leaves the node holding the same messages for the next one. Never throws for an unreachable node — see <see cref="NodeInboxBatch.Error"/>.
-    /// </summary>
-    Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// AC-1324: answers one open Allow/Deny question on <paramref name="nodeName"/> — the operator's click on the
-    /// row this cockpit drew for it. Never throws for an unreachable node — see <see cref="NodePermissionAnswer.Error"/>.
-    /// </summary>
-    Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// AC-1326: the last snapshot <see cref="ReadAsync"/> succeeded with for <paramref name="nodeName"/> and when
     /// it was read, from whichever caller triggered it — the operator's node card, <c>list_sessions</c> or
     /// <c>list_projects</c> — or null when nothing has read that node yet this run.

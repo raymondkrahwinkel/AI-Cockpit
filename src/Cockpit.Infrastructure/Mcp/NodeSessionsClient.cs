@@ -401,44 +401,6 @@ internal sealed class NodeSessionsClient(
         }
     }
 
-    public async Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
-            var result = await _CallAsync(
-                client,
-                "read_node_inbox",
-                afterMessageId is null ? null : new Dictionary<string, object?> { ["afterMessageId"] = afterMessageId },
-                cancellationToken).ConfigureAwait(false);
-
-            if (_ErrorIn(result) is { } refusal)
-            {
-                return new NodeInboxBatch(nodeName, [], Error: refusal);
-            }
-
-            return new NodeInboxBatch(
-                nodeName,
-                [.. _Array(result, "messages").Select(row => new NodeInboxMessage(
-                    _Text(row, "id"),
-                    _Text(row, "fromPaneId"),
-                    _Text(row, "kind"),
-                    _Text(row, "body"),
-                    row.TryGetProperty("sentAtUtc", out var sent) && sent.TryGetDateTimeOffset(out var at) ? at : DateTimeOffset.UtcNow))],
-                result.TryGetProperty("remaining", out var remaining) && remaining.TryGetInt32(out var count) ? count : 0,
-                DiscoveryId: _Text(result, "discoveryId"));
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogInformation(exception, "Could not read the assistant's mail on node {Node}.", nodeName);
-            return new NodeInboxBatch(nodeName, [], Error: Classify(nodeName, exception));
-        }
-    }
-
     public async Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default)
     {
         try
@@ -463,32 +425,6 @@ internal sealed class NodeSessionsClient(
 
     public Task<string?> RememberOnNodeAsync(string nodeName, string text, string scope, CancellationToken cancellationToken = default) =>
         _ActAsync(nodeName, "remember_on_node", new Dictionary<string, object?> { ["text"] = text, ["scope"] = scope }, cancellationToken);
-
-    public async Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await using var client = await _ConnectAsync(nodeName, cancellationToken).ConfigureAwait(false);
-            var result = await _CallAsync(
-                client,
-                "answer_node_permission",
-                new Dictionary<string, object?> { ["paneId"] = paneId, ["toolUseId"] = toolUseId, ["allow"] = allow },
-                cancellationToken).ConfigureAwait(false);
-
-            return _ErrorIn(result) is { } refusal
-                ? new NodePermissionAnswer(false, refusal)
-                : new NodePermissionAnswer(_Bool(result, "answered"));
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogInformation(exception, "Could not reach node {Node} to answer a permission.", nodeName);
-            return new NodePermissionAnswer(false, Classify(nodeName, exception));
-        }
-    }
 
     // Null when the node did it, its own words when it refused, a sentence of ours when it could not be reached.
     // The three are deliberately one return value: to the operator pressing the button they are the same question —

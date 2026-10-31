@@ -2574,13 +2574,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow, string? answersJson = null)
     {
-        // AC-1324: a node's question drawn here — the same row, but the click goes over the line, not to a runtime.
-        if (entry.NodePermission is { } onNode)
-        {
-            await _AnswerOnNodeAsync(entry, onNode, allow);
-            return;
-        }
-
         if (RemoteServer is not null)
         {
             await _AnswerOnServerAsync(entry, allow, answersJson);
@@ -2596,34 +2589,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await _control.RespondToPermissionAsync(entry.ToolUseId, allow, answersJson);
     }
 
-    // AC-1324: three outcomes, each told on the row itself. Answered there: closed with the machine named. No
-    // longer open there (answered on the node, or the session gone): closed, nothing done. Line failed: the row
-    // reopens with the reason, so the buttons work again once the node is back.
-    private static async Task _AnswerOnNodeAsync(TranscriptEntryViewModel entry, NodePermissionOrigin onNode, bool allow)
-    {
-        // Closed before the line is called, like the local path (`_MarkDecided` before the runtime): the call takes
-        // up to the client's budget, and a second click in that window would be a second answer over the line.
-        if (!entry.IsPendingPermission)
-        {
-            return;
-        }
-
-        entry.IsPendingPermission = false;
-        entry.PermissionDecision = $"Answering on {onNode.Node}…";
-
-        var reply = await onNode.Answer(allow);
-        if (reply.Error is { } error)
-        {
-            entry.PermissionDecision = $"Not answered — {error}";
-            entry.IsPendingPermission = true;
-            return;
-        }
-
-        entry.PermissionDecision = reply.Answered
-            ? $"{(allow ? "Allowed" : "Denied")} on {onNode.Node}"
-            : $"Already answered on {onNode.Node}";
-    }
-
     // AC-1324: the controller's click, arriving by tool-use id rather than by row. False when no such row is
     // open here — answered already, or never asked — and then nothing is done.
     internal async Task<bool> RespondToPermissionByIdAsync(string toolUseId, bool allow, bool forSession = false)
@@ -2634,7 +2599,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         // AC-1476: a session-wide allow is the pane's own exact "Always".
-        await (forSession && allow && entry.ToolName is not null && entry.NodePermission is null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
+        await (forSession && allow && entry.ToolName is not null ? AllowAlwaysAsync(entry, PermissionRuleScope.Exact) : RespondToPermissionAsync(entry, allow));
         return true;
     }
 
@@ -2664,7 +2629,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
     {
-        if (RemoteServer is not null || !_control.IsAttached || entry.ToolUseId is null || entry.ToolName is null || entry.NodePermission is not null)
+        if (RemoteServer is not null || !_control.IsAttached || entry.ToolUseId is null || entry.ToolName is null)
         {
             return;
         }
@@ -2680,7 +2645,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             ? PermissionRule.ForWildcard(entry.ToolName)
             : PermissionRule.ForExact(entry.ToolName, entry.InputJson ?? "{}");
         foreach (var other in PendingToolPermissionRows().Where(other => other != entry && other.ToolName is not null
-            && other.NodePermission is null && rule.Matches(other.ToolName, other.InputJson ?? "{}")).ToList())
+            && rule.Matches(other.ToolName, other.InputJson ?? "{}")).ToList())
         {
             if (other.ToolUseId is { } otherId)
             {

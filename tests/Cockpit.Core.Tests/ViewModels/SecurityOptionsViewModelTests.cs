@@ -625,12 +625,6 @@ public class SecurityOptionsViewModelTests
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeTranscriptRead(null));
 
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodeInboxBatch(nodeName, []));
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new NodePermissionAnswer(false));
-
         public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NodeMemoryRead(""));
 
@@ -700,10 +694,6 @@ public class SecurityOptionsViewModelTests
         public Task<string?> RenameAsync(string nodeName, string paneId, string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeTranscriptRead> ReadTranscriptAsync(string nodeName, string paneId, int count, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodeInboxBatch> ReadInboxAsync(string nodeName, string? afterMessageId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public Task<NodePermissionAnswer> AnswerPermissionAsync(string nodeName, string paneId, string toolUseId, bool allow, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
         public Task<NodeMemoryRead> ReadMemoryAsync(string nodeName, string scope, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
