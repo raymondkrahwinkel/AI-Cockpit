@@ -402,7 +402,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             sources,
             current,
             "None falls back to the profile's brain, and a project brain overrides it. The profile's own choice is not changed.");
-        picker.ValueChanged += reference => Assistant = reference ?? string.Empty;
+        picker.ValueChanged += _ => { };
         return picker;
     }
 
