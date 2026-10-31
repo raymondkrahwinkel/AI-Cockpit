@@ -341,7 +341,7 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         catch (Exception exception) when (exception is SecretProtectionException or FormatException)
         {
             // Never unlocked before: this Windows signs differently each time (RSA-PSS), so Hello can never work here.
-            if (!hello.Proven)
+            if (!hello.Proven && hello.Challenge.Length == 0)
             {
                 await DisableHelloAsync(signer, cancellationToken).ConfigureAwait(false);
                 return HelloUnlockResult.Unsupported;
