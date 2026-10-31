@@ -183,7 +183,17 @@ internal sealed class SwarmJoinFixture : IAsyncDisposable
         {
             await _app.DisposeAsync();
             Certificate.Dispose();
-            Directory.Delete(_root, true);
+            if (Directory.Exists(_root))
+            {
+                try
+                {
+                    Directory.Delete(_root, true);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // The folder disappeared between the check and the delete: it is already cleaned up.
+                }
+            }
         }
 
         public Task StopAsync() => _app.StopAsync();
