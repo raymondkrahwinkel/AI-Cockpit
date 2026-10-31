@@ -55,7 +55,7 @@ or bind-mounts (below). All of it is unencrypted on disk, logins and keys includ
 | `state` | `/state` | `cockpit.json`, `node-certificate.pfx`, `node-lockouts.json`, the cockpit's transcripts, logs | a new certificate, so a new fingerprint every client must pin again, and the server's settings | yes: the certificate's private key |
 | `work` | `/work` | clones and worktrees, writable for the server and the agent sessions | the clones and any unpushed work in them | no, but unpushed work |
 | `cli` | `/cli` | the managed `claude` and `codex` (Install in a server profile's settings), one version each | the image's own copies, until the next Install | no |
-| `agent-home` | `/home/agent` | the agent's own files beside the volumes below, such as Claude's `.claude.json` (settings, account, onboarding) | Claude's onboarding again; the login itself is on `claude` | no, but account details |
+| `agent-home` | `/home/agent` | the agent's own files, Claude's `.claude.json` and the GitHub login in `.config/gh/hosts.yml` | Claude's onboarding and a new GitHub sign-in; the Claude login itself is on `claude` | yes: the GitHub login |
 | `scratch` | `/home/agent/scratch` | the default working directory for a projectless session; writable only by `agent` | a fresh empty default working directory | no, but unpushed work |
 | `claude` | `/home/agent/.claude` and `/home/app/.claude` | the Claude Code login and transcripts | a new sign-in | yes: the login |
 | `codex` | `/home/agent/.codex` and `/home/app/.codex` | the Codex login and transcripts | a new sign-in | yes: the login |
@@ -143,20 +143,28 @@ typed into a profile lives in its `ConfigJson` on this unencrypted volume, so th
 
 ## Agent sessions run as `agent`
 
-The server runs as `app`; every `claude`, `codex` and `git` it starts (sessions, sign-ins, login checks, its own
+The server runs as `app`; every `claude`, `codex`, `git` and `gh` it starts (sessions, sign-ins, login checks, its own
 clones, worktrees and commits) runs as `agent` (uid 1700) through a wrapper on `PATH` and one sudoers rule that allows
-exactly those three binaries. Git is among them because an agent can plant hooks and config in a shared repository,
+exactly those programs. Git is among them because an agent can plant hooks and config in a shared repository,
 which would otherwise run as the server. The SSH keys and git credentials for clones therefore belong to `agent`
 (`agent-ssh`, or `GH_TOKEN` in `session.env`). An agent session
 cannot read `/state`, the secrets or the server's `/proc` entries; it keeps the session's environment (`COCKPIT_PANE_ID`,
 the MCP settings, `GH_TOKEN`) and has its own `HOME`.
+
+For private GitHub HTTPS repositories, sign the server in under **Server > Projects > GitHub** with a device code
+or paste a fine-grained token with access to the repositories you need. The token is write-only in the admin API;
+`gh` stores it unencrypted in `/home/agent/.config/gh/hosts.yml` on `agent-home`. Agent sessions can read that login,
+as they can the existing provider logins. Sign out on the same row. Alternatively, put `GH_TOKEN` (or `GITHUB_TOKEN`)
+in `session.env`; it takes precedence over a stored login and must be removed from that secret to sign out.
+The image configures `gh auth git-credential` as the github.com HTTPS credential helper, so clones and fetches use
+the same login or environment token. SSH repository URLs continue to use the agent's SSH keys.
 
 - The container starts as root only for its entrypoint, which copies the secrets to a tmpfs only `app` can read, closes
   `/run/secrets`, and then drops to `app` for good. Do not set `no-new-privileges`: the wrapper needs sudo.
 - All sessions share the one `agent` uid, so a session can read another session's environment, MCP config and
   transcripts. The line drawn here is between the sessions and the server, not between sessions.
 - The health check drops to `app` with an empty environment before it runs node, since Docker runs it as root.
-- Only `agent` may run the real `claude`, `codex` and `git` (group `agent-run`), so a profile that pins one of them
+- Only `agent` may run the real `claude`, `codex`, `git` and `gh` (group `agent-run`), so a profile that pins one of them
   fails instead of running it as `app`. A pin to any other program still runs as `app`: leave `ExecutablePath` empty
   on the server.
 - **Managed CLIs.** Install in a server profile's settings downloads the CLI as `app` into `/cli/.staging` and checks

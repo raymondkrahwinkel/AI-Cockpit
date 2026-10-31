@@ -14,6 +14,7 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.BackendApi;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.ViewModels;
@@ -461,6 +462,7 @@ public partial class CockpitViewModel
         var admin = new ServerAdminViewModel(group.Name, key.Label, group.Server.Administration, profiles, projects, plugins, group.Server.Projects, dialogService: _dialogService, runningSessions: () => group.Sessions.Count, logger: _logger, serverVersion: key.Version)
         {
             InitialCategory = category,
+            GitHubCredentials = group.Server as IRemoteGitHubCredentials,
             Profiles = new ServerProfilesViewModel(new ServerProfileServices(group.Name, group.Server.Profiles, _serverSignIns, plugins, LocalPluginUiPart)),
             Assistant = assistant,
             HasPluginSettings = row => plugins is IPluginChannelRelay && (_ServerSettingsFor(row) is not null || _LocalSettingsPartFor(row) is not null),

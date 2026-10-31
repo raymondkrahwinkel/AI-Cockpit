@@ -23,32 +23,16 @@ public sealed class GitCloneUrlTests
         Assert.Equal("github.com", ssh.Host);
         Assert.Equal(new[] { "org", "repo" }, ssh.Segments);
         Assert.Equal("git@github.com:org/repo.git", ssh.RemoteUrl);
-    }
-
-    // The load-bearing security property (a binding rule): a token in an HTTPS URL is dropped before git ever sees
-    // it, so it cannot land in argv, .git/config or a log — the clone falls back to the host credential helper.
-    [Fact]
-    public void Parse_HttpsUrlWithCredentials_StripsThemFromTheUrlGitReceives()
-    {
-        var parsed = GitCloneUrl.Parse("https://x-access-token:ghp_secretsecret@github.com/org/repo.git");
-
-        Assert.Equal("https://github.com/org/repo", parsed.RemoteUrl);
-        Assert.DoesNotContain("ghp_secretsecret", parsed.RemoteUrl);
-        Assert.DoesNotContain("@", parsed.RemoteUrl);
-    }
-
-    // The same binding rule as HTTPS, for the one scheme that kept its userinfo: an ssh:// URL may carry the git@
-    // login (needed, not a secret), but a password after it must not reach argv, .git/config or the registry. The
-    // login is kept; only the password is cut. The repository path is left exactly as given.
-    [Fact]
-    public void Parse_SshSchemeUrlWithPassword_StripsThePasswordButKeepsTheLoginAndPath()
-    {
-        var parsed = GitCloneUrl.Parse("ssh://git:s3cr3t-token@github.com/org/repo.git");
-
-        Assert.Equal("ssh://git@github.com/org/repo.git", parsed.RemoteUrl);
-        Assert.DoesNotContain("s3cr3t-token", parsed.RemoteUrl);
-        Assert.Equal("github.com", parsed.Host);
-        Assert.Equal("github.com/org/repo", parsed.Slug);
+        // Credentials never reach git's argv or config; ssh keeps its required login, HTTPS drops all userinfo.
+        var httpsWithCredential = GitCloneUrl.Parse("https://x-access-token:ghp_secretsecret@github.com/org/repo.git");
+        Assert.Equal("https://github.com/org/repo", httpsWithCredential.RemoteUrl);
+        Assert.DoesNotContain("ghp_secretsecret", httpsWithCredential.RemoteUrl);
+        Assert.DoesNotContain("@", httpsWithCredential.RemoteUrl);
+        var sshWithCredential = GitCloneUrl.Parse("ssh://git:s3cr3t-token@github.com/org/repo.git");
+        Assert.Equal("ssh://git@github.com/org/repo.git", sshWithCredential.RemoteUrl);
+        Assert.DoesNotContain("s3cr3t-token", sshWithCredential.RemoteUrl);
+        Assert.Equal("github.com", sshWithCredential.Host);
+        Assert.Equal("github.com/org/repo", sshWithCredential.Slug);
     }
 
     [Fact]

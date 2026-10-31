@@ -18,6 +18,7 @@
                 <Button Content="Copy code" Classes="Compact" Click="_OnCopyCodeClick" VerticalAlignment="Center"/>
             </WrapPanel>
             <TextBlock Text="Code not working? In ChatGPT → Settings → Security, enable device code login for Codex, then restart sign-in."
+                       IsVisible="{Binding ShowCodexDeviceHint}"
                        FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource CockpitTextFaintBrush}"/>
             <Button Content="Restart sign-in" Classes="Compact" Command="{Binding RestartCommand}"
                     IsVisible="{Binding CanRestart}" HorizontalAlignment="Left"/>
@@ -34,7 +35,7 @@
         <WrapPanel IsVisible="{Binding AwaitsInput}">
             <TextBox Text="{Binding CodeInput}" Width="220" FontSize="11" Padding="6,4"
                      VerticalContentAlignment="Center"
-                     Margin="0,0,6,4" PlaceholderText="Paste the code here"/>
+                     Margin="0,0,6,4" PlaceholderText="{Binding InputPlaceholder}" PasswordChar="{Binding InputPasswordChar}"/>
             <Button Content="Submit" Classes="Accent Compact" Margin="0,0,0,4"
                     Command="{Binding SubmitCommand}"/>
         </WrapPanel>

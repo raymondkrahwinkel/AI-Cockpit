@@ -78,6 +78,21 @@ public sealed class RemoteAdminJourney
         // AC-1525: one door port across the restart, as a container keeps its own. The door listens on every address one
         // above the pairing port, so that is the port found free.
         var checksumFile = Path.Combine(root, "echo-checksum.txt");
+        var githubState = Path.Combine(root, "fake-github-account");
+        await File.WriteAllTextAsync(githubState, "fake-gh");
+        var githubBin = Directory.CreateDirectory(Path.Combine(root, "github-bin")).FullName;
+        var seedDirectory = ServerJourney._Metadata("ServerSeedDirectory");
+        foreach (var file in Directory.EnumerateFiles(seedDirectory))
+        {
+            File.Copy(file, Path.Combine(githubBin, Path.GetFileName(file)));
+        }
+        var executableSuffix = OperatingSystem.IsWindows() ? ".exe" : "";
+        var fakeGitHub = Path.Combine(githubBin, $"gh{executableSuffix}");
+        File.Copy(Path.Combine(seedDirectory, $"Cockpit.ServerSeed{executableSuffix}"), fakeGitHub);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(fakeGitHub, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
         var port = _FreeDoorPort();
         var (fingerprint, _, _) = await ServerJourney._PrepareStateRootAsync(
             stateRoot, port - NodeEndpointSettings.McpPortOffset, root, "http://127.0.0.1:9/webhook",
@@ -85,7 +100,16 @@ public sealed class RemoteAdminJourney
         var keyFile = ServerJourney._Secret(root, "connect-key", bootstrap);
         ServerJourney.ServerRun startServer() => ServerJourney._RunServer(
             ServerJourney._Metadata("CockpitServerDirectory"), stateRoot, keyFile,
-            new Dictionary<string, string> { ["COCKPIT_ALLOW_FILE_CLONES"] = "1", ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri, ["COCKPIT_ECHO_SHARED_CHECKSUM_FILE"] = checksumFile });
+            new Dictionary<string, string>
+            {
+                ["COCKPIT_ALLOW_FILE_CLONES"] = "1",
+                ["COCKPIT_ECHO_SHARED_REPOSITORY"] = new Uri(shared).AbsoluteUri,
+                ["COCKPIT_ECHO_SHARED_CHECKSUM_FILE"] = checksumFile,
+                ["COCKPIT_FAKE_GITHUB_STATE"] = githubState,
+                ["PATH"] = githubBin + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"),
+                ["GH_TOKEN"] = "",
+                ["GITHUB_TOKEN"] = "",
+            });
         var run = startServer();
         try
         {
@@ -143,6 +167,50 @@ public sealed class RemoteAdminJourney
             });
             var dialog = await opened.Task.WaitAsync(Until.Ceiling);
             var admin = dialog.Server ?? throw new InvalidOperationException("Servers opened Options without its server.");
+
+            // AC-1987: the clone card reads the server's gh account, renders device sign-in, and submits a token masked.
+            var githubToken = $"journey-github-{Guid.NewGuid():N}";
+            await HeadlessAvalonia.RunAsync(async () =>
+            {
+                dialog.SelectCategory("server-projects");
+                await Until.Holds(admin, () => admin.GitHubStatus == "Signed in as fake-gh");
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text == "Signed in as fake-gh"));
+                await admin.SignOutGitHubCommand.ExecuteAsync(null);
+                Assert.True(admin.GitHubCanSignIn, admin.GitHubStatus);
+                var signIn = dialog.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Sign in…"));
+                Assert.NotNull(signIn.Command);
+                signIn.Command.Execute(signIn.CommandParameter);
+                try
+                {
+                    await Until.Holds(admin, () => admin.GitHubSignIn is not null);
+                    var started = Assert.IsType<LoginFlowRowViewModel>(admin.GitHubSignIn);
+                    await Until.Holds(started, () => started.HasDeviceCode && started.HasLink);
+                }
+                catch (TimeoutException)
+                {
+                    var flow = admin.GitHubSignIn;
+                    Assert.Fail($"GitHub device sign-in did not reach its code: present={flow is not null}; completed={flow?.IsCompleted}; succeeded={flow?.Succeeded}; message={flow?.Message}; error={flow?.ErrorMessage}; admin={admin.Status}");
+                }
+                var deviceFlow = Assert.IsType<LoginFlowRowViewModel>(admin.GitHubSignIn);
+                Assert.Equal("ABCD-EFGH", deviceFlow.DeviceCode);
+                Assert.Equal("https://github.com/login/device", Assert.IsType<Uri>(deviceFlow.LinkToOpen).AbsoluteUri);
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<SelectableTextBlock>().Any(text => text.Text == "ABCD-EFGH"));
+                Assert.False(deviceFlow.ShowCodexDeviceHint);
+
+                await admin.PasteGitHubTokenCommand.ExecuteAsync(null);
+                var tokenFlow = Assert.IsType<LoginFlowRowViewModel>(admin.GitHubSignIn);
+                await Until.Holds(tokenFlow, () => tokenFlow.AwaitsInput);
+                await Until.LayoutHolds(dialog, () => dialog.GetVisualDescendants().OfType<TextBox>().Any(box => box.PlaceholderText == "Paste a GitHub token" && box.PasswordChar != '\0'));
+                tokenFlow.CodeInput = githubToken;
+                await tokenFlow.SubmitCommand.ExecuteAsync(null);
+                Assert.Empty(tokenFlow.CodeInput);
+                await Until.Holds(tokenFlow, () => tokenFlow.Succeeded);
+                await Until.Holds(admin, () => admin.GitHubStatus == "Signed in as fake-gh");
+                await admin.CloseGitHubSignInCommand.ExecuteAsync(null);
+            });
+            Assert.False((await setup.GetAsync<JsonObject>("api/v1/git-credentials/github")).ToJsonString().Contains(githubToken, StringComparison.Ordinal));
+            Assert.False(run.Output.Contains(githubToken, StringComparison.Ordinal), "The server log holds the GitHub token.");
+            Assert.False((await setup.GetAsync<JsonArray>("api/v1/audit")).ToJsonString().Contains(githubToken, StringComparison.Ordinal), "The audit holds the GitHub token.");
 
             await HeadlessAvalonia.RunAsync(async () =>
             {

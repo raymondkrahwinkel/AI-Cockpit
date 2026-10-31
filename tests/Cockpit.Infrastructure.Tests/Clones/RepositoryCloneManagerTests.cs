@@ -41,6 +41,10 @@ public sealed class RepositoryCloneManagerTests : IDisposable
     [Fact]
     public async Task CloneAsync_SlugOccupiedByADifferentRepository_RefusesRatherThanClobber()
     {
+        const string failure = "fatal: could not read Username: terminal prompts disabled";
+        Assert.Contains("Server > Projects", RepositoryCloneManager.ExplainFailure(failure, "github.com", onServer: true));
+        Assert.Contains("your own git credential helper", RepositoryCloneManager.ExplainFailure(failure, "github.com", onServer: false));
+        Assert.Contains("your own git credential helper", RepositoryCloneManager.ExplainFailure(failure, "gitlab.com", onServer: true));
         var first = await _manager.CloneAsync(_sourceUrl);
 
         // Replace the checkout with a different git repository (no matching origin) at the same managed slug. The

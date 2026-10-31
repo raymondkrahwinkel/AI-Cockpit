@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Avalonia.Threading;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Projects;
+using Cockpit.Infrastructure.BackendApi;
 
 namespace Cockpit.App.ViewModels;
 
@@ -11,6 +13,98 @@ namespace Cockpit.App.ViewModels;
 // its own git credentials. The URL is sent as typed; the server refuses one that carries a credential.
 public sealed partial class ServerAdminViewModel
 {
+    public IRemoteGitHubCredentials? GitHubCredentials { get; init; }
+
+    public bool HasGitHubCredentials => GitHubCredentials is not null;
+
+    [ObservableProperty]
+    private string _gitHubStatus = "Checking GitHub sign-in…";
+
+    [ObservableProperty]
+    private bool _gitHubCanSignIn;
+
+    [ObservableProperty]
+    private bool _gitHubCanSignOut;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasGitHubSignIn))]
+    private LoginFlowRowViewModel? _gitHubSignIn;
+
+    public bool HasGitHubSignIn => GitHubSignIn is not null;
+
+    [RelayCommand]
+    private async Task RefreshGitHubAsync()
+    {
+        if (GitHubCredentials is not { } credentials)
+        {
+            return;
+        }
+
+        try
+        {
+            var status = await credentials.GetGitHubStatusAsync();
+            GitHubStatus = status.SignedIn && status.Source == "gh" && !string.IsNullOrWhiteSpace(status.User)
+                ? $"Signed in as {status.User}"
+                : status.Message;
+            GitHubCanSignIn = status.Available && !status.SignedIn && status.Source is not ("GH_TOKEN" or "GITHUB_TOKEN");
+            GitHubCanSignOut = status.SignedIn && status.Source == "gh";
+        }
+        catch (Exception)
+        {
+            GitHubStatus = "GitHub status could not be read. Refresh to try again.";
+            GitHubCanSignIn = false;
+            GitHubCanSignOut = false;
+        }
+    }
+
+    [RelayCommand]
+    private Task SignInGitHubAsync() => _StartGitHubSignInAsync(useToken: false);
+
+    [RelayCommand]
+    private Task PasteGitHubTokenAsync() => _StartGitHubSignInAsync(useToken: true);
+
+    private Task _StartGitHubSignInAsync(bool useToken) => _RunAsync(async () =>
+    {
+        await CloseGitHubSignInAsync();
+        if (GitHubCredentials is not { } credentials)
+        {
+            return;
+        }
+
+        var flow = new LoginFlowRowViewModel(credentials.StartGitHubSignIn(useToken, CancellationToken.None), _time)
+        {
+            IsSecretInput = useToken,
+            InputPlaceholder = "Paste a GitHub token",
+            ShowCodexDeviceHint = false,
+            RestartSignIn = () => _StartGitHubSignInAsync(useToken),
+        };
+        flow.Completed = succeeded => Dispatcher.UIThread.Post(() => RefreshGitHubCommand.Execute(null));
+        GitHubSignIn = flow;
+    });
+
+    [RelayCommand]
+    public async Task CloseGitHubSignInAsync()
+    {
+        if (GitHubSignIn is { } flow)
+        {
+            GitHubSignIn = null;
+            flow.Completed = null;
+            flow.CodeInput = "";
+            await flow.DisposeAsync();
+        }
+    }
+
+    [RelayCommand]
+    private Task SignOutGitHubAsync() => _RunAsync(async () =>
+    {
+        await CloseGitHubSignInAsync();
+        if (GitHubCredentials is { } credentials)
+        {
+            await credentials.SignOutGitHubAsync();
+            await RefreshGitHubAsync();
+        }
+    });
+
     public ObservableCollection<ServerProjectRowViewModel> Projects { get; } = [];
 
     public bool HasProjectsPage => _serverProjects is not null;

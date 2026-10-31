@@ -58,6 +58,15 @@ public sealed class BackendApiClient : IDisposable
 
     public Task<T> GetAsync<T>(string path) => _SendAsync<T>(HttpMethod.Get, path, null, CancellationToken.None);
 
+    public async Task DeleteAsync(string path, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.DeleteAsync(path, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await _ErrorAsync(response, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public Task<T> GetAsync<T>(string path, CancellationToken cancellationToken) =>
         _SendAsync<T>(HttpMethod.Get, path, null, cancellationToken);
 

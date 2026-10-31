@@ -28,6 +28,7 @@ using Cockpit.Core.Assistant;
 using Cockpit.Infrastructure.Agents;
 using Cockpit.Infrastructure.Assistant;
 using Cockpit.Infrastructure.BackendApi;
+using Cockpit.Infrastructure.Clones;
 using Cockpit.Infrastructure.Events;
 using Cockpit.Infrastructure.Hosting;
 using Cockpit.Infrastructure.Mcp;
@@ -108,6 +109,15 @@ public sealed class BackendApiDoorTests
     // lists only its projects. AC-1479: the assistant routes turn away any key not holding the assistant (AC-1366), admin too.
     public static TheoryData<string, string, string?, string, HttpStatusCode, string?, string, string> AdminRoutes => new()
     {
+        // AC-1987: all GitHub credential routes are admin-only; token input is never reflected or audited.
+        { "GET", "/api/v1/git-credentials/github", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/git-credentials/github/sign-in", """{"mode":"device"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/git-credentials/github/sign-in/unknown", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/git-credentials/github/sign-in/unknown/input", """{"text":"{secret}"}""", "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "DELETE", "/api/v1/git-credentials/github", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
+        { "GET", "/api/v1/git-credentials/github/sign-in/unknown", null, "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/git-credentials/github/sign-in/unknown/input", """{"text":"{secret}"}""", "admin", HttpStatusCode.NotFound, "no_sign_in", "", _Door.ProfileSecret },
+        { "POST", "/api/v1/git-credentials/github/sign-in", """{"mode":"{secret}"}""", "admin", HttpStatusCode.BadRequest, "invalid_request", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins", null, "operate", HttpStatusCode.Forbidden, "forbidden", "", _Door.ProfileSecret },
         { "GET", "/api/v1/plugins/store", null, "admin", HttpStatusCode.OK, "", "", _Door.ProfileSecret },
@@ -1107,6 +1117,7 @@ public sealed class BackendApiDoorTests
             services.AddSingleton(Presence);
             services.AddSingleton(Health);
             services.AddSingleton(LoginHealth);
+            services.AddSingleton<GitHubGitSignIns>();
 
             _host = new CockpitMcpEndpointHost(
                 [new CockpitMcpEndpoint("cockpit-node", typeof(NodeSessionMcpTools), NodeOnly: true)],
