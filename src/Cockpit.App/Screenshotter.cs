@@ -201,6 +201,7 @@ internal static partial class Screenshotter
         ["splash-unlock-hello-cancelled"] = (_, _) => SplashScene.Unlock(hello: "cancelled"),
         ["splash-unlock-hello-gone"] = (_, _) => SplashScene.Unlock(hello: "gone"),
         ["options-security-hello"] = (_, _) => _OptionsSecurityHello(),
+        ["options-security-hello-busy"] = (_, _) => _OptionsSecurityHello(busy: true),
         ["options-hello-turn-on"] = (_, _) => new PasswordDialog
         {
             DataContext = new ViewModels.PasswordDialogViewModel(
@@ -2240,7 +2241,7 @@ internal static partial class Screenshotter
         return dialog;
     }
 
-    private static OptionsDialog _OptionsSecurityHello()
+    private static OptionsDialog _OptionsSecurityHello(bool busy = false)
     {
         var dialog = _OptionsOnTab("security");
         var cockpit = dialog.DataContext as ViewModels.CockpitViewModel ?? throw new InvalidOperationException("The Options dialog has no cockpit.");
@@ -2250,7 +2251,8 @@ internal static partial class Screenshotter
         {
             cockpit.Security.IsEncrypted = true;
             cockpit.Security.HelloOffered = true;
-            cockpit.Security.HelloEnabled = true;
+            cockpit.Security.HelloEnabled = !busy;
+            cockpit.Security.IsHelloBusy = busy;
             cockpit.Security.HelloStatus = "On — bound to this computer’s security chip (TPM). Your password keeps working.";
         };
         return dialog;

@@ -1472,6 +1472,10 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private string _helloStatus = "";
 
+    // While Hello is being set up or removed: the checkbox waits and a bar shows that it is working (Raymond 31-10).
+    [ObservableProperty]
+    private bool _isHelloBusy;
+
     // Why turning Hello on or off did not go through, shown under the checkbox; empty when it did.
     [ObservableProperty]
     private string _helloError = "";
@@ -1503,15 +1507,18 @@ public sealed partial class SecurityOptionsViewModel(
         {
             if (HelloEnabled)
             {
+                IsHelloBusy = true;
                 await DisableHelloAsync().ConfigureAwait(true);
             }
             else if (AskHelloPassword is { } ask && await ask().ConfigureAwait(true) is { } password)
             {
+                IsHelloBusy = true;
                 await EnableHelloAsync(password).ConfigureAwait(true);
             }
         }
         finally
         {
+            IsHelloBusy = false;
             OnPropertyChanged(nameof(HelloEnabled));
         }
     }
@@ -1527,7 +1534,8 @@ public sealed partial class SecurityOptionsViewModel(
         HelloError = "";
         try
         {
-            if (!await protection.EnableHelloAsync(password, signer).ConfigureAwait(true))
+            // Off the UI thread: checking the password derives the key (210k PBKDF2 rounds), which froze the window.
+            if (!await Task.Run(() => protection.EnableHelloAsync(password, signer)).ConfigureAwait(true))
             {
                 HelloError = $"Windows Hello was not turned on: {signer.LastFailure ?? "the Windows prompt was cancelled"}.";
             }
