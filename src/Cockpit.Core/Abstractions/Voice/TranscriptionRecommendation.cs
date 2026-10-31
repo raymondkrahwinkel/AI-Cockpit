@@ -33,7 +33,8 @@ public sealed record GpuHardware(GpuVendor Vendor, string? Description, bool Dri
     // AC-1881: What "Auto" transcribes on: a discrete GPU before an integrated one, then one without a monitor
     // before the one drawing the desktop (on an Optimus laptop that is the iGPU), then the most VRAM.
     public static GpuHardware PickAuto(IReadOnlyList<GpuHardware> gpus) => gpus
-        .OrderByDescending(gpu => gpu.DrivesDisplay)
+        .OrderByDescending(gpu => gpu.Kind is GpuKind.Discrete)
+        .ThenBy(gpu => gpu.DrivesDisplay)
         .ThenByDescending(gpu => gpu.VideoMemoryBytes)
         .FirstOrDefault() ?? None;
 
