@@ -93,7 +93,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _subprocessFactory = subprocessFactory;
         _config = config;
         _executablePath = executablePath;
-        _usage = new ClaudeSdkUsage(intelligence, recordObservation);
+        _usage = new ClaudeSdkUsage(intelligence, recordObservation, ClaudeConfigPaths.ProfileKey(config.ConfigDir, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
     }
 
     public PluginSessionCapabilities Capabilities { get; } = new(

@@ -14,6 +14,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Toasts;
 using Exclr8.Terminal;
 using Exclr8.Terminal.Buffer;
@@ -798,7 +799,12 @@ public partial class TtyView : UserControl
             {
                 var provider = _plugins?.TtyProvider(launch.Provider.ProviderId);
                 viewModel.UsageProviderId = launch.Provider.ProviderId;
-                viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
+                // AC-1982: a provider that keys readings by profile reads them against the launch profile's own config.
+                var configJson = (launch.Profile?.ProviderConfig as PluginProviderConfig)?.ConfigJson ?? string.Empty;
+                var readUsage = provider?.ReadProfileUsage is { } readProfileUsage
+                    ? json => readProfileUsage(configJson, json)
+                    : provider?.ReadUsage;
+                viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], readUsage);
             }
             // A scheduled resume (AC-234) arrives the way a keystroke does — the pty's stdin — so the view, which
             // owns the pty, is where that route is handed to the session.

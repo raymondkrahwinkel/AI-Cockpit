@@ -9,11 +9,24 @@ public sealed class ModelObservationStore(string root, TimeSpan? retention = nul
     private readonly TimeSpan _retention = retention ?? ModelObservationDefaults.Retention;
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly object _gate = new();
+    private readonly Dictionary<(string, string?, string?, string?), double> _lastQuota = [];
 
     public void Record(ModelObservation observation)
     {
         lock (_gate)
         {
+            // A quota reading is stored only when its value changes; after a restart the first one per key is written again.
+            if (observation.Kind == ModelObservationKind.QuotaReading)
+            {
+                var key = (observation.Provider, observation.Profile, observation.Model, observation.Window);
+                if (_lastQuota.TryGetValue(key, out var last) && last == observation.Value)
+                {
+                    return;
+                }
+
+                _lastQuota[key] = observation.Value;
+            }
+
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);

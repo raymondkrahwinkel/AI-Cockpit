@@ -22,6 +22,19 @@ internal sealed record CliAgentConfig(
     // to parse over a casing mismatch, same rationale as `OpenAiCompatConfig.JsonOptions`.
     public static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+    // Opaque per-profile key: the state directory this profile's CLI uses (pinned ConfigDir, else CODEX_HOME, else ~/.codex).
+    public string ProfileKey
+    {
+        get
+        {
+            var dir = !string.IsNullOrWhiteSpace(ConfigDir) ? ConfigDir : Environment.GetEnvironmentVariable("CODEX_HOME");
+            var full = Path.GetFullPath(string.IsNullOrWhiteSpace(dir)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex")
+                : dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return OperatingSystem.IsWindows() ? full.ToUpperInvariant() : full;
+        }
+    }
+
     // True when `PromptMode` is `"stdin"` rather than the `"arg"` default.
     public bool IsStdinPromptMode => string.Equals(PromptMode, "stdin", StringComparison.OrdinalIgnoreCase);
 

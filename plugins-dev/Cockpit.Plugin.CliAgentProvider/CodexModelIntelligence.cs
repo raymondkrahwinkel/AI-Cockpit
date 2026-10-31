@@ -47,6 +47,7 @@ internal static class CodexModelIntelligence
                 recordObservation?.Invoke(new PluginModelObservation(ProviderId, PluginModelObservationKind.QuotaReading, asOf)
                 {
                     Quota = state.Window,
+                    Profile = config.ProfileKey,
                 });
             }
 
@@ -58,6 +59,7 @@ internal static class CodexModelIntelligence
                     PublicModelRef = id.Contains('/', StringComparison.Ordinal) ? id : "openai/" + id,
                 }).ToArray(),
                 Quota = quota,
+                Profile = config.ProfileKey,
             };
         }
         catch (OperationCanceledException)
