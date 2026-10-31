@@ -464,15 +464,19 @@ public partial class EditableProfileViewModel : ViewModelBase
     // Whether this row has the fields its provider needs to launch — a label always, plus a config
     // directory (Claude), a base URL and model (local), or a plugin config view that validates (#45).
     public bool IsValid =>
-        !string.IsNullOrWhiteSpace(Label)
-        && _AreEnvironmentVariablesValid()
-        && (!IsLmStudioProvider || LmStudioLoadOptionsError is null)
+        IsValidBesidesProviderSettings
         && SelectedProvider.Value switch
         {
             SessionProvider.ClaudeCli => !string.IsNullOrWhiteSpace(ConfigDir),
             SessionProvider.Plugin => PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out _),
             _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model) && ContextTokens > 0,
         };
+
+    // AC-1995: what IsValid checks apart from the provider's own settings, for a fixed provider whose view this desktop lacks.
+    public bool IsValidBesidesProviderSettings =>
+        !string.IsNullOrWhiteSpace(Label)
+        && _AreEnvironmentVariablesValid()
+        && (!IsLmStudioProvider || LmStudioLoadOptionsError is null);
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
     // Case-insensitive, because the spawn composition is (TtyEnvironment, the Claude driver's environment): two

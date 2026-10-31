@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.BackendApi;
 
@@ -134,8 +135,8 @@ internal static class ProfileEndpoints
 
         // AC-1995: the brain picker's list for a profile on this server, from this server's own memory sources; nothing
         // else lists them over this connection, and a desktop's sources never answer for a server's profile.
-        api.MapGet("/profiles/brains", async (CancellationToken cancellationToken) =>
-            Results.Json(await BrainSourcesAsync(services, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json))
+        api.MapGet("/profiles/brains", async (string? scheme, CancellationToken cancellationToken) =>
+            Results.Json(await BrainSourcesAsync(services, scheme, cancellationToken).ConfigureAwait(false), ConnectKeyEndpoints.Json))
             .RequireAdmin().Audited("list_profile_brains", services);
 
         // A key that reads KeptSecret is the one the named profile holds, and only for the address it holds it for.
@@ -287,7 +288,7 @@ internal static class ProfileEndpoints
             }
 
             var choices = incoming.ProviderConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId }
-                ? await _ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
+                ? await ClaudeChoicesAsync(services, cancellationToken).ConfigureAwait(false)
                 : null;
             var (merged, refusal) = MergeWhole(index < 0 ? null : profiles[index], incoming, services, choices);
             if (merged is null)
@@ -425,7 +426,7 @@ internal static class ProfileEndpoints
 
     // What the Claude provider's own backend part answers its view (`config-choices`), asked in-process. A provider that
     // cannot say offers nothing, so only blank and what a profile already held pass.
-    private static async Task<ClaudeChoices> _ClaudeChoicesAsync(IServiceProvider services, CancellationToken cancellationToken)
+    internal static async Task<ClaudeChoices> ClaudeChoicesAsync(IServiceProvider services, CancellationToken cancellationToken)
     {
         if (services.GetService<IPluginProviderRegistry>()?.OwnerOf(ClaudePluginProfile.ProviderId) is not { } owner
             || services.GetService<PluginChannelHub>() is not { } channels)
@@ -561,23 +562,32 @@ internal static class ProfileEndpoints
 
     internal const string BrainsListRefusal = "The server could not list these brains.";
 
-    internal static async Task<IReadOnlyList<RemoteBrainSource>> BrainSourcesAsync(IServiceProvider services, CancellationToken cancellationToken)
+    // AC-1995 (review B1): how long one source may take before it reads as not listed, so a slow one never holds the page.
+    internal static readonly TimeSpan BrainSourceBudget = TimeSpan.FromSeconds(10);
+
+    // `scheme` narrows the list to that one source, as each source of the picker asks for its own.
+    internal static async Task<IReadOnlyList<RemoteBrainSource>> BrainSourcesAsync(IServiceProvider services, string? scheme, CancellationToken cancellationToken)
     {
         List<RemoteBrainSource> listed = [];
         foreach (var source in services.GetService<IProjectMemorySourceRegistry>()?.Sources ?? [])
         {
-            if (source.ListBrainsAsync is not { } list)
+            if (source.ListBrainsAsync is not { } list || (scheme is not null && !string.Equals(source.Scheme, scheme, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
 
             ProjectMemorySourceLocationsResult result;
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            budget.CancelAfter(BrainSourceBudget);
             try
             {
-                result = await list(cancellationToken).ConfigureAwait(false);
+                result = await list(budget.Token).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
+                // The type only: a plugin's message may name what it signed in with.
+                services.GetService<ILoggerFactory>()?.CreateLogger(nameof(ProfileEndpoints))
+                    .LogWarning("Brain source {Scheme} did not list: {Failure}.", source.Scheme, exception.GetType().Name);
                 result = ProjectMemorySourceLocationsResult.Failed(BrainsListRefusal);
             }
 

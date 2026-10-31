@@ -179,8 +179,15 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
             return;
         }
 
-        var slot = new ServerAssistantSlotStore(assistant);
+        var slot = new ServerAssistantSlotStore(Server, assistant);
         await show(await CreateProfileDialogAsync(slot));
+        if (slot.IsRefused)
+        {
+            IsReadOnly = true;
+            _Say(ServerAssistantMessage.Error, $"Refused by {Server}.", ServerAssistantSlotStore.RefusedDetail);
+            return;
+        }
+
         if (slot.Saved is not { } saved)
         {
             return;
@@ -205,6 +212,11 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         var dialog = new AssistantProfileDialogViewModel(
             slot, null, pluginProviderRegistry: services, mcpServerCatalog: services, tokenEstimator: services, pluginConfigViews: services, canChooseProvider: false);
         await dialog.LoadAsync();
+        if (services.BrainsUnavailable is { } note)
+        {
+            dialog.StatusMessage = note;
+        }
+
         return dialog;
     }
 
@@ -285,7 +297,7 @@ public sealed partial class ServerAssistantViewModel(string server, IAssistantAd
         catch (UnauthorizedAccessException)
         {
             IsReadOnly = true;
-            _Say(ServerAssistantMessage.Error, $"Refused by {Server}.", "This key may have been revoked or lost its admin rights. Nothing was changed.");
+            _Say(ServerAssistantMessage.Error, $"Refused by {Server}.", ServerAssistantSlotStore.RefusedDetail);
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or TaskCanceledException)
         {

@@ -64,8 +64,8 @@ public interface IServerProfiles
     Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The server's own memory sources that list brains, each with its brains or the server's reason it has none (AC-1995);
-    /// empty from a server that predates the list.
+    /// The server's own memory sources that list brains, or only the one under <paramref name="scheme"/>, each with its
+    /// brains or the server's reason it has none (AC-1995); empty from a server that predates the list.
     /// </summary>
-    Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(string? scheme = null, CancellationToken cancellationToken = default);
 }

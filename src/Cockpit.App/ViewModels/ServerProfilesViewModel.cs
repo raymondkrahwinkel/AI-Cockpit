@@ -54,6 +54,10 @@ public sealed partial class ServerProfilesViewModel(ServerProfileServices servic
         var editor = services.CreateEditor();
         await editor.LoadAsync();
         Editor = editor;
+        if (services.BrainsUnavailable is { } note)
+        {
+            Status = note;
+        }
     }
 
     private async Task _RunAsync(Func<Task> action)

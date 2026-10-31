@@ -726,7 +726,8 @@ public sealed class BackendApiDoorTests
     }
 
     // AC-1808: a fixture provider's reading crosses /api/v1 to the desktop's reader as it left the server, with its IANA
-    // zone and each AsOf at its own offset.
+    // zone and each AsOf at its own offset. AC-1995: one source's brains cross as the server listed them, and a server
+    // without that route answers 405, which the client reads as no brains.
     [Fact]
     public async Task ModelIntelligence_OverTheWire_KeepsTheTimeZoneAndEveryAsOf()
     {
@@ -748,8 +749,30 @@ public sealed class BackendApiDoorTests
         using var client = new BackendApiClient(new Uri(door.NodeBase + "/"), admin.Secret, door.Fingerprint, TimeProvider.System);
 
         var read = await new RemoteProviderModelIntelligence(client).ReadAsync("Plugged");
+        var brains = await new RemoteServerProfiles(client).ListBrainSourcesAsync("depot");
+        using var older = new BackendApiClient(
+            new HttpClient(new _WithoutBrainRoute { InnerHandler = NodeCertificatePin.Require(door.Fingerprint, null) })
+            {
+                BaseAddress = new Uri(door.NodeBase + "/"),
+                DefaultRequestHeaders = { Authorization = new AuthenticationHeaderValue("Bearer", admin.Secret) },
+            },
+            TimeProvider.System,
+            "api/v1/events");
+        var olderBrains = await new RemoteServerProfiles(older).ListBrainSourcesAsync();
 
         Assert.Equal(JsonSerializer.Serialize(reading), JsonSerializer.Serialize(read));
+        Assert.Equal(["depot:" + _Door.Brain], brains.SelectMany(source => source.Brains.Select(brain => $"{source.Scheme}:{brain.Value}")));
+        Assert.Empty(olderBrains);
+    }
+
+    // A server from before AC-1995: its GET of the brain route lands on PATCH and DELETE /profiles/{label}.
+    private sealed class _WithoutBrainRoute : DelegatingHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.RequestUri = new Uri((request.RequestUri ?? throw new InvalidOperationException("No request address.")).AbsoluteUri.Replace("/profiles/brains", "/profiles/not-a-route", StringComparison.Ordinal));
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 
     internal sealed record _Answer(HttpStatusCode Status, string Body);

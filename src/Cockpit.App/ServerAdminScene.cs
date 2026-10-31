@@ -61,7 +61,7 @@ internal static class ServerAdminScene
     {
         var assistant = _Assistant("held");
         var dialog = new AssistantProfileDialog { Width = width, Height = Math.Max(height, 1220) };
-        dialog.Opened += async (_, _) => dialog.DataContext = await assistant.CreateProfileDialogAsync(new ServerAssistantSlotStore(new SceneAssistant("held")));
+        dialog.Opened += async (_, _) => dialog.DataContext = await assistant.CreateProfileDialogAsync(new ServerAssistantSlotStore("huis-cockpit", new SceneAssistant("held")));
         return dialog;
     }
 
@@ -338,7 +338,7 @@ internal static class ServerAdminScene
             Task.FromResult<IReadOnlyList<string>>([]);
 
         // The server's one Depot connection, with two brains of its own.
-        public Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(CancellationToken cancellationToken = default) =>
+        public Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(string? scheme = null, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RemoteBrainSource>>(
             [
                 new("depot", "Depot project — Acme", "Acme",

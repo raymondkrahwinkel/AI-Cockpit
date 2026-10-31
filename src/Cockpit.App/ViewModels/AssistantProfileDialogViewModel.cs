@@ -2,11 +2,13 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Assistant;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Remote;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Assistant;
 using Cockpit.Core.Mcp;
@@ -259,9 +261,9 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
     // Writes the slot, or says why it could not. Returns whether anything was persisted.
     private async Task<bool> _PersistAsync(CancellationToken cancellationToken)
     {
-        // AC-1995: with the provider fixed, one whose own view this desktop lacks keeps its settings as stored, as the
-        // profile list saves it, so a server's slot still takes a brain or instructions.
-        if (!Profile.IsValid && !(Profile.IsPluginProviderMissing && !Profile.CanChooseProvider))
+        // AC-1995: with the provider fixed, one whose own view this desktop lacks keeps its settings as stored, so a server's
+        // slot still takes a brain or instructions; every other check still holds.
+        if (!(Profile.IsPluginProviderMissing && !Profile.CanChooseProvider ? Profile.IsValidBesidesProviderSettings : Profile.IsValid))
         {
             StatusMessage = "This profile is missing something its provider needs — check the label and the provider settings.";
             return false;
@@ -278,9 +280,15 @@ public sealed partial class AssistantProfileDialogViewModel : ViewModelBase
         {
             await _slotStore.RepointAsync(Profile.ToProfile(), ReplacesStandingInstruction, cancellationToken).ConfigureAwait(true);
         }
-        catch (Exception exception) when (exception is ArgumentException or UnauthorizedAccessException or HttpRequestException or IOException)
+        catch (UnauthorizedAccessException exception)
         {
-            // AC-1995: a server's slot refuses or goes unanswered; the form stays open with its edits, saying why.
+            // AC-1995: a server's slot refused the key; its own words, as its page says them.
+            StatusMessage = exception.Message;
+            return false;
+        }
+        catch (Exception exception) when (exception is ArgumentException or HttpRequestException or IOException or TaskCanceledException or JsonException or IRemoteCallFailure)
+        {
+            // AC-1995: a server's slot refuses, fails or goes unanswered; the form stays open with its edits, saying why.
             StatusMessage = $"Not saved: {exception.Message}";
             return false;
         }

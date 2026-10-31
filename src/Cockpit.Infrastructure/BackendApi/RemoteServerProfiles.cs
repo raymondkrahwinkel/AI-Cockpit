@@ -66,14 +66,16 @@ internal sealed class RemoteServerProfiles(BackendApiClient client) : IServerPro
     public Task<IReadOnlyList<string>> ListModelsAsync(string baseUrl, string? apiKey, string? label, CancellationToken cancellationToken = default) =>
         _CallAsync<IReadOnlyList<string>>(HttpMethod.Post, "api/v1/profiles/models", new { baseUrl, apiKey, label }, cancellationToken);
 
-    // AC-1995: a server without the route offers no brains, so the editor keeps the stored value as plain text.
-    public async Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(CancellationToken cancellationToken = default)
+    // AC-1995: a server without the route offers no brains, so the editor keeps the stored value as plain text. It answers
+    // 405 rather than 404, since PATCH and DELETE /profiles/{label} match the path.
+    public async Task<IReadOnlyList<RemoteBrainSource>> ListBrainSourcesAsync(string? scheme = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            return await _CallAsync<IReadOnlyList<RemoteBrainSource>>(HttpMethod.Get, "api/v1/profiles/brains", null, cancellationToken).ConfigureAwait(false);
+            var path = scheme is null ? "api/v1/profiles/brains" : $"api/v1/profiles/brains?scheme={Uri.EscapeDataString(scheme)}";
+            return await _CallAsync<IReadOnlyList<RemoteBrainSource>>(HttpMethod.Get, path, null, cancellationToken).ConfigureAwait(false);
         }
-        catch (BackendApiException exception) when (exception.Status == HttpStatusCode.NotFound)
+        catch (BackendApiException exception) when (exception.Status is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
         {
             return [];
         }

@@ -39,7 +39,25 @@ public sealed class ServerProfileServices(
         _providers = await profiles.ListProviderInfoAsync(cancellationToken);
         _registrations = [.. _providers.Select(_Registration)];
         _views = await _OpenConfigViewsAsync();
-        _brainSources = [.. (await profiles.ListBrainSourcesAsync(cancellationToken)).Select(_BrainSource)];
+        _brainSources = await _ListBrainSourcesAsync(cancellationToken);
+    }
+
+    // Set when the server's brains could not be read, said where the editor shows its status; the editor opens anyway.
+    public string? BrainsUnavailable { get; private set; }
+
+    // AC-1995 (review B1): whatever the brain list does, the editor opens, its brain a plain text field holding the value.
+    private async Task<IReadOnlyList<ProjectMemorySourceRegistration>> _ListBrainSourcesAsync(CancellationToken cancellationToken)
+    {
+        BrainsUnavailable = null;
+        try
+        {
+            return [.. (await profiles.ListBrainSourcesAsync(null, cancellationToken)).Select(_BrainSource)];
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            BrainsUnavailable = $"{server} could not list its brains, so the brain is a plain text field for now.";
+            return [];
+        }
     }
 
     // The editor, with this server behind every service it asks.
@@ -138,7 +156,7 @@ public sealed class ServerProfileServices(
         {
             InstanceTitle = source.InstanceTitle,
             ListBrainsAsync = async cancellationToken =>
-                (await profiles.ListBrainSourcesAsync(cancellationToken)).FirstOrDefault(listed => string.Equals(listed.Scheme, source.Scheme, StringComparison.OrdinalIgnoreCase)) switch
+                (await profiles.ListBrainSourcesAsync(source.Scheme, cancellationToken)).FirstOrDefault(listed => string.Equals(listed.Scheme, source.Scheme, StringComparison.OrdinalIgnoreCase)) switch
                 {
                     { Error: { } error } => ProjectMemorySourceLocationsResult.Failed(error),
                     { } listed => ProjectMemorySourceLocationsResult.Success([.. listed.Brains.Select(brain => new ProjectMemorySourceLocation(brain.Value, brain.Name, brain.Detail))]),
