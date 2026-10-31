@@ -240,7 +240,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Options → Profiles (AC-1001), replacing the standalone ManageProfilesDialog window. Handed in by the app
     // at startup, same reason as the two above — the profile store it needs is not part of this view model's own
     // constructor. Null in the test/design-time graphs, where the category simply shows nothing to edit.
-    public ManageProfilesDialogViewModel? Profiles { get; set; }
+    public ManageProfilesDialogViewModel? Profiles
+    {
+        get => _profiles;
+        set
+        {
+            _profiles = value;
+            if (value is not null)
+            {
+                Sync.AttachProfiles(value);
+            }
+        }
+    }
+
+    private ManageProfilesDialogViewModel? _profiles;
 
     // Options → MCP Servers (AC-1002), replacing the standalone McpServersDialog window — same reasoning as
     // Profiles above: the server store it needs is not part of this view model's own constructor. Null in the
@@ -479,12 +492,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // Counted apart rather than folded into "sessions", which is the drift this method used to warn about in
             // its own comment: "3 sessions, which will be stopped" reads as a lie the moment one of the three never
             // started (AC-410).
-            var onDesk = Sessions.Where(session => session.WorkspaceId == workspace.Id).ToList();
-            var started = onDesk.Count(session => !session.HasRestoreOffer)
-                // Embedded sessions are never restored-but-unstarted (AC-410's "Niet" list), so they always belong on
-                // the started side.
-                + _EmbeddedSessionCount(workspace.Id);
-            var notStarted = onDesk.Count(session => session.HasRestoreOffer);
+            var (started, notStarted) = _SessionCounts(workspace.Id);
 
             message = (started, notStarted) switch
             {
@@ -500,6 +508,108 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await CloseWorkspaceAsync(workspaceId);
         }
     }
+
+    private (int Started, int NotStarted) _SessionCounts(string workspaceId)
+    {
+        var onDesk = Sessions.Where(session => session.WorkspaceId == workspaceId).ToList();
+        // Embedded sessions are never restored-but-unstarted (AC-410's "Niet" list), so they always belong on the
+        // started side.
+        return (onDesk.Count(session => !session.HasRestoreOffer) + _EmbeddedSessionCount(workspaceId),
+            onDesk.Count(session => session.HasRestoreOffer));
+    }
+
+    // AC-1972: Close others / to the right / all ask once for the whole set, then close each workspace through the
+    // ordinary route, so every close guard still runs; a guard that refuses keeps only its own tab.
+    public async Task CloseWorkspacesWithConfirmationAsync(BulkClose action, string workspaceId)
+    {
+        var plan = PlanBulkClose(action, workspaceId);
+        if (plan.Count > 0 && !await ConfirmAsync(plan.Title, plan.Message, $"Close {plan.Count}"))
+        {
+            return;
+        }
+
+        await CloseWorkspacesAsync(action, workspaceId, plan.WorkspaceIds);
+    }
+
+    // Close others / to the right leave the clicked tab active, the one the operator chose to keep; Close all
+    // keeps the neighbour rule.
+    internal async Task CloseWorkspacesAsync(BulkClose action, string clickedId, IReadOnlyList<string> workspaceIds)
+    {
+        foreach (var workspaceId in workspaceIds)
+        {
+            await CloseWorkspaceAsync(workspaceId);
+        }
+
+        if (action != BulkClose.All && Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == clickedId))
+        {
+            await Workspaces.SelectWorkspaceCommand.ExecuteAsync(clickedId);
+        }
+    }
+
+    // AC-1972: what a bulk close would close, and the one question for it. Count is the tabs with something to lose
+    // (sessions, widgets, unsaved changes); preview and empty tabs close along without being counted or named.
+    internal BulkClosePlan PlanBulkClose(BulkClose action, string workspaceId)
+    {
+        var (closing, staying) = Workspaces.BulkCloseScope(action, workspaceId);
+        int losing = 0, widgets = 0, started = 0, notStarted = 0;
+        var unsaved = new List<string>();
+        foreach (var workspace in closing)
+        {
+            var (onDesk, offered) = workspace.Type == WorkspaceType.Dashboard ? (0, 0) : _SessionCounts(workspace.Id);
+            var panes = workspace.Type == WorkspaceType.Dashboard ? workspace.Panes.Count : 0;
+            var isUnsaved = Workspaces.IsUnsaved(workspace.Id);
+            if (onDesk + offered + panes == 0 && !isUnsaved)
+            {
+                continue;
+            }
+
+            losing++;
+            widgets += panes;
+            started += onDesk;
+            notStarted += offered;
+            if (isUnsaved)
+            {
+                unsaved.Add(workspace.Name);
+            }
+        }
+
+        var paragraphs = new List<string>();
+        var holds = new[]
+        {
+            _Count(widgets, "widget"),
+            _Count(started, "session") is { } stopped ? $"{stopped}, which will be stopped" : null,
+            _Count(notStarted, "restored session") is { } idle ? $"{idle} that never started" : null,
+        }.OfType<string>().ToList();
+        if (holds.Count > 0)
+        {
+            paragraphs.Add($"{(losing == 1 ? "It holds" : "They hold")} {_JoinWithAnd(holds)}. This cannot be undone.");
+        }
+
+        if (unsaved.Count > 0)
+        {
+            paragraphs.Add(unsaved.Count == 1
+                ? $"{unsaved[0]} has unsaved changes. You will be asked about it before it closes."
+                : $"{_JoinWithAnd(unsaved)} have unsaved changes. You will be asked about each before it closes.");
+        }
+
+        if (staying.Count > 0)
+        {
+            var names = _JoinWithAnd([.. staying.Select(workspace => workspace.Name)]);
+            paragraphs.Add(staying.Count == 1 ? $"{names} stays open. It cannot be closed." : $"{names} stay open. They cannot be closed.");
+        }
+
+        return new BulkClosePlan(
+            [.. closing.Select(workspace => workspace.Id)],
+            losing,
+            losing == 1 ? "Close 1 workspace?" : $"Close {losing} workspaces?",
+            string.Join("\n\n", paragraphs));
+    }
+
+    // "a", "a and b", "a, b and c" — with ", and" once a part already carries its own comma.
+    private static string _JoinWithAnd(IReadOnlyList<string> parts) =>
+        parts.Count == 1
+            ? parts[0]
+            : $"{string.Join(", ", parts.Take(parts.Count - 1))}{(parts.Count > 2 || parts[^2].Contains(',') ? ", and " : " and ")}{parts[^1]}";
 
     // "3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what
     // it holds.
@@ -3255,6 +3365,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public ModelIntelligenceOptionsViewModel ModelIntelligence { get; internal set; } = new();
 
+    // AC-1846: Options › Sync.
+    public SyncOptionsViewModel Sync { get; internal set; } = new();
+
     // The assistant chip at the bottom of the sidebar (AC-543).
     [ObservableProperty]
     private AssistantIndicatorViewModel? _assistantIndicator;
@@ -3420,7 +3533,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-1814: Options › Model intelligence. Absent in the design-time/unit-test graph, where the page shows its empty state.
         IModelIntelligenceOptions? modelIntelligenceOptions = null,
         Cockpit.Core.Swarm.ISwarmOptions? swarmOptions = null,
-        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null)
+        Cockpit.Core.Swarm.ISwarmLeadership? swarmLeadership = null,
+        // AC-1846: Options › Sync. Absent in the design-time/unit-test graph, where the page lists no server.
+        ISyncOptions? syncOptions = null)
     {
         _managedSettingsReader = managedSettings;
         _settingsWriteBatch = settingsWriteBatch;
@@ -3469,6 +3584,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AssistantOptions = new AssistantOptionsViewModel(assistantSettingsStore, assistantProfileStore, consentAuditLog, assistantMemory);
         _ = AssistantOptions.RefreshAsync();
         ModelIntelligence = new ModelIntelligenceOptionsViewModel(modelIntelligenceOptions);
+        Sync = new SyncOptionsViewModel(syncOptions);
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
         // MCP server, a provider key, a plugin's token — not just when the Security tab is opened. The write seam
@@ -7366,6 +7482,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Swarm.PropertyChanged += _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged += _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged += _OnStagedPropertyChanged;
+        Sync.PropertyChanged += _OnStagedPropertyChanged;
         _RebuildPluginOptionsRows();
     }
 
@@ -7562,6 +7679,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         measurement.Mark("assistant");
         await ModelIntelligence.SaveStagedAsync();
         measurement.Mark("models");
+        await Sync.SaveStagedAsync();
+        measurement.Mark("sync");
 
         // AC-233 used to write these after the dialog had closed, which is a path with no Cancel on it.
         if (UsageThresholdSettings is { } thresholds)
@@ -7642,6 +7761,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await Swarm.LoadSettingsAsync();
         await AssistantOptions.RefreshAsync();
         await ModelIntelligence.LoadAsync();
+        await Sync.LoadAsync();
 
         UsageThresholdSettings?.Revert();
 
@@ -7778,6 +7898,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Swarm.PropertyChanged -= _OnStagedPropertyChanged;
         AssistantOptions.PropertyChanged -= _OnStagedPropertyChanged;
         ModelIntelligence.PropertyChanged -= _OnStagedPropertyChanged;
+        Sync.PropertyChanged -= _OnStagedPropertyChanged;
         _optionsStaged = false;
         Security.SuspendPersistence = false;
         AssistantOptions.SuspendPersistence = false;

@@ -16,7 +16,7 @@ namespace Cockpit.App.ViewTests;
 public class MainWindowDefersCloseForBoundsSaveTests
 {
     [Fact]
-    public Task OnClosing_DefersTheRealCloseUntilTheSaveCompletes_WithoutBlockingTheUiThread() =>
+    public Task OnClosing_DefersTheRealCloseUntilTheSaveCompletes_WithoutBlockingTheUiThread_AndASaveThatThrowsStillCloses() =>
         HeadlessAvalonia.RunAsync(async () =>
         {
             var store = Substitute.For<IWindowBoundsStore>();
@@ -46,29 +46,25 @@ public class MainWindowDefersCloseForBoundsSaveTests
 
             Assert.True(closed);
             _ = store.Received(1).SaveAsync(Arg.Any<string>(), Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>());
-        });
 
-    [Fact]
-    public Task OnClosing_ASaveThatThrows_StillLetsTheWindowClose() =>
-        HeadlessAvalonia.RunAsync(async () =>
-        {
-            var store = Substitute.For<IWindowBoundsStore>();
-            store.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
-            store.SaveAsync(Arg.Any<string>(), Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>())
+            // A save that throws still lets a second window close.
+            var failing = Substitute.For<IWindowBoundsStore>();
+            failing.LoadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<WindowBounds?>(null));
+            failing.SaveAsync(Arg.Any<string>(), Arg.Any<WindowBounds>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException(new IOException("disk is unhappy")));
 
-            var window = new MainWindow();
+            var second = new MainWindow();
             typeof(MainWindow).GetField("_windowBoundsStore", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .SetValue(window, store);
-            window.Show();
+                .SetValue(second, failing);
+            second.Show();
 
-            var closed = false;
-            window.Closed += (_, _) => closed = true;
+            var secondClosed = false;
+            second.Closed += (_, _) => secondClosed = true;
 
-            window.Close();
-            await _WaitUntilAsync(() => closed);
+            second.Close();
+            await _WaitUntilAsync(() => secondClosed);
 
-            Assert.True(closed);
+            Assert.True(secondClosed);
         });
 
     // A faulted Task's continuation still needs the dispatcher pumped, and exactly how many round trips that takes

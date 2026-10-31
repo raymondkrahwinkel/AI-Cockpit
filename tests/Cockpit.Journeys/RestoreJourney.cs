@@ -10,8 +10,10 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Terminal;
+using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Backup;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
@@ -104,13 +106,18 @@ public sealed class RestoreJourney
         space.Document = document;
 
         var b = Directory.CreateDirectory(Path.Combine(work, "sync-b")).FullName;
+        IToastService closedToasts;
         await using (var first = JourneyHost.Desktop(stateRoot: b))
         {
             await _SignedInToProfileAsync(first, url);
             await first.Services.GetRequiredService<SettingsCarrierSync>().RunOnceAsync();
             await HeadlessAvalonia.RunAsync(() => Until.CollectionHolds(first.Cockpit.Toasts, () =>
                 first.Cockpit.Toasts.Any(toast => toast.Message == "Settings fetched from Depot: Journey; active after a restart.")));
+            closedToasts = first.Services.GetRequiredService<IToastService>();
         }
+
+        // AC-1836: a sync failure posted just before the host closed reaches the toasts after it; it is dropped, not a crash.
+        HeadlessAvalonia.Run(() => closedToasts.Show("Your settings could not be synced with Depot: Journey.", ToastSeverity.Warning));
 
         await using var restarted = JourneyHost.Desktop(stateRoot: b);
         await restarted.StartDesktopAsync();

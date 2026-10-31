@@ -27,17 +27,17 @@ public sealed partial class SettingsConflictViewModel : ViewModelBase
         }
     }
 
-    // The answers per setting key, true to keep this machine's value; null when the operator chose later.
-    public event Action<IReadOnlyDictionary<string, bool>?>? CloseRequested;
+    // The answers per setting key: null keeps this machine's value, otherwise the carrier id is selected.
+    public event Action<IReadOnlyDictionary<string, string?>?>? CloseRequested;
 
     public IReadOnlyList<SettingsConflictRowViewModel> Rows { get; }
 
-    private bool CanApply => Rows.Any(row => row.KeepMine || row.TakeTheirs);
+    private bool CanApply => Rows.Any(row => row.HasChoice);
 
     [RelayCommand]
     private void Later() => CloseRequested?.Invoke(null);
 
     [RelayCommand(CanExecute = nameof(CanApply))]
     private void Apply() => CloseRequested?.Invoke(
-        Rows.Where(row => row.KeepMine || row.TakeTheirs).ToDictionary(row => row.Key, row => row.KeepMine, StringComparer.Ordinal));
+        Rows.Where(row => row.HasChoice).ToDictionary(row => row.Key, row => row.SelectedCarrier, StringComparer.Ordinal));
 }

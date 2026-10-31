@@ -428,7 +428,31 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // Answering false is what greys the ✕ and the menu entry of the last desk and of the projects overview, a fixture.
     public bool CanClose(string workspaceId) => Settings.CanClose(workspaceId);
 
-    internal bool HasCloseGuards => _pluginContexts.Values.OfType<WorkspaceContext>().Any(context => context.HasCloseGuard);
+    // AC-1972: whether the body of `workspaceId` marked its tab unsaved — the bulk-close question names those tabs.
+    internal bool IsUnsaved(string workspaceId) => _markers.TryGetValue(workspaceId, out var marker) && marker == WorkspaceMarker.Unsaved;
+
+    // AC-1972: the strip tabs a bulk close from `workspaceId`'s menu would close, and the ones in its reach that stay
+    // because they cannot close. The last-workspace rule is CloseWorkspaceAsync's own re-check, per close.
+    public (IReadOnlyList<Workspace> Closing, IReadOnlyList<Workspace> Staying) BulkCloseScope(BulkClose action, string workspaceId)
+    {
+        var strip = Settings.Workspaces.Where(workspace => !workspace.IsFloating).ToList();
+        var index = strip.FindIndex(workspace => workspace.Id == workspaceId);
+        if (index < 0)
+        {
+            return ([], []);
+        }
+
+        var reach = action switch
+        {
+            BulkClose.Others => strip.Where(workspace => workspace.Id != workspaceId).ToList(),
+            BulkClose.ToTheRight => strip.Skip(index + 1).ToList(),
+            _ => strip,
+        };
+        var closing = reach.Where(workspace => CanClose(workspace.Id)).ToList();
+        return (closing, [.. reach.Where(workspace => !closing.Contains(workspace))]);
+    }
+
+    internal bool HasCloseGuards =>_pluginContexts.Values.OfType<WorkspaceContext>().Any(context => context.HasCloseGuard);
 
     public Task<bool> ConfirmCloseAsync(string workspaceId) =>
         (_pluginContexts.GetValueOrDefault(workspaceId) as WorkspaceContext)?.ConfirmCloseAsync() ?? Task.FromResult(true);
@@ -940,3 +964,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     // AC-1013: "Dashboard", then "Dashboard 2", … — a name the operator can rename, but never a strip of...
     private string _UniqueName(WorkspaceType type) => _UniqueName(type.Id);
 }
+
+// AC-1972: the three bulk closes under Close in a tab's context menu.
+public enum BulkClose
+{
+    Others,
+    ToTheRight,
+    All,
+}
+
+// AC-1972: the workspaces a bulk close closes, how many of them have something to lose, and the one question for them.
+internal sealed record BulkClosePlan(IReadOnlyList<string> WorkspaceIds, int Count, string Title, string Message);

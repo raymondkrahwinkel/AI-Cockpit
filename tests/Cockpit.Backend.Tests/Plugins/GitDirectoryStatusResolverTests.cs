@@ -30,14 +30,9 @@ public sealed class GitDirectoryStatusResolverTests : IDisposable
     }
 
     [Fact]
-    public void Resolve_WhenGitConfirmedARepository_IsRepository()
+    public void Resolve_WhenConfirmedOrProbeFailed_ReturnsSafeStatus()
     {
         Assert.Equal(GitDirectoryStatus.Repository, GitDirectoryStatusResolver.Resolve(_root, gitConfirmedRepository: true));
-    }
-
-    [Fact]
-    public void Resolve_WhenAGitFolderExistsButTheProbeFailed_IsUnknown_NotNotARepository()
-    {
         // A real repository git could not read (dubious ownership, a lock, no commit) — a .git is present but the probe
         // returned no repository. This must stay Unknown (isolate), never NotARepository (run free) — the C1 fail-open.
         Directory.CreateDirectory(Path.Combine(_root, ".git"));

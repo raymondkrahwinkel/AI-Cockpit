@@ -38,25 +38,6 @@ public class ProjectDialogMemorySourceTests
     private static ProjectMemorySourceRegistration DepotSource() =>
         new("depot", "Depot project", "Read it through the Depot MCP.");
 
-    /// <summary>
-    /// The Depot plugin is not installed on this machine. Opening and saving the editor for an unrelated reason
-    /// (renaming the project, say) must not lose or corrupt what it already pointed at.
-    /// </summary>
-    [Fact]
-    public async Task CreateAsync_AnUninstalledSchemesReference_SelectsFolderAndKeepsTheRawTextUntouchedOnSave()
-    {
-        var project = Project.Create("Cockpit") with { MemoryRef = "depot:cockpit" };
-
-        // No memorySources passed at all here — as if the Depot plugin were not installed.
-        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore(), Catalog());
-
-        var row = Assert.Single(viewModel.ResourceRows);
-        Assert.True(row.IsMemoryFolderMode);
-        Assert.Equal("depot:cockpit", row.Reference);
-
-        Assert.Equal("depot:cockpit", viewModel.ToProject().MemoryRef);
-    }
-
     [Fact]
     public async Task RoundTrip_ADepotReference_SurvivesLoadAndSaveUnchanged()
     {

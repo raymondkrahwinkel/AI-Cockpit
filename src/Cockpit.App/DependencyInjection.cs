@@ -51,7 +51,7 @@ public static class DependencyInjection
         // AC-1439: the desktop's half of the backend's one launcher. The cockpit is reached when first asked, and the
         // cockpit reaches the launcher the same way, since each starts through the other.
         services.AddSingleton(provider => new DesktopSessionSeams(provider.GetRequiredService<CockpitViewModel>));
-        services.AddSingleton(provider => new ToastService(provider.GetRequiredService<CockpitViewModel>));
+        services.AddSingleton(provider => new ToastService(provider.GetRequiredService<CockpitViewModel>, provider.GetService<Microsoft.Extensions.Logging.ILogger<ToastService>>()));
         services.AddSingleton<ISessionDesks>(provider => provider.GetRequiredService<DesktopSessionSeams>());
         services.AddSingleton<ISessionHosting>(provider => provider.GetRequiredService<DesktopSessionSeams>());
         services.AddSingleton<ISessionStartObserver>(provider => provider.GetRequiredService<DesktopSessionSeams>());

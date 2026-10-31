@@ -44,6 +44,32 @@ public class SettingsCarrierWhitelistTests
             pair => _Covers(pair.carried, pair.never) || _Covers(pair.never, pair.carried));
     }
 
+    [Fact]
+    public void Extract_ResolvesCarrierCategoriesAndProfiles()
+    {
+        JsonObject Config(string sync) => Assert.IsType<JsonObject>(JsonNode.Parse("{\"Profiles\":[{\"Label\":\"Work\"},{\"Label\":\"Home\"}],\"Plugins\":{\"demo\":{\"Enabled\":true}},\"Notifications\":{\"LocalEnabled\":true},\"Updates\":{\"CheckOnStartup\":true},\"SettingsSync\":{" + sync + "}}"));
+        JsonNode? Extract(JsonObject config, string id) => JsonNode.Parse(Encoding.UTF8.GetString(SettingsCarrierWhitelist.Extract(config, SettingsCarrierFilter.FromConfig(config, id))));
+
+        var config = Config("\"Categories\":{\"Profiles\":[\"one\",\"two\"],\"Plugins\":[\"one\"],\"Notifications\":[\"two\"]},\"Profiles\":{\"Work\":[\"one\"],\"Home\":[\"two\"]}");
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Work"}],"Plugins":{"demo":{"Enabled":true}}}"""), Extract(config, "one")));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Home"}],"Notifications":{"LocalEnabled":true}}"""), Extract(config, "two")));
+
+        config = Config("\"Categories\":{\"Profiles\":[\"one\"],\"Updates\":[]}");
+        Assert.Equal(2, Extract(config, "one")?["Profiles"]?.AsArray().Count);
+        Assert.Null(Extract(config, "one")?["Updates"]);
+
+        config = Config("\"Categories\":{\"Plugins\":[\"one\",\"two\"]}");
+        Assert.True(JsonNode.DeepEquals(Extract(config, "one"), Extract(config, "two")));
+        Assert.NotNull(Extract(config, "one")?["Plugins"]);
+
+        // AC-1847: a profile's own choice widens or narrows what the category says; a profile without one follows the category.
+        config = Config("\"Categories\":{\"Profiles\":[\"one\"]},\"Profiles\":{\"Home\":[\"two\"],\"Work\":[]}");
+        Assert.Empty(Assert.IsType<JsonArray>(Extract(config, "one")?["Profiles"]));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""{"Profiles":[{"Label":"Home"}]}"""), Extract(config, "two")));
+        config = Config("\"Categories\":{\"Profiles\":[\"one\"]},\"Profiles\":{\"Home\":[\"two\"]}");
+        Assert.Equal("Work", Assert.Single(Assert.IsType<JsonArray>(Extract(config, "one")?["Profiles"]))?["Label"]?.GetValue<string>());
+    }
+
     // AC-1861: project definitions and their category order belong only to project sync.
     private static void _AssertProjectsAreNotExtracted()
     {

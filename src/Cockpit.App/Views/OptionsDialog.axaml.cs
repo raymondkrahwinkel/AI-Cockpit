@@ -81,6 +81,7 @@ public partial class OptionsDialog : Window
                 cockpit.Diagnostics.Refresh();
                 cockpit.Swarm.StartListening();
                 cockpit.ModelIntelligence.LoadCommand.Execute(null);
+                cockpit.Sync.LoadCommand.Execute(null);
                 cockpit.Security.HelloSigner = new Services.WindowsHelloSigner(this);
                 cockpit.Security.AskHelloPassword = _AskHelloPasswordAsync;
                 cockpit.Security.RefreshHelloCommand.Execute(null);

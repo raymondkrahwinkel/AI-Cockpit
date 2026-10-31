@@ -57,11 +57,18 @@ internal static class SettingsCarrierWhitelist
         StringComparer.Ordinal);
 
     // The blob a carrier is handed: cockpit.json as it is on disk, cut down to `Carried`.
-    public static byte[] Extract(JsonObject cockpitJson) =>
-        JsonSerializer.SerializeToUtf8Bytes(_Keep(cockpitJson, ""));
+    public static byte[] Extract(JsonObject cockpitJson) => Extract(cockpitJson, SettingsCarrierFilter.All);
 
-    private static JsonNode? _Keep(JsonNode? node, string path)
+    public static byte[] Extract(JsonObject cockpitJson, SettingsCarrierFilter filter) =>
+        JsonSerializer.SerializeToUtf8Bytes(_Keep(cockpitJson, "", filter));
+
+    private static JsonNode? _Keep(JsonNode? node, string path, SettingsCarrierFilter filter)
     {
+        if (!filter.Allows(path) || path == "Profiles[]" && node is JsonObject profile && !filter.AllowsProfile(profile["Label"]?.GetValue<string>()))
+        {
+            return null;
+        }
+
         if (_Leaves.Contains(path))
         {
             return node?.DeepClone();
@@ -77,13 +84,17 @@ internal static class SettingsCarrierWhitelist
                     var child = Reaches(named) ? named : $"{path}.*";
                     if (Reaches(child))
                     {
-                        kept[key] = _Keep(value, child);
+                        if (_Keep(value, child, filter) is { } valueKept)
+                        {
+                            kept[key] = valueKept;
+                        }
                     }
                 }
 
                 return kept;
             case JsonArray array:
-                return new JsonArray([.. array.Select(item => _Keep(item, path + "[]"))]);
+                var items = array.Select(item => _Keep(item, path + "[]", filter));
+                return path == "Profiles" ? new JsonArray([.. items.Where(item => item is not null)]) : new JsonArray([.. items]);
             default:
                 return null;
         }
@@ -93,4 +104,52 @@ internal static class SettingsCarrierWhitelist
     public static bool Reaches(string path) => _Leaves.Contains(path) || _Ancestors.Contains(path);
 
     public static bool IsLeaf(string path) => _Leaves.Contains(path);
+}
+
+internal sealed class SettingsCarrierFilter
+{
+    private static readonly IReadOnlyDictionary<string, string[]> CategoryRoots = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["Profiles"] = ["Profiles", "CategoryOrder"],
+        ["Plugins"] = ["Plugins"],
+        ["Notifications"] = ["Notifications"],
+        ["Shortcuts"] = ["Shortcuts"],
+        ["SessionBehaviour"] = ["SessionSwitching", "TranscriptDisplay", "UsagePill", "SessionBehavior"],
+        ["Usage"] = ["UsageThresholds"],
+        ["Appearance"] = ["Terminal", "Layout"],
+        ["Updates"] = ["Updates"],
+    };
+
+    private readonly HashSet<string>? _categories;
+    // AC-1847: per profile label, whether this carrier takes it; a profile that is not in here follows the Profiles category.
+    private readonly Dictionary<string, bool> _overrides;
+
+    private SettingsCarrierFilter(HashSet<string>? categories, Dictionary<string, bool> overrides) => (_categories, _overrides) = (categories, overrides);
+
+    public static SettingsCarrierFilter All { get; } = new(null, new Dictionary<string, bool>(StringComparer.Ordinal));
+
+    internal static IEnumerable<string> Categories => CategoryRoots.Keys;
+
+    public static SettingsCarrierFilter FromConfig(JsonObject config, string carrierId)
+    {
+        if (config["SettingsSync"]?["Categories"] is not JsonObject categories)
+        {
+            return All;
+        }
+
+        var categoriesForCarrier = categories
+            .Where(pair => CategoryRoots.ContainsKey(pair.Key) && pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId))
+            .Select(pair => pair.Key);
+        var overrides = (config["SettingsSync"]?["Profiles"] as JsonObject)?
+            .Where(pair => pair.Value is JsonArray)
+            .ToDictionary(pair => pair.Key, pair => pair.Value is JsonArray ids && ids.Any(id => id?.GetValue<string>() == carrierId), StringComparer.Ordinal) ?? new Dictionary<string, bool>(StringComparer.Ordinal);
+        return new([.. categoriesForCarrier], overrides);
+    }
+
+    public bool Allows(string path) => _categories is null || path.Length == 0 || !CategoryRoots.Values.SelectMany(roots => roots).Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal)) ||
+        _categories.Any(category => CategoryRoots[category].Any(root => path == root || path.StartsWith(root + ".", StringComparison.Ordinal) || path.StartsWith(root + "[]", StringComparison.Ordinal))) ||
+        // A profile this carrier was picked for takes the Profiles section along, even when the category itself does not include it.
+        _overrides.ContainsValue(true) && (path == "Profiles" || path.StartsWith("Profiles[]", StringComparison.Ordinal));
+
+    public bool AllowsProfile(string? label) => _categories is null || (label is not null && _overrides.TryGetValue(label, out var picked) ? picked : _categories.Contains("Profiles"));
 }

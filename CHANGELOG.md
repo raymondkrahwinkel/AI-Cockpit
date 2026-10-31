@@ -67,6 +67,8 @@ All notable changes to Wispslate Cockpit are recorded here, newest first. The fo
 
 - Provider sub-agents are visible in Background and Agents, with isolated read-only transcripts and requests through the existing parent. Claude 0.30.0, Codex 0.11.1 and the additive plugin SDK 3.60.0 carry the new child identity and transcript contracts.
 
+- added: **a sync choice per profile.** On Options › Sync the Profiles row opens to one row per profile, and the profile page has a "Synchronise this profile" field: tick the servers a profile goes to, or leave it on "Same as Profiles". Nothing ticked keeps that profile on this machine; unticking never removes anything from a server (AC-1847).
+- added: **Options › Sync.** One page decides which server each category of settings (profiles, plugins, notifications, shortcuts, session behaviour, usage, appearance, updates) is kept in step with: tick one or more per category, nothing ticked stays on this machine. A card per server shows what it receives and when it last synced; unticking never removes anything from the server. A settings conflict between two servers now shows one card per server (AC-1846).
 - When two swarm leaders meet again after a network split, the higher rank steps down and both assistant conversations are merged without losing a message; a note state changed on both sides keeps the other version and asks once whether to compare or keep the newest.
 
 - Options has a Swarm page for pairing your own Cockpits, checking machines and their leader, and setting internal network ranges and returning-machine behaviour.

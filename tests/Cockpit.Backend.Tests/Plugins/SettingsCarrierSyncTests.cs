@@ -75,6 +75,107 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         Assert.Empty(managed.Sync.Conflicts);
     }
 
+    [Fact]
+    public async Task EligibleCarriers_PropagateChanges_AndLegacyStateMigratesIdempotently()
+    {
+        var one = new _Space("one");
+        var two = new _Space("two");
+        var machine = _Machine("two-carriers", """
+            { "Terminal": { "FontSize": 12 }, "SettingsSync": { "Categories": { "Appearance": [ "one", "two" ] } } }
+            """, one, two);
+
+        await machine.Sync.RunOnceAsync();
+        Assert.Equal((12, 12), (_Remote(one)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(two)["Terminal"]?["FontSize"]?.GetValue<int>()));
+
+        one.Blob = Encoding.UTF8.GetBytes("""{"Terminal":{"FontSize":13}}""");
+        await machine.Sync.RunOnceAsync();
+        await SettingsCarrierSync.ApplyIncomingAsync(machine.ConfigPath, NullLogger.Instance);
+        await machine.Sync.RunOnceAsync();
+        Assert.Equal((13, 13, 13), (_Local(machine)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(one)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(two)["Terminal"]?["FontSize"]?.GetValue<int>()));
+
+        one.Blob = Encoding.UTF8.GetBytes("""{"Terminal":{"FontSize":14}}""");
+        two.Blob = Encoding.UTF8.GetBytes("""{"Terminal":{"FontSize":15}}""");
+        await machine.Sync.RunOnceAsync();
+
+        Assert.Equal(13, _Local(machine)["Terminal"]?["FontSize"]?.GetValue<int>());
+        Assert.Equal((14, 15), (_Remote(one)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(two)["Terminal"]?["FontSize"]?.GetValue<int>()));
+        Assert.Single(machine.Sync.Conflicts);
+
+        await machine.Sync.ResolveAsync(new Dictionary<string, bool> { ["Terminal.FontSize"] = true });
+        Assert.Equal((13, 13), (_Remote(one)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(two)["Terminal"]?["FontSize"]?.GetValue<int>()));
+
+        one.Blob = Encoding.UTF8.GetBytes("""{"Terminal":{}}""");
+        await machine.Sync.RunOnceAsync();
+        Assert.Empty(machine.Sync.Conflicts);
+        Assert.Equal((null, 13), (_Remote(one)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(two)["Terminal"]?["FontSize"]?.GetValue<int>()));
+        await machine.Sync.RunOnceAsync();
+        Assert.Equal((13, 13), (_Remote(one)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(two)["Terminal"]?["FontSize"]?.GetValue<int>()));
+
+        var populatedOne = new _Space("one") { Blob = Encoding.UTF8.GetBytes("""{"Terminal":{"FontSize":20}}""") };
+        var populated = _Machine("populated", """
+            { "Terminal": { "FontSize": 12 }, "SettingsSync": { "Categories": { "Appearance": [ "one" ] } } }
+            """, populatedOne);
+        await populated.Sync.RunOnceAsync();
+        var firstContact = Assert.Single(populated.Sync.Conflicts);
+        Assert.Equal((12, 20, "20"), (_Local(populated)["Terminal"]?["FontSize"]?.GetValue<int>(), _Remote(populatedOne)["Terminal"]?["FontSize"]?.GetValue<int>(), firstContact.CarrierValues?["one"]));
+
+        var untickedOne = new _Space("one");
+        var untickedTwo = new _Space("two");
+        var unticked = _Machine("unticked", """
+            { "Terminal": { "FontSize": 12 }, "SettingsSync": { "Categories": { "Appearance": [ "one", "two" ] } } }
+            """, untickedOne, untickedTwo);
+
+        await unticked.Sync.RunOnceAsync();
+        _Write(unticked, """
+            { "Terminal": { "FontSize": 13 }, "SettingsSync": { "Categories": { "Appearance": [ "one" ] } } }
+            """);
+        await unticked.Sync.RunOnceAsync();
+
+        Assert.Equal(13, _Remote(untickedOne)["Terminal"]?["FontSize"]?.GetValue<int>());
+        Assert.Equal(12, _Remote(untickedTwo)["Terminal"]?["FontSize"]?.GetValue<int>());
+
+        await _AssertLegacySingleCarrierStateMigratesWithoutWritingOrConflictsAsync();
+    }
+
+    private async Task _AssertLegacySingleCarrierStateMigratesWithoutWritingOrConflictsAsync()
+    {
+        var machine = _Machine("legacy", """
+            { "Profiles": [{ "Label": "work", "Purpose": "work" }], "Terminal": { "FontSize": 19, "FontFamily": "Cascadia Mono, Consolas, monospace" } }
+            """);
+        _space.Blob = Encoding.UTF8.GetBytes(_Local(machine).ToJsonString());
+        var statePath = Path.Combine(Assert.IsType<string>(Path.GetDirectoryName(machine.ConfigPath)), "settings-sync.json");
+        File.WriteAllText(statePath, """
+            { "Base": { "Profiles.work": "{\"Label\":\"work\",\"Purpose\":\"work\"}", "Terminal.FontSize": "19", "Terminal.FontFamily": "\"Cascadia Mono, Consolas, monospace\"" } }
+            """);
+
+        await machine.Sync.RunOnceAsync();
+
+        var migrated = _Local(machine);
+        var settingsSync = Assert.IsType<JsonObject>(migrated["SettingsSync"]);
+        var categories = Assert.IsType<JsonObject>(settingsSync["Categories"]);
+        Assert.Equal(8, categories.Count);
+        Assert.All(categories, category => Assert.Equal("fake", Assert.IsAssignableFrom<JsonValue>(Assert.Single(Assert.IsType<JsonArray>(category.Value))).GetValue<string>()));
+        Assert.Null(settingsSync["Profiles"]);
+        Assert.Equal(0, _space.WriteCount);
+        Assert.Empty(machine.Sync.Conflicts);
+
+        var configAfterFirstStart = File.ReadAllText(machine.ConfigPath);
+        var stateAfterFirstStart = File.ReadAllText(statePath);
+
+        await machine.Sync.RunOnceAsync();
+
+        Assert.Equal(configAfterFirstStart, File.ReadAllText(machine.ConfigPath));
+        Assert.Equal(stateAfterFirstStart, File.ReadAllText(statePath));
+        Assert.Equal(0, _space.WriteCount);
+        Assert.Empty(machine.Sync.Conflicts);
+
+        Assert.IsType<JsonArray>(migrated["Profiles"]).Add(new JsonObject { ["Label"] = "later", ["Purpose"] = "later" });
+        _Write(machine, migrated.ToJsonString());
+        await machine.Sync.RunOnceAsync();
+
+        Assert.Equal("later", Assert.IsType<JsonObject>(Assert.Single(Assert.IsType<JsonArray>(_Remote()["Profiles"]), profile => profile?["Label"]?.GetValue<string>() == "later"))["Purpose"]?.GetValue<string>());
+    }
+
     // AC-1861: each direction uses separate state roots and exercises an older carrier and pending state.
     private async Task _AssertProjectsStayLocalAsync(string ownerName, string receiverName)
     {
@@ -130,12 +231,24 @@ public sealed class SettingsCarrierSyncTests : IDisposable
         receiver.Sync.Dispose();
     }
 
-    private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config, _Space? space = null)
+    private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config)
     {
         var path = CockpitConfigPath.For(Directory.CreateDirectory(Path.Combine(_root, name)).FullName);
         File.WriteAllText(path, config);
         var carriers = new SettingsCarriers(NullLogger<SettingsCarriers>.Instance);
-        carriers.Add("fake", (space ?? _space).Carrier);
+        carriers.Add("fake", _space.Carrier);
+        return (path, new SettingsCarrierSync(carriers, path, null, null, TimeProvider.System));
+    }
+
+    private (string ConfigPath, SettingsCarrierSync Sync) _Machine(string name, string config, params _Space[] spaces)
+    {
+        var path = CockpitConfigPath.For(Directory.CreateDirectory(Path.Combine(_root, name)).FullName);
+        File.WriteAllText(path, config);
+        var carriers = new SettingsCarriers(NullLogger<SettingsCarriers>.Instance);
+        foreach (var space in spaces)
+        {
+            carriers.Add("fake", space.Carrier);
+        }
         return (path, new SettingsCarrierSync(carriers, path, null, null, TimeProvider.System));
     }
 
@@ -146,22 +259,31 @@ public sealed class SettingsCarrierSyncTests : IDisposable
 
     private JsonNode _Remote() => JsonNode.Parse(_space.Blob ?? []) ?? throw new InvalidOperationException("The carrier holds nothing.");
 
+    private static JsonNode _Remote(_Space space) => JsonNode.Parse(space.Blob ?? []) ?? throw new InvalidOperationException("The carrier holds nothing.");
+
     // Depot's /cockpit/profile in memory: a write names the version it replaces and is refused when that is stale.
     private sealed class _Space
     {
+        public _Space(string id = "fake") => Id = id;
+
+        private string Id { get; }
+
         public byte[]? Blob { get; set; }
+
+        public int WriteCount { get; private set; }
 
         // Another machine's write, landing once just before this one's.
         public Action? BeforeWrite { get; set; }
 
         public SettingsCarrierRegistration Carrier => new(
-            "fake",
-            "Fake",
+            Id,
+            Id,
             "fake://account",
             _ => Task.FromResult(Blob is not null),
             _ => Task.FromResult(Blob),
             (blob, _) =>
             {
+                WriteCount++;
                 Blob = blob;
                 return Task.CompletedTask;
             })
@@ -176,6 +298,7 @@ public sealed class SettingsCarrierSyncTests : IDisposable
                     return Task.FromResult(false);
                 }
 
+                WriteCount++;
                 Blob = blob;
                 return Task.FromResult(true);
             },
