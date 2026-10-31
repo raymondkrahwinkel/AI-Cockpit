@@ -117,7 +117,7 @@ internal sealed class StandbyAssistant : IDisposable
             .AddSingleton(new SessionConversationTracker()).AddLogging()
             .AddSingleton<IAgentMessageInbox>(new AgentMessageInbox())
             .AddSingleton<IAssistantMemory>(provider => new AssistantMemoryFile(Path.Combine(_root, "behaviour.md"), Path.Combine(_root, "state.md"), Path.Combine(_root, "machine.md"), provider))
-            .AddSingleton<SessionStateRecorder>().AddSingleton<SwarmTakeoverCoordinator>().AddSingleton<SwarmAssistantRelay>()
+            .AddSingleton<SessionStateRecorder>().AddSingleton<SwarmTakeoverCoordinator>().AddSingleton<SwarmAssistantRelay>().AddSingleton<SwarmMerge>()
             .AddSingleton<AssistantSessionHost>();
         _services = services.BuildServiceProvider();
         _ = Host;

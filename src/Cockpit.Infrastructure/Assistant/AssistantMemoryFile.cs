@@ -102,13 +102,18 @@ internal sealed class AssistantMemoryFile : IAssistantMemory, ISingletonService
         if (_services?.GetService<SwarmTakeoverCoordinator>() is { } takeover) await takeover.PublishAsync(cancellationToken);
     }
 
-    internal void RestoreStandby(string noteState, string behaviour)
+    // AC-1929: when the note state last changed, which a merge after a split compares; a restore carries it over.
+    internal DateTimeOffset NoteStateChangedAt() =>
+        File.Exists(_statePath) ? new DateTimeOffset(File.GetLastWriteTimeUtc(_statePath)) : DateTimeOffset.MinValue;
+
+    internal void RestoreStandby(string noteState, string behaviour, DateTimeOffset noteStateAt = default)
     {
         var existing = File.Exists(_filePath) ? File.ReadAllText(_filePath) : "";
         var carried = BehaviourMemorySync._Entries(behaviour).Select(BehaviourMemorySync._StripOrigin).ToHashSet(StringComparer.Ordinal);
         var localOnly = BehaviourMemorySync._Entries(existing).Where(line => !carried.Contains(BehaviourMemorySync._StripOrigin(line)));
         var merged = string.Join(Environment.NewLine, localOnly.Select(line => "- " + line));
         CockpitConfigPath.ReplaceAtomicallyPrivate(_statePath, noteState);
+        if (noteStateAt != default) File.SetLastWriteTimeUtc(_statePath, noteStateAt.UtcDateTime);
         CockpitConfigPath.ReplaceAtomicallyPrivate(_filePath, string.IsNullOrEmpty(merged) ? behaviour : behaviour + Environment.NewLine + merged);
     }
 

@@ -11,7 +11,7 @@ namespace Cockpit.App;
 
 internal static partial class Screenshotter
 {
-    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false, bool takeover = false)
+    private static AssistantChatWindow _AssistantSwarm(bool selfLeads = false, bool serverLeads = false, bool takeover = false, bool merging = false)
     {
         var cockpit = new CockpitViewModel();
         var options = new SidebarSwarmOptions(false);
@@ -31,6 +31,14 @@ internal static partial class Screenshotter
         if (takeover)
             conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider,
                 Cockpit.Infrastructure.Swarm.SwarmTakeoverCoordinator.TakeoverNotice(DateTimeOffset.Now.Date.AddHours(14).AddMinutes(31))));
+        if (merging)
+        {
+            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Divider, ConversationMerge.Separator("Laptop")));
+            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "[from Laptop] Draft the release notes.")
+                { WrittenWhileApartOn = "Laptop" });
+            conversation.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Release notes drafted on Desktop.")
+                { WrittenWhileApartOn = "Desktop" });
+        }
         var handle = new SessionPanelHandle(conversation, false, () => null);
         var nodes = new _SceneNodeSessions
         {
@@ -50,6 +58,12 @@ internal static partial class Screenshotter
         if (reportedLeader != (selfLeads ? "Led by Desktop" : "You lead"))
             throw new InvalidOperationException("The assistant chip must follow the leader change immediately.");
         leadership.MoveTo(leader);
+        if (merging)
+        {
+            leadership.Merge(ConversationMerge.MergingNotice);
+            if (reportedLeader != ConversationMerge.MergingNotice)
+                throw new InvalidOperationException("The assistant chip must say a merge is running.");
+        }
         chat.PropertyChanged -= changed;
         chat.EnsureOpenedAsync().GetAwaiter().GetResult();
         chat.InputText = "And check the tests next";
@@ -126,8 +140,10 @@ internal static partial class Screenshotter
         public SwarmMember? Current { get; private set; } = initial;
         public bool IsSelf => Current?.Name == "Laptop";
         public SwarmTakeover? PendingTakeover => null;
+        public string? MergeNotice { get; private set; }
         public event EventHandler? Changed;
         public void MoveTo(SwarmMember member) { Current = member; Changed?.Invoke(this, EventArgs.Empty); }
+        public void Merge(string notice) { MergeNotice = notice; Changed?.Invoke(this, EventArgs.Empty); }
         public Task TakeOverNowAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task StayWithCurrentAsync(CancellationToken ct = default) => Task.CompletedTask;
     }

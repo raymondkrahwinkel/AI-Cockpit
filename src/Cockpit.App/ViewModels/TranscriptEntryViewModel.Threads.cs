@@ -115,6 +115,9 @@ public partial class TranscriptEntryViewModel
     // For a watch report: the pane it is about, since the watcher is not a pane itself.
     public string? SubjectPaneId { get; init; }
 
+    // AC-1929: the member this row was written on while two leaders were apart.
+    public string? WrittenWhileApartOn { get; init; }
+
     // A run of status lines folds under its first: that row carries the count, the rest stay out until it is opened.
     internal TranscriptEntryViewModel? StatusRunAnchor { get; set; }
 

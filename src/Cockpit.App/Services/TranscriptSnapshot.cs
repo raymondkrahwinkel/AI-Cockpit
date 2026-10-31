@@ -41,6 +41,7 @@ internal static class TranscriptSnapshot
         SenderTitle = entry.SenderTitle,
         MessageKind = entry.MessageKind,
         SubjectPaneId = entry.SubjectPaneId,
+        WrittenWhileApartOn = entry.WrittenWhileApartOn,
 
         // AC-1377: the host holds these for the live view, so a row recorded from here must carry them back unchanged.
         StartsReply = entry.ReplyRows is [var first, ..] && ReferenceEquals(first, entry),
@@ -115,6 +116,7 @@ internal static class TranscriptSnapshot
             SenderTitle = record.SenderTitle,
             MessageKind = record.MessageKind,
             SubjectPaneId = record.SubjectPaneId,
+            WrittenWhileApartOn = record.WrittenWhileApartOn,
         };
 
         if (record.ResultText is not null)

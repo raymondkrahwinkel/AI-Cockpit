@@ -113,6 +113,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
             await _startGate.WaitAsync();
             try
             {
+                if (Session is not null && _takeover is not null) await _takeover.StepDownAsync();
                 if (_ReplaceSession(null) is { } previous) await _DisposeQuietlyAsync(previous);
             }
             finally { _startGate.Release(); }
@@ -516,7 +517,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
 
         // Picks up yesterday's conversation when there is one — the same resume the restore path uses, rather
         // than a retention rule invented here.
-        var standby = !startFresh ? _takeover?.ReadForStart() : null;
+        var standby = !startFresh ? _takeover?.TakeForStart() : null;
         var resume = standby is not null || startFresh
             ? SessionResume.New
             : await _ResolveResumeAsync(cancellationToken).ConfigureAwait(true);
@@ -527,7 +528,7 @@ public sealed class AssistantSessionHost : IAssistantSessionHost, ISingletonServ
         {
             _takeover?.BeginTakeover(standby);
             _takeover?.RestoreReceipts(standby);
-            if (_memory is AssistantMemoryFile file) file.RestoreStandby(standby.NoteState, standby.Behaviour);
+            if (_memory is AssistantMemoryFile file) file.RestoreStandby(standby.NoteState, standby.Behaviour, standby.NoteStateAt);
             session.RestoreStandbyTranscript(standby.Transcript);
         }
         else await session.PrepareRecordedTranscriptAsync(resume, cancellationToken).ConfigureAwait(true);

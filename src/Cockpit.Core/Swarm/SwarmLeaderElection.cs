@@ -16,6 +16,7 @@ public interface ISwarmLeadership
     bool IsSelf { get; }
     bool IsActive => Current is not null;
     SwarmTakeover? PendingTakeover { get; }
+    string? MergeNotice => null;
     event EventHandler? Changed;
     T WithLeader<T>(Func<SwarmMember?, T> action) => action(Current);
     Task TakeOverNowAsync(CancellationToken ct = default);
@@ -26,6 +27,22 @@ public static class SwarmLeaderElection
 {
     public static SwarmRankChange RejoinAtBack(SwarmMembership register, SwarmMemberId member) =>
         new(member, SwarmRank.DrawAbove(register.Members.Select(item => item.Rank)), register.Sequence + 1);
+
+    // AC-1929: two members on one rank (2^-64, only across a split). The one added last, by time then id, draws a new
+    // rank above every rank seen; only that member can sign it, so the others answer null.
+    public static SwarmRankChange? ResolveRankCollision(SwarmMembership register, SwarmMemberId self, IEnumerable<SwarmMember> seen)
+    {
+        var own = register.Members.FirstOrDefault(member => member.Id == self);
+        var rivals = seen.Where(member => member.Id != self && member.Rank == own?.Rank).ToArray();
+        if (own is null || rivals.Length == 0)
+        {
+            return null;
+        }
+
+        var last = rivals.Append(own).OrderBy(member => member.AddedAt).ThenBy(member => member.Id.Value, StringComparer.Ordinal).Last();
+        return last.Id != self ? null
+            : new(self, SwarmRank.DrawAbove(register.Members.Concat(rivals).Select(member => member.Rank)), register.Sequence + 1);
+    }
 
     public static SwarmLeadershipState Evaluate(SwarmMembership register,
         Func<SwarmMemberId, SwarmMemberPresence> presence, DateTimeOffset now, SwarmLeadershipState previous,

@@ -222,6 +222,21 @@ internal sealed class SwarmAssistantRelay : BackgroundService, ISwarmAssistantRe
             await assistant.UseControlAsync(control => control.InterruptAsync());
             return Results.Json(new { interrupted = true });
         }));
+        members.MapPost("/merge", (Func<HttpContext, Task<IResult>>)(async context =>
+        {
+            var caller = McpRequestContext.CurrentNodeCaller;
+            if (caller is not { ByConnectKey: true, Capability: ConnectKeyCapability.Admin }) return Results.Unauthorized();
+            var member = (await services.GetRequiredService<SwarmMembershipStore>().LoadAsync(context.RequestAborted))
+                .Members.SingleOrDefault(member => SwarmKick.KeyLabel(member) == caller.Label);
+            if (member is null) return Results.StatusCode(403);
+            try
+            {
+                var snapshot = SwarmStandbyCopy.Validated(await JsonSerializer.DeserializeAsync<SwarmStandbySnapshot>(context.Request.Body,
+                    SwarmStandbyCopy.Json, context.RequestAborted), member.Id);
+                return await services.GetRequiredService<SwarmMerge>().ReceiveAsync(snapshot, context.RequestAborted) ? Results.Ok() : Results.Conflict();
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidDataException) { return Results.BadRequest(); }
+        }));
         members.MapPost("/standby", (Func<HttpContext, Task<IResult>>)(async context =>
         {
             var caller = McpRequestContext.CurrentNodeCaller;
