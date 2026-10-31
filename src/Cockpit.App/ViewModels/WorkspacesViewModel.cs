@@ -432,7 +432,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     internal bool IsUnsaved(string workspaceId) => _markers.TryGetValue(workspaceId, out var marker) && marker == WorkspaceMarker.Unsaved;
 
     // AC-1972: the strip tabs a bulk close from `workspaceId`'s menu would close, and the ones in its reach that stay
-    // because they cannot close. Closing every workspace would leave none, so Close all keeps the clicked one then.
+    // because they cannot close. The last-workspace rule is CloseWorkspaceAsync's own re-check, per close.
     public (IReadOnlyList<Workspace> Closing, IReadOnlyList<Workspace> Staying) BulkCloseScope(BulkClose action, string workspaceId)
     {
         var strip = Settings.Workspaces.Where(workspace => !workspace.IsFloating).ToList();
@@ -449,11 +449,6 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             _ => strip,
         };
         var closing = reach.Where(workspace => CanClose(workspace.Id)).ToList();
-        if (closing.Count == Settings.Workspaces.Count)
-        {
-            closing.RemoveAll(workspace => workspace.Id == workspaceId);
-        }
-
         return (closing, [.. reach.Where(workspace => !closing.Contains(workspace))]);
     }
 

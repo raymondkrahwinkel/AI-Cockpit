@@ -1,12 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Threading;
-using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Files;
-using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Workspaces;
 using Cockpit.App.ViewTests;
