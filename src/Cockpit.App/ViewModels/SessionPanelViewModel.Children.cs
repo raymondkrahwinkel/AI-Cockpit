@@ -24,6 +24,8 @@ public abstract partial class SessionPanelViewModel
     public virtual bool HasBackgroundOtherTasks => BackgroundOtherTasks.Count > 0;
     public virtual bool HasBackgroundTasks => BackgroundTaskCount > 0;
     public virtual int BackgroundTaskCount => ChildAgents.Count(child => child.Reference.State == "running");
+    public virtual bool CanPrepareChildRequest => false;
+    public virtual bool CanOpenOriginalTerminal => false;
     public virtual string BackgroundTaskSummary => BackgroundTaskCount switch
     {
         0 => "nothing",
@@ -33,7 +35,7 @@ public abstract partial class SessionPanelViewModel
 
     public void OpenChild(ChildAgentViewModel child)
     {
-        if (!ReferenceEquals(child.Owner, this) || !ChildAgents.Contains(child))
+        if (!IsCurrentChild(child, child.Reference))
         {
             return;
         }
@@ -41,6 +43,23 @@ public abstract partial class SessionPanelViewModel
         IsBackgroundWorkOpen = false;
         ChildTranscript = new ChildTranscriptViewModel(child, ReadChildAsync);
         ChildTranscript.LoadMoreCommand.Execute(null);
+    }
+
+    internal bool IsCurrentChild(ChildAgentViewModel child, BackgroundTask reference) =>
+        ReferenceEquals(child.Owner, this) && ChildAgents.Contains(child)
+        && (child.Reference.AgentId ?? child.Reference.TaskId) == (reference.AgentId ?? reference.TaskId)
+        && child.Reference.RunId == reference.RunId && child.Reference.SourceRevision == reference.SourceRevision;
+
+    internal virtual bool PrepareChildRequest(ChildAgentViewModel child, BackgroundTask reference, string request) => false;
+
+    internal bool OpenOriginalTerminal(ChildAgentViewModel child, BackgroundTask reference)
+    {
+        if (!CanOpenOriginalTerminal || !IsCurrentChild(child, reference))
+        {
+            return false;
+        }
+        ReturnToParentCommand.Execute(null);
+        return true;
     }
 
     protected virtual Task<ChildTranscriptPage> ReadChildAsync(BackgroundTask reference, string? cursor, CancellationToken cancellationToken) =>

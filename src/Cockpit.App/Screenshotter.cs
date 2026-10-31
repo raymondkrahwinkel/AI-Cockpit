@@ -699,6 +699,12 @@ internal static partial class Screenshotter
         ["agents-docked-expanded"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
         ["agents-undocked-expanded"] = (_, _) => _AgentsOverview(floating: true, expanded: true),
         ["agents-child-open"] = (_, _) => _AgentsOverview(floating: false, expanded: true),
+        ["child-steering-sdk"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-prepared"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-stopped"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-stale"] = (_, _) => _ChildSteeringScene(),
+        ["child-steering-tty"] = (_, _) => _ChildSteeringScene(terminal: true),
+        ["child-steering-terminal-open"] = (_, _) => _ChildSteeringScene(terminal: true),
         // AC-960 criterion 15: a plugin-registered panel (a stand-in for GitHubPullRequestsWidget — Cockpit.App
         // does not reference that store-distributed plugin's assembly) at the rail's minimum and maximum content
         // widths, plus the collapsed rail carrying both the Assistant's tab and this one.
@@ -1301,6 +1307,10 @@ internal static partial class Screenshotter
         ["session-settings-flyout"] = window => _OpenFlyout(window, "SessionSettingsButton"),
         ["child-history-popout"] = window => _OpenFlyout(window, "BackgroundWorkButton"),
         ["agents-child-open"] = _OpenAgentChild,
+        ["child-steering-prepared"] = window => _ExerciseChildSteering(window, "prepared"),
+        ["child-steering-stopped"] = window => _ExerciseChildSteering(window, "stopped"),
+        ["child-steering-stale"] = window => _ExerciseChildSteering(window, "stale"),
+        ["child-steering-terminal-open"] = window => _ExerciseChildSteering(window, "terminal"),
         ["tty-claude-child-popout"] = window => _OpenFlyout(window, "TtyBackgroundWorkButton"),
         ["tty-codex-child-popout"] = window => _OpenFlyout(window, "TtyBackgroundWorkButton"),
         ["session-settings-flyout-no-live-controls"] = window => _OpenFlyout(window, "SessionSettingsButton"),

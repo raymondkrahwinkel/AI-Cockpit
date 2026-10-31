@@ -681,6 +681,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     private bool _childrenPolling;
+    public override bool CanOpenOriginalTerminal => !_statusTrackingStopped && PromptSink is not null;
 
     private SessionStatus _WithChildStatus(SessionStatus status) =>
         status is SessionStatus.Idle or SessionStatus.Done && HasBackgroundTasks ? SessionStatus.WorkingBackground : status;
